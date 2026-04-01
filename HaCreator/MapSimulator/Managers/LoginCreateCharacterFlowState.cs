@@ -48,6 +48,21 @@ namespace HaCreator.MapSimulator.Managers
         public int BeginnerJobId { get; }
     }
 
+    public sealed class LoginCreateCharacterRequestProfile
+    {
+        public LoginCreateCharacterRaceKind Race { get; init; }
+        public CharacterGender Gender { get; init; }
+        public int BeginnerJobId { get; init; }
+        public short SubJob { get; init; }
+        public SkinColor Skin { get; init; }
+        public int FaceId { get; init; }
+        public int HairId { get; init; }
+        public int CoatId { get; init; }
+        public int PantsId { get; init; }
+        public int ShoesId { get; init; }
+        public int WeaponId { get; init; }
+    }
+
     public sealed class LoginCreateCharacterFlowState
     {
         public static readonly LoginCreateCharacterRaceKind[] SupportedRaces =
@@ -266,21 +281,45 @@ namespace HaCreator.MapSimulator.Managers
 
         public CharacterBuild CreatePreviewBuild(CharacterLoader loader)
         {
+            LoginCreateCharacterRequestProfile request = BuildRequestProfile(loader);
+            if (request == null)
+            {
+                return null;
+            }
+
+            return loader.LoadLoginStarterBuild(
+                request.Gender,
+                request.Skin,
+                request.FaceId,
+                request.HairId,
+                request.CoatId,
+                request.PantsId,
+                request.ShoesId,
+                request.WeaponId);
+        }
+
+        public LoginCreateCharacterRequestProfile BuildRequestProfile(CharacterLoader loader)
+        {
             CharacterLoader.LoginStarterAvatarCatalog catalog = loader?.GetLoginStarterAvatarCatalog(SelectedRace, SelectedGender);
             if (catalog == null)
             {
                 return null;
             }
 
-            return loader.LoadLoginStarterBuild(
-                SelectedGender,
-                GetValue(catalog.Skins, SelectedSkinIndex, SkinColor.Light),
-                GetValue(catalog.FaceIds, SelectedFaceIndex, SelectedGender == CharacterGender.Male ? 20000 : 21000),
-                loader.ResolveLoginStarterHairId(catalog, SelectedGender, SelectedHairIndex, SelectedHairColorIndex),
-                GetValue(catalog.CoatIds, SelectedCoatIndex, 1042003),
-                GetValue(catalog.PantsIds, SelectedPantsIndex, 1062007),
-                GetValue(catalog.ShoesIds, SelectedShoesIndex, 1072005),
-                GetValue(catalog.WeaponIds, SelectedWeaponIndex, 1322013));
+            return new LoginCreateCharacterRequestProfile
+            {
+                Race = SelectedRace,
+                Gender = SelectedGender,
+                BeginnerJobId = SelectedJob?.BeginnerJobId ?? 0,
+                SubJob = SelectedJob?.SubJob ?? 0,
+                Skin = GetValue(catalog.Skins, SelectedSkinIndex, SkinColor.Light),
+                FaceId = GetValue(catalog.FaceIds, SelectedFaceIndex, SelectedGender == CharacterGender.Male ? 20000 : 21000),
+                HairId = loader.ResolveLoginStarterHairId(catalog, SelectedGender, SelectedHairIndex, SelectedHairColorIndex),
+                CoatId = GetValue(catalog.CoatIds, SelectedCoatIndex, 1042003),
+                PantsId = GetValue(catalog.PantsIds, SelectedPantsIndex, 1062007),
+                ShoesId = GetValue(catalog.ShoesIds, SelectedShoesIndex, 1072005),
+                WeaponId = GetValue(catalog.WeaponIds, SelectedWeaponIndex, 1322013)
+            };
         }
 
         public void ResetAvatarIndices()

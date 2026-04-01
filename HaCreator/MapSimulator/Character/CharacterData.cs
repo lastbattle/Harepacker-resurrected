@@ -317,8 +317,26 @@ namespace HaCreator.MapSimulator.Character
                 [43] = "sit",
                 [44] = "prone",
                 [47] = "proneStab",
+                [48] = "heal",
                 [270] = "ladder",
                 [271] = "rope",
+            };
+
+        private static readonly IReadOnlyDictionary<string, int> ClientActionStringCodeMap =
+            new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["walk1"] = 0,
+                ["walk2"] = 1,
+                ["stand1"] = 2,
+                ["stand2"] = 3,
+                ["alert"] = 4,
+                ["jump"] = 42,
+                ["sit"] = 43,
+                ["prone"] = 44,
+                ["proneStab"] = 47,
+                ["heal"] = 48,
+                ["ladder"] = 270,
+                ["rope"] = 271,
             };
 
         private static readonly IReadOnlyDictionary<string, string[]> ActionFallbackMap =
@@ -567,6 +585,17 @@ namespace HaCreator.MapSimulator.Character
 
             actionName = null;
             return !string.IsNullOrWhiteSpace(actionName);
+        }
+
+        public static bool TryGetClientRawActionCode(string actionName, out int actionCode)
+        {
+            if (ClientActionStringCodeMap.TryGetValue(actionName ?? string.Empty, out actionCode))
+            {
+                return true;
+            }
+
+            actionCode = default;
+            return false;
         }
 
         public static string GetActionString(CharacterAction action)
@@ -1025,16 +1054,16 @@ namespace HaCreator.MapSimulator.Character
         public int TotalMP => Math.Clamp(MP + SumEquipmentBonus(part => part.BonusMP), 0, TotalMaxMP);
         public int TotalMastery => Math.Clamp(SkillMasteryProvider?.Invoke() ?? MinimumMasteryPercent, MinimumMasteryPercent, 100);
         public int TotalWeaponAttackStat => Math.Max(0, Math.Max(0, Attack - DefaultAttackValue) + SumEquipmentBonus(part => part.BonusWeaponAttack) + GetSkillStatBonus(BuffStatType.Attack));
-        public int TotalWeaponDefenseStat => Math.Max(0, Math.Max(0, Defense - DefaultDefenseValue) + SumEquipmentBonus(part => part.BonusWeaponDefense) + GetSkillStatBonus(BuffStatType.Defense));
+        public int TotalWeaponDefenseStat => Math.Max(0, ApplyRateBonus(Math.Max(0, Defense - DefaultDefenseValue) + SumEquipmentBonus(part => part.BonusWeaponDefense) + GetSkillStatBonus(BuffStatType.Defense), GetSkillStatBonus(BuffStatType.DefensePercent)));
         public int TotalMagicAttackStat => Math.Max(0, Math.Max(0, MagicAttack - DefaultMagicAttackValue) + SumEquipmentBonus(part => part.BonusMagicAttack) + GetSkillStatBonus(BuffStatType.MagicAttack));
-        public int TotalMagicDefenseStat => Math.Max(0, Math.Max(0, MagicDefense - DefaultMagicDefenseValue) + SumEquipmentBonus(part => part.BonusMagicDefense) + GetSkillStatBonus(BuffStatType.MagicDefense));
+        public int TotalMagicDefenseStat => Math.Max(0, ApplyRateBonus(Math.Max(0, MagicDefense - DefaultMagicDefenseValue) + SumEquipmentBonus(part => part.BonusMagicDefense) + GetSkillStatBonus(BuffStatType.MagicDefense), GetSkillStatBonus(BuffStatType.MagicDefensePercent)));
         public int TotalAttack => ComputeDisplayedPhysicalAttack();
         public int TotalDefense => ComputeDisplayedPhysicalDefense();
         public int TotalMagicAttack => ComputeDisplayedMagicAttack();
         public int TotalMagicDefense => ComputeDisplayedMagicDefense();
 
-        public int TotalAccuracy => Math.Max(0, GetBaseAccuracy() + Accuracy + SumEquipmentBonus(part => part.BonusAccuracy) + GetSkillStatBonus(BuffStatType.Accuracy));
-        public int TotalAvoidability => Math.Max(0, GetBaseAvoidability() + Avoidability + SumEquipmentBonus(part => part.BonusAvoidability) + GetSkillStatBonus(BuffStatType.Avoidability));
+        public int TotalAccuracy => Math.Max(0, ApplyRateBonus(GetBaseAccuracy() + Accuracy + SumEquipmentBonus(part => part.BonusAccuracy) + GetSkillStatBonus(BuffStatType.Accuracy), GetSkillStatBonus(BuffStatType.AccuracyPercent)));
+        public int TotalAvoidability => Math.Max(0, ApplyRateBonus(GetBaseAvoidability() + Avoidability + SumEquipmentBonus(part => part.BonusAvoidability) + GetSkillStatBonus(BuffStatType.Avoidability), GetSkillStatBonus(BuffStatType.AvoidabilityPercent)));
         public int TotalHands => Math.Max(0, Hands + TotalDEX + TotalINT + TotalLUK + SumEquipmentBonus(part => part.BonusHands));
         public int TotalCriticalRate => Math.Max(0, CriticalRate + GetSkillStatBonus(BuffStatType.CriticalRate));
         public float TotalSpeed => Math.Max(0f, Speed + SumEquipmentBonus(part => part.BonusSpeed) + GetSkillStatBonus(BuffStatType.Speed));

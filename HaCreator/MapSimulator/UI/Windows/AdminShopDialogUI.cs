@@ -43,6 +43,13 @@ namespace HaCreator.MapSimulator.UI
             public int Score { get; init; }
         }
 
+        public sealed class WishlistCategoryNode
+        {
+            public string Key { get; init; } = string.Empty;
+            public string Label { get; init; } = string.Empty;
+            public IReadOnlyList<WishlistCategoryNode> Children { get; init; } = Array.Empty<WishlistCategoryNode>();
+        }
+
         private enum AdminShopPane
         {
             Npc,
@@ -66,7 +73,8 @@ namespace HaCreator.MapSimulator.UI
             ListingSoldOut,
             SellerUnavailable,
             ListingExpired,
-            InventoryFull
+            InventoryFull,
+            MissingSourceItem
         }
 
         private enum AdminShopCategory
@@ -127,6 +135,9 @@ namespace HaCreator.MapSimulator.UI
             public int CommoditySerialNumber { get; set; }
             public bool CommodityOnSale { get; set; }
             public int MaxRequestCount { get; init; } = 1;
+            public InventoryType SourceInventoryType { get; init; } = InventoryType.NONE;
+            public int SourceItemId { get; init; }
+            public int SourceItemQuantity { get; init; }
         }
 
         private sealed class AdminShopPaneState
@@ -168,6 +179,13 @@ namespace HaCreator.MapSimulator.UI
             public string SelectedEntryKey { get; set; } = string.Empty;
         }
 
+        private sealed class WishlistCategoryLeafDefinition
+        {
+            public string Key { get; init; } = string.Empty;
+            public string Label { get; init; } = string.Empty;
+            public Func<AdminShopEntry, bool> Matches { get; init; }
+        }
+
         private const int MaxVisibleRows = 5;
         private const int LeftPaneX = 17;
         private const int RightPaneX = 242;
@@ -178,6 +196,8 @@ namespace HaCreator.MapSimulator.UI
         private const int HeaderY = 72;
         private const int PaneLabelY = 90;
         private const int RowIconX = 4;
+        private static readonly IReadOnlyList<WishlistCategoryNode> s_wishlistCategoryTree = BuildWishlistCategoryTree();
+        private static readonly Dictionary<string, WishlistCategoryNode> s_wishlistCategoryNodesByKey = BuildWishlistCategoryNodeLookup(s_wishlistCategoryTree);
         private const int RowIconY = 1;
         private const int RowIconSize = 32;
         private const int RowTextX = 40;
@@ -1145,7 +1165,9 @@ namespace HaCreator.MapSimulator.UI
                 detailY += 16f;
             }
 
-            string wishState = entry.Wishlisted ? "Wish list: saved." : "Wish list: not saved.";
+            string wishState = RequiresInventorySource(entry)
+                ? BuildSourceRequirementStatus(entry)
+                : entry.Wishlisted ? "Wish list: saved." : "Wish list: not saved.";
             sprite.DrawString(_font, wishState, new Vector2(windowX + DetailX, windowY + DetailY + 70), new Color(175, 220, 175));
 
             if (!string.IsNullOrWhiteSpace(_footerMessage))
@@ -2203,6 +2225,13 @@ namespace HaCreator.MapSimulator.UI
                 maxPromptQuantity = (int)Math.Min(maxPromptQuantity, _inventory.GetMesoCount() / entry.Price);
             }
 
+            if (RequiresInventorySource(entry) && _inventory != null)
+            {
+                maxPromptQuantity = Math.Min(
+                    maxPromptQuantity,
+                    _inventory.GetItemCount(entry.SourceInventoryType, entry.SourceItemId) / Math.Max(1, entry.SourceItemQuantity));
+            }
+
             if (_inventory != null)
             {
                 while (maxPromptQuantity > 1
@@ -2430,6 +2459,7 @@ namespace HaCreator.MapSimulator.UI
                     CreateInventoryExpansionEntry("Extending Use Inventory", InventoryType.USE, "Cash Manager"),
                     CreateInventoryExpansionEntry("Extending Set-Up Inventory", InventoryType.SETUP, "Cash Manager"),
                     CreateInventoryExpansionEntry("Extending Etc. Inventory", InventoryType.ETC, "Cash Manager"),
+                    CreateSourceTradeEntry("Steel Ore Exchange", "Zero-price catalog row that mirrors the client inventory-source branch by validating live Steel Ore stock before the request is accepted.", "Cash Manager", AdminShopCategory.Etc, true, InventoryType.ETC, 4010001, 5, InventoryType.CASH, 5152057, featured: true, maxRequestCount: 6),
                     CreateItemEntry("Royal Hair Coupon", "Rotating salon coupon preview from the featured cash-service board.", "Cash Manager", 3400, AdminShopCategory.Special, true, InventoryType.CASH, 5050000, featured: true),
                     CreateItemEntry("Royal Face Coupon", "Premium face coupon entry with the same preview flow the client routes into wish-list dialogs.", "Cash Manager", 2900, AdminShopCategory.Special, true, InventoryType.CASH, 5150040, featured: true),
                     CreateItemEntry("Pet Snack Bundle", "Utility bundle with snack and pet-tag support for multi-pet sessions.", "Cash Manager", 1900, AdminShopCategory.Use, true, InventoryType.CASH, 2120000, 3, featured: true, maxRequestCount: 5),
@@ -2443,6 +2473,7 @@ namespace HaCreator.MapSimulator.UI
 
             return new[]
             {
+                CreateSourceTradeEntry("Mithril Relay Ticket", "Zero-price MTS sample row that validates live Mithril Ore stock before the simulator relays the trade request.", "MTS Clerk", AdminShopCategory.Etc, false, InventoryType.ETC, 4010002, 4, InventoryType.USE, 2070000, featured: true, maxRequestCount: 5),
                 CreateItemEntry("Zakum Helmet Listing", "Admin MTS preview of a high-demand helmet sold from the NPC-owned catalog view.", "MTS Clerk", 12500000, AdminShopCategory.Equip, false, InventoryType.EQUIP, 1002357, featured: true, response: AdminShopResponse.ListingSoldOut, responseMessage: "The listing refreshed before the purchase could be confirmed."),
                 CreateItemEntry("Maple Kandayo", "MTS equipment board seeded to exercise request submission and price display.", "MTS Clerk", 9800000, AdminShopCategory.Equip, false, InventoryType.EQUIP, 1332027, featured: true),
                 CreateItemEntry("Steely Throwing-Knives", "Consumable trade board sample that mirrors a browse-first MTS flow.", "MTS Clerk", 3200000, AdminShopCategory.Use, false, InventoryType.USE, 2070005, 1, response: AdminShopResponse.InventoryFull, responseMessage: "The MTS clerk rejected delivery because the destination inventory tab is full.", maxRequestCount: 10),
@@ -2545,6 +2576,51 @@ namespace HaCreator.MapSimulator.UI
                 Response = response,
                 ResponseMessage = responseMessage,
                 MaxRequestCount = Math.Max(1, maxRequestCount)
+            };
+        }
+
+        private static AdminShopEntry CreateSourceTradeEntry(
+            string title,
+            string detail,
+            string seller,
+            AdminShopCategory category,
+            bool supportsWishlist,
+            InventoryType sourceInventoryType,
+            int sourceItemId,
+            int sourceItemQuantity,
+            InventoryType rewardInventoryType,
+            int rewardItemId,
+            int rewardQuantity = 1,
+            bool featured = false,
+            bool lockAfterSuccess = false,
+            AdminShopEntryState state = AdminShopEntryState.Available,
+            string stateLabel = "",
+            AdminShopResponse response = AdminShopResponse.GrantItem,
+            string responseMessage = "",
+            int maxRequestCount = 1)
+        {
+            return new AdminShopEntry
+            {
+                Title = title,
+                Detail = detail,
+                Seller = seller,
+                Price = 0,
+                PriceLabel = "Trade item",
+                Category = category,
+                SupportsWishlist = supportsWishlist,
+                Featured = featured,
+                State = state,
+                StateLabel = stateLabel,
+                RewardInventoryType = rewardInventoryType,
+                RewardItemId = rewardItemId,
+                RewardQuantity = Math.Max(1, rewardQuantity),
+                LockAfterSuccess = lockAfterSuccess,
+                Response = response,
+                ResponseMessage = responseMessage,
+                MaxRequestCount = Math.Max(1, maxRequestCount),
+                SourceInventoryType = sourceInventoryType,
+                SourceItemId = sourceItemId,
+                SourceItemQuantity = Math.Max(1, sourceItemQuantity)
             };
         }
 
@@ -2690,9 +2766,15 @@ namespace HaCreator.MapSimulator.UI
                 return CanRequestInventoryExpansion(entry);
             }
 
-            return entry.State == AdminShopEntryState.Available
-                   || entry.State == AdminShopEntryState.RequestAccepted
-                   || entry.State == AdminShopEntryState.RequestRejected;
+            if (entry.State != AdminShopEntryState.Available
+                && entry.State != AdminShopEntryState.RequestAccepted
+                && entry.State != AdminShopEntryState.RequestRejected)
+            {
+                return false;
+            }
+
+            return !RequiresInventorySource(entry)
+                   || TryValidateInventorySourceRequest(entry, 1, out _);
         }
 
         private string BuildBlockedRequestMessage(AdminShopEntry entry)
@@ -2710,6 +2792,11 @@ namespace HaCreator.MapSimulator.UI
             if (entry?.InventoryExpansionType != InventoryType.NONE)
             {
                 return BuildInventoryExpansionBlockedMessage(entry);
+            }
+
+            if (RequiresInventorySource(entry) && !TryValidateInventorySourceRequest(entry, 1, out string sourceMessage))
+            {
+                return sourceMessage;
             }
 
             return BuildEntryStateText(entry);
@@ -2948,6 +3035,18 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            if (!TryValidateInventorySourceRequest(entry, _pendingRequestQuantity, out string sourceValidationMessage))
+            {
+                entry.State = AdminShopEntryState.RequestRejected;
+                entry.StateLabel = "Need item";
+                PersistEntrySessionState(entry);
+                _footerMessage = sourceValidationMessage;
+                _pendingRequestEntry = null;
+                _pendingRequestQuantity = 1;
+                UpdateActionButtonStates();
+                return;
+            }
+
             long totalPrice = ComputeRequestPrice(entry, _pendingRequestQuantity);
             if (entry.ConsumeOnSuccess && !_inventory.TryConsumeMeso(totalPrice))
             {
@@ -2986,6 +3085,11 @@ namespace HaCreator.MapSimulator.UI
                         ? $"The destination {entry.RewardInventoryType} inventory tab cannot accept {entry.Title}."
                         : entry.ResponseMessage, refundAmount: entry.ConsumeOnSuccess ? totalPrice : 0L);
                     return;
+                case AdminShopResponse.MissingSourceItem:
+                    FinishRejectedRequest(entry, "Need item", string.IsNullOrWhiteSpace(entry.ResponseMessage)
+                        ? BuildMissingSourceItemMessage(entry, _pendingRequestQuantity)
+                        : entry.ResponseMessage, refundAmount: entry.ConsumeOnSuccess ? totalPrice : 0L);
+                    return;
                 default:
                     FinishRejectedRequest(entry, "Rejected", $"The simulator rejected the request for {entry.Title}.", refundAmount: entry.ConsumeOnSuccess ? totalPrice : 0L);
                     return;
@@ -3015,6 +3119,16 @@ namespace HaCreator.MapSimulator.UI
                     entry,
                     "Inventory full",
                     $"The destination {entry.RewardInventoryType} inventory tab cannot accept {entry.Title}.",
+                    refundAmount: entry.ConsumeOnSuccess ? totalPrice : 0L);
+                return;
+            }
+
+            if (!TryConsumeInventorySource(entry, _pendingRequestQuantity, out string sourceConsumeMessage))
+            {
+                FinishRejectedRequest(
+                    entry,
+                    "Need item",
+                    sourceConsumeMessage,
                     refundAmount: entry.ConsumeOnSuccess ? totalPrice : 0L);
                 return;
             }
@@ -3053,6 +3167,11 @@ namespace HaCreator.MapSimulator.UI
 
         private static string BuildEntryStateText(AdminShopEntry entry)
         {
+            if (RequiresInventorySource(entry) && entry?.State == AdminShopEntryState.Available)
+            {
+                return "Status: ready to submit once the matching inventory source item is present.";
+            }
+
             return entry?.State switch
             {
                 AdminShopEntryState.Available => "Status: ready to request.",
@@ -3140,6 +3259,11 @@ namespace HaCreator.MapSimulator.UI
             if (_activePane == AdminShopPane.User || _activeBrowseMode == AdminShopBrowseMode.Sell)
             {
                 return "BtBuy or BtSell submits a relay request for the highlighted listing.";
+            }
+
+            if (RequiresInventorySource(entry))
+            {
+                return "BtBuy or BtSell submits a zero-price trade request after validating the required inventory item.";
             }
 
             if (entry.SupportsWishlist)
@@ -3306,7 +3430,7 @@ namespace HaCreator.MapSimulator.UI
         {
             return entry == null
                 ? string.Empty
-                : $"{entry.Title}|{entry.Seller}|{entry.Price}|{entry.RewardItemId}|{entry.InventoryExpansionType}|{entry.IsStorageExpansion}";
+                : $"{entry.Title}|{entry.Seller}|{entry.Price}|{entry.RewardItemId}|{entry.InventoryExpansionType}|{entry.IsStorageExpansion}|{entry.SourceInventoryType}|{entry.SourceItemId}|{entry.SourceItemQuantity}";
         }
 
         private static AdminShopCategory GetQuickCategory(int tabIndex)
@@ -3338,6 +3462,65 @@ namespace HaCreator.MapSimulator.UI
                 9 => AdminShopCategory.Package,
                 _ => AdminShopCategory.All
             };
+        }
+
+        private static IReadOnlyList<WishlistCategoryNode> BuildWishlistCategoryTree()
+        {
+            return new[]
+            {
+                new WishlistCategoryNode
+                {
+                    Key = "all",
+                    Label = "All",
+                    Children = new[]
+                    {
+                        new WishlistCategoryNode { Key = "equip", Label = "Equip" },
+                        new WishlistCategoryNode { Key = "use", Label = "Use" },
+                        new WishlistCategoryNode { Key = "setup", Label = "Set-up" },
+                        new WishlistCategoryNode { Key = "etc", Label = "Etc" },
+                        new WishlistCategoryNode { Key = "cash", Label = "Cash" },
+                        new WishlistCategoryNode { Key = "recipe", Label = "Recipe" },
+                        new WishlistCategoryNode { Key = "scroll", Label = "Scroll" },
+                        new WishlistCategoryNode { Key = "special", Label = "Special" },
+                        new WishlistCategoryNode { Key = "package", Label = "Package" }
+                    }
+                }
+            };
+        }
+
+        private static Dictionary<string, WishlistCategoryNode> BuildWishlistCategoryNodeLookup(IEnumerable<WishlistCategoryNode> roots)
+        {
+            Dictionary<string, WishlistCategoryNode> lookup = new(StringComparer.OrdinalIgnoreCase);
+            if (roots == null)
+            {
+                return lookup;
+            }
+
+            void AddNode(WishlistCategoryNode node)
+            {
+                if (node == null || string.IsNullOrWhiteSpace(node.Key))
+                {
+                    return;
+                }
+
+                lookup[node.Key] = node;
+                if (node.Children == null)
+                {
+                    return;
+                }
+
+                foreach (WishlistCategoryNode child in node.Children)
+                {
+                    AddNode(child);
+                }
+            }
+
+            foreach (WishlistCategoryNode root in roots)
+            {
+                AddNode(root);
+            }
+
+            return lookup;
         }
 
         private string BuildBrowseModeMessage(AdminShopBrowseMode browseMode)
@@ -3584,6 +3767,109 @@ namespace HaCreator.MapSimulator.UI
                     value = 0;
                     return false;
             }
+        }
+
+        private static bool RequiresInventorySource(AdminShopEntry entry)
+        {
+            return entry?.SourceInventoryType != InventoryType.NONE
+                   && entry.SourceItemId > 0
+                   && entry.SourceItemQuantity > 0;
+        }
+
+        private static int ComputeRequiredSourceQuantity(AdminShopEntry entry, int requestQuantity)
+        {
+            if (!RequiresInventorySource(entry))
+            {
+                return 0;
+            }
+
+            long quantity = (long)Math.Max(1, entry.SourceItemQuantity) * Math.Max(1, requestQuantity);
+            return (int)Math.Min(int.MaxValue, quantity);
+        }
+
+        private bool TryValidateInventorySourceRequest(AdminShopEntry entry, int requestQuantity, out string message)
+        {
+            message = string.Empty;
+            if (!RequiresInventorySource(entry))
+            {
+                return true;
+            }
+
+            if (_inventory == null)
+            {
+                message = "Inventory runtime is unavailable for the zero-price trade request.";
+                return false;
+            }
+
+            if (InventoryItemMetadataResolver.TryResolveTradeRestrictionFlags(entry.SourceItemId, out bool isCashItem, out bool isNotForSale, out bool isQuestItem)
+                && (isCashItem || isNotForSale || isQuestItem))
+            {
+                message = BuildTradeRestrictedSourceItemMessage(entry, isCashItem, isNotForSale, isQuestItem);
+                return false;
+            }
+
+            if (_inventory.GetItemCount(entry.SourceInventoryType, entry.SourceItemId) < ComputeRequiredSourceQuantity(entry, requestQuantity))
+            {
+                message = BuildMissingSourceItemMessage(entry, requestQuantity);
+                return false;
+            }
+
+            return true;
+        }
+
+        private bool TryConsumeInventorySource(AdminShopEntry entry, int requestQuantity, out string message)
+        {
+            message = string.Empty;
+            if (!RequiresInventorySource(entry))
+            {
+                return true;
+            }
+
+            if (_inventory != null
+                && _inventory.TryConsumeItem(entry.SourceInventoryType, entry.SourceItemId, ComputeRequiredSourceQuantity(entry, requestQuantity)))
+            {
+                return true;
+            }
+
+            message = BuildMissingSourceItemMessage(entry, requestQuantity);
+            return false;
+        }
+
+        private string BuildSourceRequirementStatus(AdminShopEntry entry)
+        {
+            int ownedQuantity = _inventory?.GetItemCount(entry.SourceInventoryType, entry.SourceItemId) ?? 0;
+            string sourceLabel = ResolveSourceItemLabel(entry);
+            return ownedQuantity >= Math.Max(1, entry.SourceItemQuantity)
+                ? $"Source: {sourceLabel} ready ({ownedQuantity} owned)."
+                : $"Source: need {sourceLabel} ({ownedQuantity} owned).";
+        }
+
+        private string BuildMissingSourceItemMessage(AdminShopEntry entry, int requestQuantity)
+        {
+            int ownedQuantity = _inventory?.GetItemCount(entry.SourceInventoryType, entry.SourceItemId) ?? 0;
+            return $"Need {ResolveSourceItemLabel(entry, ComputeRequiredSourceQuantity(entry, requestQuantity))} before {entry.Title} can be requested ({ownedQuantity} owned).";
+        }
+
+        private static string BuildTradeRestrictedSourceItemMessage(AdminShopEntry entry, bool isCashItem, bool isNotForSale, bool isQuestItem)
+        {
+            string reason = isCashItem
+                ? "cash"
+                : isNotForSale
+                    ? "not-for-sale"
+                    : isQuestItem
+                        ? "quest"
+                        : "restricted";
+            return $"{ResolveSourceItemLabel(entry)} is marked as a {reason} item in WZ info and cannot satisfy this zero-price trade request.";
+        }
+
+        private static string ResolveSourceItemLabel(AdminShopEntry entry, int? overrideQuantity = null)
+        {
+            int quantity = Math.Max(1, overrideQuantity ?? entry?.SourceItemQuantity ?? 1);
+            int itemId = entry?.SourceItemId ?? 0;
+            string itemName = InventoryItemMetadataResolver.TryResolveItemName(itemId, out string resolvedName)
+                ? resolvedName
+                : itemId.ToString(CultureInfo.InvariantCulture);
+            return quantity > 1 ? $"{itemName} x{quantity}" : itemName;
         }
     }
 }

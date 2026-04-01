@@ -11,18 +11,6 @@ namespace HaCreator.MapSimulator.UI
 {
     internal sealed class AntiMacroChallengeWindow : UIWindowBase
     {
-        private static readonly Point ChallengeOrigin = new(40, 122);
-        private static readonly Point InputOrigin = new(42, 189);
-        private static readonly Point AttemptMessageOrigin = new(222, 206);
-        private static readonly Point[] CountdownDigitOrigins =
-        {
-            new Point(95, 39),
-            new Point(115, 39),
-            new Point(147, 39),
-            new Point(167, 39)
-        };
-        private static readonly Point CountdownCommaOrigin = new(137, 39);
-
         private const int FallbackWindowWidth = 265;
         private const int FallbackWindowHeight = 250;
         private const int ChallengeWidth = 178;
@@ -31,6 +19,59 @@ namespace HaCreator.MapSimulator.UI
         private const int InputHeight = 16;
         private const int InputMaxLength = 12;
         private const string DefaultAttemptMessageFormat = "Attempt {0} of 2";
+        private static readonly Color InputBackgroundColor = new(255, 255, 255);
+        private static readonly Color InputBorderColor = new(114, 114, 114);
+        private static readonly Color InputCaretColor = new(32, 32, 32);
+        private static readonly Color InputCompositionColor = new(74, 74, 74);
+
+        private sealed class LayoutProfile
+        {
+            public LayoutProfile(
+                Point challengeOrigin,
+                Point inputOrigin,
+                Point attemptMessageOrigin,
+                IReadOnlyList<Point> countdownDigitOrigins,
+                Point countdownCommaOrigin)
+            {
+                ChallengeOrigin = challengeOrigin;
+                InputOrigin = inputOrigin;
+                AttemptMessageOrigin = attemptMessageOrigin;
+                CountdownDigitOrigins = countdownDigitOrigins ?? throw new ArgumentNullException(nameof(countdownDigitOrigins));
+                CountdownCommaOrigin = countdownCommaOrigin;
+            }
+
+            public Point ChallengeOrigin { get; }
+            public Point InputOrigin { get; }
+            public Point AttemptMessageOrigin { get; }
+            public IReadOnlyList<Point> CountdownDigitOrigins { get; }
+            public Point CountdownCommaOrigin { get; }
+        }
+
+        private static readonly LayoutProfile NormalLayout = new(
+            new Point(40, 122),
+            new Point(42, 189),
+            new Point(222, 206),
+            new[]
+            {
+                new Point(95, 39),
+                new Point(115, 39),
+                new Point(147, 39),
+                new Point(167, 39)
+            },
+            new Point(137, 39));
+
+        private static readonly LayoutProfile AdminLayout = new(
+            new Point(81, 153),
+            new Point(83, 206),
+            new Point(170, 225),
+            new[]
+            {
+                new Point(110, 39),
+                new Point(130, 39),
+                new Point(162, 39),
+                new Point(182, 39)
+            },
+            new Point(150, 39));
 
         private readonly string _windowName;
         private readonly bool _adminVariant;
@@ -50,14 +91,20 @@ namespace HaCreator.MapSimulator.UI
         private string _attemptMessageFormat = DefaultAttemptMessageFormat;
         private ImeCandidateListState _candidateListState = ImeCandidateListState.Empty;
         private UIObject _submitButton;
+        private LayoutProfile _layout;
         private int _answerCount;
         private int _expiresAt = int.MinValue;
+        private int _caretIndex;
+        private int _compositionCaretIndex = -1;
+        private int _compositionInsertionIndex = -1;
+        private int _caretBlinkTick;
 
         public AntiMacroChallengeWindow(string windowName, bool adminVariant, GraphicsDevice graphicsDevice)
             : base(new DXObject(0, 0, CreateFallbackFrameTexture(graphicsDevice), 0))
         {
             _windowName = windowName ?? throw new ArgumentNullException(nameof(windowName));
             _adminVariant = adminVariant;
+            _layout = adminVariant ? AdminLayout : NormalLayout;
 
             _pixelTexture = new Texture2D(graphicsDevice, 1, 1);
             _pixelTexture.SetData(new[] { Color.White });
@@ -91,6 +138,11 @@ namespace HaCreator.MapSimulator.UI
             Texture2D commaTexture,
             Point commaOrigin,
             UIObject submitButton,
+            IReadOnlyList<Point> countdownDrawOrigins = null,
+            Point? countdownCommaDrawOrigin = null,
+            Point? challengeOrigin = null,
+            Point? inputOrigin = null,
+            Point? attemptMessageOrigin = null,
             string attemptMessageFormat = null)
         {
             _frameTexture = frameTexture;
@@ -107,6 +159,24 @@ namespace HaCreator.MapSimulator.UI
 
             _countdownCommaTexture = commaTexture;
             _countdownCommaTextureOrigin = commaOrigin;
+            if (countdownDrawOrigins != null && countdownDrawOrigins.Count == 4)
+            {
+                _layout = new LayoutProfile(
+                    challengeOrigin ?? _layout.ChallengeOrigin,
+                    inputOrigin ?? _layout.InputOrigin,
+                    attemptMessageOrigin ?? _layout.AttemptMessageOrigin,
+                    countdownDrawOrigins,
+                    countdownCommaDrawOrigin ?? _layout.CountdownCommaOrigin);
+            }
+            else
+            {
+                _layout = new LayoutProfile(
+                    challengeOrigin ?? _layout.ChallengeOrigin,
+                    inputOrigin ?? _layout.InputOrigin,
+                    attemptMessageOrigin ?? _layout.AttemptMessageOrigin,
+                    _layout.CountdownDigitOrigins,
+                    countdownCommaDrawOrigin ?? _layout.CountdownCommaOrigin);
+            }
             _attemptMessageFormat = string.IsNullOrWhiteSpace(attemptMessageFormat)
                 ? DefaultAttemptMessageFormat
                 : attemptMessageFormat;
@@ -137,6 +207,9 @@ namespace HaCreator.MapSimulator.UI
             _answerCount = Math.Max(0, answerCount);
             _statusText = statusText ?? string.Empty;
             _inputText = string.Empty;
+            _caretIndex = 0;
+            _caretBlinkTick = Environment.TickCount;
+            ClearCompositionText();
             _submitButton?.SetEnabled(false);
         }
 
@@ -148,6 +221,9 @@ namespace HaCreator.MapSimulator.UI
             _answerCount = 0;
             _statusText = string.Empty;
             _inputText = string.Empty;
+            _caretIndex = 0;
+            _caretBlinkTick = Environment.TickCount;
+            ClearCompositionText();
             _submitButton?.SetEnabled(false);
             Hide();
         }
@@ -163,12 +239,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             KeyboardState keyboardState = Keyboard.GetState();
-
-            if (Pressed(keyboardState, Keys.Back) && _inputText.Length > 0)
-            {
-                ClearCompositionText();
-                _inputText = _inputText[..^1];
-            }
+            HandleKeyboardInput(keyboardState);
 
             if (Pressed(keyboardState, Keys.Enter) && CanSubmitAnswer())
             {
@@ -193,13 +264,13 @@ namespace HaCreator.MapSimulator.UI
         {
             Rectangle bounds = GetWindowBounds();
             Rectangle challengeBounds = new(
-                bounds.X + ChallengeOrigin.X,
-                bounds.Y + ChallengeOrigin.Y,
+                bounds.X + _layout.ChallengeOrigin.X,
+                bounds.Y + _layout.ChallengeOrigin.Y,
                 ChallengeWidth,
                 ChallengeHeight);
             Rectangle inputBounds = new(
-                bounds.X + InputOrigin.X,
-                bounds.Y + InputOrigin.Y,
+                bounds.X + _layout.InputOrigin.X,
+                bounds.Y + _layout.InputOrigin.Y,
                 InputWidth,
                 InputHeight);
 
@@ -233,7 +304,7 @@ namespace HaCreator.MapSimulator.UI
 
                 if (!char.IsControl(character))
                 {
-                    _inputText += character;
+                    InsertCharacter(character);
                 }
             }
         }
@@ -265,14 +336,19 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            _compositionInsertionIndex = Math.Clamp(_caretIndex, 0, _inputText.Length);
             _compositionText = sanitized.Length > availableLength
                 ? sanitized[..availableLength]
                 : sanitized;
+            _compositionCaretIndex = Math.Clamp(state.CursorPosition, -1, _compositionText.Length);
+            _caretBlinkTick = Environment.TickCount;
         }
 
         public override void ClearCompositionText()
         {
             _compositionText = string.Empty;
+            _compositionCaretIndex = -1;
+            _compositionInsertionIndex = -1;
             ClearImeCandidateList();
         }
 
@@ -326,7 +402,7 @@ namespace HaCreator.MapSimulator.UI
                 {
                     int digit = digits[i];
                     Point origin = _countdownDigitOriginsByValue[digit];
-                    Point drawOrigin = CountdownDigitOrigins[i];
+                    Point drawOrigin = _layout.CountdownDigitOrigins[i];
                     sprite.Draw(
                         _countdownDigitTextures[digit],
                         new Vector2(bounds.X + drawOrigin.X - origin.X, bounds.Y + drawOrigin.Y - origin.Y),
@@ -335,7 +411,7 @@ namespace HaCreator.MapSimulator.UI
 
                 sprite.Draw(
                     _countdownCommaTexture,
-                    new Vector2(bounds.X + CountdownCommaOrigin.X - _countdownCommaTextureOrigin.X, bounds.Y + CountdownCommaOrigin.Y - _countdownCommaTextureOrigin.Y),
+                    new Vector2(bounds.X + _layout.CountdownCommaOrigin.X - _countdownCommaTextureOrigin.X, bounds.Y + _layout.CountdownCommaOrigin.Y - _countdownCommaTextureOrigin.Y),
                     Color.White);
                 return;
             }
@@ -355,19 +431,38 @@ namespace HaCreator.MapSimulator.UI
             DrawShadowedText(
                 sprite,
                 string.Format(_attemptMessageFormat, attemptNumber),
-                new Vector2(bounds.X + AttemptMessageOrigin.X, bounds.Y + AttemptMessageOrigin.Y),
+                new Vector2(bounds.X + _layout.AttemptMessageOrigin.X, bounds.Y + _layout.AttemptMessageOrigin.Y),
                 new Color(197, 42, 26));
         }
 
         private void DrawInputText(SpriteBatch sprite, Rectangle inputBounds)
         {
-            string inputText = BuildVisibleInputText();
-            if (string.IsNullOrEmpty(inputText))
+            DrawBox(sprite, inputBounds, InputBackgroundColor, InputBorderColor);
+
+            string displayText = BuildVisibleInputText();
+            Vector2 textPosition = new(inputBounds.X + 2, inputBounds.Y - 2);
+            if (!string.IsNullOrEmpty(displayText))
             {
-                return;
+                string committedText = GetVisibleCommittedInput();
+                string compositionText = GetVisibleCompositionInput();
+                if (committedText.Length > 0)
+                {
+                    sprite.DrawString(_font, committedText, textPosition, Color.Black);
+                }
+
+                if (compositionText.Length > 0)
+                {
+                    float committedWidth = MeasureTextWidth(committedText);
+                    sprite.DrawString(_font, compositionText, textPosition + new Vector2(committedWidth, 0f), InputCompositionColor);
+                }
             }
 
-            sprite.DrawString(_font, inputText, new Vector2(inputBounds.X + 2, inputBounds.Y - 2), Color.Black);
+            if (ShouldDrawCaret())
+            {
+                float caretX = textPosition.X + MeasureTextWidth(GetTextBeforeCaret());
+                Rectangle caretBounds = new((int)Math.Round(caretX), inputBounds.Y + 2, 1, Math.Max(1, inputBounds.Height - 4));
+                sprite.Draw(_pixelTexture, caretBounds, InputCaretColor);
+            }
         }
 
         private void DrawFallbackMessage(SpriteBatch sprite, string message, Rectangle bounds, Color color)
@@ -409,6 +504,66 @@ namespace HaCreator.MapSimulator.UI
             return keyboardState.IsKeyDown(key) && !_previousKeyboardState.IsKeyDown(key);
         }
 
+        private void HandleKeyboardInput(KeyboardState keyboardState)
+        {
+            if (Pressed(keyboardState, Keys.Back))
+            {
+                if (_compositionText.Length > 0)
+                {
+                    ClearCompositionText();
+                }
+                else if (_caretIndex > 0)
+                {
+                    _inputText = _inputText.Remove(_caretIndex - 1, 1);
+                    _caretIndex--;
+                }
+
+                _caretBlinkTick = Environment.TickCount;
+            }
+
+            if (Pressed(keyboardState, Keys.Delete))
+            {
+                if (_compositionText.Length > 0)
+                {
+                    ClearCompositionText();
+                }
+                else if (_caretIndex < _inputText.Length)
+                {
+                    _inputText = _inputText.Remove(_caretIndex, 1);
+                }
+
+                _caretBlinkTick = Environment.TickCount;
+            }
+
+            if (Pressed(keyboardState, Keys.Left))
+            {
+                ClearCompositionText();
+                _caretIndex = Math.Max(0, _caretIndex - 1);
+                _caretBlinkTick = Environment.TickCount;
+            }
+
+            if (Pressed(keyboardState, Keys.Right))
+            {
+                ClearCompositionText();
+                _caretIndex = Math.Min(_inputText.Length, _caretIndex + 1);
+                _caretBlinkTick = Environment.TickCount;
+            }
+
+            if (Pressed(keyboardState, Keys.Home))
+            {
+                ClearCompositionText();
+                _caretIndex = 0;
+                _caretBlinkTick = Environment.TickCount;
+            }
+
+            if (Pressed(keyboardState, Keys.End))
+            {
+                ClearCompositionText();
+                _caretIndex = _inputText.Length;
+                _caretBlinkTick = Environment.TickCount;
+            }
+        }
+
         private bool CanSubmitAnswer()
         {
             return !string.IsNullOrWhiteSpace(_inputText) && GetRemainingSeconds(Environment.TickCount) > 0;
@@ -416,7 +571,63 @@ namespace HaCreator.MapSimulator.UI
 
         private string BuildVisibleInputText()
         {
-            return $"{_inputText}{_compositionText}";
+            if (_compositionText.Length == 0)
+            {
+                return _inputText;
+            }
+
+            int insertionIndex = Math.Clamp(_compositionInsertionIndex >= 0 ? _compositionInsertionIndex : _caretIndex, 0, _inputText.Length);
+            return _inputText.Insert(insertionIndex, _compositionText);
+        }
+
+        private string GetVisibleCommittedInput()
+        {
+            if (_compositionText.Length == 0)
+            {
+                return _inputText;
+            }
+
+            int insertionIndex = Math.Clamp(_compositionInsertionIndex >= 0 ? _compositionInsertionIndex : _caretIndex, 0, _inputText.Length);
+            return _inputText[..insertionIndex];
+        }
+
+        private string GetVisibleCompositionInput()
+        {
+            return _compositionText;
+        }
+
+        private string GetTextBeforeCaret()
+        {
+            if (_compositionText.Length == 0)
+            {
+                return _inputText[..Math.Clamp(_caretIndex, 0, _inputText.Length)];
+            }
+
+            int insertionIndex = Math.Clamp(_compositionInsertionIndex >= 0 ? _compositionInsertionIndex : _caretIndex, 0, _inputText.Length);
+            int compositionCaret = _compositionCaretIndex >= 0
+                ? Math.Clamp(_compositionCaretIndex, 0, _compositionText.Length)
+                : _compositionText.Length;
+            return _inputText[..insertionIndex] + _compositionText[..compositionCaret];
+        }
+
+        private float MeasureTextWidth(string text)
+        {
+            return string.IsNullOrEmpty(text) || _font == null
+                ? 0f
+                : _font.MeasureString(text).X;
+        }
+
+        private bool ShouldDrawCaret()
+        {
+            return CapturesKeyboardInput && ((Environment.TickCount - _caretBlinkTick) % 1000) < 500;
+        }
+
+        private void InsertCharacter(char character)
+        {
+            int insertionIndex = Math.Clamp(_caretIndex, 0, _inputText.Length);
+            _inputText = _inputText.Insert(insertionIndex, character.ToString());
+            _caretIndex = insertionIndex + 1;
+            _caretBlinkTick = Environment.TickCount;
         }
 
         private static Rectangle FitTexture(Rectangle bounds, int width, int height, bool upscale)

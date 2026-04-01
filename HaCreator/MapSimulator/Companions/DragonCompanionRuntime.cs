@@ -93,9 +93,10 @@ namespace HaCreator.MapSimulator.Companions
         private int _lastBlinkStartTime = int.MinValue;
         private bool _isSuppressed;
         private bool _isFollowActive;
+        private int _activeVerticalFollowState;
+        private int _activeVerticalCheckCount;
         private DragonQuestInfoState _questInfoPreviewState = DragonQuestInfoState.Hidden;
 
-        private const float SnapDistance = 140f;
         private const float AlphaFadeRate = 5.5f;
         private const float GroundSideOffset = 42f;
         private const float GroundVerticalOffset = -12f;
@@ -104,16 +105,17 @@ namespace HaCreator.MapSimulator.Companions
         private const float DragonKeyDownBarHalfWidth = 36f;
         private const float DragonKeyDownBarVerticalGap = 30f;
         private const float FollowMinSpeed = 18f;
-        private const float FollowMaxHorizontalSpeed = 210f;
-        private const float FollowMaxVerticalSpeed = 180f;
-        private const float FollowHorizontalResponse = 7.5f;
-        private const float FollowVerticalResponse = 6.5f;
-        private const float FollowHorizontalForceScale = 0.65f;
-        private const float FollowVerticalForceScale = 0.55f;
-        private const float FollowBrakeScale = 1.35f;
-        private const float FollowArrivalDistance = 1.5f;
-        private const float ActiveFollowEngageDistance = 36f;
-        private const float ActiveFollowReleaseDistance = 14f;
+        private const float ActiveFollowSnapWidth = 300f;
+        private const float ActiveFollowSnapHeight = 200f;
+        private const float ActiveFollowDistanceX = 5f;
+        private const float ActiveFollowStepX = 7f;
+        private const float ActiveFollowVerticalCheckDistance = 30f;
+        private const float ActiveFollowVerticalStartDistance = 100f;
+        private const float ActiveFollowVerticalStepDivisor = 10f;
+        private const float ActiveFollowVerticalStepCap = 17f;
+        private const int ActiveFollowVerticalCheckFrames = 5;
+        private const float ActiveFollowEngageDistance = ActiveFollowDistanceX + ActiveFollowStepX;
+        private const float ActiveFollowReleaseDistance = ActiveFollowDistanceX;
         private const float PassiveHorizontalResponse = 3.2f;
         private const float PassiveVerticalResponse = 3.8f;
         private const float PassiveHorizontalForceScale = 0.3f;
@@ -121,7 +123,7 @@ namespace HaCreator.MapSimulator.Companions
         private const float PassiveMaxHorizontalSpeed = 92f;
         private const float PassiveMaxVerticalSpeed = 108f;
         private const float PassiveArrivalDistance = 4f;
-        private const float PassiveHoldDistance = 7f;
+        private const float PassiveHoldDistance = ActiveFollowDistanceX;
         private const float PassiveVerticalHoldDistance = 5f;
         private const float QuestInfoHorizontalOffset = 20f;
         private const float QuestInfoVerticalGap = 15f;
@@ -284,6 +286,8 @@ namespace HaCreator.MapSimulator.Companions
             _lastBlinkStartTime = int.MinValue;
             _isSuppressed = false;
             _isFollowActive = false;
+            _activeVerticalFollowState = 0;
+            _activeVerticalCheckCount = 0;
         }
 
         public void SetQuestInfoPreviewState(int? state)
@@ -628,14 +632,14 @@ namespace HaCreator.MapSimulator.Companions
                 _isFollowActive = ownerInMotion
                     || ownerHasMomentum
                     || horizontalDelta > ActiveFollowReleaseDistance
-                    || verticalDelta > ActiveFollowReleaseDistance;
+                    || verticalDelta > ActiveFollowVerticalCheckDistance;
             }
             else
             {
                 _isFollowActive = ownerInMotion
                     || ownerHasMomentum
                     || horizontalDelta > ActiveFollowEngageDistance
-                    || verticalDelta > ActiveFollowEngageDistance;
+                    || verticalDelta > ActiveFollowVerticalCheckDistance;
             }
         }
 
@@ -648,39 +652,13 @@ namespace HaCreator.MapSimulator.Companions
                 return FollowUpdateFlags.None;
             }
 
-            float distance = Vector2.Distance(_visualAnchor, _worldAnchor);
-            if (distance >= SnapDistance)
-            {
-                _visualAnchor = _worldAnchor;
-                _followVelocity = Vector2.Zero;
-                return FollowUpdateFlags.SnappedToTarget;
-            }
-
             double velocityX = _followVelocity.X;
             double velocityY = _followVelocity.Y;
             FollowUpdateFlags result = FollowUpdateFlags.None;
 
             if (_isFollowActive)
             {
-                UpdateFollowAxis(
-                    ref _visualAnchor.X,
-                    _worldAnchor.X,
-                    ref velocityX,
-                    deltaSeconds,
-                    FollowHorizontalResponse,
-                    FollowMaxHorizontalSpeed,
-                    CVecCtrl.WalkAcceleration * FollowHorizontalForceScale,
-                    FollowArrivalDistance);
-
-                UpdateFollowAxis(
-                    ref _visualAnchor.Y,
-                    _worldAnchor.Y,
-                    ref velocityY,
-                    deltaSeconds,
-                    FollowVerticalResponse,
-                    FollowMaxVerticalSpeed,
-                    CVecCtrl.AirDragDeceleration * FollowVerticalForceScale,
-                    FollowArrivalDistance);
+                result |= UpdateActiveVisualAnchor(ref velocityX, ref velocityY);
             }
             else
             {
@@ -722,6 +700,89 @@ namespace HaCreator.MapSimulator.Companions
             return result;
         }
 
+        private FollowUpdateFlags UpdateActiveVisualAnchor(ref double velocityX, ref double velocityY)
+        {
+            float deltaX = _worldAnchor.X - _visualAnchor.X;
+            float deltaY = _worldAnchor.Y - _visualAnchor.Y;
+            if (Math.Abs(deltaX) > ActiveFollowSnapWidth || Math.Abs(deltaY) > ActiveFollowSnapHeight)
+            {
+                _visualAnchor = _worldAnchor;
+                _activeVerticalFollowState = 0;
+                _activeVerticalCheckCount = 0;
+                velocityX = 0d;
+                velocityY = 0d;
+                return FollowUpdateFlags.SnappedToTarget;
+            }
+
+            float nextX = _visualAnchor.X;
+            if (_worldAnchor.X > _visualAnchor.X + ActiveFollowDistanceX)
+            {
+                nextX = Math.Min(_worldAnchor.X - ActiveFollowDistanceX, _visualAnchor.X + ActiveFollowStepX);
+                velocityX = 1d;
+            }
+            else if (_worldAnchor.X < _visualAnchor.X - ActiveFollowDistanceX)
+            {
+                nextX = Math.Max(_worldAnchor.X + ActiveFollowDistanceX, _visualAnchor.X - ActiveFollowStepX);
+                velocityX = -1d;
+            }
+            else
+            {
+                velocityX = 0d;
+            }
+
+            float nextY = _visualAnchor.Y;
+            float absoluteDeltaY = Math.Abs(deltaY);
+            if (_activeVerticalFollowState == 0)
+            {
+                if (absoluteDeltaY > ActiveFollowVerticalCheckDistance)
+                {
+                    _activeVerticalCheckCount++;
+                    if (_activeVerticalCheckCount >= ActiveFollowVerticalCheckFrames)
+                    {
+                        _activeVerticalFollowState = 1;
+                    }
+                }
+                else
+                {
+                    _activeVerticalCheckCount = 0;
+                }
+            }
+            else
+            {
+                _activeVerticalCheckCount = 0;
+            }
+
+            bool shouldMoveVertically = _activeVerticalFollowState != 0 || absoluteDeltaY > ActiveFollowVerticalStartDistance;
+            if (shouldMoveVertically)
+            {
+                float verticalStep = MathF.Min(ActiveFollowVerticalStepCap, absoluteDeltaY / ActiveFollowVerticalStepDivisor) + 1f;
+                if (deltaY > 0f)
+                {
+                    nextY = Math.Min(_worldAnchor.Y, _visualAnchor.Y + verticalStep);
+                    _activeVerticalFollowState = nextY >= _worldAnchor.Y ? 0 : 1;
+                    velocityY = 1d;
+                }
+                else if (deltaY < 0f)
+                {
+                    nextY = Math.Max(_worldAnchor.Y, _visualAnchor.Y - verticalStep);
+                    _activeVerticalFollowState = nextY <= _worldAnchor.Y ? 0 : 1;
+                    velocityY = -1d;
+                }
+                else
+                {
+                    _activeVerticalFollowState = 0;
+                    velocityY = 0d;
+                }
+            }
+            else
+            {
+                velocityY = 0d;
+            }
+
+            _visualAnchor = new Vector2(nextX, nextY);
+            return FollowUpdateFlags.None;
+        }
+
         private static bool HasPassiveTravel(Vector2 visualAnchor, Vector2 worldAnchor, Vector2 velocity)
         {
             return Math.Abs(worldAnchor.X - visualAnchor.X) > PassiveHoldDistance
@@ -736,60 +797,6 @@ namespace HaCreator.MapSimulator.Companions
                    && Math.Abs(worldAnchor.Y - visualAnchor.Y) <= PassiveArrivalDistance
                    && Math.Abs(velocityX) <= FollowMinSpeed
                    && Math.Abs(velocityY) <= FollowMinSpeed;
-        }
-
-        private static void UpdateFollowAxis(
-            ref float position,
-            float target,
-            ref double velocity,
-            float deltaSeconds,
-            float responseScale,
-            float maxSpeed,
-            double force,
-            float arrivalDistance)
-        {
-            float delta = target - position;
-            if (Math.Abs(delta) <= arrivalDistance)
-            {
-                position = target;
-                velocity = 0d;
-                return;
-            }
-
-            double desiredSpeed = Math.Clamp(
-                Math.Abs(delta) * responseScale,
-                FollowMinSpeed,
-                maxSpeed);
-            double brake = Math.Max(force, CVecCtrl.WalkDeceleration * FollowBrakeScale);
-
-            if (delta > 0f)
-            {
-                if (velocity < 0d)
-                {
-                    CVecCtrl.DecSpeed(ref velocity, brake, PhysicsConstants.Instance.DefaultMass, 0d, deltaSeconds);
-                }
-
-                CVecCtrl.AccSpeed(ref velocity, force, PhysicsConstants.Instance.DefaultMass, desiredSpeed, deltaSeconds);
-            }
-            else
-            {
-                if (velocity > 0d)
-                {
-                    CVecCtrl.DecSpeed(ref velocity, brake, PhysicsConstants.Instance.DefaultMass, 0d, deltaSeconds);
-                }
-
-                CVecCtrl.AccSpeed(ref velocity, -force, PhysicsConstants.Instance.DefaultMass, desiredSpeed, deltaSeconds);
-            }
-
-            float nextPosition = position + (float)(velocity * deltaSeconds);
-            if ((delta > 0f && nextPosition >= target) || (delta < 0f && nextPosition <= target))
-            {
-                position = target;
-                velocity = 0d;
-                return;
-            }
-
-            position = nextPosition;
         }
 
         private static void UpdatePassiveFollowAxis(
@@ -819,6 +826,41 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             UpdateFollowAxis(ref position, target, ref velocity, deltaSeconds, responseScale, maxSpeed, force, arrivalDistance);
+        }
+
+        private static void UpdateFollowAxis(
+            ref float position,
+            float target,
+            ref double velocity,
+            float deltaSeconds,
+            float responseScale,
+            float maxSpeed,
+            double force,
+            float arrivalDistance)
+        {
+            float delta = target - position;
+            if (Math.Abs(delta) <= arrivalDistance)
+            {
+                position = target;
+                velocity = 0d;
+                return;
+            }
+
+            double directedForce = Math.Max(force * Math.Max(0.1f, responseScale), CVecCtrl.WalkAcceleration);
+            double directedMaxSpeed = Math.Max(arrivalDistance, maxSpeed * Math.Max(0.1f, responseScale));
+            bool movingTowardTarget = Math.Sign(delta) == Math.Sign(velocity) || Math.Abs(velocity) <= FollowMinSpeed;
+            if (!movingTowardTarget)
+            {
+                CVecCtrl.DecSpeed(ref velocity, Math.Max(directedForce, CVecCtrl.WalkDeceleration), PhysicsConstants.Instance.DefaultMass, 0d, deltaSeconds);
+            }
+            else
+            {
+                double targetVelocity = Math.Sign(delta) * directedMaxSpeed;
+                CVecCtrl.AccSpeed(ref velocity, Math.Abs(directedForce), PhysicsConstants.Instance.DefaultMass, Math.Abs(targetVelocity), deltaSeconds);
+                velocity = Math.Sign(delta) * Math.Abs(velocity);
+            }
+
+            position += (float)(velocity * deltaSeconds);
         }
 
         private static Vector2 ResolveGroundAnchor(PlayerCharacter owner, DragonAnimationSet animationSet, int currentTime)
@@ -1047,7 +1089,7 @@ namespace HaCreator.MapSimulator.Companions
         {
             if (_questInfoAnimation == null
                 || _questInfoAlpha <= 0.01f
-                || !TryResolveQuestInfoAnchor(out Vector2 anchor))
+                || !TryResolveQuestInfoAnchor(currentTime, out Vector2 anchor))
             {
                 return;
             }
@@ -1136,11 +1178,11 @@ namespace HaCreator.MapSimulator.Companions
             return animation != null;
         }
 
-        private bool TryResolveQuestInfoAnchor(out Vector2 anchor)
+        private bool TryResolveQuestInfoAnchor(int currentTime, out Vector2 anchor)
         {
             anchor = Vector2.Zero;
 
-            if (!TryResolveCurrentFrame(Environment.TickCount, out SkillFrame frame, out _)
+            if (!TryResolveCurrentFrame(currentTime, out SkillFrame frame, out _)
                 || frame == null)
             {
                 return false;

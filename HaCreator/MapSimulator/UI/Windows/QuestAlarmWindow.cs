@@ -20,7 +20,7 @@ namespace HaCreator.MapSimulator.UI
         private const int RowDoubleClickWindowMs = 450;
         private const int HeaderActionMargin = 6;
         private const int HeaderActionSpacing = 4;
-        private const string RegistrationLimitMessage = "You may register up to 5 quests in Quest Alarm.";
+        private const string QuestAlarmTooltipDescription = "Click on Quest Alarm button if you wish to register the current quest into the Quest Alarm. Up to 5 quests can be registered in this alarm.";
         private const int ClientTitleX = 10;
         private const int ClientTitleY = 25;
         private const int ClientTitleHeight = 18;
@@ -56,6 +56,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly List<QuestAlarmEntrySnapshot> _orderedEntriesBuffer = new();
         private readonly List<QuestAlarmEntrySnapshot> _filteredEntriesBuffer = new();
         private readonly List<QuestAlarmEntrySnapshot> _visibleEntriesBuffer = new();
+        private readonly string _registrationLimitMessage = QuestAlarmTextLayout.ResolveRegistrationLimitMessage(QuestAlarmTooltipDescription);
 
         private SpriteFont _font;
         private MouseState _previousMouseState;
@@ -204,7 +205,7 @@ namespace HaCreator.MapSimulator.UI
             bool alreadyTracked = _trackedQuestIds.Contains(questId);
             if (!alreadyTracked && _trackedQuestIds.Count >= MaxVisibleEntries)
             {
-                StatusMessageRequested?.Invoke(RegistrationLimitMessage);
+                StatusMessageRequested?.Invoke(_registrationLimitMessage);
                 return;
             }
 
@@ -1289,70 +1290,13 @@ namespace HaCreator.MapSimulator.UI
                 yield break;
             }
 
-            foreach (string block in text.Replace("\r", string.Empty).Split('\n'))
+            IReadOnlyList<string> wrappedLines = QuestAlarmTextLayout.WrapText(
+                text,
+                maxWidth,
+                sample => _font.MeasureString(sample).X * scale);
+            for (int i = 0; i < wrappedLines.Count; i++)
             {
-                string trimmedBlock = block.Trim();
-                if (trimmedBlock.Length == 0)
-                {
-                    continue;
-                }
-
-                string[] words = trimmedBlock.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries)
-                    .SelectMany(word => SplitWordToWidth(word, maxWidth, scale))
-                    .ToArray();
-                if (words.Length == 0)
-                {
-                    continue;
-                }
-
-                string currentLine = string.Empty;
-                foreach (string word in words)
-                {
-                    string candidate = string.IsNullOrEmpty(currentLine) ? word : $"{currentLine} {word}";
-                    if (!string.IsNullOrEmpty(currentLine) && _font.MeasureString(candidate).X * scale > maxWidth)
-                    {
-                        yield return currentLine;
-                        currentLine = word;
-                    }
-                    else
-                    {
-                        currentLine = candidate;
-                    }
-                }
-
-                if (!string.IsNullOrEmpty(currentLine))
-                {
-                    yield return currentLine;
-                }
-            }
-        }
-
-        private IEnumerable<string> SplitWordToWidth(string word, float maxWidth, float scale)
-        {
-            if (string.IsNullOrWhiteSpace(word) || _font == null || maxWidth <= 0f)
-            {
-                yield break;
-            }
-
-            if (_font.MeasureString(word).X * scale <= maxWidth)
-            {
-                yield return word;
-                yield break;
-            }
-
-            int index = 0;
-            while (index < word.Length)
-            {
-                int length = 1;
-                while (index + length <= word.Length &&
-                    _font.MeasureString(word.Substring(index, length)).X * scale <= maxWidth)
-                {
-                    length++;
-                }
-
-                length = Math.Max(1, length - 1);
-                yield return word.Substring(index, length);
-                index += length;
+                yield return wrappedLines[i];
             }
         }
 

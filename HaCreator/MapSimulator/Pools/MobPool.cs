@@ -1047,7 +1047,7 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
-                MobItem target = FindNearestMobTarget(mob);
+                MobItem target = HypnotizeTargetResolver.ResolveTarget(mob, _activeMobs);
                 if (target == null)
                 {
                     mob.AI.ClearExternalTarget(currentTick, MobExternalTargetSource.Hypnotize);

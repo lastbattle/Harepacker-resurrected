@@ -110,6 +110,24 @@ namespace HaCreator.MapSimulator.UI
     internal static class CollectionBookSnapshotFactory
     {
         private const int EntriesPerPage = 6;
+        private static readonly (string Label, EquipSlot Slot)[] EquipmentLedgerRows =
+        {
+            ("Badge", EquipSlot.Badge),
+            ("Medal", EquipSlot.Medal),
+            ("Cap", EquipSlot.Cap),
+            ("Cape", EquipSlot.Cape),
+            ("Top", EquipSlot.Coat),
+            ("Bottom", EquipSlot.Pants),
+            ("Pendant", EquipSlot.Pendant),
+            ("Pendant 2", EquipSlot.Pendant2),
+            ("Weapon", EquipSlot.Weapon),
+            ("Glove", EquipSlot.Glove),
+            ("Shield", EquipSlot.Shield),
+            ("Shoes", EquipSlot.Shoes),
+            ("Pocket", EquipSlot.Pocket),
+            ("Monster Riding", EquipSlot.TamingMob),
+            ("Saddle", EquipSlot.Saddle),
+        };
 
         public static CollectionBookSnapshot Create(CharacterBuild build, ItemMakerProgressionSnapshot progression, MonsterBookSnapshot monsterBook)
         {
@@ -208,32 +226,55 @@ namespace HaCreator.MapSimulator.UI
 
         private static IEnumerable<CollectionBookPageSnapshot> CreateEquipmentPages(CharacterBuild build)
         {
-            (string Label, EquipSlot Slot, string Detail)[] rows =
-            {
-                ("Weapon", EquipSlot.Weapon, "Primary equipped weapon"),
-                ("Outfit", EquipSlot.Longcoat, BuildOutfitSummary(build)),
-                ("Cap", EquipSlot.Cap, string.Empty),
-                ("Cape", EquipSlot.Cape, string.Empty),
-                ("Shield", EquipSlot.Shield, string.Empty),
-                ("Glove", EquipSlot.Glove, string.Empty),
-                ("Shoes", EquipSlot.Shoes, string.Empty),
-                ("Pendant", EquipSlot.Pendant, string.Empty),
-                ("Badge", EquipSlot.Badge, string.Empty),
-                ("Mount", EquipSlot.TamingMob, string.Empty),
-                ("Saddle", EquipSlot.Saddle, string.Empty),
-                ("Pocket", EquipSlot.Pocket, BuildPocketSummary(build)),
-            };
+            CollectionBookEntrySnapshot[] entries = EquipmentLedgerRows
+                .Select(row => CreateEquipmentEntry(build, row.Label, row.Slot))
+                .ToArray();
 
-            foreach ((IEnumerable<(string Label, EquipSlot Slot, string Detail)> chunk, int pageIndex) in rows.Chunk(EntriesPerPage).Select((chunk, index) => (chunk.AsEnumerable(), index)))
+            foreach ((CollectionBookEntrySnapshot[] chunk, int pageIndex) in entries.Chunk(EntriesPerPage).Select((chunk, index) => (chunk, index)))
             {
                 yield return new CollectionBookPageSnapshot
                 {
-                    Title = pageIndex == 0 ? "Equipment" : "Equipment II",
-                    Subtitle = "Ledger rows from the active build",
-                    Footer = "Rows prefer visible equipment and then hidden-equipment fallbacks.",
-                    Entries = chunk.Select(entry => CreateEntry(entry.Label, ResolveEquipmentValue(build, entry.Slot, entry.Detail), entry.Detail, HasEquippedItem(build, entry.Slot) ? CollectionBookEntryTone.Normal : CollectionBookEntryTone.Muted)).ToArray()
+                    Title = pageIndex == 0 ? "Equipment" : $"Equipment {ToRoman(pageIndex + 1)}",
+                    Subtitle = "Displayed slot ledger from the active build",
+                    Footer = "Rows follow the same displayed-slot rules as the equip window, including overall, pendant, pocket, shield, and mount gating.",
+                    Entries = chunk
                 };
             }
+        }
+
+        private static CollectionBookEntrySnapshot CreateEquipmentEntry(CharacterBuild build, string label, EquipSlot slot)
+        {
+            CharacterPart displayedPart = EquipSlotStateResolver.ResolveDisplayedPart(build, slot);
+            CharacterPart underlyingPart = EquipSlotStateResolver.ResolveUnderlyingPart(build, slot);
+            EquipSlotVisualState visualState = EquipSlotStateResolver.ResolveVisualState(build, slot);
+
+            string value = ResolveEquipmentLedgerValue(build, slot, displayedPart, visualState);
+            List<string> detailParts = new();
+
+            if (slot == EquipSlot.Coat && displayedPart?.Slot == EquipSlot.Longcoat)
+            {
+                detailParts.Add("Overall equipped");
+            }
+            else if (slot == EquipSlot.Pocket && displayedPart == null)
+            {
+                detailParts.Add(BuildPocketSummary(build));
+            }
+
+            if (!string.IsNullOrWhiteSpace(visualState.Message))
+            {
+                detailParts.Add(visualState.Message);
+            }
+
+            if (underlyingPart != null && !string.IsNullOrWhiteSpace(underlyingPart.Name))
+            {
+                detailParts.Add($"Base {underlyingPart.Name}");
+            }
+
+            return CreateEntry(
+                label,
+                value,
+                string.Join("  ", detailParts.Where(part => !string.IsNullOrWhiteSpace(part))),
+                ResolveEquipmentTone(displayedPart, visualState));
         }
 
         private static IEnumerable<CollectionBookPageSnapshot> CreateRecipePages(ItemMakerProgressionSnapshot progression)
@@ -327,40 +368,6 @@ namespace HaCreator.MapSimulator.UI
             return build?.IsPocketSlotAvailable == true ? $"Unlocked (Charm {charm})" : $"Locked ({charm}/30 Charm)";
         }
 
-        private static string BuildOutfitSummary(CharacterBuild build)
-        {
-            string longcoat = ResolveEquippedItemName(build, EquipSlot.Longcoat);
-            if (!string.Equals(longcoat, "-", StringComparison.Ordinal))
-            {
-                return longcoat;
-            }
-
-            string coat = ResolveEquippedItemName(build, EquipSlot.Coat);
-            string pants = ResolveEquippedItemName(build, EquipSlot.Pants);
-            if (string.Equals(coat, "-", StringComparison.Ordinal) && string.Equals(pants, "-", StringComparison.Ordinal))
-            {
-                return "-";
-            }
-
-            return $"{coat} / {pants}";
-        }
-
-        private static string ResolveEquipmentValue(CharacterBuild build, EquipSlot slot, string detail)
-        {
-            if (slot == EquipSlot.Longcoat)
-            {
-                return BuildOutfitSummary(build);
-            }
-
-            string value = ResolveEquippedItemName(build, slot);
-            if (slot == EquipSlot.Pocket && string.Equals(value, "-", StringComparison.Ordinal))
-            {
-                return BuildPocketSummary(build);
-            }
-
-            return string.IsNullOrWhiteSpace(value) ? detail : value;
-        }
-
         private static string ResolveEquippedItemName(CharacterBuild build, EquipSlot slot)
         {
             if (build?.Equipment != null && build.Equipment.TryGetValue(slot, out CharacterPart part) && !string.IsNullOrWhiteSpace(part?.Name))
@@ -379,6 +386,36 @@ namespace HaCreator.MapSimulator.UI
         private static bool HasEquippedItem(CharacterBuild build, EquipSlot slot)
         {
             return !string.Equals(ResolveEquippedItemName(build, slot), "-", StringComparison.Ordinal);
+        }
+
+        private static string ResolveEquipmentLedgerValue(CharacterBuild build, EquipSlot slot, CharacterPart displayedPart, EquipSlotVisualState visualState)
+        {
+            if (!string.IsNullOrWhiteSpace(displayedPart?.Name))
+            {
+                return displayedPart.Name;
+            }
+
+            return slot switch
+            {
+                EquipSlot.Pocket => build?.IsPocketSlotAvailable == true ? "-" : "Locked",
+                EquipSlot.Pendant2 => visualState.IsDisabled ? "Locked" : "-",
+                EquipSlot.TamingMob or EquipSlot.Saddle => visualState.IsDisabled ? "Locked" : "-",
+                EquipSlot.Shield => visualState.IsDisabled ? "Disabled" : "-",
+                EquipSlot.Pants => visualState.Reason == EquipSlotDisableReason.OverallOccupiesPantsSlot ? "Covered" : "-",
+                _ => "-"
+            };
+        }
+
+        private static CollectionBookEntryTone ResolveEquipmentTone(CharacterPart displayedPart, EquipSlotVisualState visualState)
+        {
+            if (visualState.IsDisabled || visualState.IsBroken || visualState.IsExpired)
+            {
+                return CollectionBookEntryTone.Warning;
+            }
+
+            return displayedPart != null
+                ? CollectionBookEntryTone.Normal
+                : CollectionBookEntryTone.Muted;
         }
 
         private static string ResolveItemName(int itemId)
@@ -403,6 +440,19 @@ namespace HaCreator.MapSimulator.UI
         private static string FormatRank(int rank)
         {
             return rank > 0 ? $"#{rank.ToString("N0", CultureInfo.InvariantCulture)}" : "-";
+        }
+
+        private static string ToRoman(int value)
+        {
+            return value switch
+            {
+                1 => "I",
+                2 => "II",
+                3 => "III",
+                4 => "IV",
+                5 => "V",
+                _ => value.ToString(CultureInfo.InvariantCulture)
+            };
         }
     }
 

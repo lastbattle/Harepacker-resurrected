@@ -26,6 +26,10 @@ namespace HaCreator.MapSimulator
         private const string WeddingMapMark = "Wedding";
         private const int AranTutorialMapIdMin = 914000000;
         private const int AranTutorialMapIdMax = 914000500;
+        private const int ClientOwnedLimitedViewDarkCanvasWidth = 1024;
+        private const int ClientOwnedLimitedViewDarkCanvasHeight = 768;
+        private const int ClientOwnedLimitedViewDarkLayerOffsetX = -512;
+        private const int ClientOwnedLimitedViewDarkLayerOffsetY = -468;
         private const float ClientOwnedLimitedViewFallbackRadius = 158f;
         private const float ClientOwnedLimitedViewFallbackMaskWidth = 316f;
         private const float ClientOwnedLimitedViewFallbackMaskHeight = 316f;
@@ -329,6 +333,7 @@ namespace HaCreator.MapSimulator
 
             EnsureLimitedViewFieldInitialized();
             EnsureClientOwnedLimitedViewMetadataLoaded();
+            _limitedViewField.SetFollowPlayer(true);
             _limitedViewField.SetPulse(false);
             _limitedViewField.SetEdgeSoftness(0f);
             _limitedViewField.SetFogColor(Color.Black);
@@ -491,9 +496,10 @@ namespace HaCreator.MapSimulator
 
             List<string> activeWrappers = new();
 
-            if (IsTutorialWrapperMap(mapInfo))
+            string tutorialWrapperOwnerTag = GetTutorialWrapperOwnerTag(mapInfo);
+            if (tutorialWrapperOwnerTag != null)
             {
-                if (IsAranTutorialWrapperMap(mapInfo))
+                if (string.Equals(tutorialWrapperOwnerTag, "aran-tutorial", StringComparison.Ordinal))
                 {
                     activeWrappers.Add(
                         $"aran-tutorial wrapper active (client GetFieldType 22, map {mapInfo.id}, onUserEnter {mapInfo.onUserEnter ?? "<none>"}): forcing hat {TutorialForcedCapItemId} and longcoat {TutorialForcedLongcoatItemId}.");
@@ -509,7 +515,7 @@ namespace HaCreator.MapSimulator
             {
                 EnsureClientOwnedLimitedViewMetadataLoaded();
                 activeWrappers.Add(
-                    $"limited-view wrapper active (fieldType {(int)FieldType.FIELDTYPE_LIMITEDVIEW}): mask {_clientOwnedLimitedViewMaskWidth:F0}x{_clientOwnedLimitedViewMaskHeight:F0}, origin ({_clientOwnedLimitedViewOriginX:F0},{_clientOwnedLimitedViewOriginY:F0}), radius {_clientOwnedLimitedViewRadius:F0}, source Effect/MapEff.img/{ClientOwnedLimitedViewWzPath}.");
+                    $"limited-view wrapper active (fieldType {(int)FieldType.FIELDTYPE_LIMITEDVIEW}): dark {ClientOwnedLimitedViewDarkCanvasWidth}x{ClientOwnedLimitedViewDarkCanvasHeight}, layer offset ({ClientOwnedLimitedViewDarkLayerOffsetX},{ClientOwnedLimitedViewDarkLayerOffsetY}), mask {_clientOwnedLimitedViewMaskWidth:F0}x{_clientOwnedLimitedViewMaskHeight:F0}, origin ({_clientOwnedLimitedViewOriginX:F0},{_clientOwnedLimitedViewOriginY:F0}), radius {_clientOwnedLimitedViewRadius:F0}, update mirrors DrawViewrange ownership, source Effect/MapEff.img/{ClientOwnedLimitedViewWzPath}.");
             }
 
             if (SuppressesDragonPresentation(mapInfo))
@@ -522,11 +528,11 @@ namespace HaCreator.MapSimulator
 
             if (IsWeddingPhotoWrapperMap(mapInfo))
             {
-                string safeArea = mapInfo.LBSide.HasValue || mapInfo.LBTop.HasValue || mapInfo.LBBottom.HasValue
-                    ? $" safeArea(side={mapInfo.LBSide ?? 0}, top={mapInfo.LBTop ?? 0}, bottom={mapInfo.LBBottom ?? 0})."
+                string safeArea = TryGetWeddingPhotoSceneSafeArea(mapInfo, out int side, out int top, out int bottom)
+                    ? $" safeArea(side={side}, top={top}, bottom={bottom})."
                     : string.Empty;
                 activeWrappers.Add(
-                    $"wedding-photo wrapper active ({DescribeWeddingPhotoWrapperSource(mapInfo)}) on map {mapInfo.id}.{safeArea}");
+                    $"wedding-photo scene owner active ({DescribeWeddingPhotoWrapperSource(mapInfo)}) on map {mapInfo.id}, returnMap {mapInfo.returnMap}.{safeArea}");
             }
 
             return activeWrappers.Count == 0
@@ -563,8 +569,7 @@ namespace HaCreator.MapSimulator
 
         private static bool IsTutorialWrapperMap(MapInfo mapInfo)
         {
-            return mapInfo?.fieldType == FieldType.FIELDTYPE_TUTORIAL
-                || IsAranTutorialWrapperMap(mapInfo);
+            return GetTutorialWrapperOwnerTag(mapInfo) != null;
         }
 
         private static bool IsNoDragonWrapperMap(MapInfo mapInfo)
@@ -579,8 +584,7 @@ namespace HaCreator.MapSimulator
 
         private static bool IsWeddingPhotoWrapperMap(MapInfo mapInfo)
         {
-            return mapInfo?.fieldType == FieldType.FIELDTYPE_WEDDINGPHOTO
-                || HasWeddingPhotoSafeAreaContract(mapInfo);
+            return GetWeddingPhotoWrapperOwnerTag(mapInfo) != null;
         }
 
         private static bool IsTransitVoyageWrapperMap(MapInfo mapInfo)
@@ -613,6 +617,21 @@ namespace HaCreator.MapSimulator
                 || mapInfo?.id == 801000210;
         }
 
+        internal static string GetTutorialWrapperOwnerTag(MapInfo mapInfo)
+        {
+            if (IsAranTutorialWrapperMap(mapInfo))
+            {
+                return "aran-tutorial";
+            }
+
+            if (mapInfo?.fieldType == FieldType.FIELDTYPE_TUTORIAL)
+            {
+                return "tutorial";
+            }
+
+            return null;
+        }
+
         private static bool IsAranTutorialWrapperMap(MapInfo mapInfo)
         {
             if (mapInfo == null)
@@ -632,26 +651,50 @@ namespace HaCreator.MapSimulator
                 && mapInfo.fieldType == FieldType.FIELDTYPE_KILLCOUNT;
         }
 
-        private static bool HasWeddingPhotoSafeAreaContract(MapInfo mapInfo)
-        {
-            return mapInfo != null
-                && string.Equals(mapInfo.mapMark, WeddingMapMark, StringComparison.OrdinalIgnoreCase)
-                && (mapInfo.LBSide.HasValue || mapInfo.LBTop.HasValue || mapInfo.LBBottom.HasValue);
-        }
-
-        private static string DescribeWeddingPhotoWrapperSource(MapInfo mapInfo)
+        internal static string GetWeddingPhotoWrapperOwnerTag(MapInfo mapInfo)
         {
             if (mapInfo?.fieldType == FieldType.FIELDTYPE_WEDDINGPHOTO)
             {
-                return $"fieldType {(int)FieldType.FIELDTYPE_WEDDINGPHOTO}";
+                return "wedding-photo-scene";
             }
 
             if (HasWeddingPhotoSafeAreaContract(mapInfo))
             {
+                return "wedding-photo-safe-area";
+            }
+
+            return null;
+        }
+
+        internal static bool TryGetWeddingPhotoSceneSafeArea(MapInfo mapInfo, out int side, out int top, out int bottom)
+        {
+            side = Math.Max(0, mapInfo?.LBSide ?? 0);
+            top = Math.Max(0, mapInfo?.LBTop ?? 0);
+            bottom = Math.Max(0, mapInfo?.LBBottom ?? 0);
+            return side > 0 || top > 0 || bottom > 0;
+        }
+
+        private static bool HasWeddingPhotoSafeAreaContract(MapInfo mapInfo)
+        {
+            return mapInfo != null
+                && string.Equals(mapInfo.mapMark, WeddingMapMark, StringComparison.OrdinalIgnoreCase)
+                && TryGetWeddingPhotoSceneSafeArea(mapInfo, out _, out _, out _);
+        }
+
+        private static string DescribeWeddingPhotoWrapperSource(MapInfo mapInfo)
+        {
+            string ownerTag = GetWeddingPhotoWrapperOwnerTag(mapInfo);
+            if (string.Equals(ownerTag, "wedding-photo-scene", StringComparison.Ordinal))
+            {
+                return $"fieldType {(int)FieldType.FIELDTYPE_WEDDINGPHOTO}";
+            }
+
+            if (string.Equals(ownerTag, "wedding-photo-safe-area", StringComparison.Ordinal))
+            {
                 return $"Wedding safe-area contract (mapMark={mapInfo.mapMark})";
             }
 
-            return "presentation wrapper";
+            return "scene wrapper";
         }
     }
 }

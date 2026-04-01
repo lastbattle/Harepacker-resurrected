@@ -28,6 +28,7 @@ namespace HaCreator.MapSimulator.UI
         private const int TAB_IN_PROGRESS = 1;
         private const int TAB_COMPLETED = 2;
         private const int TAB_RECOMMENDED = 3;
+        private const int ClientSuppressedQuestCategoryCode = 51;
         private const int DETAIL_LINE_ICON_SIZE = 12;
         private const float TEXT_SCALE = 0.58f;
         private const float SMALL_TEXT_SCALE = 0.5f;
@@ -1255,13 +1256,14 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return snapshot.Entries
+                .Where(entry => entry.AreaCode != ClientSuppressedQuestCategoryCode)
                 .GroupBy(entry => new { entry.AreaCode, entry.AreaName })
                 .Select(group => new QuestAreaFilterEntry(
                     group.Key.AreaCode,
                     string.IsNullOrWhiteSpace(group.Key.AreaName) ? "General" : group.Key.AreaName,
                     group.Count()))
-                .OrderBy(entry => entry.AreaName, StringComparer.OrdinalIgnoreCase)
-                .ThenBy(entry => entry.AreaCode)
+                .OrderBy(entry => entry.AreaCode)
+                .ThenBy(entry => entry.AreaName, StringComparer.OrdinalIgnoreCase)
                 .ToList();
         }
 

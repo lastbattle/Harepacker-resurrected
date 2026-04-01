@@ -16,6 +16,18 @@ namespace HaCreator.MapSimulator.UI
 {
     public sealed class LoginCreateCharacterWindow : UIWindowBase
     {
+        private static readonly Point StageBasePosition = new(220, 180);
+        private static readonly Point RaceStatusPosition = new(224, 420);
+        private static readonly Rectangle RaceStatusBounds = new(0, 0, 350, 78);
+        private static readonly IReadOnlyDictionary<LoginCreateCharacterRaceKind, Rectangle> RaceCardBoundsByRace =
+            new Dictionary<LoginCreateCharacterRaceKind, Rectangle>
+            {
+                [LoginCreateCharacterRaceKind.Explorer] = new(45, 43, 187, 120),
+                [LoginCreateCharacterRaceKind.Cygnus] = new(284, 43, 187, 120),
+                [LoginCreateCharacterRaceKind.Aran] = new(524, 43, 187, 120),
+                [LoginCreateCharacterRaceKind.Evan] = new(45, 295, 187, 120),
+                [LoginCreateCharacterRaceKind.Resistance] = new(284, 295, 187, 120)
+            };
         private static readonly Rectangle RaceListBounds = new(22, 28, 164, 174);
         private static readonly Rectangle JobListBounds = new(64, 102, 72, 110);
         private static readonly Rectangle AvatarListBounds = new(12, 102, 200, 162);
@@ -34,10 +46,11 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Color MutedTextColor = new(188, 188, 188);
         private static readonly Color StatusTextColor = new(238, 226, 193);
 
-        private readonly Dictionary<LoginCreateCharacterStage, Texture2D> _framesByStage;
+        private readonly Dictionary<LoginCreateCharacterRaceKind, Dictionary<LoginCreateCharacterStage, Texture2D>> _framesByRaceAndStage;
         private readonly IReadOnlyList<Texture2D> _jobTextures;
-        private readonly IReadOnlyList<Texture2D> _avatarEnabledTextures;
-        private readonly IReadOnlyList<Texture2D> _avatarDisabledTextures;
+        private readonly Dictionary<LoginCreateCharacterRaceKind, IReadOnlyList<Texture2D>> _avatarEnabledTexturesByRace;
+        private readonly Dictionary<LoginCreateCharacterRaceKind, IReadOnlyList<Texture2D>> _avatarDisabledTexturesByRace;
+        private readonly Dictionary<LoginCreateCharacterRaceKind, Texture2D> _racePreviewTexturesByRace;
         private readonly IReadOnlyList<CharacterSelectWindow.AnimationFrame> _diceFrames;
         private readonly Texture2D _leftArrowTexture;
         private readonly Texture2D _rightArrowTexture;
@@ -48,6 +61,7 @@ namespace HaCreator.MapSimulator.UI
         private LoginCreateCharacterStage _stage;
         private IReadOnlyList<string> _raceLabels = Array.Empty<string>();
         private int _selectedRaceIndex;
+        private LoginCreateCharacterRaceKind _selectedRace = LoginCreateCharacterRaceKind.Explorer;
         private IReadOnlyList<LoginCreateCharacterJobOption> _jobOptions = Array.Empty<LoginCreateCharacterJobOption>();
         private int _selectedJobIndex;
         private string _displayName = string.Empty;
@@ -61,10 +75,11 @@ namespace HaCreator.MapSimulator.UI
 
         public LoginCreateCharacterWindow(
             IDXObject frame,
-            IReadOnlyDictionary<LoginCreateCharacterStage, Texture2D> framesByStage,
+            IReadOnlyDictionary<LoginCreateCharacterRaceKind, IReadOnlyDictionary<LoginCreateCharacterStage, Texture2D>> framesByRaceAndStage,
             IReadOnlyList<Texture2D> jobTextures,
-            IReadOnlyList<Texture2D> avatarEnabledTextures,
-            IReadOnlyList<Texture2D> avatarDisabledTextures,
+            IReadOnlyDictionary<LoginCreateCharacterRaceKind, IReadOnlyList<Texture2D>> avatarEnabledTexturesByRace,
+            IReadOnlyDictionary<LoginCreateCharacterRaceKind, IReadOnlyList<Texture2D>> avatarDisabledTexturesByRace,
+            IReadOnlyDictionary<LoginCreateCharacterRaceKind, Texture2D> racePreviewTexturesByRace,
             IReadOnlyList<CharacterSelectWindow.AnimationFrame> diceFrames,
             Texture2D leftArrowTexture,
             Texture2D rightArrowTexture,
@@ -73,11 +88,17 @@ namespace HaCreator.MapSimulator.UI
             UIObject checkButton)
             : base(frame)
         {
-            _framesByStage = framesByStage?.ToDictionary(pair => pair.Key, pair => pair.Value)
-                ?? new Dictionary<LoginCreateCharacterStage, Texture2D>();
+            _framesByRaceAndStage = framesByRaceAndStage?.ToDictionary(
+                pair => pair.Key,
+                pair => pair.Value?.ToDictionary(stagePair => stagePair.Key, stagePair => stagePair.Value) ?? new Dictionary<LoginCreateCharacterStage, Texture2D>())
+                ?? new Dictionary<LoginCreateCharacterRaceKind, Dictionary<LoginCreateCharacterStage, Texture2D>>();
             _jobTextures = jobTextures ?? Array.Empty<Texture2D>();
-            _avatarEnabledTextures = avatarEnabledTextures ?? Array.Empty<Texture2D>();
-            _avatarDisabledTextures = avatarDisabledTextures ?? Array.Empty<Texture2D>();
+            _avatarEnabledTexturesByRace = avatarEnabledTexturesByRace?.ToDictionary(pair => pair.Key, pair => pair.Value ?? Array.Empty<Texture2D>())
+                ?? new Dictionary<LoginCreateCharacterRaceKind, IReadOnlyList<Texture2D>>();
+            _avatarDisabledTexturesByRace = avatarDisabledTexturesByRace?.ToDictionary(pair => pair.Key, pair => pair.Value ?? Array.Empty<Texture2D>())
+                ?? new Dictionary<LoginCreateCharacterRaceKind, IReadOnlyList<Texture2D>>();
+            _racePreviewTexturesByRace = racePreviewTexturesByRace?.ToDictionary(pair => pair.Key, pair => pair.Value)
+                ?? new Dictionary<LoginCreateCharacterRaceKind, Texture2D>();
             _diceFrames = diceFrames ?? Array.Empty<AnimationFrame>();
             _leftArrowTexture = leftArrowTexture;
             _rightArrowTexture = rightArrowTexture;
@@ -132,6 +153,7 @@ namespace HaCreator.MapSimulator.UI
             _raceLabels = LoginCreateCharacterFlowState.SupportedRaces
                 .Select(LoginCreateCharacterFlowState.GetRaceLabel)
                 .ToArray();
+            _selectedRace = state?.SelectedRace ?? LoginCreateCharacterRaceKind.Explorer;
             _selectedRaceIndex = state?.SelectedRaceIndex ?? 0;
             _jobOptions = state?.CurrentJobs ?? Array.Empty<LoginCreateCharacterJobOption>();
             _selectedJobIndex = state?.SelectedJobIndex ?? 0;
@@ -215,9 +237,10 @@ namespace HaCreator.MapSimulator.UI
             RenderParameters renderParameters,
             int tickCount)
         {
-            if (_framesByStage.TryGetValue(_stage, out Texture2D stageTexture) && stageTexture != null)
+            if (TryGetStageTexture(out Texture2D stageTexture) && stageTexture != null)
             {
-                sprite.Draw(stageTexture, Position.ToVector2(), Color.White);
+                Point stageOrigin = GetStageOrigin();
+                sprite.Draw(stageTexture, new Vector2(Position.X + stageOrigin.X, Position.Y + stageOrigin.Y), Color.White);
             }
 
             if (_font == null)
@@ -238,6 +261,10 @@ namespace HaCreator.MapSimulator.UI
             else if (_stage == LoginCreateCharacterStage.NameSelect)
             {
                 DrawNameEntry(sprite);
+            }
+            else if (_stage == LoginCreateCharacterStage.RaceSelect)
+            {
+                DrawRaceCards(sprite);
             }
             else
             {
@@ -260,17 +287,41 @@ namespace HaCreator.MapSimulator.UI
             Point localPoint = new(mouseState.X - Position.X, mouseState.Y - Position.Y);
             if (_stage == LoginCreateCharacterStage.RaceSelect)
             {
-                int raceIndex = HitTestListItem(localPoint, RaceListBounds, _raceLabels.Count, 32);
-                if (raceIndex >= 0)
+                foreach (KeyValuePair<LoginCreateCharacterRaceKind, Rectangle> raceCard in RaceCardBoundsByRace)
                 {
-                    RaceSelected?.Invoke(raceIndex);
+                    if (raceCard.Value.Contains(localPoint))
+                    {
+                        int raceIndex = Array.IndexOf(LoginCreateCharacterFlowState.SupportedRaces, raceCard.Key);
+                        if (raceIndex >= 0)
+                        {
+                            RaceSelected?.Invoke(raceIndex);
+                            mouseCursor?.SetMouseCursorMovedToClickableItem();
+                            return true;
+                        }
+                    }
+                }
+
+                Point stageOrigin = GetStageOrigin();
+                int selectedRaceIndex = HitTestListItem(
+                    localPoint,
+                    new Rectangle(stageOrigin.X + RaceListBounds.X, stageOrigin.Y + RaceListBounds.Y, RaceListBounds.Width, RaceListBounds.Height),
+                    _raceLabels.Count,
+                    32);
+                if (selectedRaceIndex >= 0)
+                {
+                    RaceSelected?.Invoke(selectedRaceIndex);
                     mouseCursor?.SetMouseCursorMovedToClickableItem();
                     return true;
                 }
             }
             else if (_stage == LoginCreateCharacterStage.JobSelect)
             {
-                int jobIndex = HitTestListItem(localPoint, JobListBounds, _jobOptions.Count, 21);
+                Point stageOrigin = GetStageOrigin();
+                int jobIndex = HitTestListItem(
+                    localPoint,
+                    new Rectangle(stageOrigin.X + JobListBounds.X, stageOrigin.Y + JobListBounds.Y, JobListBounds.Width, JobListBounds.Height),
+                    _jobOptions.Count,
+                    21);
                 if (jobIndex >= 0)
                 {
                     JobSelected?.Invoke(jobIndex);
@@ -280,14 +331,17 @@ namespace HaCreator.MapSimulator.UI
             }
             else if (_stage == LoginCreateCharacterStage.AvatarSelect)
             {
-                if (NameDisplayBounds.Contains(localPoint))
+                Point stageOrigin = GetStageOrigin();
+                Rectangle nameDisplayBounds = new(stageOrigin.X + NameDisplayBounds.X, stageOrigin.Y + NameDisplayBounds.Y, NameDisplayBounds.Width, NameDisplayBounds.Height);
+                if (nameDisplayBounds.Contains(localPoint))
                 {
                     NameEditRequested?.Invoke();
                     mouseCursor?.SetMouseCursorMovedToClickableItem();
                     return true;
                 }
 
-                if (AvatarDiceBounds.Contains(localPoint))
+                Rectangle avatarDiceBounds = new(stageOrigin.X + AvatarDiceBounds.X, stageOrigin.Y + AvatarDiceBounds.Y, AvatarDiceBounds.Width, AvatarDiceBounds.Height);
+                if (avatarDiceBounds.Contains(localPoint))
                 {
                     DiceRequested?.Invoke();
                     mouseCursor?.SetMouseCursorMovedToClickableItem();
@@ -306,12 +360,13 @@ namespace HaCreator.MapSimulator.UI
         private bool TryHandleAvatarShift(Point localPoint, MouseCursorItem mouseCursor)
         {
             const int rowHeight = 18;
+            Point stageOrigin = GetStageOrigin();
 
             for (int row = 0; row < _avatarIndices.Length + 1; row++)
             {
-                int rowY = AvatarListBounds.Y + (row * rowHeight);
-                Rectangle leftArrow = new(AvatarListBounds.X + AvatarArrowOffsets[0].X, rowY, AvatarArrowOffsets[0].Width, AvatarArrowOffsets[0].Height);
-                Rectangle rightArrow = new(AvatarListBounds.X + AvatarArrowOffsets[1].X, rowY, AvatarArrowOffsets[1].Width, AvatarArrowOffsets[1].Height);
+                int rowY = stageOrigin.Y + AvatarListBounds.Y + (row * rowHeight);
+                Rectangle leftArrow = new(stageOrigin.X + AvatarListBounds.X + AvatarArrowOffsets[0].X, rowY, AvatarArrowOffsets[0].Width, AvatarArrowOffsets[0].Height);
+                Rectangle rightArrow = new(stageOrigin.X + AvatarListBounds.X + AvatarArrowOffsets[1].X, rowY, AvatarArrowOffsets[1].Width, AvatarArrowOffsets[1].Height);
                 if (!leftArrow.Contains(localPoint) && !rightArrow.Contains(localPoint))
                 {
                     continue;
@@ -335,23 +390,29 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawStageText(SpriteBatch sprite)
         {
-            DrawParagraph(sprite, _statusMessage, new Rectangle(Position.X + StatusBounds.X, Position.Y + StatusBounds.Y, StatusBounds.Width, StatusBounds.Height), StatusTextColor);
+            Point stageOrigin = GetStageOrigin();
+            Rectangle stageStatusBounds = _stage == LoginCreateCharacterStage.RaceSelect
+                ? new Rectangle(Position.X + RaceStatusPosition.X, Position.Y + RaceStatusPosition.Y, RaceStatusBounds.Width, RaceStatusBounds.Height)
+                : new Rectangle(Position.X + stageOrigin.X + StatusBounds.X, Position.Y + stageOrigin.Y + StatusBounds.Y, StatusBounds.Width, StatusBounds.Height);
+            DrawParagraph(sprite, _statusMessage, stageStatusBounds, StatusTextColor);
         }
 
         private void DrawRaceOptions(SpriteBatch sprite)
         {
+            Point stageOrigin = GetStageOrigin();
             for (int i = 0; i < _raceLabels.Count; i++)
             {
-                Rectangle itemBounds = new(Position.X + RaceListBounds.X, Position.Y + RaceListBounds.Y + (i * 32), RaceListBounds.Width, 28);
+                Rectangle itemBounds = new(Position.X + stageOrigin.X + RaceListBounds.X, Position.Y + stageOrigin.Y + RaceListBounds.Y + (i * 32), RaceListBounds.Width, 28);
                 DrawSelectableTextRow(sprite, itemBounds, _raceLabels[i], i == _selectedRaceIndex);
             }
         }
 
         private void DrawJobOptions(SpriteBatch sprite)
         {
+            Point stageOrigin = GetStageOrigin();
             for (int i = 0; i < _jobOptions.Count; i++)
             {
-                Rectangle itemBounds = new(Position.X + JobListBounds.X, Position.Y + JobListBounds.Y + (i * 21), JobListBounds.Width, 18);
+                Rectangle itemBounds = new(Position.X + stageOrigin.X + JobListBounds.X, Position.Y + stageOrigin.Y + JobListBounds.Y + (i * 21), JobListBounds.Width, 18);
                 bool selected = i == _selectedJobIndex;
                 if (selected)
                 {
@@ -373,25 +434,28 @@ namespace HaCreator.MapSimulator.UI
         private void DrawAvatarOptions(SpriteBatch sprite, int tickCount)
         {
             DrawNameDisplay(sprite);
+            IReadOnlyList<Texture2D> enabledTextures = ResolveAvatarTextures(_avatarEnabledTexturesByRace);
+            IReadOnlyList<Texture2D> disabledTextures = ResolveAvatarTextures(_avatarDisabledTexturesByRace);
+            Point stageOrigin = GetStageOrigin();
 
             for (int i = 0; i < _avatarIndices.Length; i++)
             {
-                Rectangle rowBounds = new(Position.X + AvatarListBounds.X, Position.Y + AvatarListBounds.Y + (i * 18), AvatarListBounds.Width, 17);
-                Texture2D labelTexture = i < _avatarEnabledTextures.Count
-                    ? _avatarEnabledTextures[i]
+                Rectangle rowBounds = new(Position.X + stageOrigin.X + AvatarListBounds.X, Position.Y + stageOrigin.Y + AvatarListBounds.Y + (i * 18), AvatarListBounds.Width, 17);
+                Texture2D labelTexture = i < enabledTextures.Count
+                    ? enabledTextures[i]
                     : null;
-                Texture2D disabledTexture = i < _avatarDisabledTextures.Count
-                    ? _avatarDisabledTextures[i]
+                Texture2D disabledTexture = i < disabledTextures.Count
+                    ? disabledTextures[i]
                     : null;
                 sprite.Draw(disabledTexture ?? labelTexture, new Vector2(rowBounds.X, rowBounds.Y), Color.White);
-                DrawArrowTexture(sprite, _leftArrowTexture, new Vector2(Position.X + AvatarListBounds.X, rowBounds.Y));
-                DrawArrowTexture(sprite, _rightArrowTexture, new Vector2(Position.X + AvatarListBounds.X + 210, rowBounds.Y));
+                DrawArrowTexture(sprite, _leftArrowTexture, new Vector2(Position.X + stageOrigin.X + AvatarListBounds.X, rowBounds.Y));
+                DrawArrowTexture(sprite, _rightArrowTexture, new Vector2(Position.X + stageOrigin.X + AvatarListBounds.X + 210, rowBounds.Y));
                 DrawAvatarValueLabel(sprite, i, rowBounds);
             }
 
-            Rectangle genderBounds = new(Position.X + AvatarListBounds.X, Position.Y + AvatarListBounds.Y + (_avatarIndices.Length * 18), AvatarListBounds.Width, 17);
-            DrawArrowTexture(sprite, _leftArrowTexture, new Vector2(Position.X + AvatarListBounds.X, genderBounds.Y));
-            DrawArrowTexture(sprite, _rightArrowTexture, new Vector2(Position.X + AvatarListBounds.X + 210, genderBounds.Y));
+            Rectangle genderBounds = new(Position.X + stageOrigin.X + AvatarListBounds.X, Position.Y + stageOrigin.Y + AvatarListBounds.Y + (_avatarIndices.Length * 18), AvatarListBounds.Width, 17);
+            DrawArrowTexture(sprite, _leftArrowTexture, new Vector2(Position.X + stageOrigin.X + AvatarListBounds.X, genderBounds.Y));
+            DrawArrowTexture(sprite, _rightArrowTexture, new Vector2(Position.X + stageOrigin.X + AvatarListBounds.X + 210, genderBounds.Y));
             SelectorWindowDrawing.DrawShadowedText(
                 sprite,
                 _font,
@@ -404,14 +468,15 @@ namespace HaCreator.MapSimulator.UI
             {
                 sprite.Draw(
                     diceFrame.Texture,
-                    new Vector2(Position.X + AvatarDiceBounds.X + diceFrame.Offset.X, Position.Y + AvatarDiceBounds.Y + diceFrame.Offset.Y),
+                    new Vector2(Position.X + stageOrigin.X + AvatarDiceBounds.X + diceFrame.Offset.X, Position.Y + stageOrigin.Y + AvatarDiceBounds.Y + diceFrame.Offset.Y),
                     Color.White);
             }
         }
 
         private void DrawNameDisplay(SpriteBatch sprite)
         {
-            Rectangle displayBounds = new(Position.X + NameDisplayBounds.X, Position.Y + NameDisplayBounds.Y, NameDisplayBounds.Width, NameDisplayBounds.Height);
+            Point stageOrigin = GetStageOrigin();
+            Rectangle displayBounds = new(Position.X + stageOrigin.X + NameDisplayBounds.X, Position.Y + stageOrigin.Y + NameDisplayBounds.Y, NameDisplayBounds.Width, NameDisplayBounds.Height);
             DrawSelection(sprite, displayBounds);
             string nameLabel = string.IsNullOrWhiteSpace(_displayName)
                 ? "Click here to enter a name"
@@ -432,7 +497,8 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawNameEntry(SpriteBatch sprite)
         {
-            Rectangle inputBounds = new(Position.X + NameInputBounds.X, Position.Y + NameInputBounds.Y, NameInputBounds.Width, NameInputBounds.Height);
+            Point stageOrigin = GetStageOrigin();
+            Rectangle inputBounds = new(Position.X + stageOrigin.X + NameInputBounds.X, Position.Y + stageOrigin.Y + NameInputBounds.Y, NameInputBounds.Width, NameInputBounds.Height);
             DrawSelection(sprite, inputBounds);
             string text = string.IsNullOrWhiteSpace(_displayName) ? "Type a name" : _displayName;
             SelectorWindowDrawing.DrawShadowedText(
@@ -448,7 +514,7 @@ namespace HaCreator.MapSimulator.UI
                     sprite,
                     _font,
                     $"Last checked: {_checkedName}",
-                    new Vector2(Position.X + 34, Position.Y + 130),
+                    new Vector2(Position.X + stageOrigin.X + 34, Position.Y + stageOrigin.Y + 130),
                     new Color(145, 232, 145));
             }
         }
@@ -467,8 +533,36 @@ namespace HaCreator.MapSimulator.UI
             }
 
             int anchorX = Position.X + PreviewBounds.X + (PreviewBounds.Width / 2);
-            int anchorY = Position.Y + PreviewBounds.Bottom - 6;
+            Point stageOrigin = GetStageOrigin();
+            anchorX += stageOrigin.X;
+            int anchorY = Position.Y + stageOrigin.Y + PreviewBounds.Bottom - 6;
             frame.Draw(sprite, skeletonMeshRenderer, anchorX, anchorY, false, Color.White);
+        }
+
+        private void DrawRaceCards(SpriteBatch sprite)
+        {
+            foreach (LoginCreateCharacterRaceKind race in LoginCreateCharacterFlowState.SupportedRaces)
+            {
+                if (!RaceCardBoundsByRace.TryGetValue(race, out Rectangle bounds))
+                {
+                    continue;
+                }
+
+                Rectangle drawBounds = new(Position.X + bounds.X, Position.Y + bounds.Y, bounds.Width, bounds.Height);
+                if (_racePreviewTexturesByRace.TryGetValue(race, out Texture2D texture) && texture != null)
+                {
+                    sprite.Draw(texture, drawBounds.Location.ToVector2(), Color.White);
+                }
+                else
+                {
+                    DrawSelectableTextRow(sprite, drawBounds, LoginCreateCharacterFlowState.GetRaceLabel(race), race == _selectedRace);
+                }
+
+                if (race == _selectedRace)
+                {
+                    DrawSelection(sprite, drawBounds);
+                }
+            }
         }
 
         private void DrawParagraph(SpriteBatch sprite, string text, Rectangle bounds, Color color)
@@ -547,24 +641,27 @@ namespace HaCreator.MapSimulator.UI
             {
                 _confirmButton.SetVisible(_stage != LoginCreateCharacterStage.NameSelect);
                 _confirmButton.SetEnabled(_stage != LoginCreateCharacterStage.AvatarSelect || !string.IsNullOrWhiteSpace(_checkedName));
-                _confirmButton.X = _stage == LoginCreateCharacterStage.RaceSelect ? 26 : 18;
-                _confirmButton.Y = _stage == LoginCreateCharacterStage.RaceSelect ? 144 : 238;
+                Point stageOrigin = GetStageOrigin();
+                _confirmButton.X = stageOrigin.X + (_stage == LoginCreateCharacterStage.RaceSelect ? 26 : 18);
+                _confirmButton.Y = stageOrigin.Y + (_stage == LoginCreateCharacterStage.RaceSelect ? 144 : 238);
             }
 
             if (_cancelButton != null)
             {
                 _cancelButton.SetVisible(true);
                 _cancelButton.SetEnabled(true);
-                _cancelButton.X = _stage == LoginCreateCharacterStage.RaceSelect ? 110 : (_stage == LoginCreateCharacterStage.NameSelect ? 102 : 102);
-                _cancelButton.Y = _stage == LoginCreateCharacterStage.RaceSelect ? 144 : 238;
+                Point stageOrigin = GetStageOrigin();
+                _cancelButton.X = stageOrigin.X + (_stage == LoginCreateCharacterStage.RaceSelect ? 110 : 102);
+                _cancelButton.Y = stageOrigin.Y + (_stage == LoginCreateCharacterStage.RaceSelect ? 144 : 238);
             }
 
             if (_checkButton != null)
             {
                 _checkButton.SetVisible(_stage == LoginCreateCharacterStage.NameSelect);
                 _checkButton.SetEnabled(_stage == LoginCreateCharacterStage.NameSelect && !string.IsNullOrWhiteSpace(_displayName));
-                _checkButton.X = 20;
-                _checkButton.Y = 188;
+                Point stageOrigin = GetStageOrigin();
+                _checkButton.X = stageOrigin.X + 20;
+                _checkButton.Y = stageOrigin.Y + 188;
             }
         }
 
@@ -613,6 +710,40 @@ namespace HaCreator.MapSimulator.UI
         private bool Pressed(KeyboardState keyboardState, Keys key)
         {
             return keyboardState.IsKeyDown(key) && !_previousKeyboardState.IsKeyDown(key);
+        }
+
+        private Point GetStageOrigin()
+        {
+            return StageBasePosition;
+        }
+
+        private bool TryGetStageTexture(out Texture2D texture)
+        {
+            texture = null;
+            if (_framesByRaceAndStage.TryGetValue(_selectedRace, out Dictionary<LoginCreateCharacterStage, Texture2D> raceStages) &&
+                raceStages.TryGetValue(_stage, out texture) &&
+                texture != null)
+            {
+                return true;
+            }
+
+            return _framesByRaceAndStage.TryGetValue(LoginCreateCharacterRaceKind.Explorer, out Dictionary<LoginCreateCharacterStage, Texture2D> explorerStages) &&
+                   explorerStages.TryGetValue(_stage, out texture) &&
+                   texture != null;
+        }
+
+        private IReadOnlyList<Texture2D> ResolveAvatarTextures(Dictionary<LoginCreateCharacterRaceKind, IReadOnlyList<Texture2D>> texturesByRace)
+        {
+            if (texturesByRace.TryGetValue(_selectedRace, out IReadOnlyList<Texture2D> textures) &&
+                textures != null &&
+                textures.Count > 0)
+            {
+                return textures;
+            }
+
+            return texturesByRace.TryGetValue(LoginCreateCharacterRaceKind.Explorer, out textures)
+                ? textures
+                : Array.Empty<Texture2D>();
         }
 
         private static int HitTestListItem(Point point, Rectangle bounds, int itemCount, int rowHeight)

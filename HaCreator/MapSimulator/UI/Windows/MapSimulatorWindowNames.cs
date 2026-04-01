@@ -19,6 +19,10 @@ namespace HaCreator.MapSimulator.UI
         public const string CashShop = "CashShop";
         public const string AdminShopWishList = "AdminShopWishList";
         public const string CashAvatarPreview = "CashAvatarPreview";
+        public const string CashShopLocker = "CashShopLocker";
+        public const string CashShopInventory = "CashShopInventory";
+        public const string CashShopList = "CashShopList";
+        public const string CashShopStatus = "CashShopStatus";
         public const string Mts = "MTS";
         public const string Menu = "Menu";
         public const string System = "System";
@@ -34,6 +38,7 @@ namespace HaCreator.MapSimulator.UI
         public const string LoginUtilityDialog = "LoginUtilityDialog";
         public const string AntiMacro = "AntiMacro";
         public const string AdminAntiMacro = "AdminAntiMacro";
+        public const string AntiMacroNotice = "AntiMacroNotice";
         public const string CharacterDetail = "CharacterDetail";
         public const string ItemMaker = "ItemMaker";
         public const string BookCollection = "BookCollection";

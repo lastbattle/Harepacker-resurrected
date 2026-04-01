@@ -892,7 +892,7 @@ namespace HaCreator.MapSimulator.Pools
                     {
                         if (data.State == ReactorState.Idle)
                         {
-                            ActivateReactor(index, playerId: 0, currentTick, ReactorActivationType.Quest);
+                            ActivateReactor(index, playerId: 0, currentTick, ReactorActivationType.Quest, data.RequiredQuestId.Value);
                         }
                     }
                     else if (data.State == ReactorState.Active || data.State == ReactorState.Activated)
@@ -911,7 +911,8 @@ namespace HaCreator.MapSimulator.Pools
             int? requiredItemId = TryGetOptionalInt(infoProperty?["itemID"])
                 ?? TryGetOptionalInt(infoProperty?["itemid"]);
             int? requiredQuestId = TryGetOptionalInt(infoProperty?["quest"])
-                ?? TryGetOptionalInt(infoProperty?["reqQuest"]);
+                ?? TryGetOptionalInt(infoProperty?["reqQuest"])
+                ?? TryInferRequiredQuestIdFromStateEvents(reactorInfo?.LinkedWzImage);
             QuestStateType? requiredQuestState = TryGetOptionalQuestState(infoProperty?["state"])
                 ?? TryGetOptionalQuestState(infoProperty?["questState"]);
             string scriptName = TryGetOptionalString(infoProperty?["script"]);
@@ -1046,7 +1047,10 @@ namespace HaCreator.MapSimulator.Pools
             if (eventTypes.Any(eventType => eventType is 1 or 2 or 8))
                 return ReactorActivationType.Hit;
 
-            if (eventTypes.Any(eventType => eventType is 0 or 6 or 7 or 100))
+            if (eventTypes.Contains(100))
+                return ReactorActivationType.Quest;
+
+            if (eventTypes.Any(eventType => eventType is 0 or 6 or 7))
                 return ReactorActivationType.Touch;
 
             return null;
@@ -1514,7 +1518,7 @@ namespace HaCreator.MapSimulator.Pools
                 supportedTypes |= ReactorActivationTypeMask.Item;
             }
 
-            if (requiredQuestId.HasValue && authoredEventTypes.Contains(100))
+            if (authoredEventTypes.Contains(100))
             {
                 supportedTypes |= ReactorActivationTypeMask.Quest;
             }
@@ -1659,6 +1663,62 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return eventTypes;
+        }
+
+        private static int? TryInferRequiredQuestIdFromStateEvents(WzImage linkedReactorImage)
+        {
+            if (linkedReactorImage?.WzProperties == null)
+            {
+                return null;
+            }
+
+            HashSet<int> authoredQuestIds = new HashSet<int>();
+            foreach (WzImageProperty property in linkedReactorImage.WzProperties)
+            {
+                if (!int.TryParse(property?.Name, out _))
+                    continue;
+
+                if (WzInfoTools.GetRealProperty(property?["event"]) is not WzSubProperty eventProperty)
+                    continue;
+
+                foreach (WzSubProperty eventNode in eventProperty.WzProperties.OfType<WzSubProperty>())
+                {
+                    int? eventType = TryGetOptionalInt(WzInfoTools.GetRealProperty(eventNode["type"]));
+                    if (eventType != 100)
+                        continue;
+
+                    foreach (int questId in EnumerateQuestSelectorValues(eventNode))
+                    {
+                        authoredQuestIds.Add(questId);
+                        if (authoredQuestIds.Count > 1)
+                        {
+                            return null;
+                        }
+                    }
+                }
+            }
+
+            return authoredQuestIds.Count == 1 ? authoredQuestIds.First() : null;
+        }
+
+        private static IEnumerable<int> EnumerateQuestSelectorValues(WzSubProperty eventNode)
+        {
+            int?[] selectorCandidates =
+            {
+                TryGetOptionalInt(WzInfoTools.GetRealProperty(eventNode?["quest"])),
+                TryGetOptionalInt(WzInfoTools.GetRealProperty(eventNode?["questID"])),
+                TryGetOptionalInt(WzInfoTools.GetRealProperty(eventNode?["questid"])),
+                TryGetOptionalInt(WzInfoTools.GetRealProperty(eventNode?["reqQuest"])),
+                TryGetOptionalInt(WzInfoTools.GetRealProperty(eventNode?["id"]))
+            };
+
+            foreach (int? selectorCandidate in selectorCandidates)
+            {
+                if (selectorCandidate.GetValueOrDefault() > 0)
+                {
+                    yield return selectorCandidate.Value;
+                }
+            }
         }
 
         private void PublishScriptState(ReactorItem reactor, ReactorRuntimeData data, bool isEnabled, int currentTick)

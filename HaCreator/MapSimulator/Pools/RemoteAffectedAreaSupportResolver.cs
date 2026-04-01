@@ -113,8 +113,12 @@ namespace HaCreator.MapSimulator.Pools
                    || levelData.MAD > 0
                    || levelData.PDD > 0
                    || levelData.MDD > 0
+                   || levelData.DefensePercent > 0
+                   || levelData.MagicDefensePercent > 0
                    || levelData.ACC > 0
                    || levelData.EVA > 0
+                   || levelData.AccuracyPercent > 0
+                   || levelData.AvoidabilityPercent > 0
                    || levelData.Speed > 0
                    || levelData.Jump > 0
                    || levelData.CriticalRate > 0
@@ -155,8 +159,12 @@ namespace HaCreator.MapSimulator.Pools
                 MAD = levelData.MAD,
                 PDD = levelData.PDD,
                 MDD = levelData.MDD,
+                DefensePercent = levelData.DefensePercent,
+                MagicDefensePercent = levelData.MagicDefensePercent,
                 ACC = levelData.ACC,
                 EVA = levelData.EVA,
+                AccuracyPercent = levelData.AccuracyPercent,
+                AvoidabilityPercent = levelData.AvoidabilityPercent,
                 Speed = levelData.Speed,
                 Jump = levelData.Jump,
                 STR = levelData.STR,
@@ -311,12 +319,16 @@ namespace HaCreator.MapSimulator.Pools
                    || levelData.MAD > 0
                    || levelData.PDD > 0
                    || levelData.MDD > 0
+                   || levelData.DefensePercent > 0
+                   || levelData.MagicDefensePercent > 0
                    || levelData.STR > 0
                    || levelData.DEX > 0
                    || levelData.INT > 0
                    || levelData.LUK > 0
                    || levelData.ACC > 0
                    || levelData.EVA > 0
+                   || levelData.AccuracyPercent > 0
+                   || levelData.AvoidabilityPercent > 0
                    || levelData.Speed > 0
                    || levelData.Jump > 0
                    || levelData.MaxHPPercent > 0

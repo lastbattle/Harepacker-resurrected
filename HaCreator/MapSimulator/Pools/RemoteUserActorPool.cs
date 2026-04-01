@@ -15,6 +15,15 @@ using System.Linq;
 
 namespace HaCreator.MapSimulator.Pools
 {
+    public enum RemoteRelationshipOverlayType
+    {
+        Generic = 0,
+        Couple = 1,
+        Friendship = 2,
+        NewYearCard = 3,
+        Marriage = 4
+    }
+
     /// <summary>
     /// Shared owner for remote user actors. This gives the simulator a single seam
     /// for remote avatar look decode, map insertion/removal, world rendering,
@@ -28,7 +37,8 @@ namespace HaCreator.MapSimulator.Pools
             Vector2 Position,
             bool FacingRight,
             int? PreferredPairCharacterId,
-            bool IsVisibleInWorld);
+            bool IsVisibleInWorld,
+            bool IsRelationshipOverlaySuppressed);
 
         private readonly record struct PortableChairPairCandidate(
             PortableChairPairParticipant Left,
@@ -37,10 +47,18 @@ namespace HaCreator.MapSimulator.Pools
             float Score);
 
         private const int MinimumMeleeAfterImageFadeDurationMs = 60;
+        private const float FollowDriverGroundHorizontalOffset = 50f;
+        private const float FollowDriverLadderRopeVerticalOffset = 30f;
         private const float RemoteDragonGroundSideOffset = 42f;
         private const float RemoteDragonGroundVerticalOffset = -12f;
         private const float RemoteDragonKeyDownBarHalfWidth = 36f;
         private const float RemoteDragonKeyDownBarVerticalGap = 30f;
+        private const int RelationshipOverlayVisibleRangeX = 700;
+        private const int RelationshipOverlayVisibleRangeY = 500;
+        private const int RelationshipOverlayNearRangeX = 100;
+        private const int RelationshipOverlayNearRangeY = 100;
+        private const int NewYearCardOverlayNearRangeX = 250;
+        private const int NewYearCardOverlayNearRangeY = 250;
         private static readonly EquipSlot[] BattlefieldAppearanceSlots =
         {
             EquipSlot.Cap,
@@ -84,7 +102,7 @@ namespace HaCreator.MapSimulator.Pools
         private readonly List<StatusBarPreparedSkillRenderData> _preparedSkillWorldOverlayBuffer = new();
         private readonly List<MinimapUI.TrackedUserMarker> _helperMarkerBuffer = new();
         private readonly HashSet<(int LeftId, int RightId)> _renderedCouplePairsBuffer = new();
-        private readonly HashSet<(int ItemId, int LeftId, int RightId)> _renderedItemEffectPairsBuffer = new();
+        private readonly HashSet<(RemoteRelationshipOverlayType Type, int ItemId, int LeftId, int RightId)> _renderedItemEffectPairsBuffer = new();
         private int _preparedSkillWorldOverlayCount;
         private int _helperMarkerCount;
         private CharacterLoader _loader;
@@ -653,6 +671,23 @@ namespace HaCreator.MapSimulator.Pools
 
         public bool TrySetItemEffect(int characterId, int? itemId, int? pairCharacterId, int currentTime, out string message)
         {
+            return TrySetItemEffect(
+                characterId,
+                RemoteRelationshipOverlayType.Generic,
+                itemId,
+                pairCharacterId,
+                currentTime,
+                out message);
+        }
+
+        public bool TrySetItemEffect(
+            int characterId,
+            RemoteRelationshipOverlayType relationshipType,
+            int? itemId,
+            int? pairCharacterId,
+            int currentTime,
+            out string message)
+        {
             message = null;
             if (_loader == null)
             {
@@ -668,22 +703,25 @@ namespace HaCreator.MapSimulator.Pools
 
             if (!itemId.HasValue || itemId.Value <= 0)
             {
-                actor.ItemEffect = null;
+                actor.RelationshipOverlays.Remove(relationshipType);
                 return true;
             }
 
             ItemEffectAnimationSet effect = _loader.LoadItemEffectAnimationSet(itemId.Value);
-            if (effect == null)
+            if (effect == null && relationshipType != RemoteRelationshipOverlayType.NewYearCard)
             {
                 message = $"Item effect {itemId.Value} could not be loaded from Effect/ItemEff.img.";
                 return false;
             }
 
-            actor.ItemEffect = new RemoteItemEffectState
+            actor.RelationshipOverlays[relationshipType] = new RemoteRelationshipOverlayState
             {
+                RelationshipType = relationshipType,
                 ItemId = itemId.Value,
                 PairCharacterId = pairCharacterId,
-                Effect = effect,
+                Effect = CloneRelationshipOverlayEffect(
+                    effect,
+                    shouldLoop: relationshipType != RemoteRelationshipOverlayType.Generic),
                 StartTime = currentTime
             };
             return true;
@@ -773,14 +811,16 @@ namespace HaCreator.MapSimulator.Pools
             return true;
         }
 
-        public void Update(int currentTime)
+        public void Update(int currentTime, PlayerCharacter localPlayer = null)
         {
             foreach (RemoteUserActor actor in _actorsById.Values)
             {
-                if (actor.MovementSnapshot != null)
+                if (actor.FollowDriverId <= 0 && actor.MovementSnapshot != null)
                 {
                     ApplyMovementSnapshot(actor, currentTime);
                 }
+
+                ApplyFollowDriverState(actor, localPlayer);
 
                 if (actor.PreparedSkill != null && actor.PreparedSkill.DurationMs > 0)
                 {
@@ -790,11 +830,18 @@ namespace HaCreator.MapSimulator.Pools
                     }
                 }
 
-                if (actor.ItemEffect?.Effect != null
-                    && actor.ItemEffect.Effect.TotalDurationMs > 0
-                    && currentTime - actor.ItemEffect.StartTime >= actor.ItemEffect.Effect.TotalDurationMs)
+                foreach (KeyValuePair<RemoteRelationshipOverlayType, RemoteRelationshipOverlayState> overlayEntry in actor.RelationshipOverlays.ToArray())
                 {
-                    actor.ItemEffect = null;
+                    RemoteRelationshipOverlayState overlay = overlayEntry.Value;
+                    if (overlay?.Effect == null
+                        || overlay.RelationshipType != RemoteRelationshipOverlayType.Generic
+                        || overlay.Effect.TotalDurationMs <= 0
+                        || currentTime - overlay.StartTime < overlay.Effect.TotalDurationMs)
+                    {
+                        continue;
+                    }
+
+                    actor.RelationshipOverlays.Remove(overlayEntry.Key);
                 }
 
                 actor.UpdateMeleeAfterImage(currentTime);
@@ -1226,7 +1273,7 @@ namespace HaCreator.MapSimulator.Pools
                 }
 
                 frame.Draw(spriteBatch, skeletonMeshRenderer, screenX, screenY, actor.FacingRight, Color.White);
-                DrawItemEffect(
+                DrawRelationshipOverlays(
                     spriteBatch,
                     skeletonMeshRenderer,
                     actor,
@@ -1435,7 +1482,7 @@ namespace HaCreator.MapSimulator.Pools
                 drawFrontLayers);
         }
 
-        private void DrawItemEffect(
+        private void DrawRelationshipOverlays(
             SpriteBatch spriteBatch,
             SkeletonMeshRenderer skeletonMeshRenderer,
             RemoteUserActor actor,
@@ -1447,36 +1494,109 @@ namespace HaCreator.MapSimulator.Pools
             int screenX,
             int screenY,
             int currentTime,
-            ISet<(int ItemId, int LeftId, int RightId)> renderedPairs)
+            ISet<(RemoteRelationshipOverlayType Type, int ItemId, int LeftId, int RightId)> renderedPairs)
         {
-            RemoteItemEffectState itemEffect = actor?.ItemEffect;
-            if (itemEffect?.Effect == null)
+            if (actor?.RelationshipOverlays == null || actor.RelationshipOverlays.Count == 0)
             {
                 return;
             }
 
-            int elapsedTime = Math.Max(0, currentTime - itemEffect.StartTime);
-            DrawItemEffectLayers(spriteBatch, skeletonMeshRenderer, itemEffect.Effect.OwnerLayers, screenX, screenY, actor.FacingRight, elapsedTime);
-
-            if (itemEffect.Effect.SharedLayers == null || itemEffect.Effect.SharedLayers.Count == 0)
+            foreach (RemoteRelationshipOverlayState overlay in actor.RelationshipOverlays.Values.OrderBy(static value => value.RelationshipType))
             {
-                return;
-            }
-
-            if (!TryResolveItemEffectPair(
+                DrawRelationshipOverlay(
+                    spriteBatch,
+                    skeletonMeshRenderer,
                     actor,
-                    itemEffect,
+                    overlay,
                     localPlayer,
-                    out int partnerCharacterId,
-                    out Vector2 partnerPosition,
-                    out bool partnerFacingRight))
+                    mapShiftX,
+                    mapShiftY,
+                    centerX,
+                    centerY,
+                    screenX,
+                    screenY,
+                    currentTime,
+                    renderedPairs);
+            }
+        }
+
+        private void DrawRelationshipOverlay(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            RemoteUserActor actor,
+            RemoteRelationshipOverlayState overlay,
+            PlayerCharacter localPlayer,
+            int mapShiftX,
+            int mapShiftY,
+            int centerX,
+            int centerY,
+            int screenX,
+            int screenY,
+            int currentTime,
+            ISet<(RemoteRelationshipOverlayType Type, int ItemId, int LeftId, int RightId)> renderedPairs)
+        {
+            if (actor == null || overlay == null)
+            {
+                return;
+            }
+
+            int elapsedTime = Math.Max(0, currentTime - overlay.StartTime);
+            bool usesClientRelationshipAdmission = UsesClientRelationshipAdmission(overlay.RelationshipType);
+            int relationshipStatus = usesClientRelationshipAdmission
+                ? 0
+                : 1;
+            int partnerCharacterId = 0;
+            Vector2 partnerPosition = Vector2.Zero;
+            bool partnerFacingRight = actor.FacingRight;
+            if (TryResolveRelationshipOverlayPair(
+                    actor,
+                    overlay,
+                    localPlayer,
+                    out int resolvedPartnerCharacterId,
+                    out Vector2 resolvedPartnerPosition,
+                    out bool resolvedPartnerFacingRight))
+            {
+                partnerCharacterId = resolvedPartnerCharacterId;
+                partnerPosition = resolvedPartnerPosition;
+                partnerFacingRight = resolvedPartnerFacingRight;
+                if (usesClientRelationshipAdmission)
+                {
+                    relationshipStatus = ResolveRelationshipOverlayStatus(
+                        actor.Position,
+                        partnerPosition,
+                        overlay.RelationshipType,
+                        IsRelationshipOverlaySuppressed(actor),
+                        IsRelationshipOverlayPartnerSuppressed(localPlayer, partnerCharacterId, actor.CharacterId));
+                }
+            }
+            else if (usesClientRelationshipAdmission)
+            {
+                relationshipStatus = 0;
+            }
+
+            if ((relationshipStatus & 1) != 0 && overlay.Effect != null)
+            {
+                DrawItemEffectLayers(
+                    spriteBatch,
+                    skeletonMeshRenderer,
+                    overlay.Effect.OwnerLayers,
+                    screenX,
+                    screenY,
+                    actor.FacingRight,
+                    elapsedTime);
+            }
+
+            if (overlay.Effect?.SharedLayers == null
+                || overlay.Effect.SharedLayers.Count == 0
+                || partnerCharacterId <= 0
+                || (relationshipStatus & 2) == 0)
             {
                 return;
             }
 
             int leftId = Math.Min(actor.CharacterId, partnerCharacterId);
             int rightId = Math.Max(actor.CharacterId, partnerCharacterId);
-            if (!renderedPairs.Add((itemEffect.ItemId, leftId, rightId)))
+            if (!renderedPairs.Add((overlay.RelationshipType, overlay.ItemId, leftId, rightId)))
             {
                 return;
             }
@@ -1487,7 +1607,7 @@ namespace HaCreator.MapSimulator.Pools
             DrawItemEffectLayers(
                 spriteBatch,
                 skeletonMeshRenderer,
-                itemEffect.Effect.SharedLayers,
+                overlay.Effect.SharedLayers,
                 midpointScreenX,
                 midpointScreenY,
                 partnerFacingRight,
@@ -1515,9 +1635,43 @@ namespace HaCreator.MapSimulator.Pools
             }
         }
 
-        private bool TryResolveItemEffectPair(
+        public static int ResolveRelationshipOverlayStatus(
+            Vector2 ownerPosition,
+            Vector2 partnerPosition,
+            RemoteRelationshipOverlayType relationshipType,
+            bool ownerSuppressed,
+            bool partnerSuppressed)
+        {
+            if (ownerSuppressed || partnerSuppressed)
+            {
+                return 0;
+            }
+
+            (int nearRangeX, int nearRangeY) = relationshipType switch
+            {
+                RemoteRelationshipOverlayType.NewYearCard => (NewYearCardOverlayNearRangeX, NewYearCardOverlayNearRangeY),
+                _ => (RelationshipOverlayNearRangeX, RelationshipOverlayNearRangeY)
+            };
+
+            int deltaX = Math.Abs((int)Math.Round(ownerPosition.X - partnerPosition.X));
+            int deltaY = Math.Abs((int)Math.Round(ownerPosition.Y - partnerPosition.Y));
+            int status = 0;
+            if (deltaX < RelationshipOverlayVisibleRangeX && deltaY < RelationshipOverlayVisibleRangeY)
+            {
+                status = 1;
+            }
+
+            if (deltaX < nearRangeX && deltaY < nearRangeY)
+            {
+                status |= 2;
+            }
+
+            return status;
+        }
+
+        private bool TryResolveRelationshipOverlayPair(
             RemoteUserActor ownerActor,
-            RemoteItemEffectState itemEffect,
+            RemoteRelationshipOverlayState overlay,
             PlayerCharacter localPlayer,
             out int partnerCharacterId,
             out Vector2 partnerPosition,
@@ -1526,16 +1680,18 @@ namespace HaCreator.MapSimulator.Pools
             partnerCharacterId = 0;
             partnerPosition = Vector2.Zero;
             partnerFacingRight = ownerActor?.FacingRight ?? true;
-            if (ownerActor == null || itemEffect == null)
+            if (ownerActor == null || overlay == null)
             {
                 return false;
             }
 
             int localCharacterId = localPlayer?.Build?.Id ?? 0;
-            if (itemEffect.PairCharacterId.HasValue
+            if (overlay.PairCharacterId.HasValue
                 && localCharacterId > 0
-                && itemEffect.PairCharacterId.Value == localCharacterId
-                && localPlayer?.IsAlive == true)
+                && overlay.PairCharacterId.Value == localCharacterId
+                && localPlayer?.IsAlive == true
+                && (!UsesClientRelationshipAdmission(overlay.RelationshipType)
+                    || !IsRelationshipOverlaySuppressed(localPlayer, localCharacterId, ownerActor.CharacterId)))
             {
                 partnerCharacterId = localCharacterId;
                 partnerPosition = localPlayer.Position;
@@ -1543,11 +1699,13 @@ namespace HaCreator.MapSimulator.Pools
                 return true;
             }
 
-            if (itemEffect.PairCharacterId.HasValue
-                && itemEffect.PairCharacterId.Value > 0
-                && itemEffect.PairCharacterId.Value != ownerActor.CharacterId
-                && _actorsById.TryGetValue(itemEffect.PairCharacterId.Value, out RemoteUserActor explicitPartner)
-                && explicitPartner.IsVisibleInWorld)
+            if (overlay.PairCharacterId.HasValue
+                && overlay.PairCharacterId.Value > 0
+                && overlay.PairCharacterId.Value != ownerActor.CharacterId
+                && _actorsById.TryGetValue(overlay.PairCharacterId.Value, out RemoteUserActor explicitPartner)
+                && explicitPartner.IsVisibleInWorld
+                && (!UsesClientRelationshipAdmission(overlay.RelationshipType)
+                    || !IsRelationshipOverlaySuppressed(explicitPartner)))
             {
                 partnerCharacterId = explicitPartner.CharacterId;
                 partnerPosition = explicitPartner.Position;
@@ -1558,8 +1716,18 @@ namespace HaCreator.MapSimulator.Pools
             RemoteUserActor fallbackPartner = _actorsById.Values
                 .Where(candidate => candidate.IsVisibleInWorld
                     && candidate.CharacterId != ownerActor.CharacterId
-                    && candidate.ItemEffect?.ItemId == itemEffect.ItemId)
-                .OrderBy(candidate => itemEffect.PairCharacterId.HasValue && candidate.ItemEffect?.PairCharacterId == ownerActor.CharacterId ? 0 : 1)
+                    && (!UsesClientRelationshipAdmission(overlay.RelationshipType)
+                        || !IsRelationshipOverlaySuppressed(candidate))
+                    && candidate.RelationshipOverlays.TryGetValue(overlay.RelationshipType, out RemoteRelationshipOverlayState candidateOverlay)
+                    && candidateOverlay?.ItemId == overlay.ItemId)
+                .OrderBy(candidate =>
+                {
+                    candidate.RelationshipOverlays.TryGetValue(overlay.RelationshipType, out RemoteRelationshipOverlayState candidateOverlay);
+                    return overlay.PairCharacterId.HasValue
+                           && candidateOverlay?.PairCharacterId == ownerActor.CharacterId
+                        ? 0
+                        : 1;
+                })
                 .ThenBy(candidate => Vector2.DistanceSquared(candidate.Position, ownerActor.Position))
                 .FirstOrDefault();
             if (fallbackPartner == null)
@@ -1571,6 +1739,118 @@ namespace HaCreator.MapSimulator.Pools
             partnerPosition = fallbackPartner.Position;
             partnerFacingRight = fallbackPartner.FacingRight;
             return true;
+        }
+
+        private static bool UsesClientRelationshipAdmission(RemoteRelationshipOverlayType relationshipType)
+        {
+            return relationshipType != RemoteRelationshipOverlayType.Generic;
+        }
+
+        private static bool IsRelationshipOverlaySuppressed(PlayerCharacter player, int expectedCharacterId, int ownerCharacterId)
+        {
+            if (player?.Build == null
+                || !player.IsAlive
+                || player.Build.Id <= 0
+                || player.Build.Id != expectedCharacterId
+                || player.Build.Id == ownerCharacterId)
+            {
+                return true;
+            }
+
+            return player.HasActiveMorphTransform
+                || IsRelationshipOverlayGhostAction(player.CurrentActionName);
+        }
+
+        private static bool IsRelationshipOverlaySuppressed(RemoteUserActor actor)
+        {
+            if (actor == null || !actor.IsVisibleInWorld)
+            {
+                return true;
+            }
+
+            return actor.HasMorphTemplate
+                || IsRelationshipOverlayGhostAction(actor.ActionName);
+        }
+
+        private bool IsRelationshipOverlayPartnerSuppressed(PlayerCharacter localPlayer, int partnerCharacterId, int ownerCharacterId)
+        {
+            if (partnerCharacterId <= 0 || partnerCharacterId == ownerCharacterId)
+            {
+                return true;
+            }
+
+            if (localPlayer?.Build?.Id == partnerCharacterId)
+            {
+                return IsRelationshipOverlaySuppressed(localPlayer, partnerCharacterId, ownerCharacterId);
+            }
+
+            return !_actorsById.TryGetValue(partnerCharacterId, out RemoteUserActor actor)
+                   || IsRelationshipOverlaySuppressed(actor);
+        }
+
+        private static bool IsRelationshipOverlayGhostAction(string actionName)
+        {
+            return string.Equals(
+                actionName,
+                CharacterPart.GetActionString(CharacterAction.Ghost),
+                StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static ItemEffectAnimationSet CloneRelationshipOverlayEffect(ItemEffectAnimationSet source, bool shouldLoop)
+        {
+            if (source == null)
+            {
+                return null;
+            }
+
+            return new ItemEffectAnimationSet
+            {
+                ItemId = source.ItemId,
+                OwnerLayers = CloneRelationshipOverlayLayers(source.OwnerLayers, shouldLoop),
+                SharedLayers = CloneRelationshipOverlayLayers(source.SharedLayers, shouldLoop)
+            };
+        }
+
+        private static List<PortableChairLayer> CloneRelationshipOverlayLayers(
+            IEnumerable<PortableChairLayer> layers,
+            bool shouldLoop)
+        {
+            List<PortableChairLayer> clones = new();
+            if (layers == null)
+            {
+                return clones;
+            }
+
+            foreach (PortableChairLayer layer in layers)
+            {
+                if (layer == null)
+                {
+                    continue;
+                }
+
+                CharacterAnimation animation = null;
+                if (layer.Animation != null)
+                {
+                    animation = new CharacterAnimation
+                    {
+                        Action = layer.Animation.Action,
+                        ActionName = layer.Animation.ActionName,
+                        Frames = layer.Animation.Frames,
+                        Loop = shouldLoop
+                    };
+                    animation.CalculateTotalDuration();
+                }
+
+                clones.Add(new PortableChairLayer
+                {
+                    Name = layer.Name,
+                    Animation = animation,
+                    RelativeZ = layer.RelativeZ,
+                    PositionHint = layer.PositionHint
+                });
+            }
+
+            return clones;
         }
 
         public string DescribeStatus()
@@ -1729,7 +2009,8 @@ namespace HaCreator.MapSimulator.Pools
                     actor.Position,
                     actor.FacingRight,
                     actor.PreferredPortableChairPairCharacterId,
-                    actor.IsVisibleInWorld));
+                    actor.IsVisibleInWorld,
+                    IsRelationshipOverlaySuppressed(actor)));
             }
 
             PortableChair localChair = localPlayer?.Build?.ActivePortableChair;
@@ -1744,7 +2025,8 @@ namespace HaCreator.MapSimulator.Pools
                     localPlayer.Position,
                     localPlayer.FacingRight,
                     null,
-                    true));
+                    true,
+                    IsRelationshipOverlaySuppressed(localPlayer, localCharacterId, ownerCharacterId: 0)));
             }
 
             return new Dictionary<int, int>(ResolvePortableChairPairings(participants, preferVisibleOnly));
@@ -1763,6 +2045,8 @@ namespace HaCreator.MapSimulator.Pools
                 || left.Chair.ItemId <= 0
                 || left.Chair.ItemId != right.Chair.ItemId
                 || (preferVisibleOnly && (!left.IsVisibleInWorld || !right.IsVisibleInWorld))
+                || left.IsRelationshipOverlaySuppressed
+                || right.IsRelationshipOverlaySuppressed
                 || !PlayerCharacter.IsPortableChairActualPairActive(
                     left.Chair,
                     left.FacingRight,
@@ -2148,6 +2432,24 @@ namespace HaCreator.MapSimulator.Pools
                 }
             }
 
+            if (_skillLoader != null
+                && actor?.Build != null
+                && _skillLoader.TryResolveUniqueMeleeAfterImageActionName(
+                    skill,
+                    actor.Build.GetWeapon(),
+                    EnumerateRemoteActionResolutionCandidates(actor, skill, actionName, rawActionCode),
+                    actor.Build.Level,
+                    masteryPercent,
+                    chargeElement,
+                    out string uniqueAfterImageActionName))
+            {
+                string preferredActionName = ResolvePreferredRemoteMeleeActionName(actor, actionName, uniqueAfterImageActionName);
+                if (!string.IsNullOrWhiteSpace(preferredActionName))
+                {
+                    return preferredActionName;
+                }
+            }
+
             return actionName;
         }
 
@@ -2360,6 +2662,102 @@ namespace HaCreator.MapSimulator.Pools
             }
         }
 
+        private void ApplyFollowDriverState(RemoteUserActor actor, PlayerCharacter localPlayer)
+        {
+            if (actor == null || actor.FollowDriverId <= 0)
+            {
+                return;
+            }
+
+            if (!TryResolveFollowDriverWorldState(actor, localPlayer, out Vector2 position, out bool facingRight))
+            {
+                return;
+            }
+
+            actor.Position = position;
+            actor.FacingRight = facingRight;
+        }
+
+        private bool TryResolveFollowDriverWorldState(
+            RemoteUserActor actor,
+            PlayerCharacter localPlayer,
+            out Vector2 position,
+            out bool facingRight)
+        {
+            position = default;
+            facingRight = actor?.FacingRight ?? true;
+            if (actor == null || actor.FollowDriverId <= 0)
+            {
+                return false;
+            }
+
+            if (TryResolveLocalFollowDriverState(actor.FollowDriverId, localPlayer, out position, out facingRight))
+            {
+                return true;
+            }
+
+            if (!_actorsById.TryGetValue(actor.FollowDriverId, out RemoteUserActor driverActor))
+            {
+                return false;
+            }
+
+            return TryResolveFollowDriverOffsetPosition(
+                driverActor.Position,
+                driverActor.FacingRight,
+                driverActor.ActionName,
+                out position,
+                out facingRight);
+        }
+
+        private static bool TryResolveLocalFollowDriverState(
+            int driverCharacterId,
+            PlayerCharacter localPlayer,
+            out Vector2 position,
+            out bool facingRight)
+        {
+            position = default;
+            facingRight = localPlayer?.FacingRight ?? true;
+            if (localPlayer?.Build?.Id != driverCharacterId)
+            {
+                return false;
+            }
+
+            return TryResolveFollowDriverOffsetPosition(
+                localPlayer.Position,
+                localPlayer.FacingRight,
+                localPlayer.CurrentActionName,
+                out position,
+                out facingRight);
+        }
+
+        internal static bool TryResolveFollowDriverOffsetPosition(
+            Vector2 driverPosition,
+            bool driverFacingRight,
+            string driverActionName,
+            out Vector2 followerPosition,
+            out bool followerFacingRight)
+        {
+            followerFacingRight = driverFacingRight;
+            if (IsFollowDriverLadderOrRopeAction(driverActionName))
+            {
+                followerPosition = new Vector2(
+                    driverPosition.X,
+                    driverPosition.Y + FollowDriverLadderRopeVerticalOffset);
+                return true;
+            }
+
+            followerPosition = new Vector2(
+                driverPosition.X + (driverFacingRight ? FollowDriverGroundHorizontalOffset : -FollowDriverGroundHorizontalOffset),
+                driverPosition.Y);
+            return true;
+        }
+
+        private static bool IsFollowDriverLadderOrRopeAction(string actionName)
+        {
+            return string.Equals(actionName, "ladder", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(actionName, "rope", StringComparison.OrdinalIgnoreCase);
+        }
+
         private static MoveAction MoveActionFromRaw(byte moveAction)
         {
             int normalized = (moveAction >> 1) & 0x0F;
@@ -2484,11 +2882,12 @@ namespace HaCreator.MapSimulator.Pools
         public CharacterPart PortableChairPreviousMount { get; set; }
         public bool PortableChairAppliedMount { get; set; }
         public int? PreferredPortableChairPairCharacterId { get; set; }
-        public RemoteItemEffectState ItemEffect { get; set; }
+        public Dictionary<RemoteRelationshipOverlayType, RemoteRelationshipOverlayState> RelationshipOverlays { get; } = new();
         public PlayerMovementSyncSnapshot MovementSnapshot { get; set; }
         public byte LastMoveActionRaw { get; set; }
         public int CurrentFootholdId { get; set; }
         public bool MovementDrivenActionSelection { get; set; }
+        public bool HasMorphTemplate { get; set; }
         public Dictionary<EquipSlot, CharacterPart> BattlefieldOriginalEquipment { get; set; }
         public float? BattlefieldOriginalSpeed { get; set; }
         public int? BattlefieldAppliedTeamId { get; set; }
@@ -2592,8 +2991,13 @@ namespace HaCreator.MapSimulator.Pools
             string teamText = BattlefieldTeamId?.ToString() ?? "none";
             string preparedText = PreparedSkill != null ? PreparedSkill.SkillId.ToString() : "none";
             string chairPairText = PreferredPortableChairPairCharacterId?.ToString() ?? "none";
-            string itemEffectText = ItemEffect != null
-                ? $"{ItemEffect.ItemId}:{ItemEffect.PairCharacterId?.ToString() ?? "none"}"
+            string itemEffectText = RelationshipOverlays.Count > 0
+                ? string.Join(
+                    ",",
+                    RelationshipOverlays
+                        .OrderBy(static entry => entry.Key)
+                        .Select(static entry =>
+                            $"{entry.Key}:{entry.Value.ItemId}:{entry.Value.PairCharacterId?.ToString() ?? "none"}"))
                 : "none";
             string followDriverText = FollowDriverId > 0 ? FollowDriverId.ToString() : "none";
             string followPassengerText = FollowPassengerId > 0 ? FollowPassengerId.ToString() : "none";
@@ -2631,8 +3035,9 @@ namespace HaCreator.MapSimulator.Pools
         public bool ShowText { get; init; } = true;
     }
 
-    public sealed class RemoteItemEffectState
+    public sealed class RemoteRelationshipOverlayState
     {
+        public RemoteRelationshipOverlayType RelationshipType { get; init; }
         public int ItemId { get; init; }
         public int? PairCharacterId { get; init; }
         public ItemEffectAnimationSet Effect { get; init; }

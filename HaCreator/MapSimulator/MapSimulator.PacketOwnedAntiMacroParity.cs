@@ -24,16 +24,31 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedAntiMacroScreenshotMode = 8;
         private const int PacketOwnedAntiMacroChatReportMode = 10;
         private const int PacketOwnedAntiMacroNoticeMode = 11;
+        private const int PacketOwnedAntiMacroAnswerSubmitOpcode = 117;
         private const int PacketOwnedAntiMacroDefaultDurationMs = 60000;
         private static readonly Point PacketOwnedAntiMacroBackground2Offset = new(3, 7);
         private static readonly Point PacketOwnedAntiMacroBackground3Offset = new(5, 23);
+        private const string PacketOwnedAntiMacroPopupCanvasPath = "Macro/popup";
+        private const string PacketOwnedAntiMacroPopupOkButtonPath = "Macro/btOK";
+        private const string PacketOwnedAntiMacroPopupCancelButtonPath = "Macro/btCancle";
+        private const string PacketOwnedAntiMacroAdminCanvas0Path = "Macro/admin/0";
+        private const string PacketOwnedAntiMacroAdminCanvas1Path = "Macro/admin/1";
+        private const string PacketOwnedAntiMacroAdminCanvas2Path = "Macro/admin/2";
 
         private string _lastPacketOwnedAntiMacroSummary = "Packet-owned anti-macro idle.";
         private string _lastPacketOwnedAntiMacroNotice = string.Empty;
         private string _lastPacketOwnedAntiMacroScreenshotPath = string.Empty;
         private int _lastPacketOwnedAntiMacroMode = -1;
         private int _lastPacketOwnedAntiMacroType = -1;
+        private int _lastPacketOwnedAntiMacroNoticeStringPoolId = -1;
+        private int _lastPacketOwnedAntiMacroChatStringPoolId = -1;
+        private int _lastPacketOwnedAntiMacroSubmittedRemainingMs = -1;
+        private string _lastPacketOwnedAntiMacroSubmittedAnswer = string.Empty;
         private bool _packetOwnedAntiMacroComboHeld;
+        private bool _packetOwnedAntiMacroAwaitingResult;
+
+        private sealed record PacketOwnedAntiMacroNoticeDefinition(int StringPoolId, string Text, string AvatarCanvasPath);
+        private sealed record PacketOwnedAntiMacroChatDefinition(int StringPoolId, string Text, bool SaveScreenshot);
 
         private void RegisterPacketOwnedAntiMacroWindows()
         {
@@ -68,6 +83,20 @@ namespace HaCreator.MapSimulator
                 uiWindowManager.RegisterCustomWindow(window);
             }
 
+            if (uiWindowManager.GetWindow(MapSimulatorWindowNames.AntiMacroNotice) == null)
+            {
+                AntiMacroNoticeWindow window = new(
+                    MapSimulatorWindowNames.AntiMacroNotice,
+                    LoadUiCanvasTexture(ResolvePacketOwnedAntiMacroCanvas(PacketOwnedAntiMacroPopupCanvasPath)))
+                {
+                    Position = new Point(
+                        Math.Max(24, (_renderParams.RenderWidth / 2) - 130),
+                        Math.Max(24, (_renderParams.RenderHeight / 2) - 65))
+                };
+                window.CloseRequested += HandlePacketOwnedAntiMacroNoticeClosed;
+                uiWindowManager.RegisterCustomWindow(window);
+            }
+
             if (uiWindowManager.GetWindow(MapSimulatorWindowNames.AntiMacro) is AntiMacroChallengeWindow antiMacroWindow)
             {
                 ApplyPacketOwnedAntiMacroOwnerVisuals(antiMacroWindow, macroProperty);
@@ -80,6 +109,19 @@ namespace HaCreator.MapSimulator
             if (uiWindowManager.GetWindow(MapSimulatorWindowNames.AdminAntiMacro) is AntiMacroChallengeWindow adminWindow && _fontChat != null)
             {
                 adminWindow.SetFont(_fontChat);
+            }
+
+            if (uiWindowManager.GetWindow(MapSimulatorWindowNames.AntiMacroNotice) is AntiMacroNoticeWindow noticeWindow)
+            {
+                if (_fontChat != null)
+                {
+                    noticeWindow.SetFont(_fontChat);
+                }
+
+                noticeWindow.ConfigureVisuals(
+                    LoadUiCanvasTexture(ResolvePacketOwnedAntiMacroCanvas(PacketOwnedAntiMacroAdminCanvas0Path)),
+                    CreatePacketOwnedAntiMacroButton(ResolvePacketOwnedAntiMacroSubProperty(PacketOwnedAntiMacroPopupOkButtonPath)),
+                    CreatePacketOwnedAntiMacroButton(ResolvePacketOwnedAntiMacroSubProperty(PacketOwnedAntiMacroPopupCancelButtonPath)));
             }
         }
 
@@ -191,13 +233,19 @@ namespace HaCreator.MapSimulator
 
         private void HandlePacketOwnedAntiMacroAnswerSubmitted(string answer)
         {
-            if (string.IsNullOrWhiteSpace(answer))
+            if (string.IsNullOrWhiteSpace(answer) || !TryGetActivePacketOwnedAntiMacroWindow(out AntiMacroChallengeWindow window))
             {
                 return;
             }
 
-            _lastPacketOwnedAntiMacroSummary = $"Submitted anti-macro answer \"{answer.Trim()}\" through the simulator owner. Packet-authored result resolution is still required to clear the challenge.";
-            ShowUtilityFeedbackMessage(_lastPacketOwnedAntiMacroSummary);
+            string submittedAnswer = answer.Trim();
+            _lastPacketOwnedAntiMacroSubmittedAnswer = submittedAnswer;
+            _lastPacketOwnedAntiMacroSubmittedRemainingMs = Math.Max(0, window.ExpiresAt - Environment.TickCount);
+            _packetOwnedAntiMacroAwaitingResult = true;
+
+            window.ClearChallenge();
+            _lastPacketOwnedAntiMacroSummary =
+                $"Queued anti-macro answer outpacket {PacketOwnedAntiMacroAnswerSubmitOpcode} with remaining={_lastPacketOwnedAntiMacroSubmittedRemainingMs}ms; awaiting packet-owned result resolution.";
         }
 
         private string DescribePacketOwnedAntiMacroStatus(int currentTickCount)
@@ -210,7 +258,9 @@ namespace HaCreator.MapSimulator
             }
             else
             {
-                ownerState = "owner inactive";
+                ownerState = _packetOwnedAntiMacroAwaitingResult
+                    ? $"owner pending result, submitted=\"{_lastPacketOwnedAntiMacroSubmittedAnswer}\", remainingAtSubmit={_lastPacketOwnedAntiMacroSubmittedRemainingMs}ms"
+                    : "owner inactive";
             }
 
             string screenshotState = string.IsNullOrWhiteSpace(_lastPacketOwnedAntiMacroScreenshotPath)
@@ -234,11 +284,17 @@ namespace HaCreator.MapSimulator
                 adminWindow.ClearChallenge();
             }
 
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.AntiMacroNotice) is AntiMacroNoticeWindow noticeWindow)
+            {
+                noticeWindow.Hide();
+            }
+
             if (releaseCombo)
             {
                 SetPacketOwnedAntiMacroComboHold(false);
             }
 
+            _packetOwnedAntiMacroAwaitingResult = false;
             _lastPacketOwnedAntiMacroSummary = "Closed packet-owned anti-macro owner.";
             return _lastPacketOwnedAntiMacroSummary;
         }
@@ -277,6 +333,9 @@ namespace HaCreator.MapSimulator
             uiWindowManager.BringToFront(challengeWindow);
 
             SetPacketOwnedAntiMacroComboHold(true);
+            _packetOwnedAntiMacroAwaitingResult = false;
+            _lastPacketOwnedAntiMacroSubmittedAnswer = string.Empty;
+            _lastPacketOwnedAntiMacroSubmittedRemainingMs = -1;
             _lastPacketOwnedAntiMacroSummary = $"Opened packet-owned {(adminVariant ? "admin " : string.Empty)}anti-macro challenge and held Ctrl combo input.";
             return _lastPacketOwnedAntiMacroSummary;
         }
@@ -302,9 +361,26 @@ namespace HaCreator.MapSimulator
 
         private string ApplyPacketOwnedAntiMacroNotice(int noticeType, int antiMacroType)
         {
-            _lastPacketOwnedAntiMacroNotice = ResolvePacketOwnedAntiMacroNoticeText(noticeType, antiMacroType);
-            _lastPacketOwnedAntiMacroSummary = $"Anti-macro notice type {noticeType} / mode {antiMacroType} routed to simulator feedback.";
-            ShowUtilityFeedbackMessage(_lastPacketOwnedAntiMacroNotice);
+            RegisterPacketOwnedAntiMacroWindows();
+
+            PacketOwnedAntiMacroNoticeDefinition definition = ResolvePacketOwnedAntiMacroNoticeDefinition(noticeType, antiMacroType);
+            _lastPacketOwnedAntiMacroNotice = definition.Text;
+            _lastPacketOwnedAntiMacroNoticeStringPoolId = definition.StringPoolId;
+
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.AntiMacroNotice) is AntiMacroNoticeWindow noticeWindow)
+            {
+                noticeWindow.Configure(
+                    FormatPacketOwnedAntiMacroStringPoolText(definition.Text, definition.StringPoolId),
+                    definition.StringPoolId);
+                noticeWindow.ConfigureVisuals(
+                    LoadUiCanvasTexture(ResolvePacketOwnedAntiMacroCanvas(definition.AvatarCanvasPath)),
+                    CreatePacketOwnedAntiMacroButton(ResolvePacketOwnedAntiMacroSubProperty(PacketOwnedAntiMacroPopupOkButtonPath)),
+                    CreatePacketOwnedAntiMacroButton(ResolvePacketOwnedAntiMacroSubProperty(PacketOwnedAntiMacroPopupCancelButtonPath)));
+                noticeWindow.Show();
+                uiWindowManager.BringToFront(noticeWindow);
+            }
+
+            _lastPacketOwnedAntiMacroSummary = $"Opened anti-macro notice owner for type {noticeType} / mode {antiMacroType}.";
             return _lastPacketOwnedAntiMacroSummary;
         }
 
@@ -316,28 +392,31 @@ namespace HaCreator.MapSimulator
             return _lastPacketOwnedAntiMacroSummary;
         }
 
-        private static string ResolvePacketOwnedAntiMacroNoticeText(int noticeType, int antiMacroType)
+        private static PacketOwnedAntiMacroNoticeDefinition ResolvePacketOwnedAntiMacroNoticeDefinition(int noticeType, int antiMacroType)
         {
             return (noticeType, antiMacroType) switch
             {
-                (0, _) => "Anti-macro challenge acknowledged.",
-                (1, _) => "Anti-macro challenge failed.",
-                (2, _) => "Anti-macro challenge timed out.",
-                (3, _) => "Anti-macro challenge was cancelled.",
-                (7, 2) => "Admin anti-macro challenge ended.",
-                (7, _) => "Anti-macro challenge ended.",
-                (9, 1) => "Anti-macro result marked the target as suspicious.",
-                (9, 2) => "Admin anti-macro result marked the target as suspicious.",
-                (9, 3) => "Anti-macro report branch completed.",
-                (9, 4) => "Anti-macro screenshot branch completed.",
-                (11, _) => "Anti-macro report was rejected.",
-                _ => string.Format(CultureInfo.InvariantCulture, "Anti-macro notice type {0} (mode {1}) reached the simulator bridge.", noticeType, antiMacroType)
+                (0, _) => new PacketOwnedAntiMacroNoticeDefinition(0xC84, "Anti-macro challenge acknowledged.", PacketOwnedAntiMacroAdminCanvas0Path),
+                (1, _) => new PacketOwnedAntiMacroNoticeDefinition(0xC85, "Anti-macro challenge failed.", PacketOwnedAntiMacroAdminCanvas0Path),
+                (2, _) => new PacketOwnedAntiMacroNoticeDefinition(0xC86, "Anti-macro challenge timed out.", PacketOwnedAntiMacroAdminCanvas0Path),
+                (3, _) => new PacketOwnedAntiMacroNoticeDefinition(0xC87, "Anti-macro challenge was cancelled.", PacketOwnedAntiMacroAdminCanvas0Path),
+                (7, 2) => new PacketOwnedAntiMacroNoticeDefinition(0xC9A, "Admin anti-macro challenge ended.", PacketOwnedAntiMacroAdminCanvas2Path),
+                (7, _) => new PacketOwnedAntiMacroNoticeDefinition(0xC89, "Anti-macro challenge ended.", PacketOwnedAntiMacroAdminCanvas2Path),
+                (9, 1) => new PacketOwnedAntiMacroNoticeDefinition(0xC88, "Anti-macro result marked the target as suspicious.", PacketOwnedAntiMacroAdminCanvas1Path),
+                (9, 2) => new PacketOwnedAntiMacroNoticeDefinition(0x1A65, "Admin anti-macro result marked the target as suspicious.", PacketOwnedAntiMacroAdminCanvas1Path),
+                (9, 3) => new PacketOwnedAntiMacroNoticeDefinition(0xC99, "Anti-macro report branch completed.", PacketOwnedAntiMacroAdminCanvas1Path),
+                (9, 4) => new PacketOwnedAntiMacroNoticeDefinition(0xC99, "Anti-macro screenshot branch completed.", PacketOwnedAntiMacroAdminCanvas1Path),
+                (11, _) => new PacketOwnedAntiMacroNoticeDefinition(0xC98, "Anti-macro report was rejected.", PacketOwnedAntiMacroAdminCanvas1Path),
+                _ => new PacketOwnedAntiMacroNoticeDefinition(
+                    -1,
+                    string.Format(CultureInfo.InvariantCulture, "Anti-macro notice type {0} (mode {1}) reached the simulator bridge.", noticeType, antiMacroType),
+                    PacketOwnedAntiMacroAdminCanvas1Path)
             };
         }
 
         private string SavePacketOwnedAntiMacroScreenshot(string userName)
         {
-            string screenshotDirectory = Path.Combine(Environment.CurrentDirectory, "AntiMacroShots");
+            string screenshotDirectory = ResolvePacketOwnedAntiMacroScreenshotBaseFolder();
             string safeUserName = SanitizePacketOwnedAntiMacroFileName(string.IsNullOrWhiteSpace(userName) ? "AntiMacro" : userName.Trim());
             string filePath = Path.Combine(
                 screenshotDirectory,
@@ -372,15 +451,17 @@ namespace HaCreator.MapSimulator
         private string ApplyPacketOwnedAntiMacroUserBranch(int mode, int antiMacroType, string userName)
         {
             string resolvedName = string.IsNullOrWhiteSpace(userName) ? "Unknown" : userName.Trim();
-            string chatText = ResolvePacketOwnedAntiMacroChatText(mode, antiMacroType, resolvedName);
-            if (!string.IsNullOrWhiteSpace(chatText))
+            PacketOwnedAntiMacroChatDefinition definition = ResolvePacketOwnedAntiMacroChatDefinition(mode, antiMacroType, resolvedName);
+            _lastPacketOwnedAntiMacroChatStringPoolId = definition?.StringPoolId ?? -1;
+            if (!string.IsNullOrWhiteSpace(definition?.Text))
             {
-                _chat?.AddClientChatMessage(chatText, Environment.TickCount, 12);
+                _chat?.AddClientChatMessage(
+                    FormatPacketOwnedAntiMacroStringPoolText(definition.Text, definition.StringPoolId),
+                    Environment.TickCount,
+                    12);
             }
 
-            if (mode == PacketOwnedAntiMacroScreenshotReportMode
-                || (mode == PacketOwnedAntiMacroUserReportMode && antiMacroType == 2)
-                || (mode == PacketOwnedAntiMacroScreenshotMode && antiMacroType == 2))
+            if (definition?.SaveScreenshot == true)
             {
                 SavePacketOwnedAntiMacroScreenshot(resolvedName);
             }
@@ -389,17 +470,63 @@ namespace HaCreator.MapSimulator
             return _lastPacketOwnedAntiMacroSummary;
         }
 
-        private static string ResolvePacketOwnedAntiMacroChatText(int mode, int antiMacroType, string userName)
+        private static PacketOwnedAntiMacroChatDefinition ResolvePacketOwnedAntiMacroChatDefinition(int mode, int antiMacroType, string userName)
         {
             return (mode, antiMacroType) switch
             {
-                (PacketOwnedAntiMacroScreenshotReportMode, _) => $"[AntiMacro] Saved report evidence for {userName}.",
-                (PacketOwnedAntiMacroUserReportMode, 1) => $"[AntiMacro] Report completed for {userName}.",
-                (PacketOwnedAntiMacroUserReportMode, 2) => $"[AntiMacro] Admin report completed for {userName}.",
-                (PacketOwnedAntiMacroScreenshotMode, 2) => $"[AntiMacro] Saved screenshot evidence for {userName}.",
-                (PacketOwnedAntiMacroChatReportMode, 2) => $"[AntiMacro] Report branch acknowledged {userName}.",
+                (PacketOwnedAntiMacroScreenshotReportMode, _) => new PacketOwnedAntiMacroChatDefinition(0xC8E, $"Saved report evidence for {userName}.", SaveScreenshot: true),
+                (PacketOwnedAntiMacroUserReportMode, 1) => new PacketOwnedAntiMacroChatDefinition(0xC8D, $"Report completed for {userName}.", SaveScreenshot: false),
+                (PacketOwnedAntiMacroUserReportMode, 2) => new PacketOwnedAntiMacroChatDefinition(0xC8F, $"Admin report completed for {userName}.", SaveScreenshot: true),
+                (PacketOwnedAntiMacroScreenshotMode, 2) => new PacketOwnedAntiMacroChatDefinition(0xC91, $"Saved screenshot evidence for {userName}.", SaveScreenshot: true),
+                (PacketOwnedAntiMacroChatReportMode, 2) => new PacketOwnedAntiMacroChatDefinition(0xC90, $"Report branch acknowledged {userName}.", SaveScreenshot: false),
                 _ => null
             };
+        }
+
+        private static string FormatPacketOwnedAntiMacroStringPoolText(string text, int stringPoolId)
+        {
+            return stringPoolId > 0
+                ? $"{text} [StringPool 0x{stringPoolId:X}]"
+                : text;
+        }
+
+        private static string ResolvePacketOwnedAntiMacroScreenshotBaseFolder()
+        {
+            string picturesFolder = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures);
+            if (string.IsNullOrWhiteSpace(picturesFolder))
+            {
+                return Path.Combine(Environment.CurrentDirectory, "MapleStory");
+            }
+
+            return Path.Combine(picturesFolder, "MapleStory");
+        }
+
+        private static WzCanvasProperty ResolvePacketOwnedAntiMacroCanvas(string path)
+        {
+            return ResolvePacketOwnedAntiMacroNode(path) as WzCanvasProperty;
+        }
+
+        private static WzSubProperty ResolvePacketOwnedAntiMacroSubProperty(string path)
+        {
+            return ResolvePacketOwnedAntiMacroNode(path) as WzSubProperty;
+        }
+
+        private static WzImageProperty ResolvePacketOwnedAntiMacroNode(string path)
+        {
+            WzImage image = Program.FindImage("UI", "UIWindow2.img");
+            if (image == null || string.IsNullOrWhiteSpace(path))
+            {
+                return null;
+            }
+
+            string[] segments = path.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            WzImageProperty current = image[segments[0]];
+            for (int i = 1; i < segments.Length && current != null; i++)
+            {
+                current = current[segments[i]];
+            }
+
+            return current;
         }
 
         private static byte[] ReadPacketOwnedAntiMacroCanvasPayload(BinaryReader reader)
@@ -578,6 +705,13 @@ namespace HaCreator.MapSimulator
             }
 
             return false;
+        }
+
+        private void HandlePacketOwnedAntiMacroNoticeClosed(int responseCode)
+        {
+            _lastPacketOwnedAntiMacroSummary = responseCode == 2
+                ? "Dismissed anti-macro notice with Cancel."
+                : "Dismissed anti-macro notice with OK.";
         }
     }
 }

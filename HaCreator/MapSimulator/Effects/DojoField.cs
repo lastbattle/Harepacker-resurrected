@@ -13,6 +13,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 using System.IO;
+using System.Text;
 using HaCreator.MapEditor;
 using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance;
@@ -50,6 +51,9 @@ namespace HaCreator.MapSimulator.Effects
     public class DojoField
     {
         public const int PacketTypeClock = 1;
+        public const int PacketTypeStage = 2;
+        public const int PacketTypeClear = 3;
+        public const int PacketTypeTimeOver = 4;
         private const int TimerLayerOffsetX = -55;
         private const int TimerLayerY = 16;
         private const int ClockOffsetY = 26;
@@ -102,6 +106,11 @@ namespace HaCreator.MapSimulator.Effects
         private int _lastDecodedClockDurationSec = -1;
         private int _lastDecodedClockPayloadLength;
         private string _lastDecodedClockTrailingPayloadHex = string.Empty;
+        private int _lastDecodedPacketType = -1;
+        private int _lastDecodedPacketValue = -1;
+        private int _lastDecodedPacketPayloadLength;
+        private string _lastDecodedPacketOption = string.Empty;
+        private string _lastDecodedPacketTrailingPayloadHex = string.Empty;
         private int _stageBannerStartTick = int.MinValue;
         private int _resultEffectStartTick = int.MinValue;
         private GraphicsDevice _device;
@@ -130,6 +139,13 @@ namespace HaCreator.MapSimulator.Effects
         public int LastDecodedClockDurationSec => _lastDecodedClockDurationSec;
         public int LastDecodedClockPayloadLength => _lastDecodedClockPayloadLength;
         public string LastDecodedClockTrailingPayloadHex => _lastDecodedClockTrailingPayloadHex;
+        public int LastDecodedPacketType => _lastDecodedPacketType;
+        public int LastDecodedPacketValue => _lastDecodedPacketValue;
+        public int LastDecodedPacketPayloadLength => _lastDecodedPacketPayloadLength;
+        public string LastDecodedPacketOption => _lastDecodedPacketOption;
+        public string LastDecodedPacketTrailingPayloadHex => _lastDecodedPacketTrailingPayloadHex;
+        public bool IsClearResultActive => _resultEffect == DojoResultEffect.Clear;
+        public bool IsTimeOverResultActive => _resultEffect == DojoResultEffect.TimeOver;
         public int RemainingSeconds
         {
             get
@@ -177,6 +193,11 @@ namespace HaCreator.MapSimulator.Effects
             _lastDecodedClockDurationSec = -1;
             _lastDecodedClockPayloadLength = 0;
             _lastDecodedClockTrailingPayloadHex = string.Empty;
+            _lastDecodedPacketType = -1;
+            _lastDecodedPacketValue = -1;
+            _lastDecodedPacketPayloadLength = 0;
+            _lastDecodedPacketOption = string.Empty;
+            _lastDecodedPacketTrailingPayloadHex = string.Empty;
             EnsureAssetsLoaded();
             _stageBannerStartTick = Environment.TickCount;
             _resultEffectStartTick = int.MinValue;
@@ -277,6 +298,41 @@ namespace HaCreator.MapSimulator.Effects
                     }
 
                     OnClock(clockType, durationSec, currentTimeMs);
+                    return true;
+                case PacketTypeStage:
+                    if (!TryParseStagePacketPayload(payload, out int stage, out decodedPayloadLength, out trailingPayloadHex, out errorMessage))
+                    {
+                        return false;
+                    }
+
+                    RecordDecodedPacket(PacketTypeStage, stage, decodedPayloadLength, string.Empty, trailingPayloadHex);
+                    SetStage(stage, currentTimeMs);
+                    return true;
+                case PacketTypeClear:
+                    if (!TryParseTransferPacketPayload(payload, allowPortalName: true, out int clearTargetMapId, out string clearPortalName, out decodedPayloadLength, out trailingPayloadHex, out errorMessage))
+                    {
+                        return false;
+                    }
+
+                    RecordDecodedPacket(PacketTypeClear, clearTargetMapId, decodedPayloadLength, BuildTransferPacketOption(clearTargetMapId, clearPortalName), trailingPayloadHex);
+                    if (clearTargetMapId > 0)
+                    {
+                        ShowClearResult(currentTimeMs, clearTargetMapId, clearPortalName);
+                    }
+                    else
+                    {
+                        ShowClearResult(currentTimeMs, ResolveNextFloorMapId(), ResolveNextFloorPortalName());
+                    }
+
+                    return true;
+                case PacketTypeTimeOver:
+                    if (!TryParseTransferPacketPayload(payload, allowPortalName: false, out int exitMapId, out _, out decodedPayloadLength, out trailingPayloadHex, out errorMessage))
+                    {
+                        return false;
+                    }
+
+                    RecordDecodedPacket(PacketTypeTimeOver, exitMapId, decodedPayloadLength, BuildTransferPacketOption(exitMapId, null), trailingPayloadHex);
+                    ShowTimeOverResult(currentTimeMs, exitMapId);
                     return true;
                 default:
                     errorMessage = $"Unsupported Dojo packet type: {packetType}";
@@ -398,7 +454,16 @@ namespace HaCreator.MapSimulator.Effects
             string clockTailText = string.IsNullOrWhiteSpace(_lastDecodedClockTrailingPayloadHex)
                 ? string.Empty
                 : $", rawClockTail={_lastDecodedClockTrailingPayloadHex}";
-            return $"Mu Lung Dojo floor {_stage}, timer={timerText}, boss={bossText}, player={playerText}, energy={_energy}/{EnergyMax}{transferText}{transferPortalText}{clockPacketText}{clockTailText}, expiryEffect=StringPool::ms_aString[0x09EE]+sound[0x0A24] via CField_Dojang::UpdateTimer";
+            string packetText = _lastDecodedPacketType >= 0
+                ? $", rawPacket={DescribePacketType(_lastDecodedPacketType)}:{_lastDecodedPacketValue}/{_lastDecodedPacketPayloadLength}b"
+                : string.Empty;
+            string packetOptionText = string.IsNullOrWhiteSpace(_lastDecodedPacketOption)
+                ? string.Empty
+                : $", rawPacketOption={_lastDecodedPacketOption}";
+            string packetTailText = string.IsNullOrWhiteSpace(_lastDecodedPacketTrailingPayloadHex)
+                ? string.Empty
+                : $", rawPacketTail={_lastDecodedPacketTrailingPayloadHex}";
+            return $"Mu Lung Dojo floor {_stage}, timer={timerText}, boss={bossText}, player={playerText}, energy={_energy}/{EnergyMax}{transferText}{transferPortalText}{clockPacketText}{clockTailText}{packetText}{packetOptionText}{packetTailText}, expiryEffect=StringPool::ms_aString[0x09EE]+sound[0x0A24] via CField_Dojang::UpdateTimer";
         }
         public void Reset()
         {
@@ -426,6 +491,11 @@ namespace HaCreator.MapSimulator.Effects
             _lastDecodedClockDurationSec = -1;
             _lastDecodedClockPayloadLength = 0;
             _lastDecodedClockTrailingPayloadHex = string.Empty;
+            _lastDecodedPacketType = -1;
+            _lastDecodedPacketValue = -1;
+            _lastDecodedPacketPayloadLength = 0;
+            _lastDecodedPacketOption = string.Empty;
+            _lastDecodedPacketTrailingPayloadHex = string.Empty;
             _stageBannerStartTick = int.MinValue;
             _resultEffectStartTick = int.MinValue;
             _resultEffect = DojoResultEffect.None;
@@ -602,6 +672,209 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             return true;
+        }
+        private static bool TryParseStagePacketPayload(
+            byte[] payload,
+            out int stage,
+            out int decodedPayloadLength,
+            out string trailingPayloadHex,
+            out string errorMessage)
+        {
+            stage = 0;
+            decodedPayloadLength = 0;
+            trailingPayloadHex = string.Empty;
+            errorMessage = null;
+            if (payload == null || payload.Length == 0)
+            {
+                errorMessage = "Dojo stage packet payload must contain at least one stage byte.";
+                return false;
+            }
+
+            if (payload.Length >= sizeof(int))
+            {
+                int intStage = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(0, sizeof(int)));
+                if (intStage >= 0 && intStage <= 32)
+                {
+                    stage = intStage;
+                    decodedPayloadLength = sizeof(int);
+                }
+            }
+
+            if (decodedPayloadLength == 0)
+            {
+                stage = payload[0];
+                if (stage < 0 || stage > 32)
+                {
+                    errorMessage = $"Dojo stage payload decoded invalid floor {stage}.";
+                    return false;
+                }
+
+                decodedPayloadLength = 1;
+            }
+
+            if (payload.Length > decodedPayloadLength)
+            {
+                trailingPayloadHex = FormatPayloadHex(payload.AsSpan(decodedPayloadLength));
+            }
+
+            return true;
+        }
+        private static bool TryParseTransferPacketPayload(
+            byte[] payload,
+            bool allowPortalName,
+            out int mapId,
+            out string portalName,
+            out int decodedPayloadLength,
+            out string trailingPayloadHex,
+            out string errorMessage)
+        {
+            mapId = -1;
+            portalName = string.Empty;
+            decodedPayloadLength = 0;
+            trailingPayloadHex = string.Empty;
+            errorMessage = null;
+            if (payload == null || payload.Length == 0)
+            {
+                return true;
+            }
+
+            if (payload.Length < sizeof(int))
+            {
+                errorMessage = "Dojo transfer packet payload must contain a 4-byte map id when present.";
+                return false;
+            }
+
+            mapId = NormalizeTransferMapId(BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(0, sizeof(int))));
+            decodedPayloadLength = sizeof(int);
+            if (payload.Length == decodedPayloadLength)
+            {
+                return true;
+            }
+
+            ReadOnlySpan<byte> trailingSpan = payload.AsSpan(decodedPayloadLength);
+            if (allowPortalName && TryDecodePortalName(trailingSpan, out string decodedPortalName, out int portalBytesConsumed))
+            {
+                portalName = decodedPortalName;
+                decodedPayloadLength += portalBytesConsumed;
+                trailingSpan = payload.AsSpan(decodedPayloadLength);
+            }
+
+            if (!trailingSpan.IsEmpty)
+            {
+                trailingPayloadHex = FormatPayloadHex(trailingSpan);
+            }
+
+            return true;
+        }
+        private static bool TryDecodePortalName(ReadOnlySpan<byte> payload, out string portalName, out int bytesConsumed)
+        {
+            portalName = string.Empty;
+            bytesConsumed = 0;
+            if (payload.IsEmpty)
+            {
+                return false;
+            }
+
+            int trimmedLength = payload.Length;
+            while (trimmedLength > 0 && payload[trimmedLength - 1] == 0)
+            {
+                trimmedLength--;
+            }
+
+            if (trimmedLength <= 0)
+            {
+                bytesConsumed = payload.Length;
+                return true;
+            }
+
+            ReadOnlySpan<byte> trimmed = payload.Slice(0, trimmedLength);
+            if ((trimmedLength & 1) == 0)
+            {
+                string unicodeCandidate = Encoding.Unicode.GetString(trimmed);
+                if (IsPrintablePortalName(unicodeCandidate))
+                {
+                    portalName = unicodeCandidate;
+                    bytesConsumed = payload.Length;
+                    return true;
+                }
+            }
+
+            string utf8Candidate = Encoding.UTF8.GetString(trimmed);
+            if (IsPrintablePortalName(utf8Candidate))
+            {
+                portalName = utf8Candidate;
+                bytesConsumed = payload.Length;
+                return true;
+            }
+
+            return false;
+        }
+        private static bool IsPrintablePortalName(string portalName)
+        {
+            if (string.IsNullOrWhiteSpace(portalName))
+            {
+                return false;
+            }
+
+            foreach (char character in portalName)
+            {
+                if (char.IsControl(character))
+                {
+                    return false;
+                }
+            }
+
+            return true;
+        }
+        private static string FormatPayloadHex(ReadOnlySpan<byte> payload)
+        {
+            if (payload.IsEmpty)
+            {
+                return string.Empty;
+            }
+
+            string[] bytes = new string[payload.Length];
+            for (int i = 0; i < payload.Length; i++)
+            {
+                bytes[i] = payload[i].ToString("X2", CultureInfo.InvariantCulture);
+            }
+
+            return string.Join(" ", bytes);
+        }
+        private void RecordDecodedPacket(int packetType, int value, int payloadLength, string option, string trailingPayloadHex)
+        {
+            _lastDecodedPacketType = packetType;
+            _lastDecodedPacketValue = value;
+            _lastDecodedPacketPayloadLength = Math.Max(0, payloadLength);
+            _lastDecodedPacketOption = option ?? string.Empty;
+            _lastDecodedPacketTrailingPayloadHex = trailingPayloadHex ?? string.Empty;
+        }
+        private static string BuildTransferPacketOption(int mapId, string portalName)
+        {
+            if (mapId <= 0 && string.IsNullOrWhiteSpace(portalName))
+            {
+                return "auto";
+            }
+
+            if (mapId <= 0)
+            {
+                return portalName ?? string.Empty;
+            }
+
+            return string.IsNullOrWhiteSpace(portalName)
+                ? mapId.ToString(CultureInfo.InvariantCulture)
+                : $"{mapId}:{portalName}";
+        }
+        private static string DescribePacketType(int packetType)
+        {
+            return packetType switch
+            {
+                PacketTypeClock => "clock",
+                PacketTypeStage => "stage",
+                PacketTypeClear => "clear",
+                PacketTypeTimeOver => "timeover",
+                _ => packetType.ToString(CultureInfo.InvariantCulture)
+            };
         }
         private void SchedulePresentationTransfer(int targetMapId, string targetPortalName, IReadOnlyList<DojoFrame> frames, int currentTimeMs)
         {

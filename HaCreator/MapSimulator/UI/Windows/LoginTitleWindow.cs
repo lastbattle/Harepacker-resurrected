@@ -231,6 +231,7 @@ namespace HaCreator.MapSimulator.UI
         SoftKeyboardKeyboardType ISoftKeyboardHost.SoftKeyboardKeyboardType => SoftKeyboardKeyboardType.AlphaNumeric;
         int ISoftKeyboardHost.SoftKeyboardTextLength => GetFocusedFieldValue().Length;
         int ISoftKeyboardHost.SoftKeyboardMaxLength => 16;
+        bool ISoftKeyboardHost.CanSubmitSoftKeyboard => !_busy && _focusedField != LoginFieldFocus.None;
         public string AccountName => _accountName;
         public string Password => _password;
         public bool RememberId => _rememberId;
@@ -638,6 +639,19 @@ namespace HaCreator.MapSimulator.UI
             }
 
             RemoveLastCharacter();
+            return true;
+        }
+
+        bool ISoftKeyboardHost.TrySubmitSoftKeyboard(out string errorMessage)
+        {
+            errorMessage = string.Empty;
+            if (_busy || _focusedField == LoginFieldFocus.None)
+            {
+                errorMessage = "Login is unavailable right now.";
+                return false;
+            }
+
+            SubmitRequested?.Invoke(new LoginTitleSubmission(_accountName, _password, _rememberId));
             return true;
         }
 

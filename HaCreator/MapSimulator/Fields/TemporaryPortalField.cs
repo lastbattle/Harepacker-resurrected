@@ -1103,6 +1103,11 @@ namespace HaCreator.MapSimulator.Fields
         {
             if (metadataDestination.HasValue && observationDestination.HasValue)
             {
+                if (ownerObservation.ObservationSource != RemoteTownPortalObservationSource.PacketCast)
+                {
+                    return metadataDestination.Value;
+                }
+
                 if (metadata.SourceMapId == ownerObservation.SourceMapId)
                 {
                     return metadataDestination.Value;

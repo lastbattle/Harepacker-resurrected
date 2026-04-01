@@ -1397,6 +1397,23 @@ namespace HaCreator.MapSimulator.UI
             return MakerLaunchFilter.None;
         }
 
+        internal static bool MatchesLaunchFilter(string npcFunctionText, ItemMakerRecipeFamily family)
+        {
+            return MatchesLaunchFilter(ResolveLaunchFilter(npcFunctionText), family);
+        }
+
+        private static bool MatchesLaunchFilter(MakerLaunchFilter launchFilter, ItemMakerRecipeFamily family)
+        {
+            return launchFilter switch
+            {
+                MakerLaunchFilter.ItemMaker => family == ItemMakerRecipeFamily.Generic,
+                MakerLaunchFilter.GloveMaker => family == ItemMakerRecipeFamily.Gloves,
+                MakerLaunchFilter.ShoeMaker => family == ItemMakerRecipeFamily.Shoes,
+                MakerLaunchFilter.ToyMaker => family == ItemMakerRecipeFamily.Toys,
+                _ => true
+            };
+        }
+
         private static string GetQuestRequirementText(ItemMakerQuestRequirement requirement)
         {
             if (requirement == null)
@@ -1781,15 +1798,7 @@ namespace HaCreator.MapSimulator.UI
 
         private bool IsRecipeVisibleForLaunchFilter(ItemMakerRecipe recipe)
         {
-            int fourDigitCategory = recipe.OutputItemId / 10000;
-            return _launchFilter switch
-            {
-                MakerLaunchFilter.ItemMaker => recipe.OutputInventoryType != InventoryType.EQUIP || recipe.CategoryKey is 425 or 426,
-                MakerLaunchFilter.GloveMaker => fourDigitCategory == 108,
-                MakerLaunchFilter.ShoeMaker => fourDigitCategory == 107,
-                MakerLaunchFilter.ToyMaker => recipe.OutputInventoryType == InventoryType.SETUP || recipe.Title.IndexOf("toy", StringComparison.OrdinalIgnoreCase) >= 0,
-                _ => true
-            };
+            return MatchesLaunchFilter(_launchFilter, recipe?.Family ?? ItemMakerRecipeFamily.Generic);
         }
 
         private void AddCategoryPageIfPresent(

@@ -483,6 +483,7 @@ namespace HaCreator.MapSimulator
             WireGuildSkillWindowData();
             WireGuildBbsWindowData();
             _engagementProposalController.WireWindow(uiWindowManager, _playerManager?.Player?.Build, _fontChat, ShowUtilityFeedbackMessage);
+            _weddingInvitationController.WireWindow(uiWindowManager, _playerManager?.Player?.Build, _fontChat, ShowUtilityFeedbackMessage);
             _weddingWishListController.WireWindow(uiWindowManager, _playerManager?.Player?.Build, uiWindowManager?.InventoryWindow as IInventoryRuntime, _fontChat, ShowUtilityFeedbackMessage);
             WireProgressionUtilityWindowLaunchers();
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ItemMaker) is ItemMakerUI itemMakerWindow)
@@ -800,7 +801,7 @@ namespace HaCreator.MapSimulator
             {
                 statusBarChatUI.SetFont(_fontChat);
                 statusBarChatUI.SetPixelTexture(_DxDeviceManager.GraphicsDevice);
-                statusBarChatUI.SetChatRenderProvider(_chat.GetRenderState);
+                statusBarChatUI.SetChatRenderProvider(() => _chat.GetRenderState(_playerManager?.Player?.Name));
                 statusBarChatUI.SetPointNotificationRenderProvider(GetStatusBarPointNotificationState);
                 statusBarChatUI.ToggleChatRequested = () => _chat.ToggleActive(Environment.TickCount);
                 statusBarChatUI.CycleChatTargetRequested = delta => _chat.CycleTarget(delta);
@@ -868,6 +869,7 @@ namespace HaCreator.MapSimulator
                     equipBigBang.SetMechanicPaneAvailable(
                         CompanionEquipmentController.HasMechanicOwnerState(_playerManager?.Player?.Build));
                     equipBigBang.SetAndroidEquipmentController(_playerManager.CompanionEquipment?.Android);
+                    equipBigBang.SetAndroidPaneAvailable(FieldInteractionRestrictionEvaluator.CanUseAndroid(_mapBoard?.MapInfo?.fieldLimit ?? 0));
                 }
             }
             if (uiWindowManager?.InventoryWindow is InventoryUI inventoryWindow && _playerManager?.Player?.Build != null)
@@ -1509,6 +1511,7 @@ namespace HaCreator.MapSimulator
             WireGuildSkillWindowData();
             WireGuildBbsWindowData();
             _engagementProposalController.WireWindow(uiWindowManager, _playerManager?.Player?.Build, _fontChat, ShowUtilityFeedbackMessage);
+            _weddingInvitationController.WireWindow(uiWindowManager, _playerManager?.Player?.Build, _fontChat, ShowUtilityFeedbackMessage);
             _weddingWishListController.WireWindow(uiWindowManager, _playerManager?.Player?.Build, uiWindowManager?.InventoryWindow as IInventoryRuntime, _fontChat, ShowUtilityFeedbackMessage);
             WireProgressionUtilityWindowLaunchers();
 
@@ -1539,7 +1542,7 @@ namespace HaCreator.MapSimulator
             {
                 statusBarChatUI.SetFont(_fontChat);
                 statusBarChatUI.SetPixelTexture(_DxDeviceManager.GraphicsDevice);
-                statusBarChatUI.SetChatRenderProvider(_chat.GetRenderState);
+                statusBarChatUI.SetChatRenderProvider(() => _chat.GetRenderState(_playerManager?.Player?.Name));
                 statusBarChatUI.ToggleChatRequested = () => _chat.ToggleActive(Environment.TickCount);
                 statusBarChatUI.CycleChatTargetRequested = delta => _chat.CycleTarget(delta);
             }
@@ -1590,6 +1593,7 @@ namespace HaCreator.MapSimulator
                     equipBigBang.SetMechanicPaneAvailable(
                         CompanionEquipmentController.HasMechanicOwnerState(_playerManager?.Player?.Build));
                     equipBigBang.SetAndroidEquipmentController(_playerManager.CompanionEquipment?.Android);
+                    equipBigBang.SetAndroidPaneAvailable(FieldInteractionRestrictionEvaluator.CanUseAndroid(_mapBoard?.MapInfo?.fieldLimit ?? 0));
                 }
             }
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ItemUpgrade) is ItemUpgradeUI itemUpgradeWindow && _playerManager?.Player?.Build != null)

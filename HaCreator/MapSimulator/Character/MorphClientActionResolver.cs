@@ -53,7 +53,10 @@ namespace HaCreator.MapSimulator.Character
 
             if (actionName.StartsWith("alert", StringComparison.OrdinalIgnoreCase))
             {
-                yield return "alert";
+                foreach (string alertAlias in EnumerateAlertAliases(morphPart, actionName))
+                {
+                    yield return alertAlias;
+                }
             }
 
             if (string.Equals(actionName, "jump", StringComparison.OrdinalIgnoreCase))
@@ -75,6 +78,31 @@ namespace HaCreator.MapSimulator.Character
             foreach (string candidate in CharacterPart.GetActionLookupStrings(actionName))
             {
                 yield return candidate;
+            }
+        }
+
+        private static IEnumerable<string> EnumerateAlertAliases(CharacterPart morphPart, string actionName)
+        {
+            var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            if (!string.IsNullOrWhiteSpace(actionName) && yielded.Add(actionName))
+            {
+                yield return actionName;
+            }
+
+            foreach (string authoredAlertAlias in EnumeratePresentAliases(
+                         morphPart,
+                         new[] { "alert", "alert2", "alert3", "alert4", "alert5" }))
+            {
+                if (yielded.Add(authoredAlertAlias))
+                {
+                    yield return authoredAlertAlias;
+                }
+            }
+
+            if (yielded.Add("alert"))
+            {
+                yield return "alert";
             }
         }
 

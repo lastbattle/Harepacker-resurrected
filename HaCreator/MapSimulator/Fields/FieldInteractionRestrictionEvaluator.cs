@@ -82,6 +82,13 @@ namespace HaCreator.MapSimulator.Fields
                 : null;
         }
 
+        public static string GetDropPickupRestrictionMessage(long fieldLimit)
+        {
+            return FieldLimitType.Drop_Limit.Check(fieldLimit)
+                ? "Drops cannot be looted in this map."
+                : null;
+        }
+
         public static string GetJumpDownRestrictionMessage(long fieldLimit)
         {
             return FieldLimitType.Unable_To_Fall_Down.Check(fieldLimit)
@@ -118,6 +125,21 @@ namespace HaCreator.MapSimulator.Fields
         public static string GetMapTransferRestrictionMessage(long fieldLimit)
         {
             return GetTeleportItemRestrictionMessage(fieldLimit) ?? GetTransferRestrictionMessage(fieldLimit);
+        }
+
+        public static bool CanPickupDrops(long fieldLimit)
+        {
+            return GetDropPickupRestrictionMessage(fieldLimit) == null;
+        }
+
+        public static bool CanUseAndroid(long fieldLimit)
+        {
+            return GetAndroidRestrictionMessage(fieldLimit) == null;
+        }
+
+        public static bool CanChangePartyLeader(long fieldLimit)
+        {
+            return GetPartyBossRestrictionMessage(fieldLimit) == null;
         }
 
         public static string GetItemUseRestrictionMessage(

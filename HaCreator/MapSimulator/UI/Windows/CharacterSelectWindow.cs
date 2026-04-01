@@ -278,11 +278,17 @@ namespace HaCreator.MapSimulator.UI
             Rectangle bodyBounds = ResolveBalloonBounds();
             DrawBalloonNineSlice(sprite, bodyBounds);
 
-            if (_instructionBalloonStyle.SelectionArrow != null)
+            if (_instructionBalloonStyle.SelectionArrow.Texture != null)
             {
-                float arrowX = ResolveBalloonAnchorX() - (_instructionBalloonStyle.SelectionArrow.Width / 2f);
-                float arrowY = bodyBounds.Bottom - 1f;
-                sprite.Draw(_instructionBalloonStyle.SelectionArrow, new Vector2(arrowX, arrowY), Color.White);
+                Vector2 arrowAnchor = new(
+                    Position.X + BalloonDefaultAnchor.X,
+                    bodyBounds.Bottom - 1f);
+                sprite.Draw(
+                    _instructionBalloonStyle.SelectionArrow.Texture,
+                    new Vector2(
+                        arrowAnchor.X - _instructionBalloonStyle.SelectionArrow.Origin.X,
+                        arrowAnchor.Y - _instructionBalloonStyle.SelectionArrow.Origin.Y),
+                    Color.White);
             }
 
             string wrappedMessage = WrapText(balloonMessage, BalloonWidth - 20, StatusTextScale, 2);
@@ -331,25 +337,8 @@ namespace HaCreator.MapSimulator.UI
 
         private Rectangle ResolveBalloonBounds()
         {
-            int anchorX = ResolveBalloonAnchorX();
-            int x = anchorX - (BalloonWidth / 2);
-            int minX = Position.X + 4;
-            int maxX = Position.X + OwnerWidth - BalloonWidth - 4;
-            x = Math.Clamp(x, minX, Math.Max(minX, maxX));
+            int x = Position.X + BalloonDefaultAnchor.X - (BalloonWidth / 2);
             return new Rectangle(x, Position.Y + 4, BalloonWidth, BalloonHeight);
-        }
-
-        private int ResolveBalloonAnchorX()
-        {
-            int visibleSlotIndex = _selectedIndex >= 0
-                ? _selectedIndex - (_pageIndex * EntriesPerPage)
-                : -1;
-            if (visibleSlotIndex < 0 || visibleSlotIndex >= EntriesPerPage)
-            {
-                return Position.X + BalloonDefaultAnchor.X;
-            }
-
-            return Position.X + CardStartX + (visibleSlotIndex * (CardWidth + CardGap)) + (CardWidth / 2);
         }
 
         private string ResolveBalloonMessage()
@@ -709,7 +698,7 @@ namespace HaCreator.MapSimulator.UI
                 Texture2D southWest,
                 Texture2D south,
                 Texture2D southEast,
-                Texture2D selectionArrow,
+                OwnerCanvasFrame selectionArrow,
                 Color textColor)
             {
                 NorthWest = northWest;
@@ -734,7 +723,7 @@ namespace HaCreator.MapSimulator.UI
             public Texture2D SouthWest { get; }
             public Texture2D South { get; }
             public Texture2D SouthEast { get; }
-            public Texture2D SelectionArrow { get; }
+            public OwnerCanvasFrame SelectionArrow { get; }
             public Color TextColor { get; }
 
             public bool IsReady =>

@@ -20,6 +20,11 @@ namespace HaCreator.MapSimulator.UI
         private const byte KoreanGdiCharset = 129;
         private const string ClientTextFontPathEnvironmentVariable = "MAPSIM_CLIENT_TEXT_FONT_PATH";
         private const string ClientTextFontFaceEnvironmentVariable = "MAPSIM_CLIENT_TEXT_FONT_FACE";
+        private static readonly string[] DefaultPrivateFontFiles =
+        {
+            "dotum.ttc",
+            "gulim.ttc"
+        };
         private static readonly string[] DefaultFontFamilyCandidates =
         {
             "DotumChe",
@@ -77,7 +82,7 @@ namespace HaCreator.MapSimulator.UI
                 return cachedSize;
             }
 
-            RasterTextTexture rasterText = GetOrCreateRasterText(normalizedText, scale);
+            RasterTextTexture rasterText = GetOrCreateRasterText(normalizedText, scale, Color.White);
             Vector2 measuredSize = rasterText.Measurement;
             _measureCache[cacheKey] = measuredSize;
             return measuredSize;
@@ -90,7 +95,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            RasterTextTexture rasterText = GetOrCreateRasterText(text, scale);
+            RasterTextTexture rasterText = GetOrCreateRasterText(text, scale, color);
             if (rasterText.Texture == null)
             {
                 return;
@@ -99,12 +104,12 @@ namespace HaCreator.MapSimulator.UI
             spriteBatch.Draw(
                 rasterText.Texture,
                 new Vector2(position.X + rasterText.OffsetX, position.Y + rasterText.OffsetY),
-                color);
+                Color.White);
         }
 
-        private RasterTextTexture GetOrCreateRasterText(string text, float scale)
+        private RasterTextTexture GetOrCreateRasterText(string text, float scale, Color color)
         {
-            string cacheKey = BuildCacheKey(text, scale);
+            string cacheKey = BuildTextureCacheKey(text, scale, color);
             if (_textureCache.TryGetValue(cacheKey, out RasterTextTexture cachedTexture)
                 && cachedTexture.Texture != null
                 && !cachedTexture.Texture.IsDisposed)
@@ -133,7 +138,7 @@ namespace HaCreator.MapSimulator.UI
                 text,
                 font,
                 new SD.Rectangle(RasterPadding, RasterPadding, width - (RasterPadding * 2), height - (RasterPadding * 2)),
-                SD.Color.White,
+                ToDrawingColor(color),
                 SD.Color.Transparent,
                 ClientTextFormatFlags);
 
@@ -244,6 +249,11 @@ namespace HaCreator.MapSimulator.UI
                 return configuredFamily;
             }
 
+            if (TryResolveDefaultPrivateFontFamily(out string privateFontFamily))
+            {
+                return privateFontFamily;
+            }
+
             if (!string.IsNullOrWhiteSpace(requestedFamily))
             {
                 string installedRequestedFamily = ResolveInstalledFontFamilyName(requestedFamily);
@@ -298,6 +308,35 @@ namespace HaCreator.MapSimulator.UI
             return SD.FontFamily.GenericSansSerif.Name;
         }
 
+        private static bool TryResolveDefaultPrivateFontFamily(out string fontFamilyName)
+        {
+            fontFamilyName = null;
+
+            string windowsFontsPath = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.Windows),
+                "Fonts");
+            if (string.IsNullOrWhiteSpace(windowsFontsPath) || !Directory.Exists(windowsFontsPath))
+            {
+                return false;
+            }
+
+            foreach (string fileName in DefaultPrivateFontFiles)
+            {
+                string candidatePath = Path.Combine(windowsFontsPath, fileName);
+                if (!File.Exists(candidatePath))
+                {
+                    continue;
+                }
+
+                if (PrivateFontRegistry.TryRegister(candidatePath, preferredFamilyName: null, out fontFamilyName))
+                {
+                    return !string.IsNullOrWhiteSpace(fontFamilyName);
+                }
+            }
+
+            return false;
+        }
+
         private static int QuantizeScale(float scale)
         {
             return (int)Math.Round(Math.Max(0.1f, scale) * 1000f);
@@ -306,6 +345,16 @@ namespace HaCreator.MapSimulator.UI
         private static string BuildCacheKey(string text, float scale)
         {
             return QuantizeScale(scale).ToString(CultureInfo.InvariantCulture) + "|" + text;
+        }
+
+        private static string BuildTextureCacheKey(string text, float scale, Color color)
+        {
+            return BuildCacheKey(text, scale) + "|" + color.PackedValue.ToString(CultureInfo.InvariantCulture);
+        }
+
+        private static SD.Color ToDrawingColor(Color color)
+        {
+            return SD.Color.FromArgb(color.A, color.R, color.G, color.B);
         }
 
         private readonly struct RasterTextTexture

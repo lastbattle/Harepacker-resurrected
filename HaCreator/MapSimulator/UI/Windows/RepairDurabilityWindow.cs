@@ -202,13 +202,14 @@ namespace HaCreator.MapSimulator.UI
         {
             RepairEntry previousSelection = GetSelectedEntry();
             CharacterPart previousPart = previousSelection?.Part;
+            InventorySlotData previousInventorySlot = previousSelection?.InventorySlot;
             int previousEncodedSlotPosition = previousSelection?.EncodedSlotPosition ?? int.MinValue;
             bool previousIsInventorySlot = previousSelection?.IsInventorySlot ?? false;
 
             _entries.Clear();
             if (entries != null)
             {
-                _entries.AddRange(entries.Where(entry => entry?.Part != null));
+                _entries.AddRange(entries.Where(entry => entry != null && (entry.Part != null || entry.InventorySlot != null)));
             }
 
             if (_entries.Count == 0)
@@ -218,7 +219,7 @@ namespace HaCreator.MapSimulator.UI
             }
             else
             {
-                _selectedIndex = ResolveSelectionIndex(previousPart, previousEncodedSlotPosition, previousIsInventorySlot, preferredItemId);
+                _selectedIndex = ResolveSelectionIndex(previousPart, previousInventorySlot, previousEncodedSlotPosition, previousIsInventorySlot, preferredItemId);
                 _scrollOffset = ClampScrollOffset(_scrollOffset);
                 EnsureSelectionVisible();
             }
@@ -455,11 +456,12 @@ namespace HaCreator.MapSimulator.UI
             return new Rectangle(Position.X + RowLeft, Position.Y + RowTop, RowWidth, (VisibleRowCount * RowPitch) - (RowPitch - RowHeight));
         }
 
-        private int ResolveSelectionIndex(CharacterPart previousPart, int previousEncodedSlotPosition, bool previousIsInventorySlot, int preferredItemId)
+        private int ResolveSelectionIndex(CharacterPart previousPart, InventorySlotData previousInventorySlot, int previousEncodedSlotPosition, bool previousIsInventorySlot, int preferredItemId)
         {
             if (preferredItemId > 0)
             {
-                int preferredIndex = _entries.FindIndex(entry => entry.Part?.ItemId == preferredItemId);
+                int preferredIndex = _entries.FindIndex(entry =>
+                    (entry.Part?.ItemId ?? entry.InventorySlot?.ItemId ?? 0) == preferredItemId);
                 if (preferredIndex >= 0)
                 {
                     return preferredIndex;
@@ -483,6 +485,15 @@ namespace HaCreator.MapSimulator.UI
                 if (previousIndex >= 0)
                 {
                     return previousIndex;
+                }
+            }
+
+            if (previousInventorySlot != null)
+            {
+                int previousInventoryIndex = _entries.FindIndex(entry => ReferenceEquals(entry.InventorySlot, previousInventorySlot));
+                if (previousInventoryIndex >= 0)
+                {
+                    return previousInventoryIndex;
                 }
             }
 

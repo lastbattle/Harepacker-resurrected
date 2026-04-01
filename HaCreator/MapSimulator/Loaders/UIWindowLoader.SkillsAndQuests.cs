@@ -2063,7 +2063,8 @@ namespace HaCreator.MapSimulator.Loaders
                 return null;
             }
 
-            WzCanvasProperty backgroundCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/backgrnd/0/back");
+            WzCanvasProperty compactBackgroundCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/backgrnd/0/back");
+            WzCanvasProperty expandedBackgroundCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/backgrnd/1/back");
             WzCanvasProperty keyNormalCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/key/0/normal/0");
             WzCanvasProperty keyPressedCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/key/0/pressed/0");
             WzCanvasProperty keyDisabledCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/key/0/disabled/0");
@@ -2072,8 +2073,24 @@ namespace HaCreator.MapSimulator.Loaders
             WzCanvasProperty backspacePressedCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/funckey/backspace/pressed/0");
             WzCanvasProperty backspaceDisabledCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/funckey/backspace/disabled/0");
             WzCanvasProperty backspaceHoverCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/funckey/backspace/mouseOver/0");
+            WzCanvasProperty enterNormalCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/funckey/enter/normal/0");
+            WzCanvasProperty enterPressedCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/funckey/enter/pressed/0");
+            WzCanvasProperty enterDisabledCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/funckey/enter/disabled/0");
+            WzCanvasProperty enterHoverCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/funckey/enter/mouseOver/0");
+            WzCanvasProperty minNormalCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/Bt/0/BtMin/normal/0");
+            WzCanvasProperty minPressedCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/Bt/0/BtMin/pressed/0");
+            WzCanvasProperty minDisabledCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/Bt/0/BtMin/disabled/0");
+            WzCanvasProperty minHoverCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/Bt/0/BtMin/mouseOver/0");
+            WzCanvasProperty maxNormalCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/Bt/1/BtMax/normal/0");
+            WzCanvasProperty maxPressedCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/Bt/1/BtMax/pressed/0");
+            WzCanvasProperty maxDisabledCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/Bt/1/BtMax/disabled/0");
+            WzCanvasProperty maxHoverCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/Bt/1/BtMax/mouseOver/0");
+            WzCanvasProperty closeNormalCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/Bt/0/BtClose/normal/0");
+            WzCanvasProperty closePressedCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/Bt/0/BtClose/pressed/0");
+            WzCanvasProperty closeDisabledCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/Bt/0/BtClose/disabled/0");
+            WzCanvasProperty closeHoverCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/Bt/0/BtClose/mouseOver/0");
 
-            if (backgroundCanvas == null
+            if (compactBackgroundCanvas == null
                 || keyNormalCanvas == null
                 || keyPressedCanvas == null
                 || keyDisabledCanvas == null
@@ -2081,12 +2098,29 @@ namespace HaCreator.MapSimulator.Loaders
                 || backspaceNormalCanvas == null
                 || backspacePressedCanvas == null
                 || backspaceDisabledCanvas == null
-                || backspaceHoverCanvas == null)
+                || backspaceHoverCanvas == null
+                || enterNormalCanvas == null
+                || enterPressedCanvas == null
+                || enterDisabledCanvas == null
+                || enterHoverCanvas == null
+                || minNormalCanvas == null
+                || minPressedCanvas == null
+                || minDisabledCanvas == null
+                || minHoverCanvas == null
+                || maxNormalCanvas == null
+                || maxPressedCanvas == null
+                || maxDisabledCanvas == null
+                || maxHoverCanvas == null
+                || closeNormalCanvas == null
+                || closePressedCanvas == null
+                || closeDisabledCanvas == null
+                || closeHoverCanvas == null)
             {
                 return null;
             }
 
-            Texture2D backgroundTexture = backgroundCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device);
+            Texture2D compactBackgroundTexture = compactBackgroundCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device);
+            Texture2D expandedBackgroundTexture = expandedBackgroundCanvas?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device);
             Texture2D[] keyTextures =
             {
                 keyNormalCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device),
@@ -2101,14 +2135,60 @@ namespace HaCreator.MapSimulator.Loaders
                 backspaceDisabledCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device),
                 backspaceHoverCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device)
             };
+            Texture2D[] enterTextures =
+            {
+                enterNormalCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device),
+                enterPressedCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device),
+                enterDisabledCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device),
+                enterHoverCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device)
+            };
+            Texture2D[] minButtonTextures =
+            {
+                minNormalCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device),
+                minPressedCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device),
+                minDisabledCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device),
+                minHoverCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device)
+            };
+            Texture2D[] maxButtonTextures =
+            {
+                maxNormalCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device),
+                maxPressedCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device),
+                maxDisabledCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device),
+                maxHoverCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device)
+            };
+            Texture2D[] closeButtonTextures =
+            {
+                closeNormalCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device),
+                closePressedCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device),
+                closeDisabledCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device),
+                closeHoverCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device)
+            };
 
-            if (backgroundTexture == null || keyTextures.Any(texture => texture == null) || backspaceTextures.Any(texture => texture == null))
+            if (compactBackgroundTexture == null
+                || keyTextures.Any(texture => texture == null)
+                || backspaceTextures.Any(texture => texture == null)
+                || enterTextures.Any(texture => texture == null)
+                || minButtonTextures.Any(texture => texture == null)
+                || maxButtonTextures.Any(texture => texture == null)
+                || closeButtonTextures.Any(texture => texture == null))
             {
                 return null;
             }
 
-            IDXObject frame = new DXObject(0, 0, backgroundTexture, 0);
-            return new SoftKeyboardUI(frame, backgroundTexture, keyTextures, backspaceTextures, device, screenWidth, screenHeight);
+            IDXObject frame = new DXObject(0, 0, compactBackgroundTexture, 0);
+            return new SoftKeyboardUI(
+                frame,
+                compactBackgroundTexture,
+                expandedBackgroundTexture,
+                keyTextures,
+                backspaceTextures,
+                enterTextures,
+                minButtonTextures,
+                maxButtonTextures,
+                closeButtonTextures,
+                device,
+                screenWidth,
+                screenHeight);
         }
 
 

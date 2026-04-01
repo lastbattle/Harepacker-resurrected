@@ -94,6 +94,8 @@ namespace HaCreator.MapSimulator.UI
                     return new PickupNoticeMessagePair("You may not loot this item yet.", "You may not loot this item yet.");
                 case DropPickupFailureReason.PetPickupBlocked:
                     return FormatPetPickupBlocked(itemName, sourceName, pickedByPet);
+                case DropPickupFailureReason.FieldRestricted:
+                    return new PickupNoticeMessagePair("You cannot loot drops in this map.", "You cannot loot drops in this map.");
                 case DropPickupFailureReason.Unavailable:
                     return FormatUnavailable(dropType, itemName, quantity, mesoAmount, recentPickup, recentActorName);
                 default:

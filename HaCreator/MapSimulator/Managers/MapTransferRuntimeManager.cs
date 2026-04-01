@@ -122,7 +122,13 @@ namespace HaCreator.MapSimulator.Managers
 
         public MapTransferRuntimeResponse SubmitRequest(CharacterBuild build, MapTransferRuntimeRequest request)
         {
-            return SendMapTransferRequest(build, request);
+            MapTransferRuntimeResponse response = SendMapTransferRequest(build, request);
+            if (response.Applied)
+            {
+                ApplyMapTransferResult(build, response);
+            }
+
+            return response;
         }
 
         public bool ApplyMapTransferResult(CharacterBuild build, MapTransferRuntimeResponse response)

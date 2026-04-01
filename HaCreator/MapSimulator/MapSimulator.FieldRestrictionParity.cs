@@ -92,13 +92,16 @@ namespace HaCreator.MapSimulator
         private void ApplyFieldRuntimeInteractionRestrictions()
         {
             PetController pets = _playerManager?.Pets;
-            if (pets == null)
+            if (pets != null)
             {
-                return;
+                string petRestrictionMessage = FieldInteractionRestrictionEvaluator.GetPetRuntimeRestrictionMessage(_mapBoard?.MapInfo?.fieldLimit ?? 0);
+                pets.SetFieldUsageRestriction(!string.IsNullOrWhiteSpace(petRestrictionMessage), petRestrictionMessage);
             }
 
-            string petRestrictionMessage = FieldInteractionRestrictionEvaluator.GetPetRuntimeRestrictionMessage(_mapBoard?.MapInfo?.fieldLimit ?? 0);
-            pets.SetFieldUsageRestriction(!string.IsNullOrWhiteSpace(petRestrictionMessage), petRestrictionMessage);
+            if (uiWindowManager?.EquipWindow is EquipUIBigBang equipBigBang)
+            {
+                equipBigBang.SetAndroidPaneAvailable(FieldInteractionRestrictionEvaluator.CanUseAndroid(_mapBoard?.MapInfo?.fieldLimit ?? 0));
+            }
         }
 
         private void ApplyFieldRuntimeMinimapRestrictions()

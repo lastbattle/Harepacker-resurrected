@@ -31,6 +31,35 @@ namespace HaCreator.MapSimulator.UI
             (0.35f, 0.50f),
         };
 
+        private static readonly float[] JoypadAxisDeadZoneSteps =
+        {
+            0.10f,
+            0.15f,
+            0.20f,
+            0.25f,
+            0.30f,
+            0.35f,
+        };
+
+        private static readonly PlayerInput.GamepadAxisResponseCurve[] JoypadResponseCurves =
+        {
+            PlayerInput.GamepadAxisResponseCurve.Linear,
+            PlayerInput.GamepadAxisResponseCurve.Soft,
+            PlayerInput.GamepadAxisResponseCurve.Aggressive,
+        };
+
+        private static readonly InputAction[] JoypadBindingActions =
+        {
+            InputAction.Jump,
+            InputAction.Attack,
+            InputAction.Pickup,
+            InputAction.Interact,
+            InputAction.Skill1,
+            InputAction.Skill2,
+            InputAction.ToggleInventory,
+            InputAction.Escape,
+        };
+
         private readonly struct PageLayer
         {
             public PageLayer(IDXObject layer, Point offset)
@@ -61,7 +90,7 @@ namespace HaCreator.MapSimulator.UI
 
         private sealed class JoypadRow
         {
-            public JoypadRow(InputAction? action, string label, string description, Func<PlayerInput, string> getValue, Action<PlayerInput> advanceValue)
+            public JoypadRow(InputAction? action, string label, string description, Func<JoypadSessionSnapshot, string> getValue, Action<JoypadSessionSnapshot> advanceValue)
             {
                 Action = action;
                 Label = label;
@@ -73,8 +102,43 @@ namespace HaCreator.MapSimulator.UI
             public InputAction? Action { get; }
             public string Label { get; }
             public string Description { get; }
-            public Func<PlayerInput, string> GetValue { get; }
-            public Action<PlayerInput> AdvanceValue { get; }
+            public Func<JoypadSessionSnapshot, string> GetValue { get; }
+            public Action<JoypadSessionSnapshot> AdvanceValue { get; }
+        }
+
+        private sealed class JoypadSessionSnapshot
+        {
+            public PlayerIndex GamepadIndex { get; set; } = PlayerIndex.One;
+            public float LeftStickDeadZoneX { get; set; } = 0.20f;
+            public float LeftStickDeadZoneY { get; set; } = 0.20f;
+            public float LeftTriggerThreshold { get; set; } = 0.20f;
+            public float RightTriggerThreshold { get; set; } = 0.20f;
+            public bool LeftStickInvertX { get; set; }
+            public bool LeftStickInvertY { get; set; }
+            public PlayerInput.GamepadAxisResponseCurve ResponseCurve { get; set; } = PlayerInput.GamepadAxisResponseCurve.Linear;
+            public Dictionary<InputAction, Buttons> Bindings { get; } = new();
+
+            public JoypadSessionSnapshot Clone()
+            {
+                JoypadSessionSnapshot clone = new JoypadSessionSnapshot
+                {
+                    GamepadIndex = GamepadIndex,
+                    LeftStickDeadZoneX = LeftStickDeadZoneX,
+                    LeftStickDeadZoneY = LeftStickDeadZoneY,
+                    LeftTriggerThreshold = LeftTriggerThreshold,
+                    RightTriggerThreshold = RightTriggerThreshold,
+                    LeftStickInvertX = LeftStickInvertX,
+                    LeftStickInvertY = LeftStickInvertY,
+                    ResponseCurve = ResponseCurve,
+                };
+
+                foreach (KeyValuePair<InputAction, Buttons> entry in Bindings)
+                {
+                    clone.Bindings[entry.Key] = entry.Value;
+                }
+
+                return clone;
+            }
         }
 
         private readonly List<PageLayer> _layers = new();
@@ -87,6 +151,9 @@ namespace HaCreator.MapSimulator.UI
         private OptionMenuMode _mode;
         private string _statusMessage = string.Empty;
         private Func<PlayerInput> _joypadBindingSource;
+        private readonly Dictionary<OptionRow, bool> _stagedOptionValues = new();
+        private JoypadSessionSnapshot _originalJoypadSession;
+        private JoypadSessionSnapshot _stagedJoypadSession;
 
         public OptionMenuWindow(IDXObject frame, string windowName, Texture2D checkTexture, Texture2D highlightTexture)
             : base(frame)
@@ -113,8 +180,8 @@ namespace HaCreator.MapSimulator.UI
 
         public void InitializeButtons(UIObject okButton, UIObject cancelButton)
         {
-            RegisterActionButton(okButton, Hide);
-            RegisterActionButton(cancelButton, Hide);
+            RegisterActionButton(okButton, CommitAndHide);
+            RegisterActionButton(cancelButton, DiscardAndHide);
         }
 
         public void ConfigureRows(
@@ -171,6 +238,12 @@ namespace HaCreator.MapSimulator.UI
             Show();
         }
 
+        public override void Show()
+        {
+            BeginSession();
+            base.Show();
+        }
+
         public override bool CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState, MouseCursorItem mouseCursor, int renderWidth, int renderHeight)
         {
             if (base.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState, mouseCursor, renderWidth, renderHeight))
@@ -185,8 +258,8 @@ namespace HaCreator.MapSimulator.UI
 
             if (_mode == OptionMenuMode.Joypad)
             {
-                PlayerInput input = _joypadBindingSource?.Invoke();
-                if (input == null)
+                JoypadSessionSnapshot session = _stagedJoypadSession;
+                if (session == null)
                 {
                     return false;
                 }
@@ -200,8 +273,8 @@ namespace HaCreator.MapSimulator.UI
                     }
 
                     JoypadRow row = _joypadRows[i];
-                    row.AdvanceValue?.Invoke(input);
-                    _statusMessage = $"{row.Label}: {row.GetValue?.Invoke(input) ?? "Unavailable"}";
+                    row.AdvanceValue?.Invoke(session);
+                    _statusMessage = $"{row.Label}: {row.GetValue?.Invoke(session) ?? "Unavailable"}";
                     mouseCursor?.SetMouseCursorMovedToClickableItem();
                     return true;
                 }
@@ -217,10 +290,10 @@ namespace HaCreator.MapSimulator.UI
                     }
 
                     OptionRow row = rows[i];
-                    if (row.GetValue != null && row.SetValue != null)
+                    if (row.GetValue != null)
                     {
-                        bool nextValue = !row.GetValue();
-                        row.SetValue(nextValue);
+                        bool nextValue = !GetOptionValue(row);
+                        _stagedOptionValues[row] = nextValue;
                         _statusMessage = $"{row.Label}: {(nextValue ? "On" : "Off")}";
                     }
 
@@ -283,7 +356,7 @@ namespace HaCreator.MapSimulator.UI
                         sprite.Draw(_highlightTexture, bounds, new Color(36, 46, 62, 210));
 
                         OptionRow row = rows[i];
-                        bool enabled = row.GetValue?.Invoke() ?? false;
+                        bool enabled = GetOptionValue(row);
                         if (enabled && _checkTexture != null)
                         {
                             sprite.Draw(_checkTexture, new Vector2(bounds.X + 8, bounds.Y + 7), Color.White);
@@ -347,19 +420,20 @@ namespace HaCreator.MapSimulator.UI
         private Rectangle GetJoypadRowBounds(int index)
         {
             int width = Math.Max(220, (CurrentFrame?.Width ?? 283) - 30);
-            return new Rectangle(Position.X + 12, Position.Y + 126 + (index * 34), width, 30);
+            return new Rectangle(Position.X + 12, Position.Y + 116 + (index * 20), width, 18);
         }
 
         private void DrawJoypadRows(SpriteBatch sprite)
         {
+            JoypadSessionSnapshot session = _stagedJoypadSession;
             PlayerInput input = _joypadBindingSource?.Invoke();
-            if (input == null)
+            if (session == null || input == null)
             {
                 DrawWrappedText(sprite, "Player input is unavailable for the joypad owner.", Position.X + 16, Position.Y + 72, 248f, new Color(224, 224, 224));
                 return;
             }
 
-            DrawJoypadSummary(sprite, input);
+            DrawJoypadSummary(sprite, input, session);
 
             for (int i = 0; i < _joypadRows.Count; i++)
             {
@@ -367,9 +441,9 @@ namespace HaCreator.MapSimulator.UI
                 sprite.Draw(_highlightTexture, bounds, new Color(36, 46, 62, 210));
 
                 JoypadRow row = _joypadRows[i];
-                sprite.DrawString(_font, row.Label, new Vector2(bounds.X + 8, bounds.Y + 6), Color.White);
-                string value = row.GetValue?.Invoke(input) ?? "Unavailable";
-                sprite.DrawString(_font, value, new Vector2(bounds.Right - Math.Min(156, (int)_font.MeasureString(value).X) - 8, bounds.Y + 6), new Color(255, 228, 151));
+                sprite.DrawString(_font, row.Label, new Vector2(bounds.X + 8, bounds.Y + 2), Color.White);
+                string value = row.GetValue?.Invoke(session) ?? "Unavailable";
+                sprite.DrawString(_font, value, new Vector2(bounds.Right - Math.Min(156, (int)_font.MeasureString(value).X) - 8, bounds.Y + 2), new Color(255, 228, 151));
             }
         }
 
@@ -380,24 +454,57 @@ namespace HaCreator.MapSimulator.UI
                 null,
                 "Controller Slot",
                 "Cycles the active XInput slot, preferring connected controllers before empty ports.",
-                input => $"P{(int)input.GetGamepadIndex() + 1}",
-                input => input.SetGamepadIndex(GetNextPreferredGamepadIndex(input.GetGamepadIndex()))));
+                session => $"P{(int)session.GamepadIndex + 1}",
+                session => session.GamepadIndex = GetNextPreferredGamepadIndex(session.GamepadIndex)));
             _joypadRows.Add(new JoypadRow(
                 null,
-                "Axis Rules",
-                "Cycles paired left-stick dead-zone and trigger thresholds inside the shared joypad owner.",
-                input => $"DZ {input?.GetLeftStickDeadZone() ?? 0f:0.00} / TR {input?.GetTriggerActivationThreshold() ?? 0f:0.00}",
-                input =>
+                "Dead Zone X",
+                "Cycles the horizontal left-stick dead-zone used by movement.",
+                session => $"{session.LeftStickDeadZoneX:0.00}",
+                session => session.LeftStickDeadZoneX = GetNextAxisThreshold(session.LeftStickDeadZoneX)));
+            _joypadRows.Add(new JoypadRow(
+                null,
+                "Dead Zone Y",
+                "Cycles the vertical left-stick dead-zone used by ladders and ropes.",
+                session => $"{session.LeftStickDeadZoneY:0.00}",
+                session => session.LeftStickDeadZoneY = GetNextAxisThreshold(session.LeftStickDeadZoneY)));
+            _joypadRows.Add(new JoypadRow(
+                null,
+                "Trigger Thresh",
+                "Cycles the paired trigger press threshold used by trigger-owned skills.",
+                session => $"L {session.LeftTriggerThreshold:0.00} / R {session.RightTriggerThreshold:0.00}",
+                session =>
                 {
-                    if (input == null)
-                    {
-                        return;
-                    }
-
-                    (float deadZone, float triggerThreshold) = GetNextCalibrationPreset(input.GetLeftStickDeadZone(), input.GetTriggerActivationThreshold());
-                    input.SetLeftStickDeadZone(deadZone);
-                    input.SetTriggerActivationThreshold(triggerThreshold);
+                    (float deadZone, float triggerThreshold) = GetNextCalibrationPreset(
+                        (session.LeftStickDeadZoneX + session.LeftStickDeadZoneY) * 0.5f,
+                        (session.LeftTriggerThreshold + session.RightTriggerThreshold) * 0.5f);
+                    session.LeftTriggerThreshold = triggerThreshold;
+                    session.RightTriggerThreshold = triggerThreshold;
                 }));
+            _joypadRows.Add(new JoypadRow(
+                null,
+                "Stick Curve",
+                "Cycles the left-stick response shaping curve.",
+                session => FormatResponseCurve(session.ResponseCurve),
+                session => session.ResponseCurve = GetNextResponseCurve(session.ResponseCurve)));
+            _joypadRows.Add(new JoypadRow(
+                null,
+                "Invert X",
+                "Toggles horizontal inversion for the left stick.",
+                session => session.LeftStickInvertX ? "On" : "Off",
+                session => session.LeftStickInvertX = !session.LeftStickInvertX));
+            _joypadRows.Add(new JoypadRow(
+                null,
+                "Invert Y",
+                "Toggles vertical inversion for the left stick.",
+                session => session.LeftStickInvertY ? "On" : "Off",
+                session => session.LeftStickInvertY = !session.LeftStickInvertY));
+            _joypadRows.Add(new JoypadRow(
+                null,
+                "Reset Profile",
+                "Restores the default MapleStory-shaped joypad slot, calibration, and shared utility buttons.",
+                session => "Default",
+                ResetJoypadSession));
 
             AddJoypadBindingRow(InputAction.Jump, "Jump", "Cycles the jump pad button without consuming reserved movement directions.");
             AddJoypadBindingRow(InputAction.Attack, "Attack", "Cycles the basic attack pad button without remapping the left stick or D-pad.");
@@ -415,22 +522,11 @@ namespace HaCreator.MapSimulator.UI
                 action,
                 label,
                 description,
-                input => FormatGamepadButton(input?.GetBinding(action)?.GamepadButton ?? (Buttons)0),
-                input =>
+                session => FormatGamepadButton(GetJoypadBinding(session, action)),
+                session =>
                 {
-                    if (input == null)
-                    {
-                        return;
-                    }
-
-                    KeyBinding binding = input.GetBinding(action);
-                    Buttons current = binding?.GamepadButton ?? (Buttons)0;
-                    Buttons next = GetNextJoypadButton(action, current);
-                    input.SetBinding(
-                        action,
-                        binding?.PrimaryKey ?? Keys.None,
-                        binding?.SecondaryKey ?? Keys.None,
-                        next);
+                    Buttons next = GetNextJoypadButton(action, GetJoypadBinding(session, action));
+                    session.Bindings[action] = next;
                 }));
         }
 
@@ -479,6 +575,30 @@ namespace HaCreator.MapSimulator.UI
             return JoypadCalibrationPresets[0];
         }
 
+        private static float GetNextAxisThreshold(float current)
+        {
+            for (int i = 0; i < JoypadAxisDeadZoneSteps.Length; i++)
+            {
+                if (Math.Abs(JoypadAxisDeadZoneSteps[i] - current) < 0.001f)
+                {
+                    return JoypadAxisDeadZoneSteps[(i + 1) % JoypadAxisDeadZoneSteps.Length];
+                }
+            }
+
+            return JoypadAxisDeadZoneSteps[0];
+        }
+
+        private static PlayerInput.GamepadAxisResponseCurve GetNextResponseCurve(PlayerInput.GamepadAxisResponseCurve current)
+        {
+            int index = Array.IndexOf(JoypadResponseCurves, current);
+            if (index < 0)
+            {
+                return JoypadResponseCurves[0];
+            }
+
+            return JoypadResponseCurves[(index + 1) % JoypadResponseCurves.Length];
+        }
+
         private static PlayerIndex GetNextPreferredGamepadIndex(PlayerIndex current)
         {
             PlayerIndex[] order =
@@ -507,23 +627,193 @@ namespace HaCreator.MapSimulator.UI
             return order[(currentIndex + 1) % order.Length];
         }
 
-        private void DrawJoypadSummary(SpriteBatch sprite, PlayerInput input)
+        private void DrawJoypadSummary(SpriteBatch sprite, PlayerInput input, JoypadSessionSnapshot session)
         {
-            Rectangle bounds = new Rectangle(Position.X + 12, Position.Y + 72, Math.Max(220, (CurrentFrame?.Width ?? 283) - 30), 48);
+            Rectangle bounds = new Rectangle(Position.X + 12, Position.Y + 72, Math.Max(220, (CurrentFrame?.Width ?? 283) - 30), 40);
             sprite.Draw(_highlightTexture, bounds, new Color(30, 38, 52, 225));
 
             GamePadState state = input.GetGamePadState();
             string connectionText = state.IsConnected
-                ? $"P{(int)input.GetGamepadIndex() + 1} connected"
-                : $"P{(int)input.GetGamepadIndex() + 1} disconnected";
+                ? $"P{(int)session.GamepadIndex + 1} connected"
+                : $"P{(int)session.GamepadIndex + 1} disconnected";
             string calibrationText = state.IsConnected
                 ? $"LX {state.ThumbSticks.Left.X:+0.00;-0.00;0.00}  LY {state.ThumbSticks.Left.Y:+0.00;-0.00;0.00}  LT {state.Triggers.Left:0.00}  RT {state.Triggers.Right:0.00}"
                 : "Cycle the slot until a live controller is found; binding rows keep directional movement reserved.";
-            string thresholdText = $"Move DZ {input.GetLeftStickDeadZone():0.00}  Trigger TH {input.GetTriggerActivationThreshold():0.00}";
+            string thresholdText = $"DX {session.LeftStickDeadZoneX:0.00} DY {session.LeftStickDeadZoneY:0.00}  TR {session.LeftTriggerThreshold:0.00}/{session.RightTriggerThreshold:0.00}  {FormatResponseCurve(session.ResponseCurve)}";
 
             sprite.DrawString(_font, connectionText, new Vector2(bounds.X + 8, bounds.Y + 3), Color.White);
             sprite.DrawString(_font, calibrationText, new Vector2(bounds.X + 8, bounds.Y + 17), new Color(210, 210, 210));
-            sprite.DrawString(_font, thresholdText, new Vector2(bounds.X + 8, bounds.Y + 31), new Color(255, 228, 151));
+            sprite.DrawString(_font, thresholdText, new Vector2(bounds.X + 8, bounds.Y + 28), new Color(255, 228, 151));
+        }
+
+        private void BeginSession()
+        {
+            _stagedOptionValues.Clear();
+            foreach (List<OptionRow> rows in _rows.Values)
+            {
+                if (rows == null)
+                {
+                    continue;
+                }
+
+                foreach (OptionRow row in rows)
+                {
+                    if (row?.GetValue != null)
+                    {
+                        _stagedOptionValues[row] = row.GetValue();
+                    }
+                }
+            }
+
+            PlayerInput input = _joypadBindingSource?.Invoke();
+            _originalJoypadSession = CaptureJoypadSession(input);
+            _stagedJoypadSession = _originalJoypadSession?.Clone();
+        }
+
+        private void CommitAndHide()
+        {
+            foreach (KeyValuePair<OptionMenuMode, List<OptionRow>> group in _rows)
+            {
+                if (group.Value == null)
+                {
+                    continue;
+                }
+
+                foreach (OptionRow row in group.Value)
+                {
+                    if (row?.SetValue == null)
+                    {
+                        continue;
+                    }
+
+                    row.SetValue(GetOptionValue(row));
+                }
+            }
+
+            ApplyJoypadSession(_stagedJoypadSession);
+            Hide();
+        }
+
+        private void DiscardAndHide()
+        {
+            _stagedOptionValues.Clear();
+            _stagedJoypadSession = _originalJoypadSession?.Clone();
+            Hide();
+        }
+
+        private bool GetOptionValue(OptionRow row)
+        {
+            if (row == null)
+            {
+                return false;
+            }
+
+            return _stagedOptionValues.TryGetValue(row, out bool value)
+                ? value
+                : (row.GetValue?.Invoke() ?? false);
+        }
+
+        private JoypadSessionSnapshot CaptureJoypadSession(PlayerInput input)
+        {
+            if (input == null)
+            {
+                return null;
+            }
+
+            JoypadSessionSnapshot session = new JoypadSessionSnapshot
+            {
+                GamepadIndex = input.GetGamepadIndex(),
+                LeftStickDeadZoneX = input.GetLeftStickDeadZoneX(),
+                LeftStickDeadZoneY = input.GetLeftStickDeadZoneY(),
+                LeftTriggerThreshold = input.GetLeftTriggerActivationThreshold(),
+                RightTriggerThreshold = input.GetRightTriggerActivationThreshold(),
+                LeftStickInvertX = input.GetLeftStickInvertX(),
+                LeftStickInvertY = input.GetLeftStickInvertY(),
+                ResponseCurve = input.GetLeftStickResponseCurve(),
+            };
+
+            foreach (InputAction action in JoypadBindingActions)
+            {
+                session.Bindings[action] = input.GetBinding(action)?.GamepadButton ?? (Buttons)0;
+            }
+
+            return session;
+        }
+
+        private void ApplyJoypadSession(JoypadSessionSnapshot session)
+        {
+            PlayerInput input = _joypadBindingSource?.Invoke();
+            if (input == null || session == null)
+            {
+                return;
+            }
+
+            input.SetGamepadIndex(session.GamepadIndex);
+            input.SetLeftStickDeadZoneX(session.LeftStickDeadZoneX);
+            input.SetLeftStickDeadZoneY(session.LeftStickDeadZoneY);
+            input.SetLeftTriggerActivationThreshold(session.LeftTriggerThreshold);
+            input.SetRightTriggerActivationThreshold(session.RightTriggerThreshold);
+            input.SetLeftStickInvertX(session.LeftStickInvertX);
+            input.SetLeftStickInvertY(session.LeftStickInvertY);
+            input.SetLeftStickResponseCurve(session.ResponseCurve);
+
+            foreach (InputAction action in JoypadBindingActions)
+            {
+                KeyBinding binding = input.GetBinding(action);
+                input.SetBinding(
+                    action,
+                    binding?.PrimaryKey ?? Keys.None,
+                    binding?.SecondaryKey ?? Keys.None,
+                    GetJoypadBinding(session, action));
+            }
+        }
+
+        private static Buttons GetJoypadBinding(JoypadSessionSnapshot session, InputAction action)
+        {
+            if (session == null)
+            {
+                return 0;
+            }
+
+            return session.Bindings.TryGetValue(action, out Buttons button)
+                ? button
+                : (Buttons)0;
+        }
+
+        private static void ResetJoypadSession(JoypadSessionSnapshot session)
+        {
+            if (session == null)
+            {
+                return;
+            }
+
+            session.GamepadIndex = PlayerIndex.One;
+            session.LeftStickDeadZoneX = 0.20f;
+            session.LeftStickDeadZoneY = 0.20f;
+            session.LeftTriggerThreshold = 0.20f;
+            session.RightTriggerThreshold = 0.20f;
+            session.LeftStickInvertX = false;
+            session.LeftStickInvertY = false;
+            session.ResponseCurve = PlayerInput.GamepadAxisResponseCurve.Linear;
+
+            session.Bindings.Clear();
+            foreach ((InputAction action, Keys primary, Keys secondary, Buttons gamepad) in PlayerInput.GetDefaultBindings())
+            {
+                if (Array.IndexOf(JoypadBindingActions, action) >= 0)
+                {
+                    session.Bindings[action] = gamepad;
+                }
+            }
+        }
+
+        private static string FormatResponseCurve(PlayerInput.GamepadAxisResponseCurve curve)
+        {
+            return curve switch
+            {
+                PlayerInput.GamepadAxisResponseCurve.Soft => "Soft",
+                PlayerInput.GamepadAxisResponseCurve.Aggressive => "Aggressive",
+                _ => "Linear",
+            };
         }
 
         private static string FormatGamepadButton(Buttons button)

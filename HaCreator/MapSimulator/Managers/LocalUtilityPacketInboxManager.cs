@@ -67,6 +67,9 @@ namespace HaCreator.MapSimulator.Managers
         public const int FollowCharacterFailedClientPacketType = 270;
         public const int AskApspEventClientPacketType = 273;
         public const int SkillCooltimeSetPacketType = 276;
+        public const int FuncKeyMapInitPacketType = 398;
+        public const int PetConsumeItemInitPacketType = 399;
+        public const int PetConsumeMpItemInitPacketType = 400;
 
         private readonly ConcurrentQueue<LocalUtilityPacketInboxMessage> _pendingMessages = new();
         private readonly object _listenerLock = new();
@@ -294,7 +297,10 @@ namespace HaCreator.MapSimulator.Managers
                     || packetType == DamageMeterPacketType
                     || packetType == QuestGuideResultPacketType
                     || packetType == DeliveryQuestPacketType
-                    || packetType == SkillCooltimeSetPacketType;
+                    || packetType == SkillCooltimeSetPacketType
+                    || packetType == FuncKeyMapInitPacketType
+                    || packetType == PetConsumeItemInitPacketType
+                    || packetType == PetConsumeMpItemInitPacketType;
             }
 
             if (token.Equals("openui", StringComparison.OrdinalIgnoreCase))
@@ -458,6 +464,29 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
+            if (token.Equals("funckeymap", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("keymap", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("funckeyinit", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = FuncKeyMapInitPacketType;
+                return true;
+            }
+
+            if (token.Equals("petconsumehp", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("petconsumeitem", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("petautohp", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = PetConsumeItemInitPacketType;
+                return true;
+            }
+
+            if (token.Equals("petconsumemp", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("petautomp", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = PetConsumeMpItemInitPacketType;
+                return true;
+            }
+
             return false;
         }
 
@@ -578,6 +607,9 @@ namespace HaCreator.MapSimulator.Managers
                 QuestGuideResultPacketType => "QuestGuideResult(274)",
                 DeliveryQuestPacketType => "DeliveryQuest(275)",
                 SkillCooltimeSetPacketType => "SkillCooltimeSet(276)",
+                FuncKeyMapInitPacketType => "FuncKeyMapInit(398)",
+                PetConsumeItemInitPacketType => "PetConsumeItemInit(399)",
+                PetConsumeMpItemInitPacketType => "PetConsumeMPItemInit(400)",
                 _ => $"packet {packetType}"
             };
         }

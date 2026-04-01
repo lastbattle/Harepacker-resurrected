@@ -1,4 +1,6 @@
 using System;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace HaCreator.MapSimulator.Interaction
 {
@@ -35,11 +37,30 @@ namespace HaCreator.MapSimulator.Interaction
         internal int ActiveMessageDurationMs { get; private set; }
         internal int ActiveMessageExpiresAt { get; private set; } = int.MinValue;
         internal string StatusMessage { get; private set; } = "Tutor runtime idle.";
+        internal IReadOnlyCollection<int> ActiveTutorSkillIds => _activeTutorSkillIds;
+
+        private readonly HashSet<int> _activeTutorSkillIds = new();
 
         internal bool HasVisibleMessage(int currentTick)
         {
             return IsActive
                 && MessageKind != TutorMessageKind.None
+                && currentTick < ActiveMessageExpiresAt
+                && (MessageKind == TutorMessageKind.Indexed || !string.IsNullOrWhiteSpace(ActiveMessageText));
+        }
+
+        internal bool HasVisibleIndexedCue(int currentTick)
+        {
+            return IsActive
+                && MessageKind == TutorMessageKind.Indexed
+                && currentTick < ActiveMessageExpiresAt
+                && LastIndexedMessage >= 0;
+        }
+
+        internal bool HasVisibleTextMessage(int currentTick)
+        {
+            return IsActive
+                && MessageKind == TutorMessageKind.Text
                 && currentTick < ActiveMessageExpiresAt
                 && !string.IsNullOrWhiteSpace(ActiveMessageText);
         }
@@ -56,6 +77,12 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal void ApplyHire(int skillId, int currentTick)
         {
+            _activeTutorSkillIds.Clear();
+            if (skillId > 0)
+            {
+                _activeTutorSkillIds.Add(skillId);
+            }
+
             IsActive = true;
             ActiveSkillId = skillId;
             ActiveSummonObjectId = ResolveSummonObjectId(skillId);
@@ -67,6 +94,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal void ApplyRemoval(string reason = null)
         {
             bool hadActor = IsActive;
+            _activeTutorSkillIds.Clear();
             IsActive = false;
             ActiveSkillId = 0;
             ActiveSummonObjectId = 0;
@@ -83,10 +111,10 @@ namespace HaCreator.MapSimulator.Interaction
         {
             LastIndexedMessage = Math.Max(0, index);
             MessageKind = TutorMessageKind.Indexed;
+            ActiveMessageText = string.Empty;
             ActiveMessageWidth = DefaultTextWidth;
             ActiveMessageDurationMs = ClampDuration(durationMs <= 0 ? DefaultIndexedDurationMs : durationMs);
             ActiveMessageExpiresAt = unchecked(Environment.TickCount + ActiveMessageDurationMs);
-            ActiveMessageText = $"Tutor cue #{LastIndexedMessage}";
             StatusMessage = $"Tutor indexed cue #{LastIndexedMessage} active for {ActiveMessageDurationMs} ms.";
         }
 
@@ -121,6 +149,16 @@ namespace HaCreator.MapSimulator.Interaction
             ActiveMessageWidth = DefaultTextWidth;
             ActiveMessageDurationMs = 0;
             ActiveMessageExpiresAt = int.MinValue;
+        }
+
+        internal string DescribeActiveTutorVariants()
+        {
+            if (_activeTutorSkillIds.Count == 0)
+            {
+                return "none";
+            }
+
+            return string.Join(", ", _activeTutorSkillIds.OrderBy(skillId => skillId));
         }
 
         private static int ClampDuration(int durationMs)

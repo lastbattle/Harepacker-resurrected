@@ -5250,6 +5250,8 @@ namespace HaCreator.MapSimulator
                                     return ChatCommandHandler.CommandResult.Ok("Personal-shop window opened.");
                                 case "status":
                                     return ChatCommandHandler.CommandResult.Info(runtime.DescribeStatus());
+                                case "packetowner":
+                                    return ChatCommandHandler.CommandResult.Info(runtime.DescribePacketOwnerStatus());
                                 case "visit":
                                     string visitor = args.Length > actionIndex + 1 ? args[actionIndex + 1] : null;
                                     return Dispatch(SocialRoomPacketType.AddVisitor, out string visitMessage, actorName: visitor)
@@ -5297,7 +5299,7 @@ namespace HaCreator.MapSimulator
                                 case "employee":
                                     return HandleSocialRoomEmployeeCommand(runtime, kind, args, actionIndex);
                                 default:
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /socialroom personalshop [packet] <open|status|visit [name]|blacklist [name]|list <itemId> [qty] [price]|autolist|buy [index] [buyer]|arrange|claim|close|employee <status|template <itemId|clear>|offset <x> <y>|world <x> <y>|facing <left|right|random>|packetraw <hex>|reset>|packetraw <hex>|packetrecv <opcode> <hex>>");
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /socialroom personalshop [packet] <open|status|packetowner|visit [name]|blacklist [name]|list <itemId> [qty] [price]|autolist|buy [index] [buyer]|arrange|claim|close|employee <status|template <itemId|clear>|offset <x> <y>|world <x> <y>|facing <left|right|random>|packetraw <hex>|reset>|packetraw <hex>|packetrecv <opcode> <hex>>");
                             }
 
 
@@ -5312,6 +5314,8 @@ namespace HaCreator.MapSimulator
                                     return ChatCommandHandler.CommandResult.Ok("Entrusted-shop window opened.");
                                 case "status":
                                     return ChatCommandHandler.CommandResult.Info(runtime.DescribeStatus());
+                                case "packetowner":
+                                    return ChatCommandHandler.CommandResult.Info(runtime.DescribePacketOwnerStatus());
                                 case "mode":
                                     return Dispatch(SocialRoomPacketType.ToggleLedgerMode, out string ledgerMessage)
                                         ? ChatCommandHandler.CommandResult.Ok(ledgerMessage)
@@ -5358,7 +5362,7 @@ namespace HaCreator.MapSimulator
                                 case "employee":
                                     return HandleSocialRoomEmployeeCommand(runtime, kind, args, actionIndex);
                                 default:
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /socialroom entrustedshop [packet] <open|status|mode|list <itemId> [qty] [price]|autolist|arrange|claim|permit [minutes|expire]|employee <status|template <itemId|clear>|offset <x> <y>|world <x> <y>|facing <left|right|random>|packetraw <hex>|reset>|packetraw <hex>|packetrecv <opcode> <hex>>");
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /socialroom entrustedshop [packet] <open|status|packetowner|mode|list <itemId> [qty] [price]|autolist|arrange|claim|permit [minutes|expire]|employee <status|template <itemId|clear>|offset <x> <y>|world <x> <y>|facing <left|right|random>|packetraw <hex>|reset>|packetraw <hex>|packetrecv <opcode> <hex>>");
                             }
 
 
@@ -7340,6 +7344,55 @@ namespace HaCreator.MapSimulator
                                 ? ChatCommandHandler.CommandResult.Ok(menuMessage)
                                 : ChatCommandHandler.CommandResult.Error(menuMessage);
 
+                        case "sayimage":
+                            if (args.Length < 3 || !int.TryParse(args[1], out int sayImageNpcId))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg sayimage <npcId> <imagePath[,imagePath...]>");
+                            }
+
+
+                            return TryApplyPacketOwnedScriptMessagePacket(
+                                BuildScriptMessageSayImagePacket(
+                                    sayImageNpcId,
+                                    args[2].Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)),
+                                out string sayImageMessage)
+                                ? ChatCommandHandler.CommandResult.Ok(sayImageMessage)
+                                : ChatCommandHandler.CommandResult.Error(sayImageMessage);
+
+                        case "avatar":
+                            if (args.Length < 4 || !int.TryParse(args[1], out int avatarNpcId))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg avatar <npcId> <prompt> <itemId[,itemId...]>");
+                            }
+
+                            if (!TryParsePacketOwnedItemIdList(args[3], out int[] avatarItemIds))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg avatar <npcId> <prompt> <itemId[,itemId...]>");
+                            }
+
+                            return TryApplyPacketOwnedScriptMessagePacket(
+                                BuildScriptMessageAvatarPacket(avatarNpcId, args[2], avatarItemIds),
+                                out string avatarMessage)
+                                ? ChatCommandHandler.CommandResult.Ok(avatarMessage)
+                                : ChatCommandHandler.CommandResult.Error(avatarMessage);
+
+                        case "mavatar":
+                            if (args.Length < 4 || !int.TryParse(args[1], out int membershopAvatarNpcId))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg mavatar <npcId> <prompt> <itemId[,itemId...]>");
+                            }
+
+                            if (!TryParsePacketOwnedItemIdList(args[3], out int[] membershopAvatarItemIds))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg mavatar <npcId> <prompt> <itemId[,itemId...]>");
+                            }
+
+                            return TryApplyPacketOwnedScriptMessagePacket(
+                                BuildScriptMessageMembershopAvatarPacket(membershopAvatarNpcId, args[2], membershopAvatarItemIds),
+                                out string membershopAvatarMessage)
+                                ? ChatCommandHandler.CommandResult.Ok(membershopAvatarMessage)
+                                : ChatCommandHandler.CommandResult.Error(membershopAvatarMessage);
+
                         case "text":
 
                             if (args.Length < 6 ||
@@ -7432,7 +7485,7 @@ namespace HaCreator.MapSimulator
 
 
                         default:
-                            return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg [status|clear|transport <status|start [port]|stop>|say <npcId> <text>|yesno <npcId> <text>|menu <npcId> <text>|text <npcId> <minLen> <maxLen> <defaultText> <prompt>|number <npcId> <default> <min> <max> <prompt>|box <npcId> <columns> <lines> <defaultText> <prompt>|packet <payloadhex=..|payloadb64=..>|packetraw <hex>]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg [status|clear|transport <status|start [port]|stop>|say <npcId> <text>|sayimage <npcId> <imagePath[,imagePath...]>|yesno <npcId> <text>|menu <npcId> <text>|avatar <npcId> <prompt> <itemId[,itemId...]>|mavatar <npcId> <prompt> <itemId[,itemId...]>|text <npcId> <minLen> <maxLen> <defaultText> <prompt>|number <npcId> <default> <min> <max> <prompt>|box <npcId> <columns> <lines> <defaultText> <prompt>|packet <payloadhex=..|payloadb64=..>|packetraw <hex>]");
                     }
                 });
 
@@ -7647,6 +7700,23 @@ namespace HaCreator.MapSimulator
             return stream.ToArray();
         }
 
+        private static byte[] BuildScriptMessageSayImagePacket(int npcId, IReadOnlyList<string> imagePaths)
+        {
+            using var stream = new MemoryStream();
+            using var writer = new BinaryWriter(stream, Encoding.Default, leaveOpen: true);
+            writer.Write((byte)4);
+            writer.Write(npcId);
+            writer.Write((byte)1);
+            writer.Write((byte)0);
+            writer.Write((byte)Math.Min(byte.MaxValue, imagePaths?.Count ?? 0));
+            foreach (string imagePath in imagePaths ?? Array.Empty<string>())
+            {
+                WritePacketOwnedMapleString(writer, imagePath);
+            }
+
+            return stream.ToArray();
+        }
+
         private static byte[] BuildScriptMessageYesNoPacket(int npcId, string text)
         {
             using var stream = new MemoryStream();
@@ -7668,6 +7738,34 @@ namespace HaCreator.MapSimulator
             writer.Write((byte)5);
             writer.Write((byte)0);
             WritePacketOwnedMapleString(writer, text);
+            return stream.ToArray();
+        }
+
+        private static byte[] BuildScriptMessageAvatarPacket(int npcId, string prompt, IReadOnlyList<int> itemIds)
+        {
+            return BuildScriptMessageAvatarPacketCore(npcId, 8, prompt, itemIds);
+        }
+
+        private static byte[] BuildScriptMessageMembershopAvatarPacket(int npcId, string prompt, IReadOnlyList<int> itemIds)
+        {
+            return BuildScriptMessageAvatarPacketCore(npcId, 9, prompt, itemIds);
+        }
+
+        private static byte[] BuildScriptMessageAvatarPacketCore(int npcId, byte messageType, string prompt, IReadOnlyList<int> itemIds)
+        {
+            using var stream = new MemoryStream();
+            using var writer = new BinaryWriter(stream, Encoding.Default, leaveOpen: true);
+            writer.Write((byte)4);
+            writer.Write(npcId);
+            writer.Write(messageType);
+            writer.Write((byte)0);
+            WritePacketOwnedMapleString(writer, prompt);
+            writer.Write((byte)Math.Min(byte.MaxValue, itemIds?.Count ?? 0));
+            foreach (int itemId in itemIds ?? Array.Empty<int>())
+            {
+                writer.Write(itemId);
+            }
+
             return stream.ToArray();
         }
 
@@ -7721,6 +7819,35 @@ namespace HaCreator.MapSimulator
             byte[] bytes = Encoding.Default.GetBytes(text ?? string.Empty);
             writer.Write((ushort)bytes.Length);
             writer.Write(bytes);
+        }
+
+        private static bool TryParsePacketOwnedItemIdList(string input, out int[] itemIds)
+        {
+            itemIds = Array.Empty<int>();
+            if (string.IsNullOrWhiteSpace(input))
+            {
+                return false;
+            }
+
+            string[] tokens = input.Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+            if (tokens.Length == 0)
+            {
+                return false;
+            }
+
+            itemIds = new int[tokens.Length];
+            for (int i = 0; i < tokens.Length; i++)
+            {
+                if (!int.TryParse(tokens[i], out int itemId) || itemId <= 0)
+                {
+                    itemIds = Array.Empty<int>();
+                    return false;
+                }
+
+                itemIds[i] = itemId;
+            }
+
+            return true;
         }
 
         private string DescribePetAutoConsumeHpSettings()

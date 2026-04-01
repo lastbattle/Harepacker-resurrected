@@ -4,6 +4,7 @@ using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.Pools;
 using HaCreator.MapSimulator.UI;
+using HaCreator.Wz;
 using HaSharedLibrary.Wz;
 using MapleLib.WzLib;
 using MapleLib.WzLib.Util;
@@ -48,6 +49,14 @@ namespace HaCreator.MapSimulator
             public CharacterPart MountPart { get; init; }
             public int? OriginalDurability { get; init; }
             public int? OriginalMaxDurability { get; init; }
+        }
+
+        private sealed class PacketOwnedRadioTrackResolution
+        {
+            public WzBinaryProperty AudioProperty { get; init; }
+            public string ResolvedTrackDescriptor { get; init; }
+            public string ResolvedAudioDescriptor { get; init; }
+            public string DisplayName { get; init; }
         }
 
         private readonly Dictionary<int, HashSet<int>> _packetQuestGuideTargetsByMobId = new();
@@ -97,6 +106,7 @@ namespace HaCreator.MapSimulator
         private string _lastPacketOwnedMinigameSoundDescriptor;
         private MonoGameBgmPlayer _packetOwnedRadioAudio;
         private string _lastPacketOwnedRadioTrackDescriptor;
+        private string _lastPacketOwnedRadioResolvedTrackDescriptor;
         private string _lastPacketOwnedRadioResolvedDescriptor;
         private string _lastPacketOwnedRadioDisplayName;
         private string _lastPacketOwnedRadioStatusMessage = "Packet-owned radio idle.";
@@ -970,6 +980,15 @@ namespace HaCreator.MapSimulator
                 case LocalUtilityPacketInboxManager.SkillCooltimeSetPacketType:
                     return TryApplyPacketOwnedSkillCooltimePayload(payload, out message);
 
+                case LocalUtilityPacketInboxManager.FuncKeyMapInitPacketType:
+                    return TryApplyPacketOwnedFuncKeyInitPayload(payload, out message);
+
+                case LocalUtilityPacketInboxManager.PetConsumeItemInitPacketType:
+                    return TryApplyPacketOwnedPetConsumeItemInitPayload(payload, mpItem: false, out message);
+
+                case LocalUtilityPacketInboxManager.PetConsumeMpItemInitPacketType:
+                    return TryApplyPacketOwnedPetConsumeItemInitPayload(payload, mpItem: true, out message);
+
                 default:
                     message = $"Unsupported local utility packet type {packetType}.";
                     return false;
@@ -1364,9 +1383,7 @@ namespace HaCreator.MapSimulator
 
             if (!TryResolvePacketOwnedRadioTrack(
                 normalizedTrackDescriptor,
-                out WzBinaryProperty radioTrackProperty,
-                out string resolvedDescriptor,
-                out string displayName))
+                out PacketOwnedRadioTrackResolution trackResolution))
             {
                 string missingMessage = $"Packet-owned radio track '{normalizedTrackDescriptor}' could not be resolved in the loaded Sound/*.img data.";
                 _lastPacketOwnedRadioStatusMessage = missingMessage;
@@ -1377,21 +1394,22 @@ namespace HaCreator.MapSimulator
             try
             {
                 _packetOwnedRadioAudio?.Dispose();
-                _packetOwnedRadioAudio = new MonoGameBgmPlayer(radioTrackProperty, looped: false);
+                _packetOwnedRadioAudio = new MonoGameBgmPlayer(trackResolution.AudioProperty, looped: false);
                 _lastPacketOwnedRadioTrackDescriptor = normalizedTrackDescriptor;
-                _lastPacketOwnedRadioResolvedDescriptor = resolvedDescriptor;
-                _lastPacketOwnedRadioDisplayName = displayName;
+                _lastPacketOwnedRadioResolvedTrackDescriptor = trackResolution.ResolvedTrackDescriptor;
+                _lastPacketOwnedRadioResolvedDescriptor = trackResolution.ResolvedAudioDescriptor;
+                _lastPacketOwnedRadioDisplayName = trackResolution.DisplayName;
                 _lastPacketOwnedRadioTimeValue = Math.Max(0, timeValue);
                 _lastPacketOwnedRadioStartTick = Environment.TickCount;
                 _lastPacketOwnedRadioLastPollTick = int.MinValue;
-                _lastPacketOwnedRadioStatusMessage = $"Playing {displayName} through packet-owned radio ownership.";
+                _lastPacketOwnedRadioStatusMessage = $"Playing {trackResolution.DisplayName} through packet-owned radio ownership.";
 
                 _packetOwnedRadioAudio.Play();
                 ApplyUtilityAudioSettings();
                 ShowPacketOwnedRadioWindow();
-                _chat?.AddClientChatMessage($"[Radio] Now playing {displayName}.", Environment.TickCount, 12);
+                _chat?.AddClientChatMessage($"[Radio] Now playing {trackResolution.DisplayName}.", Environment.TickCount, 12);
 
-                string message = $"Started packet-owned radio playback for {displayName} ({resolvedDescriptor}).";
+                string message = $"Started packet-owned radio playback for {trackResolution.DisplayName} ({trackResolution.ResolvedAudioDescriptor}).";
                 ShowUtilityFeedbackMessage(message);
                 return message;
             }
@@ -1444,6 +1462,7 @@ namespace HaCreator.MapSimulator
             _packetOwnedRadioAudio?.Dispose();
             _packetOwnedRadioAudio = null;
             _lastPacketOwnedRadioTrackDescriptor = null;
+            _lastPacketOwnedRadioResolvedTrackDescriptor = null;
             _lastPacketOwnedRadioResolvedDescriptor = null;
             _lastPacketOwnedRadioDisplayName = null;
             _lastPacketOwnedRadioTimeValue = 0;
@@ -1506,6 +1525,11 @@ namespace HaCreator.MapSimulator
             int elapsedMs = Math.Max(0, unchecked(Environment.TickCount - _lastPacketOwnedRadioStartTick));
             lines.Add($"Track: {_lastPacketOwnedRadioDisplayName ?? _lastPacketOwnedRadioTrackDescriptor}");
             lines.Add($"Authored descriptor: {_lastPacketOwnedRadioTrackDescriptor}");
+            if (!string.IsNullOrWhiteSpace(_lastPacketOwnedRadioResolvedTrackDescriptor))
+            {
+                lines.Add($"Resolved track node: {_lastPacketOwnedRadioResolvedTrackDescriptor}");
+            }
+
             lines.Add($"Resolved source: {_lastPacketOwnedRadioResolvedDescriptor}");
             lines.Add($"Elapsed: {elapsedMs / 1000f:0.0}s");
             lines.Add(_lastPacketOwnedRadioTimeValue > 0
@@ -1522,15 +1546,16 @@ namespace HaCreator.MapSimulator
                 : "Client parity: waiting for OnRadioSchedule.";
         }
 
+        private string GetPacketOwnedRadioTrackName()
+        {
+            return _lastPacketOwnedRadioDisplayName ?? _lastPacketOwnedRadioTrackDescriptor;
+        }
+
         private static bool TryResolvePacketOwnedRadioTrack(
             string descriptor,
-            out WzBinaryProperty soundProperty,
-            out string resolvedDescriptor,
-            out string displayName)
+            out PacketOwnedRadioTrackResolution resolution)
         {
-            soundProperty = null;
-            resolvedDescriptor = null;
-            displayName = null;
+            resolution = null;
 
             if (string.IsNullOrWhiteSpace(descriptor))
             {
@@ -1538,17 +1563,19 @@ namespace HaCreator.MapSimulator
             }
 
             string normalizedDescriptor = descriptor.Trim().Replace('\\', '/');
-            soundProperty = Program.InfoManager.GetBgm(normalizedDescriptor);
-            if (soundProperty != null)
+            if (TryResolvePacketOwnedRadioTrackViaClientStyleLookup(normalizedDescriptor, out resolution))
             {
-                resolvedDescriptor = normalizedDescriptor;
-                displayName = ResolvePacketOwnedRadioDisplayName(soundProperty, normalizedDescriptor.Split('/').LastOrDefault() ?? normalizedDescriptor);
                 return true;
             }
 
-            if (TryResolvePacketOwnedWzSound(normalizedDescriptor, "Radio.img", out soundProperty, out resolvedDescriptor))
+            WzBinaryProperty soundProperty = Program.InfoManager.GetBgm(normalizedDescriptor);
+            if (soundProperty != null)
             {
-                displayName = ResolvePacketOwnedRadioDisplayName(soundProperty, resolvedDescriptor.Split('/').LastOrDefault() ?? normalizedDescriptor);
+                resolution = CreatePacketOwnedRadioTrackResolution(
+                    soundProperty,
+                    normalizedDescriptor,
+                    normalizedDescriptor,
+                    ResolvePacketOwnedRadioDisplayName(soundProperty, normalizedDescriptor.Split('/').LastOrDefault() ?? normalizedDescriptor));
                 return true;
             }
 
@@ -1567,8 +1594,11 @@ namespace HaCreator.MapSimulator
                     soundProperty = Program.InfoManager.GetBgm(bgmCandidate);
                     if (soundProperty != null)
                     {
-                        resolvedDescriptor = bgmCandidate;
-                        displayName = ResolvePacketOwnedRadioDisplayName(soundProperty, normalizedDescriptor);
+                        resolution = CreatePacketOwnedRadioTrackResolution(
+                            soundProperty,
+                            bgmCandidate,
+                            bgmCandidate,
+                            ResolvePacketOwnedRadioDisplayName(soundProperty, normalizedDescriptor));
                         return true;
                     }
                 }
@@ -1577,10 +1607,131 @@ namespace HaCreator.MapSimulator
             return false;
         }
 
-        private static string ResolvePacketOwnedRadioDisplayName(WzBinaryProperty soundProperty, string fallback)
+        private static bool TryResolvePacketOwnedRadioTrackViaClientStyleLookup(
+            string descriptor,
+            out PacketOwnedRadioTrackResolution resolution)
+        {
+            resolution = null;
+
+            foreach ((string imageName, string propertyPath) in BuildPacketOwnedRadioTrackCandidates(descriptor))
+            {
+                WzImageProperty trackNode = ResolvePacketOwnedSoundProperty(imageName, propertyPath);
+                if (trackNode == null)
+                {
+                    continue;
+                }
+
+                if (TryCreatePacketOwnedRadioTrackResolution(trackNode, $"{imageName[..^4]}/{propertyPath}", out resolution))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static IEnumerable<(string ImageName, string PropertyPath)> BuildPacketOwnedRadioTrackCandidates(string descriptor)
+        {
+            if (string.IsNullOrWhiteSpace(descriptor))
+            {
+                yield break;
+            }
+
+            string normalized = descriptor.Trim().Replace('\\', '/');
+            string[] segments = normalized.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length == 0)
+            {
+                yield break;
+            }
+
+            yield return ("Radio.img", normalized);
+
+            if (segments.Length >= 2)
+            {
+                yield return (NormalizePacketOwnedSoundImageName(segments[0]), string.Join("/", segments.Skip(1)));
+            }
+        }
+
+        private static bool TryCreatePacketOwnedRadioTrackResolution(
+            WzImageProperty trackNode,
+            string resolvedTrackDescriptor,
+            out PacketOwnedRadioTrackResolution resolution)
+        {
+            resolution = null;
+            WzImageProperty resolvedTrackNode = WzInfoTools.GetRealProperty(trackNode);
+            if (resolvedTrackNode == null)
+            {
+                return false;
+            }
+
+            WzBinaryProperty audioProperty = ResolvePacketOwnedRadioAudioProperty(resolvedTrackNode);
+            if (audioProperty == null)
+            {
+                return false;
+            }
+
+            string displayName = ResolvePacketOwnedRadioDisplayName(
+                resolvedTrackNode,
+                resolvedTrackDescriptor.Split('/').LastOrDefault() ?? resolvedTrackDescriptor);
+            resolution = CreatePacketOwnedRadioTrackResolution(
+                audioProperty,
+                resolvedTrackDescriptor,
+                ResolvePacketOwnedDescriptor(audioProperty) ?? resolvedTrackDescriptor,
+                displayName);
+            return true;
+        }
+
+        private static PacketOwnedRadioTrackResolution CreatePacketOwnedRadioTrackResolution(
+            WzBinaryProperty audioProperty,
+            string resolvedTrackDescriptor,
+            string resolvedAudioDescriptor,
+            string displayName)
+        {
+            return new PacketOwnedRadioTrackResolution
+            {
+                AudioProperty = audioProperty,
+                ResolvedTrackDescriptor = resolvedTrackDescriptor,
+                ResolvedAudioDescriptor = resolvedAudioDescriptor,
+                DisplayName = string.IsNullOrWhiteSpace(displayName) ? "radio track" : displayName.Trim(),
+            };
+        }
+
+        private static WzBinaryProperty ResolvePacketOwnedRadioAudioProperty(WzImageProperty trackNode)
+        {
+            if (trackNode is WzBinaryProperty binaryProperty)
+            {
+                return binaryProperty;
+            }
+
+            string[] preferredChildNames =
+            {
+                "sound",
+                "Sound",
+                "bgm",
+                "Bgm",
+                "track",
+                "Track",
+                "music",
+                "Music",
+                "0",
+            };
+
+            for (int i = 0; i < preferredChildNames.Length; i++)
+            {
+                WzImageProperty candidate = WzInfoTools.GetRealProperty(trackNode[preferredChildNames[i]]);
+                if (candidate is WzBinaryProperty binaryChild)
+                {
+                    return binaryChild;
+                }
+            }
+
+            return null;
+        }
+
+        private static string ResolvePacketOwnedRadioDisplayName(WzObject source, string fallback)
         {
             string normalizedFallback = string.IsNullOrWhiteSpace(fallback) ? "radio track" : fallback.Trim();
-            for (WzObject current = soundProperty?.Parent; current != null; current = current.Parent)
+            for (WzObject current = source; current != null; current = current.Parent)
             {
                 if (current is not WzImageProperty propertyContainer)
                 {
@@ -1595,6 +1746,23 @@ namespace HaCreator.MapSimulator
             }
 
             return normalizedFallback;
+        }
+
+        private static string ResolvePacketOwnedDescriptor(WzImageProperty property)
+        {
+            if (property == null)
+            {
+                return null;
+            }
+
+            WzImage ownerImage = property.GetTopMostWzImage() as WzImage;
+            string propertyPath = WzInformationManager.GetPropertyPathRelativeToImage(property);
+            if (ownerImage == null || string.IsNullOrWhiteSpace(propertyPath))
+            {
+                return null;
+            }
+
+            return $"{ownerImage.Name[..^4]}/{propertyPath}";
         }
 
         private string ApplyPacketOwnedNoticeMessage(string message)
@@ -2988,29 +3156,7 @@ namespace HaCreator.MapSimulator
 
             foreach (string imageName in imageCandidates.Distinct(StringComparer.OrdinalIgnoreCase))
             {
-                WzImage soundImage = Program.FindImage("Sound", imageName);
-                if (soundImage == null)
-                {
-                    continue;
-                }
-
-                string[] pathSegments = propertyPath.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
-                if (pathSegments.Length == 0)
-                {
-                    continue;
-                }
-
-                WzImageProperty current = soundImage[pathSegments[0]];
-                for (int i = 1; i < pathSegments.Length; i++)
-                {
-                    current = current?[pathSegments[i]];
-                    if (current == null)
-                    {
-                        break;
-                    }
-                }
-
-                WzImageProperty resolved = WzInfoTools.GetRealProperty(current);
+                WzImageProperty resolved = ResolvePacketOwnedSoundProperty(imageName, propertyPath);
                 if (resolved is WzBinaryProperty binaryProperty)
                 {
                     soundProperty = binaryProperty;
@@ -3020,6 +3166,38 @@ namespace HaCreator.MapSimulator
             }
 
             return false;
+        }
+
+        private static WzImageProperty ResolvePacketOwnedSoundProperty(string imageName, string propertyPath)
+        {
+            if (string.IsNullOrWhiteSpace(imageName) || string.IsNullOrWhiteSpace(propertyPath))
+            {
+                return null;
+            }
+
+            WzImage soundImage = Program.FindImage("Sound", imageName);
+            if (soundImage == null)
+            {
+                return null;
+            }
+
+            string[] pathSegments = propertyPath.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            if (pathSegments.Length == 0)
+            {
+                return null;
+            }
+
+            WzImageProperty current = soundImage[pathSegments[0]];
+            for (int i = 1; i < pathSegments.Length; i++)
+            {
+                current = current?[pathSegments[i]];
+                if (current == null)
+                {
+                    return null;
+                }
+            }
+
+            return WzInfoTools.GetRealProperty(current);
         }
 
         private static string NormalizePacketOwnedSoundImageName(string value)

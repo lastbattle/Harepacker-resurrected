@@ -13,6 +13,8 @@ namespace HaCreator.MapSimulator.UI
 {
     internal sealed class MapleTvWindow : UIWindowBase
     {
+        // CUIMapleTV::Draw centers the broadcast art on a 240px-wide MapleTV surface and
+        // draws the send-board item text at (39,70) with its one-pixel highlight at (40,71).
         private static readonly Point WorldOverlayAnchor = new(400, 70);
         private static readonly Point WorldQueueAnchor = new(400, 118);
         private static readonly Rectangle SelfMessageTextBounds = new(18, 113, 180, 75);
@@ -24,7 +26,6 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Point ItemNamePosition = new(39, 70);
         private static readonly Point PreviewAnchor = new(224, 8);
         private static readonly Point IdlePreviewOffset = new(0, 45);
-        private static readonly Point PreviewStatusOffset = new(14, 150);
         private const int MessageLineHeight = 15;
         private const int PreviewLineHeight = 15;
         private const string PreviewActionName = "stand1";
@@ -172,22 +173,6 @@ namespace HaCreator.MapSimulator.UI
                     : Truncate(lines[i], ResolveMaxChars(messageBounds.Width, 0.38f));
                 DrawShadowText(sprite, line, Position.X + messageBounds.X, drawY, new Color(50, 50, 50), 0.38f);
                 drawY += MessageLineHeight;
-            }
-
-            string statusText = snapshot.IsShowingMessage
-                ? $"{snapshot.RemainingMs / 1000f:0.0}s remaining. {snapshot.StatusMessage}"
-                : snapshot.StatusMessage;
-            if (snapshot.MirrorsToChat)
-            {
-                statusText = $"{statusText} Megassenger chat mirror enabled.";
-            }
-
-            IEnumerable<string> statusLines = WrapText(statusText, 188f, 0.32f).Take(2);
-            float statusY = Position.Y + 236f;
-            foreach (string statusLine in statusLines)
-            {
-                DrawShadowText(sprite, statusLine, Position.X + 14, statusY, new Color(94, 99, 106), 0.32f);
-                statusY += (_font.LineSpacing * 0.33f);
             }
 
             DrawPreview(sprite, skeletonMeshRenderer, drawReflectionInfo, gameTime, TickCount, snapshot);
@@ -353,7 +338,6 @@ namespace HaCreator.MapSimulator.UI
             }
 
             Point previewOrigin = new(Position.X + PreviewAnchor.X, Position.Y + PreviewAnchor.Y);
-            DrawShadowText(sprite, "Broadcast Preview", previewOrigin.X + 8, previewOrigin.Y - 16, new Color(58, 70, 88), 0.34f);
 
             if (snapshot.IsShowingMessage)
             {
@@ -385,13 +369,7 @@ namespace HaCreator.MapSimulator.UI
                     drawReflectionInfo,
                     skeletonMeshRenderer,
                     gameTime);
-
-                string idleText = snapshot.QueueExists ? "Queue idle" : "Draft idle";
-                DrawShadowText(sprite, idleText, previewOrigin.X + 72, previewOrigin.Y + 146, new Color(42, 47, 58), 0.4f);
             }
-
-            string mediaLabel = $"Media {snapshot.ResolvedMediaIndex}";
-            DrawShadowText(sprite, mediaLabel, previewOrigin.X + 14, previewOrigin.Y + PreviewStatusOffset.Y, new Color(54, 63, 74), 0.33f);
         }
 
         private void DrawPreviewAvatars(
@@ -498,35 +476,6 @@ namespace HaCreator.MapSimulator.UI
                 Color.White,
                 false,
                 drawReflectionInfo);
-        }
-
-        private IEnumerable<string> WrapText(string text, float maxWidth, float scale)
-        {
-            if (_font == null || string.IsNullOrWhiteSpace(text))
-            {
-                yield break;
-            }
-
-            string[] words = text.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
-            string currentLine = string.Empty;
-            foreach (string word in words)
-            {
-                string candidate = string.IsNullOrEmpty(currentLine) ? word : $"{currentLine} {word}";
-                if (!string.IsNullOrEmpty(currentLine) && (_font.MeasureString(candidate).X * scale) > maxWidth)
-                {
-                    yield return currentLine;
-                    currentLine = word;
-                }
-                else
-                {
-                    currentLine = candidate;
-                }
-            }
-
-            if (!string.IsNullOrEmpty(currentLine))
-            {
-                yield return currentLine;
-            }
         }
 
         private void DrawChatText(

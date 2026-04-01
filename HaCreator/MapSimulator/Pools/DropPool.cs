@@ -68,6 +68,7 @@ namespace HaCreator.MapSimulator.Pools
         OwnershipRestricted,
         InventoryFull,
         PetPickupBlocked,
+        FieldRestricted,
         Unavailable
     }
 

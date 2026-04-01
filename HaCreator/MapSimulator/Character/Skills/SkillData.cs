@@ -199,6 +199,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         // Projectile
         public int BulletCount { get; set; } = 1;    // Projectiles per attack
         public int BulletConsume { get; set; }       // Ammo consumed per cast
+        public int ProjectileItemConsume { get; set; } // WZ `itemConsume` ammo/item requirement
         public int BulletSpeed { get; set; }         // Projectile speed
         public List<int> ProjectileSpawnDelaysMs { get; set; } = new();
 
@@ -559,6 +560,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool HasShadowPartnerActionAnimations => ShadowPartnerActionAnimations != null && ShadowPartnerActionAnimations.Count > 0;
 
         public bool UsesMirrorHelperActor => SkillId == MirrorImageSkillId;
+
+        public bool HideAvatarEffectOnRotateAction { get; set; }
 
         public bool LinksDummySkill(int skillId)
         {
@@ -1257,6 +1260,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public SummonAssistType AssistType { get; set; } = SummonAssistType.PeriodicAttack;
         public bool ManualAssistEnabled { get; set; } = true;
         public int NextSupportTime { get; set; }
+        public int SupportSuspendUntilTime { get; set; } = int.MinValue;
         public int NextHealTime { get; set; } = int.MinValue;
         public int NextBuffTime { get; set; } = int.MinValue;
         public int PendingRemovalTime { get; set; } = int.MaxValue;

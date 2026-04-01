@@ -54,6 +54,8 @@ namespace HaCreator.MapSimulator.Interaction
             UpdateLocalContext("Player", "Maple Island", 1);
         }
 
+        public Action<string, int> SocialChatObserved { get; set; }
+
         public void UpdateLocalContext(string playerName, string locationSummary, int channel)
         {
             string resolvedName = string.IsNullOrWhiteSpace(playerName) ? "Player" : playerName.Trim();
@@ -444,6 +446,7 @@ namespace HaCreator.MapSimulator.Interaction
             AddParticipantLog(participant.Name, autoReply, isWhisper: true, targetName: author);
             SetParticipantBubble(author, resolvedMessage, Environment.TickCount);
             SetParticipantBubble(participant.Name, autoReply, Environment.TickCount);
+            NotifySocialChatObserved(resolvedMessage);
             _lastActionSummary = $"Whisper sent to {participant.Name}.";
             RecordPacketSummary($"Simulated Messenger whisper dispatch {author} -> {participant.Name}.");
             return $"[Whisper] {author} -> {participant.Name}: {resolvedMessage}";
@@ -473,6 +476,7 @@ namespace HaCreator.MapSimulator.Interaction
             string localPlayerName = _participants.Count > 0 ? _participants[0].Name : "Player";
             AddParticipantLog(participant.Name, resolvedMessage, isWhisper: true, targetName: localPlayerName);
             SetParticipantBubble(participant.Name, resolvedMessage, Environment.TickCount);
+            NotifySocialChatObserved(resolvedMessage);
             _selectedSlot = participantIndex;
             _lastActionSummary = $"Received a Messenger whisper from {participant.Name}.";
             StartBlink(Environment.TickCount);
@@ -504,6 +508,7 @@ namespace HaCreator.MapSimulator.Interaction
             string author = _participants.Count > 0 ? _participants[0].Name : "Player";
             AddParticipantLog(author, resolvedMessage);
             SetParticipantBubble(author, resolvedMessage, Environment.TickCount);
+            NotifySocialChatObserved(resolvedMessage);
 
             MessengerParticipantState responder = GetAutoReplyParticipant();
             if (responder != null)
@@ -541,11 +546,22 @@ namespace HaCreator.MapSimulator.Interaction
 
             AddParticipantLog(participant.Name, resolvedMessage);
             SetParticipantBubble(participant.Name, resolvedMessage, Environment.TickCount);
+            NotifySocialChatObserved(resolvedMessage);
             _selectedSlot = participantIndex;
             _lastActionSummary = $"Received a Messenger room message from {participant.Name}.";
             StartBlink(Environment.TickCount);
             RecordPacketSummary($"Applied simulated Messenger room-chat packet from {participant.Name}.");
             return _lastActionSummary;
+        }
+
+        private void NotifySocialChatObserved(string message)
+        {
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                return;
+            }
+
+            SocialChatObserved?.Invoke(message, Environment.TickCount);
         }
 
         public string LeaveMessenger()

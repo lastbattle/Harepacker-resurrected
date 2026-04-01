@@ -91,6 +91,17 @@ namespace HaCreator.MapSimulator.Managers
         public int ReceivedCount { get; private set; }
         public string LastStatus { get; private set; } = "Monster Carnival official-session bridge inactive.";
 
+        public string DescribeStatus()
+        {
+            string lifecycle = IsRunning
+                ? $"listening on 127.0.0.1:{ListenPort} -> {RemoteHost}:{RemotePort}"
+                : "inactive";
+            string session = HasConnectedSession
+                ? $"connected session {_activePair?.ClientEndpoint ?? "unknown-client"} -> {_activePair?.RemoteEndpoint ?? "unknown-remote"}"
+                : "no active Maple session";
+            return $"Monster Carnival official-session bridge {lifecycle}; {session}; received={ReceivedCount}. {LastStatus}";
+        }
+
         public static IReadOnlyList<SessionDiscoveryCandidate> DiscoverEstablishedSessions(
             int remotePort,
             int? owningProcessId = null,

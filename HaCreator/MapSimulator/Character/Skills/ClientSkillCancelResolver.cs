@@ -46,19 +46,14 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return Array.Empty<int>();
             }
 
-            SkillData skill = getSkillData?.Invoke(skillId);
-            if (UsesAffectedSkillCancelFamily(skill))
+            HashSet<int> resolvedSkillIds = ResolveConnectedCancelFamily(skillId, getSkillData, skillCatalog);
+            if (resolvedSkillIds.Count > 1)
             {
-                int[] affectedSkillIds = skill.GetAffectedSkillIds();
-                if (affectedSkillIds.Length > 0)
-                {
-                    return affectedSkillIds;
-                }
+                resolvedSkillIds.Remove(skillId);
             }
 
-            SkillData dummyParent = FindDummyParentSkill(skillId, skillCatalog);
-            return dummyParent != null
-                ? new[] { dummyParent.SkillId }
+            return resolvedSkillIds.Count > 0
+                ? resolvedSkillIds.ToArray()
                 : new[] { skillId };
         }
 
@@ -69,17 +64,84 @@ namespace HaCreator.MapSimulator.Character.Skills
                    && Array.IndexOf(SupportedAffectedSkillCancelTypes, skill.ClientInfoType) >= 0;
         }
 
-        private static SkillData FindDummyParentSkill(int skillId, IReadOnlyCollection<SkillData> skillCatalog)
+        private static HashSet<int> ResolveConnectedCancelFamily(
+            int rootSkillId,
+            Func<int, SkillData> getSkillData,
+            IReadOnlyCollection<SkillData> skillCatalog)
         {
-            if (skillId <= 0 || skillCatalog == null || skillCatalog.Count == 0)
+            HashSet<int> resolvedSkillIds = new();
+            if (rootSkillId <= 0)
             {
-                return null;
+                return resolvedSkillIds;
             }
 
-            return skillCatalog.FirstOrDefault(candidate =>
-                candidate?.SkillId > 0
-                && candidate.SkillId != skillId
-                && candidate.LinksDummySkill(skillId));
+            Queue<int> pendingSkillIds = new();
+            pendingSkillIds.Enqueue(rootSkillId);
+
+            while (pendingSkillIds.Count > 0)
+            {
+                int currentSkillId = pendingSkillIds.Dequeue();
+                if (!resolvedSkillIds.Add(currentSkillId))
+                {
+                    continue;
+                }
+
+                SkillData currentSkill = getSkillData?.Invoke(currentSkillId);
+                EnqueueLinkedSkillIds(currentSkill, pendingSkillIds, resolvedSkillIds);
+
+                if (skillCatalog == null || skillCatalog.Count == 0)
+                {
+                    continue;
+                }
+
+                foreach (SkillData candidate in skillCatalog)
+                {
+                    if (candidate?.SkillId <= 0
+                        || resolvedSkillIds.Contains(candidate.SkillId)
+                        || candidate.SkillId == currentSkillId)
+                    {
+                        continue;
+                    }
+
+                    if (candidate.LinksDummySkill(currentSkillId)
+                        || (UsesAffectedSkillCancelFamily(candidate) && candidate.LinksAffectedSkill(currentSkillId)))
+                    {
+                        pendingSkillIds.Enqueue(candidate.SkillId);
+                    }
+                }
+            }
+
+            return resolvedSkillIds;
+        }
+
+        private static void EnqueueLinkedSkillIds(SkillData skill, Queue<int> pendingSkillIds, HashSet<int> resolvedSkillIds)
+        {
+            if (skill == null)
+            {
+                return;
+            }
+
+            if (UsesAffectedSkillCancelFamily(skill))
+            {
+                foreach (int affectedSkillId in skill.GetAffectedSkillIds())
+                {
+                    EnqueueSkillId(affectedSkillId, pendingSkillIds, resolvedSkillIds);
+                }
+            }
+
+            int[] dummySkillIds = skill.DummySkillParents ?? Array.Empty<int>();
+            for (int i = 0; i < dummySkillIds.Length; i++)
+            {
+                EnqueueSkillId(dummySkillIds[i], pendingSkillIds, resolvedSkillIds);
+            }
+        }
+
+        private static void EnqueueSkillId(int skillId, Queue<int> pendingSkillIds, HashSet<int> resolvedSkillIds)
+        {
+            if (skillId > 0 && !resolvedSkillIds.Contains(skillId))
+            {
+                pendingSkillIds.Enqueue(skillId);
+            }
         }
     }
 }

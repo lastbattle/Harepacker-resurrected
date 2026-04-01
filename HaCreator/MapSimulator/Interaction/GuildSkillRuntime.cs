@@ -42,6 +42,7 @@ namespace HaCreator.MapSimulator.Interaction
         private int _recommendedSkillId;
         private int _availablePoints = 2;
         private int _savedAvailablePoints = 2;
+        private int _savedGuildLevel = 12;
         private int _guildLevel = 12;
         private string _guildName = "Maple GM";
         private string _guildRoleLabel = "Master";
@@ -64,7 +65,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             bool inGuild = context.HasGuildMembership;
             _guildName = inGuild ? (context.GuildName?.Trim() ?? string.Empty) : "No Guild";
-            _guildLevel = inGuild ? Math.Max(1, context.GuildLevel) : 0;
+            _guildLevel = inGuild ? ResolveGuildLevel(context.GuildLevel) : 0;
             _guildRoleLabel = inGuild
                 ? NormalizeGuildRoleLabel(context.GuildRoleLabel)
                 : "No Guild";
@@ -93,14 +94,15 @@ namespace HaCreator.MapSimulator.Interaction
             EnsureRecommendation();
         }
 
-        internal void UpdateLocalContext(CharacterBuild build, string guildRoleLabel)
+        internal void UpdateLocalContext(CharacterBuild build, string guildRoleLabel, bool canManageSkills)
         {
+            bool hasGuildMembership = HasGuildMembership(build);
             UpdateContext(new GuildSkillUiContext(
-                HasGuildMembership(build),
+                hasGuildMembership,
                 build?.GuildName,
-                HasGuildMembership(build) ? 1 : 0,
+                hasGuildMembership ? ResolveLocalFallbackGuildLevel() : 0,
                 guildRoleLabel,
-                true));
+                canManageSkills));
         }
 
         internal void SetSkills(IEnumerable<SkillDisplayData> skills)
@@ -522,6 +524,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private void RestoreSavedGuildState()
         {
+            _guildLevel = Math.Max(1, _savedGuildLevel);
             for (int i = 0; i < _skills.Count; i++)
             {
                 SkillDisplayData skill = _skills[i];
@@ -546,6 +549,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private void SaveCurrentGuildState()
         {
+            _savedGuildLevel = Math.Max(1, _guildLevel);
             _savedSkillLevels.Clear();
             foreach (SkillDisplayData skill in _skills)
             {
@@ -572,6 +576,21 @@ namespace HaCreator.MapSimulator.Interaction
                 1 => Math.Min(1, skill.MaxLevel),
                 _ => 0
             };
+        }
+
+        private int ResolveGuildLevel(int requestedGuildLevel)
+        {
+            if (requestedGuildLevel > 0)
+            {
+                return Math.Max(1, requestedGuildLevel);
+            }
+
+            return ResolveLocalFallbackGuildLevel();
+        }
+
+        private int ResolveLocalFallbackGuildLevel()
+        {
+            return Math.Max(1, Math.Max(_guildLevel, _savedGuildLevel));
         }
 
         private static string NormalizeGuildRoleLabel(string guildRoleLabel)

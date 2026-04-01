@@ -37,6 +37,12 @@ namespace HaCreator.MapSimulator.Fields
             public bool IsLoaded => Digits.All(texture => texture != null);
         }
 
+        private enum CookieBitmapRootResolutionKind
+        {
+            Unresolved,
+            CompatibleShape
+        }
+
         private readonly struct CookieCanvasSprite
         {
             public CookieCanvasSprite(Texture2D texture, Point origin)
@@ -128,6 +134,7 @@ namespace HaCreator.MapSimulator.Fields
         private string _bitmapNumberSourcePath;
         private bool _usesFallbackBackgroundSource;
         private bool _usesFallbackBitmapSource;
+        private CookieBitmapRootResolutionKind _bitmapRootResolutionKind;
 
         public bool IsActive => _isActive;
         public int MapId => _mapId;
@@ -196,6 +203,7 @@ namespace HaCreator.MapSimulator.Fields
             _gradeIndex = 0;
             _pointProvider = null;
             _hudDirty = true;
+            _bitmapRootResolutionKind = CookieBitmapRootResolutionKind.Unresolved;
         }
 
         private static int FindGrade(int point)
@@ -265,6 +273,7 @@ namespace HaCreator.MapSimulator.Fields
 
             _bitmapNumberSourcePath = null;
             _usesFallbackBitmapSource = false;
+            _bitmapRootResolutionKind = CookieBitmapRootResolutionKind.Unresolved;
             foreach (WzImage image in EnumerateUiImages())
             {
                 if (image == null)
@@ -278,6 +287,7 @@ namespace HaCreator.MapSimulator.Fields
                 {
                     _bitmapNumberSourcePath = discoveredPath;
                     _usesFallbackBitmapSource = !IsPreferredUiWindowImage(image.Name);
+                    _bitmapRootResolutionKind = CookieBitmapRootResolutionKind.CompatibleShape;
                     return;
                 }
             }
@@ -871,12 +881,18 @@ namespace HaCreator.MapSimulator.Fields
                 return $"bitmap=unresolved [constructor=styles:{GradeCount}/digits:{ClientBitmapDigitCount}/width:{ClientBitmapDigitWidth}; {FormatStringPoolEntry(BitmapRootStringPoolEvidence, ClientBitmapRootClientStringPoolSource)}; {signEvidence}]";
             }
 
+            string sourceLabel = _bitmapRootResolutionKind switch
+            {
+                CookieBitmapRootResolutionKind.CompatibleShape => "compatible-shape",
+                _ => "unresolved"
+            };
+
             if (_usesFallbackBitmapSource)
             {
-                return $"bitmap=client-shaped-alt:{_bitmapNumberSourcePath} [constructor=styles:{GradeCount}/digits:{ClientBitmapDigitCount}/width:{ClientBitmapDigitWidth}; {FormatStringPoolEntry(BitmapRootStringPoolEvidence, ClientBitmapRootClientStringPoolSource)}; {signEvidence}]";
+                return $"bitmap={sourceLabel}-alt:{_bitmapNumberSourcePath} [constructor=styles:{GradeCount}/digits:{ClientBitmapDigitCount}/width:{ClientBitmapDigitWidth}; {FormatStringPoolEntry(BitmapRootStringPoolEvidence, ClientBitmapRootClientStringPoolSource)}; {signEvidence}]";
             }
 
-            return $"bitmap=client-shaped:{_bitmapNumberSourcePath} [constructor=styles:{GradeCount}/digits:{ClientBitmapDigitCount}/width:{ClientBitmapDigitWidth}; {FormatStringPoolEntry(BitmapRootStringPoolEvidence, ClientBitmapRootClientStringPoolSource)}; {signEvidence}]";
+            return $"bitmap={sourceLabel}:{_bitmapNumberSourcePath} [constructor=styles:{GradeCount}/digits:{ClientBitmapDigitCount}/width:{ClientBitmapDigitWidth}; {FormatStringPoolEntry(BitmapRootStringPoolEvidence, ClientBitmapRootClientStringPoolSource)}; {signEvidence}]";
         }
 
         private static string FormatStringPoolEntry(ClientStringPoolEvidence evidence, string clientStringPoolSource)

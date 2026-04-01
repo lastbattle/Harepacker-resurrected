@@ -462,6 +462,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             bool looksLikeMovement = MatchesAction(skill.ActionName, "teleport", "rush", "dash", "flash", "jump", "step", "fly");
             bool looksLikePrepare = hasPrepare || MatchesAction(skill.ActionName, "prepare", "charge", "keydown", "keyDown");
             bool isSuddenDeathSkill = GetInt(infoNode, "suddenDeath") == 1;
+            skill.HideAvatarEffectOnRotateAction = isSuddenDeathSkill;
             bool hasPersistentAvatarEffect = HasPersistentAvatarEffectBranches(
                 skillNode.WzProperties.Select(child => child.Name),
                 isSuddenDeathSkill);
@@ -951,6 +952,89 @@ namespace HaCreator.MapSimulator.Character.Skills
             return ClientMeleeAfterimageRangeResolver.ApplyRangeOverride(action, skillId, rawActionCode, facingRight);
         }
 
+        public bool TryResolveUniqueMeleeAfterImageActionName(
+            SkillData skill,
+            WeaponPart weapon,
+            IEnumerable<string> actionNames,
+            int characterLevel,
+            int masteryPercent,
+            int chargeElement,
+            out string actionName)
+        {
+            actionName = null;
+
+            var matchedActionNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (MeleeAfterImageCatalog catalog in EnumerateRelevantMeleeAfterImageCatalogs(
+                         skill,
+                         weapon,
+                         characterLevel,
+                         masteryPercent,
+                         chargeElement))
+            {
+                if (catalog?.Actions == null || catalog.Actions.Count == 0)
+                {
+                    continue;
+                }
+
+                foreach (string requestedActionName in EnumerateDistinctActionNames(actionNames ?? Array.Empty<string>()))
+                {
+                    foreach (string candidate in EnumerateMeleeAfterImageActionCandidates(skill?.SkillId ?? 0, requestedActionName))
+                    {
+                        if (catalog.Actions.ContainsKey(candidate))
+                        {
+                            matchedActionNames.Add(candidate);
+                        }
+                    }
+                }
+            }
+
+            if (matchedActionNames.Count == 1)
+            {
+                foreach (string matchedActionName in matchedActionNames)
+                {
+                    actionName = matchedActionName;
+                    return true;
+                }
+            }
+
+            if (matchedActionNames.Count > 1)
+            {
+                return false;
+            }
+
+            var catalogActionNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (MeleeAfterImageCatalog catalog in EnumerateRelevantMeleeAfterImageCatalogs(
+                         skill,
+                         weapon,
+                         characterLevel,
+                         masteryPercent,
+                         chargeElement))
+            {
+                if (catalog?.Actions == null || catalog.Actions.Count == 0)
+                {
+                    continue;
+                }
+
+                foreach (string catalogActionName in catalog.Actions.Keys)
+                {
+                    catalogActionNames.Add(catalogActionName);
+                }
+            }
+
+            if (catalogActionNames.Count != 1)
+            {
+                return false;
+            }
+
+            foreach (string catalogActionName in catalogActionNames)
+            {
+                actionName = catalogActionName;
+                return true;
+            }
+
+            return false;
+        }
+
         private static bool TryResolveMeleeAfterImageCatalogAction(
             MeleeAfterImageCatalog catalog,
             int skillId,
@@ -975,6 +1059,45 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return false;
+        }
+
+        private IEnumerable<MeleeAfterImageCatalog> EnumerateRelevantMeleeAfterImageCatalogs(
+            SkillData skill,
+            WeaponPart weapon,
+            int characterLevel,
+            int masteryPercent,
+            int chargeElement)
+        {
+            if (chargeElement > 0)
+            {
+                foreach (string weaponTypeKey in ResolveAfterImageWeaponTypeKeys(weapon))
+                {
+                    MeleeAfterImageCatalog chargeCatalog = GetOrLoadCharacterChargeAfterImageCatalog(weaponTypeKey, chargeElement);
+                    if (chargeCatalog?.Actions?.Count > 0)
+                    {
+                        yield return chargeCatalog;
+                    }
+                }
+
+                yield break;
+            }
+
+            foreach (string weaponTypeKey in ResolveAfterImageWeaponTypeKeys(weapon))
+            {
+                MeleeAfterImageCatalog skillCatalog = skill?.GetAfterImageCatalogForCharacterLevel(weaponTypeKey, characterLevel);
+                if (skillCatalog?.Actions?.Count > 0)
+                {
+                    yield return skillCatalog;
+                }
+
+                MeleeAfterImageCatalog weaponCatalog = GetOrLoadCharacterAfterImageCatalog(
+                    weaponTypeKey,
+                    GetWeaponAfterImageMasteryIndex(masteryPercent));
+                if (weaponCatalog?.Actions?.Count > 0)
+                {
+                    yield return weaponCatalog;
+                }
+            }
         }
 
         private static IEnumerable<string> EnumerateMeleeAfterImageActionCandidates(int skillId, string actionName)
@@ -2892,6 +3015,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             levelData.BulletCount = GetInt(node, "bulletCount", 1, level);
             levelData.BulletConsume = GetInt(node, "bulletConsume", 0, level);
+            levelData.ProjectileItemConsume = GetInt(node, "itemConsume", 0, level);
             levelData.BulletSpeed = GetInt(node, "bulletSpeed", 0, level);
             levelData.ProjectileSpawnDelaysMs = ParseProjectileSpawnDelays(node, level);
 
@@ -2900,6 +3024,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             levelData.CriticalDamageMin = GetInt(node, "criticaldamageMin", 0, level);
             levelData.CriticalDamageMax = GetInt(node, "criticaldamageMax", 0, level);
             levelData.DamageReductionRate = GetInt(node, "damR", 0, level);
+            levelData.DefensePercent = GetInt(node, "pddR", 0, level);
+            levelData.MagicDefensePercent = GetInt(node, "mddR", 0, level);
+            levelData.AccuracyPercent = GetInt(node, "accR", 0, level);
+            levelData.AvoidabilityPercent = GetInt(node, "evaR", 0, level);
 
             levelData.RequiredLevel = GetInt(node, "reqLevel", 0, level);
             NormalizePassiveStatAliases(skill, node, level, levelData);
@@ -2952,6 +3080,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             levelData.IndieMaxMP = GetInt(node, "indieMmp", 0, level);
             levelData.MaxHPPercent = PreferPrimaryStat(GetInt(node, "mhpR", 0, level), GetInt(node, "indieMhpR", 0, level));
             levelData.MaxMPPercent = PreferPrimaryStat(GetInt(node, "mmpR", 0, level), GetInt(node, "indieMmpR", 0, level));
+            levelData.DefensePercent = GetInt(node, "pddR", 0, level);
+            levelData.MagicDefensePercent = GetInt(node, "mddR", 0, level);
+            levelData.AccuracyPercent = GetInt(node, "accR", 0, level);
+            levelData.AvoidabilityPercent = GetInt(node, "evaR", 0, level);
             levelData.AllStat = GetInt(node, "indieAllStat", 0, level);
             levelData.AbnormalStatusResistance = PreferPrimaryStat(GetInt(node, "asrR", 0, level), GetInt(node, "indieAsrR", 0, level));
             levelData.ElementalResistance = PreferPrimaryStat(GetInt(node, "terR", 0, level), GetInt(node, "indieTerR", 0, level));

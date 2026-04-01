@@ -331,7 +331,9 @@ namespace HaCreator.MapSimulator.Effects
                     participant.FacingRight,
                     participant.ActionName,
                     participant.Build?.Clone(),
-                    participant.MovementSnapshot);
+                    participant.MovementSnapshot,
+                    participant.PortableChairItemId,
+                    participant.PortableChairPairCharacterId);
                 return true;
             }
 
@@ -354,7 +356,9 @@ namespace HaCreator.MapSimulator.Effects
                     participant.FacingRight,
                     participant.ActionName,
                     participant.Build?.Clone(),
-                    participant.MovementSnapshot));
+                    participant.MovementSnapshot,
+                    participant.PortableChairItemId,
+                    participant.PortableChairPairCharacterId));
             }
 
             return snapshots;
@@ -378,7 +382,9 @@ namespace HaCreator.MapSimulator.Effects
                     participant.FacingRight,
                     participant.ActionName,
                     participant.Build?.Clone(),
-                    participant.MovementSnapshot));
+                    participant.MovementSnapshot,
+                    participant.PortableChairItemId,
+                    participant.PortableChairPairCharacterId));
             }
 
             return snapshots;
@@ -693,7 +699,9 @@ namespace HaCreator.MapSimulator.Effects
                 participant.FacingRight,
                 participant.ActionName,
                 participant.Build?.Clone(),
-                participant.MovementSnapshot);
+                participant.MovementSnapshot,
+                participant.PortableChairItemId,
+                participant.PortableChairPairCharacterId);
             return true;
         }
 
@@ -830,6 +838,7 @@ namespace HaCreator.MapSimulator.Effects
                 bool configured = TryConfigureParticipantActor(spawn.CharacterId, spawn.Position, build, facingRight, actionName, out errorMessage);
                 if (configured)
                 {
+                    ApplyParticipantPortableChairState(spawn.CharacterId, spawn.PortableChairItemId, pairCharacterId: null);
                     QueueExternalRemoteActorLoad(spawn.CharacterId);
                 }
 
@@ -837,6 +846,7 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             UpsertAudienceParticipant(build, spawn.Position, facingRight, actionName, spawn.CharacterId);
+            ApplyParticipantPortableChairState(spawn.CharacterId, spawn.PortableChairItemId, pairCharacterId: null);
             QueueExternalRemoteActorLoad(spawn.CharacterId);
             return true;
         }
@@ -932,6 +942,12 @@ namespace HaCreator.MapSimulator.Effects
             string actionName = chair.PortableChairItemId > 0
                 ? CharacterPart.GetActionString(CharacterAction.Sit)
                 : CharacterPart.GetActionString(CharacterAction.Stand1);
+            if (!ApplyParticipantPortableChairState(chair.CharacterId, chair.PortableChairItemId, chair.PairCharacterId))
+            {
+                errorMessage = $"Wedding remote actor id {chair.CharacterId} does not exist.";
+                return false;
+            }
+
             if (chair.CharacterId == _groomId || chair.CharacterId == _brideId)
             {
                 if (!TryGetRemoteParticipant(chair.CharacterId, out WeddingRemoteParticipantSnapshot snapshot))
@@ -1001,6 +1017,7 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             UpsertAudienceParticipant(audienceBuild, audienceSnapshot.Position, audienceSnapshot.FacingRight, audienceSnapshot.ActionName, packet.CharacterId);
+            ApplyParticipantPortableChairState(packet.CharacterId, audienceSnapshot.PortableChairItemId ?? 0, audienceSnapshot.PortableChairPairCharacterId);
             return true;
         }
 
@@ -1094,8 +1111,27 @@ namespace HaCreator.MapSimulator.Effects
                 return false;
             }
 
-            packet = new WeddingRemoteChairPacket(chair.CharacterId, chair.ChairItemId ?? 0);
+            packet = new WeddingRemoteChairPacket(chair.CharacterId, chair.ChairItemId ?? 0, chair.PairCharacterId);
             return true;
+        }
+
+        private bool ApplyParticipantPortableChairState(int characterId, int portableChairItemId, int? pairCharacterId)
+        {
+            if (_participantActors.TryGetValue(characterId, out WeddingRemoteParticipant participant))
+            {
+                participant.PortableChairItemId = portableChairItemId > 0 ? portableChairItemId : null;
+                participant.PortableChairPairCharacterId = portableChairItemId > 0 ? pairCharacterId : null;
+                return true;
+            }
+
+            if (TryGetAudienceActorById(characterId, out WeddingRemoteParticipant audienceParticipant))
+            {
+                audienceParticipant.PortableChairItemId = portableChairItemId > 0 ? portableChairItemId : null;
+                audienceParticipant.PortableChairPairCharacterId = portableChairItemId > 0 ? pairCharacterId : null;
+                return true;
+            }
+
+            return false;
         }
 
         private static bool TryDecodeRemoteAvatarModifiedPacket(byte[] payload, out WeddingRemoteAvatarModifiedPacket packet, out string errorMessage)
@@ -2620,7 +2656,9 @@ namespace HaCreator.MapSimulator.Effects
         bool FacingRight,
         string ActionName,
         CharacterBuild Build,
-        PlayerMovementSyncSnapshot MovementSnapshot);
+        PlayerMovementSyncSnapshot MovementSnapshot,
+        int? PortableChairItemId,
+        int? PortableChairPairCharacterId);
 
     internal readonly record struct WeddingRemoteSpawnPacket(
         int CharacterId,
@@ -2636,7 +2674,7 @@ namespace HaCreator.MapSimulator.Effects
         byte MoveAction,
         PlayerMovementSyncSnapshot MovementSnapshot);
 
-    internal readonly record struct WeddingRemoteChairPacket(int CharacterId, int PortableChairItemId);
+    internal readonly record struct WeddingRemoteChairPacket(int CharacterId, int PortableChairItemId, int? PairCharacterId);
 
     internal readonly record struct WeddingRemoteAvatarModifiedPacket(int CharacterId, LoginAvatarLook AvatarLook);
 
@@ -2664,6 +2702,8 @@ namespace HaCreator.MapSimulator.Effects
         public bool FacingRight { get; set; } = true;
         public string ActionName { get; set; }
         public PlayerMovementSyncSnapshot MovementSnapshot { get; set; }
+        public int? PortableChairItemId { get; set; }
+        public int? PortableChairPairCharacterId { get; set; }
         public bool MovementDrivenActionSelection { get; set; }
         public bool HasExplicitFacing { get; set; }
         public bool HasExplicitAction { get; set; }

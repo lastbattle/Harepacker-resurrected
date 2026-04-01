@@ -78,6 +78,7 @@ namespace HaCreator.MapSimulator.Pools
     {
         private const int TeslaCoilSkillId = 35111002;
         private const int TeslaCoilMasterySkillId = 35120001;
+        private const int PacketOwnedSummonBodyContactCooldownMs = 700;
         private const int SummonHitPeriodDurationMs = 1500;
 
         private sealed class PacketOwnedSummonState
@@ -713,6 +714,24 @@ namespace HaCreator.MapSimulator.Pools
 
                 RefreshIdleActorState(state, currentTime);
 
+                if (state.Summon.IsPendingRemoval
+                    && !ShouldDeferSummonRemovalPlayback(state.Summon, currentTime)
+                    && state.Summon.ActorState != SummonActorState.Die)
+                {
+                    state.Summon.ActorState = SummonActorState.Die;
+                    state.Summon.LastStateChangeTime = currentTime;
+                }
+
+                if (TryResolveBodyContactDamage(state, currentTime))
+                {
+                    if (state.Summon.IsPendingRemoval && currentTime >= state.Summon.PendingRemovalTime)
+                    {
+                        RemoveState(state);
+                    }
+
+                    continue;
+                }
+
                 if (state.Summon.IsPendingRemoval && currentTime >= state.Summon.PendingRemovalTime)
                 {
                     RemoveState(state);
@@ -1083,6 +1102,48 @@ namespace HaCreator.MapSimulator.Pools
             return (moveAction & 1) == 0;
         }
 
+        private bool TryResolveBodyContactDamage(PacketOwnedSummonState state, int currentTime)
+        {
+            if (_mobPool?.ActiveMobs == null
+                || state?.Summon == null
+                || !PacketOwnedSummonUpdateRules.ShouldResolveBodyContact(
+                    state.Summon,
+                    ShouldRegisterSummonPuppet(state.Summon.SkillData),
+                    currentTime,
+                    PacketOwnedSummonBodyContactCooldownMs))
+            {
+                return false;
+            }
+
+            Rectangle summonHitbox = GetSummonContactBounds(state.Summon, currentTime);
+            if (summonHitbox.IsEmpty)
+            {
+                return false;
+            }
+
+            foreach (MobItem mob in _mobPool.ActiveMobs)
+            {
+                if (mob?.AI?.IsDead == true
+                    || mob.AI?.IsTargetingSummoned != true
+                    || mob.AI.Target.TargetId != state.Summon.ObjectId)
+                {
+                    continue;
+                }
+
+                Rectangle mobHitbox = mob.GetBodyHitbox(currentTime);
+                if (mobHitbox.IsEmpty || !mobHitbox.Intersects(summonHitbox))
+                {
+                    continue;
+                }
+
+                state.Summon.LastBodyContactTime = currentTime;
+                ApplySummonDamage(state, damage: 1, currentTime, useHitAnimationState: true);
+                return true;
+            }
+
+            return false;
+        }
+
         private bool TryReadAvatarLook(ref PacketReader reader, out LoginAvatarLook avatarLook, out string message)
         {
             avatarLook = null;
@@ -1193,13 +1254,7 @@ namespace HaCreator.MapSimulator.Pools
             state.Summon.RemovalAnimationStartTime = currentTime;
             state.Summon.ActorState = SummonActorState.Die;
             state.Summon.LastStateChangeTime = currentTime;
-            state.Summon.PendingRemovalTime = currentTime + Math.Max(
-                1,
-                GetSkillAnimationDuration(state.Summon.SkillData?.SummonRemovalAnimation)
-                ?? GetSkillAnimationDuration(state.Summon.SkillData?.SummonHitAnimation)
-                ?? GetSkillAnimationDuration(state.Summon.SkillData?.SummonAttackAnimation)
-                ?? state.Summon.SkillData?.HitEffect?.TotalDuration
-                ?? 1);
+            state.Summon.PendingRemovalTime = currentTime + ResolveSummonRemovalPlaybackDurationMs(state.Summon);
             RemovePuppet(state.Summon);
         }
 
@@ -1311,6 +1366,56 @@ namespace HaCreator.MapSimulator.Pools
             return Math.Max(240, hitAnimationDuration);
         }
 
+        private static bool ShouldDeferSummonRemovalPlayback(ActiveSummon summon, int currentTime)
+        {
+            return summon?.IsPendingRemoval == true
+                && summon.RemovalAnimationStartTime != int.MinValue
+                && currentTime < summon.RemovalAnimationStartTime;
+        }
+
+        private static int ResolveSummonPendingRemovalActionDurationMs(ActiveSummon summon)
+        {
+            if (summon?.SkillData == null)
+            {
+                return 0;
+            }
+
+            int prepareDuration = GetSkillAnimationDuration(summon.SkillData.SummonAttackPrepareAnimation) ?? 0;
+            SkillAnimation actionAnimation = ResolvePacketPendingRemovalActionAnimation(summon);
+            int actionDuration = GetSkillAnimationDuration(actionAnimation) ?? 0;
+            return actionDuration > 0 ? prepareDuration + actionDuration : 0;
+        }
+
+        private static SkillAnimation ResolvePacketPendingRemovalActionAnimation(ActiveSummon summon)
+        {
+            SkillData skill = summon?.SkillData;
+            if (skill == null)
+            {
+                return null;
+            }
+
+            if (!string.IsNullOrWhiteSpace(summon.CurrentAnimationBranchName)
+                && skill.SummonNamedAnimations != null
+                && skill.SummonNamedAnimations.TryGetValue(summon.CurrentAnimationBranchName, out SkillAnimation namedAnimation)
+                && namedAnimation?.Frames.Count > 0)
+            {
+                return namedAnimation;
+            }
+
+            return skill.SummonAttackAnimation;
+        }
+
+        private static int ResolveSummonRemovalPlaybackDurationMs(ActiveSummon summon)
+        {
+            return Math.Max(
+                1,
+                GetSkillAnimationDuration(summon?.SkillData?.SummonRemovalAnimation)
+                ?? GetSkillAnimationDuration(summon?.SkillData?.SummonHitAnimation)
+                ?? GetSkillAnimationDuration(ResolvePacketPendingRemovalActionAnimation(summon))
+                ?? summon?.SkillData?.HitEffect?.TotalDuration
+                ?? 1);
+        }
+
         private static int ResolveOneTimeActionFallbackDurationMs(SkillAnimation animation, int animationTime)
         {
             if (animation?.Frames.Count <= 0)
@@ -1345,7 +1450,7 @@ namespace HaCreator.MapSimulator.Pools
             else
             {
                 int elapsed = Math.Max(0, currentTime - state.Summon.StartTime);
-                SkillAnimation fallbackAnimation = ResolveSummonAnimation(state.Summon, currentTime, elapsed, out int fallbackAnimationTime);
+                SkillAnimation fallbackAnimation = ResolvePreHitSummonAnimation(state.Summon, currentTime, elapsed, out int fallbackAnimationTime);
                 int fallbackDuration = ResolveOneTimeActionFallbackDurationMs(fallbackAnimation, fallbackAnimationTime);
                 state.Summon.OneTimeActionFallbackAnimation = fallbackAnimation;
                 state.Summon.OneTimeActionFallbackAnimationTime = fallbackAnimation?.Frames.Count > 0
@@ -1365,6 +1470,80 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return hasHitAnimation;
+        }
+
+        private static SkillAnimation ResolvePreHitSummonAnimation(ActiveSummon summon, int currentTime, int elapsedTime, out int animationTime)
+        {
+            animationTime = Math.Max(0, elapsedTime);
+            SkillData skill = summon?.SkillData;
+            if (skill == null)
+            {
+                return null;
+            }
+
+            SkillAnimation spawnAnimation = skill.SummonSpawnAnimation;
+            if (spawnAnimation?.Frames.Count > 0)
+            {
+                int spawnDuration = GetSkillAnimationDuration(spawnAnimation) ?? 0;
+                if (spawnDuration > 0 && elapsedTime < spawnDuration)
+                {
+                    animationTime = elapsedTime;
+                    return spawnAnimation;
+                }
+
+                animationTime = Math.Max(0, elapsedTime - spawnDuration);
+            }
+
+            SkillAnimation removalAnimation = skill.SummonRemovalAnimation;
+            if (removalAnimation?.Frames.Count > 0 && summon.RemovalAnimationStartTime != int.MinValue)
+            {
+                int removalElapsed = currentTime - summon.RemovalAnimationStartTime;
+                int removalDuration = GetSkillAnimationDuration(removalAnimation) ?? 0;
+                if (removalElapsed >= 0 && removalDuration > 0 && removalElapsed < removalDuration)
+                {
+                    animationTime = removalElapsed;
+                    return removalAnimation;
+                }
+            }
+
+            SkillAnimation prepareAnimation = skill.SummonAttackPrepareAnimation;
+            SkillAnimation attackAnimation = ResolveAttackAnimation(summon);
+            if (attackAnimation?.Frames.Count > 0 && summon.LastAttackAnimationStartTime != int.MinValue)
+            {
+                int attackElapsed = currentTime - summon.LastAttackAnimationStartTime;
+                int prepareDuration = GetSkillAnimationDuration(prepareAnimation) ?? 0;
+                int attackDuration = GetSkillAnimationDuration(attackAnimation) ?? 0;
+                int totalDuration = prepareDuration + attackDuration;
+                if (attackElapsed >= 0 && totalDuration > 0 && attackElapsed < totalDuration)
+                {
+                    if (prepareAnimation?.Frames.Count > 0 && attackElapsed < prepareDuration)
+                    {
+                        animationTime = attackElapsed;
+                        return prepareAnimation;
+                    }
+
+                    animationTime = Math.Max(0, attackElapsed - prepareDuration);
+                    return attackAnimation;
+                }
+            }
+
+            if (prepareAnimation?.Frames.Count > 0
+                && summon.ActorState == SummonActorState.Prepare
+                && summon.SkillId == TeslaCoilSkillId
+                && (summon.TeslaCoilState == 1
+                    || summon.TeslaCoilState == 2
+                    || summon.LastAttackAnimationStartTime == int.MinValue))
+            {
+                int prepareElapsed = Math.Max(0, currentTime - summon.LastStateChangeTime);
+                int prepareDuration = GetSkillAnimationDuration(prepareAnimation) ?? 0;
+                if (prepareDuration <= 0 || prepareElapsed < prepareDuration)
+                {
+                    animationTime = prepareElapsed;
+                    return prepareAnimation;
+                }
+            }
+
+            return skill.SummonAnimation?.Frames.Count > 0 ? skill.SummonAnimation : skill.Effect;
         }
 
         private static Color ResolveSummonDrawColor(ActiveSummon summon)
@@ -1392,6 +1571,11 @@ namespace HaCreator.MapSimulator.Pools
             state.Summon.CurrentHealth = Math.Max(0, startingHealth - Math.Max(1, damage));
             if (state.Summon.CurrentHealth <= 0)
             {
+                if (TryBeginSelfDestructRemoval(state, currentTime, requiresNaturalExpiry: false))
+                {
+                    return;
+                }
+
                 BeginRemoval(state, currentTime, state.RemovalReason);
             }
         }
@@ -1810,8 +1994,53 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
-                BeginRemoval(state, currentTime, reason: 0);
+                if (TryBeginSelfDestructRemoval(state, currentTime, requiresNaturalExpiry: true))
+                {
+                    continue;
+                }
+
+                if (!TryTriggerExpiredSelfDestructAction(state, currentTime))
+                {
+                    BeginRemoval(state, currentTime, reason: 0);
+                }
             }
+        }
+
+        private bool TryTriggerExpiredSelfDestructAction(PacketOwnedSummonState state, int currentTime)
+        {
+            if (state?.Summon?.SkillData?.SelfDestructMinion != true)
+            {
+                return false;
+            }
+
+            state.Summon.ExpiryActionTriggered = true;
+            state.Summon.LastAttackAnimationStartTime = currentTime;
+            state.Summon.CurrentAnimationBranchName = SummonRuntimeRules.ResolveSelfDestructFinalBranch(
+                state.Summon.SkillData,
+                ResolveSummonAssistType(state.Summon.SkillData));
+
+            bool hasPrepareAnimation = string.IsNullOrWhiteSpace(state.Summon.CurrentAnimationBranchName)
+                && state.Summon.SkillData.SummonAttackPrepareAnimation?.Frames.Count > 0;
+            state.Summon.ActorState = hasPrepareAnimation
+                ? SummonActorState.Prepare
+                : SummonActorState.Attack;
+            state.Summon.LastStateChangeTime = currentTime;
+            RemovePuppet(state.Summon);
+
+            int actionDuration = ResolveSummonPendingRemovalActionDurationMs(state.Summon);
+            int removalDuration = ResolveSummonRemovalPlaybackDurationMs(state.Summon);
+            state.Summon.RemovalAnimationStartTime = actionDuration > 0
+                ? currentTime + actionDuration
+                : currentTime;
+            state.Summon.PendingRemovalTime = state.Summon.RemovalAnimationStartTime + removalDuration;
+
+            if (actionDuration <= 0)
+            {
+                state.Summon.ActorState = SummonActorState.Die;
+                state.Summon.LastStateChangeTime = currentTime;
+            }
+
+            return true;
         }
 
         private static int ResolveSummonDurationMs(SkillData skill, SkillLevelData levelData)
@@ -1847,6 +2076,47 @@ namespace HaCreator.MapSimulator.Pools
         private static bool ShouldRegisterSummonPuppet(SkillData skill)
         {
             return SummonRuntimeRules.ShouldRegisterPuppet(skill);
+        }
+
+        private bool TryBeginSelfDestructRemoval(PacketOwnedSummonState state, int currentTime, bool requiresNaturalExpiry)
+        {
+            if (state?.Summon == null)
+            {
+                return false;
+            }
+
+            if (requiresNaturalExpiry
+                && !PacketOwnedSummonUpdateRules.ShouldTriggerExpirySelfDestruct(state.Summon, currentTime))
+            {
+                return false;
+            }
+
+            if (!requiresNaturalExpiry
+                && (state.Summon.SkillData?.SelfDestructMinion != true || state.Summon.ExpiryActionTriggered))
+            {
+                return false;
+            }
+
+            int attackWindowMs = ResolveSelfDestructAttackWindowMs(state.Summon);
+            if (attackWindowMs <= 0)
+            {
+                return false;
+            }
+
+            state.RemovalReason = 0;
+            state.Summon.ExpiryActionTriggered = true;
+            state.Summon.LastAttackAnimationStartTime = currentTime;
+            state.Summon.CurrentAnimationBranchName = ResolveSelfDestructAttackBranch(state.Summon);
+            state.Summon.ActorState = state.Summon.SkillData?.SummonAttackPrepareAnimation?.Frames.Count > 0
+                ? SummonActorState.Prepare
+                : SummonActorState.Attack;
+            state.Summon.LastStateChangeTime = currentTime;
+
+            int removalWindowMs = ResolveSelfDestructRemovalWindowMs(state.Summon);
+            (state.Summon.RemovalAnimationStartTime, state.Summon.PendingRemovalTime) =
+                PacketOwnedSummonUpdateRules.BuildSelfDestructRemovalSchedule(currentTime, attackWindowMs, removalWindowMs);
+            RemovePuppet(state.Summon);
+            return true;
         }
 
         private void SpawnPacketSummonProjectiles(ActiveSummon summon, IReadOnlyList<MobItem> targets, int currentTime)
@@ -2402,6 +2672,29 @@ namespace HaCreator.MapSimulator.Pools
             return new Rectangle(drawX, drawY, frame.Texture.Width, frame.Texture.Height);
         }
 
+        private Rectangle GetSummonContactBounds(ActiveSummon summon, int currentTime)
+        {
+            Rectangle currentBounds = GetSummonHitbox(summon, currentTime);
+            if (summon == null || currentBounds.IsEmpty)
+            {
+                return currentBounds;
+            }
+
+            int deltaX = (int)MathF.Round(summon.PreviousPositionX - summon.PositionX);
+            int deltaY = (int)MathF.Round(summon.PreviousPositionY - summon.PositionY);
+            if (deltaX == 0 && deltaY == 0)
+            {
+                return currentBounds;
+            }
+
+            Rectangle previousBounds = new Rectangle(
+                currentBounds.X + deltaX,
+                currentBounds.Y + deltaY,
+                currentBounds.Width,
+                currentBounds.Height);
+            return UnionRectangles(currentBounds, previousBounds);
+        }
+
         private static Vector2 GetMobHitboxCenter(MobItem mob, int currentTime)
         {
             if (mob == null)
@@ -2533,6 +2826,51 @@ namespace HaCreator.MapSimulator.Pools
             return skill.SummonAttackAnimation;
         }
 
+        private static string ResolveSelfDestructAttackBranch(ActiveSummon summon)
+        {
+            SkillData skill = summon?.SkillData;
+            if (skill?.SummonNamedAnimations == null || string.IsNullOrWhiteSpace(skill.SummonAttackBranchName))
+            {
+                return null;
+            }
+
+            return skill.SummonNamedAnimations.ContainsKey(skill.SummonAttackBranchName)
+                ? skill.SummonAttackBranchName
+                : null;
+        }
+
+        private static int ResolveSelfDestructAttackWindowMs(ActiveSummon summon)
+        {
+            if (summon?.SkillData == null)
+            {
+                return 0;
+            }
+
+            int prepareDurationMs = GetSkillAnimationDuration(summon.SkillData.SummonAttackPrepareAnimation) ?? 0;
+            SkillAnimation attackAnimation = summon.SkillData.SummonAttackAnimation;
+            string attackBranchName = ResolveSelfDestructAttackBranch(summon);
+            if (!string.IsNullOrWhiteSpace(attackBranchName)
+                && summon.SkillData.SummonNamedAnimations.TryGetValue(attackBranchName, out SkillAnimation branchAnimation)
+                && branchAnimation?.Frames.Count > 0)
+            {
+                attackAnimation = branchAnimation;
+            }
+
+            int attackDurationMs = GetSkillAnimationDuration(attackAnimation) ?? 0;
+            return prepareDurationMs + attackDurationMs;
+        }
+
+        private static int ResolveSelfDestructRemovalWindowMs(ActiveSummon summon)
+        {
+            return Math.Max(
+                1,
+                GetSkillAnimationDuration(summon?.SkillData?.SummonRemovalAnimation)
+                ?? GetSkillAnimationDuration(summon?.SkillData?.SummonHitAnimation)
+                ?? GetSkillAnimationDuration(summon?.SkillData?.SummonAttackAnimation)
+                ?? summon?.SkillData?.HitEffect?.TotalDuration
+                ?? 1);
+        }
+
         private static string ResolvePacketOwnedSkillBranch(PacketOwnedSummonState state)
         {
             ActiveSummon summon = state?.Summon;
@@ -2555,6 +2893,30 @@ namespace HaCreator.MapSimulator.Pools
             return animation.TotalDuration > 0
                 ? animation.TotalDuration
                 : animation.Frames.Sum(frame => frame.Delay);
+        }
+
+        private static Rectangle UnionRectangles(Rectangle first, Rectangle second)
+        {
+            if (first.IsEmpty)
+            {
+                return second;
+            }
+
+            if (second.IsEmpty)
+            {
+                return first;
+            }
+
+            int left = Math.Min(first.Left, second.Left);
+            int top = Math.Min(first.Top, second.Top);
+            int right = Math.Max(first.Right, second.Right);
+            int bottom = Math.Max(first.Bottom, second.Bottom);
+
+            return new Rectangle(
+                left,
+                top,
+                Math.Max(1, right - left),
+                Math.Max(1, bottom - top));
         }
 
         private static int GetFrameDrawX(int anchorX, SkillFrame frame, bool shouldFlip)

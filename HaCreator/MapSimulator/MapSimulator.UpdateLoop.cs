@@ -187,7 +187,7 @@ namespace HaCreator.MapSimulator
                 _playerManager?.Player?.Build?.Clone(),
                 _playerManager?.Player?.Position ?? Vector2.Zero,
                 ResolveSyntheticRemoteUserId);
-            _remoteUserPool.Update(currTickCount);
+            _remoteUserPool.Update(currTickCount, _playerManager?.Player);
             _remoteUserPool.SyncPortableChairPairState(_playerManager?.Player);
             EnsureSummonedPacketInboxState(shouldRun: true);
             DrainSummonedPacketInbox();
@@ -277,6 +277,7 @@ namespace HaCreator.MapSimulator
             _localOverlayRuntime.Update(currTickCount);
 
             _engagementProposalController.UpdateLocalContext(_playerManager?.Player?.Build);
+            _weddingInvitationController.UpdateLocalContext(_playerManager?.Player?.Build);
             _weddingWishListController.UpdateLocalContext(_playerManager?.Player?.Build);
             _mapleTvRuntime.UpdateLocalContext(_playerManager?.Player?.Build);
             _mapleTvRuntime.Update(currTickCount);

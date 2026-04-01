@@ -13,7 +13,12 @@ namespace HaCreator.MapSimulator.Managers
         private static readonly HashSet<string> ImplicitOwnerEligibleWindowNames = new(StringComparer.Ordinal)
         {
             MapSimulatorWindowNames.CashShop,
+            MapSimulatorWindowNames.AdminShopWishList,
             MapSimulatorWindowNames.Mts,
+            MapSimulatorWindowNames.CashShopLocker,
+            MapSimulatorWindowNames.CashShopInventory,
+            MapSimulatorWindowNames.CashShopList,
+            MapSimulatorWindowNames.CashShopStatus,
             MapSimulatorWindowNames.Trunk,
             MapSimulatorWindowNames.ItemMaker,
             MapSimulatorWindowNames.ItemUpgrade,
@@ -39,6 +44,8 @@ namespace HaCreator.MapSimulator.Managers
             MapSimulatorWindowNames.GuildBbs,
             MapSimulatorWindowNames.Messenger,
             MapSimulatorWindowNames.EngagementProposal,
+            MapSimulatorWindowNames.WeddingInvitation,
+            MapSimulatorWindowNames.WeddingWishList,
             MapSimulatorWindowNames.FamilyChart,
             MapSimulatorWindowNames.FamilyTree,
             MapSimulatorWindowNames.QuestDelivery,

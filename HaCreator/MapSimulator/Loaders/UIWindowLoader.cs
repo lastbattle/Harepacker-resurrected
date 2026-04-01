@@ -567,25 +567,39 @@ namespace HaCreator.MapSimulator.Loaders
 
             WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
 
-            Texture2D frameTexture = CreateFilledTexture(device, 520, 360, Color.Transparent, Color.Transparent);
+            Texture2D frameTexture = CreateFilledTexture(device, 800, 600, Color.Transparent, Color.Transparent);
+            var stageTexturesByRace = new Dictionary<LoginCreateCharacterRaceKind, IReadOnlyDictionary<LoginCreateCharacterStage, Texture2D>>();
+            var avatarEnabledTexturesByRace = new Dictionary<LoginCreateCharacterRaceKind, IReadOnlyList<Texture2D>>();
+            var avatarDisabledTexturesByRace = new Dictionary<LoginCreateCharacterRaceKind, IReadOnlyList<Texture2D>>();
+            var racePreviewTexturesByRace = new Dictionary<LoginCreateCharacterRaceKind, Texture2D>();
 
-
-
-            var stageTextures = new Dictionary<LoginCreateCharacterStage, Texture2D>
+            foreach (LoginCreateCharacterRaceKind race in LoginCreateCharacterFlowState.SupportedRaces)
             {
-                [LoginCreateCharacterStage.RaceSelect] = LoadCanvasTexture(newCharProperty, "charAlert", device),
-                [LoginCreateCharacterStage.JobSelect] = LoadCanvasTexture(newCharProperty, "charJob", device),
-                [LoginCreateCharacterStage.AvatarSelect] = LoadCanvasTexture(newCharProperty, "charSet", device),
-                [LoginCreateCharacterStage.NameSelect] = LoadCanvasTexture(newCharProperty, "charName", device)
-            };
+                WzSubProperty raceProperty = ResolveCreateCharacterRaceProperty(loginImage, race, newCharProperty);
+                stageTexturesByRace[race] = new Dictionary<LoginCreateCharacterStage, Texture2D>
+                {
+                    [LoginCreateCharacterStage.RaceSelect] = LoadCanvasTexture(raceProperty, "charAlert", device)
+                        ?? LoadCanvasTexture(newCharProperty, "charAlert", device),
+                    [LoginCreateCharacterStage.JobSelect] = LoadCanvasTexture(raceProperty, "charJob", device)
+                        ?? LoadCanvasTexture(newCharProperty, "charJob", device),
+                    [LoginCreateCharacterStage.AvatarSelect] = LoadCanvasTexture(raceProperty, "charSet", device)
+                        ?? LoadCanvasTexture(newCharProperty, "charSet", device),
+                    [LoginCreateCharacterStage.NameSelect] = LoadCanvasTexture(raceProperty, "charName", device)
+                        ?? LoadCanvasTexture(newCharProperty, "charName", device)
+                };
+                avatarEnabledTexturesByRace[race] = LoadIndexedCanvasTextureList(raceProperty?["avatarSel"] as WzSubProperty, "normal", device);
+                avatarDisabledTexturesByRace[race] = LoadIndexedCanvasTextureList(raceProperty?["avatarSel"] as WzSubProperty, "disabled", device);
+                racePreviewTexturesByRace[race] = LoadCanvasTexture(raceProperty, "charAlert", device);
+            }
 
 
             LoginCreateCharacterWindow window = new LoginCreateCharacterWindow(
                 new DXObject(0, 0, frameTexture, 0),
-                stageTextures,
+                stageTexturesByRace,
                 LoadIndexedCanvasTextureList(newCharProperty?["jobSelect"] as WzSubProperty, device),
-                LoadIndexedCanvasTextureList(newCharProperty?["avatarSel"] as WzSubProperty, "normal", device),
-                LoadIndexedCanvasTextureList(newCharProperty?["avatarSel"] as WzSubProperty, "disabled", device),
+                avatarEnabledTexturesByRace,
+                avatarDisabledTexturesByRace,
+                racePreviewTexturesByRace,
                 LoadCharacterSelectAnimationFrames(newCharProperty?["dice"] as WzSubProperty, device),
                 LoadCanvasTexture(newCharProperty?["BtLeft"]?["normal"] as WzSubProperty, "0", device),
                 LoadCanvasTexture(newCharProperty?["BtRight"]?["normal"] as WzSubProperty, "0", device),
@@ -593,7 +607,7 @@ namespace HaCreator.MapSimulator.Loaders
                 LoadButton(newCharProperty, "BtNo", btClickSound, btOverSound, device),
                 LoadButton(newCharProperty, "BtCheck", btClickSound, btOverSound, device))
             {
-                Position = new Point(Math.Max(24, (screenWidth / 2) - 180), Math.Max(24, (screenHeight / 2) - 120))
+                Position = new Point(Math.Max(0, (screenWidth / 2) - 400), Math.Max(0, (screenHeight / 2) - 300))
             };
 
 
@@ -753,7 +767,10 @@ namespace HaCreator.MapSimulator.Loaders
                 LoadCanvasTexture(balloonProperty, "sw", device),
                 LoadCanvasTexture(balloonProperty, "s", device),
                 LoadCanvasTexture(balloonProperty, "se", device),
-                LoadCanvasTexture(balloonProperty, "selArrow", device) ?? LoadCanvasTexture(balloonProperty, "arrow", device),
+                LoadOwnerCanvasFrame(
+                    (balloonProperty?["selArrow"] as WzCanvasProperty)
+                    ?? (balloonProperty?["arrow"] as WzCanvasProperty),
+                    device),
                 new Color(unchecked((uint)textColorArgb)));
         }
 
@@ -2152,6 +2169,34 @@ namespace HaCreator.MapSimulator.Loaders
 
             manager.RegisterCustomWindow(window);
 
+        }
+
+        private static WzSubProperty ResolveCreateCharacterRaceProperty(
+            WzImage loginImage,
+            LoginCreateCharacterRaceKind race,
+            WzSubProperty fallbackProperty)
+        {
+            WzSubProperty customizeCharProperty = loginImage?["CustomizeChar"] as WzSubProperty;
+            string raceNode = race switch
+            {
+                LoginCreateCharacterRaceKind.Cygnus => "1000",
+                LoginCreateCharacterRaceKind.Aran => "2000",
+                LoginCreateCharacterRaceKind.Evan => "2001",
+                LoginCreateCharacterRaceKind.Resistance => "3000",
+                _ => "000"
+            };
+            string familyNode = race switch
+            {
+                LoginCreateCharacterRaceKind.Cygnus => "NewCharKnight",
+                LoginCreateCharacterRaceKind.Aran => "NewCharAran",
+                LoginCreateCharacterRaceKind.Evan => "NewCharEvan",
+                LoginCreateCharacterRaceKind.Resistance => "NewCharResistance",
+                _ => "NewChar"
+            };
+
+            return customizeCharProperty?[raceNode] as WzSubProperty
+                ?? loginImage?[familyNode] as WzSubProperty
+                ?? fallbackProperty;
         }
 
         private static void RegisterCashAvatarPreviewWindow(
@@ -5592,20 +5637,6 @@ namespace HaCreator.MapSimulator.Loaders
                 ?? uiWindow2Image?["MapleRadio"] as WzSubProperty
                 ?? uiWindow2Image?["RadioSchedule"] as WzSubProperty;
 
-            Texture2D frameTexture = LoadCanvasTexture(sourceProperty, "backgrnd", device);
-            if (frameTexture == null)
-            {
-                frameTexture = CreatePlaceholderWindowTexture(device, 292, 148, "Radio");
-            }
-
-            UtilityPanelWindow window = new UtilityPanelWindow(
-                new DXObject(0, 0, frameTexture, 0),
-                MapSimulatorWindowNames.Radio,
-                "Radio")
-            {
-                Position = position
-            };
-
             Texture2D radioOffTexture = LoadCanvasTexture(sourceProperty?["Off"] as WzSubProperty, "0", device);
             List<UtilityPanelWindow.IndicatorFrame> radioOnFrames = new();
             if (sourceProperty?["On"] is WzSubProperty radioOnProperty)
@@ -5628,24 +5659,20 @@ namespace HaCreator.MapSimulator.Loaders
                 }
             }
 
-            if (radioOffTexture != null || radioOnFrames.Count > 0)
+            if (radioOffTexture == null && radioOnFrames.Count > 0)
             {
-                window.SetIndicatorFrames(radioOffTexture, radioOnFrames, Point.Zero);
+                radioOffTexture = radioOnFrames[0].Texture;
             }
 
-            if (sourceProperty != null)
+            radioOffTexture ??= CreatePlaceholderWindowTexture(device, 54, 32, "Radio");
+            RadioStatusWindow window = new RadioStatusWindow(
+                device,
+                radioOffTexture,
+                radioOnFrames,
+                MapSimulatorWindowNames.Radio)
             {
-                IDXObject overlay = LoadWindowCanvasLayerWithOffset(sourceProperty, "backgrnd2", device, out Point overlayOffset);
-                IDXObject content = LoadWindowCanvasLayerWithOffset(sourceProperty, "backgrnd3", device, out Point contentOffset);
-                IDXObject title = LoadWindowCanvasLayerWithOffset(sourceProperty, "title", device, out Point titleOffset);
-                window.AddLayer(overlay, overlayOffset);
-                window.AddLayer(content, contentOffset);
-                window.AddLayer(title, titleOffset);
-            }
-            else
-            {
-                window.SetStaticLines("Packet-authored radio playback is idle.");
-            }
+                Position = position
+            };
             return window;
         }
         private static PlaceholderUtilityWindow CreateWzPlaceholderUtilityWindow(

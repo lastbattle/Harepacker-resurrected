@@ -56,6 +56,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Dictionary<InputAction, KeyBinding> _originalBindings = new();
         private SpriteFont _font;
         private Func<PlayerInput> _bindingSource;
+        private Action<PlayerInput> _commitHandler;
         private IDXObject _quickSlotFrame;
         private UIObject _mainOkButton;
         private UIObject _mainCancelButton;
@@ -118,6 +119,11 @@ namespace HaCreator.MapSimulator.UI
         public void SetBindingSource(Func<PlayerInput> bindingSource)
         {
             _bindingSource = bindingSource;
+        }
+
+        public void SetCommitHandler(Action<PlayerInput> commitHandler)
+        {
+            _commitHandler = commitHandler;
         }
 
         public override void SetFont(SpriteFont font)
@@ -517,6 +523,8 @@ namespace HaCreator.MapSimulator.UI
                         binding?.SecondaryKey ?? Keys.None,
                         binding?.GamepadButton ?? (Buttons)0);
                 }
+
+                _commitHandler?.Invoke(input);
             }
 
             _captureArmed = false;

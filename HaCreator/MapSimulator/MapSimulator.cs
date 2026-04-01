@@ -681,6 +681,7 @@ namespace HaCreator.MapSimulator
         private int? _loginUtilityDialogNoticeTextIndex;
         private bool _loginUtilityDialogInputMasked;
         private int _loginUtilityDialogInputMaxLength;
+        private int? _loginAccountId;
         private bool _loginAccountAcceptedEula;
         private string _loginAccountPicCode = string.Empty;
         private string _loginAccountBirthDate = string.Empty;
@@ -2151,10 +2152,14 @@ namespace HaCreator.MapSimulator
 
                     }
 
-
-
-
-
+                    if (string.Equals(actionKey, "Party.ChangeBoss", StringComparison.Ordinal))
+                    {
+                        string restrictionMessage = FieldInteractionRestrictionEvaluator.GetPartyBossRestrictionMessage(_mapBoard?.MapInfo?.fieldLimit ?? 0);
+                        if (!string.IsNullOrWhiteSpace(restrictionMessage))
+                        {
+                            return restrictionMessage;
+                        }
+                    }
 
 
                     return _socialListRuntime.ExecuteAction(actionKey);
@@ -2236,7 +2241,8 @@ namespace HaCreator.MapSimulator
 
             _guildSkillRuntime.UpdateLocalContext(
                 _playerManager?.Player?.Build,
-                _socialListRuntime.GetLocalGuildRoleLabel());
+                _socialListRuntime.GetEffectiveGuildRoleLabelForUi(),
+                _socialListRuntime.CanManageGuildSkills());
             guildSkillWindow.SetSnapshotProvider(_guildSkillRuntime.BuildSnapshot);
             guildSkillWindow.SetHandlers(
                 visibleIndex => _guildSkillRuntime.SelectEntry(visibleIndex),
@@ -2272,7 +2278,8 @@ namespace HaCreator.MapSimulator
 
             _guildSkillRuntime.UpdateLocalContext(
                 player.Build,
-                _socialListRuntime.GetLocalGuildRoleLabel());
+                _socialListRuntime.GetEffectiveGuildRoleLabelForUi(),
+                _socialListRuntime.CanManageGuildSkills());
             RefreshSkillWindowShortcutState();
         }
 
@@ -2516,6 +2523,7 @@ namespace HaCreator.MapSimulator
             string locationSummary = GetCurrentMapTransferDisplayName();
 
             _messengerRuntime.UpdateLocalContext(playerName, locationSummary, 1);
+            _messengerRuntime.SocialChatObserved = TryTriggerSpecialistPetSocialFeedback;
 
 
 
@@ -2703,7 +2711,10 @@ namespace HaCreator.MapSimulator
             if (uiWindowManager.GetWindow(MapSimulatorWindowNames.KeyConfig) is KeyConfigWindow keyConfigWindow)
             {
                 keyConfigWindow.SetBindingSource(() => _playerManager?.Input);
+                keyConfigWindow.SetCommitHandler(SavePacketOwnedFuncKeyConfigFromLiveInput);
             }
+
+            ApplyPacketOwnedPetConsumeItemPreferenceToFieldHazard();
 
             if (uiWindowManager.GetWindow(MapSimulatorWindowNames.OptionMenu) is OptionMenuWindow optionMenuWindow)
             {
@@ -3007,7 +3018,8 @@ namespace HaCreator.MapSimulator
 
             LoginCharacterAccountStore.LoginCharacterAccountState storedState = _loginCharacterAccountStore.GetState(
                 ResolveLoginRosterAccountName(),
-                ResolveLoginRosterWorldId());
+                ResolveLoginRosterWorldId(),
+                ResolveLoginRosterAccountId());
             if (storedState?.Entries == null)
             {
                 return null;
@@ -3727,7 +3739,7 @@ namespace HaCreator.MapSimulator
             int repairableCount = BuildRepairDurabilityEntries().Count;
             if (repairableCount <= 0)
             {
-                return "No visible or hidden equipped item currently needs durability repair.";
+                return "No equip inventory or equipped item currently needs durability repair.";
             }
 
 
@@ -3742,63 +3754,61 @@ namespace HaCreator.MapSimulator
         private List<RepairDurabilityWindow.RepairEntry> BuildRepairDurabilityEntries()
         {
             var entries = new List<RepairDurabilityWindow.RepairEntry>();
+            IInventoryRuntime inventory = uiWindowManager?.InventoryWindow as IInventoryRuntime;
+            AppendRepairDurabilityInventoryEntries(entries, inventory);
+
             CharacterBuild build = _playerManager?.Player?.Build;
-            if (build == null)
+            if (build != null)
             {
-                return entries;
+                AppendRepairDurabilityEquippedEntries(entries, build.Equipment);
             }
 
-
-            AppendRepairDurabilityEntries(entries, build.Equipment, hiddenSlot: false);
-            AppendRepairDurabilityEntries(entries, build.HiddenEquipment, hiddenSlot: true);
             return entries
-                .OrderBy(entry => GetRepairDurabilitySortKey(entry.Slot, entry.IsHiddenSlot))
-                .ThenBy(entry => entry.Part?.ItemId ?? 0)
+                .OrderBy(entry => entry.IsInventorySlot ? 0 : 1)
+                .ThenBy(entry => entry.IsInventorySlot ? entry.EncodedSlotPosition : -entry.EncodedSlotPosition)
+                .ThenBy(entry => entry.Part?.ItemId ?? entry.InventorySlot?.ItemId ?? 0)
                 .ToList();
         }
-        private static int GetRepairDurabilitySortKey(Character.EquipSlot slot, bool hiddenSlot)
+        
+        private void AppendRepairDurabilityInventoryEntries(
+            ICollection<RepairDurabilityWindow.RepairEntry> entries,
+            IInventoryRuntime inventory)
         {
-            int baseOrder = slot switch
+            if (entries == null || inventory == null)
             {
-                Character.EquipSlot.Cap => 1,
-                Character.EquipSlot.FaceAccessory => 2,
-                Character.EquipSlot.EyeAccessory => 3,
-                Character.EquipSlot.Earrings => 4,
-                Character.EquipSlot.Coat => 5,
-                Character.EquipSlot.Longcoat => 5,
-                Character.EquipSlot.Pants => 6,
-                Character.EquipSlot.Shoes => 7,
-                Character.EquipSlot.Glove => 8,
-                Character.EquipSlot.Cape => 9,
-                Character.EquipSlot.Shield => 10,
-                Character.EquipSlot.Weapon => 11,
-                Character.EquipSlot.Ring1 => 12,
-                Character.EquipSlot.Ring2 => 13,
-                Character.EquipSlot.Ring3 => 15,
-                Character.EquipSlot.Ring4 => 16,
-                Character.EquipSlot.Pendant => 17,
-                Character.EquipSlot.TamingMob => 18,
-                Character.EquipSlot.Saddle => 19,
-                Character.EquipSlot.Medal => 49,
-                Character.EquipSlot.Belt => 50,
-                Character.EquipSlot.Shoulder => 51,
-                Character.EquipSlot.Pocket => 52,
-                Character.EquipSlot.Badge => 53,
-                Character.EquipSlot.Pendant2 => 59,
-                Character.EquipSlot.Android => 166,
-                Character.EquipSlot.AndroidHeart => 167,
-                _ => 1000 + (int)slot
-            };
+                return;
+            }
 
-            return (hiddenSlot ? 10000 : 0) + baseOrder;
+            IReadOnlyList<InventorySlotData> equipSlots = inventory.GetSlots(InventoryType.EQUIP);
+            for (int i = 0; i < equipSlots.Count; i++)
+            {
+                InventorySlotData slot = equipSlots[i];
+                CharacterPart part = ResolveRepairDurabilityInventoryPart(slot);
+                if (!TryGetRepairDurabilityValues(part, out int currentDurability, out int maxDurability))
+                {
+                    continue;
+                }
+
+                entries.Add(new RepairDurabilityWindow.RepairEntry
+                {
+                    InventorySlot = slot,
+                    EncodedSlotPosition = i + 1,
+                    IsInventorySlot = true,
+                    SlotLabel = $"Equip INV {i + 1}",
+                    ItemName = ResolveRepairDurabilityItemName(part, slot?.ItemId ?? 0),
+                    CurrentDurability = currentDurability,
+                    MaxDurability = maxDurability,
+                    RepairCost = CalculateRepairDurabilityCost(part, currentDurability, maxDurability),
+                    IsCashItem = part?.IsCash == true,
+                    AvailabilityText = currentDurability <= 0 ? "Broken" : "Repairable",
+                    Icon = part?.IconRaw ?? part?.Icon
+                });
+            }
         }
 
-
-
-        private static void AppendRepairDurabilityEntries(
+        private static void AppendRepairDurabilityEquippedEntries(
             ICollection<RepairDurabilityWindow.RepairEntry> entries,
-            IReadOnlyDictionary<Character.EquipSlot, CharacterPart> equipment,
-            bool hiddenSlot)
+            IReadOnlyDictionary<Character.EquipSlot, CharacterPart> equipment)
         {
             if (entries == null || equipment == null)
             {
@@ -3808,34 +3818,26 @@ namespace HaCreator.MapSimulator
 
             foreach ((Character.EquipSlot slot, CharacterPart part) in equipment)
             {
-                if (part == null || !part.Durability.HasValue || !part.MaxDurability.HasValue)
+                if (!TryGetRepairDurabilityValues(part, out int currentDurability, out int maxDurability))
                 {
                     continue;
                 }
 
-
-                int maxDurability = Math.Max(0, part.MaxDurability.Value);
-                int currentDurability = Math.Clamp(part.Durability.Value, 0, maxDurability);
-                if (maxDurability <= 0 || currentDurability >= maxDurability)
+                int encodedPosition = EncodeRepairDurabilityEquippedPosition(slot);
+                if (encodedPosition == int.MinValue)
                 {
                     continue;
                 }
 
 
                 entries.Add(new RepairDurabilityWindow.RepairEntry
-
                 {
-
                     Part = part,
-
-                    EncodedSlotPosition = EncodeRepairDurabilitySlotPosition(slot, hiddenSlot, part.IsCash),
+                    EncodedSlotPosition = encodedPosition,
                     Slot = slot,
-
-                    IsHiddenSlot = hiddenSlot,
-
                     IsInventorySlot = false,
-                    SlotLabel = BuildRepairDurabilitySlotLabel(slot, hiddenSlot),
-                    ItemName = string.IsNullOrWhiteSpace(part.Name) ? $"Item {part.ItemId}" : part.Name,
+                    SlotLabel = BuildRepairDurabilitySlotLabel(slot),
+                    ItemName = ResolveRepairDurabilityItemName(part, part.ItemId),
                     CurrentDurability = currentDurability,
                     MaxDurability = maxDurability,
                     RepairCost = CalculateRepairDurabilityCost(part, currentDurability, maxDurability),
@@ -3847,9 +3849,39 @@ namespace HaCreator.MapSimulator
         }
 
 
-        private static string BuildRepairDurabilitySlotLabel(Character.EquipSlot slot, bool hiddenSlot)
+        private CharacterPart ResolveRepairDurabilityInventoryPart(InventorySlotData slot)
         {
-            string label = slot switch
+            if (slot == null || slot.ItemId <= 0)
+            {
+                return null;
+            }
+
+            CharacterLoader loader = _playerManager?.Loader;
+            if (slot.TooltipPart == null && loader != null)
+            {
+                slot.TooltipPart = loader.LoadEquipment(slot.ItemId);
+            }
+
+            return slot.TooltipPart;
+        }
+
+        private static bool TryGetRepairDurabilityValues(CharacterPart part, out int currentDurability, out int maxDurability)
+        {
+            currentDurability = 0;
+            maxDurability = 0;
+            if (part == null || !part.Durability.HasValue || !part.MaxDurability.HasValue)
+            {
+                return false;
+            }
+
+            maxDurability = Math.Max(0, part.MaxDurability.Value);
+            currentDurability = Math.Clamp(part.Durability.Value, 0, maxDurability);
+            return maxDurability > 0 && currentDurability < maxDurability;
+        }
+
+        private static string BuildRepairDurabilitySlotLabel(Character.EquipSlot slot)
+        {
+            return slot switch
             {
                 Character.EquipSlot.FaceAccessory => "Face",
                 Character.EquipSlot.EyeAccessory => "Eyes",
@@ -3863,7 +3895,15 @@ namespace HaCreator.MapSimulator
                 Character.EquipSlot.TamingMob => "Mount",
                 _ => slot.ToString()
             };
-            return hiddenSlot ? $"{label} hidden" : label;
+        }
+
+        private static string ResolveRepairDurabilityItemName(CharacterPart part, int itemId)
+        {
+            return !string.IsNullOrWhiteSpace(part?.Name)
+                ? part.Name
+                : itemId > 0
+                    ? $"Item {itemId}"
+                    : "Unknown item";
         }
 
 
@@ -3903,7 +3943,8 @@ namespace HaCreator.MapSimulator
 
         private void HandleRepairDurabilityRequested(RepairDurabilityWindow.RepairEntry entry)
         {
-            if (entry?.Part == null)
+            CharacterPart targetPart = ResolveRepairDurabilityTargetPart(entry);
+            if (targetPart == null)
             {
                 return;
             }
@@ -3927,13 +3968,13 @@ namespace HaCreator.MapSimulator
             if (_pendingRepairDurabilityRequest != null)
             {
                 ShowUtilityFeedbackMessage("A durability repair request is already awaiting a result.");
-                RefreshRepairDurabilityWindow(0, entry.Part.ItemId);
+                RefreshRepairDurabilityWindow(0, targetPart.ItemId);
                 return;
             }
             if (inventory.GetMesoCount() < entry.RepairCost)
             {
                 ShowUtilityFeedbackMessage($"Not enough meso to repair {entry.ItemName}.");
-                RefreshRepairDurabilityWindow(0, entry.Part.ItemId);
+                RefreshRepairDurabilityWindow(0, targetPart.ItemId);
                 return;
             }
 
@@ -3948,7 +3989,7 @@ namespace HaCreator.MapSimulator
                 OperationCode = RepairDurabilitySingleOpcode,
                 RepairAll = false,
                 TotalCost = entry.RepairCost,
-                PreferredItemId = entry.Part.ItemId,
+                PreferredItemId = targetPart.ItemId,
                 EncodedSlotPosition = entry.EncodedSlotPosition,
                 Entry = entry,
                 Entries = new[] { entry },
@@ -3956,7 +3997,7 @@ namespace HaCreator.MapSimulator
             };
 
             ShowUtilityFeedbackMessage(requestLabel);
-            RefreshRepairDurabilityWindow(npcTemplateId, entry.Part.ItemId);
+            RefreshRepairDurabilityWindow(npcTemplateId, targetPart.ItemId);
 
         }
 
@@ -3966,7 +4007,7 @@ namespace HaCreator.MapSimulator
         {
             if (entries == null || entries.Count == 0)
             {
-                ShowUtilityFeedbackMessage("No equipped item currently needs durability repair.");
+                ShowUtilityFeedbackMessage("No repairable equip inventory or equipped item is currently available.");
                 return;
             }
 
@@ -3982,7 +4023,7 @@ namespace HaCreator.MapSimulator
             int totalCost = entries.Sum(entry => Math.Max(0, entry?.RepairCost ?? 0));
             if (totalCost <= 0)
             {
-                ShowUtilityFeedbackMessage("No equipped item currently needs durability repair.");
+                ShowUtilityFeedbackMessage("No repairable equip inventory or equipped item is currently available.");
                 return;
             }
 
@@ -3995,7 +4036,7 @@ namespace HaCreator.MapSimulator
             }
             if (inventory.GetMesoCount() < totalCost)
             {
-                ShowUtilityFeedbackMessage("Not enough meso to repair every damaged equipped item.");
+                ShowUtilityFeedbackMessage("Not enough meso to repair every damaged repairable item.");
                 RefreshRepairDurabilityWindow(0);
                 return;
             }
@@ -4011,7 +4052,7 @@ namespace HaCreator.MapSimulator
                 OperationCode = RepairDurabilityAllOpcode,
                 RepairAll = true,
                 TotalCost = totalCost,
-                Entries = entries.Where(candidate => candidate?.Part != null).ToArray(),
+                Entries = entries.Where(candidate => ResolveRepairDurabilityTargetPart(candidate) != null).ToArray(),
                 RequestLabel = requestLabel
             };
 
@@ -4147,7 +4188,8 @@ namespace HaCreator.MapSimulator
             if (!request.RepairAll)
             {
                 RepairDurabilityWindow.RepairEntry liveEntry = FindLiveRepairDurabilityEntry(request.EncodedSlotPosition, request.PreferredItemId);
-                if (liveEntry?.Part == null || liveEntry.MaxDurability <= 0)
+                CharacterPart livePart = ResolveRepairDurabilityTargetPart(liveEntry);
+                if (livePart == null || liveEntry.MaxDurability <= 0)
                 {
                     ShowUtilityFeedbackMessage("Durability repair response failed because the selected equipment is no longer available.");
                     RefreshRepairDurabilityWindow(request.NpcTemplateId, request.PreferredItemId);
@@ -4169,7 +4211,7 @@ namespace HaCreator.MapSimulator
                     return;
                 }
 
-                liveEntry.Part.Durability = liveEntry.MaxDurability;
+                livePart.Durability = liveEntry.MaxDurability;
                 ShowUtilityFeedbackMessage($"Repair response restored {liveEntry.ItemName} for {liveRepairCost.ToString("N0", CultureInfo.InvariantCulture)} meso.");
                 RefreshRepairDurabilityWindow(request.NpcTemplateId, request.PreferredItemId);
                 return;
@@ -4202,12 +4244,13 @@ namespace HaCreator.MapSimulator
             for (int i = 0; i < liveEntries.Count; i++)
             {
                 RepairDurabilityWindow.RepairEntry repairEntry = liveEntries[i];
-                if (repairEntry?.Part == null || repairEntry.MaxDurability <= 0)
+                CharacterPart repairPart = ResolveRepairDurabilityTargetPart(repairEntry);
+                if (repairPart == null || repairEntry.MaxDurability <= 0)
                 {
                     continue;
                 }
 
-                repairEntry.Part.Durability = repairEntry.MaxDurability;
+                repairPart.Durability = repairEntry.MaxDurability;
                 repairedCount++;
             }
 
@@ -4311,46 +4354,42 @@ namespace HaCreator.MapSimulator
 
         }
 
-        private static int EncodeRepairDurabilitySlotPosition(Character.EquipSlot slot, bool hiddenSlot, bool isCashItem)
+        private static CharacterPart ResolveRepairDurabilityTargetPart(RepairDurabilityWindow.RepairEntry entry)
         {
-            int absolutePosition = slot switch
+            return entry?.Part ?? entry?.InventorySlot?.TooltipPart;
+        }
+
+        private static int EncodeRepairDurabilityEquippedPosition(Character.EquipSlot slot)
+        {
+            return slot switch
             {
-                Character.EquipSlot.Cap => 1,
-                Character.EquipSlot.FaceAccessory => 2,
-                Character.EquipSlot.EyeAccessory => 3,
-                Character.EquipSlot.Earrings => 4,
-                Character.EquipSlot.Coat => 5,
-                Character.EquipSlot.Longcoat => 5,
-                Character.EquipSlot.Pants => 6,
-                Character.EquipSlot.Shoes => 7,
-                Character.EquipSlot.Glove => 8,
-                Character.EquipSlot.Cape => 9,
-                Character.EquipSlot.Shield => 10,
-                Character.EquipSlot.Weapon => 11,
-                Character.EquipSlot.Ring1 => 12,
-                Character.EquipSlot.Ring2 => 13,
-                Character.EquipSlot.Ring3 => 15,
-                Character.EquipSlot.Ring4 => 16,
-                Character.EquipSlot.Pendant => 17,
-                Character.EquipSlot.TamingMob => 18,
-                Character.EquipSlot.Saddle => 19,
-                Character.EquipSlot.Medal => 49,
-                Character.EquipSlot.Belt => 50,
-                Character.EquipSlot.Shoulder => 51,
-                Character.EquipSlot.Pocket => 52,
-                Character.EquipSlot.Badge => 53,
-                Character.EquipSlot.Pendant2 => 59,
-                Character.EquipSlot.Android => 166,
-                Character.EquipSlot.AndroidHeart => 167,
-                _ => 1000 + (int)slot
+                Character.EquipSlot.Cap => -1,
+                Character.EquipSlot.FaceAccessory => -2,
+                Character.EquipSlot.EyeAccessory => -3,
+                Character.EquipSlot.Earrings => -4,
+                Character.EquipSlot.Coat => -5,
+                Character.EquipSlot.Longcoat => -5,
+                Character.EquipSlot.Pants => -6,
+                Character.EquipSlot.Shoes => -7,
+                Character.EquipSlot.Glove => -8,
+                Character.EquipSlot.Cape => -9,
+                Character.EquipSlot.Shield => -10,
+                Character.EquipSlot.Weapon => -11,
+                Character.EquipSlot.Ring1 => -12,
+                Character.EquipSlot.Ring2 => -13,
+                Character.EquipSlot.Ring3 => -15,
+                Character.EquipSlot.Ring4 => -16,
+                Character.EquipSlot.Pendant => -17,
+                Character.EquipSlot.TamingMob => -18,
+                Character.EquipSlot.Saddle => -19,
+                Character.EquipSlot.Medal => -49,
+                Character.EquipSlot.Belt => -50,
+                Character.EquipSlot.Shoulder => -51,
+                Character.EquipSlot.Pocket => -52,
+                Character.EquipSlot.Badge => -53,
+                Character.EquipSlot.Pendant2 => -59,
+                _ => int.MinValue
             };
-
-            if (hiddenSlot && !isCashItem)
-            {
-                return -absolutePosition;
-            }
-
-            return isCashItem ? -(100 + absolutePosition) : -absolutePosition;
         }
 
         private RepairDurabilityWindow.RepairEntry FindLiveRepairDurabilityEntry(int encodedSlotPosition, int preferredItemId)
@@ -4363,7 +4402,7 @@ namespace HaCreator.MapSimulator
             }
 
             return preferredItemId > 0
-                ? liveEntries.FirstOrDefault(entry => entry.Part?.ItemId == preferredItemId)
+                ? liveEntries.FirstOrDefault(entry => (entry.Part?.ItemId ?? entry.InventorySlot?.ItemId ?? 0) == preferredItemId)
                 : null;
         }
 
@@ -6357,7 +6396,11 @@ namespace HaCreator.MapSimulator
 
 
 
-                ResolveLoginRosterWorldId());
+                ResolveLoginRosterWorldId(),
+
+
+
+                ResolveLoginRosterAccountId());
 
 
 
@@ -6369,6 +6412,7 @@ namespace HaCreator.MapSimulator
 
 
 
+                _loginAccountId = null;
                 _loginAccountPicCode = string.Empty;
                 _loginAccountBirthDate = string.Empty;
                 _loginAccountSpwEnabled = false;
@@ -6891,6 +6935,11 @@ namespace HaCreator.MapSimulator
             if (packetProfile == null)
             {
                 return;
+            }
+
+            if (packetProfile.AccountId.HasValue && packetProfile.AccountId.Value > 0)
+            {
+                _loginAccountId = packetProfile.AccountId.Value;
             }
 
             _loginPacketAccountDialogProfiles[LoginPacketType.AccountInfoResult] = new LoginAccountDialogPacketProfile
@@ -7535,8 +7584,7 @@ namespace HaCreator.MapSimulator
 
             if (!_loginPacketCreateNewCharacterResultProfile.IsSuccess)
             {
-                _loginCharacterStatusMessage =
-                    $"CreateNewCharacterResult returned server code {FormatSelectorPacketCode(_loginPacketCreateNewCharacterResultProfile.ResultCode)}.";
+                _loginCharacterStatusMessage = BuildCreateNewCharacterPacketFailureMessage(_loginPacketCreateNewCharacterResultProfile);
                 if (_loginCreateCharacterFlow != null)
                 {
                     _loginCreateCharacterFlow.ClearCheckedName(_loginCharacterStatusMessage);
@@ -7975,12 +8023,52 @@ namespace HaCreator.MapSimulator
                 return packetText;
             }
 
-            string resultCode = packetProfile?.ResultCode.HasValue == true
-                ? FormatSelectorPacketCode(packetProfile.ResultCode.Value)
-                : "unknown";
-            return packetProfile?.CharacterId.HasValue == true
-                ? $"DeleteCharacterResult returned server code {resultCode} for character {packetProfile.CharacterId.Value}."
-                : $"DeleteCharacterResult returned server code {resultCode}.";
+            string targetText = packetProfile?.CharacterId.HasValue == true
+                ? $" for character {packetProfile.CharacterId.Value}"
+                : string.Empty;
+
+            return packetProfile?.ResultCode switch
+            {
+                6 => $"DeleteCharacterResult rejected character deletion because the request could not continue{targetText}.",
+                9 => $"DeleteCharacterResult reported that character deletion is not available{targetText}.",
+                10 => $"DeleteCharacterResult blocked character deletion on the client security path{targetText}.",
+                18 => $"DeleteCharacterResult reported that character deletion prerequisites are not satisfied{targetText}.",
+                20 => $"DeleteCharacterResult hit the client security warning path{targetText}.",
+                22 => $"DeleteCharacterResult returned the client warning 34{targetText}.",
+                24 => $"DeleteCharacterResult returned the client warning 39{targetText}.",
+                26 => $"DeleteCharacterResult returned the client direct-notice branch (StringPool 0xFD4){targetText}.",
+                29 => $"DeleteCharacterResult returned the client warning 54{targetText}.",
+                35 or 36 => $"DeleteCharacterResult returned the client warning 50{targetText}.",
+                byte resultCode => packetProfile.CharacterId.HasValue
+                    ? $"DeleteCharacterResult returned server code {FormatSelectorPacketCode(resultCode)} for character {packetProfile.CharacterId.Value}."
+                    : $"DeleteCharacterResult returned server code {FormatSelectorPacketCode(resultCode)}.",
+                _ => "DeleteCharacterResult did not include a result code.",
+            };
+        }
+
+        private static string BuildCreateNewCharacterPacketFailureMessage(LoginCreateNewCharacterResultProfile packetProfile)
+        {
+            string packetText = packetProfile?.Payload?.Length > 0 &&
+                                LoginAccountDialogPacketCodec.TryDecode(
+                                    LoginPacketType.CreateNewCharacterResult,
+                                    packetProfile.Payload,
+                                    out LoginAccountDialogPacketProfile dialogProfile,
+                                    out _)
+                ? dialogProfile?.TextValue?.Trim()
+                : null;
+            if (!string.IsNullOrWhiteSpace(packetText))
+            {
+                return packetText;
+            }
+
+            return packetProfile?.ResultCode switch
+            {
+                10 => "CreateNewCharacterResult blocked character creation on the client security path.",
+                26 => "CreateNewCharacterResult returned the client direct-notice branch (StringPool 0xFD9).",
+                30 => "CreateNewCharacterResult reported that the selected starter name is not available.",
+                byte resultCode => $"CreateNewCharacterResult returned server code {FormatSelectorPacketCode(resultCode)}.",
+                _ => "CreateNewCharacterResult did not include a result code.",
+            };
         }
 
         private static string BuildCheckDuplicatedIdPacketFailureMessage(LoginAccountDialogPacketProfile packetProfile)
@@ -8123,6 +8211,32 @@ namespace HaCreator.MapSimulator
 
 
 
+        private int? ResolveLoginRosterAccountId()
+
+
+
+        {
+
+
+
+            return _loginAccountId.HasValue && _loginAccountId.Value > 0
+
+
+
+                ? _loginAccountId.Value
+
+
+
+                : null;
+
+
+
+        }
+
+
+
+
+
 
 
         private int ResolveLoginRosterWorldId()
@@ -8161,7 +8275,10 @@ namespace HaCreator.MapSimulator
 
 
 
-                return _loginCharacterAccountStore.GetState(ResolveLoginRosterAccountName(), ResolveLoginRosterWorldId()) != null
+                return _loginCharacterAccountStore.GetState(
+                    ResolveLoginRosterAccountName(),
+                    ResolveLoginRosterWorldId(),
+                    ResolveLoginRosterAccountId()) != null
 
 
 
@@ -8596,6 +8713,8 @@ namespace HaCreator.MapSimulator
 
             _loginAccountCashShopNxCredit = Math.Max(0L, storedState?.CashShopNxCredit ?? DefaultCashShopNxCredit);
 
+            _loginAccountId = storedState?.AccountId;
+
             _loginAccountPicCode = storedState?.PicCode?.Trim() ?? string.Empty;
 
             _loginAccountBirthDate = storedState?.BirthDate?.Trim() ?? string.Empty;
@@ -8731,7 +8850,9 @@ namespace HaCreator.MapSimulator
 
 
 
-                _loginAccountSecondaryPassword);
+                _loginAccountSecondaryPassword,
+
+                ResolveLoginRosterAccountId());
 
 
 
@@ -9666,6 +9787,7 @@ namespace HaCreator.MapSimulator
             string accountName = submission.AccountName?.Trim() ?? string.Empty;
             string password = submission.Password ?? string.Empty;
             _loginTitleRememberId = submission.RememberId;
+            _loginAccountId = null;
             if (_loginTitleRememberId || !string.IsNullOrWhiteSpace(accountName))
             {
                 _loginTitleAccountName = accountName;
@@ -9699,6 +9821,7 @@ namespace HaCreator.MapSimulator
 
 
             HideLoginUtilityDialog();
+            _loginAccountId = null;
             _loginTitleStatusMessage = "Queued GuestIdLoginResult through the login packet inbox. Guest-only follow-up packets can still be injected from the loopback listener.";
             _loginPacketInbox.EnqueueLocal(LoginPacketType.GuestIdLoginResult, "LoginTitle.Guest");
             SyncLoginTitleWindow();
@@ -9874,6 +9997,7 @@ namespace HaCreator.MapSimulator
         private void CompleteLoginAccountBootstrap(string source, string summary)
         {
             HideLoginUtilityDialog();
+            _loginAccountId = null;
             _loginTitleStatusMessage = summary;
             _loginPacketInbox.EnqueueLocal(LoginPacketType.CheckPasswordResult, source);
             SyncLoginTitleWindow();
@@ -10921,6 +11045,8 @@ namespace HaCreator.MapSimulator
                 LoginPacketType.UpdatePinCodeResult => BuildUpdatePinCodeResultPrompt(packetProfile, packetText, packetDetail),
                 LoginPacketType.EnableSpwResult => BuildEnableSpwResultPrompt(packetProfile, packetText, packetDetail),
                 LoginPacketType.CheckSpwResult => BuildCheckSpwResultPrompt(packetProfile, packetText, packetDetail),
+                LoginPacketType.CreateNewCharacterResult => BuildCreateNewCharacterResultPrompt(packetProfile, packetText, packetDetail),
+                LoginPacketType.DeleteCharacterResult => BuildDeleteCharacterResultPrompt(packetProfile, packetText, packetDetail),
                 _ => null,
             };
         }
@@ -11016,6 +11142,57 @@ namespace HaCreator.MapSimulator
                 1 => BuildClientNoticePrompt(packetText, "That character name is already in use.", packetDetail, 5),
                 2 => BuildClientNoticePrompt(packetText, "That character name is not available.", packetDetail, 10),
                 byte => BuildClientNoticePrompt(packetText, "Character-name verification failed.", packetDetail, 18),
+                _ => null,
+            };
+        }
+
+        private static LoginPacketDialogPromptConfiguration BuildCreateNewCharacterResultPrompt(
+            LoginAccountDialogPacketProfile packetProfile,
+            string packetText,
+            string packetDetail)
+        {
+            return packetProfile?.ResultCode switch
+            {
+                0 => null,
+                10 => BuildClientNoticePrompt(packetText, "Character creation could not continue.", packetDetail, 19),
+                26 => new LoginPacketDialogPromptConfiguration
+                {
+                    Title = "Login Utility",
+                    Body = CombineLoginDialogBody(packetText, "Character creation returned the client direct-notice branch (StringPool 0xFD9).", packetDetail),
+                    ButtonLayout = LoginUtilityDialogButtonLayout.Ok,
+                    Action = LoginUtilityDialogAction.DismissOnly,
+                },
+                30 => BuildClientNoticePrompt(packetText, "That character name is not available.", packetDetail, 10),
+                byte => BuildClientNoticePrompt(packetText, "Character creation failed.", packetDetail, 18),
+                _ => null,
+            };
+        }
+
+        private static LoginPacketDialogPromptConfiguration BuildDeleteCharacterResultPrompt(
+            LoginAccountDialogPacketProfile packetProfile,
+            string packetText,
+            string packetDetail)
+        {
+            return packetProfile?.ResultCode switch
+            {
+                0 => null,
+                6 => BuildClientNoticePrompt(packetText, "Character deletion could not continue.", packetDetail, 15),
+                9 => BuildClientNoticePrompt(packetText, "Character deletion is not available.", packetDetail, 18),
+                10 => BuildClientNoticePrompt(packetText, "Character deletion could not continue.", packetDetail, 19),
+                18 => BuildClientNoticePrompt(packetText, "Character deletion prerequisites are not satisfied.", packetDetail, 11),
+                20 => BuildClientNoticePrompt(packetText, "Character deletion hit the client security warning path.", packetDetail, 93),
+                22 => BuildClientNoticePrompt(packetText, "Character deletion returned the client warning 34.", packetDetail, 34),
+                24 => BuildClientNoticePrompt(packetText, "Character deletion returned the client warning 39.", packetDetail, 39),
+                26 => new LoginPacketDialogPromptConfiguration
+                {
+                    Title = "Login Utility",
+                    Body = CombineLoginDialogBody(packetText, "Character deletion returned the client direct-notice branch (StringPool 0xFD4).", packetDetail),
+                    ButtonLayout = LoginUtilityDialogButtonLayout.Ok,
+                    Action = LoginUtilityDialogAction.DismissOnly,
+                },
+                29 => BuildClientNoticePrompt(packetText, "Character deletion returned the client warning 54.", packetDetail, 54),
+                35 or 36 => BuildClientNoticePrompt(packetText, "Character deletion returned the client warning 50.", packetDetail, 50),
+                byte => BuildClientNoticePrompt(packetText, "Character deletion failed.", packetDetail, 18),
                 _ => null,
             };
         }
@@ -11440,7 +11617,8 @@ namespace HaCreator.MapSimulator
 
             LoginCharacterAccountStore.LoginCharacterAccountState storedState = _loginCharacterAccountStore.GetState(
                 ResolveLoginRosterAccountName(),
-                ResolveLoginRosterWorldId());
+                ResolveLoginRosterWorldId(),
+                ResolveLoginRosterAccountId());
 
 
             int slotCount = Math.Max(storedState?.SlotCount ?? _loginCharacterRoster.SlotCount, LoginCharacterRosterManager.EntriesPerPage);
@@ -15757,7 +15935,7 @@ namespace HaCreator.MapSimulator
             bool canApplyTemporaryBuff = supportsTemporaryBuff && _playerManager?.Skills != null;
             bool canApplyMorph = supportsMorph
                 && morphTemplateId > 0
-                && player.ApplyExternalAvatarTransform(itemId, actionName: null, morphTemplateId, currTickCount + effect.DurationMs);
+                && player.CanApplyExternalAvatarTransform(itemId, actionName: null, morphTemplateId);
             bool canCureStatus = supportsCure && HasCurablePlayerMobStatus(effect);
             bool canQueueMovement = supportsMovement && targetMapId > 0 && _loadMapCallback != null;
             bool hasAnySupportedOutcome = hpGain > 0 || mpGain > 0 || canQueueMovement || canApplyMorph || canApplyTemporaryBuff || canCureStatus;
@@ -15782,6 +15960,11 @@ namespace HaCreator.MapSimulator
             if (supportsCure)
             {
                 ClearCurablePlayerMobStatuses(effect);
+            }
+
+            if (canApplyMorph)
+            {
+                player.ApplyExternalAvatarTransform(itemId, actionName: null, morphTemplateId, currTickCount + effect.DurationMs);
             }
 
 
@@ -15974,6 +16157,11 @@ namespace HaCreator.MapSimulator
                 return Pools.DropPickupFailureReason.Unavailable;
             }
 
+            long fieldLimit = _mapBoard?.MapInfo?.fieldLimit ?? 0;
+            if (!FieldInteractionRestrictionEvaluator.CanPickupDrops(fieldLimit))
+            {
+                return Pools.DropPickupFailureReason.FieldRestricted;
+            }
 
             return CanAcceptPickedUpItem(drop)
                 ? Pools.DropPickupFailureReason.None
@@ -16839,7 +17027,7 @@ namespace HaCreator.MapSimulator
 
 
 
-                && player.ApplyExternalAvatarTransform(itemId, actionName: null, morphTemplateId, currentTime + effect.DurationMs);
+                && player.CanApplyExternalAvatarTransform(itemId, actionName: null, morphTemplateId);
             bool canCureStatus = supportsCure && HasCurablePlayerMobStatus(effect);
             bool canQueueMovement = supportsMovement && targetMapId > 0 && _loadMapCallback != null;
             bool hasAnySupportedOutcome = hpGain > 0 || mpGain > 0 || canQueueMovement || canApplyMorph || canApplyTemporaryBuff || canCureStatus;
@@ -16873,6 +17061,11 @@ namespace HaCreator.MapSimulator
             if (supportsCure)
             {
                 ClearCurablePlayerMobStatuses(effect);
+            }
+
+            if (canApplyMorph)
+            {
+                player.ApplyExternalAvatarTransform(itemId, actionName: null, morphTemplateId, currentTime + effect.DurationMs);
             }
 
 
@@ -19472,14 +19665,7 @@ namespace HaCreator.MapSimulator
             int mesoMaxExclusive = isBoss ? 10000 : 500;
 
             int mesoAmount = Random.Shared.Next(mesoMin, mesoMaxExclusive);
-
-
-
-            int showdownBonusPercent = Math.Max(0, mob.AI?.GetStatusEffectValue(MobStatusEffect.Showdown) ?? 0);
-            if (showdownBonusPercent > 0)
-            {
-                mesoAmount = (int)MathF.Round(mesoAmount * (1f + showdownBonusPercent / 100f));
-            }
+            mesoAmount = MobStatusRewardParity.ResolveMesoAmount(mob, mesoAmount);
 
 
             DropItem mesoDrop = _dropPool.SpawnMesoDrop(mobX, mobY, mesoAmount, currentTick);
@@ -19513,6 +19699,23 @@ namespace HaCreator.MapSimulator
                     isRare: true);
             }
 
+        }
+
+        private void AwardMobKillExperience(MobItem mob)
+        {
+            var build = _playerManager?.Player?.Build;
+            if (build == null)
+            {
+                return;
+            }
+
+            int expReward = MobStatusRewardParity.ResolveKillExperience(mob);
+            if (expReward <= 0)
+            {
+                return;
+            }
+
+            build.Exp += expReward;
         }
 
 
@@ -20232,6 +20435,8 @@ namespace HaCreator.MapSimulator
                 {
                     return;
                 }
+
+                AwardMobKillExperience(mob);
 
 
                 // Play drop item sound
@@ -20981,6 +21186,7 @@ namespace HaCreator.MapSimulator
 
             // Initialize with Character.wz and Skill.wz (or null for placeholder)
             _playerManager.Initialize(characterWz, skillWz);
+            ApplyPersistedPacketOwnedFuncKeyConfig();
             _playerManager.SetMobSkillRuntimeResolver(ResolveMobSkillRuntimeData);
             _remoteUserPool.Initialize(_playerManager.Loader, _playerManager.SkillLoader);
             _summonedPool.Initialize(
@@ -21676,12 +21882,11 @@ namespace HaCreator.MapSimulator
                 classCompetitionWindow.SetFooterProvider(BuildClassCompetitionFooter);
             }
 
-            if (uiWindowManager.GetWindow(MapSimulatorWindowNames.Radio) is UtilityPanelWindow radioWindow)
+            if (uiWindowManager.GetWindow(MapSimulatorWindowNames.Radio) is RadioStatusWindow radioWindow)
             {
                 radioWindow.SetFont(_fontChat);
-                radioWindow.SetContentProvider(BuildPacketOwnedRadioWindowLines);
-                radioWindow.SetFooterProvider(BuildPacketOwnedRadioWindowFooter);
                 radioWindow.SetIndicatorActiveProvider(IsPacketOwnedRadioPlaying);
+                radioWindow.SetTrackNameProvider(GetPacketOwnedRadioTrackName);
             }
 
 
@@ -24919,6 +25124,7 @@ namespace HaCreator.MapSimulator
 
 
 
+            LoginCreateCharacterRequestProfile createRequest = _loginCreateCharacterFlow?.BuildRequestProfile(loader);
             CharacterBuild starterBuild = _loginCreateCharacterFlow?.CreatePreviewBuild(loader) ?? loader.LoadRandom();
 
 
@@ -24971,11 +25177,11 @@ namespace HaCreator.MapSimulator
 
 
 
-            starterBuild.Job = _loginCreateCharacterFlow?.SelectedJob?.BeginnerJobId ?? 0;
+            starterBuild.Job = createRequest?.BeginnerJobId ?? _loginCreateCharacterFlow?.SelectedJob?.BeginnerJobId ?? 0;
 
 
 
-            starterBuild.SubJob = _loginCreateCharacterFlow?.SelectedJob?.SubJob ?? 0;
+            starterBuild.SubJob = createRequest?.SubJob ?? _loginCreateCharacterFlow?.SelectedJob?.SubJob ?? 0;
 
 
 
@@ -25020,37 +25226,14 @@ namespace HaCreator.MapSimulator
 
 
             var equipmentBySlot = starterBuild.Equipment?
-
-
-
                 .Where(entry => entry.Value != null)
-
-
-
                 .ToDictionary(entry => entry.Key, entry => entry.Value.ItemId);
 
-
-
             LoginAvatarLook avatarLook = LoginAvatarLookCodec.CreateLook(
-
-
-
-                starterBuild.Gender,
-
-
-
-                starterBuild.Skin,
-
-
-
-                starterBuild.Face?.ItemId ?? 0,
-
-
-
-                starterBuild.Hair?.ItemId ?? 0,
-
-
-
+                createRequest?.Gender ?? starterBuild.Gender,
+                createRequest?.Skin ?? starterBuild.Skin,
+                createRequest?.FaceId ?? starterBuild.Face?.ItemId ?? 0,
+                createRequest?.HairId ?? starterBuild.Hair?.ItemId ?? 0,
                 equipmentBySlot);
 
 
@@ -27064,7 +27247,17 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            TryTriggerSpecialistPetSocialFeedback(message, tickCount);
+        }
+
+        private void TryTriggerSpecialistPetSocialFeedback(string message, int tickCount)
+        {
             _playerManager?.TryTriggerSpecialistPetChatFeedback(message, tickCount);
+        }
+
+        internal static bool ShouldTriggerPetSpecialistFeedbackForClientChatLogType(int chatLogType)
+        {
+            return chatLogType is 2 or 3 or 4 or 5 or 6 or 14 or 16 or 26;
         }
 
 

@@ -1523,6 +1523,8 @@ namespace HaCreator.MapSimulator.Fields
 
         private static bool TryParseTeamColor(string text, out PartyRaidTeamColor teamColor)
         {
+            if (StartsWithPartyRaidScript(text, "PRaid_D_")) { teamColor = PartyRaidTeamColor.Blue; return true; }
+            if (StartsWithPartyRaidScript(text, "PRaid_W_")) { teamColor = PartyRaidTeamColor.Red; return true; }
             if (string.Equals(text, "blue", StringComparison.OrdinalIgnoreCase)) { teamColor = PartyRaidTeamColor.Blue; return true; }
             if (string.Equals(text, "red", StringComparison.OrdinalIgnoreCase)) { teamColor = PartyRaidTeamColor.Red; return true; }
             if (string.Equals(text, "1", StringComparison.OrdinalIgnoreCase)) { teamColor = PartyRaidTeamColor.Blue; return true; }
@@ -1533,6 +1535,18 @@ namespace HaCreator.MapSimulator.Fields
 
         private static bool TryParseOutcome(string text, out PartyRaidResultOutcome outcome)
         {
+            if (StartsWithPartyRaidScript(text, "PRaid_Win"))
+            {
+                outcome = PartyRaidResultOutcome.Win;
+                return true;
+            }
+
+            if (StartsWithPartyRaidScript(text, "PRaid_Fail"))
+            {
+                outcome = PartyRaidResultOutcome.Lose;
+                return true;
+            }
+
             if (string.Equals(text, "win", StringComparison.OrdinalIgnoreCase))
             {
                 outcome = PartyRaidResultOutcome.Win;
@@ -1550,6 +1564,16 @@ namespace HaCreator.MapSimulator.Fields
             {
                 outcome = PartyRaidResultOutcome.Clear;
                 return true;
+            }
+
+            if (int.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out int resultMapId))
+            {
+                PartyRaidResultOutcome mapOutcome = InferOutcomeFromMapId(resultMapId);
+                if (mapOutcome != PartyRaidResultOutcome.Unknown)
+                {
+                    outcome = mapOutcome;
+                    return true;
+                }
             }
 
             outcome = PartyRaidResultOutcome.Unknown;

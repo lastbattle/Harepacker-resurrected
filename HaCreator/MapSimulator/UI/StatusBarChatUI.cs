@@ -39,6 +39,7 @@ namespace HaCreator.MapSimulator.UI
             public bool IsFirstWrappedLine { get; set; }
             public string WhisperTargetCandidate { get; set; }
             public string WhisperTargetDisplayText { get; set; }
+            public bool CanBeginWhisper { get; set; }
         }
 
         private sealed class WhisperTargetHitRegion
@@ -463,7 +464,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawChatMessages(SpriteBatch sprite, MapSimulatorChatRenderState chatState, int tickCount)
         {
-            List<WrappedChatLine> wrappedLines = BuildWrappedLines(chatState.Messages);
+            List<WrappedChatLine> wrappedLines = BuildWrappedLines(chatState.Messages, chatState.LocalPlayerName);
             AdjustScrollForNewLines(wrappedLines.Count, tickCount);
             _whisperTargetHitRegions.Clear();
 
@@ -686,7 +687,7 @@ namespace HaCreator.MapSimulator.UI
             return inputText.Substring(startIndex, Math.Max(0, endIndex - startIndex));
         }
 
-        private List<WrappedChatLine> BuildWrappedLines(IReadOnlyList<ChatMessage> messages)
+        private List<WrappedChatLine> BuildWrappedLines(IReadOnlyList<ChatMessage> messages, string localPlayerName)
         {
             var wrappedLines = new List<WrappedChatLine>();
             if (messages == null)
@@ -694,9 +695,11 @@ namespace HaCreator.MapSimulator.UI
                 return wrappedLines;
             }
 
+            string normalizedLocalPlayerName = MapSimulatorChat.NormalizeChatSpeakerCandidate(localPlayerName);
             foreach (ChatMessage message in messages)
             {
                 string whisperTargetCandidate = ResolveWhisperTargetCandidate(message);
+                bool canBeginWhisper = CanBeginWhisperFromCandidate(whisperTargetCandidate, normalizedLocalPlayerName);
                 string whisperTargetDisplayText = ResolveWhisperTargetDisplayText(message, whisperTargetCandidate);
                 bool isFirstWrappedLine = true;
                 foreach (string lineText in WrapText(
@@ -713,8 +716,9 @@ namespace HaCreator.MapSimulator.UI
                         ChatLogType = message.ChatLogType,
                         ChannelId = message.ChannelId,
                         IsFirstWrappedLine = isFirstWrappedLine,
-                        WhisperTargetCandidate = whisperTargetCandidate,
-                        WhisperTargetDisplayText = whisperTargetDisplayText
+                        WhisperTargetCandidate = canBeginWhisper ? whisperTargetCandidate : string.Empty,
+                        WhisperTargetDisplayText = canBeginWhisper ? whisperTargetDisplayText : string.Empty,
+                        CanBeginWhisper = canBeginWhisper
                     });
                     isFirstWrappedLine = false;
                 }
@@ -817,6 +821,7 @@ namespace HaCreator.MapSimulator.UI
         {
             if (line == null
                 || !line.IsFirstWrappedLine
+                || !line.CanBeginWhisper
                 || string.IsNullOrWhiteSpace(line.WhisperTargetCandidate)
                 || string.IsNullOrWhiteSpace(line.WhisperTargetDisplayText)
                 || _font == null)
@@ -1079,7 +1084,9 @@ namespace HaCreator.MapSimulator.UI
             }
 
             string speakerToken = ExtractSpeakerToken(message.Text);
-            return string.IsNullOrWhiteSpace(speakerToken) ? string.Empty : speakerToken.Trim();
+            return string.IsNullOrWhiteSpace(speakerToken)
+                ? string.Empty
+                : MapSimulatorChat.NormalizeChatSpeakerCandidate(speakerToken);
         }
 
         private static string ResolveWhisperTargetDisplayText(ChatMessage message, string whisperTargetCandidate)
@@ -1142,7 +1149,7 @@ namespace HaCreator.MapSimulator.UI
                 prefix = prefix.Substring(0, channelSuffixIndex).TrimEnd();
             }
 
-            return prefix.Trim();
+            return MapSimulatorChat.NormalizeChatSpeakerCandidate(prefix);
         }
 
         private static bool TryExtractDirectedWhisperTarget(string text, out string whisperTarget)
@@ -1168,8 +1175,26 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            whisperTarget = prefix.Substring(arrowIndex + 2).Trim();
+            whisperTarget = MapSimulatorChat.NormalizeChatSpeakerCandidate(prefix[(arrowIndex + 2)..]);
             return !string.IsNullOrWhiteSpace(whisperTarget);
+        }
+
+        private static bool CanBeginWhisperFromCandidate(string whisperTargetCandidate, string localPlayerName)
+        {
+            if (string.IsNullOrWhiteSpace(whisperTargetCandidate))
+            {
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(localPlayerName))
+            {
+                return true;
+            }
+
+            return !string.Equals(
+                MapSimulatorChat.NormalizeChatSpeakerCandidate(whisperTargetCandidate),
+                MapSimulatorChat.NormalizeChatSpeakerCandidate(localPlayerName),
+                StringComparison.OrdinalIgnoreCase);
         }
         #endregion
     }

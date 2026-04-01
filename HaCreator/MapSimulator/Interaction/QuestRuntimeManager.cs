@@ -839,8 +839,9 @@ namespace HaCreator.MapSimulator.Interaction
                 return true;
             }
 
-            QuestItemRequirement incompleteItemRequirement = definition.EndItemRequirements
-                .FirstOrDefault(requirement => GetResolvedItemCount(requirement.ItemId) < requirement.RequiredCount);
+            QuestItemRequirement incompleteItemRequirement = GetPreferredOutstandingItemRequirement(
+                definition.EndItemRequirements,
+                preferVisibleRequirements: true);
             if (incompleteItemRequirement != null)
             {
                 target = new QuestWorldMapTarget
@@ -4863,10 +4864,15 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static void AppendConversationChoice(WzImageProperty property, string label, ICollection<NpcInteractionChoice> choices)
         {
+            if (property == null)
+            {
+                return;
+            }
+
             IReadOnlyList<NpcInteractionPage> branchPages = ParseBranchPages(property);
             if (branchPages.Count == 0)
             {
-                return;
+                branchPages = CreateUnavailableSelectionPages(label);
             }
 
             choices.Add(new NpcInteractionChoice
@@ -6316,21 +6322,36 @@ namespace HaCreator.MapSimulator.Interaction
 
         private QuestItemRequirement GetPreferredDeliveryRequirement(IReadOnlyList<QuestItemRequirement> requirements)
         {
+            return GetPreferredOutstandingItemRequirement(requirements, preferVisibleRequirements: false)
+                ?? requirements?.FirstOrDefault();
+        }
+
+        private QuestItemRequirement GetPreferredOutstandingItemRequirement(
+            IReadOnlyList<QuestItemRequirement> requirements,
+            bool preferVisibleRequirements)
+        {
             if (requirements == null || requirements.Count == 0)
             {
                 return null;
             }
 
+            QuestItemRequirement firstOutstandingRequirement = null;
             for (int i = 0; i < requirements.Count; i++)
             {
                 QuestItemRequirement requirement = requirements[i];
-                if (GetResolvedItemCount(requirement.ItemId) < requirement.RequiredCount)
+                if (requirement == null || requirement.ItemId <= 0 || GetResolvedItemCount(requirement.ItemId) >= requirement.RequiredCount)
+                {
+                    continue;
+                }
+
+                firstOutstandingRequirement ??= requirement;
+                if (!preferVisibleRequirements || !requirement.IsSecret)
                 {
                     return requirement;
                 }
             }
 
-            return requirements[0];
+            return firstOutstandingRequirement;
         }
 
         private static QuestWindowActionKind ResolveDeliveryAction(QuestWindowDetailState state)

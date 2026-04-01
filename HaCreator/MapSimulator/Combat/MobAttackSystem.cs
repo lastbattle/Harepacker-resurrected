@@ -79,6 +79,11 @@ namespace HaCreator.MapSimulator.Combat
             public MobTargetInfo TargetInfo { get; set; }
         }
 
+        private sealed class GroundTargetGroup
+        {
+            public List<Vector2> Targets { get; } = new List<Vector2>();
+        }
+
         private sealed class ScheduledMobVisualEffect
         {
             public List<IDXObject> Frames { get; set; }
@@ -378,33 +383,48 @@ namespace HaCreator.MapSimulator.Combat
             float? targetY,
             int currentTime)
         {
-            List<Vector2> targets = BuildGroundTargets(mobItem, attack, targetX, targetY);
-            if (targets.Count == 0)
+            List<GroundTargetGroup> targetGroups = BuildGroundTargetGroups(mobItem, attack, targetX, targetY);
+            if (targetGroups.Count == 0)
             {
                 return;
             }
 
             List<IDXObject> warningFrames = mobItem.GetAttackWarningFrames(attack.AnimationName);
             int triggerDelay = Math.Max(attack.Delay, attack.EffectAfter);
+            List<int> randomDelays = BuildAreaAttackRandomDelaySequence(
+                targetGroups.ConvertAll(group => group?.Targets.Count ?? 0),
+                attack.RandomDelayWindow,
+                _random);
+            int delayIndex = 0;
 
-            foreach (Vector2 target in targets)
+            foreach (GroundTargetGroup group in targetGroups)
             {
-                int randomDelay = attack.RandomDelayWindow > 0 ? _random.Next(attack.RandomDelayWindow) : 0;
+                if (group == null || group.Targets.Count == 0)
+                {
+                    continue;
+                }
+
+                int randomDelay = delayIndex < randomDelays.Count ? randomDelays[delayIndex] : 0;
+                delayIndex += group.Targets.Count;
                 int areaWidth = DetermineGroundAreaWidth(mobItem, attack, warningFrames);
                 int areaHeight = DetermineGroundAreaHeight(attack);
 
-                _activeMobGroundAttacks.Add(new ActiveMobGroundAttack
+                for (int i = 0; i < group.Targets.Count; i++)
                 {
-                    SourceMob = mobItem,
-                    Attack = attack,
-                    TargetInfo = targetInfo?.Clone(),
-                    WarningFrames = warningFrames,
-                    Area = CreateGroundArea(target, areaWidth, areaHeight),
-                    EffectPosition = target,
-                    WarningStartTime = currentTime,
-                    TriggerTime = currentTime + triggerDelay + randomDelay,
-                    ExpireTime = currentTime + triggerDelay + randomDelay + 350
-                });
+                    Vector2 target = group.Targets[i];
+                    _activeMobGroundAttacks.Add(new ActiveMobGroundAttack
+                    {
+                        SourceMob = mobItem,
+                        Attack = attack,
+                        TargetInfo = targetInfo?.Clone(),
+                        WarningFrames = warningFrames,
+                        Area = CreateGroundArea(target, areaWidth, areaHeight),
+                        EffectPosition = target,
+                        WarningStartTime = currentTime,
+                        TriggerTime = currentTime + triggerDelay + randomDelay,
+                        ExpireTime = currentTime + triggerDelay + randomDelay + 350
+                    });
+                }
             }
         }
 
@@ -948,9 +968,9 @@ namespace HaCreator.MapSimulator.Combat
             }
         }
 
-        private List<Vector2> BuildGroundTargets(MobItem mobItem, MobAttackEntry attack, float? playerX, float? playerY)
+        private List<GroundTargetGroup> BuildGroundTargetGroups(MobItem mobItem, MobAttackEntry attack, float? playerX, float? playerY)
         {
-            var targets = new List<Vector2>();
+            var targetGroups = new List<GroundTargetGroup>();
             int areaCount = Math.Max(1, attack.AreaCount);
             int attackCount = attack.AttackCount > 0 ? Math.Min(attack.AttackCount, areaCount) : 1;
 
@@ -959,21 +979,33 @@ namespace HaCreator.MapSimulator.Combat
                 List<Vector2> slotPositions = BuildRangeSlotPositions(mobItem, attack, areaCount, playerX, playerY);
                 if (slotPositions.Count == 0)
                 {
-                    return targets;
+                    return targetGroups;
                 }
 
                 List<Vector2> selectedSlots = SelectGroundTargetSlots(slotPositions, attackCount, attack.StartOffset, _random);
                 for (int i = 0; i < selectedSlots.Count; i++)
                 {
-                    AppendGroundAttackTargets(targets, mobItem, attack, selectedSlots[i]);
+                    var group = new GroundTargetGroup();
+                    AppendGroundAttackTargets(group.Targets, mobItem, attack, selectedSlots[i]);
+                    if (group.Targets.Count > 0)
+                    {
+                        targetGroups.Add(group);
+                    }
                 }
-                return targets;
+
+                return targetGroups;
             }
 
             float fallbackX = playerX ?? GetRangeCenterX(mobItem, attack);
             float fallbackY = playerY ?? GetRangeBottomY(mobItem, attack);
-            AppendGroundAttackTargets(targets, mobItem, attack, new Vector2(fallbackX, fallbackY));
-            return targets;
+            var fallbackGroup = new GroundTargetGroup();
+            AppendGroundAttackTargets(fallbackGroup.Targets, mobItem, attack, new Vector2(fallbackX, fallbackY));
+            if (fallbackGroup.Targets.Count > 0)
+            {
+                targetGroups.Add(fallbackGroup);
+            }
+
+            return targetGroups;
         }
 
         private void AppendGroundAttackTargets(List<Vector2> targets, MobItem mobItem, MobAttackEntry attack, Vector2 slotPosition)
@@ -1074,10 +1106,7 @@ namespace HaCreator.MapSimulator.Combat
         {
             if (effectNode.EffectType == 1)
             {
-                int sequenceCount = Math.Max(1, effectNode.Sequences.Count);
-                int spawnCount = effectNode.Count > 0
-                    ? effectNode.Count
-                    : sequenceCount;
+                int spawnCount = ResolveStructuredRangeEffectSpawnCount(effectNode);
                 if (!effectNode.HasRangeBounds)
                 {
                     return new List<Vector2> { ResolveGroundPoint(impactPosition.X, impactPosition.Y) };
@@ -1199,6 +1228,25 @@ namespace HaCreator.MapSimulator.Combat
             }
 
             return Math.Max(1, effectNode.Sequences.Count);
+        }
+
+        internal static int ResolveStructuredRangeEffectSpawnCount(MobAnimationSet.AttackEffectNode effectNode)
+        {
+            if (effectNode == null)
+            {
+                return 0;
+            }
+
+            int spawnCount = effectNode.Count > 0
+                ? effectNode.Count
+                : Math.Max(1, effectNode.Sequences.Count);
+
+            if (effectNode.Duration > 0 && effectNode.Interval > 0)
+            {
+                spawnCount = Math.Max(spawnCount, (effectNode.Duration / effectNode.Interval) + 1);
+            }
+
+            return Math.Max(1, spawnCount);
         }
 
         private static int ResolveTimedRangeInterval(MobAnimationSet.AttackEffectNode effectNode, int spawnCount)
@@ -2048,30 +2096,30 @@ namespace HaCreator.MapSimulator.Combat
                 return target;
             }
 
-            float horizontalDelta = sourceFacesRight
+            // Mirrors CMob::SetBallDestPoint: require a forward lane and clamp the
+            // vertical slope before normalizing the authored launch vector to range/r.
+            float forwardDelta = sourceFacesRight
                 ? target.X - spawn.X
                 : spawn.X - target.X;
             float verticalDelta = target.Y - spawn.Y;
-            Vector2 adjustedTarget = target;
+            float adjustedTargetX = target.X;
+            float adjustedTargetY = target.Y;
 
-            if (horizontalDelta <= 0f)
+            if (forwardDelta <= 0f)
             {
-                adjustedTarget = new Vector2(
-                    spawn.X + (sourceFacesRight ? 1f : -1f),
-                    spawn.Y);
+                adjustedTargetX = spawn.X + (sourceFacesRight ? 1f : -1f);
+                adjustedTargetY = spawn.Y;
             }
             else
             {
-                float maxVerticalOffset = horizontalDelta * 0.6f;
+                float maxVerticalOffset = forwardDelta * 0.6f;
                 if (Math.Abs(verticalDelta) > maxVerticalOffset)
                 {
-                    adjustedTarget = new Vector2(
-                        target.X,
-                        spawn.Y + Math.Sign(verticalDelta) * maxVerticalOffset);
+                    adjustedTargetY = spawn.Y + Math.Sign(verticalDelta) * maxVerticalOffset;
                 }
             }
 
-            Vector2 direction = adjustedTarget - spawn;
+            Vector2 direction = new Vector2(adjustedTargetX - spawn.X, adjustedTargetY - spawn.Y);
             if (direction.LengthSquared() < 0.0001f)
             {
                 return spawn;
@@ -2079,6 +2127,36 @@ namespace HaCreator.MapSimulator.Combat
 
             direction.Normalize();
             return spawn + (direction * rangeRadius);
+        }
+
+        internal static List<int> BuildAreaAttackRandomDelaySequence(
+            IReadOnlyList<int> groupTargetCounts,
+            int randomDelayWindow,
+            Random random = null)
+        {
+            var randomDelays = new List<int>();
+            if (groupTargetCounts == null || groupTargetCounts.Count == 0)
+            {
+                return randomDelays;
+            }
+
+            Random resolvedRandom = random ?? Random.Shared;
+            for (int i = 0; i < groupTargetCounts.Count; i++)
+            {
+                int targetCount = Math.Max(0, groupTargetCounts[i]);
+                if (targetCount == 0)
+                {
+                    continue;
+                }
+
+                int slotDelay = randomDelayWindow > 0 ? resolvedRandom.Next(randomDelayWindow) : 0;
+                for (int targetIndex = 0; targetIndex < targetCount; targetIndex++)
+                {
+                    randomDelays.Add(slotDelay);
+                }
+            }
+
+            return randomDelays;
         }
 
         private static float ScoreLaneTarget(Vector2 lanePosition, Vector2 candidatePoint)

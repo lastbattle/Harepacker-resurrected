@@ -47,16 +47,31 @@ namespace HaCreator.MapSimulator.UI
         private const byte KoreanGdiCharset = 129;
         private const string BasicBlackFontPathEnvironmentVariable = "MAPSIM_FONT_BASIC_BLACK_PATH";
         private const string BasicBlackFontFaceEnvironmentVariable = "MAPSIM_FONT_BASIC_BLACK_FACE";
+        private const string ClientTextFontPathEnvironmentVariable = "MAPSIM_CLIENT_TEXT_FONT_PATH";
+        private const string ClientTextFontFaceEnvironmentVariable = "MAPSIM_CLIENT_TEXT_FONT_FACE";
         private const SWF.TextFormatFlags BasicBlackTextFormatFlags =
             SWF.TextFormatFlags.NoPadding |
             SWF.TextFormatFlags.NoPrefix |
             SWF.TextFormatFlags.PreserveGraphicsClipping |
             SWF.TextFormatFlags.PreserveGraphicsTranslateTransform |
             SWF.TextFormatFlags.SingleLine;
+        private static readonly string[] BasicBlackFontFileCandidates =
+        {
+            "DotumChe.ttf",
+            "Dotum.ttf",
+            "GulimChe.ttf",
+            "Gulim.ttf",
+            "gulim.ttc",
+            "batang.ttc"
+        };
         private static readonly string[] BasicBlackFontFamilyCandidates =
         {
             "DotumChe",
             "Dotum",
+            "DOTOOM",
+            "DOTOOMCHE",
+            "DODUM",
+            "DODUMCHE",
             "돋움체",
             "돋움",
             "GulimChe",
@@ -376,20 +391,15 @@ namespace HaCreator.MapSimulator.UI
             font = null;
             fontFamilyName = null;
 
-            string configuredFontPath = Environment.GetEnvironmentVariable(BasicBlackFontPathEnvironmentVariable);
-            if (string.IsNullOrWhiteSpace(configuredFontPath))
+            if (!TryResolveConfiguredBasicBlackFontPath(out string resolvedFontPath, out string configuredFontFace))
             {
                 return false;
             }
 
-            string resolvedFontPath = Path.GetFullPath(configuredFontPath.Trim());
-            if (!File.Exists(resolvedFontPath))
-            {
-                return false;
-            }
-
-            string configuredFontFace = Environment.GetEnvironmentVariable(BasicBlackFontFaceEnvironmentVariable);
-            if (!BasicBlackPrivateFontRegistry.TryRegister(resolvedFontPath, configuredFontFace, out string resolvedFamilyName))
+            if (!BasicBlackPrivateFontRegistry.TryRegister(
+                    resolvedFontPath,
+                    CreatePreferredBasicBlackFamilyNames(configuredFontFace),
+                    out string resolvedFamilyName))
             {
                 return false;
             }
@@ -410,6 +420,130 @@ namespace HaCreator.MapSimulator.UI
             {
                 font = new SD.Font(resolvedFamilyName, BasicBlackFontHeight, SD.FontStyle.Regular, SD.GraphicsUnit.Pixel);
                 return true;
+            }
+        }
+
+        private static bool TryResolveConfiguredBasicBlackFontPath(out string resolvedFontPath, out string configuredFontFace)
+        {
+            configuredFontFace = null;
+
+            if (TryResolveFontPathFromEnvironment(
+                    BasicBlackFontPathEnvironmentVariable,
+                    BasicBlackFontFaceEnvironmentVariable,
+                    out resolvedFontPath,
+                    out configuredFontFace))
+            {
+                return true;
+            }
+
+            if (TryResolveFontPathFromEnvironment(
+                    ClientTextFontPathEnvironmentVariable,
+                    ClientTextFontFaceEnvironmentVariable,
+                    out resolvedFontPath,
+                    out configuredFontFace))
+            {
+                return true;
+            }
+
+            return TryResolveBundledBasicBlackFontPath(out resolvedFontPath);
+        }
+
+        private static bool TryResolveFontPathFromEnvironment(
+            string pathEnvironmentVariable,
+            string faceEnvironmentVariable,
+            out string resolvedFontPath,
+            out string configuredFontFace)
+        {
+            resolvedFontPath = null;
+            configuredFontFace = null;
+
+            string configuredFontPath = Environment.GetEnvironmentVariable(pathEnvironmentVariable);
+            if (string.IsNullOrWhiteSpace(configuredFontPath))
+            {
+                return false;
+            }
+
+            string candidatePath = Path.GetFullPath(configuredFontPath.Trim());
+            if (!File.Exists(candidatePath))
+            {
+                return false;
+            }
+
+            resolvedFontPath = candidatePath;
+            configuredFontFace = Environment.GetEnvironmentVariable(faceEnvironmentVariable);
+            return true;
+        }
+
+        private static bool TryResolveBundledBasicBlackFontPath(out string resolvedFontPath)
+        {
+            foreach (string rootDirectory in EnumerateBasicBlackFontSearchRoots())
+            {
+                foreach (string fileName in BasicBlackFontFileCandidates)
+                {
+                    string candidatePath = Path.Combine(rootDirectory, fileName);
+                    if (File.Exists(candidatePath))
+                    {
+                        resolvedFontPath = candidatePath;
+                        return true;
+                    }
+                }
+            }
+
+            resolvedFontPath = null;
+            return false;
+        }
+
+        private static IEnumerable<string> EnumerateBasicBlackFontSearchRoots()
+        {
+            HashSet<string> seenPaths = new(StringComparer.OrdinalIgnoreCase);
+
+            foreach (string candidate in new[]
+                     {
+                         AppContext.BaseDirectory,
+                         Path.Combine(AppContext.BaseDirectory, "Fonts"),
+                         Path.Combine(AppContext.BaseDirectory, "Content"),
+                         Environment.CurrentDirectory,
+                         Path.Combine(Environment.CurrentDirectory, "Fonts"),
+                         Path.Combine(Environment.CurrentDirectory, "Content")
+                     })
+            {
+                if (string.IsNullOrWhiteSpace(candidate))
+                {
+                    continue;
+                }
+
+                string fullPath;
+                try
+                {
+                    fullPath = Path.GetFullPath(candidate);
+                }
+                catch
+                {
+                    continue;
+                }
+
+                if (!Directory.Exists(fullPath) || !seenPaths.Add(fullPath))
+                {
+                    continue;
+                }
+
+                yield return fullPath;
+            }
+        }
+
+        private static IEnumerable<string> CreatePreferredBasicBlackFamilyNames(string configuredFontFace)
+        {
+            if (!string.IsNullOrWhiteSpace(configuredFontFace))
+            {
+                yield return configuredFontFace.Trim();
+            }
+
+            foreach (string candidate in BasicBlackFontFamilyCandidates)
+            {
+                if (!string.IsNullOrWhiteSpace(candidate))
+                {
+                    yield return candidate;
+                }
             }
         }
 
@@ -605,13 +739,13 @@ namespace HaCreator.MapSimulator.UI
             private static readonly object Sync = new object();
             private static readonly Dictionary<string, RegisteredPrivateFont> RegisteredFonts = new(StringComparer.OrdinalIgnoreCase);
 
-            public static bool TryRegister(string fontPath, string preferredFamilyName, out string resolvedFamilyName)
+            public static bool TryRegister(string fontPath, IEnumerable<string> preferredFamilyNames, out string resolvedFamilyName)
             {
                 lock (Sync)
                 {
                     if (RegisteredFonts.TryGetValue(fontPath, out RegisteredPrivateFont cachedFont))
                     {
-                        resolvedFamilyName = cachedFont.ResolveFamilyName(preferredFamilyName);
+                        resolvedFamilyName = cachedFont.ResolveFamilyName(preferredFamilyNames);
                         return !string.IsNullOrWhiteSpace(resolvedFamilyName);
                     }
 
@@ -635,7 +769,7 @@ namespace HaCreator.MapSimulator.UI
                         RegisteredPrivateFont registeredFont = new RegisteredPrivateFont(fontData, privateFonts, gdiHandle);
                         RegisteredFonts[fontPath] = registeredFont;
 
-                        resolvedFamilyName = registeredFont.ResolveFamilyName(preferredFamilyName);
+                        resolvedFamilyName = registeredFont.ResolveFamilyName(preferredFamilyNames);
                         return !string.IsNullOrWhiteSpace(resolvedFamilyName);
                     }
                     catch
@@ -663,7 +797,7 @@ namespace HaCreator.MapSimulator.UI
             public SDText.PrivateFontCollection Collection { get; }
             public IntPtr GdiHandle { get; }
 
-            public string ResolveFamilyName(string preferredFamilyName)
+            public string ResolveFamilyName(IEnumerable<string> preferredFamilyNames)
             {
                 SD.FontFamily[] families = Collection?.Families;
                 if (families == null || families.Length == 0)
@@ -671,13 +805,21 @@ namespace HaCreator.MapSimulator.UI
                     return null;
                 }
 
-                if (!string.IsNullOrWhiteSpace(preferredFamilyName))
+                if (preferredFamilyNames != null)
                 {
-                    SD.FontFamily preferredFamily = families.FirstOrDefault(
-                        family => string.Equals(family.Name, preferredFamilyName, StringComparison.OrdinalIgnoreCase));
-                    if (preferredFamily != null)
+                    foreach (string preferredFamilyName in preferredFamilyNames)
                     {
-                        return preferredFamily.Name;
+                        if (string.IsNullOrWhiteSpace(preferredFamilyName))
+                        {
+                            continue;
+                        }
+
+                        SD.FontFamily preferredFamily = families.FirstOrDefault(
+                            family => string.Equals(family.Name, preferredFamilyName, StringComparison.OrdinalIgnoreCase));
+                        if (preferredFamily != null)
+                        {
+                            return preferredFamily.Name;
+                        }
                     }
                 }
 

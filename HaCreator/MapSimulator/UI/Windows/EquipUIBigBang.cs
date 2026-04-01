@@ -247,7 +247,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D[] _tooltipFrames = new Texture2D[3];
         private EquipTooltipAssets _equipTooltipAssets;
         private Texture2D _debugPlaceholder;
-        private Texture2D _slotOverlayTexture;
+        private Texture2D _disabledSlotOverlayTexture;
         private SpriteFont _font;
         private CharacterBuild _characterBuild;
         private CharacterLoader _characterLoader;
@@ -419,7 +419,7 @@ namespace HaCreator.MapSimulator.UI
             };
             _debugPlaceholder = new Texture2D(device, 1, 1);
             _debugPlaceholder.SetData(new[] { Color.White });
-            _slotOverlayTexture = _debugPlaceholder;
+            _disabledSlotOverlayTexture = _debugPlaceholder;
         }
         #endregion
 
@@ -446,6 +446,11 @@ namespace HaCreator.MapSimulator.UI
         {
             _dualSlotLabels = slotLabels;
             _dualSlotLabelsOffset = new Point(offsetX, offsetY);
+        }
+
+        public void SetDisabledSlotOverlay(Texture2D overlayTexture)
+        {
+            _disabledSlotOverlayTexture = overlayTexture ?? _debugPlaceholder;
         }
 
         public void SetSpecialSlotChrome(string chromeName, IDXObject chrome, int offsetX, int offsetY)
@@ -602,6 +607,19 @@ namespace HaCreator.MapSimulator.UI
         public void SetAndroidEquipmentController(AndroidEquipmentController androidEquipmentController)
         {
             _androidEquipmentController = androidEquipmentController;
+        }
+
+        public void SetAndroidPaneAvailable(bool available)
+        {
+            if (!available && _currentTab == TAB_ANDROID)
+            {
+                CurrentTab = TAB_CHARACTER;
+            }
+
+            if (_btnAndroid != null)
+            {
+                _btnAndroid.ButtonVisible = available;
+            }
         }
         #endregion
 
@@ -1860,16 +1878,25 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawDisabledOverlay(SpriteBatch sprite, int slotX, int slotY, EquipSlotVisualState visualState)
         {
-            Color overlay = visualState.IsExpired
-                ? new Color(110, 30, 30, 180)
+            Rectangle slotBounds = new Rectangle(slotX, slotY, SLOT_SIZE, SLOT_SIZE);
+            if (_disabledSlotOverlayTexture != null)
+            {
+                sprite.Draw(_disabledSlotOverlayTexture, slotBounds, Color.White);
+            }
+            else
+            {
+                sprite.Draw(_debugPlaceholder, slotBounds, new Color(20, 20, 20, 145));
+            }
+
+            Color stateTint = visualState.IsExpired
+                ? new Color(110, 30, 30, 120)
                 : visualState.IsBroken
-                    ? new Color(90, 60, 20, 180)
-                    : new Color(20, 20, 20, 145);
-            sprite.Draw(_slotOverlayTexture, new Rectangle(slotX, slotY, SLOT_SIZE, SLOT_SIZE), overlay);
-            sprite.Draw(_slotOverlayTexture, new Rectangle(slotX, slotY, SLOT_SIZE, 2), Color.Black);
-            sprite.Draw(_slotOverlayTexture, new Rectangle(slotX, slotY + SLOT_SIZE - 2, SLOT_SIZE, 2), Color.Black);
-            sprite.Draw(_slotOverlayTexture, new Rectangle(slotX, slotY, 2, SLOT_SIZE), Color.Black);
-            sprite.Draw(_slotOverlayTexture, new Rectangle(slotX + SLOT_SIZE - 2, slotY, 2, SLOT_SIZE), Color.Black);
+                    ? new Color(90, 60, 20, 120)
+                    : Color.Transparent;
+            if (stateTint.A > 0)
+            {
+                sprite.Draw(_debugPlaceholder, slotBounds, stateTint);
+            }
         }
 
         private void DrawHoveredEquipmentTooltip(SpriteBatch sprite, int renderWidth, int renderHeight)

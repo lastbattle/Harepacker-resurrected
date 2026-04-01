@@ -49,6 +49,8 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly Dictionary<int, string> _itemNameCache = new();
         private GraphicsDevice _graphicsDevice;
         private Texture2D _pixelTexture;
+        private SpriteBatch _snapshotSpriteBatch;
+        private SpriteFont _snapshotFont;
         private int _nextLocalMessageBoxId = 1;
         private string _statusMessage = "Field message-box pool idle.";
 
@@ -64,6 +66,7 @@ namespace HaCreator.MapSimulator.Interaction
             _graphicsDevice = graphicsDevice;
             _pixelTexture = graphicsDevice == null ? null : new Texture2D(graphicsDevice, 1, 1);
             _pixelTexture?.SetData(new[] { Color.White });
+            _snapshotSpriteBatch = graphicsDevice == null ? null : new SpriteBatch(graphicsDevice);
         }
 
         internal void Clear()
@@ -147,7 +150,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return _statusMessage;
             }
 
-            _leavingEntries.Add(LeavingMessageBoxEntry.FromEntry(entry, currentTick));
+            _leavingEntries.Add(LeavingMessageBoxEntry.FromEntry(entry, currentTick, TryCreateLeaveSnapshot(entry, out Texture2D leaveSnapshot, out Point leaveSnapshotOrigin) ? leaveSnapshot : null, leaveSnapshotOrigin));
             _statusMessage = $"{entry.Source.GetLabel()} field message-box {messageBoxId} began its client leave-field fade.";
             return _statusMessage;
         }
@@ -218,6 +221,8 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 return;
             }
+
+            _snapshotFont = font;
 
             IEnumerable<IMessageBoxDrawableEntry> drawEntries = _entries.Values.Cast<IMessageBoxDrawableEntry>()
                 .Concat(_leavingEntries)
@@ -352,7 +357,10 @@ namespace HaCreator.MapSimulator.Interaction
                 DrawFallbackBoard(spriteBatch, boardBounds, alpha);
             }
 
-            DrawBoardText(spriteBatch, font, boardBounds, entry, alpha);
+            if (entry.ShouldDrawText)
+            {
+                DrawBoardText(spriteBatch, font, boardBounds, entry, alpha);
+            }
         }
 
         private void DrawFallbackBoard(SpriteBatch spriteBatch, Rectangle bounds, float alpha)
@@ -474,6 +482,12 @@ namespace HaCreator.MapSimulator.Interaction
                     continue;
                 }
 
+                visual = visual with { IconTexture = iconTexture ?? visual.IconTexture };
+                return true;
+            }
+
+            if (TryLoadUiBoardVisual(itemProperty?[UiPropertyName] as WzSubProperty, out visual))
+            {
                 visual = visual with { IconTexture = iconTexture ?? visual.IconTexture };
                 return true;
             }
@@ -609,6 +623,82 @@ namespace HaCreator.MapSimulator.Interaction
             int delay = ResolveCanvasDelay(canvas, null);
             MessageBoxTextLayout textLayout = ResolveTextLayout(propertyName, texture);
             visual = new MessageBoxVisual(new[] { texture }, new[] { origin }, new[] { delay }, null, textLayout);
+            return true;
+        }
+
+        private bool TryLoadUiBoardVisual(WzSubProperty uiProperty, out MessageBoxVisual visual)
+        {
+            visual = null;
+            if (uiProperty == null)
+            {
+                return false;
+            }
+
+            Texture2D topTexture = LoadCanvasTexture(uiProperty[UiTopPropertyName] as WzCanvasProperty);
+            Texture2D centerTexture = LoadCanvasTexture(uiProperty[UiCenterPropertyName] as WzCanvasProperty);
+            Texture2D bottomTexture = LoadCanvasTexture(uiProperty[UiBottomPropertyName] as WzCanvasProperty);
+            if (topTexture == null || centerTexture == null || bottomTexture == null || _graphicsDevice == null)
+            {
+                return false;
+            }
+
+            int width = Math.Max(topTexture.Width, Math.Max(centerTexture.Width, bottomTexture.Width));
+            int height = topTexture.Height + centerTexture.Height + bottomTexture.Height;
+            if (width <= 0 || height <= 0)
+            {
+                return false;
+            }
+
+            RenderTargetBinding[] previousTargets = _graphicsDevice.GetRenderTargets();
+            Viewport previousViewport = _graphicsDevice.Viewport;
+            RenderTarget2D boardTexture = new(
+                _graphicsDevice,
+                width,
+                height,
+                false,
+                SurfaceFormat.Color,
+                DepthFormat.None);
+
+            try
+            {
+                _graphicsDevice.SetRenderTarget(boardTexture);
+                _graphicsDevice.Clear(Color.Transparent);
+                _snapshotSpriteBatch?.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone);
+
+                int centerX = (width - topTexture.Width) / 2;
+                _snapshotSpriteBatch?.Draw(topTexture, new Vector2(centerX, 0f), Color.White);
+
+                centerX = (width - centerTexture.Width) / 2;
+                _snapshotSpriteBatch?.Draw(centerTexture, new Vector2(centerX, topTexture.Height), Color.White);
+
+                centerX = (width - bottomTexture.Width) / 2;
+                _snapshotSpriteBatch?.Draw(bottomTexture, new Vector2(centerX, topTexture.Height + centerTexture.Height), Color.White);
+                _snapshotSpriteBatch?.End();
+            }
+            finally
+            {
+                if (previousTargets.Length > 0)
+                {
+                    _graphicsDevice.SetRenderTargets(previousTargets);
+                }
+                else
+                {
+                    _graphicsDevice.SetRenderTarget(null);
+                }
+
+                _graphicsDevice.Viewport = previousViewport;
+            }
+
+            MessageBoxTextLayout textLayout = new(
+                PaddingLeft: Math.Clamp((width - centerTexture.Width) / 2 + 6, 6, Math.Max(6, width / 4)),
+                PaddingTop: topTexture.Height + 4,
+                PaddingRight: Math.Clamp((width - centerTexture.Width) / 2 + 6, 6, Math.Max(6, width / 4)),
+                PaddingBottom: bottomTexture.Height + 4,
+                CenterHorizontally: true,
+                CenterVertically: true,
+                MaxLineCount: 3,
+                TextColor: Color.White);
+            visual = new MessageBoxVisual(new[] { (Texture2D)boardTexture }, new[] { new Point(width / 2, height) }, new[] { DefaultFrameDelayMs }, null, textLayout);
             return true;
         }
 
@@ -815,6 +905,74 @@ namespace HaCreator.MapSimulator.Interaction
             return ComputeLeaveFadeAlpha(elapsedMs);
         }
 
+        private bool TryCreateLeaveSnapshot(FieldMessageBoxEntry entry, out Texture2D snapshotTexture, out Point snapshotOrigin)
+        {
+            snapshotTexture = null;
+            snapshotOrigin = Point.Zero;
+            if (_graphicsDevice == null || _snapshotSpriteBatch == null || _snapshotFont == null)
+            {
+                return false;
+            }
+
+            Texture2D frameTexture = entry.GetDisplayTexture();
+            Point frameOrigin = entry.GetDisplayOrigin();
+            Rectangle boardBounds = frameTexture != null
+                ? new Rectangle(-frameOrigin.X, -frameOrigin.Y, frameTexture.Width, frameTexture.Height)
+                : BuildFallbackBounds(Point.Zero, _snapshotFont, entry);
+            if (boardBounds.Width <= 0 || boardBounds.Height <= 0)
+            {
+                return false;
+            }
+
+            RenderTargetBinding[] previousTargets = _graphicsDevice.GetRenderTargets();
+            Viewport previousViewport = _graphicsDevice.Viewport;
+            RenderTarget2D snapshot = new(
+                _graphicsDevice,
+                boardBounds.Width,
+                boardBounds.Height,
+                false,
+                SurfaceFormat.Color,
+                DepthFormat.None);
+
+            try
+            {
+                _graphicsDevice.SetRenderTarget(snapshot);
+                _graphicsDevice.Clear(Color.Transparent);
+                _snapshotSpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone);
+
+                Rectangle localBounds = new(0, 0, boardBounds.Width, boardBounds.Height);
+                if (frameTexture != null)
+                {
+                    Vector2 framePosition = new(-frameOrigin.X - boardBounds.X, -frameOrigin.Y - boardBounds.Y);
+                    _snapshotSpriteBatch.Draw(frameTexture, framePosition, Color.White);
+                }
+                else
+                {
+                    DrawFallbackBoard(_snapshotSpriteBatch, localBounds, 1f);
+                }
+
+                DrawBoardText(_snapshotSpriteBatch, _snapshotFont, localBounds, entry, 1f);
+                _snapshotSpriteBatch.End();
+            }
+            finally
+            {
+                if (previousTargets.Length > 0)
+                {
+                    _graphicsDevice.SetRenderTargets(previousTargets);
+                }
+                else
+                {
+                    _graphicsDevice.SetRenderTarget(null);
+                }
+
+                _graphicsDevice.Viewport = previousViewport;
+            }
+
+            snapshotTexture = snapshot;
+            snapshotOrigin = new Point(-boardBounds.X, -boardBounds.Y);
+            return true;
+        }
+
         private static bool TryFindDominantOpaqueBounds(Color[] pixels, int width, int height, out Rectangle bounds, out Color fillColor)
         {
             bounds = Rectangle.Empty;
@@ -956,6 +1114,7 @@ namespace HaCreator.MapSimulator.Interaction
             string MessageText { get; }
             Point LayerPosition { get; }
             MessageBoxVisual Visual { get; }
+            bool ShouldDrawText { get; }
             Texture2D GetDisplayTexture();
             Point GetDisplayOrigin();
             float GetAlpha(int currentTick);
@@ -1003,6 +1162,7 @@ namespace HaCreator.MapSimulator.Interaction
             public string ItemName { get; }
             public MessageBoxEntrySource Source { get; }
             public int FrameIndex => _frameIndex;
+            public bool ShouldDrawText => true;
 
             public void Update(int currentTick)
             {
@@ -1040,10 +1200,12 @@ namespace HaCreator.MapSimulator.Interaction
         private sealed class LeavingMessageBoxEntry : IMessageBoxDrawableEntry
         {
             private readonly int _leaveStartedAt;
+            private readonly Texture2D _snapshotTexture;
+            private readonly Point _snapshotOrigin;
             private readonly Texture2D _leaveTexture;
             private readonly Point _leaveOrigin;
 
-            private LeavingMessageBoxEntry(int id, string messageText, Point layerPosition, MessageBoxVisual visual, Texture2D leaveTexture, Point leaveOrigin, int leaveStartedAt, MessageBoxEntrySource source)
+            private LeavingMessageBoxEntry(int id, string messageText, Point layerPosition, MessageBoxVisual visual, Texture2D leaveTexture, Point leaveOrigin, int leaveStartedAt, MessageBoxEntrySource source, Texture2D snapshotTexture, Point snapshotOrigin)
             {
                 Id = id;
                 MessageText = messageText;
@@ -1053,6 +1215,8 @@ namespace HaCreator.MapSimulator.Interaction
                 _leaveOrigin = leaveOrigin;
                 _leaveStartedAt = leaveStartedAt;
                 Source = source;
+                _snapshotTexture = snapshotTexture;
+                _snapshotOrigin = snapshotOrigin;
             }
 
             public int Id { get; }
@@ -1060,8 +1224,9 @@ namespace HaCreator.MapSimulator.Interaction
             public Point LayerPosition { get; }
             public MessageBoxVisual Visual { get; }
             public MessageBoxEntrySource Source { get; }
+            public bool ShouldDrawText => _snapshotTexture == null;
 
-            public static LeavingMessageBoxEntry FromEntry(FieldMessageBoxEntry entry, int currentTick)
+            public static LeavingMessageBoxEntry FromEntry(FieldMessageBoxEntry entry, int currentTick, Texture2D snapshotTexture, Point snapshotOrigin)
             {
                 return new LeavingMessageBoxEntry(
                     entry.Id,
@@ -1071,7 +1236,9 @@ namespace HaCreator.MapSimulator.Interaction
                     entry.GetDisplayTexture(),
                     entry.GetDisplayOrigin(),
                     currentTick,
-                    entry.Source);
+                    entry.Source,
+                    snapshotTexture,
+                    snapshotOrigin);
             }
 
             public bool ShouldRemove(int currentTick)
@@ -1081,12 +1248,14 @@ namespace HaCreator.MapSimulator.Interaction
 
             public Texture2D GetDisplayTexture()
             {
-                return _leaveTexture;
+                return _snapshotTexture ?? _leaveTexture;
             }
 
             public Point GetDisplayOrigin()
             {
-                return _leaveOrigin;
+                return _snapshotTexture != null
+                    ? _snapshotOrigin
+                    : _leaveOrigin;
             }
 
             public float GetAlpha(int currentTick)

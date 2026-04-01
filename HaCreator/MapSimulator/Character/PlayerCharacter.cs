@@ -104,6 +104,7 @@ namespace HaCreator.MapSimulator.Character
             public SkillAnimation GroundUnderFaceFinishAnimation { get; init; }
             public SkillAnimation LadderOverlayFinishAnimation { get; init; }
             public bool HideOnLadderOrRope { get; init; }
+            public bool HideOnRotateAction { get; init; }
             public int AnimationStartTime { get; set; }
             public bool IsFinishing { get; set; }
             public SkillAvatarEffectMode Mode { get; set; }
@@ -179,11 +180,11 @@ namespace HaCreator.MapSimulator.Character
 
         private enum MirrorImageSourceLayer
         {
-            Back = 0,
-            Body = 1,
-            Arm = 2,
-            Hand = 3,
-            Head = 4
+            UnderCharacter = 0,
+            OverCharacter = 1,
+            UnderFace = 2,
+            Face = 3,
+            OverFace = 4
         }
 
         private readonly struct AvatarEffectRenderable
@@ -238,11 +239,6 @@ namespace HaCreator.MapSimulator.Character
         private const int MirrorImageClientSideOffsetPx = 50;
         private const int MirrorImageClientBackActionOffsetYPx = 50;
         private const int MirrorImageTransitionDurationMs = 200;
-        private const int MirrorImageBodyZIndex = 20;
-        private const int MirrorImageHandZIndex = 45;
-        private const int MirrorImageWeaponZIndex = 50;
-        private const int MirrorImageHeadZIndex = 60;
-
         // Float idle should ignore the tiny passive sink applied by swim physics.
         private const float FLOAT_ANIMATION_MOVEMENT_THRESHOLD = 20f;
         // CActionMan action metadata uses 150 as the default alpha for composed character pieces.
@@ -254,6 +250,7 @@ namespace HaCreator.MapSimulator.Character
         #region Properties
 
         public CharacterBuild Build { get; private set; }
+        public string Name => Build?.Name ?? string.Empty;
         public CharacterAssembler Assembler { get; private set; }
         public CVecCtrl Physics { get; private set; }
 
@@ -1945,6 +1942,11 @@ namespace HaCreator.MapSimulator.Character
             return true;
         }
 
+        public bool CanApplyExternalAvatarTransform(int sourceId, string actionName, int morphTemplateId = 0)
+        {
+            return TryCreateExternalAvatarTransform(sourceId, actionName, morphTemplateId, out _);
+        }
+
         public void ClearSkillAvatarTransform()
         {
             _activeSkillAvatarTransform = null;
@@ -2306,7 +2308,8 @@ namespace HaCreator.MapSimulator.Character
                 GroundOverlayFinishAnimation = skill.AvatarOverlayFinishEffect,
                 GroundUnderFaceFinishAnimation = skill.AvatarUnderFaceFinishEffect,
                 LadderOverlayFinishAnimation = skill.AvatarLadderFinishEffect,
-                HideOnLadderOrRope = skill.HideAvatarEffectOnLadderOrRope
+                HideOnLadderOrRope = skill.HideAvatarEffectOnLadderOrRope,
+                HideOnRotateAction = skill.HideAvatarEffectOnRotateAction
             };
 
             return effectState.HasLoopAnimation || effectState.HasFinishAnimation;
@@ -3409,12 +3412,10 @@ namespace HaCreator.MapSimulator.Character
                 return null;
             }
 
-            // Mirror Image is prepared on the avatar's under-face seam in the client.
-            // Reuse the simulator's existing assembled-part ordering and group it into the
-            // same five broad source lanes instead of drawing the fully composed avatar frame.
+            // PrepareMirrorActionLayer pulls five exact avatar-owned source planes in order:
+            // UnderCharacter, OverCharacter, UnderFace, Face, OverFace.
             var layeredParts = new List<AssembledPart>[5];
-            int underFaceInsertionIndex = Math.Clamp(GetUnderFaceInsertionIndex(frame.Parts), 0, frame.Parts.Count);
-            for (int i = 0; i < underFaceInsertionIndex; i++)
+            for (int i = 0; i < frame.Parts.Count; i++)
             {
                 AssembledPart part = frame.Parts[i];
                 if (!TryGetMirrorImageSourceLayer(part, out MirrorImageSourceLayer sourceLayer))
@@ -3441,15 +3442,22 @@ namespace HaCreator.MapSimulator.Character
             sourceLayer = part.PartType switch
             {
                 CharacterPartType.HairBelowBody or CharacterPartType.Cape or CharacterPartType.Shield
-                    => MirrorImageSourceLayer.Back,
+                    => MirrorImageSourceLayer.UnderCharacter,
                 CharacterPartType.Body or CharacterPartType.Coat or CharacterPartType.Longcoat or CharacterPartType.Pants or CharacterPartType.Shoes
-                    => MirrorImageSourceLayer.Body,
-                CharacterPartType.Arm or CharacterPartType.Glove or CharacterPartType.WeaponBelowArm or CharacterPartType.WeaponOverGlove or CharacterPartType.WeaponOverBody
-                    => MirrorImageSourceLayer.Arm,
-                CharacterPartType.Hand or CharacterPartType.HandBelowWeapon or CharacterPartType.Weapon or CharacterPartType.WeaponOverHand
-                    => MirrorImageSourceLayer.Hand,
+                    or CharacterPartType.Arm or CharacterPartType.ArmOverHair or CharacterPartType.ArmOverHairBelowWeapon
+                    or CharacterPartType.Glove or CharacterPartType.Hand or CharacterPartType.HandBelowWeapon or CharacterPartType.HandOverHair
+                    or CharacterPartType.Weapon or CharacterPartType.WeaponBelowArm or CharacterPartType.WeaponOverGlove
+                    or CharacterPartType.WeaponOverHand or CharacterPartType.WeaponOverBody
+                    => MirrorImageSourceLayer.OverCharacter,
                 CharacterPartType.Head or CharacterPartType.Ear or CharacterPartType.Earrings
-                    => MirrorImageSourceLayer.Head,
+                    => MirrorImageSourceLayer.UnderFace,
+                CharacterPartType.Face
+                    => MirrorImageSourceLayer.Face,
+                CharacterPartType.Hair or CharacterPartType.HairOverHead
+                    or CharacterPartType.Cap or CharacterPartType.CapOverHair or CharacterPartType.CapBelowAccessory
+                    or CharacterPartType.Accessory or CharacterPartType.AccessoryOverHair
+                    or CharacterPartType.Face_Accessory or CharacterPartType.Eye_Accessory
+                    => MirrorImageSourceLayer.OverFace,
                 _ => ResolveMirrorImageFallbackSourceLayer(part)
             };
 
@@ -3458,27 +3466,27 @@ namespace HaCreator.MapSimulator.Character
 
         private static MirrorImageSourceLayer ResolveMirrorImageFallbackSourceLayer(AssembledPart part)
         {
-            if (part.ZIndex <= MirrorImageBodyZIndex)
+            if (part.ZIndex <= 10)
             {
-                return MirrorImageSourceLayer.Back;
+                return MirrorImageSourceLayer.UnderCharacter;
             }
 
-            if (part.ZIndex < MirrorImageHandZIndex)
+            if (part.ZIndex < 60)
             {
-                return MirrorImageSourceLayer.Body;
+                return MirrorImageSourceLayer.OverCharacter;
             }
 
-            if (part.ZIndex < MirrorImageWeaponZIndex)
+            if (part.ZIndex < 65)
             {
-                return MirrorImageSourceLayer.Arm;
+                return MirrorImageSourceLayer.UnderFace;
             }
 
-            if (part.ZIndex < MirrorImageHeadZIndex)
+            if (part.ZIndex == 65)
             {
-                return MirrorImageSourceLayer.Hand;
+                return MirrorImageSourceLayer.Face;
             }
 
-            return MirrorImageSourceLayer.Head;
+            return MirrorImageSourceLayer.OverFace;
         }
 
         private bool TryGetShadowPartnerAnimation(
@@ -3601,6 +3609,12 @@ namespace HaCreator.MapSimulator.Character
             for (int i = 0; i < _activeSkillAvatarEffects.Count; i++)
             {
                 SkillAvatarEffectState effectState = _activeSkillAvatarEffects[i];
+                if (effectState.HideOnRotateAction
+                    && ClientOwnedAvatarEffectParity.ShouldHideDuringPlayerAction(CurrentActionName))
+                {
+                    continue;
+                }
+
                 elapsedTime = Math.Max(0, currentTime - effectState.AnimationStartTime);
 
                 if (effectState.IsFinishing)
@@ -4233,6 +4247,12 @@ namespace HaCreator.MapSimulator.Character
                 || IsMechanicTamingMobStateActive()
                 || HasActiveMorphTransform
                 || State is PlayerState.Ladder or PlayerState.Rope or PlayerState.Hit or PlayerState.Dead)
+            {
+                return false;
+            }
+
+            if (CharacterPart.TryGetClientRawActionCode(CurrentActionName, out int rawActionCode)
+                && rawActionCode == 48)
             {
                 return false;
             }

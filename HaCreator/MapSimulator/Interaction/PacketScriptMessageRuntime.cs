@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Entities;
+using HaCreator.MapSimulator.UI;
 using MapleLib.PacketLib;
 using MapleLib.WzLib.WzProperties;
 using System;
@@ -54,10 +55,13 @@ namespace HaCreator.MapSimulator.Interaction
                 NpcInteractionEntry entry = messageType switch
                 {
                     0 => DecodeSay(reader, speaker, ref speakerTemplateId, param),
+                    1 => DecodeSayImage(reader, speaker, param),
                     2 => DecodeAskYesNo(reader, speaker, param, false),
                     3 => DecodeAskText(reader, speaker, param),
                     4 => DecodeAskNumber(reader, speaker, param),
                     5 => DecodeAskMenu(reader, speaker, param),
+                    8 => DecodeAskAvatar(reader, speaker, param, false),
+                    9 => DecodeAskAvatar(reader, speaker, param, true),
                     13 => DecodeAskYesNo(reader, speaker, param, true),
                     14 => DecodeAskBoxText(reader, speaker, param),
                     _ => DecodeUnsupported(reader, speaker, messageType, param)
@@ -116,6 +120,36 @@ namespace HaCreator.MapSimulator.Interaction
                     NpcDialogueTextFormatter.Format(rawText),
                     BuildNavigationMetadata(hasPrev, hasNext)),
                 null);
+        }
+
+        private static NpcInteractionEntry DecodeSayImage(BinaryReader reader, PacketScriptSpeaker speaker, byte param)
+        {
+            int count = reader.ReadByte();
+            List<string> imagePaths = new();
+            for (int i = 0; i < count; i++)
+            {
+                string imagePath = ReadMapleString(reader);
+                if (!string.IsNullOrWhiteSpace(imagePath))
+                {
+                    imagePaths.Add(imagePath.Trim());
+                }
+            }
+
+            string body = imagePaths.Count == 0
+                ? "Packet-authored say-image prompt did not include any WZ image paths."
+                : string.Join("\n", imagePaths.Select((path, index) => $"Image {index + 1}: {path}"));
+            return CreateEntry(
+                "Image Talk",
+                BuildSpeakerSubtitle(speaker, "SayImage", param),
+                body,
+                AppendMetadata(
+                    body,
+                    $"Client `OnSayImage` opened {imagePaths.Count} image entr{(imagePaths.Count == 1 ? "y" : "ies")} through `CUtilDlgEx::SetUtilDlgEx_IMAGE`."),
+                new[]
+                {
+                    CreateNumericResponseChoice("Continue", "Continue", 1),
+                    CreateNumericResponseChoice("Cancel", "Cancel", -1)
+                });
         }
 
         private static NpcInteractionEntry DecodeAskYesNo(BinaryReader reader, PacketScriptSpeaker speaker, byte param, bool isQuestPrompt)
@@ -206,6 +240,37 @@ namespace HaCreator.MapSimulator.Interaction
                     choices.Count == 0
                         ? "No inline menu selections were decoded from the packet text."
                         : $"Decoded {choices.Count} inline menu selection(s)."),
+                choices);
+        }
+
+        private static NpcInteractionEntry DecodeAskAvatar(BinaryReader reader, PacketScriptSpeaker speaker, byte param, bool isMembershopAvatar)
+        {
+            string rawText = ReadMapleString(reader);
+            int count = reader.ReadByte();
+            List<int> optionItemIds = new(count);
+            for (int i = 0; i < count; i++)
+            {
+                optionItemIds.Add(reader.ReadInt32());
+            }
+
+            List<NpcInteractionChoice> choices = optionItemIds
+                .Select((itemId, index) => CreateNumericResponseChoice(
+                    BuildAvatarChoiceLabel(itemId, index),
+                    $"index={index}, itemId={itemId}",
+                    index))
+                .ToList();
+            string optionDetails = optionItemIds.Count == 0
+                ? "No avatar options were decoded from the packet payload."
+                : string.Join("\n", optionItemIds.Select((itemId, index) => $"{index + 1}. {DescribeAvatarOption(itemId)}"));
+
+            return CreateEntry(
+                isMembershopAvatar ? "Member Shop Avatar" : "Avatar Selection",
+                BuildSpeakerSubtitle(speaker, isMembershopAvatar ? "AskMembershopAvatar" : "AskAvatar", param),
+                rawText,
+                AppendMetadata(
+                    NpcDialogueTextFormatter.Format(rawText),
+                    optionDetails,
+                    $"Client `CUtilDlgEx::SetUtilDlgEx_AVATAR` opened {optionItemIds.Count} indexed avatar option(s)."),
                 choices);
         }
 
@@ -384,6 +449,18 @@ namespace HaCreator.MapSimulator.Interaction
             };
         }
 
+        private static NpcInteractionChoice CreateNumericResponseChoice(string label, string responseLabel, int responseValue)
+        {
+            return new NpcInteractionChoice
+            {
+                Label = label,
+                SubmitSelection = true,
+                SubmissionKind = NpcInteractionInputKind.Number,
+                SubmissionValue = responseLabel,
+                SubmissionNumericValue = responseValue
+            };
+        }
+
         private static string BuildSpeakerSubtitle(PacketScriptSpeaker speaker, string messageKind, byte param)
         {
             return $"{messageKind} | template={speaker.TemplateId} | param=0x{param:X2}";
@@ -493,6 +570,29 @@ namespace HaCreator.MapSimulator.Interaction
             return null;
         }
 
+        private static string BuildAvatarChoiceLabel(int itemId, int index)
+        {
+            string itemName = ResolveItemName(itemId);
+            return string.IsNullOrWhiteSpace(itemName)
+                ? $"Option {index + 1} ({itemId})"
+                : $"Option {index + 1}: {itemName}";
+        }
+
+        private static string DescribeAvatarOption(int itemId)
+        {
+            string itemName = ResolveItemName(itemId);
+            return string.IsNullOrWhiteSpace(itemName)
+                ? $"Item {itemId}"
+                : $"{itemName} ({itemId})";
+        }
+
+        private static string ResolveItemName(int itemId)
+        {
+            return InventoryItemMetadataResolver.TryResolveItemName(itemId, out string itemName)
+                ? itemName?.Trim()
+                : null;
+        }
+
         private static bool TryEncodeResponsePayload(
             int messageType,
             NpcInteractionInputSubmission submission,
@@ -509,6 +609,18 @@ namespace HaCreator.MapSimulator.Interaction
 
             switch (messageType)
             {
+                case 1:
+                {
+                    if (!submission.NumericValue.HasValue || (submission.NumericValue.Value != 1 && submission.NumericValue.Value != -1))
+                    {
+                        error = "Say-image submissions require a numeric selection value of 1 or -1.";
+                        return false;
+                    }
+
+                    writer.WriteByte(unchecked((byte)(sbyte)submission.NumericValue.Value));
+                    break;
+                }
+
                 case 2:
                 case 13:
                 {
@@ -557,6 +669,21 @@ namespace HaCreator.MapSimulator.Interaction
 
                     writer.WriteByte(1);
                     writer.WriteInt(submission.NumericValue.Value);
+                    break;
+                }
+
+                case 8:
+                case 9:
+                {
+                    bool accepted = submission.NumericValue.HasValue &&
+                                    submission.NumericValue.Value >= 0 &&
+                                    submission.NumericValue.Value <= byte.MaxValue;
+                    writer.WriteByte(accepted ? (byte)1 : (byte)0);
+                    if (accepted)
+                    {
+                        writer.WriteByte((byte)submission.NumericValue.Value);
+                    }
+
                     break;
                 }
 

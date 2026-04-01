@@ -209,6 +209,9 @@ namespace HaCreator.MapSimulator.Fields
         public RoundResult LastRoundResult => _lastRoundResult;
         public int? LastPacketType => _lastPacketType;
         public int? LastScorePacketTick => _lastScorePacketTick;
+        internal string CurrentMessage => _currentMessage;
+        internal int MessageExpiresAtTick => _messageEndTime;
+        internal int ResultExpiresAtTick => _resultExpireTime;
         #endregion
         #region Initialization
         public void Initialize(GraphicsDevice graphicsDevice, SoundManager soundManager = null)
@@ -370,7 +373,7 @@ namespace HaCreator.MapSimulator.Fields
             }
             else if (_gameActive || _awaitingFinalScore)
             {
-                BeginFinalScoreWait();
+                BeginFinalScoreWait(now);
             }
         }
         public bool TryApplyPacket(int packetType, byte[] payload, int currentTimeMs, out string errorMessage)
@@ -432,7 +435,7 @@ namespace HaCreator.MapSimulator.Fields
             _lastScorePacketTick = null;
             _pendingAttackPacketRequests.Clear();
             ClearRoundResult();
-            ShowMessage("Coconut harvest begins!", 3000);
+            ShowMessage("Coconut harvest begins!", 3000, _lastUpdateTime);
         }
         public void SimulateHit(int coconutId, int byTeam)
         {
@@ -542,13 +545,13 @@ namespace HaCreator.MapSimulator.Fields
         {
             _pendingAttackPacketRequests.Clear();
         }
-        private void BeginFinalScoreWait()
+        private void BeginFinalScoreWait(int currentTick)
         {
             _gameActive = false;
             _finishTick = 0;
             _timeRemaining = 0;
             _awaitingFinalScore = true;
-            ShowMessage("Waiting for final score packet...", 3000);
+            ShowMessage("Waiting for final score packet...", 3000, currentTick);
         }
         private void ResolveRoundResult(int currentTick)
         {
@@ -559,7 +562,7 @@ namespace HaCreator.MapSimulator.Fields
                 : _team0Score < _team1Score
                     ? "Team Story wins!"
                     : "It's a tie!";
-            ShowMessage(winner, 5000);
+            ShowMessage(winner, 5000, currentTick);
             System.Diagnostics.Debug.WriteLine($"[CoconutField] Game ended: {winner}");
         }
         #endregion
@@ -583,7 +586,7 @@ namespace HaCreator.MapSimulator.Fields
                         : 0;
                     if (remainingMs <= 0)
                     {
-                        BeginFinalScoreWait();
+                        BeginFinalScoreWait(tickCount);
                     }
                 }
             }
@@ -668,10 +671,6 @@ namespace HaCreator.MapSimulator.Fields
                     break;
                 case CoconutState.Falling:
                     coconut.IsActive = true;
-                    if (coconut.Team < 0)
-                    {
-                        coconut.Team = 0;
-                    }
                     break;
                 case CoconutState.Team0Claimed:
                     coconut.Team = 0;
@@ -693,10 +692,10 @@ namespace HaCreator.MapSimulator.Fields
                     break;
             }
         }
-        private void ShowMessage(string message, int durationMs)
+        private void ShowMessage(string message, int durationMs, int currentTick)
         {
             _currentMessage = message;
-            _messageEndTime = Environment.TickCount + durationMs;
+            _messageEndTime = currentTick + durationMs;
         }
         private bool IsAttackable(Coconut coconut)
         {
@@ -935,16 +934,16 @@ namespace HaCreator.MapSimulator.Fields
             DrawUI(spriteBatch, skeletonMeshRenderer, gameTime, pixelTexture, font);
             if (font != null)
             {
-                DrawRoundResult(spriteBatch, skeletonMeshRenderer, gameTime, font);
+                DrawRoundResult(spriteBatch, skeletonMeshRenderer, gameTime, font, tickCount);
             }
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private Color GetCoconutTint(Coconut coconut)
         {
-            return coconut.Team switch
+            return coconut.State switch
             {
-                0 => new Color(150, 200, 255, 255), // Blue tint
-                1 => new Color(255, 150, 150, 255), // Red tint
+                CoconutState.Team0Claimed => new Color(150, 200, 255, 255),
+                CoconutState.Team1Claimed => new Color(255, 150, 150, 255),
                 _ => Color.White
             };
         }
@@ -1029,9 +1028,9 @@ namespace HaCreator.MapSimulator.Fields
             }
             return true;
         }
-        private void DrawRoundResult(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime, SpriteFont font)
+        private void DrawRoundResult(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime, SpriteFont font, int tickCount)
         {
-            if (_lastRoundResult == RoundResult.None || _resultExpireTime <= Environment.TickCount)
+            if (_lastRoundResult == RoundResult.None || _resultExpireTime <= tickCount)
             {
                 return;
             }
@@ -1041,6 +1040,7 @@ namespace HaCreator.MapSimulator.Fields
             {
                 IDXObject frame = _activeResultFrames[Math.Clamp(_resultFrameIndex, 0, _activeResultFrames.Count - 1)];
                 frame.DrawBackground(spriteBatch, skeletonMeshRenderer, gameTime, centerX + frame.X, ResultBannerTopY + frame.Y, Color.White, false, null);
+                return;
             }
             string resultText = _lastRoundResult switch
             {

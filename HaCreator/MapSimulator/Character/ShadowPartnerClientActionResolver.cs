@@ -11,19 +11,19 @@ namespace HaCreator.MapSimulator.Character
                 ["move"] = new[] { "walk1", "walk2" },
                 ["walk"] = new[] { "walk1", "walk2" },
                 ["stand"] = new[] { "stand1", "stand2" },
-                ["ghostwalk"] = new[] { "walk1", "walk2" },
+                ["ghostwalk"] = new[] { "walk1", "walk2", "stand1", "stand2" },
                 ["ghoststand"] = new[] { "stand1", "stand2" },
-                ["ghostjump"] = new[] { "jump" },
-                ["ghostladder"] = new[] { "ladder" },
-                ["ghostrope"] = new[] { "rope" },
-                ["ghostprone"] = new[] { "prone" },
-                ["ghostpronestab"] = new[] { "proneStab", "prone" },
+                ["ghostjump"] = new[] { "jump", "fly", "stand1", "stand2" },
+                ["ghostladder"] = new[] { "ladder", "rope", "stand1", "stand2" },
+                ["ghostrope"] = new[] { "rope", "ladder", "stand1", "stand2" },
+                ["ghostprone"] = new[] { "prone", "proneStab", "stand1", "stand2" },
+                ["ghostpronestab"] = new[] { "proneStab", "prone", "stand1", "stand2" },
                 ["ghost"] = new[] { "stand1", "stand2", "dead" },
                 // `special/*` does not publish ghost or fly2/swim-specific branches for the
                 // confirmed Shadow Partner skills, so keep the client-shaped stand/fly/jump
                 // collapse ahead of broader fallback when those raw-action families surface.
                 ["ghostfly"] = new[] { "stand1", "stand2", "fly", "jump" },
-                ["ghostsit"] = new[] { "sit" },
+                ["ghostsit"] = new[] { "sit", "stand1", "stand2" },
                 ["hit"] = new[] { "alert", "stand1", "stand2" },
                 ["dead"] = new[] { "dead", "stand1" },
                 ["swim"] = new[] { "stand1", "stand2", "fly", "jump" },
@@ -67,22 +67,36 @@ namespace HaCreator.MapSimulator.Character
                 yield return "fly";
                 yield return "jump";
             }
+            else if (state is PlayerState.Jumping or PlayerState.Falling)
+            {
+                yield return "jump";
+                yield return "fly";
+                yield return "stand1";
+                yield return "stand2";
+            }
             else if (state == PlayerState.Ladder)
             {
                 yield return "ladder";
+                yield return "rope";
+                yield return "stand1";
             }
             else if (state == PlayerState.Rope)
             {
                 yield return "rope";
+                yield return "ladder";
+                yield return "stand1";
             }
             else if (state == PlayerState.Prone)
             {
                 yield return "prone";
                 yield return "proneStab";
+                yield return "stand1";
             }
             else if (state == PlayerState.Sitting)
             {
                 yield return "sit";
+                yield return "stand1";
+                yield return "stand2";
             }
             else if (state == PlayerState.Hit)
             {
@@ -99,11 +113,14 @@ namespace HaCreator.MapSimulator.Character
             {
                 yield return "walk1";
                 yield return "walk2";
+                yield return "stand1";
+                yield return "stand2";
             }
             else if (state == PlayerState.Standing)
             {
                 yield return "stand1";
                 yield return "stand2";
+                yield return "alert";
             }
 
             if (!string.IsNullOrWhiteSpace(fallbackActionName))

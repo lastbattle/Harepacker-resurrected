@@ -33,6 +33,7 @@ namespace HaCreator.MapSimulator.Managers
             public string BirthDate { get; set; }
             public bool IsSecondaryPasswordEnabled { get; set; }
             public string SecondaryPassword { get; set; }
+            public List<CashShopStorageExpansionRecordState> StorageExpansionHistory { get; set; } = new();
             public List<LoginCharacterAccountEntryState> Entries { get; set; } = new();
         }
 
@@ -49,7 +50,19 @@ namespace HaCreator.MapSimulator.Managers
             public string BirthDate { get; init; } = string.Empty;
             public bool IsSecondaryPasswordEnabled { get; init; }
             public string SecondaryPassword { get; init; } = string.Empty;
+            public IReadOnlyList<CashShopStorageExpansionRecordState> StorageExpansionHistory { get; init; } = Array.Empty<CashShopStorageExpansionRecordState>();
             public IReadOnlyList<LoginCharacterAccountEntryState> Entries { get; init; } = Array.Empty<LoginCharacterAccountEntryState>();
+        }
+
+        public sealed class CashShopStorageExpansionRecordState
+        {
+            public int CommoditySerialNumber { get; init; }
+            public int ResultSubtype { get; init; }
+            public int FailureReason { get; init; }
+            public long NxPrice { get; init; }
+            public int SlotLimitAfterResult { get; init; }
+            public string Message { get; init; } = string.Empty;
+            public DateTime AppliedAtUtc { get; init; }
         }
 
         public sealed class LoginCharacterAccountEntryState
@@ -156,6 +169,7 @@ namespace HaCreator.MapSimulator.Managers
                 BirthDate = NormalizeBirthDate(persisted.BirthDate),
                 IsSecondaryPasswordEnabled = persisted.IsSecondaryPasswordEnabled,
                 SecondaryPassword = NormalizeSecret(persisted.SecondaryPassword),
+                StorageExpansionHistory = CloneStorageExpansionHistory(persisted.StorageExpansionHistory),
                 Entries = entries
             };
         }
@@ -172,7 +186,8 @@ namespace HaCreator.MapSimulator.Managers
             string birthDate = null,
             bool isSecondaryPasswordEnabled = false,
             string secondaryPassword = null,
-            int? accountId = null)
+            int? accountId = null,
+            IEnumerable<CashShopStorageExpansionRecordState> storageExpansionHistory = null)
         {
             string normalizedAccountName = string.IsNullOrWhiteSpace(accountName) ? "explorergm" : accountName.Trim();
             List<LoginCharacterAccountEntryState> normalizedEntries = entries?
@@ -197,6 +212,7 @@ namespace HaCreator.MapSimulator.Managers
                 BirthDate = NormalizeBirthDate(birthDate),
                 IsSecondaryPasswordEnabled = isSecondaryPasswordEnabled,
                 SecondaryPassword = NormalizeSecret(secondaryPassword),
+                StorageExpansionHistory = CloneStorageExpansionHistory(storageExpansionHistory),
                 Entries = normalizedEntries
             };
             _accountsByKey[ResolveAccountKey(normalizedAccountName, worldId, accountId)] = persistedState;
@@ -357,12 +373,31 @@ namespace HaCreator.MapSimulator.Managers
                 BirthDate = NormalizeBirthDate(state?.BirthDate),
                 IsSecondaryPasswordEnabled = state?.IsSecondaryPasswordEnabled ?? false,
                 SecondaryPassword = NormalizeSecret(state?.SecondaryPassword),
+                StorageExpansionHistory = CloneStorageExpansionHistory(state?.StorageExpansionHistory),
                 Entries = state?.Entries?
                     .Where(entry => entry != null)
                     .Select(CloneEntryState)
                     .ToList()
                     ?? new List<LoginCharacterAccountEntryState>()
             };
+        }
+
+        private static List<CashShopStorageExpansionRecordState> CloneStorageExpansionHistory(IEnumerable<CashShopStorageExpansionRecordState> history)
+        {
+            return history?
+                .Where(record => record != null)
+                .Select(record => new CashShopStorageExpansionRecordState
+                {
+                    CommoditySerialNumber = Math.Max(0, record.CommoditySerialNumber),
+                    ResultSubtype = record.ResultSubtype,
+                    FailureReason = Math.Max(0, record.FailureReason),
+                    NxPrice = Math.Max(0L, record.NxPrice),
+                    SlotLimitAfterResult = Math.Max(0, record.SlotLimitAfterResult),
+                    Message = record.Message ?? string.Empty,
+                    AppliedAtUtc = record.AppliedAtUtc == default ? DateTime.UtcNow : record.AppliedAtUtc
+                })
+                .ToList()
+                ?? new List<CashShopStorageExpansionRecordState>();
         }
     }
 }

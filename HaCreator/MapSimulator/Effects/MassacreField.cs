@@ -64,6 +64,8 @@ namespace HaCreator.MapSimulator.Effects
         private const int GaugeFillStringPoolId = 0x1519;
         private const int GaugeTextStringPoolId = 0x151A;
         private const int GaugeDangerTextStringPoolId = 0x151B;
+        private const int ResultBoardStringPoolId = 0x151C;
+        private const int ResultOverlayStringPoolId = 0x151D;
         private const int ComboTimeoutMs = 3000;
         private const int TimerboardWidth = 258;
         private const int TimerboardHeight = 61;
@@ -155,6 +157,7 @@ namespace HaCreator.MapSimulator.Effects
         private Texture2D _resultPlusTexture;
         private Texture2D _resultBoardTexture;
         private readonly Dictionary<char, MassacreCanvasFrame> _rankTextures = new();
+        private readonly Dictionary<char, List<MassacreCanvasFrame>> _resultRankEffectFrames = new();
         private List<MassacreCanvasFrame> _keyOpenFrames;
         private List<MassacreCanvasFrame> _keyLoopFrames;
         private List<MassacreCanvasFrame> _keyCloseFrames;
@@ -511,7 +514,7 @@ namespace HaCreator.MapSimulator.Effects
             string countEffectText = HasCountEffectPresentation ? $", countFx=stage{_countEffectPresentationStage}" : string.Empty;
             string bonusText = HasBonusPresentation ? ", bonusFx=active" : string.Empty;
             string resultText = HasResultPresentation ? $", result={_resultPresentation}:{_resultRank}:{_resultScore}" : string.Empty;
-            return $"Massacre map {_mapId}, timer={timerText}, gauge={_currentGauge}/{_maxGauge}, inc={_incGauge}, hitAdd={_defaultGaugeIncrease}, decay={_gaugeDec}/s, kills={_killCount}, combo={_comboCount}{countBoardText}{disableSkillText}{nextCountEffect}{countEffectText}{bonusText}{resultText}, ids=0x{TimerboardSourceStringPoolId:X}/0x{CountBoardDigitStringPoolId:X}/0x{ClearScreenEffectStringPoolId:X}";
+            return $"Massacre map {_mapId}, timer={timerText}, gauge={_currentGauge}/{_maxGauge}, inc={_incGauge}, hitAdd={_defaultGaugeIncrease}, decay={_gaugeDec}/s, kills={_killCount}, combo={_comboCount}{countBoardText}{disableSkillText}{nextCountEffect}{countEffectText}{bonusText}{resultText}, ids=0x{TimerboardSourceStringPoolId:X}/0x{CountBoardDigitStringPoolId:X}/0x{ClearScreenEffectStringPoolId:X}/0x{ResultBoardStringPoolId:X}/0x{ResultOverlayStringPoolId:X}";
         }
         public void Reset()
         {
@@ -966,6 +969,7 @@ namespace HaCreator.MapSimulator.Effects
             _resultFailFrames = LoadAnimationFrames(killing?["fail"]);
             _bonusStageFrames = LoadAnimationFrames(killing?["bonus"]?["stage"]);
             _bonusFrames = LoadAnimationFrames(killing?["bonus"]?["bonus"]);
+            LoadResultRankEffectFrames(killing);
             _assetsLoaded = true;
         }
         private void DrawCountEffectPresentation(SpriteBatch spriteBatch, SpriteFont font, Viewport viewport, int currentTimeMs)
@@ -1018,6 +1022,7 @@ namespace HaCreator.MapSimulator.Effects
                 _resultPresentationStartTick,
                 center,
                 repeat: false);
+            DrawAnimation(spriteBatch, GetResultRankEffectFrames(_resultRank), currentTimeMs, _resultPresentationStartTick, center, repeat: false);
             if (_resultBoardTexture != null)
             {
                 Vector2 boardPos = new((viewport.Width - _resultBoardTexture.Width) / 2f, ResultBoardY);
@@ -1291,6 +1296,23 @@ namespace HaCreator.MapSimulator.Effects
                 }
             }
         }
+        private void LoadResultRankEffectFrames(WzImageProperty killing)
+        {
+            _resultRankEffectFrames.Clear();
+            LoadResultRankEffectFrame('S', killing?["yeti0"]);
+            LoadResultRankEffectFrame('A', killing?["yeti1"]);
+            LoadResultRankEffectFrame('B', killing?["yeti2"]);
+            LoadResultRankEffectFrame('C', killing?["yeti3"]);
+            LoadResultRankEffectFrame('D', killing?["yeti4"]);
+        }
+        private void LoadResultRankEffectFrame(char rank, WzImageProperty source)
+        {
+            List<MassacreCanvasFrame> frames = LoadAnimationFrames(source);
+            if (frames != null)
+            {
+                _resultRankEffectFrames[rank] = frames;
+            }
+        }
         private static WzCanvasProperty ResolveCanvas(WzImageProperty property)
         {
             if (WzInfoTools.GetRealProperty(property) is WzCanvasProperty resolvedCanvas)
@@ -1330,6 +1352,12 @@ namespace HaCreator.MapSimulator.Effects
         private List<MassacreCanvasFrame> GetCountEffectNumberFrames(int stage)
         {
             return _countEffectNumberFrames.TryGetValue(Math.Clamp(stage, 1, 5), out List<MassacreCanvasFrame> frames)
+                ? frames
+                : null;
+        }
+        private List<MassacreCanvasFrame> GetResultRankEffectFrames(char rank)
+        {
+            return _resultRankEffectFrames.TryGetValue(NormalizeRank(rank), out List<MassacreCanvasFrame> frames)
                 ? frames
                 : null;
         }

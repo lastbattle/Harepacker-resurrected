@@ -38,6 +38,12 @@ namespace HaCreator.MapSimulator
             "OnUserEff.img",
             "Summon.img"
         };
+        private static readonly string[] PacketOwnedRewardRouletteLayerPaths =
+        {
+            "MainNotice/userReward/Default",
+            "MainNotice/userReward/Notify",
+            "MainNotice/userReward/Appear"
+        };
 
         private void UpdatePacketOwnedFieldFeedbackState(int currentTickCount)
         {
@@ -68,7 +74,13 @@ namespace HaCreator.MapSimulator
             return new PacketFieldFeedbackCallbacks
             {
                 AddClientChatMessage = (text, chatLogType, whisperTargetCandidate) =>
-                    _chat?.AddClientChatMessage(text, currTickCount, chatLogType, whisperTargetCandidate),
+                {
+                    _chat?.AddClientChatMessage(text, currTickCount, chatLogType, whisperTargetCandidate);
+                    if (ShouldTriggerPetSpecialistFeedbackForClientChatLogType(chatLogType))
+                    {
+                        TryTriggerSpecialistPetSocialFeedback(text, currTickCount);
+                    }
+                },
                 ShowUtilityFeedback = ShowUtilityFeedbackMessage,
                 ShowModalWarning = ShowPacketOwnedFieldWarning,
                 RememberWhisperTarget = target => _chat?.RememberWhisperTarget(target),
@@ -189,24 +201,29 @@ namespace HaCreator.MapSimulator
 
         private bool TryShowPacketOwnedRewardRouletteEffect(int rewardId, int step, int total)
         {
-            const string cacheKey = "reward-roulette:BasicEff.img/MainNotice/userReward/Appear";
-            if (!TryGetOrCreatePacketOwnedAnimationFrames(
-                cacheKey,
-                () => LoadPacketOwnedAnimationFrames(ResolvePacketOwnedPropertyPath(Program.FindImage("Effect", "BasicEff.img"), "MainNotice/userReward/Appear")),
-                out List<IDXObject> frames))
+            bool shownAnyLayer = false;
+            foreach (string propertyPath in PacketOwnedRewardRouletteLayerPaths)
             {
-                return false;
-            }
+                string cacheKey = $"reward-roulette:{propertyPath}";
+                if (!TryGetOrCreatePacketOwnedAnimationFrames(
+                    cacheKey,
+                    () => LoadPacketOwnedAnimationFrames(ResolvePacketOwnedPropertyPath(Program.FindImage("Effect", "BasicEff.img"), propertyPath)),
+                    out List<IDXObject> frames))
+                {
+                    continue;
+                }
 
-            EnqueuePacketOwnedUiAnimation(
-                frames,
-                _renderParams.RenderWidth / 2,
-                Math.Max(0, Height / 2 - 24),
-                currTickCount);
+                EnqueuePacketOwnedUiAnimation(
+                    frames,
+                    _renderParams.RenderWidth / 2,
+                    Math.Max(0, Height / 2 - 24),
+                    currTickCount);
+                shownAnyLayer = true;
+            }
 
             string itemName = ResolvePacketFieldFeedbackItemName(rewardId);
             ShowUtilityFeedbackMessage($"Packet-owned reward roulette: {itemName} ({Math.Max(0, step) + 1}/{Math.Max(1, total)}).");
-            return true;
+            return shownAnyLayer;
         }
 
         private bool TryQueuePacketOwnedWhisperFindTransfer(int mapId, int x, int y)
@@ -307,8 +324,19 @@ namespace HaCreator.MapSimulator
                 return frames;
             }
 
+            if (!ShouldUsePacketOwnedNpcSummonFallback(effectId, HasPacketOwnedSummonSoundAsset(effectId)))
+            {
+                return null;
+            }
+
             WzImage mapEffectImage = Program.FindImage("Effect", "MapEff.img");
             return LoadPacketOwnedAnimationFrames(ResolvePacketOwnedPropertyPath(mapEffectImage, "NpcSummon"));
+        }
+
+        private bool HasPacketOwnedSummonSoundAsset(byte effectId)
+        {
+            WzImage soundImage = Program.FindImage("Sound", "Summon.img");
+            return ResolvePacketOwnedPropertyPath(soundImage, effectId.ToString(CultureInfo.InvariantCulture)) != null;
         }
 
         private List<IDXObject> ResolvePacketOwnedScreenEffectFrames(string descriptor)
@@ -519,6 +547,16 @@ namespace HaCreator.MapSimulator
                 .Replace("\r\n", "\n", StringComparison.Ordinal)
                 .Replace('\r', '\n')
                 .Trim();
+        }
+
+        internal static IReadOnlyList<string> GetPacketOwnedRewardRouletteLayerPathsForTest()
+        {
+            return PacketOwnedRewardRouletteLayerPaths;
+        }
+
+        internal static bool ShouldUsePacketOwnedNpcSummonFallback(byte effectId, bool hasSummonSoundAsset)
+        {
+            return effectId == 0 || hasSummonSoundAsset;
         }
 
         private ChatCommandHandler.CommandResult HandlePacketOwnedFieldFeedbackCommand(string[] args)

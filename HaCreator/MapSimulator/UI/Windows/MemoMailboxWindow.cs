@@ -268,7 +268,7 @@ namespace HaCreator.MapSimulator.UI
                 ? "Kept in the mailbox backlog."
                 : memo.CanClaimAttachment
                     ? "Use OPEN to inspect and claim the attached package."
-                : "Use KEEP to preserve this memo in the inbox.";
+                    : "Use KEEP to preserve this memo in the inbox.";
             sprite.DrawString(_font, footer, new Vector2(contentBounds.X, contentBounds.Bottom - 18), accentColor, 0f, Vector2.Zero, 0.39f, SpriteEffects.None, 0f);
         }
 

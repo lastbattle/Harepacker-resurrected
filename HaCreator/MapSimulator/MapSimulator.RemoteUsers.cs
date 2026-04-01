@@ -242,32 +242,50 @@ namespace HaCreator.MapSimulator
         {
             if (args.Length < 3 || !int.TryParse(args[1], out int characterId))
             {
-                return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser effect <characterId> <itemId|clear> [pairCharacterId]");
+                return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser effect <characterId> <itemId|clear> [pairCharacterId] or /remoteuser effect <characterId> <generic|couple|friend|newyear|marriage> <itemId|clear> [pairCharacterId]");
             }
 
-            int? itemId = string.Equals(args[2], "clear", StringComparison.OrdinalIgnoreCase)
-                ? null
-                : int.TryParse(args[2], out int parsedItemId) ? parsedItemId : null;
-            if (!string.Equals(args[2], "clear", StringComparison.OrdinalIgnoreCase) && !itemId.HasValue)
+            RemoteRelationshipOverlayType relationshipType = RemoteRelationshipOverlayType.Generic;
+            int itemTokenIndex = 2;
+            if (!int.TryParse(args[2], out _)
+                && !string.Equals(args[2], "clear", StringComparison.OrdinalIgnoreCase))
             {
-                return ChatCommandHandler.CommandResult.Error($"Invalid effect item ID: {args[2]}");
+                if (!TryParseRemoteRelationshipOverlayType(args[2], out relationshipType))
+                {
+                    return ChatCommandHandler.CommandResult.Error($"Invalid relationship overlay type: {args[2]}");
+                }
+
+                itemTokenIndex = 3;
+                if (args.Length <= itemTokenIndex)
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser effect <characterId> <generic|couple|friend|newyear|marriage> <itemId|clear> [pairCharacterId]");
+                }
+            }
+
+            int? itemId = string.Equals(args[itemTokenIndex], "clear", StringComparison.OrdinalIgnoreCase)
+                ? null
+                : int.TryParse(args[itemTokenIndex], out int parsedItemId) ? parsedItemId : null;
+            if (!string.Equals(args[itemTokenIndex], "clear", StringComparison.OrdinalIgnoreCase) && !itemId.HasValue)
+            {
+                return ChatCommandHandler.CommandResult.Error($"Invalid effect item ID: {args[itemTokenIndex]}");
             }
 
             int? pairCharacterId = null;
-            if (args.Length >= 4)
+            int pairTokenIndex = itemTokenIndex + 1;
+            if (args.Length > pairTokenIndex)
             {
-                if (!int.TryParse(args[3], out int parsedPairCharacterId))
+                if (!int.TryParse(args[pairTokenIndex], out int parsedPairCharacterId))
                 {
-                    return ChatCommandHandler.CommandResult.Error($"Invalid pair character ID: {args[3]}");
+                    return ChatCommandHandler.CommandResult.Error($"Invalid pair character ID: {args[pairTokenIndex]}");
                 }
 
                 pairCharacterId = parsedPairCharacterId > 0 ? parsedPairCharacterId : null;
             }
 
-            return _remoteUserPool.TrySetItemEffect(characterId, itemId, pairCharacterId, currentTime, out string message)
+            return _remoteUserPool.TrySetItemEffect(characterId, relationshipType, itemId, pairCharacterId, currentTime, out string message)
                 ? ChatCommandHandler.CommandResult.Ok(itemId.HasValue
-                    ? $"Remote user {characterId} effect item set to {itemId.Value}."
-                    : $"Remote user {characterId} effect item cleared.")
+                    ? $"Remote user {characterId} {relationshipType} effect item set to {itemId.Value}."
+                    : $"Remote user {characterId} {relationshipType} effect item cleared.")
                 : ChatCommandHandler.CommandResult.Error(message);
         }
 
@@ -938,6 +956,21 @@ namespace HaCreator.MapSimulator
             };
 
             return text != null && (markerType.HasValue || string.Equals(text, "clear", StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static bool TryParseRemoteRelationshipOverlayType(string text, out RemoteRelationshipOverlayType relationshipType)
+        {
+            relationshipType = text?.Trim().ToLowerInvariant() switch
+            {
+                "generic" => RemoteRelationshipOverlayType.Generic,
+                "couple" => RemoteRelationshipOverlayType.Couple,
+                "friend" or "friendship" => RemoteRelationshipOverlayType.Friendship,
+                "newyear" or "newyearcard" => RemoteRelationshipOverlayType.NewYearCard,
+                "marriage" or "wedding" => RemoteRelationshipOverlayType.Marriage,
+                _ => RemoteRelationshipOverlayType.Generic
+            };
+
+            return text != null && (relationshipType != RemoteRelationshipOverlayType.Generic || string.Equals(text.Trim(), "generic", StringComparison.OrdinalIgnoreCase));
         }
 
         private static bool TryParseRemoteUserPacketType(string text, out int packetType)

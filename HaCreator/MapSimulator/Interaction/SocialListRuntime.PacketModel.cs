@@ -212,6 +212,29 @@ namespace HaCreator.MapSimulator.Interaction
             return $"Alliance authority now follows packet-owned role {resolvedRole} (rank={FormatOnOff(canEditRanks)}, notice={FormatOnOff(canEditNotice)}).";
         }
 
+        internal string GetEffectiveGuildRoleLabelForUi()
+        {
+            return GetEffectiveGuildRoleLabel();
+        }
+
+        internal bool CanManageGuildSkills()
+        {
+            if (!_hasGuildMembership)
+            {
+                return false;
+            }
+
+            string effectiveRole = GetEffectiveGuildRoleLabel();
+            if (CanManageGuildByRole(effectiveRole))
+            {
+                return true;
+            }
+
+            return _packetGuildAuthority?.CanManageRanks == true ||
+                   _packetGuildAuthority?.CanToggleAdmission == true ||
+                   _packetGuildAuthority?.CanEditNotice == true;
+        }
+
         private string GetHeaderTitle(SocialListTab tab)
         {
             return tab switch

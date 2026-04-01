@@ -78,6 +78,7 @@ namespace HaCreator.MapSimulator.UI
         private KeyboardState _previousKeyboardState;
         private MouseState _previousMouseState;
         private bool _editTargetFocused;
+        private bool _softKeyboardActive;
         private bool _confirmationVisible;
         private string _confirmationMessage = string.Empty;
         private Action _pendingConfirmationAction;
@@ -185,10 +186,11 @@ namespace HaCreator.MapSimulator.UI
         public int MaxSavedDestinations => _maxSavedDestinations;
         public bool UsesContinentDestinationBook => _maxSavedDestinations > MaxVisibleRows;
         public int SavedDestinationCount => _destinations.FindAll(entry => entry.IsSavedSlot && entry.MapId > 0).Count;
-        bool ISoftKeyboardHost.WantsSoftKeyboard => IsVisible && _editTargetFocused;
+        bool ISoftKeyboardHost.WantsSoftKeyboard => IsVisible && _editTargetFocused && _softKeyboardActive;
         SoftKeyboardKeyboardType ISoftKeyboardHost.SoftKeyboardKeyboardType => SoftKeyboardKeyboardType.NumericOnly;
         int ISoftKeyboardHost.SoftKeyboardTextLength => _manualTargetText?.Length ?? 0;
         int ISoftKeyboardHost.SoftKeyboardMaxLength => EditTargetMaxLength;
+        bool ISoftKeyboardHost.CanSubmitSoftKeyboard => _editTargetFocused && TryParseManualTargetMapId(out _);
 
         public Action<DestinationEntry> RegisterCurrentMapRequested { get; set; }
         public Action<DestinationEntry> DeleteDestinationRequested { get; set; }
@@ -204,6 +206,13 @@ namespace HaCreator.MapSimulator.UI
             _previousScrollWheelValue = mouseState.ScrollWheelValue;
             _previousKeyboardState = Keyboard.GetState();
             _lastMousePosition = new Point(mouseState.X, mouseState.Y);
+        }
+
+        public override void Hide()
+        {
+            base.Hide();
+            _softKeyboardActive = false;
+            _editTargetFocused = false;
         }
 
         public override void SetFont(SpriteFont font)
@@ -655,6 +664,7 @@ namespace HaCreator.MapSimulator.UI
             if (GetEditTargetBounds().Contains(mousePoint))
             {
                 _editTargetFocused = true;
+                _softKeyboardActive = true;
                 _selectedIndex = -1;
                 UpdateButtonStates();
                 return;
@@ -663,6 +673,7 @@ namespace HaCreator.MapSimulator.UI
             if (ContainsPoint(mousePoint.X, mousePoint.Y))
             {
                 _editTargetFocused = false;
+                _softKeyboardActive = false;
                 UpdateButtonStates();
             }
         }
@@ -690,12 +701,14 @@ namespace HaCreator.MapSimulator.UI
             {
                 if (TryParseManualTargetMapId(out int targetMapId))
                 {
+                    _softKeyboardActive = false;
                     RequestMoveConfirmation(null, targetMapId);
                 }
             }
             else if (WasPressed(keyboardState, Keys.Escape))
             {
                 _editTargetFocused = false;
+                _softKeyboardActive = false;
             }
             else
             {
@@ -1207,8 +1220,22 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
+        bool ISoftKeyboardHost.TrySubmitSoftKeyboard(out string errorMessage)
+        {
+            errorMessage = string.Empty;
+            if (!TryParseManualTargetMapId(out int targetMapId))
+            {
+                errorMessage = "Enter a valid map id first.";
+                return false;
+            }
+
+            RequestMoveConfirmation(null, targetMapId);
+            return true;
+        }
+
         void ISoftKeyboardHost.OnSoftKeyboardClosed()
         {
+            _softKeyboardActive = false;
             _editTargetFocused = false;
             UpdateButtonStates();
         }

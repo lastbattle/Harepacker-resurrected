@@ -31,8 +31,10 @@ namespace HaCreator.MapSimulator.UI
         SoftKeyboardKeyboardType SoftKeyboardKeyboardType { get; }
         int SoftKeyboardTextLength { get; }
         int SoftKeyboardMaxLength { get; }
+        bool CanSubmitSoftKeyboard { get; }
         bool TryInsertSoftKeyboardCharacter(char character, out string errorMessage);
         bool TryBackspaceSoftKeyboard(out string errorMessage);
+        bool TrySubmitSoftKeyboard(out string errorMessage);
         void OnSoftKeyboardClosed();
     }
 
@@ -56,50 +58,71 @@ namespace HaCreator.MapSimulator.UI
         private const int KeyOriginY = 20;
         private const int KeyPitch = 23;
         private const int BackspaceX = 254;
-        private const int BackspaceY = 20;
+        private const int EnterX = 221;
         private const int ModeButtonY = 4;
         private const int AlphaButtonX = 182;
         private const int NumericButtonX = 214;
         private const int ModeButtonWidth = 26;
         private const int ModeButtonHeight = 12;
+        private const int MinButtonX = 240;
+        private const int MaxButtonX = 254;
         private const int CloseButtonX = 268;
-        private const int CloseButtonY = 4;
-        private const int CloseButtonSize = 12;
+        private const int WindowButtonY = 4;
+        private const int DefaultWindowButtonSize = 12;
+        private const int ExpandedHeaderOffsetY = 17;
 
-        private readonly Texture2D _backgroundTexture;
+        private readonly Texture2D _compactBackgroundTexture;
+        private readonly Texture2D _expandedBackgroundTexture;
         private readonly Texture2D[] _keyTextures;
         private readonly Texture2D[] _backspaceTextures;
+        private readonly Texture2D[] _enterTextures;
+        private readonly Texture2D[] _minButtonTextures;
+        private readonly Texture2D[] _maxButtonTextures;
+        private readonly Texture2D[] _closeButtonTextures;
         private readonly Texture2D _pixelTexture;
         private readonly int _screenWidth;
         private readonly int _screenHeight;
 
         private SpriteFont _font;
         private ISoftKeyboardHost _host;
+        private bool _isExpandedLayout;
         private int _hoveredKeyIndex = -1;
         private bool _hoveredBackspace;
-        private bool _hoveredAlphaButton;
-        private bool _hoveredNumericButton;
+        private bool _hoveredEnterButton;
         private bool _hoveredCloseButton;
+        private bool _hoveredMinButton;
+        private bool _hoveredMaxButton;
         private int _pressedKeyIndex = -1;
         private bool _pressedBackspace;
-        private bool _pressedAlphaButton;
-        private bool _pressedNumericButton;
+        private bool _pressedEnterButton;
         private bool _pressedCloseButton;
+        private bool _pressedMinButton;
+        private bool _pressedMaxButton;
         private string _statusMessage = string.Empty;
 
         public SoftKeyboardUI(
             IDXObject frame,
-            Texture2D backgroundTexture,
+            Texture2D compactBackgroundTexture,
+            Texture2D expandedBackgroundTexture,
             Texture2D[] keyTextures,
             Texture2D[] backspaceTextures,
+            Texture2D[] enterTextures,
+            Texture2D[] minButtonTextures,
+            Texture2D[] maxButtonTextures,
+            Texture2D[] closeButtonTextures,
             GraphicsDevice device,
             int screenWidth,
             int screenHeight)
             : base(frame)
         {
-            _backgroundTexture = backgroundTexture;
-            _keyTextures = keyTextures ?? throw new ArgumentNullException(nameof(keyTextures));
-            _backspaceTextures = backspaceTextures ?? throw new ArgumentNullException(nameof(backspaceTextures));
+            _compactBackgroundTexture = compactBackgroundTexture ?? throw new ArgumentNullException(nameof(compactBackgroundTexture));
+            _expandedBackgroundTexture = expandedBackgroundTexture ?? compactBackgroundTexture;
+            _keyTextures = ValidateStateTextures(keyTextures, nameof(keyTextures));
+            _backspaceTextures = ValidateStateTextures(backspaceTextures, nameof(backspaceTextures));
+            _enterTextures = ValidateStateTextures(enterTextures, nameof(enterTextures));
+            _minButtonTextures = ValidateStateTextures(minButtonTextures, nameof(minButtonTextures));
+            _maxButtonTextures = ValidateStateTextures(maxButtonTextures, nameof(maxButtonTextures));
+            _closeButtonTextures = ValidateStateTextures(closeButtonTextures, nameof(closeButtonTextures));
             _screenWidth = Math.Max(0, screenWidth);
             _screenHeight = Math.Max(0, screenHeight);
 
@@ -125,6 +148,7 @@ namespace HaCreator.MapSimulator.UI
                 _host = host;
                 _statusMessage = string.Empty;
                 ResetVisualState();
+                _isExpandedLayout = false;
             }
 
             IsVisible = host != null;
@@ -136,8 +160,9 @@ namespace HaCreator.MapSimulator.UI
             Rectangle anchor = host.GetSoftKeyboardAnchorBounds();
             int desiredX = anchor.X;
             int desiredY = anchor.Bottom + 4;
-            int width = _backgroundTexture?.Width ?? CurrentFrame?.Width ?? 290;
-            int height = _backgroundTexture?.Height ?? CurrentFrame?.Height ?? 119;
+            Texture2D backgroundTexture = GetBackgroundTexture();
+            int width = backgroundTexture?.Width ?? CurrentFrame?.Width ?? 290;
+            int height = backgroundTexture?.Height ?? CurrentFrame?.Height ?? 119;
 
             if (_screenHeight > 0 && desiredY + height > _screenHeight)
             {
@@ -162,6 +187,7 @@ namespace HaCreator.MapSimulator.UI
             base.Hide();
             _host = null;
             _statusMessage = string.Empty;
+            _isExpandedLayout = false;
             ResetVisualState();
         }
 
@@ -192,16 +218,20 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            if (_backgroundTexture != null)
+            Texture2D backgroundTexture = GetBackgroundTexture();
+            if (backgroundTexture != null)
             {
-                sprite.Draw(_backgroundTexture, new Vector2(Position.X, Position.Y), Color.White);
+                sprite.Draw(backgroundTexture, new Vector2(Position.X, Position.Y), Color.White);
             }
 
             SoftKeyboardKeyMode keyMode = ResolveKeyMode(_host.SoftKeyboardKeyboardType, _host.SoftKeyboardTextLength, _host.SoftKeyboardMaxLength);
             DrawModeButton(sprite, GetAlphaButtonBounds(), "ABC", IsAlphabeticModeActive(keyMode), disabled: !IsAlphabeticFamilyEnabled(keyMode));
             DrawModeButton(sprite, GetNumericButtonBounds(), "123", IsNumericModeActive(keyMode), disabled: !IsNumericFamilyEnabled(keyMode));
-            DrawCloseButton(sprite, GetCloseButtonBounds());
+            DrawWindowButton(sprite, GetMinButtonBounds(), _minButtonTextures, GetWindowButtonState(_hoveredMinButton, _pressedMinButton), "-");
+            DrawWindowButton(sprite, GetMaxButtonBounds(), _maxButtonTextures, GetWindowButtonState(_hoveredMaxButton, _pressedMaxButton), "+");
+            DrawWindowButton(sprite, GetCloseButtonBounds(), _closeButtonTextures, GetWindowButtonState(_hoveredCloseButton, _pressedCloseButton), "X");
             DrawBackspace(sprite, GetBackspaceBounds());
+            DrawEnter(sprite, GetEnterBounds());
 
             for (int keyIndex = 0; keyIndex < KeyCharacters.Length; keyIndex++)
             {
@@ -233,7 +263,7 @@ namespace HaCreator.MapSimulator.UI
             Point mousePoint = new(mouseState.X, mouseState.Y);
             UpdateHoverState(mousePoint);
 
-            if (!ContainsPoint(mousePoint.X, mousePoint.Y))
+            if (!GetSoftKeyboardBounds().Contains(mousePoint))
             {
                 if (mouseState.LeftButton == ButtonState.Released)
                 {
@@ -245,13 +275,16 @@ namespace HaCreator.MapSimulator.UI
 
             mouseCursor?.SetMouseCursorMovedToClickableItem();
 
-            bool leftJustPressed = mouseState.LeftButton == ButtonState.Pressed;
+            bool leftPressed = mouseState.LeftButton == ButtonState.Pressed;
             bool leftReleased = mouseState.LeftButton == ButtonState.Released;
 
-            if (leftJustPressed)
+            if (leftPressed)
             {
                 _pressedCloseButton = _hoveredCloseButton;
+                _pressedMinButton = _hoveredMinButton;
+                _pressedMaxButton = _hoveredMaxButton;
                 _pressedBackspace = _hoveredBackspace;
+                _pressedEnterButton = _hoveredEnterButton;
                 _pressedKeyIndex = _hoveredKeyIndex;
             }
             else if (leftReleased)
@@ -263,9 +296,29 @@ namespace HaCreator.MapSimulator.UI
                     return true;
                 }
 
+                if (_pressedMinButton && _hoveredMinButton)
+                {
+                    _isExpandedLayout = false;
+                    SyncHost(_host);
+                    ResetPressedState();
+                    return true;
+                }
+
+                if (_pressedMaxButton && _hoveredMaxButton)
+                {
+                    _isExpandedLayout = true;
+                    SyncHost(_host);
+                    ResetPressedState();
+                    return true;
+                }
+
                 if (_pressedBackspace && _hoveredBackspace)
                 {
                     _host.TryBackspaceSoftKeyboard(out _statusMessage);
+                }
+                else if (_pressedEnterButton && _hoveredEnterButton && CanSubmit())
+                {
+                    _host.TrySubmitSoftKeyboard(out _statusMessage);
                 }
                 else if (_pressedKeyIndex >= 0 && _pressedKeyIndex == _hoveredKeyIndex && IsKeyEnabled(_pressedKeyIndex))
                 {
@@ -293,8 +346,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            char character = GetCharacterForKey(keyIndex);
-            string label = character.ToString();
+            string label = GetCharacterForKey(keyIndex).ToString();
             Vector2 size = _font.MeasureString(label) * 0.55f;
             Color textColor = state == SoftKeyboardVisualState.Disabled
                 ? new Color(110, 110, 110)
@@ -320,8 +372,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 sprite.Draw(texture, new Vector2(bounds.X, bounds.Y), Color.White);
             }
-
-            if (_font != null)
+            else if (_font != null)
             {
                 sprite.DrawString(
                     _font,
@@ -331,6 +382,29 @@ namespace HaCreator.MapSimulator.UI
                     0f,
                     Vector2.Zero,
                     0.5f,
+                    SpriteEffects.None,
+                    0f);
+            }
+        }
+
+        private void DrawEnter(SpriteBatch sprite, Rectangle bounds)
+        {
+            SoftKeyboardVisualState state = GetEnterState();
+            Texture2D texture = _enterTextures[(int)state];
+            if (texture != null)
+            {
+                sprite.Draw(texture, new Vector2(bounds.X, bounds.Y), Color.White);
+            }
+            else if (_font != null)
+            {
+                sprite.DrawString(
+                    _font,
+                    "Enter",
+                    new Vector2(bounds.X + 3, bounds.Y + 6),
+                    state == SoftKeyboardVisualState.Disabled ? new Color(110, 110, 110) : new Color(60, 45, 25),
+                    0f,
+                    Vector2.Zero,
+                    0.45f,
                     SpriteEffects.None,
                     0f);
             }
@@ -368,13 +442,22 @@ namespace HaCreator.MapSimulator.UI
                 0f);
         }
 
-        private void DrawCloseButton(SpriteBatch sprite, Rectangle bounds)
+        private void DrawWindowButton(SpriteBatch sprite, Rectangle bounds, Texture2D[] textures, SoftKeyboardVisualState state, string fallbackLabel)
         {
-            Color fill = _hoveredCloseButton ? new Color(208, 104, 104) : new Color(176, 76, 76);
-            if (_pressedCloseButton)
+            Texture2D texture = textures[(int)state];
+            if (texture != null)
             {
-                fill = new Color(136, 44, 44);
+                sprite.Draw(texture, new Vector2(bounds.X, bounds.Y), Color.White);
+                return;
             }
+
+            Color fill = state switch
+            {
+                SoftKeyboardVisualState.Pressed => new Color(136, 44, 44),
+                SoftKeyboardVisualState.MouseOver => new Color(208, 104, 104),
+                SoftKeyboardVisualState.Disabled => new Color(88, 88, 88, 170),
+                _ => new Color(176, 76, 76),
+            };
 
             sprite.Draw(_pixelTexture, bounds, fill);
             sprite.Draw(_pixelTexture, new Rectangle(bounds.X, bounds.Y, bounds.Width, 1), new Color(52, 20, 20));
@@ -386,7 +469,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 sprite.DrawString(
                     _font,
-                    "X",
+                    fallbackLabel,
                     new Vector2(bounds.X + 3, bounds.Y + 1),
                     Color.White,
                     0f,
@@ -437,6 +520,41 @@ namespace HaCreator.MapSimulator.UI
             return SoftKeyboardVisualState.Normal;
         }
 
+        private SoftKeyboardVisualState GetEnterState()
+        {
+            if (!CanSubmit())
+            {
+                return SoftKeyboardVisualState.Disabled;
+            }
+
+            if (_pressedEnterButton)
+            {
+                return SoftKeyboardVisualState.Pressed;
+            }
+
+            if (_hoveredEnterButton)
+            {
+                return SoftKeyboardVisualState.MouseOver;
+            }
+
+            return SoftKeyboardVisualState.Normal;
+        }
+
+        private static SoftKeyboardVisualState GetWindowButtonState(bool hovered, bool pressed)
+        {
+            if (pressed)
+            {
+                return SoftKeyboardVisualState.Pressed;
+            }
+
+            if (hovered)
+            {
+                return SoftKeyboardVisualState.MouseOver;
+            }
+
+            return SoftKeyboardVisualState.Normal;
+        }
+
         private bool IsKeyEnabled(int keyIndex)
         {
             if (_host == null || keyIndex < 0 || keyIndex >= KeyCharacters.Length)
@@ -463,9 +581,10 @@ namespace HaCreator.MapSimulator.UI
         private void UpdateHoverState(Point mousePoint)
         {
             _hoveredCloseButton = GetCloseButtonBounds().Contains(mousePoint);
-            _hoveredAlphaButton = false;
-            _hoveredNumericButton = false;
+            _hoveredMinButton = GetMinButtonBounds().Contains(mousePoint);
+            _hoveredMaxButton = GetMaxButtonBounds().Contains(mousePoint);
             _hoveredBackspace = GetBackspaceBounds().Contains(mousePoint);
+            _hoveredEnterButton = GetEnterBounds().Contains(mousePoint);
             _hoveredKeyIndex = ResolveKeyIndex(mousePoint);
         }
 
@@ -473,18 +592,19 @@ namespace HaCreator.MapSimulator.UI
         {
             int rx = mousePoint.X - Position.X;
             int ry = mousePoint.Y - Position.Y;
-            if (ry - KeyOriginY < 0)
+            int keyboardOriginY = GetKeyboardOriginY();
+            if (ry - keyboardOriginY < 0)
             {
                 return -1;
             }
 
-            return ((ry - KeyOriginY) / KeyPitch) switch
+            return ((ry - keyboardOriginY) / KeyPitch) switch
             {
                 0 => ResolveRowIndex(rx - KeyOriginXRow0, 0),
                 1 => ResolveRowIndex(rx - KeyOriginXRow1, 10),
                 2 => ResolveRowIndex(rx - KeyOriginXRow2, 20),
                 3 => ResolveRowIndex(rx - KeyOriginXRow3, 29),
-                _ => -1
+                _ => -1,
             };
         }
 
@@ -502,7 +622,7 @@ namespace HaCreator.MapSimulator.UI
                 10 => 1,
                 20 => 2,
                 29 => 3,
-                _ => -1
+                _ => -1,
             };
 
             if (row < 0 || column >= RowLengths[row])
@@ -531,7 +651,7 @@ namespace HaCreator.MapSimulator.UI
                         0 => KeyOriginXRow0,
                         1 => KeyOriginXRow1,
                         2 => KeyOriginXRow2,
-                        _ => KeyOriginXRow3
+                        _ => KeyOriginXRow3,
                     };
                     break;
                 }
@@ -540,7 +660,7 @@ namespace HaCreator.MapSimulator.UI
             int column = keyIndex - rowStart;
             return new Rectangle(
                 Position.X + xBase + (column * KeyPitch),
-                Position.Y + KeyOriginY + (row * KeyPitch),
+                Position.Y + GetKeyboardOriginY() + (row * KeyPitch),
                 _keyTextures[0]?.Width ?? 21,
                 _keyTextures[0]?.Height ?? 22);
         }
@@ -549,14 +669,25 @@ namespace HaCreator.MapSimulator.UI
         {
             return new Rectangle(
                 Position.X + BackspaceX,
-                Position.Y + BackspaceY,
+                Position.Y + GetKeyboardOriginY(),
                 _backspaceTextures[0]?.Width ?? 21,
                 _backspaceTextures[0]?.Height ?? 45);
         }
 
+        private Rectangle GetEnterBounds()
+        {
+            return new Rectangle(
+                Position.X + EnterX,
+                Position.Y + GetKeyboardOriginY() + (2 * KeyPitch),
+                _enterTextures[0]?.Width ?? 33,
+                _enterTextures[0]?.Height ?? 22);
+        }
+
         private Rectangle GetAlphaButtonBounds() => new(Position.X + AlphaButtonX, Position.Y + ModeButtonY, ModeButtonWidth, ModeButtonHeight);
         private Rectangle GetNumericButtonBounds() => new(Position.X + NumericButtonX, Position.Y + ModeButtonY, ModeButtonWidth, ModeButtonHeight);
-        private Rectangle GetCloseButtonBounds() => new(Position.X + CloseButtonX, Position.Y + CloseButtonY, CloseButtonSize, CloseButtonSize);
+        private Rectangle GetMinButtonBounds() => new(Position.X + MinButtonX, Position.Y + WindowButtonY, _minButtonTextures[0]?.Width ?? DefaultWindowButtonSize, _minButtonTextures[0]?.Height ?? DefaultWindowButtonSize);
+        private Rectangle GetMaxButtonBounds() => new(Position.X + MaxButtonX, Position.Y + WindowButtonY, _maxButtonTextures[0]?.Width ?? DefaultWindowButtonSize, _maxButtonTextures[0]?.Height ?? DefaultWindowButtonSize);
+        private Rectangle GetCloseButtonBounds() => new(Position.X + CloseButtonX, Position.Y + WindowButtonY, _closeButtonTextures[0]?.Width ?? DefaultWindowButtonSize, _closeButtonTextures[0]?.Height ?? DefaultWindowButtonSize);
 
         private SoftKeyboardKeyMode ResolveKeyMode()
         {
@@ -610,7 +741,7 @@ namespace HaCreator.MapSimulator.UI
                 SoftKeyboardKeyboardType.NumericOnly or SoftKeyboardKeyboardType.NumericOnlyAlt => textLength < maxLength
                     ? SoftKeyboardKeyMode.NumericOnly
                     : SoftKeyboardKeyMode.Disabled,
-                _ => SoftKeyboardKeyMode.Disabled
+                _ => SoftKeyboardKeyMode.Disabled,
             };
         }
 
@@ -656,17 +787,56 @@ namespace HaCreator.MapSimulator.UI
         {
             _pressedKeyIndex = -1;
             _pressedBackspace = false;
+            _pressedEnterButton = false;
             _pressedCloseButton = false;
+            _pressedMinButton = false;
+            _pressedMaxButton = false;
         }
 
         private void ResetVisualState()
         {
             _hoveredKeyIndex = -1;
             _hoveredBackspace = false;
-            _hoveredAlphaButton = false;
-            _hoveredNumericButton = false;
+            _hoveredEnterButton = false;
             _hoveredCloseButton = false;
+            _hoveredMinButton = false;
+            _hoveredMaxButton = false;
             ResetPressedState();
+        }
+
+        private bool CanSubmit()
+        {
+            return _host?.CanSubmitSoftKeyboard == true;
+        }
+
+        private Texture2D GetBackgroundTexture()
+        {
+            return _isExpandedLayout ? _expandedBackgroundTexture : _compactBackgroundTexture;
+        }
+
+        private Rectangle GetSoftKeyboardBounds()
+        {
+            Texture2D backgroundTexture = GetBackgroundTexture();
+            return new Rectangle(
+                Position.X,
+                Position.Y,
+                backgroundTexture?.Width ?? CurrentFrame?.Width ?? 290,
+                backgroundTexture?.Height ?? CurrentFrame?.Height ?? 119);
+        }
+
+        private int GetKeyboardOriginY()
+        {
+            return KeyOriginY + (_isExpandedLayout ? ExpandedHeaderOffsetY : 0);
+        }
+
+        private static Texture2D[] ValidateStateTextures(Texture2D[] textures, string parameterName)
+        {
+            if (textures == null || textures.Length != 4)
+            {
+                throw new ArgumentException("Expected four visual-state textures.", parameterName);
+            }
+
+            return textures;
         }
     }
 }

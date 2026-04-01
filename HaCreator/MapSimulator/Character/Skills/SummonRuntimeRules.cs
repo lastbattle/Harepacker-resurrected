@@ -138,6 +138,30 @@ namespace HaCreator.MapSimulator.Character.Skills
             return null;
         }
 
+        public static string ResolveSelfDestructFinalBranch(SkillData skill, SummonAssistType assistType)
+        {
+            if (skill == null)
+            {
+                return null;
+            }
+
+            if (skill.SkillId == 1321007)
+            {
+                return ResolveNamedSummonBranch(skill, "skill1", "heal", "support");
+            }
+
+            return assistType switch
+            {
+                SummonAssistType.Support when HasMinionAbilityToken(skill.MinionAbility, "heal")
+                    => ResolveNamedSummonBranch(skill, "heal", "support"),
+                SummonAssistType.Support
+                    => ResolveNamedSummonBranch(skill, "support", "heal"),
+                SummonAssistType.SummonAction
+                    => ResolveNamedSummonBranch(skill, "subsummon"),
+                _ => null
+            };
+        }
+
         public static bool IsSatelliteSummonSkill(int skillId)
         {
             return skillId == 35111001

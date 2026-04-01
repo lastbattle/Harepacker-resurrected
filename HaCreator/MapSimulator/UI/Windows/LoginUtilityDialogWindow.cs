@@ -54,6 +54,7 @@ namespace HaCreator.MapSimulator.UI
         private bool _inputMasked;
         private int _inputMaxLength;
         private SoftKeyboardKeyboardType _softKeyboardType = SoftKeyboardKeyboardType.AlphaNumeric;
+        private bool _softKeyboardActive;
         private string _compositionText = string.Empty;
         private ImeCandidateListState _candidateListState = ImeCandidateListState.Empty;
 
@@ -96,10 +97,11 @@ namespace HaCreator.MapSimulator.UI
 
         public override bool SupportsDragging => false;
         public override bool CapturesKeyboardInput => true;
-        bool ISoftKeyboardHost.WantsSoftKeyboard => IsVisible && HasInputField;
+        bool ISoftKeyboardHost.WantsSoftKeyboard => IsVisible && HasInputField && _softKeyboardActive;
         SoftKeyboardKeyboardType ISoftKeyboardHost.SoftKeyboardKeyboardType => _softKeyboardType;
         int ISoftKeyboardHost.SoftKeyboardTextLength => _inputValue?.Length ?? 0;
         int ISoftKeyboardHost.SoftKeyboardMaxLength => _inputMaxLength;
+        bool ISoftKeyboardHost.CanSubmitSoftKeyboard => HasInputField && _drawPrimaryButtonLabel;
 
         public event Action PrimaryRequested;
         public event Action SecondaryRequested;
@@ -113,6 +115,7 @@ namespace HaCreator.MapSimulator.UI
         public override void Hide()
         {
             base.Hide();
+            _softKeyboardActive = false;
             ClearCompositionText();
         }
 
@@ -146,6 +149,7 @@ namespace HaCreator.MapSimulator.UI
             _softKeyboardType = softKeyboardType;
             if (!HasInputField)
             {
+                _softKeyboardActive = false;
                 ClearCompositionText();
             }
             ConfigureButtons();
@@ -180,6 +184,25 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _previousKeyboardState = keyboardState;
+        }
+
+        public override bool CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState, MouseCursorItem mouseCursor, int renderWidth, int renderHeight)
+        {
+            bool handled = base.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState, mouseCursor, renderWidth, renderHeight);
+            if (handled || !IsVisible || !HasInputField)
+            {
+                return handled;
+            }
+
+            bool leftClicked = mouseState.LeftButton == ButtonState.Pressed;
+            if (leftClicked && GetInputBounds().Contains(mouseState.X, mouseState.Y))
+            {
+                _softKeyboardActive = true;
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+                return true;
+            }
+
+            return false;
         }
 
         protected override void DrawContents(
@@ -594,8 +617,22 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
+        bool ISoftKeyboardHost.TrySubmitSoftKeyboard(out string errorMessage)
+        {
+            errorMessage = string.Empty;
+            if (!HasInputField || !_drawPrimaryButtonLabel)
+            {
+                errorMessage = "This dialog cannot be submitted.";
+                return false;
+            }
+
+            PrimaryRequested?.Invoke();
+            return true;
+        }
+
         void ISoftKeyboardHost.OnSoftKeyboardClosed()
         {
+            _softKeyboardActive = false;
         }
 
         private bool CanAcceptCharacter(char character)

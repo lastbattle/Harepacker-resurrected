@@ -1,5 +1,6 @@
 using Microsoft.Xna.Framework;
 using System;
+using System.Collections.Generic;
 
 namespace HaCreator.MapSimulator.Interaction
 {
@@ -164,6 +165,48 @@ namespace HaCreator.MapSimulator.Interaction
             return _lastStatusMessage;
         }
 
+        public bool TryClearMissingRemoteCharacter(int characterId, Func<int, string> nameResolver, out string message)
+        {
+            var clearedMessages = new List<string>();
+            string displayName = DescribeActor(characterId, nameResolver, includeIdWhenNameMissing: false);
+
+            if (characterId > 0 && _pendingOutgoingDriverId == characterId)
+            {
+                _pendingOutgoingDriverId = 0;
+                _pendingOutgoingAutoRequest = false;
+                _pendingOutgoingKeyInput = false;
+                clearedMessages.Add($"Cleared the pending local follow request to {displayName} because the remote target is no longer available.");
+            }
+
+            if (characterId > 0 && _incomingRequesterId == characterId)
+            {
+                _incomingRequesterId = 0;
+                clearedMessages.Add($"Dismissed the incoming follow request from {displayName} because the requester is no longer available.");
+            }
+
+            if (characterId > 0 && _attachedPassengerId == characterId)
+            {
+                _attachedPassengerId = 0;
+                clearedMessages.Add($"Detached passenger {displayName} from the local driver seam because the remote requester is no longer available.");
+            }
+
+            if (characterId > 0 && _attachedDriverId == characterId)
+            {
+                _attachedDriverId = 0;
+                clearedMessages.Add($"Detached the local player from follow because driver {displayName} is no longer available.");
+            }
+
+            if (clearedMessages.Count == 0)
+            {
+                message = null;
+                return false;
+            }
+
+            message = string.Join(" ", clearedMessages);
+            _lastStatusMessage = message;
+            return true;
+        }
+
         public string ApplyFollowFailure(FollowCharacterFailureInfo info)
         {
             if (info.ClearsPendingRequest)
@@ -310,6 +353,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static string DescribeActor(int characterId, Func<int, string> nameResolver)
         {
+            return DescribeActor(characterId, nameResolver, includeIdWhenNameMissing: true);
+        }
+
+        private static string DescribeActor(int characterId, Func<int, string> nameResolver, bool includeIdWhenNameMissing)
+        {
             if (characterId <= 0)
             {
                 return "none";
@@ -317,7 +365,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             string name = nameResolver?.Invoke(characterId)?.Trim();
             return string.IsNullOrWhiteSpace(name)
-                ? characterId.ToString()
+                ? includeIdWhenNameMissing ? characterId.ToString() : $"Character {characterId}"
                 : $"{name} ({characterId})";
         }
     }

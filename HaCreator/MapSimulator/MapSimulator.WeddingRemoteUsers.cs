@@ -40,6 +40,12 @@ namespace HaCreator.MapSimulator
                     WeddingRemoteUserSourceTag,
                     isVisibleInWorld: true);
 
+                _remoteUserPool.TrySetPortableChair(
+                    characterId,
+                    snapshot.PortableChairItemId,
+                    out _,
+                    snapshot.PortableChairPairCharacterId);
+
                 if (snapshot.MovementSnapshot != null)
                 {
                     _remoteUserPool.TryApplyMoveSnapshot(

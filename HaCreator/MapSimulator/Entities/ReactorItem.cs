@@ -391,7 +391,8 @@ namespace HaCreator.MapSimulator.Entities
 
             if (request.ActivationValue <= 0
                 || (request.ActivationType != ReactorActivationType.Item
-                    && request.ActivationType != ReactorActivationType.Skill))
+                    && request.ActivationType != ReactorActivationType.Skill
+                    && request.ActivationType != ReactorActivationType.Quest))
             {
                 return transitions;
             }
@@ -552,6 +553,10 @@ namespace HaCreator.MapSimulator.Entities
             IEnumerable<int> namedSelectorValues = new[]
             {
                 TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["id"])),
+                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["quest"])),
+                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["questID"])),
+                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["questid"])),
+                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["reqQuest"])),
                 TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["item"])),
                 TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["itemID"])),
                 TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["itemid"])),

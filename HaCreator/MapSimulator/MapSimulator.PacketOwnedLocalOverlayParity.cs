@@ -1150,7 +1150,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            PetRuntime requestPet = activePets.FirstOrDefault(static pet => pet?.SlotIndex == 0);
+            PetRuntime requestPet = FindFirstEnabledFieldHazardAutoConsumePet(activePets);
             if (requestPet == null)
             {
                 return false;
@@ -1249,6 +1249,34 @@ namespace HaCreator.MapSimulator
 
             SetFieldHazardSharedPetConsumeItem(candidate.ItemId, candidate.InventoryType);
             return true;
+        }
+
+        private static PetRuntime FindFirstEnabledFieldHazardAutoConsumePet(IReadOnlyList<PetRuntime> activePets)
+        {
+            if (activePets == null || activePets.Count == 0)
+            {
+                return null;
+            }
+
+            PetRuntime firstEnabledPet = null;
+            int firstEnabledSlotIndex = int.MaxValue;
+            for (int i = 0; i < activePets.Count; i++)
+            {
+                PetRuntime pet = activePets[i];
+                if (pet == null || !pet.AutoConsumeHpEnabled)
+                {
+                    continue;
+                }
+
+                int slotIndex = pet.SlotIndex >= 0 ? pet.SlotIndex : i;
+                if (firstEnabledPet == null || slotIndex < firstEnabledSlotIndex)
+                {
+                    firstEnabledPet = pet;
+                    firstEnabledSlotIndex = slotIndex;
+                }
+            }
+
+            return firstEnabledPet;
         }
 
         private void RefreshFieldHazardPetAutoConsumeTransportDetail(int currentTickCount)
@@ -1398,8 +1426,9 @@ namespace HaCreator.MapSimulator
             int remainingMs = Math.Max(0, request.AckAt - currentTickCount);
             return string.Format(
                 CultureInfo.InvariantCulture,
-                "Field hazard pet transport: {0}, pending={1} [{2}] slot={3} ackIn={4}ms force={5} buffSkill={6}.",
+                "Field hazard pet transport: {0}, requester={1}, pending={2} [{3}] slot={4} ackIn={5}ms force={6} buffSkill={7}.",
                 sharedItemStatus,
+                DescribeFieldHazardAutoConsumePet(request.PetSlotIndex, request.PetName),
                 request.Candidate.ItemId,
                 request.Candidate.InventoryType,
                 request.InventorySlotIndex,
