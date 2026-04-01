@@ -21,7 +21,15 @@ namespace HaCreator.MapSimulator
         private const int ShowaBathMaleLongcoatItemId = 1050100;
         private const int ShowaBathFemaleLongcoatItemId = 1051098;
         private const string ClientOwnedLimitedViewWzPath = "Viewrange/0";
+        private const string AranTutorialOnUserEnterPrefix = "aranTutor";
+        private const string AranTutorialMapMark = "BlackDragon";
+        private const string WeddingMapMark = "Wedding";
+        private const int AranTutorialMapIdMin = 914000000;
+        private const int AranTutorialMapIdMax = 914000500;
         private const float ClientOwnedLimitedViewFallbackRadius = 158f;
+        private const float ClientOwnedLimitedViewFallbackMaskWidth = 316f;
+        private const float ClientOwnedLimitedViewFallbackMaskHeight = 316f;
+        private const float ClientOwnedLimitedViewFallbackOriginX = 158f;
         private const float ClientOwnedLimitedViewFallbackOriginY = 179f;
         private const int EscortFailOverlayDurationMs = 2500;
         private bool _tutorialAppearanceOverrideApplied;
@@ -36,6 +44,9 @@ namespace HaCreator.MapSimulator
         private int _escortFailOverlayUntilTick = int.MinValue;
         private bool _clientOwnedLimitedViewMetadataLoaded;
         private float _clientOwnedLimitedViewRadius = ClientOwnedLimitedViewFallbackRadius;
+        private float _clientOwnedLimitedViewMaskWidth = ClientOwnedLimitedViewFallbackMaskWidth;
+        private float _clientOwnedLimitedViewMaskHeight = ClientOwnedLimitedViewFallbackMaskHeight;
+        private float _clientOwnedLimitedViewOriginX = ClientOwnedLimitedViewFallbackOriginX;
         private float _clientOwnedLimitedViewOriginY = ClientOwnedLimitedViewFallbackOriginY;
 
         private void ApplyClientOwnedFieldWrappers()
@@ -311,6 +322,7 @@ namespace HaCreator.MapSimulator
         {
             if (!IsLimitedViewWrapperMap(mapInfo))
             {
+                _limitedViewField.ClearClientOwnedMask();
                 _limitedViewField.DisableImmediate();
                 return;
             }
@@ -320,6 +332,11 @@ namespace HaCreator.MapSimulator
             _limitedViewField.SetPulse(false);
             _limitedViewField.SetEdgeSoftness(0f);
             _limitedViewField.SetFogColor(Color.Black);
+            _limitedViewField.ConfigureClientOwnedMask(
+                _clientOwnedLimitedViewMaskWidth,
+                _clientOwnedLimitedViewMaskHeight,
+                _clientOwnedLimitedViewOriginX,
+                _clientOwnedLimitedViewOriginY);
             _limitedViewField.EnableCircle(_clientOwnedLimitedViewRadius);
         }
 
@@ -448,15 +465,20 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            _clientOwnedLimitedViewMaskWidth = Math.Max(1f, canvas.PngProperty?.Width ?? ClientOwnedLimitedViewFallbackMaskWidth);
+            _clientOwnedLimitedViewMaskHeight = Math.Max(1f, canvas.PngProperty?.Height ?? ClientOwnedLimitedViewFallbackMaskHeight);
+
             if (canvas["origin"] is WzVectorProperty origin)
             {
+                _clientOwnedLimitedViewOriginX = Math.Clamp(origin.X?.Value ?? ClientOwnedLimitedViewFallbackOriginX, 0f, _clientOwnedLimitedViewMaskWidth);
                 _clientOwnedLimitedViewRadius = Math.Max(1f, origin.X?.Value ?? 0);
                 _clientOwnedLimitedViewOriginY = Math.Max(1f, origin.Y?.Value ?? 0);
                 return;
             }
 
-            _clientOwnedLimitedViewRadius = Math.Max(1f, canvas.PngProperty?.Width * 0.5f ?? 0f);
-            _clientOwnedLimitedViewOriginY = Math.Max(1f, canvas.PngProperty?.Height * 0.5f ?? 0f);
+            _clientOwnedLimitedViewOriginX = Math.Max(1f, _clientOwnedLimitedViewMaskWidth * 0.5f);
+            _clientOwnedLimitedViewRadius = Math.Max(1f, _clientOwnedLimitedViewMaskWidth * 0.5f);
+            _clientOwnedLimitedViewOriginY = Math.Max(1f, _clientOwnedLimitedViewMaskHeight * 0.5f);
         }
 
         private string DescribeClientOwnedFieldWrapperStatus()
@@ -471,15 +493,23 @@ namespace HaCreator.MapSimulator
 
             if (IsTutorialWrapperMap(mapInfo))
             {
-                activeWrappers.Add(
-                    $"tutorial wrapper active (fieldType {(int)FieldType.FIELDTYPE_TUTORIAL}): forcing hat {TutorialForcedCapItemId} and longcoat {TutorialForcedLongcoatItemId}.");
+                if (IsAranTutorialWrapperMap(mapInfo))
+                {
+                    activeWrappers.Add(
+                        $"aran-tutorial wrapper active (client GetFieldType 22, map {mapInfo.id}, onUserEnter {mapInfo.onUserEnter ?? "<none>"}): forcing hat {TutorialForcedCapItemId} and longcoat {TutorialForcedLongcoatItemId}.");
+                }
+                else
+                {
+                    activeWrappers.Add(
+                        $"tutorial wrapper active (fieldType {(int)FieldType.FIELDTYPE_TUTORIAL}): forcing hat {TutorialForcedCapItemId} and longcoat {TutorialForcedLongcoatItemId}.");
+                }
             }
 
             if (IsLimitedViewWrapperMap(mapInfo))
             {
                 EnsureClientOwnedLimitedViewMetadataLoaded();
                 activeWrappers.Add(
-                    $"limited-view wrapper active (fieldType {(int)FieldType.FIELDTYPE_LIMITEDVIEW}): radius {_clientOwnedLimitedViewRadius:F0}, originY {_clientOwnedLimitedViewOriginY:F0}, source Effect/MapEff.img/{ClientOwnedLimitedViewWzPath}.");
+                    $"limited-view wrapper active (fieldType {(int)FieldType.FIELDTYPE_LIMITEDVIEW}): mask {_clientOwnedLimitedViewMaskWidth:F0}x{_clientOwnedLimitedViewMaskHeight:F0}, origin ({_clientOwnedLimitedViewOriginX:F0},{_clientOwnedLimitedViewOriginY:F0}), radius {_clientOwnedLimitedViewRadius:F0}, source Effect/MapEff.img/{ClientOwnedLimitedViewWzPath}.");
             }
 
             if (SuppressesDragonPresentation(mapInfo))
@@ -496,7 +526,7 @@ namespace HaCreator.MapSimulator
                     ? $" safeArea(side={mapInfo.LBSide ?? 0}, top={mapInfo.LBTop ?? 0}, bottom={mapInfo.LBBottom ?? 0})."
                     : string.Empty;
                 activeWrappers.Add(
-                    $"wedding-photo wrapper active (fieldType {(int)FieldType.FIELDTYPE_WEDDINGPHOTO}) on map {mapInfo.id}.{safeArea}");
+                    $"wedding-photo wrapper active ({DescribeWeddingPhotoWrapperSource(mapInfo)}) on map {mapInfo.id}.{safeArea}");
             }
 
             return activeWrappers.Count == 0
@@ -533,7 +563,8 @@ namespace HaCreator.MapSimulator
 
         private static bool IsTutorialWrapperMap(MapInfo mapInfo)
         {
-            return mapInfo?.fieldType == FieldType.FIELDTYPE_TUTORIAL;
+            return mapInfo?.fieldType == FieldType.FIELDTYPE_TUTORIAL
+                || IsAranTutorialWrapperMap(mapInfo);
         }
 
         private static bool IsNoDragonWrapperMap(MapInfo mapInfo)
@@ -548,7 +579,8 @@ namespace HaCreator.MapSimulator
 
         private static bool IsWeddingPhotoWrapperMap(MapInfo mapInfo)
         {
-            return mapInfo?.fieldType == FieldType.FIELDTYPE_WEDDINGPHOTO;
+            return mapInfo?.fieldType == FieldType.FIELDTYPE_WEDDINGPHOTO
+                || HasWeddingPhotoSafeAreaContract(mapInfo);
         }
 
         private static bool IsTransitVoyageWrapperMap(MapInfo mapInfo)
@@ -565,7 +597,8 @@ namespace HaCreator.MapSimulator
 
         private static bool IsKillCountWrapperMap(MapInfo mapInfo)
         {
-            return mapInfo?.fieldType == FieldType.FIELDTYPE_KILLCOUNT;
+            return mapInfo?.fieldType == FieldType.FIELDTYPE_KILLCOUNT
+                && !IsAranTutorialWrapperMap(mapInfo);
         }
 
         private static bool IsEscortResultWrapperMap(MapInfo mapInfo)
@@ -578,6 +611,47 @@ namespace HaCreator.MapSimulator
             return mapInfo?.fieldType == FieldType.FIELDTYPE_SHOWABATH
                 || mapInfo?.id == 801000200
                 || mapInfo?.id == 801000210;
+        }
+
+        private static bool IsAranTutorialWrapperMap(MapInfo mapInfo)
+        {
+            if (mapInfo == null)
+            {
+                return false;
+            }
+
+            if (!string.IsNullOrWhiteSpace(mapInfo.onUserEnter)
+                && mapInfo.onUserEnter.StartsWith(AranTutorialOnUserEnterPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            return mapInfo.id >= AranTutorialMapIdMin
+                && mapInfo.id <= AranTutorialMapIdMax
+                && string.Equals(mapInfo.mapMark, AranTutorialMapMark, StringComparison.OrdinalIgnoreCase)
+                && mapInfo.fieldType == FieldType.FIELDTYPE_KILLCOUNT;
+        }
+
+        private static bool HasWeddingPhotoSafeAreaContract(MapInfo mapInfo)
+        {
+            return mapInfo != null
+                && string.Equals(mapInfo.mapMark, WeddingMapMark, StringComparison.OrdinalIgnoreCase)
+                && (mapInfo.LBSide.HasValue || mapInfo.LBTop.HasValue || mapInfo.LBBottom.HasValue);
+        }
+
+        private static string DescribeWeddingPhotoWrapperSource(MapInfo mapInfo)
+        {
+            if (mapInfo?.fieldType == FieldType.FIELDTYPE_WEDDINGPHOTO)
+            {
+                return $"fieldType {(int)FieldType.FIELDTYPE_WEDDINGPHOTO}";
+            }
+
+            if (HasWeddingPhotoSafeAreaContract(mapInfo))
+            {
+                return $"Wedding safe-area contract (mapMark={mapInfo.mapMark})";
+            }
+
+            return "presentation wrapper";
         }
     }
 }

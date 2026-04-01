@@ -10,6 +10,18 @@ namespace HaCreator.MapSimulator.UI
 {
     public sealed class UtilityPanelWindow : UIWindowBase
     {
+        public readonly struct IndicatorFrame
+        {
+            public IndicatorFrame(Texture2D texture, int delayMs)
+            {
+                Texture = texture;
+                DelayMs = Math.Max(1, delayMs);
+            }
+
+            public Texture2D Texture { get; }
+            public int DelayMs { get; }
+        }
+
         private readonly struct PageLayer
         {
             public PageLayer(IDXObject layer, Point offset)
@@ -27,9 +39,13 @@ namespace HaCreator.MapSimulator.UI
         private readonly List<PageLayer> _layers = new();
         private readonly Dictionary<UIObject, Action> _buttonActions = new();
         private readonly List<string> _staticLines = new();
+        private readonly List<IndicatorFrame> _activeIndicatorFrames = new();
         private SpriteFont _font;
         private Func<IReadOnlyList<string>> _contentProvider;
         private Func<string> _footerProvider;
+        private Func<bool> _indicatorActiveProvider;
+        private Texture2D _inactiveIndicatorTexture;
+        private Point _indicatorOffset;
 
         public UtilityPanelWindow(IDXObject frame, string windowName, string title)
             : base(frame)
@@ -80,6 +96,30 @@ namespace HaCreator.MapSimulator.UI
             _footerProvider = footerProvider;
         }
 
+        public void SetIndicatorFrames(Texture2D inactiveTexture, IReadOnlyList<IndicatorFrame> activeFrames, Point offset)
+        {
+            _inactiveIndicatorTexture = inactiveTexture;
+            _indicatorOffset = offset;
+            _activeIndicatorFrames.Clear();
+            if (activeFrames == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < activeFrames.Count; i++)
+            {
+                if (activeFrames[i].Texture != null)
+                {
+                    _activeIndicatorFrames.Add(activeFrames[i]);
+                }
+            }
+        }
+
+        public void SetIndicatorActiveProvider(Func<bool> indicatorActiveProvider)
+        {
+            _indicatorActiveProvider = indicatorActiveProvider;
+        }
+
         public void RegisterButton(UIObject button, Action action)
         {
             if (button == null)
@@ -116,6 +156,8 @@ namespace HaCreator.MapSimulator.UI
                     false,
                     drawReflectionInfo);
             }
+
+            DrawIndicator(sprite, TickCount);
 
             if (_font == null)
             {
@@ -166,6 +208,51 @@ namespace HaCreator.MapSimulator.UI
             {
                 action?.Invoke();
             }
+        }
+
+        private void DrawIndicator(SpriteBatch sprite, int tickCount)
+        {
+            Texture2D indicatorTexture = ResolveIndicatorTexture(tickCount);
+            if (indicatorTexture == null)
+            {
+                return;
+            }
+
+            int indicatorX = Position.X + Math.Max(8, (CurrentFrame?.Width ?? indicatorTexture.Width) - indicatorTexture.Width - 12) + _indicatorOffset.X;
+            int indicatorY = Position.Y + 10 + _indicatorOffset.Y;
+            sprite.Draw(indicatorTexture, new Vector2(indicatorX, indicatorY), Color.White);
+        }
+
+        private Texture2D ResolveIndicatorTexture(int tickCount)
+        {
+            if (_indicatorActiveProvider?.Invoke() == true && _activeIndicatorFrames.Count > 0)
+            {
+                int totalDelay = 0;
+                for (int i = 0; i < _activeIndicatorFrames.Count; i++)
+                {
+                    totalDelay += _activeIndicatorFrames[i].DelayMs;
+                }
+
+                if (totalDelay <= 0)
+                {
+                    return _activeIndicatorFrames[0].Texture;
+                }
+
+                int time = Math.Abs(tickCount % totalDelay);
+                for (int i = 0; i < _activeIndicatorFrames.Count; i++)
+                {
+                    if (time < _activeIndicatorFrames[i].DelayMs)
+                    {
+                        return _activeIndicatorFrames[i].Texture;
+                    }
+
+                    time -= _activeIndicatorFrames[i].DelayMs;
+                }
+
+                return _activeIndicatorFrames[_activeIndicatorFrames.Count - 1].Texture;
+            }
+
+            return _inactiveIndicatorTexture;
         }
 
         private IEnumerable<string> WrapText(string text, float maxWidth)

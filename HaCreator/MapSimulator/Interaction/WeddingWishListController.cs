@@ -1,0 +1,161 @@
+using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.UI;
+using Microsoft.Xna.Framework.Graphics;
+using System;
+
+namespace HaCreator.MapSimulator.Interaction
+{
+    internal sealed class WeddingWishListController
+    {
+        private readonly WeddingWishListRuntime _runtime = new();
+
+        internal void UpdateLocalContext(CharacterBuild build)
+        {
+            _runtime.UpdateLocalContext(build);
+        }
+
+        internal string DescribeStatus()
+        {
+            return _runtime.DescribeStatus();
+        }
+
+        internal void WireWindow(
+            UIWindowManager windowManager,
+            CharacterBuild build,
+            IInventoryRuntime inventory,
+            SpriteFont font,
+            Action<string> feedbackHandler)
+        {
+            if (windowManager?.GetWindow(MapSimulatorWindowNames.WeddingWishList) is not WeddingWishListWindow window)
+            {
+                return;
+            }
+
+            _runtime.UpdateLocalContext(build);
+            _runtime.BindInventory(inventory);
+            window.SetSnapshotProvider(() => _runtime.BuildSnapshot());
+            window.SetActionHandlers(
+                pane => FocusPane(pane),
+                tabIndex => SetTab(tabIndex),
+                (pane, index) => SelectEntry(pane, index),
+                () => GetSelected(windowManager),
+                () => PutSelected(windowManager),
+                () => EnterSelected(windowManager),
+                () => DeleteSelected(windowManager),
+                () => Confirm(windowManager),
+                () => Close(windowManager),
+                feedbackHandler);
+            window.SetFont(font);
+        }
+
+        internal string Open(
+            WeddingWishListDialogMode mode,
+            WeddingWishListRole? role,
+            UIWindowManager windowManager,
+            CharacterBuild build,
+            IInventoryRuntime inventory,
+            SpriteFont font,
+            Action<string> feedbackHandler,
+            Action showWindow)
+        {
+            _runtime.UpdateLocalContext(build);
+            _runtime.BindInventory(inventory);
+            string message = _runtime.Open(mode, role);
+            ShowWindow(windowManager, build, inventory, font, feedbackHandler, showWindow);
+            return message;
+        }
+
+        internal string SetMode(
+            WeddingWishListDialogMode mode,
+            UIWindowManager windowManager,
+            CharacterBuild build,
+            IInventoryRuntime inventory,
+            SpriteFont font,
+            Action<string> feedbackHandler,
+            Action showWindow)
+        {
+            _runtime.UpdateLocalContext(build);
+            _runtime.BindInventory(inventory);
+            string message = _runtime.SetMode(mode);
+            ShowWindow(windowManager, build, inventory, font, feedbackHandler, showWindow);
+            return message;
+        }
+
+        internal string SetTab(int tabIndex) => _runtime.SetTab(tabIndex);
+
+        internal string FocusPane(WeddingWishListSelectionPane pane) => _runtime.SetActivePane(pane);
+
+        internal string SelectEntry(WeddingWishListSelectionPane pane, int index) => _runtime.SelectEntry(pane, index);
+
+        internal string MoveSelection(int delta) => _runtime.MoveSelection(delta);
+
+        internal string PutSelected(UIWindowManager windowManager)
+        {
+            string message = _runtime.TryPutSelectedItem();
+            KeepWindowVisible(windowManager);
+            return message;
+        }
+
+        internal string GetSelected(UIWindowManager windowManager)
+        {
+            string message = _runtime.TryGetSelectedItem();
+            KeepWindowVisible(windowManager);
+            return message;
+        }
+
+        internal string EnterSelected(UIWindowManager windowManager)
+        {
+            string message = _runtime.TryAddCandidateWish();
+            KeepWindowVisible(windowManager);
+            return message;
+        }
+
+        internal string DeleteSelected(UIWindowManager windowManager)
+        {
+            string message = _runtime.TryDeleteWish();
+            KeepWindowVisible(windowManager);
+            return message;
+        }
+
+        internal string Confirm(UIWindowManager windowManager)
+        {
+            string message = _runtime.ConfirmInput();
+            windowManager?.HideWindow(MapSimulatorWindowNames.WeddingWishList);
+            return message;
+        }
+
+        internal string Close(UIWindowManager windowManager)
+        {
+            string message = _runtime.Close();
+            windowManager?.HideWindow(MapSimulatorWindowNames.WeddingWishList);
+            return message;
+        }
+
+        internal string Clear(UIWindowManager windowManager)
+        {
+            string message = _runtime.Clear();
+            windowManager?.HideWindow(MapSimulatorWindowNames.WeddingWishList);
+            return message;
+        }
+
+        private void ShowWindow(
+            UIWindowManager windowManager,
+            CharacterBuild build,
+            IInventoryRuntime inventory,
+            SpriteFont font,
+            Action<string> feedbackHandler,
+            Action showWindow)
+        {
+            WireWindow(windowManager, build, inventory, font, feedbackHandler);
+            showWindow?.Invoke();
+        }
+
+        private static void KeepWindowVisible(UIWindowManager windowManager)
+        {
+            if (windowManager?.GetWindow(MapSimulatorWindowNames.WeddingWishList) is WeddingWishListWindow window)
+            {
+                windowManager.BringToFront(window);
+            }
+        }
+    }
+}

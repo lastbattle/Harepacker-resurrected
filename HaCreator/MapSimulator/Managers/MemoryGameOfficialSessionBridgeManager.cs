@@ -89,6 +89,7 @@ namespace HaCreator.MapSimulator.Managers
         public bool HasConnectedSession => _activePair?.InitCompleted == true;
         public int ReceivedCount { get; private set; }
         public int ForwardedClientMiniRoomCount { get; private set; }
+        public int MirroredClientMiniRoomCount { get; private set; }
         public string LastStatus { get; private set; } = "Memory Game official-session bridge inactive.";
 
         public static IReadOnlyList<SessionDiscoveryCandidate> DiscoverEstablishedSessions(
@@ -375,6 +376,14 @@ namespace HaCreator.MapSimulator.Managers
                 }
 
                 ForwardedClientMiniRoomCount++;
+                if (TryBuildMirroredClientMessage(payload, $"official-session-client:{pair.ClientEndpoint}", out MemoryGamePacketInboxMessage mirroredMessage))
+                {
+                    _pendingMessages.Enqueue(mirroredMessage);
+                    MirroredClientMiniRoomCount++;
+                    LastStatus = $"Forwarded live MiniRoom subtype {payload[0]} from {pair.ClientEndpoint} to {pair.RemoteEndpoint} and queued a mirrored client request.";
+                    return;
+                }
+
                 LastStatus = $"Forwarded live MiniRoom subtype {payload[0]} from {pair.ClientEndpoint} to {pair.RemoteEndpoint}.";
             }
             catch (Exception ex)
@@ -433,7 +442,40 @@ namespace HaCreator.MapSimulator.Managers
 
                 ReceivedCount = 0;
                 ForwardedClientMiniRoomCount = 0;
+                MirroredClientMiniRoomCount = 0;
             }
+        }
+
+        internal static bool TryBuildMirroredClientMessage(byte[] payload, string source, out MemoryGamePacketInboxMessage message)
+        {
+            message = null;
+            if (!TryClassifyMirroredClientSubtype(payload, out _))
+            {
+                return false;
+            }
+
+            message = new MemoryGamePacketInboxMessage(
+                payload,
+                source,
+                $"packetclientraw {Convert.ToHexString(payload)}");
+            return true;
+        }
+
+        internal static bool TryClassifyMirroredClientSubtype(byte[] payload, out byte subtype)
+        {
+            subtype = 0;
+            if (payload == null || payload.Length == 0)
+            {
+                return false;
+            }
+
+            subtype = payload[0];
+            return subtype switch
+            {
+                10 or 50 or 52 or 56 or 57 or 58 or 59 or 61 => true,
+                60 => payload.Length >= 2,
+                _ => false
+            };
         }
 
         private static MapleCrypto CreateCrypto(byte[] iv, short version)

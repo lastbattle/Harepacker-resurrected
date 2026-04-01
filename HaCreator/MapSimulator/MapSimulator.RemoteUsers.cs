@@ -34,7 +34,8 @@ namespace HaCreator.MapSimulator
                 _mapBoard.MapInfo.id,
                 position.X,
                 position.Y,
-                new TemporaryPortalField.RemoteTownPortalResolvedDestination(returnMapId, returnX, returnY));
+                new TemporaryPortalField.RemoteTownPortalResolvedDestination(returnMapId, returnX, returnY),
+                Environment.TickCount);
         }
 
         private void RegisterRemoteUserChatCommand()

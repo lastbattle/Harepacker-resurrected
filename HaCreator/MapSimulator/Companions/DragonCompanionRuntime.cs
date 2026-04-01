@@ -57,10 +57,20 @@ namespace HaCreator.MapSimulator.Companions
             }
         }
 
+        private enum DragonQuestInfoState
+        {
+            PreStart = 0,
+            RewardReady = 1,
+            Active = 2,
+            Hidden = 6
+        }
+
         private readonly GraphicsDevice _device;
         private readonly Dictionary<int, DragonAnimationSet> _animationCache = new();
+        private readonly Dictionary<int, SkillAnimation> _questInfoAnimationCache = new();
         private SkillAnimation _dragonFuryAnimation;
         private SkillAnimation _dragonBlinkAnimation;
+        private SkillAnimation _questInfoAnimation;
         private static readonly HashSet<int> HiddenDragonMountIds = new()
         {
             1902040,
@@ -78,10 +88,12 @@ namespace HaCreator.MapSimulator.Companions
         private Vector2 _followVelocity;
         private float _alpha;
         private float _dragonFuryAlpha;
+        private float _questInfoAlpha;
         private int _lastUpdateTime = int.MinValue;
         private int _lastBlinkStartTime = int.MinValue;
         private bool _isSuppressed;
         private bool _isFollowActive;
+        private DragonQuestInfoState _questInfoPreviewState = DragonQuestInfoState.Hidden;
 
         private const float SnapDistance = 140f;
         private const float AlphaFadeRate = 5.5f;
@@ -111,6 +123,8 @@ namespace HaCreator.MapSimulator.Companions
         private const float PassiveArrivalDistance = 4f;
         private const float PassiveHoldDistance = 7f;
         private const float PassiveVerticalHoldDistance = 5f;
+        private const float QuestInfoHorizontalOffset = 20f;
+        private const float QuestInfoVerticalGap = 15f;
 
         public DragonCompanionRuntime(GraphicsDevice device)
         {
@@ -265,10 +279,38 @@ namespace HaCreator.MapSimulator.Companions
             _followVelocity = Vector2.Zero;
             _alpha = 0f;
             _dragonFuryAlpha = 0f;
+            _questInfoAlpha = 0f;
             _lastUpdateTime = int.MinValue;
             _lastBlinkStartTime = int.MinValue;
             _isSuppressed = false;
             _isFollowActive = false;
+        }
+
+        public void SetQuestInfoPreviewState(int? state)
+        {
+            _questInfoPreviewState = state switch
+            {
+                0 => DragonQuestInfoState.PreStart,
+                1 => DragonQuestInfoState.RewardReady,
+                2 => DragonQuestInfoState.Active,
+                _ => DragonQuestInfoState.Hidden
+            };
+            _questInfoAnimation = null;
+            _questInfoAlpha = 0f;
+        }
+
+        public string DescribeDebugStatus(PlayerCharacter owner)
+        {
+            string ownerName = owner?.Build?.Name;
+            string questInfoLabel = _questInfoPreviewState switch
+            {
+                DragonQuestInfoState.PreStart => "state 0 (prestart)",
+                DragonQuestInfoState.RewardReady => "state 1 (reward-ready)",
+                DragonQuestInfoState.Active => "state 2 (active)",
+                _ => "hidden"
+            };
+
+            return $"Dragon action: {_currentActionName ?? "none"}, follow: {(_isFollowActive ? "active" : "passive")}, suppressed: {_isSuppressed}, quest info: {questInfoLabel}, owner: {ownerName ?? "Unknown"}";
         }
 
         private DragonAnimationSet GetOrLoadAnimationSet(int dragonJob)
@@ -907,6 +949,7 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             _dragonFuryAlpha = Approach(_dragonFuryAlpha, _alpha, deltaSeconds * AlphaFadeRate * 1.5f);
+            UpdateQuestInfoLayer(owner);
         }
 
         private void DrawAuxiliaryLayers(
@@ -919,6 +962,7 @@ namespace HaCreator.MapSimulator.Companions
             int currentTime)
         {
             DrawAnimationLayer(_dragonFuryAnimation, _dragonFuryAlpha, spriteBatch, skeletonRenderer, mapShiftX, mapShiftY, centerX, centerY, currentTime);
+            DrawQuestInfoLayer(spriteBatch, skeletonRenderer, mapShiftX, mapShiftY, centerX, centerY, currentTime);
 
             if (_lastBlinkStartTime != int.MinValue)
             {
@@ -936,7 +980,8 @@ namespace HaCreator.MapSimulator.Companions
             int centerX,
             int centerY,
             int currentTime,
-            int? startTime = null)
+            int? startTime = null,
+            Vector2? anchorOverride = null)
         {
             if (animation == null || alpha <= 0.01f)
             {
@@ -966,8 +1011,9 @@ namespace HaCreator.MapSimulator.Companions
                 return;
             }
 
-            int screenX = (int)_visualAnchor.X - mapShiftX + centerX;
-            int screenY = (int)_visualAnchor.Y - mapShiftY + centerY;
+            Vector2 anchor = anchorOverride ?? _visualAnchor;
+            int screenX = (int)anchor.X - mapShiftX + centerX;
+            int screenY = (int)anchor.Y - mapShiftY + centerY;
             frame.Texture.DrawBackground(spriteBatch, skeletonRenderer, null, screenX, screenY, Color.White * frameAlpha, !_facingRight, null);
         }
 
@@ -975,6 +1021,48 @@ namespace HaCreator.MapSimulator.Companions
         {
             _dragonFuryAnimation ??= LoadEffectAnimation("BasicEff.img", "dragonFury", loop: true);
             _dragonBlinkAnimation ??= LoadEffectAnimation("BasicEff.img", "dragonBlink", loop: false);
+        }
+
+        private void UpdateQuestInfoLayer(PlayerCharacter owner)
+        {
+            if (!TryResolveQuestInfoAnimation(out SkillAnimation animation)
+                || !ShouldShowQuestInfo(owner))
+            {
+                _questInfoAlpha = 0f;
+                return;
+            }
+
+            _questInfoAnimation = animation;
+            _questInfoAlpha = 1f;
+        }
+
+        private void DrawQuestInfoLayer(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonRenderer,
+            int mapShiftX,
+            int mapShiftY,
+            int centerX,
+            int centerY,
+            int currentTime)
+        {
+            if (_questInfoAnimation == null
+                || _questInfoAlpha <= 0.01f
+                || !TryResolveQuestInfoAnchor(out Vector2 anchor))
+            {
+                return;
+            }
+
+            DrawAnimationLayer(
+                _questInfoAnimation,
+                _questInfoAlpha,
+                spriteBatch,
+                skeletonRenderer,
+                mapShiftX,
+                mapShiftY,
+                centerX,
+                centerY,
+                currentTime,
+                anchorOverride: anchor);
         }
 
         private SkillAnimation LoadEffectAnimation(string imageName, string propertyPath, bool loop)
@@ -1005,6 +1093,72 @@ namespace HaCreator.MapSimulator.Companions
         private bool ShouldShowDragonFury(PlayerCharacter owner)
         {
             if (_dragonFuryAnimation == null || _isSuppressed || _alpha <= 0.01f)
+            {
+                return false;
+            }
+
+            if (ShouldSuppressForCurrentMount(owner))
+            {
+                return false;
+            }
+
+            return !IsExplicitDragonAction(_currentActionName);
+        }
+
+        private bool TryResolveQuestInfoAnimation(out SkillAnimation animation)
+        {
+            animation = null;
+            if (_questInfoPreviewState == DragonQuestInfoState.Hidden)
+            {
+                return false;
+            }
+
+            int questState = (int)_questInfoPreviewState;
+            if (_questInfoAnimationCache.TryGetValue(questState, out animation))
+            {
+                return animation != null;
+            }
+
+            string effectPath = questState switch
+            {
+                (int)DragonQuestInfoState.PreStart => "QuestAlert",
+                (int)DragonQuestInfoState.RewardReady => "QuestAlert2",
+                (int)DragonQuestInfoState.Active => "QuestAlert3",
+                _ => null
+            };
+            if (string.IsNullOrWhiteSpace(effectPath))
+            {
+                return false;
+            }
+
+            animation = LoadEffectAnimation("BasicEff.img", effectPath, loop: true);
+            _questInfoAnimationCache[questState] = animation;
+            return animation != null;
+        }
+
+        private bool TryResolveQuestInfoAnchor(out Vector2 anchor)
+        {
+            anchor = Vector2.Zero;
+
+            if (!TryResolveCurrentFrame(Environment.TickCount, out SkillFrame frame, out _)
+                || frame == null)
+            {
+                return false;
+            }
+
+            Rectangle bounds = GetRelativeBounds(frame);
+            float dragonHeight = bounds.Height > 0 ? bounds.Height : frame.Texture?.Height ?? 0;
+            anchor = new Vector2(
+                _visualAnchor.X + QuestInfoHorizontalOffset,
+                _visualAnchor.Y - dragonHeight - QuestInfoVerticalGap);
+            return true;
+        }
+
+        private bool ShouldShowQuestInfo(PlayerCharacter owner)
+        {
+            if (_questInfoPreviewState == DragonQuestInfoState.Hidden
+                || _isSuppressed
+                || _alpha <= 0.01f)
             {
                 return false;
             }

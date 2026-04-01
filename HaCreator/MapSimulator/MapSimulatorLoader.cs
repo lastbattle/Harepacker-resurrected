@@ -584,12 +584,5 @@ namespace HaCreator.MapSimulator {
             }
         }
         #endregion
-
-        private static string DumpFhList(List<FootholdLine> fhs) {
-            string res = "";
-            foreach (FootholdLine fh in fhs)
-                res += fh.FirstDot.X + "," + fh.FirstDot.Y + " : " + fh.SecondDot.X + "," + fh.SecondDot.Y + "\r\n";
-            return res;
-        }
     }
 }

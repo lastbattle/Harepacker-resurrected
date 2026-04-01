@@ -8,6 +8,9 @@ namespace HaCreator.MapSimulator.Character
         private static readonly IReadOnlyDictionary<string, string[]> SharedAliasMap =
             new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
             {
+                ["move"] = new[] { "walk1", "walk2" },
+                ["walk"] = new[] { "walk1", "walk2" },
+                ["stand"] = new[] { "stand1", "stand2" },
                 ["ghostwalk"] = new[] { "walk1", "walk2" },
                 ["ghoststand"] = new[] { "stand1", "stand2" },
                 ["ghostjump"] = new[] { "jump" },
@@ -26,7 +29,18 @@ namespace HaCreator.MapSimulator.Character
                 ["swim"] = new[] { "stand1", "stand2", "fly", "jump" },
                 ["fly2"] = new[] { "stand1", "stand2", "fly", "jump" },
                 ["fly2Move"] = new[] { "stand1", "stand2", "fly", "jump" },
-                ["fly2Skill"] = new[] { "stand1", "stand2", "fly", "jump" }
+                ["fly2Skill"] = new[] { "stand1", "stand2", "fly", "jump" },
+                // Client raw actions still include broader attack families such as the
+                // dual-blade, polearm, and crossbow-specific aliases below. Shadow
+                // Partner only authors the generic `special/*` families, so keep
+                // collapsing these raw names onto those authored branches before
+                // broader fallback.
+                ["stabD1"] = new[] { "stabO1", "stabO2", "stabOF" },
+                ["swingD1"] = new[] { "swingO1", "swingO2", "swingO3", "swingOF" },
+                ["swingD2"] = new[] { "swingO1", "swingO2", "swingO3", "swingOF" },
+                ["doubleSwing"] = new[] { "swingP1", "swingP2", "swingPF" },
+                ["tripleSwing"] = new[] { "swingP1", "swingP2", "swingPF" },
+                ["shotC1"] = new[] { "shoot1", "shoot2", "shootF" }
             };
 
         public static IEnumerable<string> EnumerateClientMappedCandidates(

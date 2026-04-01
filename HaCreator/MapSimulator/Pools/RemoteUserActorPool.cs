@@ -22,6 +22,20 @@ namespace HaCreator.MapSimulator.Pools
     /// </summary>
     public sealed class RemoteUserActorPool
     {
+        internal readonly record struct PortableChairPairParticipant(
+            int CharacterId,
+            PortableChair Chair,
+            Vector2 Position,
+            bool FacingRight,
+            int? PreferredPairCharacterId,
+            bool IsVisibleInWorld);
+
+        private readonly record struct PortableChairPairCandidate(
+            PortableChairPairParticipant Left,
+            PortableChairPairParticipant Right,
+            int Priority,
+            float Score);
+
         private const int MinimumMeleeAfterImageFadeDurationMs = 60;
         private const float RemoteDragonGroundSideOffset = 42f;
         private const float RemoteDragonGroundVerticalOffset = -12f;
@@ -767,17 +781,11 @@ namespace HaCreator.MapSimulator.Pools
             bool requestsExternalPair = chair?.IsCoupleChair == true;
             player.SetPortableChairPairRequestActive(requestsExternalPair);
             int localCharacterId = player.Build?.Id ?? 0;
+            Dictionary<int, int> pairMap = BuildPortableChairPairMap(player, preferVisibleOnly: true);
             if (requestsExternalPair)
             {
-                RemoteUserActor pairActor = FindPortableChairPairActor(
-                    chair,
-                    ownerCharacterId: localCharacterId,
-                    ownerFacingRight: player.FacingRight,
-                    ownerX: player.X,
-                    ownerY: player.Y,
-                    skipCharacterId: localCharacterId,
-                    preferVisibleOnly: true);
-                if (pairActor != null)
+                if (pairMap.TryGetValue(localCharacterId, out int pairCharacterId)
+                    && _actorsById.TryGetValue(pairCharacterId, out RemoteUserActor pairActor))
                 {
                     player.SetPortableChairExternalPair(pairActor.Position, pairActor.FacingRight);
                 }
@@ -787,7 +795,7 @@ namespace HaCreator.MapSimulator.Pools
                 }
             }
 
-            if (TryResolvePortableChairOwnerForLocalPlayer(player, out RemoteUserActor ownerActor))
+            if (TryResolvePortableChairOwnerForLocalPlayer(player, pairMap, out RemoteUserActor ownerActor))
             {
                 player.SetPortableChairExternalOwnerPair(
                     ownerActor.Build.ActivePortableChair,
@@ -1571,6 +1579,152 @@ namespace HaCreator.MapSimulator.Pools
             };
         }
 
+        internal static IReadOnlyDictionary<int, int> ResolvePortableChairPairings(
+            IEnumerable<PortableChairPairParticipant> participants,
+            bool preferVisibleOnly)
+        {
+            List<PortableChairPairParticipant> resolvedParticipants = participants?
+                .Where(static participant => participant.CharacterId > 0 && participant.Chair?.IsCoupleChair == true)
+                .OrderBy(static participant => participant.CharacterId)
+                .ToList()
+                ?? new List<PortableChairPairParticipant>();
+            if (resolvedParticipants.Count < 2)
+            {
+                return new Dictionary<int, int>();
+            }
+
+            List<PortableChairPairCandidate> candidates = new();
+            for (int i = 0; i < resolvedParticipants.Count - 1; i++)
+            {
+                PortableChairPairParticipant left = resolvedParticipants[i];
+                for (int j = i + 1; j < resolvedParticipants.Count; j++)
+                {
+                    PortableChairPairParticipant right = resolvedParticipants[j];
+                    if (!TryBuildPortableChairPairCandidate(left, right, preferVisibleOnly, out PortableChairPairCandidate candidate))
+                    {
+                        continue;
+                    }
+
+                    candidates.Add(candidate);
+                }
+            }
+
+            Dictionary<int, int> pairs = new();
+            foreach (PortableChairPairCandidate candidate in candidates
+                .OrderBy(static candidate => candidate.Priority)
+                .ThenBy(static candidate => candidate.Score)
+                .ThenBy(static candidate => candidate.Left.CharacterId)
+                .ThenBy(static candidate => candidate.Right.CharacterId))
+            {
+                if (pairs.ContainsKey(candidate.Left.CharacterId)
+                    || pairs.ContainsKey(candidate.Right.CharacterId))
+                {
+                    continue;
+                }
+
+                pairs[candidate.Left.CharacterId] = candidate.Right.CharacterId;
+                pairs[candidate.Right.CharacterId] = candidate.Left.CharacterId;
+            }
+
+            return pairs;
+        }
+
+        private Dictionary<int, int> BuildPortableChairPairMap(PlayerCharacter localPlayer, bool preferVisibleOnly)
+        {
+            List<PortableChairPairParticipant> participants = new(_actorsById.Count + 1);
+            foreach (RemoteUserActor actor in _actorsById.Values)
+            {
+                PortableChair chair = actor?.Build?.ActivePortableChair;
+                if (chair?.IsCoupleChair != true)
+                {
+                    continue;
+                }
+
+                participants.Add(new PortableChairPairParticipant(
+                    actor.CharacterId,
+                    chair,
+                    actor.Position,
+                    actor.FacingRight,
+                    actor.PreferredPortableChairPairCharacterId,
+                    actor.IsVisibleInWorld));
+            }
+
+            PortableChair localChair = localPlayer?.Build?.ActivePortableChair;
+            int localCharacterId = localPlayer?.Build?.Id ?? 0;
+            if (localChair?.IsCoupleChair == true
+                && localPlayer.IsAlive
+                && localCharacterId > 0)
+            {
+                participants.Add(new PortableChairPairParticipant(
+                    localCharacterId,
+                    localChair,
+                    localPlayer.Position,
+                    localPlayer.FacingRight,
+                    null,
+                    true));
+            }
+
+            return new Dictionary<int, int>(ResolvePortableChairPairings(participants, preferVisibleOnly));
+        }
+
+        private static bool TryBuildPortableChairPairCandidate(
+            PortableChairPairParticipant left,
+            PortableChairPairParticipant right,
+            bool preferVisibleOnly,
+            out PortableChairPairCandidate candidate)
+        {
+            candidate = default;
+            if (left.CharacterId == right.CharacterId
+                || left.Chair?.IsCoupleChair != true
+                || right.Chair?.IsCoupleChair != true
+                || left.Chair.ItemId <= 0
+                || left.Chair.ItemId != right.Chair.ItemId
+                || (preferVisibleOnly && (!left.IsVisibleInWorld || !right.IsVisibleInWorld))
+                || !PlayerCharacter.IsPortableChairActualPairActive(
+                    left.Chair,
+                    left.FacingRight,
+                    left.Position.X,
+                    left.Position.Y,
+                    right.FacingRight,
+                    right.Position.X,
+                    right.Position.Y))
+            {
+                return false;
+            }
+
+            int priority = ResolvePortableChairPairPriority(left, right);
+            float score = ComputePortableChairPairScore(left, right);
+            candidate = new PortableChairPairCandidate(left, right, priority, score);
+            return true;
+        }
+
+        private static int ResolvePortableChairPairPriority(
+            PortableChairPairParticipant left,
+            PortableChairPairParticipant right)
+        {
+            bool leftPrefersRight = left.PreferredPairCharacterId == right.CharacterId;
+            bool rightPrefersLeft = right.PreferredPairCharacterId == left.CharacterId;
+            return (leftPrefersRight, rightPrefersLeft) switch
+            {
+                (true, true) => 0,
+                (true, false) => 1,
+                (false, true) => 1,
+                _ => 2
+            };
+        }
+
+        private static float ComputePortableChairPairScore(
+            PortableChairPairParticipant left,
+            PortableChairPairParticipant right)
+        {
+            Point expectedRightOffset = PlayerCharacter.ResolvePortableChairPairOffset(left.Chair, left.FacingRight);
+            Point expectedLeftOffset = PlayerCharacter.ResolvePortableChairPairOffset(right.Chair, right.FacingRight);
+            Vector2 expectedRightPosition = left.Position + new Vector2(expectedRightOffset.X, expectedRightOffset.Y);
+            Vector2 expectedLeftPosition = right.Position + new Vector2(expectedLeftOffset.X, expectedLeftOffset.Y);
+            return Vector2.DistanceSquared(expectedRightPosition, right.Position)
+                + Vector2.DistanceSquared(expectedLeftPosition, left.Position);
+        }
+
         private bool TryResolvePortableChairPairWithLocalPlayer(
             RemoteUserActor actor,
             PortableChair chair,
@@ -1588,23 +1742,10 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
+            Dictionary<int, int> pairMap = BuildPortableChairPairMap(localPlayer, preferVisibleOnly: true);
             int localCharacterId = localPlayer.Build.Id;
-            bool pairExplicitlyTargetsLocalPlayer = actor.PreferredPortableChairPairCharacterId is int preferredPairId
-                && preferredPairId > 0
-                && preferredPairId == localCharacterId;
-            if (!pairExplicitlyTargetsLocalPlayer && localPlayer.Build.ActivePortableChair == null)
-            {
-                return false;
-            }
-
-            if (!PlayerCharacter.IsPortableChairActualPairActive(
-                    chair,
-                    actor.FacingRight,
-                    actor.Position.X,
-                    actor.Position.Y,
-                    localPlayer.FacingRight,
-                    localPlayer.X,
-                    localPlayer.Y))
+            if (!pairMap.TryGetValue(actor.CharacterId, out int pairCharacterId)
+                || pairCharacterId != localCharacterId)
             {
                 return false;
             }
@@ -1615,6 +1756,17 @@ namespace HaCreator.MapSimulator.Pools
         }
 
         private bool TryResolvePortableChairOwnerForLocalPlayer(PlayerCharacter localPlayer, out RemoteUserActor ownerActor)
+        {
+            return TryResolvePortableChairOwnerForLocalPlayer(
+                localPlayer,
+                BuildPortableChairPairMap(localPlayer, preferVisibleOnly: true),
+                out ownerActor);
+        }
+
+        private bool TryResolvePortableChairOwnerForLocalPlayer(
+            PlayerCharacter localPlayer,
+            IReadOnlyDictionary<int, int> pairMap,
+            out RemoteUserActor ownerActor)
         {
             ownerActor = null;
             if (localPlayer?.Build == null || !localPlayer.IsAlive)
@@ -1628,36 +1780,11 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            float bestScore = float.MaxValue;
-            foreach (RemoteUserActor actor in _actorsById.Values)
-            {
-                PortableChair chair = actor?.Build?.ActivePortableChair;
-                if (chair?.IsCoupleChair != true
-                    || !actor.IsVisibleInWorld
-                    || actor.PreferredPortableChairPairCharacterId != localCharacterId
-                    || !PlayerCharacter.IsPortableChairActualPairActive(
-                        chair,
-                        actor.FacingRight,
-                        actor.Position.X,
-                        actor.Position.Y,
-                        localPlayer.FacingRight,
-                        localPlayer.X,
-                        localPlayer.Y))
-                {
-                    continue;
-                }
-
-                Point expectedOffset = PlayerCharacter.ResolvePortableChairPairOffset(chair, actor.FacingRight);
-                Vector2 expectedLocalPosition = actor.Position + new Vector2(expectedOffset.X, expectedOffset.Y);
-                float score = Vector2.DistanceSquared(localPlayer.Position, expectedLocalPosition);
-                if (score < bestScore)
-                {
-                    bestScore = score;
-                    ownerActor = actor;
-                }
-            }
-
-            return ownerActor != null;
+            return pairMap != null
+                   && pairMap.TryGetValue(localCharacterId, out int ownerCharacterId)
+                   && ownerCharacterId != localCharacterId
+                   && _actorsById.TryGetValue(ownerCharacterId, out ownerActor)
+                   && ownerActor.IsVisibleInWorld;
         }
 
         private RemoteUserActor FindPortableChairPairActor(
@@ -1674,92 +1801,12 @@ namespace HaCreator.MapSimulator.Pools
                 return null;
             }
 
-            if (TryResolveExplicitPortableChairPairActor(ownerCharacterId, skipCharacterId, preferVisibleOnly, out RemoteUserActor explicitPairActor)
-                && PlayerCharacter.IsPortableChairActualPairActive(
-                    chair,
-                    ownerFacingRight,
-                    ownerX,
-                    ownerY,
-                    explicitPairActor.FacingRight,
-                    explicitPairActor.Position.X,
-                    explicitPairActor.Position.Y))
-            {
-                return explicitPairActor;
-            }
-
-            Point expectedOffset = PlayerCharacter.ResolvePortableChairPairOffset(chair, ownerFacingRight);
-            Vector2 expectedPosition = new(ownerX + expectedOffset.X, ownerY + expectedOffset.Y);
-            RemoteUserActor bestActor = null;
-            float bestScore = float.MaxValue;
-
-            foreach (RemoteUserActor actor in _actorsById.Values)
-            {
-                if (actor.CharacterId == skipCharacterId
-                    || (preferVisibleOnly && !actor.IsVisibleInWorld))
-                {
-                    continue;
-                }
-
-                if (!PlayerCharacter.IsPortableChairActualPairActive(
-                        chair,
-                        ownerFacingRight,
-                        ownerX,
-                        ownerY,
-                        actor.FacingRight,
-                        actor.Position.X,
-                        actor.Position.Y))
-                {
-                    continue;
-                }
-
-                float score = Vector2.DistanceSquared(actor.Position, expectedPosition);
-                if (score < bestScore)
-                {
-                    bestScore = score;
-                    bestActor = actor;
-                }
-            }
-
-            return bestActor;
-        }
-
-        private bool TryResolveExplicitPortableChairPairActor(
-            int ownerCharacterId,
-            int skipCharacterId,
-            bool preferVisibleOnly,
-            out RemoteUserActor actor)
-        {
-            actor = null;
-            if (ownerCharacterId <= 0)
-            {
-                return false;
-            }
-
-            if (_actorsById.TryGetValue(ownerCharacterId, out RemoteUserActor ownerActor)
-                && ownerActor.PreferredPortableChairPairCharacterId is int preferredPairId
-                && preferredPairId > 0
-                && preferredPairId != skipCharacterId
-                && _actorsById.TryGetValue(preferredPairId, out RemoteUserActor preferredPairActor)
-                && (!preferVisibleOnly || preferredPairActor.IsVisibleInWorld))
-            {
-                actor = preferredPairActor;
-                return true;
-            }
-
-            foreach (RemoteUserActor candidate in _actorsById.Values)
-            {
-                if (candidate.CharacterId == skipCharacterId
-                    || candidate.PreferredPortableChairPairCharacterId != ownerCharacterId
-                    || (preferVisibleOnly && !candidate.IsVisibleInWorld))
-                {
-                    continue;
-                }
-
-                actor = candidate;
-                return true;
-            }
-
-            return false;
+            Dictionary<int, int> pairMap = BuildPortableChairPairMap(localPlayer: null, preferVisibleOnly);
+            return pairMap.TryGetValue(ownerCharacterId, out int pairCharacterId)
+                   && pairCharacterId != skipCharacterId
+                   && _actorsById.TryGetValue(pairCharacterId, out RemoteUserActor pairActor)
+                ? pairActor
+                : null;
         }
 
         private void SyncBattlefieldAppearance(RemoteUserActor actor, BattlefieldField battlefield)
@@ -2002,9 +2049,14 @@ namespace HaCreator.MapSimulator.Pools
                         actor.Build.Level,
                         masteryPercent,
                         chargeElement,
-                        out _))
+                        out _,
+                        out string matchedAfterImageActionName))
                 {
-                    return candidate;
+                    string preferredActionName = ResolvePreferredRemoteMeleeActionName(actor, candidate, matchedAfterImageActionName);
+                    if (!string.IsNullOrWhiteSpace(preferredActionName))
+                    {
+                        return preferredActionName;
+                    }
                 }
 
                 if (actor.Assembler?.GetAnimation(candidate)?.Length > 0)
@@ -2014,6 +2066,33 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return actionName;
+        }
+
+        private static string ResolvePreferredRemoteMeleeActionName(
+            RemoteUserActor actor,
+            string requestedActionName,
+            string matchedAfterImageActionName)
+        {
+            string normalizedRequestedActionName = string.IsNullOrWhiteSpace(requestedActionName)
+                ? null
+                : requestedActionName.Trim();
+            string normalizedMatchedActionName = string.IsNullOrWhiteSpace(matchedAfterImageActionName)
+                ? null
+                : matchedAfterImageActionName.Trim();
+
+            if (!string.IsNullOrWhiteSpace(normalizedMatchedActionName)
+                && actor?.Assembler?.GetAnimation(normalizedMatchedActionName)?.Length > 0)
+            {
+                return normalizedMatchedActionName;
+            }
+
+            if (!string.IsNullOrWhiteSpace(normalizedRequestedActionName)
+                && actor?.Assembler?.GetAnimation(normalizedRequestedActionName)?.Length > 0)
+            {
+                return normalizedRequestedActionName;
+            }
+
+            return normalizedMatchedActionName ?? normalizedRequestedActionName;
         }
 
         private static IEnumerable<string> EnumerateRemoteAfterImageActionNames(

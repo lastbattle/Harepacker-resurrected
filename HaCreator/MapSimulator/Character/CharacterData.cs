@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 using HaCreator.MapSimulator.Character.Skills;
 using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib;
@@ -407,6 +408,8 @@ namespace HaCreator.MapSimulator.Character
         public bool IsSuperManMorph { get; set; }
         public int KnockbackRate { get; set; }
         public int TradeAvailable { get; set; }
+        public bool IsTradeBlocked { get; set; }
+        public bool IsOneOfAKind { get; set; }
         public bool IsTimeLimited { get; set; }
         public string PotentialTierText { get; set; }
         public List<string> PotentialLines { get; set; } = new();
@@ -467,6 +470,8 @@ namespace HaCreator.MapSimulator.Character
                 IsSuperManMorph = IsSuperManMorph,
                 KnockbackRate = KnockbackRate,
                 TradeAvailable = TradeAvailable,
+                IsTradeBlocked = IsTradeBlocked,
+                IsOneOfAKind = IsOneOfAKind,
                 IsTimeLimited = IsTimeLimited,
                 PotentialTierText = PotentialTierText,
                 PotentialLines = PotentialLines != null ? new List<string>(PotentialLines) : new List<string>(),
@@ -965,6 +970,30 @@ namespace HaCreator.MapSimulator.Character
             HasPocketSlot || TraitCharm >= 30 || Equipment.ContainsKey(EquipSlot.Pocket) || HiddenEquipment.ContainsKey(EquipSlot.Pocket);
         public int AutoAssignClass => ResolveAutoAssignClass(Job);
 
+        public int ComputeEquipmentStateToken()
+        {
+            unchecked
+            {
+                int hash = 17;
+                hash = (hash * 31) + Id;
+                hash = (hash * 31) + Job;
+                hash = (hash * 31) + SubJob;
+                hash = (hash * 31) + Level;
+                hash = (hash * 31) + Fame;
+                hash = (hash * 31) + STR;
+                hash = (hash * 31) + DEX;
+                hash = (hash * 31) + INT;
+                hash = (hash * 31) + LUK;
+                hash = (hash * 31) + TraitCharm;
+                hash = (hash * 31) + (HasMonsterRiding ? 1 : 0);
+                hash = (hash * 31) + (HasPendantSlotExtension ? 1 : 0);
+                hash = (hash * 31) + (HasPocketSlot ? 1 : 0);
+                hash = AppendEquipmentLayerToken(hash, Equipment, hiddenLayer: false);
+                hash = AppendEquipmentLayerToken(hash, HiddenEquipment, hiddenLayer: true);
+                return hash;
+            }
+        }
+
         public int ExpPercent
         {
             get
@@ -1231,6 +1260,72 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return null;
+        }
+
+        private static int AppendEquipmentLayerToken(int hash, Dictionary<EquipSlot, CharacterPart> equipment, bool hiddenLayer)
+        {
+            unchecked
+            {
+                hash = (hash * 31) + (hiddenLayer ? 1 : 0);
+                if (equipment == null || equipment.Count == 0)
+                {
+                    return hash;
+                }
+
+                foreach (KeyValuePair<EquipSlot, CharacterPart> entry in equipment.OrderBy(entry => entry.Key))
+                {
+                    hash = (hash * 31) + (int)entry.Key;
+                    hash = AppendPartToken(hash, entry.Value);
+                }
+
+                return hash;
+            }
+        }
+
+        private static int AppendPartToken(int hash, CharacterPart part)
+        {
+            unchecked
+            {
+                if (part == null)
+                {
+                    return (hash * 31) - 1;
+                }
+
+                hash = (hash * 31) + part.ItemId;
+                hash = (hash * 31) + (int)part.Slot;
+                hash = (hash * 31) + (int)part.Type;
+                hash = (hash * 31) + (part.IsCash ? 1 : 0);
+                hash = (hash * 31) + part.RequiredLevel;
+                hash = (hash * 31) + part.RequiredSTR;
+                hash = (hash * 31) + part.RequiredDEX;
+                hash = (hash * 31) + part.RequiredINT;
+                hash = (hash * 31) + part.RequiredLUK;
+                hash = (hash * 31) + part.RequiredFame;
+                hash = (hash * 31) + part.RequiredJobMask;
+                hash = (hash * 31) + part.BonusSTR;
+                hash = (hash * 31) + part.BonusDEX;
+                hash = (hash * 31) + part.BonusINT;
+                hash = (hash * 31) + part.BonusLUK;
+                hash = (hash * 31) + part.BonusHP;
+                hash = (hash * 31) + part.BonusMP;
+                hash = (hash * 31) + part.BonusWeaponAttack;
+                hash = (hash * 31) + part.BonusMagicAttack;
+                hash = (hash * 31) + part.BonusWeaponDefense;
+                hash = (hash * 31) + part.BonusMagicDefense;
+                hash = (hash * 31) + part.BonusAccuracy;
+                hash = (hash * 31) + part.BonusAvoidability;
+                hash = (hash * 31) + part.BonusHands;
+                hash = (hash * 31) + part.BonusSpeed;
+                hash = (hash * 31) + part.BonusJump;
+                hash = (hash * 31) + part.UpgradeSlots;
+                hash = (hash * 31) + (part.RemainingUpgradeSlotCount ?? int.MinValue);
+                hash = (hash * 31) + (part.Durability ?? int.MinValue);
+                hash = (hash * 31) + (part.MaxDurability ?? int.MinValue);
+                hash = (hash * 31) + (part.IsTimeLimited ? 1 : 0);
+                hash = (hash * 31) + part.TradeAvailable;
+                hash = (hash * 31) + (part.ExpirationDateUtc?.ToBinary().GetHashCode() ?? 0);
+                return hash;
+            }
         }
 
         /// <summary>

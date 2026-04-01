@@ -38,9 +38,10 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly string[] DefaultClientVisualCandidatePaths = { ClientMessageBoxPropertyName };
         private static readonly string[] ChalkboardClientVisualCandidatePaths =
         {
-            ClientMessageBoxPropertyName,
             $"{InfoPropertyName}/{ChalkboardSamplePropertyName}"
         };
+        private const int ClientLeaveStartAlpha = 255;
+        private const int ClientLeaveEndAlpha = 0;
 
         private readonly Dictionary<int, FieldMessageBoxEntry> _entries = new();
         private readonly List<LeavingMessageBoxEntry> _leavingEntries = new();
@@ -74,12 +75,18 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string DescribeStatus()
         {
-            if (_entries.Count == 0)
+            if (_entries.Count == 0 && _leavingEntries.Count == 0)
             {
                 return _statusMessage;
             }
 
-            return $"{_entries.Count} field message-box entr{(_entries.Count == 1 ? "y" : "ies")} active. {_statusMessage}";
+            int localActiveCount = _entries.Values.Count(entry => entry.Source == MessageBoxEntrySource.LocalCommand);
+            int packetActiveCount = _entries.Count - localActiveCount;
+            int leavingCount = _leavingEntries.Count;
+            string activeSummary = $"{_entries.Count} active ({packetActiveCount} packet, {localActiveCount} local)";
+            return leavingCount > 0
+                ? $"{activeSummary}, {leavingCount} leaving. {_statusMessage}"
+                : $"{activeSummary}. {_statusMessage}";
         }
 
         internal string CreateLocalMessageBox(
@@ -88,7 +95,8 @@ namespace HaCreator.MapSimulator.Interaction
             string characterName,
             Point hostPosition,
             int currentTick,
-            int? messageBoxId = null)
+            int? messageBoxId = null,
+            MessageBoxEntrySource source = MessageBoxEntrySource.LocalCommand)
         {
             int resolvedItemId = itemId > 0 ? itemId : DefaultItemId;
             int resolvedId = messageBoxId.GetValueOrDefault();
@@ -109,10 +117,11 @@ namespace HaCreator.MapSimulator.Interaction
                 new Point(hostPosition.X + DefaultBoxOffsetX, hostPosition.Y + DefaultBoxOffsetY),
                 ResolveVisual(resolvedItemId),
                 ResolveItemName(resolvedItemId),
-                currentTick);
+                currentTick,
+                source);
 
             _entries[resolvedId] = entry;
-            _statusMessage = $"Registered field message-box {resolvedId} for {trimmedName} using item {resolvedItemId}.";
+            _statusMessage = $"Registered {source.GetLabel()} field message-box {resolvedId} for {trimmedName} using item {resolvedItemId}.";
             return _statusMessage;
         }
 
@@ -139,7 +148,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _leavingEntries.Add(LeavingMessageBoxEntry.FromEntry(entry, currentTick));
-            _statusMessage = $"Field message-box {messageBoxId} began its leave-field fade.";
+            _statusMessage = $"{entry.Source.GetLabel()} field message-box {messageBoxId} began its client leave-field fade.";
             return _statusMessage;
         }
 
@@ -245,9 +254,10 @@ namespace HaCreator.MapSimulator.Interaction
                     characterName,
                     new Point(hostX, hostY),
                     currentTick,
-                    messageBoxId);
+                    messageBoxId,
+                    MessageBoxEntrySource.PacketEnterField);
 
-                message = $"Applied message-box enter-field packet for {characterName} ({messageBoxId}).";
+                message = $"Applied packet-owned message-box enter-field packet for {characterName} ({messageBoxId}).";
                 return true;
             }
             catch (EndOfStreamException)
@@ -468,119 +478,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return true;
             }
 
-            if (TryLoadUiComposedVisual(itemProperty, out visual))
-            {
-                visual = visual with { IconTexture = iconTexture ?? visual.IconTexture };
-                return true;
-            }
-
             return false;
-        }
-
-        private bool TryLoadUiComposedVisual(WzSubProperty itemProperty, out MessageBoxVisual visual)
-        {
-            visual = null;
-            if (_graphicsDevice == null || itemProperty == null || itemProperty[UiPropertyName] is not WzSubProperty uiProperty)
-            {
-                return false;
-            }
-
-            Texture2D topTexture = LoadCanvasTexture(uiProperty[UiTopPropertyName] as WzCanvasProperty);
-            Texture2D centerTexture = LoadCanvasTexture(uiProperty[UiCenterPropertyName] as WzCanvasProperty);
-            Texture2D bottomTexture = LoadCanvasTexture(uiProperty[UiBottomPropertyName] as WzCanvasProperty);
-            if (topTexture == null || centerTexture == null || bottomTexture == null)
-            {
-                return false;
-            }
-
-            int lineCount = ResolveUiSampleLineCount(itemProperty);
-            Texture2D composedTexture = ComposeUiBoardTexture(topTexture, centerTexture, bottomTexture, lineCount);
-            if (composedTexture == null)
-            {
-                return false;
-            }
-
-            MessageBoxTextLayout textLayout = ResolveTextLayout(UiPropertyName, composedTexture) with
-            {
-                MaxLineCount = lineCount
-            };
-
-            visual = new MessageBoxVisual(
-                new[] { composedTexture },
-                new[] { new Point(composedTexture.Width / 2, composedTexture.Height) },
-                new[] { DefaultFrameDelayMs },
-                null,
-                textLayout);
-            return true;
-        }
-
-        private Texture2D ComposeUiBoardTexture(Texture2D topTexture, Texture2D centerTexture, Texture2D bottomTexture, int lineCount)
-        {
-            if (_graphicsDevice == null || topTexture == null || centerTexture == null || bottomTexture == null)
-            {
-                return null;
-            }
-
-            int safeLineCount = Math.Clamp(lineCount, 1, MaxBodyLineCount);
-            int width = Math.Max(topTexture.Width, Math.Max(centerTexture.Width, bottomTexture.Width));
-            int height = topTexture.Height + (centerTexture.Height * safeLineCount) + bottomTexture.Height;
-            var renderTarget = new RenderTarget2D(_graphicsDevice, width, height);
-
-            RenderTargetBinding[] previousTargets = _graphicsDevice.GetRenderTargets();
-            PresentationParameters presentationParameters = _graphicsDevice.PresentationParameters;
-            Viewport previousViewport = _graphicsDevice.Viewport;
-
-            try
-            {
-                _graphicsDevice.SetRenderTarget(renderTarget);
-                _graphicsDevice.Viewport = new Viewport(0, 0, width, height);
-                _graphicsDevice.Clear(Color.Transparent);
-
-                using SpriteBatch spriteBatch = new(_graphicsDevice);
-                spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone);
-
-                int topX = (width - topTexture.Width) / 2;
-                int centerX = (width - centerTexture.Width) / 2;
-                int bottomX = (width - bottomTexture.Width) / 2;
-                int currentY = 0;
-
-                spriteBatch.Draw(topTexture, new Vector2(topX, currentY), Color.White);
-                currentY += topTexture.Height;
-
-                for (int lineIndex = 0; lineIndex < safeLineCount; lineIndex++)
-                {
-                    spriteBatch.Draw(centerTexture, new Vector2(centerX, currentY), Color.White);
-                    currentY += centerTexture.Height;
-                }
-
-                spriteBatch.Draw(bottomTexture, new Vector2(bottomX, currentY), Color.White);
-                spriteBatch.End();
-            }
-            finally
-            {
-                _graphicsDevice.SetRenderTargets(previousTargets);
-                _graphicsDevice.Viewport = previousViewport;
-            }
-
-            return renderTarget;
-        }
-
-        private static int ResolveUiSampleLineCount(WzSubProperty itemProperty)
-        {
-            if (itemProperty?[ChalkboardSamplePropertyName] is not WzSubProperty sampleProperty)
-            {
-                return 3;
-            }
-
-            foreach (WzImageProperty child in sampleProperty.WzProperties)
-            {
-                if (child is WzSubProperty lineTemplate && lineTemplate.WzProperties.Count > 0)
-                {
-                    return Math.Clamp(lineTemplate.WzProperties.Count, 1, MaxBodyLineCount);
-                }
-            }
-
-            return 3;
         }
 
         internal static IReadOnlyList<string> GetPreferredVisualPropertyPaths(int itemId)
@@ -781,23 +679,6 @@ namespace HaCreator.MapSimulator.Interaction
 
             textLayout = ResolveTextLayout(resolvedLayoutKey, textures[0]);
 
-            if (property.Name.Equals("info", StringComparison.OrdinalIgnoreCase) &&
-                textures.Count > 1 &&
-                orderedCanvases.Any(frame => frame.Canvas.Name.Equals(ChalkboardSamplePropertyName, StringComparison.OrdinalIgnoreCase)))
-            {
-                int sampleIndex = orderedCanvases
-                    .Select((frame, index) => new { frame.Canvas.Name, index })
-                    .First(candidate => candidate.Name.Equals(ChalkboardSamplePropertyName, StringComparison.OrdinalIgnoreCase))
-                    .index;
-                Texture2D sampleTexture = textures[Math.Clamp(sampleIndex, 0, textures.Count - 1)];
-                Point sampleOrigin = origins[Math.Clamp(sampleIndex, 0, origins.Count - 1)];
-                int sampleDelay = delays[Math.Clamp(sampleIndex, 0, delays.Count - 1)];
-                textures = new List<Texture2D> { sampleTexture };
-                origins = new List<Point> { sampleOrigin };
-                delays = new List<int> { sampleDelay };
-                textLayout = ResolveTextLayout(ClientMessageBoxPropertyName, sampleTexture);
-            }
-
             return textures.Count > 0;
         }
 
@@ -873,7 +754,7 @@ namespace HaCreator.MapSimulator.Interaction
                     paddingBottom,
                     CenterHorizontally: true,
                     CenterVertically: true,
-                    MaxLineCount: MaxBodyLineCount,
+                    MaxLineCount: 3,
                     TextColor: new Color(244, 246, 232));
             }
 
@@ -919,9 +800,19 @@ namespace HaCreator.MapSimulator.Interaction
                 paddingBottom,
                 CenterHorizontally: true,
                 CenterVertically: true,
-                MaxLineCount: MaxBodyLineCount,
+                MaxLineCount: texture.Height <= 72 ? 3 : MaxBodyLineCount,
                 TextColor: textColor);
             return true;
+        }
+
+        internal static IReadOnlyList<string> GetPreferredVisualPropertyPathsForTest(int itemId)
+        {
+            return GetPreferredVisualPropertyPaths(itemId);
+        }
+
+        internal static float ComputeLeaveFadeAlphaForTest(int elapsedMs)
+        {
+            return ComputeLeaveFadeAlpha(elapsedMs);
         }
 
         private static bool TryFindDominantOpaqueBounds(Color[] pixels, int width, int height, out Rectangle bounds, out Color fillColor)
@@ -1086,7 +977,8 @@ namespace HaCreator.MapSimulator.Interaction
                 Point layerPosition,
                 MessageBoxVisual visual,
                 string itemName,
-                int currentTick)
+                int currentTick,
+                MessageBoxEntrySource source)
             {
                 Id = id;
                 ItemId = itemId;
@@ -1096,6 +988,7 @@ namespace HaCreator.MapSimulator.Interaction
                 LayerPosition = layerPosition;
                 Visual = visual;
                 ItemName = itemName ?? string.Empty;
+                Source = source;
                 _createdAt = currentTick;
                 _nextFrameTick = currentTick + (visual?.GetFrameDelay(0) ?? DefaultFrameDelayMs);
             }
@@ -1108,6 +1001,7 @@ namespace HaCreator.MapSimulator.Interaction
             public Point LayerPosition { get; }
             public MessageBoxVisual Visual { get; }
             public string ItemName { get; }
+            public MessageBoxEntrySource Source { get; }
             public int FrameIndex => _frameIndex;
 
             public void Update(int currentTick)
@@ -1149,7 +1043,7 @@ namespace HaCreator.MapSimulator.Interaction
             private readonly Texture2D _leaveTexture;
             private readonly Point _leaveOrigin;
 
-            private LeavingMessageBoxEntry(int id, string messageText, Point layerPosition, MessageBoxVisual visual, Texture2D leaveTexture, Point leaveOrigin, int leaveStartedAt)
+            private LeavingMessageBoxEntry(int id, string messageText, Point layerPosition, MessageBoxVisual visual, Texture2D leaveTexture, Point leaveOrigin, int leaveStartedAt, MessageBoxEntrySource source)
             {
                 Id = id;
                 MessageText = messageText;
@@ -1158,12 +1052,14 @@ namespace HaCreator.MapSimulator.Interaction
                 _leaveTexture = leaveTexture;
                 _leaveOrigin = leaveOrigin;
                 _leaveStartedAt = leaveStartedAt;
+                Source = source;
             }
 
             public int Id { get; }
             public string MessageText { get; }
             public Point LayerPosition { get; }
             public MessageBoxVisual Visual { get; }
+            public MessageBoxEntrySource Source { get; }
 
             public static LeavingMessageBoxEntry FromEntry(FieldMessageBoxEntry entry, int currentTick)
             {
@@ -1174,7 +1070,8 @@ namespace HaCreator.MapSimulator.Interaction
                     entry.Visual,
                     entry.GetDisplayTexture(),
                     entry.GetDisplayOrigin(),
-                    currentTick);
+                    currentTick,
+                    entry.Source);
             }
 
             public bool ShouldRemove(int currentTick)
@@ -1194,8 +1091,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             public float GetAlpha(int currentTick)
             {
-                float progress = Math.Clamp((currentTick - _leaveStartedAt) / (float)DefaultLeaveFadeMs, 0f, 1f);
-                return 1f - progress;
+                return ComputeLeaveFadeAlpha(currentTick - _leaveStartedAt);
             }
 
             public int GetVerticalFloatOffset(int currentTick)
@@ -1266,6 +1162,29 @@ namespace HaCreator.MapSimulator.Interaction
                 CenterVertically: false,
                 MaxLineCount: MaxBodyLineCount,
                 TextColor: Color.White);
+        }
+
+        private static float ComputeLeaveFadeAlpha(int elapsedMs)
+        {
+            float progress = Math.Clamp(elapsedMs / (float)DefaultLeaveFadeMs, 0f, 1f);
+            int alpha = (int)Math.Round(ClientLeaveStartAlpha + ((ClientLeaveEndAlpha - ClientLeaveStartAlpha) * progress));
+            return Math.Clamp(alpha / 255f, 0f, 1f);
+        }
+
+        internal enum MessageBoxEntrySource
+        {
+            LocalCommand,
+            PacketEnterField
+        }
+    }
+
+    internal static class FieldMessageBoxRuntimeExtensions
+    {
+        internal static string GetLabel(this FieldMessageBoxRuntime.MessageBoxEntrySource source)
+        {
+            return source == FieldMessageBoxRuntime.MessageBoxEntrySource.PacketEnterField
+                ? "packet-owned"
+                : "local";
         }
     }
 }

@@ -168,10 +168,10 @@ namespace HaCreator.MapSimulator.UI
             _maximizeButton = maximizeButton;
             _minimizeButton = minimizeButton;
 
-            ConfigureButton(_autoButton, 102, 4, ToggleAutoTrack);
-            ConfigureButton(_questButton, 136, 4, OpenQuestLog);
-            ConfigureButton(_maximizeButton, 150, 4, ShowMaximizedIfAvailable);
-            ConfigureButton(_minimizeButton, 150, 4, () => SetMinimized(true));
+            ConfigureButton(_autoButton, ToggleAutoTrack);
+            ConfigureButton(_questButton, OpenQuestLog);
+            ConfigureButton(_maximizeButton, ShowMaximizedIfAvailable);
+            ConfigureButton(_minimizeButton, () => SetMinimized(true));
 
             if (deleteButton != null)
             {
@@ -385,15 +385,13 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private void ConfigureButton(UIObject button, int x, int y, Action onClick)
+        private void ConfigureButton(UIObject button, Action onClick)
         {
             if (button == null)
             {
                 return;
             }
 
-            button.X = x;
-            button.Y = y;
             AddButton(button);
             if (onClick != null)
             {
@@ -657,7 +655,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawHeaderActions(SpriteBatch sprite, QuestAlarmSnapshot snapshot)
         {
-            if (_font == null)
+            if (_font == null || _isMinimized)
             {
                 _deleteAllBounds = Rectangle.Empty;
                 return;
@@ -665,7 +663,7 @@ namespace HaCreator.MapSimulator.UI
 
             string deleteAllLabel = "Delete all";
             Vector2 labelSize = _font.MeasureString(deleteAllLabel) * HeaderActionScale;
-            int x = Position.X + _maxTopTexture.Width - HeaderActionMargin - (int)Math.Ceiling(labelSize.X);
+            int x = ResolveHeaderActionRightAnchor((int)Math.Ceiling(labelSize.X));
             int y = Position.Y + 7;
             _deleteAllBounds = new Rectangle(x - 2, y - 1, (int)Math.Ceiling(labelSize.X) + 4, (int)Math.Ceiling(labelSize.Y) + 2);
 
@@ -682,6 +680,43 @@ namespace HaCreator.MapSimulator.UI
                 Vector2 pageSize = _font.MeasureString(pageLabel) * PageScale;
                 float pageX = x - HeaderActionSpacing - pageSize.X;
                 sprite.DrawString(_font, pageLabel, new Vector2(pageX, Position.Y + 7), new Color(166, 176, 192), 0f, Vector2.Zero, PageScale, SpriteEffects.None, 0f);
+            }
+        }
+
+        private int ResolveHeaderActionRightAnchor(int labelWidth)
+        {
+            int defaultX = Position.X + _maxTopTexture.Width - HeaderActionMargin - labelWidth;
+            int titleLeft = Position.X + 19;
+            int titleWidth = _font == null
+                ? 0
+                : (int)Math.Ceiling(_font.MeasureString("Quest Alarm").X * HeaderScale);
+            int minimumX = titleLeft + titleWidth + HeaderActionSpacing;
+
+            int rightBound = Position.X + _maxTopTexture.Width - HeaderActionMargin;
+            foreach (UIObject button in EnumerateTopBarButtons())
+            {
+                rightBound = Math.Min(rightBound, Position.X + button.X - HeaderActionSpacing);
+            }
+
+            int boundedX = Math.Min(defaultX, rightBound - labelWidth);
+            return Math.Max(minimumX, boundedX);
+        }
+
+        private IEnumerable<UIObject> EnumerateTopBarButtons()
+        {
+            if (_autoButton?.ButtonVisible == true)
+            {
+                yield return _autoButton;
+            }
+
+            if (_maximizeButton?.ButtonVisible == true)
+            {
+                yield return _maximizeButton;
+            }
+
+            if (_minimizeButton?.ButtonVisible == true)
+            {
+                yield return _minimizeButton;
             }
         }
 

@@ -43,14 +43,21 @@ namespace HaCreator.MapSimulator.Interaction
             public MemoAttachmentState Attachment { get; init; }
         }
 
+        private const string DefaultDraftRecipient = "Cody";
+        private const string DefaultDraftSubject = "Simulator parcel label";
+        private const string DefaultDraftBody =
+            "Parcel draft state is simulator-owned so UIWindow2.img/Delivery can be exercised without packet auth.";
+
         private readonly List<MemoState> _memos = new();
         private readonly MemoDraftState _draft = new();
+        private ParcelComposeMode _composeMode = ParcelComposeMode.Send;
+        private bool _showTaxInfo;
         private int _nextMemoId = 1;
-        private string _lastActionSummary = "Memo mailbox ready.";
+        private string _lastActionSummary = "Parcel delivery ready.";
 
         internal MemoMailboxManager()
         {
-            SeedDefaultMemos();
+            SeedDefaultParcels();
         }
 
         internal MemoMailboxSnapshot GetSnapshot()
@@ -98,7 +105,11 @@ namespace HaCreator.MapSimulator.Interaction
                 HasAttachment = hasAttachment,
                 IsMesoAttachment = isMesoAttachment,
                 CanSend = CanSendDraft(),
-                CanQuickSend = CanQuickSendDraft()
+                CanQuickSend = CanQuickSendDraft(),
+                ActiveMode = _composeMode,
+                ShowTaxInfo = _showTaxInfo,
+                ModeSummary = BuildModeSummary(),
+                TaxSummary = BuildTaxSummary()
             };
         }
 
@@ -129,7 +140,7 @@ namespace HaCreator.MapSimulator.Interaction
             if (memo != null)
             {
                 memo.IsRead = true;
-                _lastActionSummary = $"Opened memo #{memo.MemoId} from {memo.Sender}.";
+                _lastActionSummary = $"Opened parcel #{memo.MemoId} from {memo.Sender}.";
             }
         }
 
@@ -140,7 +151,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 memo.IsRead = true;
                 memo.IsKept = true;
-                _lastActionSummary = $"Kept memo #{memo.MemoId} in the inbox backlog.";
+                _lastActionSummary = $"Kept parcel #{memo.MemoId} in the receive backlog.";
             }
         }
 
@@ -148,7 +159,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             if (_memos.RemoveAll(memo => memo.MemoId == memoId) > 0)
             {
-                _lastActionSummary = $"Deleted memo #{memoId}.";
+                _lastActionSummary = $"Discarded parcel #{memoId}.";
             }
         }
 
@@ -158,9 +169,11 @@ namespace HaCreator.MapSimulator.Interaction
             string body,
             DateTimeOffset? deliveredAt = null,
             bool isRead = false,
+            bool isKept = false,
             int attachmentItemId = 0,
             int attachmentQuantity = 0,
-            int attachmentMeso = 0)
+            int attachmentMeso = 0,
+            bool isAttachmentClaimed = false)
         {
             if (string.IsNullOrWhiteSpace(subject) || string.IsNullOrWhiteSpace(body))
             {
@@ -168,37 +181,42 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             MemoAttachmentState attachment = BuildAttachment(attachmentItemId, attachmentQuantity, attachmentMeso);
+            if (attachment != null)
+            {
+                attachment.IsClaimed = isAttachmentClaimed;
+            }
+
             _memos.Add(new MemoState
             {
                 MemoId = _nextMemoId++,
-                Sender = string.IsNullOrWhiteSpace(sender) ? "Maple Admin" : sender.Trim(),
+                Sender = string.IsNullOrWhiteSpace(sender) ? "Maple Delivery Service" : sender.Trim(),
                 Subject = subject.Trim(),
                 Body = body.Trim(),
                 DeliveredAt = deliveredAt ?? DateTimeOffset.Now,
                 IsRead = isRead,
+                IsKept = isKept,
                 Attachment = attachment
             });
 
             _lastActionSummary = attachment == null
-                ? $"Delivered memo '{subject.Trim()}' from {sender?.Trim() ?? "Maple Admin"}."
-                : $"Delivered memo '{subject.Trim()}' with {BuildAttachmentSummary(attachment)}.";
+                ? $"Queued parcel '{subject.Trim()}' from {sender?.Trim() ?? "Maple Delivery Service"}."
+                : $"Queued parcel '{subject.Trim()}' with {BuildAttachmentSummary(attachment)}.";
         }
 
         internal void SetDraftRecipient(string recipient)
         {
             _draft.Recipient = string.IsNullOrWhiteSpace(recipient) ? _draft.Recipient : recipient.Trim();
-            _lastActionSummary = $"Draft recipient set to {_draft.Recipient}.";
+            _lastActionSummary = $"Parcel target set to {_draft.Recipient}.";
         }
 
         internal void SetDraftSubject(string subject)
         {
-            if (string.IsNullOrWhiteSpace(subject))
-            {
-                return;
-            }
-
-            _draft.Subject = subject.Trim();
-            _lastActionSummary = $"Draft subject set to '{_draft.Subject}'.";
+            _draft.Subject = string.IsNullOrWhiteSpace(subject)
+                ? string.Empty
+                : subject.Trim();
+            _lastActionSummary = string.IsNullOrWhiteSpace(_draft.Subject)
+                ? "Parcel label cleared."
+                : $"Parcel label set to '{_draft.Subject}'.";
         }
 
         internal void SetDraftBody(string body)
@@ -215,13 +233,85 @@ namespace HaCreator.MapSimulator.Interaction
         internal void ClearDraftAttachment()
         {
             _draft.Attachment = null;
-            _lastActionSummary = "Draft attachment cleared.";
+            _lastActionSummary = "Parcel attachment cleared.";
         }
 
         internal void ResetDraftState()
         {
             ResetDraft();
-            _lastActionSummary = "Draft reset to the default simulator memo.";
+            _composeMode = ParcelComposeMode.Send;
+            _showTaxInfo = false;
+            _lastActionSummary = "Parcel compose state reset to the default simulator draft.";
+        }
+
+        internal void SetComposeMode(ParcelComposeMode mode)
+        {
+            _composeMode = mode;
+            _showTaxInfo = false;
+            _lastActionSummary = mode == ParcelComposeMode.QuickSend
+                ? "Quick delivery tab selected."
+                : "Parcel send tab selected.";
+        }
+
+        internal void ToggleTaxInfo()
+        {
+            _showTaxInfo = !_showTaxInfo;
+            _lastActionSummary = _showTaxInfo
+                ? "Opened parcel fee information."
+                : "Closed parcel fee information.";
+        }
+
+        internal void ClearParcelSession()
+        {
+            _memos.Clear();
+            _nextMemoId = 1;
+            _lastActionSummary = "Cleared the parcel receive session.";
+        }
+
+        internal void ResetToSeedParcelSession()
+        {
+            _memos.Clear();
+            _nextMemoId = 1;
+            SeedDefaultParcels();
+            _lastActionSummary = "Restored the seeded parcel receive session.";
+        }
+
+        internal bool TryDeliverPacketOwnedParcel(
+            string sender,
+            string subject,
+            string body,
+            bool isRead,
+            bool isKept,
+            bool isClaimed,
+            int attachmentItemId,
+            int attachmentQuantity,
+            int attachmentMeso,
+            out string message)
+        {
+            if (string.IsNullOrWhiteSpace(sender) || string.IsNullOrWhiteSpace(body))
+            {
+                message = "Packet-owned parcel entries require sender and body text.";
+                return false;
+            }
+
+            string resolvedSubject = string.IsNullOrWhiteSpace(subject)
+                ? BuildFallbackParcelLabel(body)
+                : subject.Trim();
+
+            DeliverMemo(
+                sender.Trim(),
+                resolvedSubject,
+                body.Trim(),
+                DateTimeOffset.Now,
+                isRead,
+                isKept,
+                attachmentItemId,
+                attachmentQuantity,
+                attachmentMeso,
+                isClaimed);
+            message = $"Queued packet-owned parcel '{resolvedSubject}' from {sender.Trim()}.";
+            _lastActionSummary = message;
+            return true;
         }
 
         internal bool SetDraftItemAttachment(int itemId, int quantity, out string message)
@@ -291,7 +381,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             memo.Attachment.IsClaimed = true;
             memo.IsRead = true;
-            message = $"Claimed {BuildAttachmentSummary(memo.Attachment)} from memo #{memo.MemoId}.";
+            message = $"Claimed {BuildAttachmentSummary(memo.Attachment)} from parcel #{memo.MemoId}.";
             _lastActionSummary = message;
             return true;
         }
@@ -300,26 +390,27 @@ namespace HaCreator.MapSimulator.Interaction
         {
             if (!CanSendDraft())
             {
-                message = "Draft requires recipient, subject, and body before it can be sent.";
+                message = "Parcel send requires recipient and body text before it can be sent.";
                 return false;
             }
 
             string recipient = _draft.Recipient;
-            string subject = _draft.Subject;
+            string subject = ResolveDraftParcelLabel();
             string body = _draft.Body;
             MemoAttachmentState attachment = CloneAttachment(_draft.Attachment);
+            _showTaxInfo = false;
 
             _lastActionSummary = attachment == null
-                ? $"Sent memo to {recipient}."
-                : $"Sent memo to {recipient} with {BuildAttachmentSummary(attachment)}.";
+                ? $"Sent parcel to {recipient}."
+                : $"Sent parcel to {recipient} with {BuildAttachmentSummary(attachment)}.";
             message = _lastActionSummary;
 
             DeliverMemo(
                 "Maple Mail Center",
                 $"Delivery receipt: {subject}",
                 attachment == null
-                    ? $"Your memo to {recipient} was queued through the simulator mailbox."
-                    : $"Your memo to {recipient} was queued through the simulator mailbox with {BuildAttachmentSummary(attachment)}.",
+                    ? $"Your parcel to {recipient} was queued through the simulator delivery owner."
+                    : $"Your parcel to {recipient} was queued through the simulator delivery owner with {BuildAttachmentSummary(attachment)}.",
                 DateTimeOffset.Now,
                 isRead: false);
 
@@ -338,13 +429,12 @@ namespace HaCreator.MapSimulator.Interaction
             string recipient = _draft.Recipient;
             string body = _draft.Body;
             MemoAttachmentState attachment = CloneAttachment(_draft.Attachment);
-            string quickSubject = string.IsNullOrWhiteSpace(_draft.Subject)
-                ? "Quick delivery"
-                : $"Quick delivery: {_draft.Subject.Trim()}";
+            string quickSubject = ResolveDraftParcelLabel("Quick delivery");
+            _showTaxInfo = false;
 
             _lastActionSummary = attachment == null
-                ? $"Quick-sent parcel notice to {recipient}."
-                : $"Quick-sent parcel notice to {recipient} with {BuildAttachmentSummary(attachment)}.";
+                ? $"Quick-sent parcel to {recipient}."
+                : $"Quick-sent parcel to {recipient} with {BuildAttachmentSummary(attachment)}.";
             message = _lastActionSummary;
 
             DeliverMemo(
@@ -361,12 +451,19 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        internal bool TryDispatchActiveDraft(out string message)
+        {
+            return _composeMode == ParcelComposeMode.QuickSend
+                ? TryQuickSendDraft(out message)
+                : TrySendDraft(out message);
+        }
+
         private MemoState FindMemo(int memoId)
         {
             return _memos.FirstOrDefault(memo => memo.MemoId == memoId);
         }
 
-        private void SeedDefaultMemos()
+        private void SeedDefaultParcels()
         {
             if (_memos.Count > 0)
             {
@@ -375,35 +472,38 @@ namespace HaCreator.MapSimulator.Interaction
 
             DateTimeOffset now = DateTimeOffset.Now;
             DeliverMemo(
-                "Maple Admin",
-                "Welcome to MapSimulator",
-                "This mailbox tracks simulator-owned memos separately from whisper or messenger surfaces. Use it to validate inbox delivery, read state, and note retention flow.",
+                "Maple Delivery Service",
+                "Welcome parcel",
+                "This receive tab tracks simulator-owned parcel entries separately from whisper or messenger surfaces. Use it to validate parcel selection, receive state, and discard flow.",
                 now.AddMinutes(-18));
             DeliverMemo(
                 "Duey",
                 "Package delivery",
-                "A simulator-owned attachment was staged so UIWindow2.img/Memo/Get can exercise claim flow instead of stopping at the list window.",
+                "A simulator-owned attachment was staged so UIWindow2.img/Delivery can exercise receive flow while the dedicated package popup remains available as a simulator supplement.",
                 now.AddMinutes(-14),
                 isRead: false,
+                isKept: true,
                 attachmentItemId: 2000005,
                 attachmentQuantity: 5);
             DeliverMemo(
-                "Maple Tip",
-                "Travel reminder",
-                "Map transfer shortcuts and field transitions can strand parity checks if you do not keep a baseline map handy. Register a safe map before testing social windows across scenes.",
+                "Maple Delivery Service",
+                "Tax notice",
+                "Send and quick-send tabs share the fee popup in the client. The simulator keeps that popup informational while draft edits still flow through chat commands.",
                 now.AddMinutes(-9));
             DeliverMemo(
                 "Cody",
-                "Companion backlog",
-                "Pet runtime parity landed first, but memo and mailbox flow still needed its own owner. This note is here so the inbox starts with both read and unread state to exercise the UI.",
+                "Receipt archive",
+                "This archived entry keeps both read and kept state alive so the receive tab starts with a small mixed parcel backlog.",
                 now.AddMinutes(-4),
-                isRead: true);
+                isRead: true,
+                isKept: true,
+                attachmentMeso: 7500,
+                isAttachmentClaimed: true);
         }
 
         private bool CanSendDraft()
         {
             return !string.IsNullOrWhiteSpace(_draft.Recipient)
-                && !string.IsNullOrWhiteSpace(_draft.Subject)
                 && !string.IsNullOrWhiteSpace(_draft.Body);
         }
 
@@ -416,9 +516,9 @@ namespace HaCreator.MapSimulator.Interaction
 
         private void ResetDraft()
         {
-            _draft.Recipient = "Cody";
-            _draft.Subject = "Simulator note";
-            _draft.Body = "Mailbox draft state is simulator-owned so UIWindow2.img/Memo can be exercised without packet auth.";
+            _draft.Recipient = DefaultDraftRecipient;
+            _draft.Subject = DefaultDraftSubject;
+            _draft.Body = DefaultDraftBody;
             _draft.Attachment = null;
         }
 
@@ -501,6 +601,48 @@ namespace HaCreator.MapSimulator.Interaction
                 MemoAttachmentKind.Meso => $"Meso package: {attachment.Meso:N0} meso.",
                 _ => "No package is attached to this memo."
             };
+        }
+
+        private string BuildModeSummary()
+        {
+            return _composeMode switch
+            {
+                ParcelComposeMode.QuickSend =>
+                    "Quick Send tab: recipient and body are required; the simulator keeps item parcels disabled here to match the client split.",
+                _ =>
+                    "Send tab: recipient and body are required; optional item or meso packages still flow through the simulator draft seam."
+            };
+        }
+
+        private string BuildTaxSummary()
+        {
+            return _composeMode switch
+            {
+                ParcelComposeMode.QuickSend =>
+                    "Quick-delivery fee info is informational only here. Use /memo draft meso <amount> to stage the money field.",
+                _ =>
+                    "Parcel fee info is informational only here. Use /memo draft item ... or /memo draft meso ... to stage the package payload."
+            };
+        }
+
+        private string ResolveDraftParcelLabel(string fallback = "Parcel delivery")
+        {
+            return string.IsNullOrWhiteSpace(_draft.Subject)
+                ? fallback
+                : _draft.Subject.Trim();
+        }
+
+        private static string BuildFallbackParcelLabel(string body)
+        {
+            if (string.IsNullOrWhiteSpace(body))
+            {
+                return "Parcel delivery";
+            }
+
+            string normalized = body.Replace("\r", " ").Replace("\n", " ").Trim();
+            return normalized.Length <= 24
+                ? normalized
+                : normalized.Substring(0, 21) + "...";
         }
 
         private static string ResolveItemName(int itemId)

@@ -44,6 +44,7 @@ namespace HaCreator.MapSimulator.Entities
         // Movement system
         public NpcMovementInfo MovementInfo { get; private set; }
         public bool MovementEnabled { get; set; } = true;
+        public bool IdleActionCyclingEnabled { get; set; } = true;
 
         // Cached mirror boundary (optimization - avoid recalculating every frame)
         private readonly CachedBoundaryChecker _boundaryChecker = new CachedBoundaryChecker();
@@ -285,7 +286,7 @@ namespace HaCreator.MapSimulator.Entities
         /// </summary>
         private void UpdateActionCycle()
         {
-            if (_animationSet == null || _animationSet.ActionCount <= 1)
+            if (!IdleActionCyclingEnabled || _animationSet == null || _animationSet.ActionCount <= 1)
                 return;
 
             // Don't cycle if we're in move/walk action

@@ -40,7 +40,13 @@ namespace HaCreator.MapSimulator.Loaders
         }
 
         private static readonly ConditionalWeakTable<GraphicsDevice, ConcurrentDictionary<string, Lazy<CachedMobAttackAssets>>> _cachedMobAttackAssetsByDevice = new();
-        private static readonly ConditionalWeakTable<GraphicsDevice, Lazy<MobAnimationSet>> _cachedDoomAnimationSetByDevice = new();
+        private sealed class CachedDoomMobAssets
+        {
+            public MobAnimationSet AnimationSet { get; init; }
+            public Rectangle Footprint { get; init; }
+        }
+
+        private static readonly ConditionalWeakTable<GraphicsDevice, Lazy<CachedDoomMobAssets>> _cachedDoomMobAssetsByDevice = new();
 
         #region Mob
         /// <summary>
@@ -61,7 +67,7 @@ namespace HaCreator.MapSimulator.Loaders
 
             // Create animation set to store frames per action
             MobAnimationSet animationSet = new MobAnimationSet();
-            MobAnimationSet doomAnimationSet = GetOrBuildDoomAnimationSet(texturePool, device, usedProps);
+            CachedDoomMobAssets doomAssets = GetOrBuildDoomMobAssets(texturePool, device, usedProps);
             CachedMobAttackAssets cachedAttackAssets = GetOrBuildCachedMobAttackAssets(texturePool, mobInfo, source, device, usedProps);
             ApplyCachedMobAttackAssets(animationSet, cachedAttackAssets);
 
@@ -138,7 +144,11 @@ namespace HaCreator.MapSimulator.Loaders
                     texturePool, UserScreenScaleFactor, device);
             }
 
-            var mobItem = new MobItem(mobInstance, animationSet, nameTooltip, doomAnimationSet);
+            var mobItem = new MobItem(
+                mobInstance,
+                animationSet,
+                nameTooltip,
+                doomAssets?.AnimationSet);
 
             // Load mob-specific sounds from Sound.wz/Mob.img/{mobId}/
             mobItem.SetSoundManager(soundManager);
@@ -171,7 +181,7 @@ namespace HaCreator.MapSimulator.Loaders
             return lazyAssets.Value;
         }
 
-        private static MobAnimationSet GetOrBuildDoomAnimationSet(
+        private static CachedDoomMobAssets GetOrBuildDoomMobAssets(
             TexturePool texturePool,
             GraphicsDevice device,
             ConcurrentBag<WzObject> usedProps)
@@ -181,16 +191,16 @@ namespace HaCreator.MapSimulator.Loaders
                 return null;
             }
 
-            Lazy<MobAnimationSet> lazyAnimationSet = _cachedDoomAnimationSetByDevice.GetValue(
+            Lazy<CachedDoomMobAssets> lazyAssets = _cachedDoomMobAssetsByDevice.GetValue(
                 device,
-                _ => new Lazy<MobAnimationSet>(
-                    () => BuildDoomAnimationSet(texturePool, device, usedProps),
+                _ => new Lazy<CachedDoomMobAssets>(
+                    () => BuildDoomMobAssets(texturePool, device, usedProps),
                     System.Threading.LazyThreadSafetyMode.ExecutionAndPublication));
 
-            return lazyAnimationSet.Value;
+            return lazyAssets.Value;
         }
 
-        private static MobAnimationSet BuildDoomAnimationSet(
+        private static CachedDoomMobAssets BuildDoomMobAssets(
             TexturePool texturePool,
             GraphicsDevice device,
             ConcurrentBag<WzObject> usedProps)
@@ -230,7 +240,40 @@ namespace HaCreator.MapSimulator.Loaders
                 }
             }
 
-            return animationSet.ActionCount > 0 ? animationSet : null;
+            if (animationSet.ActionCount <= 0)
+            {
+                return null;
+            }
+
+            return new CachedDoomMobAssets
+            {
+                AnimationSet = animationSet,
+                Footprint = ResolveDoomFootprint(doomImage)
+            };
+        }
+
+        private static Rectangle ResolveDoomFootprint(WzImage doomImage)
+        {
+            if (doomImage?["stand"]?["0"] is not WzCanvasProperty standFrame)
+            {
+                return new Rectangle(-16, -34, 35, 34);
+            }
+
+            Point lt = ResolveCanvasVector(standFrame["lt"], -16, -34);
+            Point rb = ResolveCanvasVector(standFrame["rb"], 19, 0);
+            int width = Math.Max(1, rb.X - lt.X);
+            int height = Math.Max(1, rb.Y - lt.Y);
+            return new Rectangle(lt.X, lt.Y, width, height);
+        }
+
+        private static Point ResolveCanvasVector(WzImageProperty property, int fallbackX, int fallbackY)
+        {
+            if (property is WzVectorProperty vectorProperty)
+            {
+                return new Point(vectorProperty.X.Value, vectorProperty.Y.Value);
+            }
+
+            return new Point(fallbackX, fallbackY);
         }
 
         private static CachedMobAttackAssets BuildCachedMobAttackAssets(
@@ -545,22 +588,37 @@ namespace HaCreator.MapSimulator.Loaders
                 "bFacingAttach",
                 "bFacingAttatch",
                 "facingAttach");
+            int infoHitAttach = ReadOptionalInt(infoNode, int.MinValue, "attach", "bHitAttach", "hitAttach");
+            int infoFacingAttach = ReadOptionalInt(
+                infoNode,
+                int.MinValue,
+                "attachfacing",
+                "bFacingAttach",
+                "bFacingAttatch",
+                "facingAttach");
+            bool facingAttach = nestedFacingAttach != int.MinValue
+                ? nestedFacingAttach > 0
+                : infoFacingAttach > 0;
+            bool hitAttach = nestedHitAttach != int.MinValue
+                ? nestedHitAttach > 0
+                : infoHitAttach != int.MinValue
+                    ? infoHitAttach > 0
+                    : facingAttach;
+            WzSubProperty effectNode = WzInfoTools.GetRealProperty(infoNode["effect"]) as WzSubProperty;
+            bool effectFacingAttach = ReadOptionalInt(
+                effectNode,
+                0,
+                "attachfacing",
+                "bFacingAttach",
+                "bFacingAttatch",
+                "facingAttach") > 0;
 
             var metadata = new MobAnimationSet.AttackInfoMetadata
             {
                 AttackType = InfoTool.GetInt(infoNode["type"], -1),
-                HitAttach = nestedHitAttach != int.MinValue
-                    ? nestedHitAttach > 0
-                    : ReadOptionalInt(infoNode, 0, "attach", "bHitAttach", "hitAttach") > 0,
-                FacingAttach = nestedFacingAttach != int.MinValue
-                    ? nestedFacingAttach > 0
-                    : ReadOptionalInt(
-                        infoNode,
-                        0,
-                        "attachfacing",
-                        "bFacingAttach",
-                        "bFacingAttatch",
-                        "facingAttach") > 0,
+                HitAttach = hitAttach,
+                FacingAttach = facingAttach,
+                EffectFacingAttach = effectFacingAttach,
                 EffectAfter = InfoTool.GetInt(infoNode["effectAfter"], 0),
                 AttackAfter = InfoTool.GetInt(infoNode["attackAfter"], 0),
                 RandDelayAttack = InfoTool.GetInt(infoNode["randDelayAttack"], 0),

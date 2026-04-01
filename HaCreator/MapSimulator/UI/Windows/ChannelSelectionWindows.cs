@@ -481,6 +481,9 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D _overlayTexture3;
         private readonly Point _overlayOffset3;
         private readonly Texture2D _highlightTexture;
+        private readonly Texture2D _gaugeTexture;
+        private readonly IReadOnlyList<Texture2D> _selectionFrames;
+        private readonly int _selectionFrameDelayMs;
         private readonly UIObject _changeButton;
         private readonly UIObject _cancelButton;
         private readonly List<ChannelButtonEntry> _channelButtons = new List<ChannelButtonEntry>();
@@ -503,6 +506,9 @@ namespace HaCreator.MapSimulator.UI
             Texture2D overlayTexture3,
             Point overlayOffset3,
             Texture2D highlightTexture,
+            Texture2D gaugeTexture,
+            IReadOnlyList<Texture2D> selectionFrames,
+            int selectionFrameDelayMs,
             UIObject changeButton,
             UIObject cancelButton,
             IEnumerable<(int channelIndex, UIObject button, Texture2D icon)> channelButtons,
@@ -514,6 +520,9 @@ namespace HaCreator.MapSimulator.UI
             _overlayTexture3 = overlayTexture3;
             _overlayOffset3 = overlayOffset3;
             _highlightTexture = highlightTexture;
+            _gaugeTexture = gaugeTexture;
+            _selectionFrames = selectionFrames ?? Array.Empty<Texture2D>();
+            _selectionFrameDelayMs = Math.Max(1, selectionFrameDelayMs);
             _changeButton = changeButton;
             _cancelButton = cancelButton;
             _worldBadges = worldBadges ?? new Dictionary<int, Texture2D>();
@@ -633,12 +642,20 @@ namespace HaCreator.MapSimulator.UI
 
                     if (entry.ChannelIndex == _selectedChannelIndex)
                     {
-                        Rectangle rect = new Rectangle(
-                            Position.X + entry.Button.X - 2,
-                            Position.Y + entry.Button.Y - 1,
-                            entry.Button.CanvasSnapshotWidth + 4,
-                            entry.Button.CanvasSnapshotHeight + 2);
-                        sprite.Draw(_highlightTexture, rect, new Color(82, 123, 214, 130));
+                        Texture2D selectionFrame = GetSelectionFrame(TickCount);
+                        if (selectionFrame != null)
+                        {
+                            sprite.Draw(selectionFrame, new Vector2(Position.X + entry.Button.X - 2, Position.Y + entry.Button.Y - 3), Color.White);
+                        }
+                        else
+                        {
+                            Rectangle rect = new Rectangle(
+                                Position.X + entry.Button.X - 2,
+                                Position.Y + entry.Button.Y - 1,
+                                entry.Button.CanvasSnapshotWidth + 4,
+                                entry.Button.CanvasSnapshotHeight + 2);
+                            sprite.Draw(_highlightTexture, rect, new Color(82, 123, 214, 130));
+                        }
                     }
                     else if (_selectedWorldId == _currentWorldId && entry.ChannelIndex == _currentChannelIndex)
                     {
@@ -712,17 +729,11 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 Rectangle gaugeBounds = new Rectangle(
-                    Position.X + entry.Button.X + 30,
-                    Position.Y + entry.Button.Y + 8,
-                    28,
-                    4);
-                sprite.Draw(_highlightTexture, gaugeBounds, new Color(28, 34, 46, 180));
-
-                int fillWidth = Math.Max(1, (int)Math.Round(gaugeBounds.Width * (state.OccupancyPercent / 100f)));
-                sprite.Draw(
-                    _highlightTexture,
-                    new Rectangle(gaugeBounds.X, gaugeBounds.Y, fillWidth, gaugeBounds.Height),
-                    SelectorWindowDrawing.GetAvailabilityColor(state.Availability));
+                    Position.X + entry.Button.X + 2,
+                    Position.Y + entry.Button.Y + 13,
+                    _gaugeTexture?.Width ?? 56,
+                    _gaugeTexture?.Height ?? 6);
+                DrawGauge(sprite, gaugeBounds, state.OccupancyPercent, state.Availability);
             }
         }
 
@@ -843,6 +854,47 @@ namespace HaCreator.MapSimulator.UI
 
             _changeButton?.SetEnabled(CanApplySelection());
         }
+
+        private Texture2D GetSelectionFrame(int tickCount)
+        {
+            if (_selectionFrames == null || _selectionFrames.Count == 0)
+            {
+                return null;
+            }
+
+            int frameIndex = Math.Abs(tickCount / _selectionFrameDelayMs) % _selectionFrames.Count;
+            return _selectionFrames[frameIndex];
+        }
+
+        private void DrawGauge(SpriteBatch sprite, Rectangle gaugeBounds, int occupancyPercent, SelectorAvailability availability)
+        {
+            if (_gaugeTexture != null)
+            {
+                sprite.Draw(_gaugeTexture, gaugeBounds, new Color(44, 50, 58, 170));
+
+                int fillWidth = Math.Clamp(
+                    (int)Math.Round(gaugeBounds.Width * Math.Clamp(occupancyPercent, 0, 100) / 100f),
+                    0,
+                    gaugeBounds.Width);
+                if (fillWidth > 0)
+                {
+                    sprite.Draw(
+                        _gaugeTexture,
+                        new Rectangle(gaugeBounds.X, gaugeBounds.Y, fillWidth, gaugeBounds.Height),
+                        new Rectangle(0, 0, fillWidth, _gaugeTexture.Height),
+                        SelectorWindowDrawing.GetAvailabilityColor(availability));
+                }
+
+                return;
+            }
+
+            sprite.Draw(_highlightTexture, gaugeBounds, new Color(28, 34, 46, 180));
+            int fallbackWidth = Math.Max(1, (int)Math.Round(gaugeBounds.Width * Math.Clamp(occupancyPercent, 0, 100) / 100f));
+            sprite.Draw(
+                _highlightTexture,
+                new Rectangle(gaugeBounds.X, gaugeBounds.Y, fallbackWidth, gaugeBounds.Height),
+                SelectorWindowDrawing.GetAvailabilityColor(availability));
+        }
     }
 
     public sealed class ChannelShiftWindow : UIWindowBase
@@ -851,9 +903,10 @@ namespace HaCreator.MapSimulator.UI
         private readonly Point _overlayOffset2;
         private readonly Texture2D _overlayTexture3;
         private readonly Point _overlayOffset3;
-        private readonly Texture2D _rowTexture;
         private readonly Dictionary<int, Texture2D> _worldBadges;
         private readonly Dictionary<int, Texture2D> _channelIcons;
+        private readonly IReadOnlyList<Texture2D> _selectionFrames;
+        private readonly int _selectionFrameDelayMs;
         private SpriteFont _font;
         private int _worldId;
         private int _channelIndex;
@@ -865,18 +918,20 @@ namespace HaCreator.MapSimulator.UI
             Point overlayOffset2,
             Texture2D overlayTexture3,
             Point overlayOffset3,
-            Texture2D rowTexture,
             Dictionary<int, Texture2D> worldBadges,
-            Dictionary<int, Texture2D> channelIcons)
+            Dictionary<int, Texture2D> channelIcons,
+            IReadOnlyList<Texture2D> selectionFrames,
+            int selectionFrameDelayMs)
             : base(frame)
         {
             _overlayTexture2 = overlayTexture2;
             _overlayOffset2 = overlayOffset2;
             _overlayTexture3 = overlayTexture3;
             _overlayOffset3 = overlayOffset3;
-            _rowTexture = rowTexture;
             _worldBadges = worldBadges ?? new Dictionary<int, Texture2D>();
             _channelIcons = channelIcons ?? new Dictionary<int, Texture2D>();
+            _selectionFrames = selectionFrames ?? Array.Empty<Texture2D>();
+            _selectionFrameDelayMs = Math.Max(1, selectionFrameDelayMs);
         }
 
         public override string WindowName => MapSimulatorWindowNames.ChannelShift;
@@ -945,16 +1000,28 @@ namespace HaCreator.MapSimulator.UI
                 sprite.Draw(badgeTexture, new Vector2(Position.X + 18, Position.Y + 18), Color.White);
             }
 
-            if (_rowTexture != null)
+            Texture2D rowTexture = GetSelectionFrame(TickCount);
+            if (rowTexture != null)
             {
                 Vector2 rowPosition = new Vector2(Position.X + 148, Position.Y + 88);
-                sprite.Draw(_rowTexture, rowPosition, Color.White);
+                sprite.Draw(rowTexture, rowPosition, Color.White);
 
                 if (_channelIcons.TryGetValue(_channelIndex, out Texture2D channelTexture))
                 {
                     sprite.Draw(channelTexture, rowPosition + new Vector2(8f, 5f), Color.White);
                 }
             }
+        }
+
+        private Texture2D GetSelectionFrame(int tickCount)
+        {
+            if (_selectionFrames == null || _selectionFrames.Count == 0)
+            {
+                return null;
+            }
+
+            int frameIndex = Math.Abs(tickCount / _selectionFrameDelayMs) % _selectionFrames.Count;
+            return _selectionFrames[frameIndex];
         }
     }
 

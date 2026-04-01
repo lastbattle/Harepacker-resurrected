@@ -10,6 +10,13 @@ namespace HaCreator.MapSimulator.Managers
         Register = 1
     }
 
+    public enum MapTransferRuntimeResultType
+    {
+        None = 0,
+        RegisterApplied = 2,
+        DeleteApplied = 3
+    }
+
     public sealed class MapTransferRuntimeRequest
     {
         public MapTransferRuntimeRequestType Type { get; init; }
@@ -24,6 +31,9 @@ namespace HaCreator.MapSimulator.Managers
         public string FailureMessage { get; init; }
         public int FocusMapId { get; init; }
         public int FocusSlotIndex { get; init; } = -1;
+        public MapTransferRuntimeResultType ResultType { get; init; }
+        public bool CanTransferContinent { get; init; }
+        public IReadOnlyList<int> FieldList { get; init; } = Array.Empty<int>();
     }
 
     /// <summary>
@@ -74,7 +84,7 @@ namespace HaCreator.MapSimulator.Managers
             return destinations;
         }
 
-        public MapTransferRuntimeResponse SubmitRequest(CharacterBuild build, MapTransferRuntimeRequest request)
+        public MapTransferRuntimeResponse SendMapTransferRequest(CharacterBuild build, MapTransferRuntimeRequest request)
         {
             if (request == null)
             {
@@ -82,14 +92,66 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             CharacterRuntimeBooks runtimeBooks = GetOrCreateBooks(build);
-            int[] slots = GetSlots(runtimeBooks, request.Book);
+            int[] slots = (int[])GetSlots(runtimeBooks, request.Book).Clone();
 
-            return request.Type switch
+            MapTransferRuntimeResponse response = request.Type switch
             {
                 MapTransferRuntimeRequestType.Register => RegisterDestination(build, request, slots),
                 MapTransferRuntimeRequestType.Delete => DeleteDestination(build, request, slots),
                 _ => new MapTransferRuntimeResponse()
             };
+
+            if (!response.Applied)
+            {
+                return response;
+            }
+
+            return new MapTransferRuntimeResponse
+            {
+                Applied = true,
+                FailureMessage = response.FailureMessage,
+                FocusMapId = response.FocusMapId,
+                FocusSlotIndex = response.FocusSlotIndex,
+                ResultType = request.Type == MapTransferRuntimeRequestType.Register
+                    ? MapTransferRuntimeResultType.RegisterApplied
+                    : MapTransferRuntimeResultType.DeleteApplied,
+                CanTransferContinent = request.Book == MapTransferDestinationBook.Continent,
+                FieldList = (int[])slots.Clone()
+            };
+        }
+
+        public MapTransferRuntimeResponse SubmitRequest(CharacterBuild build, MapTransferRuntimeRequest request)
+        {
+            return SendMapTransferRequest(build, request);
+        }
+
+        public bool ApplyMapTransferResult(CharacterBuild build, MapTransferRuntimeResponse response)
+        {
+            if (response == null ||
+                !response.Applied ||
+                response.ResultType == MapTransferRuntimeResultType.None ||
+                response.FieldList == null ||
+                response.FieldList.Count == 0)
+            {
+                return false;
+            }
+
+            CharacterRuntimeBooks runtimeBooks = GetOrCreateBooks(build);
+            MapTransferDestinationBook book = response.CanTransferContinent
+                ? MapTransferDestinationBook.Continent
+                : MapTransferDestinationBook.Regular;
+            int[] slots = GetSlots(runtimeBooks, book);
+
+            Array.Fill(slots, EmptyDestinationMapId);
+            int maxCount = Math.Min(slots.Length, response.FieldList.Count);
+            for (int slotIndex = 0; slotIndex < maxCount; slotIndex++)
+            {
+                int mapId = response.FieldList[slotIndex];
+                slots[slotIndex] = mapId > 0 ? mapId : EmptyDestinationMapId;
+            }
+
+            PersistSlots(build, book, slots);
+            return true;
         }
 
         private MapTransferRuntimeResponse RegisterDestination(CharacterBuild build, MapTransferRuntimeRequest request, int[] slots)
@@ -125,7 +187,6 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             slots[targetSlotIndex] = request.MapId;
-            PersistSlots(build, request.Book, slots);
             return new MapTransferRuntimeResponse
             {
                 Applied = true,
@@ -146,7 +207,6 @@ namespace HaCreator.MapSimulator.Managers
 
             int removedMapId = slots[targetSlotIndex];
             slots[targetSlotIndex] = EmptyDestinationMapId;
-            PersistSlots(build, request.Book, slots);
             return new MapTransferRuntimeResponse
             {
                 Applied = true,

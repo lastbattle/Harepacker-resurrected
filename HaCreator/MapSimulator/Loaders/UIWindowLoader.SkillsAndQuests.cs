@@ -779,6 +779,16 @@ namespace HaCreator.MapSimulator.Loaders
 
                 SkillMacroUI macroUI = new SkillMacroUI(frame, device);
 
+                Texture2D foregroundTexture = LoadCanvasTexture(macroProperty, "backgrnd2", device);
+                Texture2D contentTexture = LoadCanvasTexture(macroProperty, "backgrnd3", device);
+                Texture2D checkboxTexture = LoadCanvasTexture(macroProperty, "check", device);
+                macroUI.SetOwnerChrome(
+                    foregroundTexture,
+                    ResolveCanvasOffset(macroProperty, "backgrnd2", new Point(6, 22)),
+                    contentTexture,
+                    ResolveCanvasOffset(macroProperty, "backgrnd3", new Point(11, 41)),
+                    checkboxTexture);
+
 
 
                 // Position window in center of screen
@@ -818,7 +828,7 @@ namespace HaCreator.MapSimulator.Loaders
                     Texture2D[] macroIcons = new Texture2D[5];
                     for (int i = 0; i < 5; i++)
                     {
-                        macroIcons[i] = LoadCanvasTexture(macroIconProp, i.ToString(), device);
+                        macroIcons[i] = LoadCanvasTexture(macroIconProp[i.ToString()] as WzSubProperty, "icon", device);
                     }
                     macroUI.SetMacroSlotIcons(macroIcons);
                 }
@@ -2686,6 +2696,7 @@ namespace HaCreator.MapSimulator.Loaders
             RegisterUserInfoProductSkillIcon(window, productSkillProperty, "9201", ItemMakerRecipeFamily.Gloves, device);
             RegisterUserInfoProductSkillIcon(window, productSkillProperty, "9202", ItemMakerRecipeFamily.Shoes, device);
             RegisterUserInfoProductSkillIcon(window, productSkillProperty, "9203", ItemMakerRecipeFamily.Toys, device);
+            RegisterUserInfoProductSkillRecipeIcon(window, productSkillProperty, "9204", device);
         }
 
 
@@ -2706,6 +2717,24 @@ namespace HaCreator.MapSimulator.Loaders
             if (iconTexture != null)
             {
                 window.SetProductSkillIcon(family, new DXObject(0, 0, iconTexture, 0));
+            }
+        }
+
+        private static void RegisterUserInfoProductSkillRecipeIcon(
+            UserInfoUI window,
+            WzSubProperty productSkillProperty,
+            string canvasName,
+            GraphicsDevice device)
+        {
+            if (window == null || productSkillProperty == null)
+            {
+                return;
+            }
+
+            Texture2D iconTexture = LoadCanvasTexture(productSkillProperty, canvasName, device);
+            if (iconTexture != null)
+            {
+                window.SetProductSkillRecipeIcon(new DXObject(0, 0, iconTexture, 0));
             }
         }
 

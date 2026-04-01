@@ -1136,6 +1136,12 @@ namespace HaCreator.MapSimulator.UI
                 prefix = prefix.Substring(closingBracketIndex + 1).TrimStart();
             }
 
+            int channelSuffixIndex = prefix.LastIndexOf(" (", StringComparison.Ordinal);
+            if (channelSuffixIndex > 0 && prefix.EndsWith(")", StringComparison.Ordinal))
+            {
+                prefix = prefix.Substring(0, channelSuffixIndex).TrimEnd();
+            }
+
             return prefix.Trim();
         }
 
@@ -1143,7 +1149,8 @@ namespace HaCreator.MapSimulator.UI
         {
             whisperTarget = string.Empty;
             if (string.IsNullOrWhiteSpace(text)
-                || !text.StartsWith("[Whisper]", StringComparison.OrdinalIgnoreCase))
+                || (!text.StartsWith("[Whisper]", StringComparison.OrdinalIgnoreCase)
+                    && !text.StartsWith("[GM Whisper]", StringComparison.OrdinalIgnoreCase)))
             {
                 return false;
             }

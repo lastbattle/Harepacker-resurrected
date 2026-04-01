@@ -514,20 +514,15 @@ namespace HaCreator.MapSimulator.Character
                 ItemId = itemId
             };
 
-            foreach (WzImageProperty child in itemEffectProperty.WzProperties)
+            foreach (ItemEffectLayerSource layerSource in ResolveItemEffectLayerSources(itemEffectProperty))
             {
-                if (child is not WzSubProperty layerProperty)
-                {
-                    continue;
-                }
-
-                PortableChairLayer layer = LoadPortableChairLayer(layerProperty, $"itemEff/{child.Name}", loop: false);
+                PortableChairLayer layer = LoadPortableChairLayer(layerSource.LayerProperty, layerSource.LayerName, loop: false);
                 if (layer == null || IsPlaceholderPortableChairLayer(layer))
                 {
                     continue;
                 }
 
-                if (string.Equals(child.Name, "1", StringComparison.OrdinalIgnoreCase))
+                if (layerSource.IsSharedLayer)
                 {
                     effectSet.SharedLayers.Add(layer);
                 }
@@ -641,7 +636,7 @@ namespace HaCreator.MapSimulator.Character
             return LoadPortableChairLayer(layerProperty, layerProperty?.Name, loop: true);
         }
 
-        private PortableChairLayer LoadPortableChairLayer(WzSubProperty layerProperty, string layerName, bool loop)
+        private PortableChairLayer LoadPortableChairLayer(WzImageProperty layerProperty, string layerName, bool loop)
         {
             var animation = new CharacterAnimation
             {
@@ -654,7 +649,8 @@ namespace HaCreator.MapSimulator.Character
             int? relativeZ = GetIntValue(layerProperty?["z"]);
             foreach (WzImageProperty child in layerProperty.WzProperties)
             {
-                if (child is not WzCanvasProperty canvas || !int.TryParse(child.Name, out int frameIndex))
+                if (!int.TryParse(child.Name, out int frameIndex)
+                    || !TryResolvePortableChairFrameCanvas(child, out WzCanvasProperty canvas))
                 {
                     continue;
                 }
@@ -689,6 +685,96 @@ namespace HaCreator.MapSimulator.Character
                 PositionHint = GetIntValue(layerProperty["pos"]) ?? 0
             };
         }
+
+        internal static IReadOnlyList<ItemEffectLayerSource> ResolveItemEffectLayerSources(WzSubProperty itemEffectProperty)
+        {
+            if (itemEffectProperty == null)
+            {
+                return Array.Empty<ItemEffectLayerSource>();
+            }
+
+            List<ItemEffectLayerSource> groupedLayers = new();
+            foreach (WzImageProperty child in itemEffectProperty.WzProperties)
+            {
+                if (child is not WzSubProperty layerProperty
+                    || string.Equals(child.Name, "fail", StringComparison.OrdinalIgnoreCase)
+                    || !PortableChairLayerHasRenderableFrames(layerProperty))
+                {
+                    continue;
+                }
+
+                groupedLayers.Add(new ItemEffectLayerSource(
+                    layerProperty,
+                    $"itemEff/{child.Name}",
+                    string.Equals(child.Name, "1", StringComparison.OrdinalIgnoreCase)));
+            }
+
+            if (groupedLayers.Count > 0)
+            {
+                return groupedLayers;
+            }
+
+            if (PortableChairLayerHasRenderableFrames(itemEffectProperty))
+            {
+                return new[]
+                {
+                    new ItemEffectLayerSource(itemEffectProperty, $"itemEff/{itemEffectProperty.Name}", false)
+                };
+            }
+
+            if (itemEffectProperty["fail"] is WzSubProperty failProperty
+                && PortableChairLayerHasRenderableFrames(failProperty))
+            {
+                return new[]
+                {
+                    new ItemEffectLayerSource(failProperty, $"itemEff/{itemEffectProperty.Name}/fail", false)
+                };
+            }
+
+            return Array.Empty<ItemEffectLayerSource>();
+        }
+
+        internal static bool PortableChairLayerHasRenderableFrames(WzImageProperty layerProperty)
+        {
+            if (layerProperty?.WzProperties == null)
+            {
+                return false;
+            }
+
+            foreach (WzImageProperty child in layerProperty.WzProperties)
+            {
+                if (int.TryParse(child.Name, out _)
+                    && TryResolvePortableChairFrameCanvas(child, out _))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        internal static bool TryResolvePortableChairFrameCanvas(WzImageProperty property, out WzCanvasProperty canvas)
+        {
+            switch (property)
+            {
+                case WzCanvasProperty directCanvas:
+                    canvas = directCanvas;
+                    return true;
+
+                case WzUOLProperty uol when uol.LinkValue is WzCanvasProperty linkedCanvas:
+                    canvas = linkedCanvas;
+                    return true;
+
+                default:
+                    canvas = null;
+                    return false;
+            }
+        }
+
+        internal readonly record struct ItemEffectLayerSource(
+            WzImageProperty LayerProperty,
+            string LayerName,
+            bool IsSharedLayer);
 
         private static string ResolvePortableChairName(int itemId)
         {
@@ -1453,6 +1539,8 @@ namespace HaCreator.MapSimulator.Character
             part.UpgradeSlots = GetIntValue(info["tuc"]) ?? 0;
             part.KnockbackRate = GetIntValue(info["knockback"]) ?? 0;
             part.TradeAvailable = GetIntValue(info["tradeAvailable"]) ?? 0;
+            part.IsTradeBlocked = GetIntValue(info["tradeBlock"]) == 1;
+            part.IsOneOfAKind = GetIntValue(info["only"]) == 1;
             part.IsTimeLimited = GetIntValue(info["timeLimited"]) == 1;
             part.MaxDurability = GetIntValue(info["durability"]);
             part.Durability = part.MaxDurability;

@@ -40,6 +40,7 @@ namespace HaCreator.MapSimulator.UI
         private const int SearchButtonId = 1002;
         private const int CardsPerPage = 25;
         private const int MaxSearchLength = 32;
+        private const int CollectionEntriesPerPage = 6;
 
         private static readonly Point CardSlotOrigin = new(24, 22);
         private static readonly Point InfoPageOrigin = new(278, 36);
@@ -59,11 +60,17 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Rectangle LeftPageIndexBounds = new(143, 286, 84, 18);
         private static readonly Rectangle RightPageIndexBounds = new(249, 286, 84, 18);
         private static readonly Rectangle StatusBounds = new(16, 286, 184, 18);
+        private static readonly Rectangle LeftCollectionPageBounds = new(20, 34, 196, 248);
+        private static readonly Rectangle RightCollectionPageBounds = new(240, 34, 196, 248);
         private static readonly Color TitleColor = new(82, 59, 29);
         private static readonly Color ValueColor = new(56, 45, 33);
         private static readonly Color AccentColor = new(173, 120, 48);
         private static readonly Color MutedColor = new(128, 118, 103);
         private static readonly Color HiddenTint = new(255, 255, 255, 66);
+        private static readonly Color SuccessColor = new(69, 120, 57);
+        private static readonly Color WarningColor = new(170, 78, 54);
+        private static readonly Color PageRuleColor = new(167, 143, 107);
+        private static readonly Color PageShadowColor = new(243, 235, 217);
 
         private readonly Texture2D _pixel;
         private readonly GraphicsDevice _graphicsDevice;
@@ -87,8 +94,10 @@ namespace HaCreator.MapSimulator.UI
         private IReadOnlyList<TabVisual> _rightTabs = Array.Empty<TabVisual>();
         private IReadOnlyList<MonsterBookDetailTab> _rightTabOrder = new[] { MonsterBookDetailTab.BasicInfo, MonsterBookDetailTab.Episode, MonsterBookDetailTab.Rewards, MonsterBookDetailTab.Habitat };
         private SpriteFont _font;
+        private Func<CollectionBookSnapshot> _collectionSnapshotProvider;
         private Func<MonsterBookSnapshot> _snapshotProvider;
         private Func<int, bool, MonsterBookSnapshot> _registrationHandler;
+        private CollectionBookSnapshot _collectionSnapshot;
         private MonsterBookSnapshot _snapshot;
         private MouseState _previousMouseState;
         private KeyboardState _previousKeyboardState;
@@ -124,6 +133,7 @@ namespace HaCreator.MapSimulator.UI
         public override void SetFont(SpriteFont font) => _font = font;
         public override void HandleCompositionText(string text) => _compositionText = CapturesKeyboardInput ? text ?? string.Empty : string.Empty;
         public override void ClearCompositionText() => _compositionText = string.Empty;
+        public void SetCollectionSnapshotProvider(Func<CollectionBookSnapshot> snapshotProvider) => _collectionSnapshotProvider = snapshotProvider;
 
         public override void HandleCommittedText(string text)
         {
@@ -161,7 +171,7 @@ namespace HaCreator.MapSimulator.UI
             _prevButton = prevButton; _nextButton = nextButton; _searchButton = searchButton;
             RegisterButton(prevButton, PrevButtonId, () => MoveSpread(-1));
             RegisterButton(nextButton, NextButtonId, () => MoveSpread(1));
-            RegisterButton(searchButton, SearchButtonId, ToggleSearchMode);
+            RegisterButton(searchButton, SearchButtonId, HandleSearchButtonClicked);
             InitializeCloseButton(closeButton);
         }
 
@@ -174,8 +184,11 @@ namespace HaCreator.MapSimulator.UI
 
         public override void Show()
         {
-            RefreshSnapshot();
-            SelectCardOnCurrentPage();
+            RefreshContentSnapshot();
+            if (!UsesCollectionLayout)
+            {
+                SelectCardOnCurrentPage();
+            }
             _previousMouseState = Mouse.GetState();
             _previousKeyboardState = Keyboard.GetState();
             base.Show();
@@ -184,17 +197,29 @@ namespace HaCreator.MapSimulator.UI
         public override void Update(GameTime gameTime)
         {
             if (!IsVisible) return;
-            RefreshSnapshot();
-            UpdateHoverState();
+            RefreshContentSnapshot();
             HandleKeyboardInput();
-            HandleMouseInput();
-            UpdateContextButtons();
+            if (!UsesCollectionLayout)
+            {
+                UpdateHoverState();
+                HandleMouseInput();
+                UpdateContextButtons();
+            }
             UpdateButtonStates();
         }
 
         protected override void DrawContents(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime, int mapShiftX, int mapShiftY, int centerX, int centerY, ReflectionDrawableBoundary drawReflectionInfo, RenderParameters renderParameters, int TickCount)
         {
             if (_font == null) return;
+            if (UsesCollectionLayout)
+            {
+                DrawCollectionSpread(sprite);
+                DrawPageIndex(sprite);
+                DrawPageMarkers(sprite);
+                DrawStatus(sprite);
+                return;
+            }
+
             DrawLeftTabs(sprite);
             DrawRightTabs(sprite);
             DrawCardSlotPanel(sprite);
@@ -209,6 +234,7 @@ namespace HaCreator.MapSimulator.UI
         protected override void OnCloseButtonClicked(UIObject sender) { CloseBook(); _closeRequested?.Invoke(); }
         public void CloseBook() { ResetBookState(); base.Hide(); }
         public override void Hide() { ResetBookState(); base.Hide(); }
+        private bool UsesCollectionLayout => _collectionSnapshotProvider != null;
 
         private static IReadOnlyList<TabVisual> BuildTabs(IReadOnlyList<Texture2D> normals, IReadOnlyList<Texture2D> selected, IReadOnlyList<Texture2D> hover, IReadOnlyList<Texture2D> disabled, IReadOnlyList<Texture2D> icons)
         {
@@ -226,7 +252,24 @@ namespace HaCreator.MapSimulator.UI
             button.ButtonClickReleased += _ => { if (_buttonActions.TryGetValue(buttonId, out Action handler)) handler?.Invoke(); };
         }
 
-        private void RefreshSnapshot()
+        private void RefreshContentSnapshot()
+        {
+            if (UsesCollectionLayout)
+            {
+                RefreshCollectionSnapshot();
+                return;
+            }
+
+            RefreshMonsterBookSnapshot();
+        }
+
+        private void RefreshCollectionSnapshot()
+        {
+            _collectionSnapshot = _collectionSnapshotProvider?.Invoke() ?? new CollectionBookSnapshot();
+            _currentPageIndex = Math.Clamp(_currentPageIndex, 0, Math.Max(0, (_collectionSnapshot.Pages?.Count ?? 1) - 1));
+        }
+
+        private void RefreshMonsterBookSnapshot()
         {
             int mobId = GetSelectedCard()?.MobId ?? _contextMenuMobId;
             _snapshot = _snapshotProvider?.Invoke() ?? new MonsterBookSnapshot();
@@ -269,6 +312,20 @@ namespace HaCreator.MapSimulator.UI
 
         private void MoveSpread(int direction)
         {
+            if (UsesCollectionLayout)
+            {
+                int collectionTotalPages = GetTotalPageCount();
+                if (collectionTotalPages <= 0)
+                {
+                    return;
+                }
+
+                int collectionSpreadStart = GetSpreadStartAbsolutePageIndex(GetAbsolutePageIndex());
+                int collectionMaxSpreadStart = GetSpreadStartAbsolutePageIndex(collectionTotalPages - 1);
+                _currentPageIndex = Math.Clamp(collectionSpreadStart + (direction * 2), 0, collectionMaxSpreadStart);
+                return;
+            }
+
             if (IsOverviewTabSelected)
             {
                 return;
@@ -289,11 +346,19 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private void ToggleSearchMode()
+        private void HandleSearchButtonClicked()
         {
-            _searchMode = !_searchMode;
-            if (!_searchMode) { _searchQuery = string.Empty; _selectedSearchMatchIndex = -1; _searchMatches.Clear(); ClearCompositionText(); }
-            else RefreshSearchMatches(false, false);
+            EnterSearchMode();
+            if (_searchMatches.Count > 0)
+            {
+                int nextIndex = _selectedSearchMatchIndex < 0
+                    ? 0
+                    : (_selectedSearchMatchIndex + 1) % _searchMatches.Count;
+                ApplySearchMatch(nextIndex);
+                return;
+            }
+
+            RefreshSearchMatches(!string.IsNullOrWhiteSpace(_searchQuery), false);
         }
 
         private void ApplyRegistration(bool registered)
@@ -302,7 +367,7 @@ namespace HaCreator.MapSimulator.UI
             if (card?.IsDiscovered != true || _registrationHandler == null) return;
             _snapshot = _registrationHandler.Invoke(card.MobId, registered) ?? _snapshot;
             _contextMenuVisible = false;
-            RefreshSnapshot();
+            RefreshMonsterBookSnapshot();
         }
 
         private void RefreshSearchMatches(bool selectFirst, bool preserveSelection)
@@ -347,6 +412,24 @@ namespace HaCreator.MapSimulator.UI
             _contextMenuVisible = false;
         }
 
+        private void EnterSearchMode()
+        {
+            if (_searchMode)
+            {
+                return;
+            }
+
+            _searchMode = true;
+            ClearCompositionText();
+            RefreshSearchMatches(false, true);
+        }
+
+        private void ExitSearchMode()
+        {
+            _searchMode = false;
+            ClearCompositionText();
+        }
+
         private void UpdateHoverState()
         {
             Point mouse = Mouse.GetState().Position;
@@ -359,9 +442,20 @@ namespace HaCreator.MapSimulator.UI
         private void HandleKeyboardInput()
         {
             KeyboardState keyboard = Keyboard.GetState();
-            if (_searchMode)
+            if (UsesCollectionLayout)
             {
-                if (WasPressed(keyboard, Keys.Escape)) ToggleSearchMode();
+                if (WasPressed(keyboard, Keys.Left) || WasPressed(keyboard, Keys.PageUp))
+                {
+                    MoveSpread(-1);
+                }
+                else if (WasPressed(keyboard, Keys.Right) || WasPressed(keyboard, Keys.PageDown))
+                {
+                    MoveSpread(1);
+                }
+            }
+            else if (_searchMode)
+            {
+                if (WasPressed(keyboard, Keys.Escape)) ExitSearchMode();
                 else
                 {
                     if (WasPressed(keyboard, Keys.Back) && _searchQuery.Length > 0) { _searchQuery = _searchQuery[..^1]; RefreshSearchMatches(true, false); }
@@ -387,6 +481,12 @@ namespace HaCreator.MapSimulator.UI
             if (leftReleased)
             {
                 if (_contextMenuVisible && !GetContextMenuBounds().Contains(point)) _contextMenuVisible = false;
+                if (!UsesCollectionLayout && OffsetBounds(SearchBoxBounds, InfoPageOrigin).Contains(point))
+                {
+                    EnterSearchMode();
+                    _previousMouseState = mouse;
+                    return;
+                }
                 for (int i = 0; i <= _leftTabs.Count; i++) if (GetLeftTabBounds(i).Contains(point)) { _selectedLeftTabIndex = i; _currentGradeIndex = Math.Max(0, i - 1); _currentPageIndex = 0; SelectCardOnCurrentPage(); _contextMenuVisible = false; _previousMouseState = mouse; return; }
                 for (int i = 0; i < Math.Min(_rightTabs.Count, _rightTabOrder.Count); i++) if (GetRightTabBounds(i).Contains(point) && !IsOverviewTabSelected) { _detailTab = _rightTabOrder[i]; _previousMouseState = mouse; return; }
                 for (int i = 0; i < GetCurrentPageCards().Count; i++) if (GetCardBounds(i).Contains(point)) { _selectedSlotIndex = i; _contextMenuVisible = false; break; }
@@ -537,7 +637,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawPageIndex(SpriteBatch sprite)
         {
-            if (IsOverviewTabSelected)
+            if (!UsesCollectionLayout && IsOverviewTabSelected)
             {
                 DrawCenteredString(
                     sprite,
@@ -571,7 +671,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawPageMarkers(SpriteBatch sprite)
         {
-            if (IsOverviewTabSelected)
+            if (!UsesCollectionLayout && IsOverviewTabSelected)
             {
                 DrawPageMarker(sprite, Position.X + PageMarkerAnchor.X - 16, Position.Y + PageMarkerAnchor.Y, false);
                 DrawPageMarker(sprite, Position.X + PageMarkerAnchor.X + 16, Position.Y + PageMarkerAnchor.Y, false);
@@ -585,7 +685,20 @@ namespace HaCreator.MapSimulator.UI
             DrawPageMarker(sprite, Position.X + PageMarkerAnchor.X + 16, Position.Y + PageMarkerAnchor.Y, spreadStart + 1 < totalPages && currentAbsolutePage == spreadStart + 1);
         }
         private void DrawPageMarker(SpriteBatch sprite, int x, int y, bool active) { Texture2D marker = active ? _activePageMarkerTexture ?? _fullMarkTexture : _inactivePageMarkerTexture ?? _coveredSlotTexture; if (marker != null) sprite.Draw(marker, new Rectangle(x - marker.Width / 2, y - marker.Height / 2, marker.Width, marker.Height), Color.White); }
-        private void DrawStatus(SpriteBatch sprite) => DrawTrimmedString(sprite, _contextMenuVisible ? (GetSelectedCard()?.IsRegistered == true ? "Release this card from the local register list." : "Register this card in the local book list.") : _searchMode ? (_searchMatches.Count > 0 ? "Type to search. Enter jumps to the next match." : "Type to search the local catalog.") : IsOverviewTabSelected ? "Overview tab selected. Choose a chapter tab to browse cards or search across the catalog." : _snapshot?.StatusText, new Vector2(Position.X + StatusBounds.X, Position.Y + StatusBounds.Y), MutedColor, 0.4f, StatusBounds.Width);
+        private void DrawStatus(SpriteBatch sprite)
+        {
+            string text = UsesCollectionLayout
+                ? _collectionSnapshot?.StatusText
+                : _contextMenuVisible
+                    ? (GetSelectedCard()?.IsRegistered == true ? "Release this card from the local registered slot." : "Register this card into the local registered slot.")
+                    : _searchMode
+                        ? (_searchMatches.Count > 0 ? "Type to search. Enter or the search button jumps to the next match." : "Type to search the local catalog.")
+                        : IsOverviewTabSelected
+                            ? "Overview tab selected. Choose a chapter tab or focus the search box to browse the catalog."
+                            : _snapshot?.StatusText;
+
+            DrawTextLine(sprite, text, new Vector2(Position.X + StatusBounds.X, Position.Y + StatusBounds.Y), GetBookStyle(11), StatusBounds.Width, HorizontalAlignment.Left);
+        }
 
         private void DrawContextMenu(SpriteBatch sprite)
         {
@@ -594,6 +707,151 @@ namespace HaCreator.MapSimulator.UI
             if (_contextMenuTopTexture != null) sprite.Draw(_contextMenuTopTexture, new Vector2(bounds.X, bounds.Y), Color.White);
             if (_contextMenuCenterTexture != null) for (int y = bounds.Y + (_contextMenuTopTexture?.Height ?? 0); y < bounds.Bottom - (_contextMenuBottomTexture?.Height ?? 0); y += _contextMenuCenterTexture.Height) sprite.Draw(_contextMenuCenterTexture, new Vector2(bounds.X, y), Color.White);
             if (_contextMenuBottomTexture != null) sprite.Draw(_contextMenuBottomTexture, new Vector2(bounds.X, bounds.Bottom - _contextMenuBottomTexture.Height), Color.White);
+        }
+
+        private void DrawCollectionSpread(SpriteBatch sprite)
+        {
+            int spreadStart = GetSpreadStartAbsolutePageIndex(GetAbsolutePageIndex());
+            DrawCollectionPage(sprite, spreadStart, OffsetBounds(LeftCollectionPageBounds, Point.Zero), false);
+            DrawCollectionPage(sprite, spreadStart + 1, OffsetBounds(RightCollectionPageBounds, Point.Zero), true);
+        }
+
+        private void DrawCollectionPage(SpriteBatch sprite, int pageIndex, Rectangle pageBounds, bool isRightPage)
+        {
+            CollectionBookPageSnapshot page = GetCollectionPage(pageIndex);
+            DrawPageFrame(sprite, pageBounds);
+
+            if (page == null)
+            {
+                DrawTextLine(sprite, "No entry", new Vector2(pageBounds.X + 12, pageBounds.Y + 18), GetBookStyle(0), pageBounds.Width - 24, HorizontalAlignment.Center);
+                DrawTextLine(sprite, "The collection ledger has no authored rows for this page.", new Vector2(pageBounds.X + 12, pageBounds.Y + 42), GetBookStyle(10), pageBounds.Width - 24, HorizontalAlignment.Center);
+                return;
+            }
+
+            float pageInset = isRightPage ? 4f : 0f;
+            DrawTextLine(sprite, page.Title, new Vector2(pageBounds.X + 16 + pageInset, pageBounds.Y + 14), GetBookStyle(0), pageBounds.Width - 32, HorizontalAlignment.Center);
+            DrawTextLine(sprite, page.Subtitle, new Vector2(pageBounds.X + 16 + pageInset, pageBounds.Y + 34), GetBookStyle(10), pageBounds.Width - 32, HorizontalAlignment.Center);
+            DrawRule(sprite, new Rectangle(pageBounds.X + 15, pageBounds.Y + 56, pageBounds.Width - 30, 1));
+
+            for (int row = 0; row < CollectionEntriesPerPage; row++)
+            {
+                Rectangle rowBounds = new(pageBounds.X + 14, pageBounds.Y + 68 + (row * 28), pageBounds.Width - 28, 24);
+                DrawCollectionEntry(sprite, rowBounds, row < (page.Entries?.Count ?? 0) ? page.Entries[row] : null);
+            }
+
+            DrawRule(sprite, new Rectangle(pageBounds.X + 15, pageBounds.Bottom - 28, pageBounds.Width - 30, 1));
+            DrawTextLine(sprite, page.Footer, new Vector2(pageBounds.X + 16 + pageInset, pageBounds.Bottom - 21), GetBookStyle(11), pageBounds.Width - 32, HorizontalAlignment.Center);
+        }
+
+        private void DrawCollectionEntry(SpriteBatch sprite, Rectangle bounds, CollectionBookEntrySnapshot entry)
+        {
+            if (entry == null)
+            {
+                return;
+            }
+
+            DrawTextLine(sprite, entry.Label, new Vector2(bounds.X + 2, bounds.Y), GetBookStyle(2), bounds.Width - 80, HorizontalAlignment.Left);
+            DrawTextLine(sprite, entry.Value, new Vector2(bounds.Right - 2, bounds.Y), GetEntryStyle(entry.Tone), 76, HorizontalAlignment.Right);
+            DrawTextLine(sprite, entry.Detail, new Vector2(bounds.X + 8, bounds.Y + 12), GetBookStyle(10), bounds.Width - 10, HorizontalAlignment.Left);
+        }
+
+        private void DrawPageFrame(SpriteBatch sprite, Rectangle bounds)
+        {
+            sprite.Draw(_pixel, bounds, new Color(255, 251, 241, 12));
+            DrawOutline(sprite, bounds, new Color(191, 173, 141, 64));
+            DrawOutline(sprite, new Rectangle(bounds.X + 1, bounds.Y + 1, bounds.Width - 2, bounds.Height - 2), new Color(255, 255, 255, 22));
+        }
+
+        private void DrawRule(SpriteBatch sprite, Rectangle bounds)
+        {
+            sprite.Draw(_pixel, bounds, PageRuleColor);
+            sprite.Draw(_pixel, new Rectangle(bounds.X, bounds.Y + 1, bounds.Width, 1), PageShadowColor);
+        }
+
+        private CollectionBookPageSnapshot GetCollectionPage(int pageIndex)
+        {
+            return pageIndex >= 0 && pageIndex < (_collectionSnapshot?.Pages?.Count ?? 0)
+                ? _collectionSnapshot.Pages[pageIndex]
+                : null;
+        }
+
+        private readonly struct BookTextStyle
+        {
+            public BookTextStyle(Color color, Color shadowColor, float scale, bool shadow)
+            {
+                Color = color;
+                ShadowColor = shadowColor;
+                Scale = scale;
+                Shadow = shadow;
+            }
+
+            public Color Color { get; }
+            public Color ShadowColor { get; }
+            public float Scale { get; }
+            public bool Shadow { get; }
+        }
+
+        private enum HorizontalAlignment
+        {
+            Left,
+            Center,
+            Right
+        }
+
+        private static BookTextStyle GetBookStyle(int index)
+        {
+            return index switch
+            {
+                0 => new BookTextStyle(TitleColor, Color.White, 0.60f, true),
+                1 => new BookTextStyle(TitleColor, PageShadowColor, 0.56f, true),
+                2 => new BookTextStyle(ValueColor, PageShadowColor, 0.46f, true),
+                3 => new BookTextStyle(ValueColor, PageShadowColor, 0.44f, true),
+                4 => new BookTextStyle(WarningColor, PageShadowColor, 0.46f, true),
+                5 => new BookTextStyle(WarningColor, PageShadowColor, 0.44f, true),
+                6 => new BookTextStyle(SuccessColor, PageShadowColor, 0.46f, true),
+                7 => new BookTextStyle(SuccessColor, PageShadowColor, 0.44f, true),
+                8 => new BookTextStyle(AccentColor, PageShadowColor, 0.46f, true),
+                9 => new BookTextStyle(AccentColor, PageShadowColor, 0.44f, true),
+                10 => new BookTextStyle(MutedColor, PageShadowColor, 0.40f, false),
+                11 => new BookTextStyle(new Color(81, 76, 66), PageShadowColor, 0.40f, false),
+                _ => new BookTextStyle(ValueColor, PageShadowColor, 0.42f, false)
+            };
+        }
+
+        private static BookTextStyle GetEntryStyle(CollectionBookEntryTone tone)
+        {
+            return tone switch
+            {
+                CollectionBookEntryTone.Success => GetBookStyle(6),
+                CollectionBookEntryTone.Warning => GetBookStyle(4),
+                CollectionBookEntryTone.Accent => GetBookStyle(8),
+                CollectionBookEntryTone.Muted => GetBookStyle(10),
+                _ => GetBookStyle(2)
+            };
+        }
+
+        private void DrawTextLine(SpriteBatch sprite, string text, Vector2 anchor, BookTextStyle style, int maxWidth, HorizontalAlignment alignment)
+        {
+            string trimmed = TrimToWidth(text, maxWidth, style.Scale);
+            if (string.IsNullOrEmpty(trimmed) || _font == null)
+            {
+                return;
+            }
+
+            Vector2 size = _font.MeasureString(trimmed) * style.Scale;
+            Vector2 position = alignment switch
+            {
+                HorizontalAlignment.Center => new Vector2(anchor.X + ((maxWidth - size.X) / 2f), anchor.Y),
+                HorizontalAlignment.Right => new Vector2(anchor.X - size.X, anchor.Y),
+                _ => anchor
+            };
+
+            if (style.Shadow)
+            {
+                sprite.DrawString(_font, trimmed, position + Vector2.One, style.ShadowColor, 0f, Vector2.Zero, style.Scale, SpriteEffects.None, 0f);
+            }
+
+            sprite.DrawString(_font, trimmed, position, style.Color, 0f, Vector2.Zero, style.Scale, SpriteEffects.None, 0f);
         }
 
         private void DrawOverviewSlots(SpriteBatch sprite)
@@ -629,7 +887,7 @@ namespace HaCreator.MapSimulator.UI
                 $"Boss {_snapshot?.OwnedBossCardTypes ?? 0}",
                 $"Normal {_snapshot?.OwnedNormalCardTypes ?? 0}",
                 $"Copies {_snapshot?.TotalOwnedCopies ?? 0}",
-                "Select a chapter tab or search."
+                string.IsNullOrWhiteSpace(_snapshot?.RegisteredCardName) ? "No registered card selected." : $"Registered {_snapshot.RegisteredCardName}"
             };
 
             for (int row = 0; row < lines.Length; row++)
@@ -658,12 +916,13 @@ namespace HaCreator.MapSimulator.UI
             _currentPageIndex = 0;
             _selectedSlotIndex = 0;
             _detailTab = MonsterBookDetailTab.BasicInfo;
+            _collectionSnapshot = null;
             _snapshot = null;
         }
 
         private bool WasPressed(KeyboardState keyboard, Keys key) => keyboard.IsKeyDown(key) && !_previousKeyboardState.IsKeyDown(key);
 
-        private int GetTotalPageCount() => IsOverviewTabSelected ? 0 : GetCurrentGrade()?.Pages?.Count ?? 0;
+        private int GetTotalPageCount() => UsesCollectionLayout ? _collectionSnapshot?.Pages?.Count ?? 0 : IsOverviewTabSelected ? 0 : GetCurrentGrade()?.Pages?.Count ?? 0;
 
         private int GetAbsolutePageIndex()
         {

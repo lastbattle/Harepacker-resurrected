@@ -56,12 +56,10 @@ namespace HaCreator.MapSimulator
             _activeNpcInteractionNpc = npc;
             _activeNpcInteractionNpcId = request.SpeakerNpcId;
 
-            if (npc != null)
-            {
-                PublishDynamicObjectTagStatesForScriptNames(
-                    FieldObjectNpcScriptNameResolver.ResolvePublishedScriptNames(npc.NpcInstance),
-                    currTickCount);
-            }
+            IReadOnlyList<string> publishedScriptNames = npc != null
+                ? FieldObjectNpcScriptNameResolver.ResolvePublishedScriptNames(npc.NpcInstance)
+                : FieldObjectNpcScriptNameResolver.ResolvePublishedScriptNames(request.SpeakerNpcId);
+            PublishDynamicObjectTagStatesForScriptNames(publishedScriptNames, currTickCount);
 
             _npcInteractionOverlay.Open(request.State);
         }
@@ -76,9 +74,14 @@ namespace HaCreator.MapSimulator
 
             if (submission?.PresentationStyle == NpcInteractionPresentationStyle.PacketScriptUtilDialog)
             {
-                if (_packetScriptMessageRuntime.TrySubmitResponse(submission, out string message))
+                if (_packetScriptMessageRuntime.TryBuildResponsePacket(
+                    submission,
+                    out PacketScriptMessageRuntime.PacketScriptResponsePacket responsePacket,
+                    out string message))
                 {
-                    ShowUtilityFeedbackMessage(message);
+                    bool dispatched = _packetScriptReplyTransport.TrySendResponse(responsePacket, out string dispatchStatus);
+                    _packetScriptMessageRuntime.RecordResponseDispatch(responsePacket, dispatched, dispatchStatus);
+                    ShowUtilityFeedbackMessage($"{message} {dispatchStatus}".Trim());
                 }
                 else if (!string.IsNullOrWhiteSpace(message))
                 {
@@ -172,7 +175,7 @@ namespace HaCreator.MapSimulator
             int selectedItemId = submission?.NumericValue ?? 0;
             if (selectedItemId <= 0 || group.Options.All(option => option.ItemId != selectedItemId))
             {
-                _chat.AddMessage("That quest reward choice is no longer available.", new Color(255, 228, 151), currTickCount);
+                _chat?.AddSystemMessage("That quest reward choice is no longer available.", currTickCount);
                 _pendingQuestRewardChoice = null;
                 return;
             }

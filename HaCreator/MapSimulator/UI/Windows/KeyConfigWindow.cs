@@ -102,8 +102,8 @@ namespace HaCreator.MapSimulator.UI
             _quickSlotCancelButton = cancelButton;
 
             RegisterActionButton(showMainButton, () => SetPage(KeyConfigPage.Main));
-            RegisterActionButton(okButton, Hide);
-            RegisterActionButton(cancelButton, Hide);
+            RegisterActionButton(okButton, CommitAndHide);
+            RegisterActionButton(cancelButton, DiscardAndHide);
             UpdateButtonVisibility();
         }
 

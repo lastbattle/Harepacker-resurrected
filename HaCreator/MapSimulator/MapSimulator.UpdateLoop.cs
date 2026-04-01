@@ -175,6 +175,7 @@ namespace HaCreator.MapSimulator
             DrainGuildBossTransport(currTickCount);
 
             DrainPartyRaidPacketInbox(currTickCount);
+            DrainTournamentPacketInbox(currTickCount);
 
             DrainCookieHousePointInbox();
 
@@ -276,6 +277,7 @@ namespace HaCreator.MapSimulator
             _localOverlayRuntime.Update(currTickCount);
 
             _engagementProposalController.UpdateLocalContext(_playerManager?.Player?.Build);
+            _weddingWishListController.UpdateLocalContext(_playerManager?.Player?.Build);
             _mapleTvRuntime.UpdateLocalContext(_playerManager?.Player?.Build);
             _mapleTvRuntime.Update(currTickCount);
             FlushPendingMapleTvSendResultFeedback(currTickCount);

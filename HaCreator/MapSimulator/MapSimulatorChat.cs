@@ -1249,7 +1249,7 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            if (text.StartsWith("[Whisper]", StringComparison.OrdinalIgnoreCase)
+            if (HasWhisperPrefix(text)
                 || text.StartsWith(">", StringComparison.Ordinal))
             {
                 chatLogType = (ClientChatLogType)InferWhisperChatLogType(text);
@@ -1267,7 +1267,7 @@ namespace HaCreator.MapSimulator
             }
 
             if (text.StartsWith(">", StringComparison.Ordinal)
-                || (text.StartsWith("[Whisper]", StringComparison.OrdinalIgnoreCase)
+                || (HasWhisperPrefix(text)
                     && text.IndexOf("->", StringComparison.Ordinal) >= 0))
             {
                 return (int)ClientChatLogType.OutgoingWhisper;
@@ -1306,26 +1306,58 @@ namespace HaCreator.MapSimulator
             }
 
             string prefix = text[..separatorIndex].Trim();
-            if (prefix.StartsWith("[Whisper]", StringComparison.OrdinalIgnoreCase))
-            {
-                prefix = prefix["[Whisper]".Length..].TrimStart();
-            }
-            else if (prefix.StartsWith("[GM Whisper]", StringComparison.OrdinalIgnoreCase))
-            {
-                prefix = prefix["[GM Whisper]".Length..].TrimStart();
-            }
-            else
+            if (!TryStripWhisperPrefix(prefix, out prefix))
             {
                 return string.Empty;
             }
 
-            int channelSuffixIndex = prefix.LastIndexOf(" (", StringComparison.Ordinal);
-            if (channelSuffixIndex > 0 && prefix.EndsWith(")", StringComparison.Ordinal))
+            return TrimTrailingWhisperChannelSuffix(prefix);
+        }
+
+        private static bool HasWhisperPrefix(string text)
+        {
+            return text.StartsWith("[Whisper]", StringComparison.OrdinalIgnoreCase)
+                || text.StartsWith("[GM Whisper]", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool TryStripWhisperPrefix(string text, out string remainder)
+        {
+            remainder = string.Empty;
+            if (string.IsNullOrWhiteSpace(text))
             {
-                prefix = prefix[..channelSuffixIndex].TrimEnd();
+                return false;
             }
 
-            return prefix.Trim();
+            if (text.StartsWith("[Whisper]", StringComparison.OrdinalIgnoreCase))
+            {
+                remainder = text["[Whisper]".Length..].TrimStart();
+                return true;
+            }
+
+            if (text.StartsWith("[GM Whisper]", StringComparison.OrdinalIgnoreCase))
+            {
+                remainder = text["[GM Whisper]".Length..].TrimStart();
+                return true;
+            }
+
+            return false;
+        }
+
+        private static string TrimTrailingWhisperChannelSuffix(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return string.Empty;
+            }
+
+            string trimmed = text.Trim();
+            int channelSuffixIndex = trimmed.LastIndexOf(" (", StringComparison.Ordinal);
+            if (channelSuffixIndex > 0 && trimmed.EndsWith(")", StringComparison.Ordinal))
+            {
+                trimmed = trimmed[..channelSuffixIndex].TrimEnd();
+            }
+
+            return trimmed.Trim();
         }
 
         private static bool ColorsMatch(Color left, Color right)

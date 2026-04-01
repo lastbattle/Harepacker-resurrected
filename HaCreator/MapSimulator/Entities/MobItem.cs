@@ -747,6 +747,7 @@ namespace HaCreator.MapSimulator.Entities
                     StartOffset = attackInfo?.StartOffset ?? 0,
                     IsRushAttack = isRushAttack,
                     IsJumpAttack = isJumpAttack,
+                    EffectFacingAttach = attackInfo?.EffectFacingAttach == true,
                     Tremble = tremble,
                     IsAngerAttack = attackInfo?.IsAngerAttack == true,
                     DiseaseSkillId = attackMeta?.Disease ?? 0,

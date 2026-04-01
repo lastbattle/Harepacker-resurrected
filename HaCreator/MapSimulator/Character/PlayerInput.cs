@@ -150,6 +150,13 @@ namespace HaCreator.MapSimulator.Character
     /// </summary>
     public class PlayerInput
     {
+        public enum GamepadAxisResponseCurve
+        {
+            Linear = 0,
+            Soft = 1,
+            Aggressive = 2,
+        }
+
         private static readonly Keys[] IgnoredBindingCaptureKeys =
         {
             Keys.LeftShift,
@@ -207,8 +214,13 @@ namespace HaCreator.MapSimulator.Character
         private PlayerIndex _gamepadIndex = PlayerIndex.One;
         private int _nextInputOwnershipToken = 1;
         private bool _ctrlComboSuppressed;
-        private float _leftStickDeadZone = 0.20f;
-        private float _triggerActivationThreshold = 0.20f;
+        private float _leftStickDeadZoneX = 0.20f;
+        private float _leftStickDeadZoneY = 0.20f;
+        private float _leftTriggerActivationThreshold = 0.20f;
+        private float _rightTriggerActivationThreshold = 0.20f;
+        private bool _leftStickInvertX;
+        private bool _leftStickInvertY;
+        private GamepadAxisResponseCurve _leftStickResponseCurve = GamepadAxisResponseCurve.Linear;
 
         // Default key bindings (matching MapleStory)
         private static readonly (InputAction action, Keys primary, Keys secondary, Buttons gamepad)[] DefaultBindings = new[]
@@ -346,22 +358,96 @@ namespace HaCreator.MapSimulator.Character
 
         public float GetLeftStickDeadZone()
         {
-            return _leftStickDeadZone;
+            return (_leftStickDeadZoneX + _leftStickDeadZoneY) * 0.5f;
         }
 
         public void SetLeftStickDeadZone(float deadZone)
         {
-            _leftStickDeadZone = Math.Clamp(deadZone, 0.05f, 0.95f);
+            float clamped = ClampAnalogThreshold(deadZone);
+            _leftStickDeadZoneX = clamped;
+            _leftStickDeadZoneY = clamped;
         }
 
         public float GetTriggerActivationThreshold()
         {
-            return _triggerActivationThreshold;
+            return (_leftTriggerActivationThreshold + _rightTriggerActivationThreshold) * 0.5f;
         }
 
         public void SetTriggerActivationThreshold(float threshold)
         {
-            _triggerActivationThreshold = Math.Clamp(threshold, 0.05f, 0.95f);
+            float clamped = ClampAnalogThreshold(threshold);
+            _leftTriggerActivationThreshold = clamped;
+            _rightTriggerActivationThreshold = clamped;
+        }
+
+        public float GetLeftStickDeadZoneX()
+        {
+            return _leftStickDeadZoneX;
+        }
+
+        public void SetLeftStickDeadZoneX(float deadZone)
+        {
+            _leftStickDeadZoneX = ClampAnalogThreshold(deadZone);
+        }
+
+        public float GetLeftStickDeadZoneY()
+        {
+            return _leftStickDeadZoneY;
+        }
+
+        public void SetLeftStickDeadZoneY(float deadZone)
+        {
+            _leftStickDeadZoneY = ClampAnalogThreshold(deadZone);
+        }
+
+        public float GetLeftTriggerActivationThreshold()
+        {
+            return _leftTriggerActivationThreshold;
+        }
+
+        public void SetLeftTriggerActivationThreshold(float threshold)
+        {
+            _leftTriggerActivationThreshold = ClampAnalogThreshold(threshold);
+        }
+
+        public float GetRightTriggerActivationThreshold()
+        {
+            return _rightTriggerActivationThreshold;
+        }
+
+        public void SetRightTriggerActivationThreshold(float threshold)
+        {
+            _rightTriggerActivationThreshold = ClampAnalogThreshold(threshold);
+        }
+
+        public bool GetLeftStickInvertX()
+        {
+            return _leftStickInvertX;
+        }
+
+        public void SetLeftStickInvertX(bool invert)
+        {
+            _leftStickInvertX = invert;
+        }
+
+        public bool GetLeftStickInvertY()
+        {
+            return _leftStickInvertY;
+        }
+
+        public void SetLeftStickInvertY(bool invert)
+        {
+            _leftStickInvertY = invert;
+        }
+
+        public GamepadAxisResponseCurve GetLeftStickResponseCurve()
+        {
+            return _leftStickResponseCurve;
+        }
+
+        public void SetLeftStickResponseCurve(GamepadAxisResponseCurve responseCurve)
+        {
+            _leftStickResponseCurve = responseCurve;
         }
 
         #endregion
@@ -669,12 +755,12 @@ namespace HaCreator.MapSimulator.Character
             return button switch
             {
                 0 => false,
-                Buttons.LeftTrigger => state.Triggers.Left >= _triggerActivationThreshold,
-                Buttons.RightTrigger => state.Triggers.Right >= _triggerActivationThreshold,
-                Buttons.LeftThumbstickLeft => state.ThumbSticks.Left.X <= -_leftStickDeadZone,
-                Buttons.LeftThumbstickRight => state.ThumbSticks.Left.X >= _leftStickDeadZone,
-                Buttons.LeftThumbstickUp => state.ThumbSticks.Left.Y >= _leftStickDeadZone,
-                Buttons.LeftThumbstickDown => state.ThumbSticks.Left.Y <= -_leftStickDeadZone,
+                Buttons.LeftTrigger => state.Triggers.Left >= _leftTriggerActivationThreshold,
+                Buttons.RightTrigger => state.Triggers.Right >= _rightTriggerActivationThreshold,
+                Buttons.LeftThumbstickLeft => GetNormalizedConfiguredStickX(state) <= -1f,
+                Buttons.LeftThumbstickRight => GetNormalizedConfiguredStickX(state) >= 1f,
+                Buttons.LeftThumbstickUp => GetNormalizedConfiguredStickY(state) >= 1f,
+                Buttons.LeftThumbstickDown => GetNormalizedConfiguredStickY(state) <= -1f,
                 _ => state.IsButtonDown(button),
             };
         }
@@ -731,8 +817,8 @@ namespace HaCreator.MapSimulator.Character
             // Gamepad stick overrides
             if (_currentGamepad.IsConnected)
             {
-                float stickX = _currentGamepad.ThumbSticks.Left.X;
-                if (Math.Abs(stickX) >= _leftStickDeadZone)
+                float stickX = GetNormalizedConfiguredStickX(_currentGamepad);
+                if (Math.Abs(stickX) > 0f)
                 {
                     axis = stickX;
                 }
@@ -756,10 +842,10 @@ namespace HaCreator.MapSimulator.Character
             // Gamepad stick overrides
             if (_currentGamepad.IsConnected)
             {
-                float stickY = _currentGamepad.ThumbSticks.Left.Y;
-                if (Math.Abs(stickY) >= _leftStickDeadZone)
+                float stickY = GetNormalizedConfiguredStickY(_currentGamepad);
+                if (Math.Abs(stickY) > 0f)
                 {
-                    axis = -stickY; // Invert Y
+                    axis = -stickY;
                 }
             }
 
@@ -910,6 +996,46 @@ namespace HaCreator.MapSimulator.Character
                 InputAction.MoveLeft or InputAction.MoveRight or InputAction.MoveUp or InputAction.MoveDown
                     => AssignableGamepadButtons,
                 _ => UtilityConfigGamepadButtons,
+            };
+        }
+
+        private static float ClampAnalogThreshold(float value)
+        {
+            return Math.Clamp(value, 0.05f, 0.95f);
+        }
+
+        private float GetNormalizedConfiguredStickX(GamePadState state)
+        {
+            return ApplyConfiguredStickAxis(state.ThumbSticks.Left.X, _leftStickDeadZoneX, _leftStickInvertX);
+        }
+
+        private float GetNormalizedConfiguredStickY(GamePadState state)
+        {
+            return ApplyConfiguredStickAxis(state.ThumbSticks.Left.Y, _leftStickDeadZoneY, _leftStickInvertY);
+        }
+
+        private float ApplyConfiguredStickAxis(float rawValue, float deadZone, bool invert)
+        {
+            float value = invert ? -rawValue : rawValue;
+            float magnitude = Math.Abs(value);
+            if (magnitude < deadZone)
+            {
+                return 0f;
+            }
+
+            float normalized = (magnitude - deadZone) / Math.Max(0.0001f, 1f - deadZone);
+            normalized = Math.Clamp(normalized, 0f, 1f);
+            normalized = ApplyResponseCurve(normalized);
+            return normalized <= 0f ? 0f : Math.Sign(value) * normalized;
+        }
+
+        private float ApplyResponseCurve(float normalized)
+        {
+            return _leftStickResponseCurve switch
+            {
+                GamepadAxisResponseCurve.Soft => normalized * normalized,
+                GamepadAxisResponseCurve.Aggressive => 1f - ((1f - normalized) * (1f - normalized)),
+                _ => normalized,
             };
         }
 

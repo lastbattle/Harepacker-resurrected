@@ -15,6 +15,8 @@ namespace HaCreator.MapSimulator.Character
             "doubleupper",
             "screw",
             "shockwave",
+            "demolition",
+            "snatch",
             "eburster",
             "edrain",
             "dragonstrike",
@@ -83,25 +85,43 @@ namespace HaCreator.MapSimulator.Character
                 yield break;
             }
 
+            var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             bool prefersShootAliases = actionName.IndexOf("shoot", StringComparison.OrdinalIgnoreCase) >= 0;
 
             foreach (string authoredAlias in EnumeratePresentAliases(
                          morphPart,
                          prefersShootAliases ? ArcherMorphAuthoredAttackAliases : PirateMorphAuthoredAttackAliases))
             {
-                yield return authoredAlias;
+                if (yielded.Add(authoredAlias))
+                {
+                    yield return authoredAlias;
+                }
             }
 
             foreach (string authoredAlias in EnumeratePresentAliases(
                          morphPart,
                          prefersShootAliases ? PirateMorphAuthoredAttackAliases : ArcherMorphAuthoredAttackAliases))
             {
-                yield return authoredAlias;
+                if (yielded.Add(authoredAlias))
+                {
+                    yield return authoredAlias;
+                }
             }
 
             foreach (string authoredAlias in EnumeratePresentAliases(morphPart, IceMorphAuthoredAttackAliases))
             {
-                yield return authoredAlias;
+                if (yielded.Add(authoredAlias))
+                {
+                    yield return authoredAlias;
+                }
+            }
+
+            foreach (string authoredAlias in EnumerateHeuristicCombatAliases(morphPart))
+            {
+                if (yielded.Add(authoredAlias))
+                {
+                    yield return authoredAlias;
+                }
             }
         }
 
@@ -135,6 +155,89 @@ namespace HaCreator.MapSimulator.Character
                     yield return actionName;
                 }
             }
+        }
+
+        private static IEnumerable<string> EnumerateHeuristicCombatAliases(CharacterPart morphPart)
+        {
+            if (morphPart?.Animations == null)
+            {
+                yield break;
+            }
+
+            foreach (string actionName in morphPart.Animations.Keys)
+            {
+                if (IsHeuristicCombatAlias(actionName))
+                {
+                    yield return actionName;
+                }
+            }
+        }
+
+        private static bool IsHeuristicCombatAlias(string actionName)
+        {
+            if (string.IsNullOrWhiteSpace(actionName)
+                || IsStandardMorphActionName(actionName))
+            {
+                return false;
+            }
+
+            return actionName.IndexOf("attack", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("stab", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("swing", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("shoot", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("shot", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("spear", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("rain", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("break", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("leap", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("smash", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("panic", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("chop", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("tempest", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("strike", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("burst", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("drain", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("fire", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("orb", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("wave", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("upper", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("spin", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("demolition", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("snatch", StringComparison.OrdinalIgnoreCase) >= 0
+                   || string.Equals(actionName, "fist", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "screw", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "straight", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "somersault", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsStandardMorphActionName(string actionName)
+        {
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return true;
+            }
+
+            return string.Equals(actionName, "walk", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "move", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "stand", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "stand1", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "stand2", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "jump", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "fly", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "fly2", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "fly2Move", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "fly2Skill", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "sit", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "prone", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "ladder", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "ladder2", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "rope", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "rope2", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "swim", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "recovery", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "dead", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "pvpko", StringComparison.OrdinalIgnoreCase)
+                   || actionName.StartsWith("alert", StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool IsGenericMorphAttackAction(string actionName)

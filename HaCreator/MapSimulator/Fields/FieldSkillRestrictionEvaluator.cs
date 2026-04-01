@@ -57,6 +57,18 @@ namespace HaCreator.MapSimulator.Fields
             return GetClientOwnedFieldRestrictionMessage(mapInfo, skill, currentJobId);
         }
 
+        public static string GetSkillCancelRestrictionMessage(MapInfo mapInfo, SkillData skill)
+        {
+            if (mapInfo == null || skill == null)
+            {
+                return null;
+            }
+
+            return HasNoCancelSkillFlag(mapInfo)
+                ? "Active skill cancellation is disabled in this field."
+                : null;
+        }
+
         public static bool CanUseSkill(long fieldLimit, SkillData skill)
         {
             return GetRestrictionMessage(fieldLimit, skill) == null;
@@ -157,6 +169,12 @@ namespace HaCreator.MapSimulator.Fields
             return null;
         }
 
+        private static bool HasNoCancelSkillFlag(MapInfo mapInfo)
+        {
+            WzImageProperty property = FindInfoFieldProperty(mapInfo, "noCancelSkill");
+            return TryReadInt(property, out int value) && value != 0;
+        }
+
         private static WzImageProperty FindAdditionalFieldProperty(MapInfo mapInfo, string propertyName)
         {
             if (mapInfo?.additionalNonInfoProps != null)
@@ -172,6 +190,23 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return mapInfo?.Image?[propertyName] as WzImageProperty;
+        }
+
+        private static WzImageProperty FindInfoFieldProperty(MapInfo mapInfo, string propertyName)
+        {
+            if (mapInfo?.additionalProps != null)
+            {
+                for (int i = 0; i < mapInfo.additionalProps.Count; i++)
+                {
+                    WzImageProperty property = mapInfo.additionalProps[i];
+                    if (string.Equals(property?.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return property;
+                    }
+                }
+            }
+
+            return mapInfo?.Image?["info"]?[propertyName] as WzImageProperty;
         }
 
         private static bool MatchesListedSkill(WzImageProperty property, int skillId)

@@ -483,6 +483,7 @@ namespace HaCreator.MapSimulator
             WireGuildSkillWindowData();
             WireGuildBbsWindowData();
             _engagementProposalController.WireWindow(uiWindowManager, _playerManager?.Player?.Build, _fontChat, ShowUtilityFeedbackMessage);
+            _weddingWishListController.WireWindow(uiWindowManager, _playerManager?.Player?.Build, uiWindowManager?.InventoryWindow as IInventoryRuntime, _fontChat, ShowUtilityFeedbackMessage);
             WireProgressionUtilityWindowLaunchers();
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ItemMaker) is ItemMakerUI itemMakerWindow)
             {
@@ -508,6 +509,34 @@ namespace HaCreator.MapSimulator
                 cashShopWindowReload.SetInventory(uiWindowManager.InventoryWindow as IInventoryRuntime);
                 cashShopWindowReload.SetCashBalances(_loginAccountCashShopNxCredit);
                 cashShopWindowReload.TryConsumeCashBalance = TryConsumeLoginAccountCashShopNxCredit;
+                cashShopWindowReload.WindowHidden = _ => uiWindowManager.HideWindow(MapSimulatorWindowNames.CashAvatarPreview);
+            }
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashAvatarPreview) is CashAvatarPreviewWindow cashAvatarPreviewReload
+                && _playerManager?.Player?.Build != null)
+            {
+                cashAvatarPreviewReload.CharacterBuild = _playerManager.Player.Build;
+                cashAvatarPreviewReload.SetFont(_fontChat);
+                cashAvatarPreviewReload.EquipmentLoader = _playerManager.Loader != null ? _playerManager.Loader.LoadEquipment : null;
+                cashAvatarPreviewReload.PersonalShopRequested = () =>
+                {
+                    ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.PersonalShop);
+                    return "CCSWnd_Char::ShowPersonalShop opened the dedicated personal-shop owner.";
+                };
+                cashAvatarPreviewReload.EntrustedShopRequested = () =>
+                {
+                    ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.EntrustedShop);
+                    return "CCSWnd_Char::ShowEntrustedShop opened the dedicated entrusted-shop owner.";
+                };
+                cashAvatarPreviewReload.TradingRoomRequested = () =>
+                {
+                    ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.CashTradingRoom);
+                    return "CCSWnd_Char handed the selected listing to CCashTradingRoomDlg.";
+                };
+                cashAvatarPreviewReload.WeatherRequested = () =>
+                {
+                    _fieldEffects?.AddWeatherMessage("Cash Shop weather preview staged.", WeatherEffectType.None, currTickCount);
+                    return "CCSWnd_Char::BlowWeather staged the selected cash-weather preview action.";
+                };
             }
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.Mts) is AdminShopDialogUI mtsWindowReload)
             {
@@ -605,6 +634,7 @@ namespace HaCreator.MapSimulator
             SyncTransportPacketInboxState();
             SyncGuildBossTransportState();
             SyncPartyRaidPacketInboxState();
+            SyncTournamentPacketInboxState();
 
             SyncCookieHousePointInboxState();
 
@@ -729,6 +759,7 @@ namespace HaCreator.MapSimulator
             _packetOwnedHudNoticeUI.Initialize(_fontChat, _debugBoundaryTexture, Width, Height);
             LoadPacketOwnedHudNoticeUiFrame();
             LoadPacketOwnedLocalOverlayAssets();
+            LoadPacketOwnedTutorAssets();
 
 
             _temporaryPortalField = new TemporaryPortalField(_texturePool, _DxDeviceManager.GraphicsDevice);
@@ -763,7 +794,7 @@ namespace HaCreator.MapSimulator
                 statusBarUi.SetPreparedSkillOverlayProvider(currentTime => GetPreparedSkillBarData(currentTime, PreparedSkillHudSurface.World));
                 statusBarUi.SetPixelTexture(_DxDeviceManager.GraphicsDevice);
                 statusBarUi.SetLowResourceWarningThresholds(_statusBarHpWarningThresholdPercent, _statusBarMpWarningThresholdPercent);
-                statusBarUi.BuffCancelRequested = skillId => _playerManager?.Skills?.RequestClientSkillCancel(skillId, currTickCount);
+                statusBarUi.BuffCancelRequested = skillId => _playerManager?.Skills?.RequestClientSkillCancel(skillId, currTickCount, enforceFieldCancelRestrictions: true);
             }
             if (statusBarChatUI != null)
             {
@@ -806,8 +837,10 @@ namespace HaCreator.MapSimulator
             {
                 bookCollectionWindow.CharacterBuild = _playerManager.Player.Build;
                 bookCollectionWindow.SetFont(_fontDebugValues);
-                bookCollectionWindow.SetMonsterBookSnapshotProvider(GetActiveMonsterBookSnapshot);
-                bookCollectionWindow.SetMonsterBookRegistrationHandler((mobId, registered) => _monsterBookManager.SetRegisteredCard(_playerManager?.Player?.Build ?? _loginCharacterRoster.SelectedEntry?.Build, mobId, registered));
+                bookCollectionWindow.SetCollectionSnapshotProvider(() => CollectionBookSnapshotFactory.Create(
+                    _playerManager?.Player?.Build ?? _loginCharacterRoster.SelectedEntry?.Build,
+                    GetActiveItemMakerProgression(),
+                    GetActiveMonsterBookSnapshot()));
 
             }
 
@@ -879,6 +912,34 @@ namespace HaCreator.MapSimulator
                 cashShopWindowRebuild.SetInventory(uiWindowManager.InventoryWindow as IInventoryRuntime);
                 cashShopWindowRebuild.SetCashBalances(_loginAccountCashShopNxCredit);
                 cashShopWindowRebuild.TryConsumeCashBalance = TryConsumeLoginAccountCashShopNxCredit;
+                cashShopWindowRebuild.WindowHidden = _ => uiWindowManager.HideWindow(MapSimulatorWindowNames.CashAvatarPreview);
+            }
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashAvatarPreview) is CashAvatarPreviewWindow cashAvatarPreviewRebuild
+                && _playerManager?.Player?.Build != null)
+            {
+                cashAvatarPreviewRebuild.CharacterBuild = _playerManager.Player.Build;
+                cashAvatarPreviewRebuild.SetFont(_fontChat);
+                cashAvatarPreviewRebuild.EquipmentLoader = _playerManager.Loader != null ? _playerManager.Loader.LoadEquipment : null;
+                cashAvatarPreviewRebuild.PersonalShopRequested = () =>
+                {
+                    ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.PersonalShop);
+                    return "CCSWnd_Char::ShowPersonalShop opened the dedicated personal-shop owner.";
+                };
+                cashAvatarPreviewRebuild.EntrustedShopRequested = () =>
+                {
+                    ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.EntrustedShop);
+                    return "CCSWnd_Char::ShowEntrustedShop opened the dedicated entrusted-shop owner.";
+                };
+                cashAvatarPreviewRebuild.TradingRoomRequested = () =>
+                {
+                    ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.CashTradingRoom);
+                    return "CCSWnd_Char handed the selected listing to CCashTradingRoomDlg.";
+                };
+                cashAvatarPreviewRebuild.WeatherRequested = () =>
+                {
+                    _fieldEffects?.AddWeatherMessage("Cash Shop weather preview staged.", WeatherEffectType.None, currTickCount);
+                    return "CCSWnd_Char::BlowWeather staged the selected cash-weather preview action.";
+                };
             }
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.Mts) is AdminShopDialogUI mtsWindowRebuild)
             {
@@ -1447,6 +1508,7 @@ namespace HaCreator.MapSimulator
             WireGuildSkillWindowData();
             WireGuildBbsWindowData();
             _engagementProposalController.WireWindow(uiWindowManager, _playerManager?.Player?.Build, _fontChat, ShowUtilityFeedbackMessage);
+            _weddingWishListController.WireWindow(uiWindowManager, _playerManager?.Player?.Build, uiWindowManager?.InventoryWindow as IInventoryRuntime, _fontChat, ShowUtilityFeedbackMessage);
             WireProgressionUtilityWindowLaunchers();
 
             RefreshMapTransferWindow();
@@ -1470,7 +1532,7 @@ namespace HaCreator.MapSimulator
                 statusBarUi.SetPreparedSkillOverlayProvider(currentTime => GetPreparedSkillBarData(currentTime, PreparedSkillHudSurface.World));
                 statusBarUi.SetPixelTexture(_DxDeviceManager.GraphicsDevice);
                 statusBarUi.SetLowResourceWarningThresholds(_statusBarHpWarningThresholdPercent, _statusBarMpWarningThresholdPercent);
-                statusBarUi.BuffCancelRequested = skillId => _playerManager?.Skills?.RequestClientSkillCancel(skillId, currTickCount);
+                statusBarUi.BuffCancelRequested = skillId => _playerManager?.Skills?.RequestClientSkillCancel(skillId, currTickCount, enforceFieldCancelRestrictions: true);
             }
             if (statusBarChatUI != null)
             {
@@ -1557,6 +1619,34 @@ namespace HaCreator.MapSimulator
                 cashShopWindow.SetInventory(uiWindowManager.InventoryWindow as IInventoryRuntime);
                 cashShopWindow.SetCashBalances(_loginAccountCashShopNxCredit);
                 cashShopWindow.TryConsumeCashBalance = TryConsumeLoginAccountCashShopNxCredit;
+                cashShopWindow.WindowHidden = _ => uiWindowManager.HideWindow(MapSimulatorWindowNames.CashAvatarPreview);
+            }
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashAvatarPreview) is CashAvatarPreviewWindow cashAvatarPreviewWindow
+                && _playerManager?.Player?.Build != null)
+            {
+                cashAvatarPreviewWindow.CharacterBuild = _playerManager.Player.Build;
+                cashAvatarPreviewWindow.SetFont(_fontChat);
+                cashAvatarPreviewWindow.EquipmentLoader = _playerManager.Loader != null ? _playerManager.Loader.LoadEquipment : null;
+                cashAvatarPreviewWindow.PersonalShopRequested = () =>
+                {
+                    ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.PersonalShop);
+                    return "CCSWnd_Char::ShowPersonalShop opened the dedicated personal-shop owner.";
+                };
+                cashAvatarPreviewWindow.EntrustedShopRequested = () =>
+                {
+                    ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.EntrustedShop);
+                    return "CCSWnd_Char::ShowEntrustedShop opened the dedicated entrusted-shop owner.";
+                };
+                cashAvatarPreviewWindow.TradingRoomRequested = () =>
+                {
+                    ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.CashTradingRoom);
+                    return "CCSWnd_Char handed the selected listing to CCashTradingRoomDlg.";
+                };
+                cashAvatarPreviewWindow.WeatherRequested = () =>
+                {
+                    _fieldEffects?.AddWeatherMessage("Cash Shop weather preview staged.", WeatherEffectType.None, currTickCount);
+                    return "CCSWnd_Char::BlowWeather staged the selected cash-weather preview action.";
+                };
             }
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.Mts) is AdminShopDialogUI mtsWindow)
             {
@@ -1646,6 +1736,7 @@ namespace HaCreator.MapSimulator
             SyncTransportPacketInboxState();
             SyncGuildBossTransportState();
             SyncPartyRaidPacketInboxState();
+            SyncTournamentPacketInboxState();
 
             SyncCookieHousePointInboxState();
 

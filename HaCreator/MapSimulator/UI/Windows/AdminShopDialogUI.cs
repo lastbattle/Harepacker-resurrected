@@ -310,6 +310,7 @@ namespace HaCreator.MapSimulator.UI
         private long _maplePoint;
         private long _prepaidCash;
         public Action<AdminShopDialogUI> WishlistWindowRequested { get; set; }
+        public Action<AdminShopDialogUI> WindowHidden { get; set; }
         public Func<long, bool> TryConsumeCashBalance { get; set; }
 
         public AdminShopDialogUI(
@@ -434,6 +435,40 @@ namespace HaCreator.MapSimulator.UI
             _inventory = inventory;
             Money = _inventory?.GetMesoCount() ?? Money;
             UpdateActionButtonStates();
+        }
+
+        public override void Hide()
+        {
+            bool wasVisible = IsVisible;
+            base.Hide();
+            if (wasVisible && !IsVisible)
+            {
+                WindowHidden?.Invoke(this);
+            }
+        }
+
+        public AdminShopAvatarPreviewSelection GetAvatarPreviewSelection()
+        {
+            AdminShopEntry entry = GetSelectedEntry();
+            if (entry == null)
+            {
+                return null;
+            }
+
+            return new AdminShopAvatarPreviewSelection
+            {
+                Title = entry.Title ?? string.Empty,
+                Detail = entry.Detail ?? string.Empty,
+                RewardInventoryType = entry.RewardInventoryType,
+                RewardItemId = entry.RewardItemId,
+                IsUserListing = _activePane == AdminShopPane.User
+            };
+        }
+
+        public string SubmitSelectedEntryPreviewRequest()
+        {
+            SubmitSelectedEntryRequest();
+            return _footerMessage;
         }
 
         public void SetStorageRuntime(IStorageRuntime storageRuntime)

@@ -66,6 +66,9 @@ namespace HaCreator.MapSimulator.UI
         public int OwnedBossCardTypes { get; init; }
         public int OwnedNormalCardTypes { get; init; }
         public int TotalOwnedCopies { get; init; }
+        public int RegisteredCardMobId { get; init; }
+        public int RegisteredCardItemId { get; init; }
+        public string RegisteredCardName { get; init; } = string.Empty;
         public IReadOnlyList<MonsterBookGradeSnapshot> Grades { get; init; } = Array.Empty<MonsterBookGradeSnapshot>();
         public IReadOnlyList<MonsterBookPageSnapshot> Pages { get; init; } = Array.Empty<MonsterBookPageSnapshot>();
     }

@@ -1284,22 +1284,17 @@ namespace HaCreator.MapSimulator.UI
             }
 
             binding.Button.SetVisible(true);
-            binding.Button.SetButtonState(UIObjectState.Normal);
+            binding.Button.SetButtonState(state.DeliveryActionEnabled ? UIObjectState.Normal : UIObjectState.Disabled);
             _activeDeliveryButton = binding.Button;
             _drawDeliveryLabel = binding.DrawLabel;
         }
 
         private static QuestWindowActionKind ResolveDeliveryAction(QuestWindowDetailState state)
         {
-            if (state?.DeliveryCashItemId is not int deliveryCashItemId || deliveryCashItemId <= 0)
+            return state?.DeliveryType switch
             {
-                return QuestWindowActionKind.None;
-            }
-
-            return state.State switch
-            {
-                QuestStateType.Not_Started => QuestWindowActionKind.QuestDeliveryAccept,
-                QuestStateType.Started => QuestWindowActionKind.QuestDeliveryComplete,
+                QuestDetailDeliveryType.Accept => QuestWindowActionKind.QuestDeliveryAccept,
+                QuestDetailDeliveryType.Complete => QuestWindowActionKind.QuestDeliveryComplete,
                 _ => QuestWindowActionKind.None
             };
         }

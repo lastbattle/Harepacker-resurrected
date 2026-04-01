@@ -106,7 +106,11 @@ namespace HaCreator.MapSimulator.Fields
         private const byte MemoryGameTieResultPacketType = 51;
         private const byte MemoryGameReadyPacketType = 58;
         private const byte MemoryGameCancelReadyPacketType = 59;
+        private const byte MemoryGameClientTurnUpCardPacketType = 60;
         private const byte MemoryGameStartPacketType = 61;
+        private const byte MemoryGameClientGiveUpPacketType = 52;
+        private const byte MemoryGameClientBookLeavePacketType = 56;
+        private const byte MemoryGameClientCancelLeavePacketType = 57;
         private const byte MemoryGameGameResultPacketType = 62;
         private const byte MemoryGameTimeOverPacketType = 63;
         private const byte MemoryGameTurnUpCardPacketType = 68;
@@ -648,6 +652,37 @@ namespace HaCreator.MapSimulator.Fields
                 message = $"MiniRoom packet ended unexpectedly: {BitConverter.ToString(packetBytes)}";
                 return false;
             }
+        }
+
+
+        public bool TryDispatchOfficialClientPacket(byte[] packetBytes, int tickCount, out string message)
+        {
+            if (packetBytes == null || packetBytes.Length == 0)
+            {
+                message = "Memory Game client payload is empty.";
+                return false;
+            }
+
+
+            EnsureRoomOpenFromMiniRoomRuntime();
+
+            byte packetType = packetBytes[0];
+            bool handled = packetType switch
+            {
+                MiniRoomBaseLeavePacketType => TryDispatchPacket(MemoryGamePacketType.EndRoom, tickCount, out message),
+                MemoryGameTieRequestPacketType => TryApplyTieRequestStatus(_localPlayerIndex, out message),
+                MemoryGameClientGiveUpPacketType => TryDispatchPacket(MemoryGamePacketType.GiveUp, tickCount, out message, _localPlayerIndex),
+                MemoryGameClientBookLeavePacketType => TryApplyLeaveBookingStatus(booked: true, out message),
+                MemoryGameClientCancelLeavePacketType => TryApplyLeaveBookingStatus(booked: false, out message),
+                MemoryGameReadyPacketType => TryDispatchPacket(MemoryGamePacketType.SetReady, tickCount, out message, _localPlayerIndex, readyState: true),
+                MemoryGameCancelReadyPacketType => TryDispatchPacket(MemoryGamePacketType.SetReady, tickCount, out message, _localPlayerIndex, readyState: false),
+                MemoryGameClientTurnUpCardPacketType => TryApplyClientTurnUpCardPacket(packetBytes, tickCount, out message),
+                MemoryGameStartPacketType => TryDispatchPacket(MemoryGamePacketType.StartGame, tickCount, out message),
+                _ => FailOfficialClientPacket(packetType, out message)
+            };
+
+            _lastPacketSummary = $"official client {packetType}: {message}";
+            return handled;
         }
 
 
@@ -1262,6 +1297,51 @@ namespace HaCreator.MapSimulator.Fields
         }
 
 
+        private bool TryApplyTieRequestStatus(int playerIndex, out string message)
+        {
+            if (!IsValidPlayerIndex(playerIndex))
+            {
+                message = $"Invalid player index: {playerIndex}.";
+                return false;
+            }
+
+
+            string playerName = ResolveParticipantName(playerIndex);
+            _statusMessage = ResolveMiniRoomGameMessage(0, playerName);
+            _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {_statusMessage}");
+            SyncMiniRoomRuntime();
+            message = _statusMessage;
+            return true;
+        }
+
+
+        private bool TryApplyLeaveBookingStatus(bool booked, out string message)
+        {
+            string playerName = ResolveParticipantName(_localPlayerIndex);
+            _statusMessage = booked
+                ? $"{playerName} booked a leave request for the next round."
+                : $"{playerName} canceled the pending leave request.";
+            _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {_statusMessage}");
+            SyncMiniRoomRuntime();
+            message = _statusMessage;
+            return true;
+        }
+
+
+        private bool TryApplyClientTurnUpCardPacket(byte[] packetBytes, int tickCount, out string message)
+        {
+            if (packetBytes.Length < 2)
+            {
+                message = "Client turn-up-card payload requires a card index.";
+                return false;
+            }
+
+
+            int cardIndex = packetBytes[1];
+            return TryDispatchPacket(MemoryGamePacketType.RevealCard, tickCount, out message, _localPlayerIndex, cardIndex);
+        }
+
+
 
         private bool TryApplyStartPacket(PacketReader reader, int tickCount, out string message)
         {
@@ -1521,6 +1601,13 @@ namespace HaCreator.MapSimulator.Fields
         private static bool FailMiniRoomPacket(byte basePacketType, out string message)
         {
             message = $"MiniRoom base packet {basePacketType} is not modeled for Match Cards.";
+            return false;
+        }
+
+
+        private static bool FailOfficialClientPacket(byte packetType, out string message)
+        {
+            message = $"Memory Game client packet {packetType} is not modeled for Match Cards.";
             return false;
         }
 

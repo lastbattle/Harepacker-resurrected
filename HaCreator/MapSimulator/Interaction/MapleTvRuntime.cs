@@ -645,9 +645,7 @@ namespace HaCreator.MapSimulator.Interaction
             _lastClientSendResultCode = definition.ResultCode;
             _lastClientSendResultStringPoolId = definition.StringPoolId;
 
-            string resolvedText = definition.StringPoolId >= 0
-                ? $"MapleTV send result {definition.StatusLabel}. [StringPool 0x{definition.StringPoolId:X} unresolved]"
-                : "MapleTV send result failed.";
+            string resolvedText = BuildClientSendResultFeedbackText(definition);
 
             _pendingSendResultFeedback = new MapleTvSendResultFeedback(
                 resolvedText,
@@ -662,9 +660,9 @@ namespace HaCreator.MapSimulator.Interaction
         {
             return resultCode switch
             {
-                1 => new MapleTvSendResultDefinition(1, 0xF9E, "accepted"),
-                2 => new MapleTvSendResultDefinition(2, 0xFA0, "rejected"),
-                3 => new MapleTvSendResultDefinition(3, 0xF9F, "recipient unavailable"),
+                1 => new MapleTvSendResultDefinition(1, 0xF9E, "success"),
+                2 => new MapleTvSendResultDefinition(2, 0xFA0, "busy"),
+                3 => new MapleTvSendResultDefinition(3, 0xF9F, "recipient-offline"),
                 _ => new MapleTvSendResultDefinition(resultCode, -1, "failed")
             };
         }
@@ -673,6 +671,18 @@ namespace HaCreator.MapSimulator.Interaction
         {
             definition = ResolveSendResultDefinition(resultCode);
             return definition.StringPoolId >= 0;
+        }
+
+        internal static string BuildClientSendResultFeedbackTextForTest(int resultCode)
+        {
+            return BuildClientSendResultFeedbackText(ResolveSendResultDefinition((byte)resultCode));
+        }
+
+        private static string BuildClientSendResultFeedbackText(MapleTvSendResultDefinition definition)
+        {
+            return definition.StringPoolId >= 0
+                ? $"MapleTV send result ({definition.StatusLabel}, code {definition.ResultCode}, StringPool 0x{definition.StringPoolId:X}; localized client text unresolved)."
+                : $"MapleTV send result failed (code {definition.ResultCode}).";
         }
     }
 

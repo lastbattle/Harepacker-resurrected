@@ -47,7 +47,9 @@ namespace HaCreator.MapSimulator.Managers
             MapSimulatorWindowNames.MiniRoom,
             MapSimulatorWindowNames.PersonalShop,
             MapSimulatorWindowNames.EntrustedShop,
-            MapSimulatorWindowNames.TradingRoom
+            MapSimulatorWindowNames.TradingRoom,
+            MapSimulatorWindowNames.CashTradingRoom,
+            MapSimulatorWindowNames.CashAvatarPreview
         };
 
         private readonly HashSet<string> _ownedWindowNames = new(StringComparer.Ordinal);

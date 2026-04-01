@@ -191,7 +191,7 @@ namespace HaCreator.MapSimulator.UI
         private PersonalityTooltipVisual _personalityTooltipVisual;
         private Func<CharacterBuild, ItemMakerProgressionSnapshot> _collectionSnapshotProvider;
         private Func<CharacterBuild, MonsterBookSnapshot> _monsterBookSnapshotProvider;
-        private Func<RankDeltaSnapshot> _rankDeltaProvider;
+        private Func<CharacterBuild, RankDeltaSnapshot> _rankDeltaProvider;
         private AuxiliaryPopupKind _activePopup;
         private int _selectedPetTabIndex;
         private int _selectedItemPopupIndex;
@@ -330,8 +330,8 @@ namespace HaCreator.MapSimulator.UI
         {
             _popupUpButton = popupUpButton;
             _popupDownButton = popupDownButton;
-            RegisterPrimaryButton(_popupUpButton, ScrollPopupSelectionUp);
-            RegisterPrimaryButton(_popupDownButton, ScrollPopupSelectionDown);
+            RegisterPrimaryButton(_popupUpButton, HandlePopupUpButton);
+            RegisterPrimaryButton(_popupDownButton, HandlePopupDownButton);
             UpdateButtonStates();
         }
 
@@ -486,7 +486,7 @@ namespace HaCreator.MapSimulator.UI
             _monsterBookSnapshotProvider = snapshotProvider;
         }
 
-        public void SetRankDeltaProvider(Func<RankDeltaSnapshot> rankDeltaProvider)
+        public void SetRankDeltaProvider(Func<CharacterBuild, RankDeltaSnapshot> rankDeltaProvider)
         {
             _rankDeltaProvider = rankDeltaProvider;
         }
@@ -1414,18 +1414,45 @@ namespace HaCreator.MapSimulator.UI
                 _wishPresentButton.SetEnabled(wishOpen && _wishEntries.Count > 0);
             }
 
-            bool popupScrollVisible = _activePopup != AuxiliaryPopupKind.None;
+            bool popupSelectorMode = characterPage && !remoteInspection && _activePopup != AuxiliaryPopupKind.None;
+            bool popularityMode = characterPage && remoteInspection;
             if (_popupUpButton != null)
             {
                 _popupUpButton.ButtonVisible = characterPage;
-                _popupUpButton.SetEnabled(characterPage && CanRequestPopularity(PopularityChangeDirection.Up) && !_exceptionPopupOpen);
+                _popupUpButton.SetEnabled(!_exceptionPopupOpen && (popularityMode
+                    ? CanRequestPopularity(PopularityChangeDirection.Up)
+                    : popupSelectorMode && CanScrollPopupSelectionUp()));
             }
 
             if (_popupDownButton != null)
             {
                 _popupDownButton.ButtonVisible = characterPage;
-                _popupDownButton.SetEnabled(characterPage && CanRequestPopularity(PopularityChangeDirection.Down) && !_exceptionPopupOpen);
+                _popupDownButton.SetEnabled(!_exceptionPopupOpen && (popularityMode
+                    ? CanRequestPopularity(PopularityChangeDirection.Down)
+                    : popupSelectorMode && CanScrollPopupSelectionDown()));
             }
+        }
+
+        private void HandlePopupUpButton()
+        {
+            if (IsRemoteInspectionActive())
+            {
+                RequestPopularityChange(PopularityChangeDirection.Up);
+                return;
+            }
+
+            ScrollPopupSelectionUp();
+        }
+
+        private void HandlePopupDownButton()
+        {
+            if (IsRemoteInspectionActive())
+            {
+                RequestPopularityChange(PopularityChangeDirection.Down);
+                return;
+            }
+
+            ScrollPopupSelectionDown();
         }
 
         private void ScrollPopupSelectionUp()
@@ -1433,11 +1460,25 @@ namespace HaCreator.MapSimulator.UI
             switch (_activePopup)
             {
                 case AuxiliaryPopupKind.Item:
+                    if (_selectedItemPopupIndex <= 0)
+                    {
+                        return;
+                    }
+
                     _selectedItemPopupIndex = Math.Max(0, _selectedItemPopupIndex - 1);
+                    _statusMessage = $"Selected {_itemPopupEntries[_selectedItemPopupIndex]} from the item list.";
                     break;
                 case AuxiliaryPopupKind.Wish:
+                    if (_selectedWishIndex <= 0)
+                    {
+                        return;
+                    }
+
                     _selectedWishIndex = Math.Max(0, _selectedWishIndex - 1);
+                    _statusMessage = $"Selected {_wishEntries[_selectedWishIndex]} from the wish list.";
                     break;
+                default:
+                    return;
             }
 
             UpdateButtonStates();
@@ -1448,11 +1489,25 @@ namespace HaCreator.MapSimulator.UI
             switch (_activePopup)
             {
                 case AuxiliaryPopupKind.Item:
+                    if (_selectedItemPopupIndex >= _itemPopupEntries.Length - 1)
+                    {
+                        return;
+                    }
+
                     _selectedItemPopupIndex = Math.Min(_itemPopupEntries.Length - 1, _selectedItemPopupIndex + 1);
+                    _statusMessage = $"Selected {_itemPopupEntries[_selectedItemPopupIndex]} from the item list.";
                     break;
                 case AuxiliaryPopupKind.Wish:
+                    if (_selectedWishIndex >= _wishEntries.Count - 1)
+                    {
+                        return;
+                    }
+
                     _selectedWishIndex = Math.Min(_wishEntries.Count - 1, _selectedWishIndex + 1);
+                    _statusMessage = $"Selected {_wishEntries[_selectedWishIndex]} from the wish list.";
                     break;
+                default:
+                    return;
             }
 
             UpdateButtonStates();
@@ -1694,7 +1749,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             BookCollectionRequested.Invoke();
-            _statusMessage = "Monster Book opened.";
+            _statusMessage = "Collection book opened.";
         }
 
         private void ClaimCollectReward()
@@ -2105,7 +2160,7 @@ namespace HaCreator.MapSimulator.UI
 
         private RankDeltaSnapshot GetRankDeltaSnapshot()
         {
-            return _rankDeltaProvider?.Invoke() ?? default;
+            return _rankDeltaProvider?.Invoke(_inspectionTarget?.Build ?? _characterBuild) ?? default;
         }
 
         private bool CanRequestPopularity(PopularityChangeDirection direction)
@@ -2116,6 +2171,26 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return direction != PopularityChangeDirection.Down || (_characterBuild?.Fame ?? 0) > 0;
+        }
+
+        private bool CanScrollPopupSelectionUp()
+        {
+            return _activePopup switch
+            {
+                AuxiliaryPopupKind.Item => _selectedItemPopupIndex > 0,
+                AuxiliaryPopupKind.Wish => _selectedWishIndex > 0,
+                _ => false
+            };
+        }
+
+        private bool CanScrollPopupSelectionDown()
+        {
+            return _activePopup switch
+            {
+                AuxiliaryPopupKind.Item => _selectedItemPopupIndex >= 0 && _selectedItemPopupIndex < _itemPopupEntries.Length - 1,
+                AuxiliaryPopupKind.Wish => _selectedWishIndex >= 0 && _selectedWishIndex < _wishEntries.Count - 1,
+                _ => false
+            };
         }
 
         private string ResolveHoveredPersonalityTrait()

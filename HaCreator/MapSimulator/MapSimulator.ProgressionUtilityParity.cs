@@ -10,77 +10,98 @@ namespace HaCreator.MapSimulator
 {
     public partial class MapSimulator
     {
+        private const int RankingOwnerNavigateDelayMs = 250;
+        private int _lastRankingOpenTick = int.MinValue;
+        private int _lastRankingNavigateTick = int.MinValue;
+        private string _lastRankingLaunchSource = string.Empty;
+        private int _lastEventOpenTick = int.MinValue;
+        private string _lastEventLaunchSource = string.Empty;
+
+        private void RecordProgressionUtilityOwnerLaunch(string windowName, string source)
+        {
+            if (string.IsNullOrWhiteSpace(windowName))
+            {
+                return;
+            }
+
+            string normalizedSource = string.IsNullOrWhiteSpace(source) ? "simulator" : source.Trim();
+            int now = Environment.TickCount;
+            if (string.Equals(windowName, MapSimulatorWindowNames.Ranking, StringComparison.Ordinal))
+            {
+                _lastRankingOpenTick = now;
+                _lastRankingNavigateTick = int.MinValue;
+                _lastRankingLaunchSource = normalizedSource;
+            }
+            else if (string.Equals(windowName, MapSimulatorWindowNames.Event, StringComparison.Ordinal))
+            {
+                _lastEventOpenTick = now;
+                _lastEventLaunchSource = normalizedSource;
+            }
+        }
+
         private RankingWindowSnapshot BuildUtilityRankingSnapshot()
         {
+            RefreshRankingOwnerRuntimeState();
             CharacterBuild build = _playerManager?.Player?.Build;
             QuestAlarmSnapshot questSnapshot = _questRuntime.BuildQuestAlarmSnapshot(build);
+            UserInfoUI.RankDeltaSnapshot rankDelta = ResolveCharacterInfoRankDeltaSnapshot(build);
             string mapName = GetCurrentMapTransferDisplayName();
             int currentMapId = _mapBoard?.MapInfo?.id ?? 0;
             int readyQuestCount = questSnapshot.Entries.Count(entry => entry.IsReadyToComplete);
             int worldId = Math.Max(0, _simulatorWorldId);
-            string webSeedText = build == null
-                ? $"ranking://world/{worldId + 1}"
-                : $"ranking://world/{worldId + 1}/character/{build.Id}";
+            string webSeedText = BuildRankingLandingSeed(build, worldId);
+            string launchSource = string.IsNullOrWhiteSpace(_lastRankingLaunchSource) ? "status-bar owner" : _lastRankingLaunchSource;
+            bool hasActiveRequest = _lastRankingOpenTick != int.MinValue;
+            bool requestPending = hasActiveRequest && _lastRankingNavigateTick == int.MinValue;
+            string requestValue = build == null
+                ? "No active character"
+                : requestPending
+                    ? "Loading"
+                    : "Navigated";
 
             List<RankingEntrySnapshot> entries = new();
             if (build == null)
             {
                 entries.Add(new RankingEntrySnapshot
                 {
-                    Label = "Landing Page",
-                    Value = "Unavailable",
-                    Detail = $"CUIRanking is a web owner, but there is no active character build to seed its landing request. Current local seed: {webSeedText}."
+                    Label = "Landing Request",
+                    Value = requestValue,
+                    Detail = $"CUIRanking stays a CWebWnd owner with a loading layer plus close-only dismissal. No active character build is bound, so the recovered seed shape remains {webSeedText}."
                 });
             }
             else
             {
                 entries.Add(new RankingEntrySnapshot
                 {
-                    Label = "Landing Page",
-                    Value = $"World {worldId + 1}",
-                    Detail = $"CUIRanking::OnCreate navigates through a web-style owner, so the simulator now exposes the local landing seed as {webSeedText} for {build.Name}."
+                    Label = "Landing Request",
+                    Value = requestValue,
+                    Detail = BuildRankingOwnerLifecycleDetail(build, launchSource, webSeedText)
                 });
                 entries.Add(new RankingEntrySnapshot
                 {
-                    Label = "World Rank",
-                    Value = build.WorldRank > 0 ? $"#{build.WorldRank}" : "Local",
-                    Detail = build.WorldRank > 0
-                        ? $"World-ranking seed is attached to {build.Name} and would populate the remote page after the landing request resolves."
-                        : "No packet-authored world-ranking feed is present, so this landing page remains simulator-local after the initial web-style seed."
+                    Label = "Ladder Snapshot",
+                    Value = $"World {FormatRank(build.WorldRank)} / Job {FormatRank(build.JobRank)}",
+                    Detail = $"Previous world {FormatRank(rankDelta.PreviousWorldRank)} ({FormatSignedDelta(rankDelta.PreviousWorldRank - build.WorldRank)}), previous job {FormatRank(rankDelta.PreviousJobRank)} ({FormatSignedDelta(rankDelta.PreviousJobRank - build.JobRank)})."
                 });
                 entries.Add(new RankingEntrySnapshot
                 {
-                    Label = "Job Rank",
-                    Value = build.JobRank > 0 ? $"#{build.JobRank}" : "Local",
-                    Detail = build.JobRank > 0
-                        ? $"{build.JobName} ladder seed is loaded for the active build after the landing request."
-                        : $"No live {build.JobName} job-ranking packet feed is present behind the web owner."
-                });
-                entries.Add(new RankingEntrySnapshot
-                {
-                    Label = "Popularity",
-                    Value = build.Fame.ToString(CultureInfo.InvariantCulture),
-                    Detail = $"Lv. {build.Level} {build.JobName}, EXP {build.ExpPercent}% in {mapName}, AP {build.AP.ToString(CultureInfo.InvariantCulture)}."
-                });
-                entries.Add(new RankingEntrySnapshot
-                {
-                    Label = "Combat Seed",
-                    Value = $"{build.TotalAttack}/{build.TotalMagicAttack}",
+                    Label = "Character Context",
+                    Value = $"Fame {build.Fame} / PAD {build.TotalAttack} / MAD {build.TotalMagicAttack}",
                     Detail = readyQuestCount > 0
-                        ? $"PAD/MAD with {readyQuestCount} tracked quest turn-in candidate{(readyQuestCount == 1 ? string.Empty : "s")} waiting."
-                        : $"PAD/MAD with ACC {build.TotalAccuracy.ToString(CultureInfo.InvariantCulture)} and EVA {build.TotalAvoidability.ToString(CultureInfo.InvariantCulture)}."
+                        ? $"Lv. {build.Level} {build.JobName}, EXP {build.ExpPercent}% in {mapName} (map {currentMapId}), AP {build.AP.ToString(CultureInfo.InvariantCulture)}, ACC {build.TotalAccuracy.ToString(CultureInfo.InvariantCulture)}, EVA {build.TotalAvoidability.ToString(CultureInfo.InvariantCulture)}, and {readyQuestCount} tracked turn-in candidate{(readyQuestCount == 1 ? string.Empty : "s")}."
+                        : $"Lv. {build.Level} {build.JobName}, EXP {build.ExpPercent}% in {mapName} (map {currentMapId}), AP {build.AP.ToString(CultureInfo.InvariantCulture)}, ACC {build.TotalAccuracy.ToString(CultureInfo.InvariantCulture)}, EVA {build.TotalAvoidability.ToString(CultureInfo.InvariantCulture)}."
                 });
             }
 
             string subtitle = build == null
-                ? "Ranking owner art is loaded from UIWindow2.img/Ranking."
-                : $"Dedicated ranking owner anchored to {build.Name}, Lv. {build.Level} {build.JobName}, map {currentMapId}, plus the client-observed web landing seed for world {worldId + 1}.";
+                ? "UIWindow2.img/Ranking stays the owner seam while the recovered CWebWnd request shape remains unresolved."
+                : $"UIWindow2.img/Ranking stays the owner seam while the recovered CWebWnd request queues a landing seed for {build.Name}, world {worldId + 1}, then swaps from loading into simulator-local ladder context.";
 
             return new RankingWindowSnapshot
             {
                 Title = "Ranking",
                 Subtitle = subtitle,
-                StatusText = "BtRank now follows the client owner split more closely: CUIRanking is treated as a close-only web landing owner with simulator-local page seeds. The live URL template, remote ladders, and packet-fed ranking pages are still outside this board.",
+                StatusText = "BtRank now mirrors the client owner lifecycle more closely: loading-layer request first, navigated local summary second, and no hidden popularity or combat cards. The live URL template, remote ladders, and packet-fed ranking pages are still outside this board.",
                 Entries = entries
             };
         }
@@ -91,6 +112,22 @@ namespace HaCreator.MapSimulator
             CharacterBuild build = _playerManager?.Player?.Build;
             QuestAlarmSnapshot questSnapshot = _questRuntime.BuildQuestAlarmSnapshot(build);
             List<EventEntrySnapshot> entries = new();
+            AppendPacketOwnedEventAlarmEntries(entries, currentTick);
+
+            if (_lastEventOpenTick != int.MinValue)
+            {
+                string lifecycleDetail = string.IsNullOrWhiteSpace(_lastEventLaunchSource)
+                    ? $"Dedicated CUIEventAlarm owner was last launched at tick {_lastEventOpenTick.ToString(CultureInfo.InvariantCulture)}."
+                    : $"Dedicated CUIEventAlarm owner was last launched from {_lastEventLaunchSource} at tick {_lastEventOpenTick.ToString(CultureInfo.InvariantCulture)}.";
+                entries.Add(new EventEntrySnapshot
+                {
+                    Title = "Owner Lifecycle",
+                    Detail = $"{lifecycleDetail} The client-observed 8 second auto-dismiss remains armed until the user touches the filter or calendar controls.",
+                    StatusText = "Running",
+                    Status = EventEntryStatus.InProgress,
+                    ScheduledAt = DateTime.Today
+                });
+            }
 
             string loginStatus = _loginRuntime.LastEventSummary;
             entries.Add(new EventEntrySnapshot
@@ -193,8 +230,8 @@ namespace HaCreator.MapSimulator
             return new EventWindowSnapshot
             {
                 Title = "Event",
-                Subtitle = "EventList row, slot, icon, and calendar art now surface simulator runtime entries through an event owner that auto-dismisses like CUIEventAlarm until the user interacts with its WZ-backed controls.",
-                StatusText = "BtEvent now exposes packet-owned utility, quest, overlay, and special-field activity through the client event owner, using the WZ-backed filter and calendar surfaces instead of text-only fallbacks. Official attendance, calendar packets, and live network event feeds still remain outside this window.",
+                Subtitle = "EventList row, slot, icon, and calendar art now surface simulator runtime entries plus the latest packet-owned alarm text, tutor, radio, and sound state through an event owner that auto-dismisses like CUIEventAlarm until the user interacts with its WZ-backed controls.",
+                StatusText = "BtEvent now exposes packet-owned utility, quest, overlay, tutor, radio, and sound activity through the client event owner, using the WZ-backed filter and calendar surfaces instead of text-only fallbacks. Official attendance, calendar packets, and live network event feeds still remain outside this window.",
                 AutoDismissDelayMs = 8000,
                 Entries = entries
             };
@@ -236,6 +273,11 @@ namespace HaCreator.MapSimulator
             {
                 yield return BuildSpecialFieldEntry("Massacre", _specialFieldRuntime.SpecialEffects.Massacre.DescribeStatus());
             }
+
+            if (_specialFieldRuntime.Minigames.Tournament.IsActive)
+            {
+                yield return BuildSpecialFieldEntry("Tournament", _specialFieldRuntime.Minigames.Tournament.DescribeStatus());
+            }
         }
 
         private static EventEntrySnapshot BuildSpecialFieldEntry(string title, string detail)
@@ -248,6 +290,136 @@ namespace HaCreator.MapSimulator
                 Status = EventEntryStatus.InProgress,
                 ScheduledAt = DateTime.Today
             };
+        }
+
+        private void RefreshRankingOwnerRuntimeState()
+        {
+            if (_lastRankingOpenTick == int.MinValue || _lastRankingNavigateTick != int.MinValue)
+            {
+                return;
+            }
+
+            int now = Environment.TickCount;
+            if (Math.Max(0, unchecked(now - _lastRankingOpenTick)) >= RankingOwnerNavigateDelayMs)
+            {
+                _lastRankingNavigateTick = now;
+            }
+        }
+
+        private string BuildRankingLandingSeed(CharacterBuild build, int worldId)
+        {
+            int characterId = build?.Id ?? 0;
+            return $"StringPool[2722](serverString0, world={worldId + 1}, characterId={characterId})";
+        }
+
+        private string BuildRankingOwnerLifecycleDetail(CharacterBuild build, string launchSource, string webSeedText)
+        {
+            if (_lastRankingOpenTick == int.MinValue)
+            {
+                return $"Recovered client shape: CWebWnd::OnCreate queues a loading layer, then formats {webSeedText}. The owner has not been launched in this session yet.";
+            }
+
+            if (_lastRankingNavigateTick == int.MinValue)
+            {
+                return $"Launch source: {launchSource}. CWebWnd queued the landing request at tick {_lastRankingOpenTick.ToString(CultureInfo.InvariantCulture)} and the loading layer is still active for {build.Name}. Seed shape: {webSeedText}.";
+            }
+
+            return $"Launch source: {launchSource}. CWebWnd queued the landing request at tick {_lastRankingOpenTick.ToString(CultureInfo.InvariantCulture)} and switched into the navigated owner state at tick {_lastRankingNavigateTick.ToString(CultureInfo.InvariantCulture)}. Seed shape: {webSeedText}.";
+        }
+
+        private void AppendPacketOwnedEventAlarmEntries(List<EventEntrySnapshot> entries, int currentTick)
+        {
+            if (!string.IsNullOrWhiteSpace(_lastPacketOwnedNoticeMessage))
+            {
+                entries.Add(CreatePacketOwnedEventEntry("Notice Alarm", _lastPacketOwnedNoticeMessage, EventEntryStatus.Clear, "Clear"));
+            }
+
+            if (!string.IsNullOrWhiteSpace(_lastPacketOwnedBuffzoneMessage))
+            {
+                entries.Add(CreatePacketOwnedEventEntry("Buffzone Alarm", _lastPacketOwnedBuffzoneMessage, EventEntryStatus.InProgress, "Running"));
+            }
+
+            if (!string.IsNullOrWhiteSpace(_lastPacketOwnedAskApspMessage) || _packetOwnedApspPromptActive)
+            {
+                string apspDetail = _packetOwnedApspPromptActive
+                    ? $"{_lastPacketOwnedAskApspMessage} Prompt is still active for context {_packetOwnedApspPromptContextToken} / event {_packetOwnedApspPromptEventType}."
+                    : _lastPacketOwnedAskApspMessage;
+                entries.Add(CreatePacketOwnedEventEntry("AP/SP Event Prompt", apspDetail, _packetOwnedApspPromptActive ? EventEntryStatus.InProgress : EventEntryStatus.Clear, _packetOwnedApspPromptActive ? "Running" : "Clear"));
+            }
+
+            if (!string.IsNullOrWhiteSpace(_lastPacketOwnedSkillGuideMessage))
+            {
+                entries.Add(CreatePacketOwnedEventEntry("Skill Guide Launch", _lastPacketOwnedSkillGuideMessage, EventEntryStatus.Clear, "Clear"));
+            }
+
+            if (!string.IsNullOrWhiteSpace(_lastPacketOwnedFollowFailureMessage))
+            {
+                entries.Add(CreatePacketOwnedEventEntry("Follow Failure", _lastPacketOwnedFollowFailureMessage, EventEntryStatus.Start, "Start"));
+            }
+
+            string tutorStatus = DescribePacketOwnedTutorStatus(currentTick);
+            if (_packetOwnedTutorRuntime.IsActive)
+            {
+                entries.Add(CreatePacketOwnedEventEntry("Tutor Alarm", tutorStatus, EventEntryStatus.InProgress, "Running"));
+            }
+
+            if (!string.IsNullOrWhiteSpace(_lastPacketOwnedRadioStatusMessage)
+                && (!string.Equals(_lastPacketOwnedRadioStatusMessage, "Packet-owned radio idle.", StringComparison.OrdinalIgnoreCase)
+                    || IsPacketOwnedRadioPlaying()))
+            {
+                entries.Add(CreatePacketOwnedEventEntry(
+                    "Radio Schedule",
+                    _lastPacketOwnedRadioStatusMessage,
+                    IsPacketOwnedRadioPlaying() ? EventEntryStatus.InProgress : EventEntryStatus.Clear,
+                    IsPacketOwnedRadioPlaying() ? "Running" : "Clear"));
+            }
+
+            if (!string.IsNullOrWhiteSpace(_lastPacketOwnedEventSoundDescriptor))
+            {
+                entries.Add(CreatePacketOwnedEventEntry("Event Sound", $"Last event sound resolved through {_lastPacketOwnedEventSoundDescriptor}.", EventEntryStatus.Clear, "Clear"));
+            }
+
+            if (!string.IsNullOrWhiteSpace(_lastPacketOwnedMinigameSoundDescriptor))
+            {
+                entries.Add(CreatePacketOwnedEventEntry("Minigame Sound", $"Last minigame sound resolved through {_lastPacketOwnedMinigameSoundDescriptor}.", EventEntryStatus.Clear, "Clear"));
+            }
+        }
+
+        private static EventEntrySnapshot CreatePacketOwnedEventEntry(string title, string detail, EventEntryStatus status, string statusText)
+        {
+            return new EventEntrySnapshot
+            {
+                Title = title,
+                Detail = detail ?? string.Empty,
+                Status = status,
+                StatusText = statusText,
+                ScheduledAt = DateTime.Today
+            };
+        }
+
+        private static string FormatRank(int rank)
+        {
+            return rank > 0 ? $"#{rank.ToString(CultureInfo.InvariantCulture)}" : "local";
+        }
+
+        private static string FormatRank(int? rank)
+        {
+            return FormatRank(rank ?? 0);
+        }
+
+        private static string FormatSignedDelta(int delta)
+        {
+            return delta switch
+            {
+                > 0 => $"+{delta.ToString(CultureInfo.InvariantCulture)}",
+                < 0 => delta.ToString(CultureInfo.InvariantCulture),
+                _ => "0"
+            };
+        }
+
+        private static string FormatSignedDelta(int? delta)
+        {
+            return FormatSignedDelta(delta ?? 0);
         }
     }
 }

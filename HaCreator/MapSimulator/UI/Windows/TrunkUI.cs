@@ -133,20 +133,32 @@ namespace HaCreator.MapSimulator.UI
                 string fallbackLabel,
                 string valueText,
                 Color valueColor,
-                IReadOnlyList<Texture2D> valueTextures = null)
+                IReadOnlyList<TooltipValueSegment> valueSegments = null)
             {
                 LabelTexture = labelTexture;
                 FallbackLabel = fallbackLabel;
                 ValueText = valueText;
                 ValueColor = valueColor;
-                ValueTextures = valueTextures;
+                ValueSegments = valueSegments;
             }
 
             public Texture2D LabelTexture { get; }
             public string FallbackLabel { get; }
             public string ValueText { get; }
             public Color ValueColor { get; }
-            public IReadOnlyList<Texture2D> ValueTextures { get; }
+            public IReadOnlyList<TooltipValueSegment> ValueSegments { get; }
+        }
+
+        private readonly struct TooltipValueSegment
+        {
+            public TooltipValueSegment(Texture2D texture, string text = null)
+            {
+                Texture = texture;
+                Text = text;
+            }
+
+            public Texture2D Texture { get; }
+            public string Text { get; }
         }
 
         private enum TrunkPane

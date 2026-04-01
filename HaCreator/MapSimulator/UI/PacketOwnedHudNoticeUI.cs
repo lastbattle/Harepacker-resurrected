@@ -20,6 +20,7 @@ namespace HaCreator.MapSimulator.UI
         private const float TitleScale = 0.72f;
         private const float MessageScale = 0.66f;
         private const float FollowUpScale = 0.62f;
+        private const float TransportScale = 0.56f;
         private const float TimerScale = 0.86f;
         private const int FallbackIconWidth = 18;
         private const int FallbackIconHeight = 18;
@@ -227,6 +228,18 @@ namespace HaCreator.MapSimulator.UI
                     GetFollowUpColor(runtime.LastFieldHazardFollowUpKind) * alpha,
                     Color.Black * alpha,
                     FollowUpScale);
+            }
+
+            if (!string.IsNullOrWhiteSpace(runtime.LastFieldHazardTransportDetail))
+            {
+                string transport = TrimText(runtime.LastFieldHazardTransportDetail, TransportScale, bounds.Width - (textX - bounds.X) - HorizontalPadding);
+                DrawTextWithShadow(
+                    spriteBatch,
+                    transport,
+                    new Vector2(textX, bounds.Y + 80),
+                    new Color(188, 221, 255) * alpha,
+                    Color.Black * alpha,
+                    TransportScale);
             }
         }
 

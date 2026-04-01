@@ -15,6 +15,13 @@ namespace HaCreator.MapSimulator.Interaction
         Master
     }
 
+    internal readonly record struct GuildSkillUiContext(
+        bool HasGuildMembership,
+        string GuildName,
+        int GuildLevel,
+        string GuildRoleLabel,
+        bool CanManageSkills);
+
     internal sealed class GuildSkillRuntime
     {
         private static readonly HashSet<string> PlaceholderGuildNames = new(StringComparer.OrdinalIgnoreCase)
@@ -39,25 +46,34 @@ namespace HaCreator.MapSimulator.Interaction
         private string _guildName = "Maple GM";
         private string _guildRoleLabel = "Master";
         private bool _isInGuild = true;
+        private bool _hasManagementAuthority = true;
         private GuildSkillPermissionLevel _permissionLevel = GuildSkillPermissionLevel.Master;
 
         internal static bool HasGuildMembership(CharacterBuild build)
         {
-            string guildName = build?.GuildName?.Trim();
-            return !string.IsNullOrWhiteSpace(guildName) && !PlaceholderGuildNames.Contains(guildName);
+            return HasGuildMembership(build?.GuildName);
         }
 
-        internal void UpdateLocalContext(CharacterBuild build, string guildRoleLabel)
+        internal static bool HasGuildMembership(string guildName)
         {
-            bool inGuild = HasGuildMembership(build);
-            _guildName = inGuild ? build.GuildName.Trim() : "No Guild";
-            _guildLevel = inGuild ? Math.Clamp((build?.Level ?? 1) / 10 + 5, 1, 30) : 0;
+            string normalizedGuildName = guildName?.Trim();
+            return !string.IsNullOrWhiteSpace(normalizedGuildName) && !PlaceholderGuildNames.Contains(normalizedGuildName);
+        }
+
+        internal void UpdateContext(GuildSkillUiContext context)
+        {
+            bool inGuild = context.HasGuildMembership;
+            _guildName = inGuild ? (context.GuildName?.Trim() ?? string.Empty) : "No Guild";
+            _guildLevel = inGuild ? Math.Max(1, context.GuildLevel) : 0;
             _guildRoleLabel = inGuild
-                ? NormalizeGuildRoleLabel(guildRoleLabel)
+                ? NormalizeGuildRoleLabel(context.GuildRoleLabel)
                 : "No Guild";
             _permissionLevel = inGuild
                 ? ResolvePermissionLevel(_guildRoleLabel)
                 : GuildSkillPermissionLevel.None;
+            _hasManagementAuthority = inGuild &&
+                                      context.CanManageSkills &&
+                                      _permissionLevel >= GuildSkillPermissionLevel.JrMaster;
 
             if (!inGuild)
             {
@@ -75,6 +91,16 @@ namespace HaCreator.MapSimulator.Interaction
 
             _isInGuild = inGuild;
             EnsureRecommendation();
+        }
+
+        internal void UpdateLocalContext(CharacterBuild build, string guildRoleLabel)
+        {
+            UpdateContext(new GuildSkillUiContext(
+                HasGuildMembership(build),
+                build?.GuildName,
+                HasGuildMembership(build) ? 1 : 0,
+                guildRoleLabel,
+                true));
         }
 
         internal void SetSkills(IEnumerable<SkillDisplayData> skills)
@@ -290,7 +316,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private bool CanManageSkills()
         {
-            return _isInGuild && _permissionLevel >= GuildSkillPermissionLevel.JrMaster;
+            return _isInGuild && _hasManagementAuthority;
         }
 
         private static int GetRequiredGuildLevel(SkillDisplayData skill, int nextLevel)

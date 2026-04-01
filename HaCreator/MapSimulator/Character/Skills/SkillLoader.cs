@@ -816,7 +816,29 @@ namespace HaCreator.MapSimulator.Character.Skills
                 characterLevel,
                 masteryPercent,
                 chargeElement,
-                out afterImageAction);
+                out afterImageAction,
+                out _);
+        }
+
+        public bool TryResolveMeleeAfterImageAction(
+            SkillData skill,
+            WeaponPart weapon,
+            string actionName,
+            int characterLevel,
+            int masteryPercent,
+            int chargeElement,
+            out MeleeAfterImageAction afterImageAction,
+            out string matchedActionName)
+        {
+            return TryResolveMeleeAfterImageAction(
+                skill,
+                weapon,
+                string.IsNullOrWhiteSpace(actionName) ? null : new[] { actionName },
+                characterLevel,
+                masteryPercent,
+                chargeElement,
+                out afterImageAction,
+                out matchedActionName);
         }
 
         public bool TryResolveMeleeAfterImageAction(
@@ -828,7 +850,29 @@ namespace HaCreator.MapSimulator.Character.Skills
             int chargeElement,
             out MeleeAfterImageAction afterImageAction)
         {
+            return TryResolveMeleeAfterImageAction(
+                skill,
+                weapon,
+                actionNames,
+                characterLevel,
+                masteryPercent,
+                chargeElement,
+                out afterImageAction,
+                out _);
+        }
+
+        public bool TryResolveMeleeAfterImageAction(
+            SkillData skill,
+            WeaponPart weapon,
+            IEnumerable<string> actionNames,
+            int characterLevel,
+            int masteryPercent,
+            int chargeElement,
+            out MeleeAfterImageAction afterImageAction,
+            out string matchedActionName)
+        {
             afterImageAction = null;
+            matchedActionName = null;
             if (actionNames == null)
             {
                 return false;
@@ -841,7 +885,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                     foreach (string weaponTypeKey in ResolveAfterImageWeaponTypeKeys(weapon))
                     {
                         MeleeAfterImageCatalog chargeCatalog = GetOrLoadCharacterChargeAfterImageCatalog(weaponTypeKey, chargeElement);
-                        if (TryResolveMeleeAfterImageCatalogAction(chargeCatalog, skill?.SkillId ?? 0, actionName, out afterImageAction))
+                        if (TryResolveMeleeAfterImageCatalogAction(
+                                chargeCatalog,
+                                skill?.SkillId ?? 0,
+                                actionName,
+                                out afterImageAction,
+                                out matchedActionName))
                         {
                             return true;
                         }
@@ -853,7 +902,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                 foreach (string weaponTypeKey in ResolveAfterImageWeaponTypeKeys(weapon))
                 {
                     MeleeAfterImageCatalog skillCatalog = skill?.GetAfterImageCatalogForCharacterLevel(weaponTypeKey, characterLevel);
-                    if (TryResolveMeleeAfterImageCatalogAction(skillCatalog, skill?.SkillId ?? 0, actionName, out afterImageAction))
+                    if (TryResolveMeleeAfterImageCatalogAction(
+                            skillCatalog,
+                            skill?.SkillId ?? 0,
+                            actionName,
+                            out afterImageAction,
+                            out matchedActionName))
                     {
                         return true;
                     }
@@ -861,7 +915,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                     MeleeAfterImageCatalog weaponCatalog = GetOrLoadCharacterAfterImageCatalog(
                         weaponTypeKey,
                         GetWeaponAfterImageMasteryIndex(masteryPercent));
-                    if (TryResolveMeleeAfterImageCatalogAction(weaponCatalog, skill?.SkillId ?? 0, actionName, out afterImageAction))
+                    if (TryResolveMeleeAfterImageCatalogAction(
+                            weaponCatalog,
+                            skill?.SkillId ?? 0,
+                            actionName,
+                            out afterImageAction,
+                            out matchedActionName))
                     {
                         return true;
                     }
@@ -896,9 +955,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             MeleeAfterImageCatalog catalog,
             int skillId,
             string actionName,
-            out MeleeAfterImageAction action)
+            out MeleeAfterImageAction action,
+            out string matchedActionName)
         {
             action = null;
+            matchedActionName = null;
             if (catalog?.Actions == null || string.IsNullOrWhiteSpace(actionName))
             {
                 return false;
@@ -908,6 +969,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 if (catalog.TryGetAction(candidate, out action))
                 {
+                    matchedActionName = candidate;
                     return true;
                 }
             }
@@ -2829,6 +2891,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             levelData.Z = GetInt(node, "z", 0, level);
 
             levelData.BulletCount = GetInt(node, "bulletCount", 1, level);
+            levelData.BulletConsume = GetInt(node, "bulletConsume", 0, level);
             levelData.BulletSpeed = GetInt(node, "bulletSpeed", 0, level);
             levelData.ProjectileSpawnDelaysMs = ParseProjectileSpawnDelays(node, level);
 

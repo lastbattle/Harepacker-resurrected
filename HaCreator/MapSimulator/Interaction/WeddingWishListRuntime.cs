@@ -322,6 +322,18 @@ namespace HaCreator.MapSimulator.Interaction
             return _statusMessage;
         }
 
+        internal string ConfirmInput()
+        {
+            if (!_isOpen)
+            {
+                return "Wedding wish-list dialog is not open.";
+            }
+
+            _isOpen = false;
+            _statusMessage = $"Confirmed {_wishListEntries.Count} wedding wish-list item(s) through the dedicated OK/SetRet owner path. Downstream packet or script handoff is still not modeled.";
+            return _statusMessage;
+        }
+
         internal string Clear()
         {
             _giftListByTab.Clear();

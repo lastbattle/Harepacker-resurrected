@@ -62,6 +62,14 @@ namespace HaCreator.MapSimulator.Pools
             "curse"
         };
 
+        private static readonly string[] HostileSummonSupportTokens =
+        {
+            "enemy",
+            "enemies",
+            "monster",
+            "monsters"
+        };
+
         public static bool IsAreaBuffItemType(int areaType)
         {
             return areaType == 3;
@@ -275,9 +283,15 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            if (ContainsToken(skill.MinionAbility, "heal", "amplifyDamage", "mes"))
+            if (ContainsToken(skill.MinionAbility, "heal", "amplifyDamage"))
             {
                 return true;
+            }
+
+            if (ContainsToken(skill.MinionAbility, "mes")
+                && ContainsToken(skill.Description, HostileSummonSupportTokens))
+            {
+                return false;
             }
 
             return ContainsToken(skill.Description, FriendlyAreaDescriptionTokens)

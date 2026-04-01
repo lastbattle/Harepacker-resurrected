@@ -39,6 +39,7 @@ namespace HaCreator.MapSimulator.Fields
         private readonly MemoryGameField _memoryGame = new();
         private readonly AriantArenaField _ariantArena = new();
         private readonly MonsterCarnivalField _monsterCarnival = new();
+        private readonly TournamentField _tournament = new();
 
 
         public SnowBallField SnowBall => _snowBall;
@@ -46,6 +47,7 @@ namespace HaCreator.MapSimulator.Fields
         public MemoryGameField MemoryGame => _memoryGame;
         public AriantArenaField AriantArena => _ariantArena;
         public MonsterCarnivalField MonsterCarnival => _monsterCarnival;
+        public TournamentField Tournament => _tournament;
 
 
         public void SetSnowBallPlayerState(Vector2? localWorldPosition)
@@ -80,6 +82,7 @@ namespace HaCreator.MapSimulator.Fields
             _snowBall.BindMap(board, _graphicsDevice);
 
             _coconut.BindMap(board);
+            _tournament.Configure(board?.MapInfo);
         }
 
 
@@ -113,6 +116,11 @@ namespace HaCreator.MapSimulator.Fields
             if (_monsterCarnival.IsVisible)
             {
                 _monsterCarnival.Update(tickCount);
+            }
+
+            if (_tournament.IsActive)
+            {
+                _tournament.Update(tickCount);
             }
         }
 
@@ -197,6 +205,11 @@ namespace HaCreator.MapSimulator.Fields
             {
                 _monsterCarnival.Draw(spriteBatch, pixelTexture, font);
             }
+
+            if (_tournament.IsActive)
+            {
+                _tournament.Draw(spriteBatch, pixelTexture, font);
+            }
         }
 
 
@@ -207,6 +220,7 @@ namespace HaCreator.MapSimulator.Fields
             _memoryGame.Reset();
             _ariantArena.Reset();
             _monsterCarnival.Reset();
+            _tournament.Reset();
         }
     }
 }

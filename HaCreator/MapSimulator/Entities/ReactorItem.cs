@@ -39,16 +39,16 @@ namespace HaCreator.MapSimulator.Entities
     {
         private readonly struct AuthoredStateTransition
         {
-            public AuthoredStateTransition(int eventType, int targetState, int? selectorValue, int order)
+            public AuthoredStateTransition(int eventType, int targetState, int[] selectorValues, int order)
             {
                 EventType = eventType;
                 TargetState = targetState;
-                SelectorValue = selectorValue;
+                SelectorValues = selectorValues ?? Array.Empty<int>();
                 Order = order;
             }
             public int EventType { get; }
             public int TargetState { get; }
-            public int? SelectorValue { get; }
+            public int[] SelectorValues { get; }
             public int Order { get; }
         }
 
@@ -397,7 +397,7 @@ namespace HaCreator.MapSimulator.Entities
             }
 
             AuthoredStateTransition[] filteredTransitions = transitions
-                .Where(transition => !transition.SelectorValue.HasValue || transition.SelectorValue.Value == request.ActivationValue)
+                .Where(transition => transition.SelectorValues.Length == 0 || transition.SelectorValues.Contains(request.ActivationValue))
                 .ToArray();
 
             return filteredTransitions.Length > 0
@@ -412,12 +412,12 @@ namespace HaCreator.MapSimulator.Entities
                 return 0;
             }
 
-            if (transition.SelectorValue == request.ActivationValue)
+            if (transition.SelectorValues.Contains(request.ActivationValue))
             {
                 return 0;
             }
 
-            return transition.SelectorValue.HasValue ? 2 : 1;
+            return transition.SelectorValues.Length > 0 ? 2 : 1;
         }
 
         private static int GetEventTypePriority(int eventType, ReactorTransitionRequest request)
@@ -536,36 +536,43 @@ namespace HaCreator.MapSimulator.Entities
             if (!eventType.HasValue || !targetState.HasValue)
                 return null;
 
-            int? selectorValue = TryReadSelectorValue(eventNode);
-            return new AuthoredStateTransition(eventType.Value, targetState.Value, selectorValue, order);
+            int[] selectorValues = TryReadSelectorValues(eventNode);
+            return new AuthoredStateTransition(eventType.Value, targetState.Value, selectorValues, order);
         }
 
-        private static int? TryReadSelectorValue(WzSubProperty eventNode)
+        private static int[] TryReadSelectorValues(WzSubProperty eventNode)
         {
             if (eventNode == null)
             {
-                return null;
+                return Array.Empty<int>();
             }
 
-            int? namedSelectorValue =
-                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["id"])) ??
-                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["item"])) ??
-                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["itemID"])) ??
-                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["itemid"])) ??
-                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["skill"])) ??
-                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["skillID"])) ??
-                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["skillid"]));
-
-            if (namedSelectorValue.HasValue)
+            // Some reactor event nodes encode multiple item/skill selectors under the same branch.
+            // Preserve the whole authored set so dispatch can match any of them.
+            IEnumerable<int> namedSelectorValues = new[]
             {
-                return namedSelectorValue;
+                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["id"])),
+                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["item"])),
+                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["itemID"])),
+                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["itemid"])),
+                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["skill"])),
+                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["skillID"])),
+                TryReadOptionalInt(WzInfoTools.GetRealProperty(eventNode["skillid"]))
             }
+                .Where(static value => value.HasValue)
+                .Select(static value => value.Value);
 
-            return eventNode.WzProperties
+            IEnumerable<int> indexedSelectorValues = eventNode.WzProperties
                 .Where(property => int.TryParse(property?.Name, out _))
                 .OrderBy(property => int.Parse(property.Name))
                 .Select(property => TryReadOptionalInt(WzInfoTools.GetRealProperty(property)))
-                .FirstOrDefault(value => value.HasValue);
+                .Where(static value => value.HasValue)
+                .Select(static value => value.Value);
+
+            return namedSelectorValues
+                .Concat(indexedSelectorValues)
+                .Distinct()
+                .ToArray();
         }
 
         private static int? TryReadOptionalInt(WzImageProperty property)

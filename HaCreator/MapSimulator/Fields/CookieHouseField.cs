@@ -18,6 +18,13 @@ namespace HaCreator.MapSimulator.Fields
     /// </summary>
     public sealed class CookieHouseField
     {
+        private readonly record struct ClientStringPoolEvidence(
+            int Id,
+            byte Seed,
+            string RawHex,
+            string InferredDecodedValue,
+            string ClientSource);
+
         private sealed class CookieBitmapNumberStyle
         {
             public Texture2D[] Digits { get; } = new Texture2D[10];
@@ -54,6 +61,10 @@ namespace HaCreator.MapSimulator.Fields
         internal const int ClientBitmapRootStringPoolId = 0x13FC;
         internal const int ClientBitmapPlusStringPoolId = 0x14FA;
         internal const int ClientBitmapMinusStringPoolId = 0x14F7;
+        private const string ClientBackgroundClientStringPoolSource = "StringPool::ms_aString[0x13FB]";
+        private const string ClientBitmapRootClientStringPoolSource = "StringPool::ms_aString[0x13FC]";
+        private const string ClientBitmapPlusClientStringPoolSource = "StringPool::ms_aString[0x14FA]";
+        private const string ClientBitmapMinusClientStringPoolSource = "StringPool::ms_aString[0x14F7]";
         private const int ClientBitmapDigitWidth = 27;
         private const int ClientBitmapDigitCount = 3;
         private const string FallbackBackgroundPath = "raise/backgrnd";
@@ -66,6 +77,30 @@ namespace HaCreator.MapSimulator.Fields
         // s_nGradeCount @ 0x00C568DC == 4 and s_anGrade @ 0x00C568CC == { 90, 160, 230, 350 }.
         // The client returns style index 4 when the point total reaches or exceeds the final threshold.
         public static readonly int[] GradeThresholds = { 90, 160, 230, 350 };
+        private static readonly ClientStringPoolEvidence BackgroundStringPoolEvidence = new(
+            ClientBackgroundStringPoolId,
+            0x32,
+            "32 C0 A6 D3 B6 A0 2E A6 EC F9 CF 38 57 BF 74 7E BD E8 B1 C6 F7 9B 1C A3 AA F2 CF 18 16 A3 77 6D BD EF A6 C0 F2 88 3E A2 A7",
+            "UI/UIWindow.img/raise/backgrnd",
+            "CField_CookieHouse::Init / MapleStory.exe ms_aString");
+        private static readonly ClientStringPoolEvidence BitmapRootStringPoolEvidence = new(
+            ClientBitmapRootStringPoolId,
+            0x33,
+            "33 56 EE 37 1C 91 FB F3 A8 5C 02 D5 DD C5 5F 54 0A 7E F9 22 5D AA C9 F6 EE 57 02 F5 9C D9 5C 47",
+            null,
+            "CField_CookieHouse::Init / MapleStory.exe ms_aString");
+        private static readonly ClientStringPoolEvidence BitmapPlusStringPoolEvidence = new(
+            ClientBitmapPlusStringPoolId,
+            0x31,
+            "31 36 8F A4 BF",
+            "plus",
+            "CBitmapNumber::CBitmapNumber / MapleStory.exe ms_aString");
+        private static readonly ClientStringPoolEvidence BitmapMinusStringPoolEvidence = new(
+            ClientBitmapMinusStringPoolId,
+            0x2E,
+            "2E 45 B5 14 4C ED",
+            "minus",
+            "CBitmapNumber::CBitmapNumber / MapleStory.exe ms_aString");
 
         private bool _isActive;
         private int _mapId;
@@ -817,31 +852,39 @@ namespace HaCreator.MapSimulator.Fields
         {
             if (string.IsNullOrWhiteSpace(_backgroundSourcePath))
             {
-                return $"background=unresolved [client StringPool 0x{ClientBackgroundStringPoolId:X} unresolved]";
+                return $"background=unresolved [{FormatStringPoolEntry(BackgroundStringPoolEvidence, ClientBackgroundClientStringPoolSource)}]";
             }
 
             if (_usesFallbackBackgroundSource)
             {
-                return $"background=fallback:{_backgroundSourcePath} [client StringPool 0x{ClientBackgroundStringPoolId:X} unresolved]";
+                return $"background=fallback:{_backgroundSourcePath} [{FormatStringPoolEntry(BackgroundStringPoolEvidence, ClientBackgroundClientStringPoolSource)}]";
             }
 
-            return $"background={_backgroundSourcePath}";
+            return $"background={_backgroundSourcePath} [{FormatStringPoolEntry(BackgroundStringPoolEvidence, ClientBackgroundClientStringPoolSource)}]";
         }
 
         private string DescribeBitmapSource()
         {
-            string signIds = $"signs=0x{ClientBitmapPlusStringPoolId:X}/0x{ClientBitmapMinusStringPoolId:X}";
+            string signEvidence = $"{FormatStringPoolEntry(BitmapPlusStringPoolEvidence, ClientBitmapPlusClientStringPoolSource)}; {FormatStringPoolEntry(BitmapMinusStringPoolEvidence, ClientBitmapMinusClientStringPoolSource)}";
             if (string.IsNullOrWhiteSpace(_bitmapNumberSourcePath))
             {
-                return $"bitmap=unresolved [client StringPool 0x{ClientBitmapRootStringPoolId:X} unresolved, constructor=styles:{GradeCount}/digits:{ClientBitmapDigitCount}/width:{ClientBitmapDigitWidth}, {signIds}]";
+                return $"bitmap=unresolved [constructor=styles:{GradeCount}/digits:{ClientBitmapDigitCount}/width:{ClientBitmapDigitWidth}; {FormatStringPoolEntry(BitmapRootStringPoolEvidence, ClientBitmapRootClientStringPoolSource)}; {signEvidence}]";
             }
 
             if (_usesFallbackBitmapSource)
             {
-                return $"bitmap=client-shaped-alt:{_bitmapNumberSourcePath} [client StringPool 0x{ClientBitmapRootStringPoolId:X} unresolved, constructor=styles:{GradeCount}/digits:{ClientBitmapDigitCount}/width:{ClientBitmapDigitWidth}, {signIds}]";
+                return $"bitmap=client-shaped-alt:{_bitmapNumberSourcePath} [constructor=styles:{GradeCount}/digits:{ClientBitmapDigitCount}/width:{ClientBitmapDigitWidth}; {FormatStringPoolEntry(BitmapRootStringPoolEvidence, ClientBitmapRootClientStringPoolSource)}; {signEvidence}]";
             }
 
-            return $"bitmap=client-shaped:{_bitmapNumberSourcePath} [client StringPool 0x{ClientBitmapRootStringPoolId:X} unresolved, constructor=styles:{GradeCount}/digits:{ClientBitmapDigitCount}/width:{ClientBitmapDigitWidth}, {signIds}]";
+            return $"bitmap=client-shaped:{_bitmapNumberSourcePath} [constructor=styles:{GradeCount}/digits:{ClientBitmapDigitCount}/width:{ClientBitmapDigitWidth}; {FormatStringPoolEntry(BitmapRootStringPoolEvidence, ClientBitmapRootClientStringPoolSource)}; {signEvidence}]";
+        }
+
+        private static string FormatStringPoolEntry(ClientStringPoolEvidence evidence, string clientStringPoolSource)
+        {
+            string decodedText = string.IsNullOrWhiteSpace(evidence.InferredDecodedValue)
+                ? "decoded=unresolved"
+                : $"decoded={evidence.InferredDecodedValue}";
+            return $"StringPool 0x{evidence.Id:X} seed=0x{evidence.Seed:X2} raw={evidence.RawHex} {decodedText} via {clientStringPoolSource} / {evidence.ClientSource}";
         }
     }
 }

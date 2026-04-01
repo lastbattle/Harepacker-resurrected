@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Entities;
+using MapleLib.PacketLib;
 using MapleLib.WzLib.WzProperties;
 using System;
 using System.Collections.Generic;
@@ -10,6 +11,7 @@ namespace HaCreator.MapSimulator.Interaction
 {
     internal sealed class PacketScriptMessageRuntime
     {
+        private const short OutboundScriptAnswerOpcode = 65;
         private string _statusMessage = "Packet-owned script-message idle.";
         private PacketScriptPromptContext _activePromptContext;
 
@@ -308,8 +310,12 @@ namespace HaCreator.MapSimulator.Interaction
             };
         }
 
-        internal bool TrySubmitResponse(NpcInteractionInputSubmission submission, out string message)
+        internal bool TryBuildResponsePacket(
+            NpcInteractionInputSubmission submission,
+            out PacketScriptResponsePacket responsePacket,
+            out string message)
         {
+            responsePacket = null;
             if (submission == null)
             {
                 message = "Packet-owned script submission was empty.";
@@ -331,11 +337,39 @@ namespace HaCreator.MapSimulator.Interaction
                 _ => submission.Value
             };
 
-            _statusMessage =
-                $"Submitted packet-authored {submission.EntryTitle} response for {_activePromptContext.SpeakerName}: {FormatQuotedValue(submittedValue)} " +
+            if (!TryEncodeResponsePayload(_activePromptContext.MessageType, submission, submittedValue, out byte[] rawPacket, out string encodeError))
+            {
+                message = encodeError ?? "Packet-owned script submission could not be encoded.";
+                return false;
+            }
+
+            string summary =
+                $"Prepared packet-authored {submission.EntryTitle} response for {_activePromptContext.SpeakerName}: {FormatQuotedValue(submittedValue)} " +
                 $"(msgType={_activePromptContext.MessageType}, template={_activePromptContext.SpeakerTemplateId}, bParam=0x{_activePromptContext.Param:X2}).";
+            responsePacket = new PacketScriptResponsePacket(
+                _activePromptContext.MessageType,
+                _activePromptContext.Param,
+                _activePromptContext.SpeakerTemplateId,
+                _activePromptContext.SpeakerNpcId,
+                submittedValue ?? string.Empty,
+                rawPacket,
+                summary);
+            _statusMessage = summary;
             message = _statusMessage;
             return true;
+        }
+
+        internal void RecordResponseDispatch(PacketScriptResponsePacket responsePacket, bool dispatched, string detail)
+        {
+            if (responsePacket == null)
+            {
+                return;
+            }
+
+            string dispatchText = string.IsNullOrWhiteSpace(detail)
+                ? (dispatched ? "outbound dispatch sent." : "outbound dispatch unavailable.")
+                : detail.Trim();
+            _statusMessage = $"{responsePacket.Summary} {dispatchText}";
         }
 
         private static NpcInteractionChoice CreateResponseChoice(string label, string responseLabel, int responseValue)
@@ -459,7 +493,91 @@ namespace HaCreator.MapSimulator.Interaction
             return null;
         }
 
+        private static bool TryEncodeResponsePayload(
+            int messageType,
+            NpcInteractionInputSubmission submission,
+            string submittedValue,
+            out byte[] rawPacket,
+            out string error)
+        {
+            rawPacket = null;
+            error = null;
+
+            PacketWriter writer = new PacketWriter();
+            writer.WriteShort(OutboundScriptAnswerOpcode);
+            writer.WriteByte((byte)messageType);
+
+            switch (messageType)
+            {
+                case 2:
+                case 13:
+                {
+                    if (!submission.NumericValue.HasValue)
+                    {
+                        error = "Yes / No submissions require a numeric selection value.";
+                        return false;
+                    }
+
+                    writer.WriteByte(unchecked((byte)submission.NumericValue.Value));
+                    break;
+                }
+
+                case 3:
+                case 14:
+                {
+                    bool accepted = !string.IsNullOrEmpty(submittedValue);
+                    writer.WriteByte(accepted ? (byte)1 : (byte)0);
+                    if (accepted)
+                    {
+                        writer.WriteMapleString(submittedValue);
+                    }
+
+                    break;
+                }
+
+                case 4:
+                {
+                    bool accepted = submission.NumericValue.HasValue;
+                    writer.WriteByte(accepted ? (byte)1 : (byte)0);
+                    if (accepted)
+                    {
+                        writer.WriteInt(submission.NumericValue.Value);
+                    }
+
+                    break;
+                }
+
+                case 5:
+                {
+                    if (!submission.NumericValue.HasValue)
+                    {
+                        error = "Menu submissions require a numeric selection id.";
+                        return false;
+                    }
+
+                    writer.WriteByte(1);
+                    writer.WriteInt(submission.NumericValue.Value);
+                    break;
+                }
+
+                default:
+                    error = $"Packet-authored script message type {messageType} does not have a supported outbound reply encoder.";
+                    return false;
+            }
+
+            rawPacket = writer.ToArray();
+            return true;
+        }
+
         internal sealed record PacketScriptMessageOpenRequest(NpcInteractionState State, int SpeakerNpcId);
+        internal sealed record PacketScriptResponsePacket(
+            int MessageType,
+            byte Param,
+            int SpeakerTemplateId,
+            int SpeakerNpcId,
+            string SubmittedValue,
+            byte[] RawPacket,
+            string Summary);
         private sealed record PacketScriptPromptContext(
             string SpeakerName,
             int EntryId,

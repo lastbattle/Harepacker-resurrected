@@ -1292,7 +1292,7 @@ namespace HaCreator.MapSimulator.UI {
                 DrawTooltipText(sprite, title, titlePos, new Color(255, 238, 155));
             }
 
-            string statusText = BuildPreparedSkillStatusText(preparedSkill, hudProfile, progress);
+            string statusText = PreparedSkillHudTextResolver.BuildStatusText(preparedSkill, hudProfile.GaugeDurationMs, progress);
             if (string.IsNullOrWhiteSpace(statusText))
             {
                 return;
@@ -1305,86 +1305,9 @@ namespace HaCreator.MapSimulator.UI {
             DrawTooltipText(sprite, statusText, statusPos, Color.White);
         }
 
-        private static string BuildPreparedSkillStatusText(StatusBarPreparedSkillRenderData preparedSkill, PreparedSkillHudProfile hudProfile, float progress)
-        {
-            if (preparedSkill == null)
-            {
-                return string.Empty;
-            }
-
-            if (preparedSkill.TextVariant == PreparedSkillHudTextVariant.Amplify)
-            {
-                return hudProfile.GaugeDurationMs > 0 && progress < 0.999f
-                    ? $"Amplifying {Math.Clamp((int)Math.Round(progress * 100f), 0, 100)}%"
-                    : "Amplified";
-            }
-
-            if (preparedSkill.IsHolding)
-            {
-                if (preparedSkill.TextVariant == PreparedSkillHudTextVariant.ReleaseArmed)
-                {
-                    return "Release";
-                }
-
-                if (preparedSkill.MaxHoldDurationMs > 0)
-                {
-                    int remainingHoldMs = Math.Max(0, preparedSkill.MaxHoldDurationMs - preparedSkill.HoldElapsedMs);
-                    return remainingHoldMs > 0
-                        ? $"Maintaining {Math.Max(1, (int)Math.Ceiling(remainingHoldMs / 1000f))} sec"
-                        : "Ready";
-                }
-
-                return preparedSkill.IsKeydownSkill ? "Maintaining" : "Ready";
-            }
-
-            if (preparedSkill.RemainingMs > 0
-                && hudProfile.GaugeDurationMs > 0
-                && preparedSkill.DurationMs > hudProfile.GaugeDurationMs
-                && preparedSkill.DurationMs - preparedSkill.RemainingMs >= hudProfile.GaugeDurationMs)
-            {
-                return $"Preparing {Math.Max(1, (int)Math.Ceiling(preparedSkill.RemainingMs / 1000f))} sec";
-            }
-
-            if (hudProfile.GaugeDurationMs > 0)
-            {
-                if (preparedSkill.TextVariant == PreparedSkillHudTextVariant.ReleaseArmed && progress >= 0.999f)
-                {
-                    return "Release";
-                }
-
-                return progress >= 0.999f
-                    ? "Ready"
-                    : $"Charging {Math.Clamp((int)Math.Round(progress * 100f), 0, 100)}%";
-            }
-
-            if (preparedSkill.RemainingMs > 0)
-            {
-                return $"Charging {Math.Max(1, (int)Math.Ceiling(preparedSkill.RemainingMs / 1000f))} sec";
-            }
-
-            return $"{Math.Clamp((int)Math.Round(progress * 100f), 0, 100)}%";
-        }
-
         private static float ResolvePreparedSkillHudProgress(StatusBarPreparedSkillRenderData preparedSkill, PreparedSkillHudProfile hudProfile)
         {
-            if (preparedSkill == null)
-            {
-                return 0f;
-            }
-
-            if (preparedSkill.IsHolding && preparedSkill.MaxHoldDurationMs > 0)
-            {
-                float holdRemaining = 1f - (preparedSkill.HoldElapsedMs / (float)preparedSkill.MaxHoldDurationMs);
-                return Math.Clamp(holdRemaining, 0f, 1f);
-            }
-
-            if (hudProfile.GaugeDurationMs > 0)
-            {
-                int elapsedMs = Math.Max(0, preparedSkill.DurationMs - preparedSkill.RemainingMs);
-                return Math.Clamp(elapsedMs / (float)hudProfile.GaugeDurationMs, 0f, 1f);
-            }
-
-            return Math.Clamp(preparedSkill.Progress, 0f, 1f);
+            return PreparedSkillHudTextResolver.ResolveProgress(preparedSkill, hudProfile.GaugeDurationMs);
         }
 
         private static bool IsDragonPreparedSkillOverlay(StatusBarPreparedSkillRenderData preparedSkill)

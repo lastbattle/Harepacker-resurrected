@@ -62,6 +62,8 @@ namespace HaCreator.MapSimulator.Interaction
         private string _lastStatusMessage = "Local follow idle.";
 
         public int PendingOutgoingDriverId => _pendingOutgoingDriverId;
+        internal bool PendingOutgoingAutoRequest => _pendingOutgoingAutoRequest;
+        internal bool PendingOutgoingKeyInput => _pendingOutgoingKeyInput;
         public int AttachedDriverId => _attachedDriverId;
         public int AttachedPassengerId => _attachedPassengerId;
         public int IncomingRequesterId => _incomingRequesterId;
@@ -189,6 +191,8 @@ namespace HaCreator.MapSimulator.Interaction
         {
             _attachedDriverId = driver.CharacterId;
             _pendingOutgoingDriverId = 0;
+            _pendingOutgoingAutoRequest = false;
+            _pendingOutgoingKeyInput = false;
             bool acknowledgedPendingAttach = _lastOutgoingRequestOpcodeDriverId == driver.CharacterId;
             if (acknowledgedPendingAttach)
             {

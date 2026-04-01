@@ -1,4 +1,5 @@
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
+using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 
 namespace HaCreator.MapSimulator.UI
@@ -70,6 +71,24 @@ namespace HaCreator.MapSimulator.UI
             }
 
             path = resolvedPath.Trim();
+            return true;
+        }
+
+        public static bool TryResolveTradeRestrictionFlags(int itemId, out bool isCashItem, out bool isNotForSale, out bool isQuestItem)
+        {
+            isCashItem = false;
+            isNotForSale = false;
+            isQuestItem = false;
+
+            WzSubProperty itemProperty = LoadItemProperty(itemId);
+            if (itemProperty?["info"] is not WzSubProperty infoProperty)
+            {
+                return false;
+            }
+
+            isCashItem = GetIntValue(infoProperty["cash"]) == 1;
+            isNotForSale = GetIntValue(infoProperty["notSale"]) == 1;
+            isQuestItem = GetIntValue(infoProperty["quest"]) == 1;
             return true;
         }
 
@@ -166,6 +185,18 @@ namespace HaCreator.MapSimulator.UI
             itemImage.ParseImage();
             string itemNodeName = category == "Character" ? itemId.ToString("D8") : itemId.ToString("D7");
             return itemImage[itemNodeName] as WzSubProperty;
+        }
+
+        private static int GetIntValue(WzImageProperty property)
+        {
+            return property switch
+            {
+                WzIntProperty intProperty => intProperty.Value,
+                WzShortProperty shortProperty => shortProperty.Value,
+                WzFloatProperty floatProperty => (int)floatProperty.Value,
+                WzDoubleProperty doubleProperty => (int)doubleProperty.Value,
+                _ => 0
+            };
         }
     }
 }

@@ -1323,22 +1323,18 @@ namespace HaCreator.MapSimulator.Interaction
                     }
 
                     break;
-                case PersonalShopBuyResultPacketType:
-                case PersonalShopBasePacketType:
-                case PersonalShopSoldItemResultPacketType:
-                case PersonalShopMoveItemToInventoryPacketType:
+                default:
                     handled = TryDispatchPersonalShopPacket(reader, packetType, out detail);
                     if (handled)
                     {
                         detail = $"CEntrustedShopDlg::OnPacket forwarded packet {packetType} to {forwardedOwner}. {detail}";
                     }
+                    else
+                    {
+                        detail = $"CEntrustedShopDlg::OnPacket forwarded packet {packetType} to {forwardedOwner}, but the shared personal-shop dispatcher did not model it. {detail}";
+                    }
 
                     break;
-                default:
-                    detail = $"Entrusted-shop packet {packetType} is not modeled for the dialog-owned dispatcher.";
-                    TrackPacketOwnerSummary("CEntrustedShopDlg::OnPacket", packetType, tickCount, handled: false, detail);
-                    message = detail;
-                    return false;
             }
 
             TrackPacketOwnerSummary("CEntrustedShopDlg::OnPacket -> CPersonalShopDlg::OnPacket", packetType, tickCount, handled, detail);
@@ -1466,7 +1462,7 @@ namespace HaCreator.MapSimulator.Interaction
                 case PersonalShopMoveItemToInventoryPacketType:
                     return TryApplyPersonalShopMoveItemPacket(reader, out message);
                 case PersonalShopBasePacketType:
-                    StatusMessage = "Received a personal-shop base lifecycle packet through the dialog-owned owner. The deeper base dialog flow is still partial.";
+                    StatusMessage = "Received a personal-shop base lifecycle packet through CPersonalShopDlg::OnPacket and forwarded it into the shared mini-room base dialog owner. The deeper base dialog flow is still partial.";
                     PersistState();
                     message = StatusMessage;
                     return true;

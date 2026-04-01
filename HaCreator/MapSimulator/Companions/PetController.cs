@@ -817,11 +817,14 @@ namespace HaCreator.MapSimulator.Companions
         private const int MaxPets = 3;
         private const int DefaultPetItemId = 5000000;
         private const int PickupForbiddenMapId = 209080000;
+        private const int SpecialistSpeechCooldownMs = 4000;
 
         private readonly PetLoader _loader;
         private readonly List<PetRuntime> _activePets = new();
         private readonly Dictionary<int, Queue<PetPersistentState>> _persistedStateByItemId = new();
+        private readonly Random _specialistSpeechRandom = new();
         private int _nextRuntimeId = 1;
+        private int _lastSpecialistSpeechTick = int.MinValue;
         private Func<int> _currentMapIdProvider;
         private bool _fieldUsageBlocked;
         private string _fieldUsageRestrictionMessage;
@@ -1014,6 +1017,48 @@ namespace HaCreator.MapSimulator.Companions
 
             PetRuntime pet = GetPetAt(slotIndex);
             return pet != null && pet.TryTriggerSlangFeedback(currentTime);
+        }
+
+        public bool TryTriggerSpecialistChatFeedback(string message, int currentTime)
+        {
+            if (_fieldUsageBlocked ||
+                string.IsNullOrWhiteSpace(message) ||
+                _activePets.Count == 0)
+            {
+                return false;
+            }
+
+            if (_lastSpecialistSpeechTick != int.MinValue &&
+                unchecked(currentTime - _lastSpecialistSpeechTick) < SpecialistSpeechCooldownMs)
+            {
+                return false;
+            }
+
+            var eligiblePets = new List<PetRuntime>();
+            for (int i = 0; i < _activePets.Count; i++)
+            {
+                PetRuntime pet = _activePets[i];
+                if (pet == null || pet.HasActiveSpeech)
+                {
+                    continue;
+                }
+
+                eligiblePets.Add(pet);
+            }
+
+            if (eligiblePets.Count == 0)
+            {
+                return false;
+            }
+
+            PetRuntime selectedPet = eligiblePets[_specialistSpeechRandom.Next(eligiblePets.Count)];
+            if (!selectedPet.TryTriggerSlangFeedback(currentTime))
+            {
+                return false;
+            }
+
+            _lastSpecialistSpeechTick = currentTime;
+            return true;
         }
 
         public bool TryTriggerSpeechEvent(PetAutoSpeechEvent eventType, int currentTime, int? slotIndex = null)

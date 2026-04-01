@@ -12,6 +12,23 @@ using System.Threading.Tasks;
 
 namespace HaCreator.MapSimulator.Managers
 {
+    public readonly record struct LoginNewCharacterRequest(
+        string CharacterName,
+        int Race,
+        short SubJob,
+        byte Gender,
+        int FaceId,
+        int HairStyleId,
+        int SkinValue,
+        int HairColorValue,
+        int CoatId,
+        int PantsId,
+        int ShoesId,
+        int WeaponId,
+        bool IsCharSale = false,
+        int CharSaleJob = 0,
+        IReadOnlyList<int> ExtraSaleAvatarValues = null);
+
     /// <summary>
     /// Built-in login bridge that proxies a live Maple login session and mirrors
     /// inbound login packets into the existing login packet inbox seam.
@@ -19,6 +36,10 @@ namespace HaCreator.MapSimulator.Managers
     public sealed class LoginOfficialSessionBridgeManager : IDisposable
     {
         public const int DefaultListenPort = 18486;
+        public const short OutboundCheckDuplicateIdOpcode = 21;
+        public const short OutboundNewCharacterOpcode = 22;
+        public const short OutboundNewCharacterSaleOpcode = 23;
+        public const short OutboundDeleteCharacterOpcode = 24;
 
         private readonly ConcurrentQueue<LoginPacketInboxMessage> _pendingMessages = new();
         private readonly object _sync = new();
@@ -76,6 +97,7 @@ namespace HaCreator.MapSimulator.Managers
         public bool HasAttachedClient => _activePair != null;
         public bool HasConnectedSession => _activePair?.InitCompleted == true;
         public int ReceivedCount { get; private set; }
+        public int SentCount { get; private set; }
         public string LastStatus { get; private set; } = "Login official-session bridge inactive.";
 
         public void Start(int listenPort, string remoteHost, int remotePort)
@@ -184,6 +206,110 @@ namespace HaCreator.MapSimulator.Managers
         public bool TryDequeue(out LoginPacketInboxMessage message)
         {
             return _pendingMessages.TryDequeue(out message);
+        }
+
+        public bool TrySendCheckDuplicateIdRequest(string characterName, out string status)
+        {
+            if (string.IsNullOrWhiteSpace(characterName))
+            {
+                status = "Login official-session duplicate-name injection requires a character name.";
+                LastStatus = status;
+                return false;
+            }
+
+            return TrySendPacket(
+                BuildCheckDuplicateIdPacket(characterName),
+                $"Injected login opcode {OutboundCheckDuplicateIdOpcode} for duplicate-name check '{characterName.Trim()}' into live session",
+                out status);
+        }
+
+        public bool TrySendNewCharacterRequest(LoginNewCharacterRequest request, out string status)
+        {
+            if (string.IsNullOrWhiteSpace(request.CharacterName))
+            {
+                status = "Login official-session new-character injection requires a character name.";
+                LastStatus = status;
+                return false;
+            }
+
+            return TrySendPacket(
+                BuildNewCharacterPacket(request),
+                $"Injected login opcode {(request.IsCharSale ? OutboundNewCharacterSaleOpcode : OutboundNewCharacterOpcode)} for new character '{request.CharacterName.Trim()}' into live session",
+                out status);
+        }
+
+        public bool TrySendDeleteCharacterRequest(string secondaryPassword, int characterId, out string status)
+        {
+            if (characterId <= 0)
+            {
+                status = "Login official-session delete-character injection requires a valid character id.";
+                LastStatus = status;
+                return false;
+            }
+
+            return TrySendPacket(
+                BuildDeleteCharacterPacket(secondaryPassword, characterId),
+                $"Injected login opcode {OutboundDeleteCharacterOpcode} for character {characterId} into live session",
+                out status);
+        }
+
+        public static byte[] BuildCheckDuplicateIdPacket(string characterName)
+        {
+            PacketWriter writer = new();
+            writer.WriteShort(OutboundCheckDuplicateIdOpcode);
+            writer.WriteMapleString((characterName ?? string.Empty).Trim());
+            return writer.ToArray();
+        }
+
+        public static byte[] BuildNewCharacterPacket(LoginNewCharacterRequest request)
+        {
+            PacketWriter writer = new();
+            writer.WriteShort(request.IsCharSale ? OutboundNewCharacterSaleOpcode : OutboundNewCharacterOpcode);
+            writer.WriteMapleString((request.CharacterName ?? string.Empty).Trim());
+            writer.WriteInt(request.Race);
+
+            if (request.IsCharSale)
+            {
+                writer.WriteInt(request.CharSaleJob);
+                writer.WriteInt(request.FaceId);
+                writer.WriteInt(request.HairStyleId);
+                writer.WriteInt(request.SkinValue);
+                writer.WriteInt(request.HairColorValue);
+                writer.WriteInt(request.CoatId);
+                writer.WriteInt(request.PantsId);
+                writer.WriteInt(request.ShoesId);
+                writer.WriteInt(request.WeaponId);
+
+                IReadOnlyList<int> extraValues = request.ExtraSaleAvatarValues ?? Array.Empty<int>();
+                for (int index = 0; index < extraValues.Count; index++)
+                {
+                    writer.WriteInt(extraValues[index]);
+                }
+            }
+            else
+            {
+                writer.WriteShort(request.SubJob);
+                writer.WriteInt(request.FaceId);
+                writer.WriteInt(request.HairStyleId);
+                writer.WriteInt(request.SkinValue);
+                writer.WriteInt(request.HairColorValue);
+                writer.WriteInt(request.CoatId);
+                writer.WriteInt(request.PantsId);
+                writer.WriteInt(request.ShoesId);
+                writer.WriteInt(request.WeaponId);
+                writer.WriteByte(request.Gender);
+            }
+
+            return writer.ToArray();
+        }
+
+        public static byte[] BuildDeleteCharacterPacket(string secondaryPassword, int characterId)
+        {
+            PacketWriter writer = new();
+            writer.WriteShort(OutboundDeleteCharacterOpcode);
+            writer.WriteMapleString((secondaryPassword ?? string.Empty).Trim());
+            writer.WriteInt(characterId);
+            return writer.ToArray();
         }
 
         public void Dispose()
@@ -333,6 +459,33 @@ namespace HaCreator.MapSimulator.Managers
 
             pair?.Close();
             LastStatus = status;
+        }
+
+        private bool TrySendPacket(byte[] payload, string successPrefix, out string status)
+        {
+            BridgePair pair = _activePair;
+            if (pair == null || !pair.InitCompleted)
+            {
+                status = "Login official-session bridge has no active Maple session.";
+                LastStatus = status;
+                return false;
+            }
+
+            try
+            {
+                pair.ServerSession.SendPacket((byte[])payload.Clone());
+                SentCount++;
+                status = $"{successPrefix} {pair.RemoteEndpoint}.";
+                LastStatus = status;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                status = $"Login official-session injection failed: {ex.Message}";
+                LastStatus = status;
+                ClearActivePair(pair, status);
+                return false;
+            }
         }
 
         private void StopInternal(bool clearPending)

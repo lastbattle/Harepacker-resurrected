@@ -169,6 +169,7 @@ namespace HaCreator.MapSimulator
             _packetOwnedFieldFadeOverlay.Update(currentTickCount);
             _packetOwnedBalloonState.Update(currentTickCount);
             UpdateFieldHazardPetAutoConsumeRequestState(currentTickCount);
+            RefreshFieldHazardPetAutoConsumeTransportDetail(currentTickCount);
         }
 
         private void DrawPacketOwnedLocalOverlayState(int currentTickCount, int mapCenterX, int mapCenterY)
@@ -1149,20 +1150,14 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            PetRuntime requestPet = null;
-            for (int i = 0; i < activePets.Count; i++)
+            PetRuntime requestPet = activePets.FirstOrDefault(static pet => pet?.SlotIndex == 0);
+            if (requestPet == null)
             {
-                PetRuntime pet = activePets[i];
-                if (pet == null || !pet.AutoConsumeHpEnabled)
-                {
-                    continue;
-                }
-
-                autoConsumeEnabled = true;
-                requestPet ??= pet;
+                return false;
             }
 
-            if (!autoConsumeEnabled || requestPet == null)
+            autoConsumeEnabled = requestPet.AutoConsumeHpEnabled;
+            if (!autoConsumeEnabled)
             {
                 return false;
             }
@@ -1205,6 +1200,23 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (_fieldHazardSharedPetConsumeItemId > 0
+                && _fieldHazardSharedPetConsumeInventoryType != InventoryType.NONE)
+            {
+                if (TryCreateFieldHazardHpPotionCandidate(
+                        _fieldHazardSharedPetConsumeItemId,
+                        _fieldHazardSharedPetConsumeInventoryType,
+                        predictedRemainingHp,
+                        inventoryWindow,
+                        player,
+                        out candidate))
+                {
+                    return true;
+                }
+
+                SetFieldHazardSharedPetConsumeItem(0, InventoryType.NONE);
+            }
+
             for (int i = 0; i < activePets.Count; i++)
             {
                 PetRuntime pet = activePets[i];
@@ -1230,19 +1242,6 @@ namespace HaCreator.MapSimulator
                 }
             }
 
-            if (_fieldHazardSharedPetConsumeItemId > 0
-                && _fieldHazardSharedPetConsumeInventoryType != InventoryType.NONE
-                && TryCreateFieldHazardHpPotionCandidate(
-                    _fieldHazardSharedPetConsumeItemId,
-                    _fieldHazardSharedPetConsumeInventoryType,
-                    predictedRemainingHp,
-                    inventoryWindow,
-                    player,
-                    out candidate))
-            {
-                return true;
-            }
-
             if (!TryResolveFieldHazardHpPotionCandidate(predictedRemainingHp, out candidate))
             {
                 return false;
@@ -1250,6 +1249,13 @@ namespace HaCreator.MapSimulator
 
             SetFieldHazardSharedPetConsumeItem(candidate.ItemId, candidate.InventoryType);
             return true;
+        }
+
+        private void RefreshFieldHazardPetAutoConsumeTransportDetail(int currentTickCount)
+        {
+            _localOverlayRuntime.SetFieldHazardTransportDetail(
+                DescribeFieldHazardPetAutoConsumeTransportStatus(currentTickCount),
+                currentTickCount);
         }
 
         private void SetFieldHazardSharedPetConsumeItem(int itemId, InventoryType inventoryType)

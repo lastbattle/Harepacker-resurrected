@@ -332,6 +332,7 @@ namespace HaCreator.MapSimulator
         private readonly FieldMessageBoxRuntime _fieldMessageBoxRuntime = new FieldMessageBoxRuntime();
         private readonly PacketFieldStateRuntime _packetFieldStateRuntime = new PacketFieldStateRuntime();
         private readonly PacketScriptMessageRuntime _packetScriptMessageRuntime = new PacketScriptMessageRuntime();
+        private readonly PacketScriptReplyTransportManager _packetScriptReplyTransport = new PacketScriptReplyTransportManager();
         private readonly Managers.LocalOverlayRuntime _localOverlayRuntime = new();
         private readonly Dictionary<int, int> _questGrantedSkillPointsByTab = new();
         private bool _questUiBindingsConfigured;
@@ -392,6 +393,7 @@ namespace HaCreator.MapSimulator
 
         private readonly WeddingPacketInboxManager _weddingPacketInbox = new WeddingPacketInboxManager();
 
+        private readonly SnowBallPacketInboxManager _snowBallPacketInbox = new SnowBallPacketInboxManager();
         private readonly CoconutPacketInboxManager _coconutPacketInbox = new CoconutPacketInboxManager();
         private readonly CoconutOfficialSessionBridgeManager _coconutOfficialSessionBridge = new CoconutOfficialSessionBridgeManager();
 
@@ -410,6 +412,7 @@ namespace HaCreator.MapSimulator
         private readonly MassacrePacketInboxManager _massacrePacketInbox = new MassacrePacketInboxManager();
         private readonly DojoPacketInboxManager _dojoPacketInbox = new DojoPacketInboxManager();
         private readonly PartyRaidPacketInboxManager _partyRaidPacketInbox = new PartyRaidPacketInboxManager();
+        private readonly TournamentPacketInboxManager _tournamentPacketInbox = new TournamentPacketInboxManager();
         private readonly CookieHousePointInboxManager _cookieHousePointInbox = new CookieHousePointInboxManager();
         private int _cookieHouseContextPoint;
         private bool _bossHpBarAssetsLoaded;
@@ -2547,6 +2550,7 @@ namespace HaCreator.MapSimulator
                 value => _guildBbsRuntime.SetReplyDraft(value),
                 delta => _guildBbsRuntime.MoveThreadPage(delta),
                 delta => _guildBbsRuntime.MoveCommentPage(delta),
+                pageIndex => _guildBbsRuntime.SetCommentPage(pageIndex),
                 delta => _guildBbsRuntime.MoveComposeCashEmoticonPage(delta),
                 delta => _guildBbsRuntime.MoveReplyCashEmoticonPage(delta),
                 (kind, slotIndex, pageIndex) => _guildBbsRuntime.SelectComposeEmoticon(kind, slotIndex, pageIndex),
@@ -2635,6 +2639,7 @@ namespace HaCreator.MapSimulator
                 statusBarUi.MtsRequested = () =>
                 {
                     uiWindowManager?.HideWindow(MapSimulatorWindowNames.CashShop);
+                    uiWindowManager?.HideWindow(MapSimulatorWindowNames.CashAvatarPreview);
                     ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.Mts);
                 };
                 statusBarUi.MenuRequested = () => ToggleStatusBarPopupWindow(MapSimulatorWindowNames.Menu, MapSimulatorWindowNames.System);
@@ -2820,19 +2825,7 @@ namespace HaCreator.MapSimulator
 
 
 
-            if (TryInitializeLoginCharacterRosterFromAccountStore())
-
-
-
-            {
-
-
-
-                return;
-
-
-
-            }
+            TryInitializeLoginCharacterRosterFromAccountStore();
 
 
 
@@ -2942,9 +2935,9 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
-        private UserInfoUI.RankDeltaSnapshot ResolveCharacterInfoRankDeltaSnapshot()
+        private UserInfoUI.RankDeltaSnapshot ResolveCharacterInfoRankDeltaSnapshot(CharacterBuild build)
         {
-            CharacterBuild build = _playerManager?.Player?.Build ?? _loginCharacterRoster.SelectedEntry?.Build;
+            build ??= _playerManager?.Player?.Build ?? _loginCharacterRoster.SelectedEntry?.Build;
             if (build == null)
             {
                 return default;
@@ -3620,6 +3613,7 @@ namespace HaCreator.MapSimulator
             SyncCashShopAccountCredit();
             uiWindowManager?.HideWindow(MapSimulatorWindowNames.Mts);
             ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.CashShop);
+            ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.CashAvatarPreview);
         }
 
 
@@ -4037,13 +4031,61 @@ namespace HaCreator.MapSimulator
                 null);
             var usedProps = new ConcurrentBag<WzObject>();
             NpcItem npcPreview = LifeLoader.CreateNpcFromProperty(_texturePool, npcInstance, UserScreenScaleFactor, GraphicsDevice, usedProps, includeTooltips);
-            npcPreview?.SetAction(AnimationKeys.Stand);
+            if (npcPreview != null)
+            {
+                npcPreview.IdleActionCyclingEnabled = false;
+                npcPreview.SetAction(AnimationKeys.Stand);
+            }
+
             return npcPreview;
         }
 
         private NpcItem CreateRepairDurabilityNpcPreview(int npcTemplateId)
         {
-            return CreateNpcPreview(npcTemplateId, includeTooltips: false);
+            NpcItem npcPreview = CreateNpcPreview(npcTemplateId, includeTooltips: false);
+            if (npcPreview == null)
+            {
+                return null;
+            }
+
+            string repairAction = ResolveRepairDurabilityNpcAction(npcTemplateId, npcPreview);
+            if (!string.IsNullOrWhiteSpace(repairAction))
+            {
+                npcPreview.SetAction(repairAction);
+            }
+
+            return npcPreview;
+        }
+
+        private static string ResolveRepairDurabilityNpcAction(int npcTemplateId, NpcItem npcPreview)
+        {
+            if (npcTemplateId <= 0 || npcPreview == null)
+            {
+                return AnimationKeys.Stand;
+            }
+
+            NpcInfo npcInfo = NpcInfo.Get(npcTemplateId.ToString(CultureInfo.InvariantCulture));
+            WzImage source = npcInfo?.LinkedWzImage;
+            int? shopActionId = (source?["info"]?["shop"] as WzIntProperty)?.Value;
+            string[] candidates =
+            {
+                shopActionId?.ToString(CultureInfo.InvariantCulture),
+                "shop",
+                "say",
+                "speak",
+                AnimationKeys.Stand
+            };
+
+            for (int i = 0; i < candidates.Length; i++)
+            {
+                string candidate = candidates[i];
+                if (!string.IsNullOrWhiteSpace(candidate) && npcPreview.HasAction(candidate))
+                {
+                    return candidate;
+                }
+            }
+
+            return AnimationKeys.Stand;
         }
 
         private void ProcessPendingRepairDurabilityRequest()
@@ -4463,7 +4505,7 @@ namespace HaCreator.MapSimulator
                 string megassengerChatMirror = _mapleTvRuntime.BuildMegassengerChatMirrorMessage();
                 if (!string.IsNullOrWhiteSpace(megassengerChatMirror))
                 {
-                    _chat?.AddMessage(megassengerChatMirror, new Color(151, 221, 255), currTickCount);
+                    _chat?.AddClientChatMessage(megassengerChatMirror, currTickCount, 13);
                 }
 
                 ShowMapleTvWindow();
@@ -4572,6 +4614,8 @@ namespace HaCreator.MapSimulator
                 EnsureWorldChannelSelectorState(worldSelectWindow.WorldIds);
                 worldSelectWindow.WorldSelected -= HandleWorldSelected;
                 worldSelectWindow.WorldSelected += HandleWorldSelected;
+                worldSelectWindow.ViewAllRequested -= HandleViewAllCharactersRequested;
+                worldSelectWindow.ViewAllRequested += HandleViewAllCharactersRequested;
             }
 
 
@@ -4905,6 +4949,23 @@ namespace HaCreator.MapSimulator
                     : $"Changing to world {_selectorBrowseWorldId}, channel {channelIndex + 1}...");
         }
 
+        private void HandleViewAllCharactersRequested()
+        {
+            if (!CanRequestLoginViewAllCharacters())
+            {
+                RefreshWorldChannelSelectorWindows();
+                return;
+            }
+
+            uiWindowManager?.HideWindow(MapSimulatorWindowNames.ChannelSelect);
+            BeginWorldChannelSelectorRequest(
+                SelectorRequestKind.ViewAllCharacters,
+                _selectorBrowseWorldId,
+                _simulatorChannelIndex,
+                LoginWorldSelectionRequestDelayMs,
+                "Requesting ViewAllCharResult...");
+        }
+
 
         private void RefreshWorldChannelSelectorWindows()
         {
@@ -4918,7 +4979,8 @@ namespace HaCreator.MapSimulator
                     _selectorBrowseWorldId,
                     _loginAccountIsAdult,
                     requestAllowed: IsWorldChannelSelectorRequestAllowed(),
-                    statusMessage: GetWorldSelectorStatusMessage());
+                    statusMessage: GetWorldSelectorStatusMessage(),
+                    viewAllEnabled: CanRequestLoginViewAllCharacters());
             }
 
 
@@ -4940,6 +5002,13 @@ namespace HaCreator.MapSimulator
         {
             return _selectorRequestKind == SelectorRequestKind.None &&
                    (!IsLoginRuntimeSceneActive || _loginRuntime.CurrentStep == LoginStep.WorldSelect);
+        }
+
+        private bool CanRequestLoginViewAllCharacters()
+        {
+            return IsLoginRuntimeSceneActive &&
+                   _loginRuntime.CurrentStep == LoginStep.WorldSelect &&
+                   _selectorRequestKind == SelectorRequestKind.None;
         }
 
 
@@ -5301,13 +5370,7 @@ namespace HaCreator.MapSimulator
 
         private string GetWorldSelectorStatusMessage()
         {
-            if (_selectorRequestKind == SelectorRequestKind.LoginWorldCheck)
-            {
-                return _selectorRequestStatusMessage;
-            }
-
-
-            if (_selectorRequestKind == SelectorRequestKind.ChannelChange)
+            if (_selectorRequestKind != SelectorRequestKind.None)
             {
                 return _selectorRequestStatusMessage;
             }
@@ -5412,7 +5475,7 @@ namespace HaCreator.MapSimulator
             _selectorRequestStatusMessage = null;
             _selectorLastResultCode = SelectorRequestResultCode.None;
             _selectorLastResultMessage = string.IsNullOrWhiteSpace(resultMessage)
-                ? "Cancelled the pending world or channel request."
+                ? "Cancelled the pending selector request."
                 : resultMessage;
         }
 
@@ -5462,6 +5525,20 @@ namespace HaCreator.MapSimulator
                     out _,
                     applySelectorSideEffects: false,
                     summaryOverride: message);
+                return;
+            }
+
+            if (completedRequest == SelectorRequestKind.ViewAllCharacters)
+            {
+                DispatchLoginRuntimePacket(
+                    LoginPacketType.ViewAllCharResult,
+                    out string message,
+                    applySelectorSideEffects: false,
+                    summaryOverride: "Received view-all-character data and scheduled the expanded roster step.");
+                _loginCharacterStatusMessage = string.IsNullOrWhiteSpace(message)
+                    ? "Requested the expanded character roster."
+                    : $"Requested the expanded character roster. {message}";
+                SyncLoginEntryDialogs();
                 return;
             }
 
@@ -8094,6 +8171,47 @@ namespace HaCreator.MapSimulator
 
 
 
+        private bool ShouldRouteLoginRosterMutationThroughLiveSession()
+
+
+
+        {
+
+
+
+            if (!IsLoginRuntimeSceneActive || !_loginOfficialSessionBridge.HasConnectedSession)
+
+
+
+            {
+
+
+
+                return false;
+
+
+
+            }
+
+
+
+            LoginRosterSource rosterSource = GetActiveLoginRosterSource();
+
+
+
+            return rosterSource == LoginRosterSource.SelectWorldResult ||
+
+
+
+                   rosterSource == LoginRosterSource.ViewAllCharResult;
+
+
+
+        }
+
+
+
+
 
 
 
@@ -8114,6 +8232,23 @@ namespace HaCreator.MapSimulator
 
 
             {
+                if (ShouldRouteLoginRosterMutationThroughLiveSession())
+
+
+
+                {
+
+
+
+                    message = null;
+
+
+
+                    return true;
+
+
+
+                }
 
 
 
@@ -8146,6 +8281,273 @@ namespace HaCreator.MapSimulator
 
 
             return true;
+
+
+
+        }
+
+
+
+
+        private bool TrySendLiveOfficialCheckDuplicatedIdRequest(string characterName, out string status)
+
+
+
+        {
+
+
+
+            if (!ShouldRouteLoginRosterMutationThroughLiveSession())
+
+
+
+            {
+
+
+
+                status = "Login official-session roster mutation is unavailable.";
+
+
+
+                return false;
+
+
+
+            }
+
+
+
+            return _loginOfficialSessionBridge.TrySendCheckDuplicateIdRequest(characterName, out status);
+
+
+
+        }
+
+
+
+
+        private bool TrySendLiveOfficialCreateCharacterRequest(string characterName, out string status)
+
+
+
+        {
+
+
+
+            if (!ShouldRouteLoginRosterMutationThroughLiveSession())
+
+
+
+            {
+
+
+
+                status = "Login official-session character creation is unavailable.";
+
+
+
+                return false;
+
+
+
+            }
+
+
+
+            CharacterLoader loader = _playerManager?.Loader;
+            LoginCreateCharacterFlowState flow = _loginCreateCharacterFlow;
+            if (loader == null || flow == null)
+
+
+
+            {
+
+
+
+                status = "The login create-character flow is not ready for live session injection.";
+
+
+
+                return false;
+
+
+
+            }
+
+
+
+            CharacterLoader.LoginStarterAvatarCatalog catalog =
+                loader.GetLoginStarterAvatarCatalog(flow.SelectedRace, flow.SelectedGender);
+            if (catalog == null)
+
+
+
+            {
+
+
+
+                status = "Starter avatar data could not be resolved from MakeCharInfo for live session injection.";
+
+
+
+                return false;
+
+
+
+            }
+
+
+
+            int faceId = PickLoginStarterValue(catalog.FaceIds, flow.SelectedFaceIndex, flow.SelectedGender == CharacterGender.Male ? 20000 : 21000);
+            int hairStyleId = PickLoginStarterValue(catalog.HairStyleIds, flow.SelectedHairIndex, flow.SelectedGender == CharacterGender.Male ? 30000 : 31000);
+            int skinValue = (int)PickLoginStarterValue(catalog.Skins, flow.SelectedSkinIndex, SkinColor.Light);
+            int hairColorValue = PickLoginStarterValue(catalog.HairColorIndices, 0, 0);
+            int coatId = PickLoginStarterValue(catalog.CoatIds, flow.SelectedCoatIndex, 1042003);
+            int pantsId = PickLoginStarterValue(catalog.PantsIds, flow.SelectedPantsIndex, 1062007);
+            int shoesId = PickLoginStarterValue(catalog.ShoesIds, flow.SelectedShoesIndex, 1072005);
+            int weaponId = PickLoginStarterValue(catalog.WeaponIds, flow.SelectedWeaponIndex, 1322013);
+
+            LoginNewCharacterRequest request = new(
+                characterName,
+                (int)flow.SelectedRace,
+                flow.SelectedJob?.SubJob ?? 0,
+                (byte)flow.SelectedGender,
+                faceId,
+                hairStyleId,
+                skinValue,
+                hairColorValue,
+                coatId,
+                pantsId,
+                shoesId,
+                weaponId);
+
+            return _loginOfficialSessionBridge.TrySendNewCharacterRequest(request, out status);
+
+
+
+        }
+
+
+
+
+        private bool TrySendLiveOfficialDeleteCharacterRequest(LoginCharacterRosterEntry selectedEntry, out string status)
+
+
+
+        {
+
+
+
+            if (!ShouldRouteLoginRosterMutationThroughLiveSession())
+
+
+
+            {
+
+
+
+                status = "Login official-session character deletion is unavailable.";
+
+
+
+                return false;
+
+
+
+            }
+
+
+
+            if (selectedEntry?.Build == null || selectedEntry.Build.Id <= 0)
+
+
+
+            {
+
+
+
+                status = "The selected character does not have a valid live-session character id.";
+
+
+
+                return false;
+
+
+
+            }
+
+
+
+            if (!TryGetActiveLoginRosterPacketProfile(out LoginSelectWorldResultProfile rosterProfile, out _) ||
+                !rosterProfile.LoginOpt)
+
+
+
+            {
+
+
+
+                status = "The attached login session does not currently expose the client delete-character security path.";
+
+
+
+                return false;
+
+
+
+            }
+
+
+
+            if (string.IsNullOrWhiteSpace(_loginAccountSecondaryPassword))
+
+
+
+            {
+
+
+
+                status = "Live delete-character injection requires a stored secondary password from the login bootstrap flow.";
+
+
+
+                return false;
+
+
+
+            }
+
+
+
+            return _loginOfficialSessionBridge.TrySendDeleteCharacterRequest(
+                _loginAccountSecondaryPassword,
+                selectedEntry.Build.Id,
+                out status);
+
+
+
+        }
+
+
+
+
+        private static T PickLoginStarterValue<T>(IReadOnlyList<T> values, int index, T fallback)
+
+
+
+        {
+
+
+
+            return values != null && index >= 0 && index < values.Count
+
+
+
+                ? values[index]
+
+
+
+                : fallback;
 
 
 
@@ -9727,6 +10129,17 @@ namespace HaCreator.MapSimulator
 
 
             _loginPendingCreateCharacterName = characterName;
+            if (ShouldRouteLoginRosterMutationThroughLiveSession())
+            {
+                _loginCreateCharacterFlow.ClearCheckedName("Waiting for live CheckDuplicatedIdResult from the attached login session.");
+                TrySendLiveOfficialCheckDuplicatedIdRequest(characterName, out string liveStatus);
+                _loginCreateCharacterFlow.ClearCheckedName(liveStatus);
+
+                _loginCharacterStatusMessage = _loginCreateCharacterFlow.StatusMessage;
+                SyncLoginCreateCharacterWindow();
+                return;
+            }
+
             if (!TryGetLoginCheckDuplicatedIdPacketProfile(out LoginAccountDialogPacketProfile duplicatedIdProfile) ||
                 duplicatedIdProfile.Payload == null ||
                 duplicatedIdProfile.Payload.Length == 0)
@@ -10858,6 +11271,22 @@ namespace HaCreator.MapSimulator
                 SyncLoginCharacterSelectWindow();
                 return;
             }
+
+            if (ShouldRouteLoginRosterMutationThroughLiveSession())
+            {
+                HideLoginUtilityDialog();
+                if (!TrySendLiveOfficialDeleteCharacterRequest(selectedEntry, out string liveStatus))
+                {
+                    _loginCharacterStatusMessage = liveStatus;
+                    SyncLoginCharacterSelectWindow();
+                    return;
+                }
+
+                _loginCharacterStatusMessage = liveStatus;
+                SyncLoginCharacterSelectWindow();
+                return;
+            }
+
             LoginAccountDialogPacketProfile deleteProfile =
                 BuildGeneratedDeleteCharacterResultProfile(selectedEntry.Build.Id);
             if (deleteProfile == null)
@@ -10922,6 +11351,23 @@ namespace HaCreator.MapSimulator
 
 
             _loginPendingCreateCharacterName = characterName;
+            if (ShouldRouteLoginRosterMutationThroughLiveSession())
+            {
+                HideLoginUtilityDialog();
+                if (!TrySendLiveOfficialCheckDuplicatedIdRequest(characterName, out string liveStatus))
+                {
+                    _loginCharacterStatusMessage = liveStatus;
+                    SyncLoginCharacterSelectWindow();
+                    SyncLoginCreateCharacterWindow();
+                    return;
+                }
+
+                _loginCharacterStatusMessage = liveStatus;
+                SyncLoginCharacterSelectWindow();
+                SyncLoginCreateCharacterWindow();
+                return;
+            }
+
             if (!TryGetLoginCheckDuplicatedIdPacketProfile(out LoginAccountDialogPacketProfile duplicatedIdProfile) ||
                 duplicatedIdProfile.Payload == null ||
                 duplicatedIdProfile.Payload.Length == 0)
@@ -10949,6 +11395,22 @@ namespace HaCreator.MapSimulator
         }
         private void ContinueLoginCharacterCreateAfterDuplicateCheck(string characterName)
         {
+            if (ShouldRouteLoginRosterMutationThroughLiveSession())
+            {
+                if (!TrySendLiveOfficialCreateCharacterRequest(characterName, out string liveStatus))
+                {
+                    _loginCharacterStatusMessage = liveStatus;
+                    SyncLoginCharacterSelectWindow();
+                    SyncLoginCreateCharacterWindow();
+                    return;
+                }
+
+                _loginCharacterStatusMessage = liveStatus;
+                SyncLoginCharacterSelectWindow();
+                SyncLoginCreateCharacterWindow();
+                return;
+            }
+
             LoginCharacterAccountStore.LoginCharacterAccountState storedState = _loginCharacterAccountStore.GetState(
                 ResolveLoginRosterAccountName(),
                 ResolveLoginRosterWorldId());
@@ -11995,6 +12457,7 @@ namespace HaCreator.MapSimulator
 
             _soundManager?.Dispose();
 
+            _snowBallPacketInbox.Dispose();
             _coconutPacketInbox.Dispose();
             _coconutOfficialSessionBridge.Dispose();
 
@@ -12010,10 +12473,12 @@ namespace HaCreator.MapSimulator
             _transportPacketInbox.Dispose();
 
             _partyRaidPacketInbox.Dispose();
+            _tournamentPacketInbox.Dispose();
 
             _cookieHousePointInbox.Dispose();
             _localUtilityPacketInbox.Dispose();
             _summonedPacketInbox.Dispose();
+            _packetScriptReplyTransport.Dispose();
 
 
 
@@ -13786,9 +14251,13 @@ namespace HaCreator.MapSimulator
 
             bool applied = _playerManager.TryApplyMobSkillStatus(skill.SkillId, runtimeData, currentTick, sourceMob.CurrentX);
 
+            if (applied)
+            {
+                _playerManager.PlayMobSkillHitEffect(skill.SkillId, skill.Level, currentTick);
+            }
 
-
-            if (runtimeData.DurationMs > 0 &&
+            if (applied &&
+                runtimeData.DurationMs > 0 &&
                 PlayerSkillBlockingStatusMapper.TryMapMobSkill(skill.SkillId, out PlayerSkillBlockingStatus status))
             {
                 _playerManager.Player.ApplySkillBlockingStatus(status, runtimeData.DurationMs, currentTick);
@@ -14653,9 +15122,9 @@ namespace HaCreator.MapSimulator
 
 
 
-        private void HandleItemMakerRecipesDiscovered(IReadOnlyCollection<int> outputItemIds)
+        private void HandleItemMakerRecipesDiscovered(IReadOnlyCollection<string> recipeKeys)
         {
-            if (outputItemIds == null || outputItemIds.Count == 0)
+            if (recipeKeys == null || recipeKeys.Count == 0)
             {
                 return;
             }
@@ -14663,15 +15132,15 @@ namespace HaCreator.MapSimulator
 
             CharacterBuild build = GetActiveItemMakerCharacterBuild();
 
-            _itemMakerProgressionStore.RecordDiscoveredRecipes(build, outputItemIds);
+            _itemMakerProgressionStore.RecordDiscoveredRecipes(build, recipeKeys);
 
         }
 
 
 
-        private void HandleItemMakerHiddenRecipesUnlocked(IReadOnlyCollection<int> outputItemIds)
+        private void HandleItemMakerHiddenRecipesUnlocked(IReadOnlyCollection<string> recipeKeys)
         {
-            if (outputItemIds == null || outputItemIds.Count == 0)
+            if (recipeKeys == null || recipeKeys.Count == 0)
             {
                 return;
             }
@@ -14679,7 +15148,7 @@ namespace HaCreator.MapSimulator
 
             CharacterBuild build = GetActiveItemMakerCharacterBuild();
 
-            _itemMakerProgressionStore.RecordUnlockedHiddenRecipes(build, outputItemIds);
+            _itemMakerProgressionStore.RecordUnlockedHiddenRecipes(build, recipeKeys);
 
         }
 
@@ -15225,7 +15694,8 @@ namespace HaCreator.MapSimulator
                 && morphTemplateId > 0
                 && player.ApplyExternalAvatarTransform(itemId, actionName: null, morphTemplateId, currTickCount + effect.DurationMs);
             bool canCureStatus = supportsCure && HasCurablePlayerMobStatus(effect);
-            bool hasAnySupportedOutcome = hpGain > 0 || mpGain > 0 || supportsMovement || canApplyMorph || canApplyTemporaryBuff || canCureStatus;
+            bool canQueueMovement = supportsMovement && targetMapId > 0 && _loadMapCallback != null;
+            bool hasAnySupportedOutcome = hpGain > 0 || mpGain > 0 || canQueueMovement || canApplyMorph || canApplyTemporaryBuff || canCureStatus;
             if (!hasAnySupportedOutcome)
             {
                 return false;
@@ -15267,8 +15737,7 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-
-            return targetMapId > 0 && _loadMapCallback != null && TryQueueConsumableMapTransfer(targetMapId);
+            return canQueueMovement && TryQueueConsumableMapTransfer(targetMapId);
 
         }
 
@@ -15589,7 +16058,7 @@ namespace HaCreator.MapSimulator
                     drop.Quantity,
                     drop.IsRare ? new Color(255, 200, 100) : Color.White);
                 AddItemToInventoryWindow(drop.ItemId, drop.Quantity);
-                _monsterBookManager.RecordCardPickup(_playerManager?.Player?.Build, itemId, Math.Max(1, drop.Quantity));
+                _monsterBookManager.RecordCardPickup(_playerManager?.Player?.Build ?? _loginCharacterRoster.SelectedEntry?.Build, itemId, Math.Max(1, drop.Quantity));
             }
             else if (drop.Type == Pools.DropType.QuestItem)
             {
@@ -16307,7 +16776,8 @@ namespace HaCreator.MapSimulator
 
                 && player.ApplyExternalAvatarTransform(itemId, actionName: null, morphTemplateId, currentTime + effect.DurationMs);
             bool canCureStatus = supportsCure && HasCurablePlayerMobStatus(effect);
-            bool hasAnySupportedOutcome = hpGain > 0 || mpGain > 0 || supportsMovement || canApplyMorph || canApplyTemporaryBuff || canCureStatus;
+            bool canQueueMovement = supportsMovement && targetMapId > 0 && _loadMapCallback != null;
+            bool hasAnySupportedOutcome = hpGain > 0 || mpGain > 0 || canQueueMovement || canApplyMorph || canApplyTemporaryBuff || canCureStatus;
             if (!hasAnySupportedOutcome)
             {
                 return false;
@@ -16361,7 +16831,7 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            if (targetMapId <= 0 || _loadMapCallback == null || !TryQueueConsumableMapTransfer(targetMapId))
+            if (!canQueueMovement || !TryQueueConsumableMapTransfer(targetMapId))
             {
                 inventoryWindow.AddItem(inventoryType, new InventorySlotData
                 {
@@ -20840,6 +21310,11 @@ namespace HaCreator.MapSimulator
 
                     ?? _fieldRuleRuntime?.GetSkillRestrictionMessage(skill));
 
+            _playerManager.Skills.SetSkillCancelRestrictionMessageProvider(
+                skill => FieldSkillRestrictionEvaluator.GetSkillCancelRestrictionMessage(
+                    _mapBoard?.MapInfo,
+                    skill));
+
             _playerManager.SetJumpRestrictionHandler(
                 () => FieldInteractionRestrictionEvaluator.GetJumpRestrictionMessage(_mapBoard?.MapInfo?.fieldLimit ?? 0),
                 () => FieldInteractionRestrictionEvaluator.GetJumpDownRestrictionMessage(_mapBoard?.MapInfo?.fieldLimit ?? 0),
@@ -21105,6 +21580,7 @@ namespace HaCreator.MapSimulator
                 radioWindow.SetFont(_fontChat);
                 radioWindow.SetContentProvider(BuildPacketOwnedRadioWindowLines);
                 radioWindow.SetFooterProvider(BuildPacketOwnedRadioWindowFooter);
+                radioWindow.SetIndicatorActiveProvider(IsPacketOwnedRadioPlaying);
             }
 
 
@@ -21337,6 +21813,7 @@ namespace HaCreator.MapSimulator
                 RefreshQuestUiState();
                 SelectQuestInActiveWindow(_activeQuestDetailQuestId);
                 UpdateQuestDetailWindow();
+                PublishDynamicObjectTagStatesForScriptNames(result.PublishedScriptNames, currTickCount);
             }
         }
 
@@ -21901,9 +22378,12 @@ namespace HaCreator.MapSimulator
             }
             else if (_selectorRequestKind != SelectorRequestKind.None)
             {
-                string cancelledMessage = _selectorRequestKind == SelectorRequestKind.LoginWorldCheck
-                    ? "Cancelled the pending world-selection request."
-                    : "Cancelled the pending channel-entry request.";
+                string cancelledMessage = _selectorRequestKind switch
+                {
+                    SelectorRequestKind.LoginWorldCheck => "Cancelled the pending world-selection request.",
+                    SelectorRequestKind.ViewAllCharacters => "Cancelled the pending expanded-roster request.",
+                    _ => "Cancelled the pending channel-entry request."
+                };
                 CancelWorldChannelSelectorRequest(cancelledMessage);
                 _loginTitleStatusMessage = cancelledMessage;
                 handled = true;
@@ -24913,6 +25393,19 @@ namespace HaCreator.MapSimulator
         }
 
 
+        private void SyncSnowBallPacketInboxState()
+        {
+            if (_specialFieldRuntime.Minigames.SnowBall.IsActive || _specialFieldRuntime.Minigames.SnowBall.State != SnowBallField.GameState.NotStarted)
+            {
+                _snowBallPacketInbox.Start();
+            }
+            else
+            {
+                _snowBallPacketInbox.Stop();
+            }
+        }
+
+
         private void SyncCoconutPacketInboxState()
         {
             if (_specialFieldRuntime.Minigames.Coconut.IsActive)
@@ -25051,6 +25544,18 @@ namespace HaCreator.MapSimulator
             }
         }
 
+        private void SyncTournamentPacketInboxState()
+        {
+            if (_specialFieldRuntime.Minigames.Tournament.IsActive)
+            {
+                _tournamentPacketInbox.Start();
+            }
+            else
+            {
+                _tournamentPacketInbox.Stop();
+            }
+        }
+
 
         private void SyncGuildBossTransportState()
         {
@@ -25111,6 +25616,50 @@ namespace HaCreator.MapSimulator
                     bridgeMessage.PacketType,
                     applied,
                     applied ? field.DescribeStatus() : bridgeErrorMessage);
+            }
+        }
+
+
+        private void DrainSnowBallPacketInbox(int currentTickCount)
+        {
+            SnowBallField field = _specialFieldRuntime.Minigames.SnowBall;
+            while (_snowBallPacketInbox.TryDequeue(out SnowBallPacketInboxMessage message))
+            {
+                if (!field.IsActive && field.State == SnowBallField.GameState.NotStarted)
+                {
+                    _snowBallPacketInbox.RecordDispatchResult(
+                        message.Source,
+                        message.PacketType,
+                        success: false,
+                        message: "runtime inactive");
+                    continue;
+                }
+
+                bool applied = field.TryApplyPacket(message.PacketType, message.Payload, currentTickCount, out string errorMessage);
+                _snowBallPacketInbox.RecordDispatchResult(
+                    message.Source,
+                    message.PacketType,
+                    applied,
+                    applied ? field.DescribeStatus() : errorMessage);
+            }
+        }
+
+
+        private void FlushPendingSnowBallTouchRequests()
+        {
+            SnowBallField field = _specialFieldRuntime?.Minigames?.SnowBall;
+            if (field == null || (!_snowBallPacketInbox.HasConnectedClients && !field.TryPeekTouchPacketRequest(out _)))
+            {
+                return;
+            }
+
+            while (_snowBallPacketInbox.HasConnectedClients
+                && field.TryConsumeTouchPacketRequest(out SnowBallField.TouchPacketRequest request))
+            {
+                if (!_snowBallPacketInbox.TrySendTouchRequest(request, out _))
+                {
+                    break;
+                }
             }
         }
 
@@ -25185,7 +25734,12 @@ namespace HaCreator.MapSimulator
                 }
 
 
-                bool applied = field.TryDispatchMiniRoomPacket(bridgeMessage.Payload, currentTickCount, out string bridgeResultMessage);
+                bool applyClientMirror = !string.IsNullOrWhiteSpace(bridgeMessage.RawText)
+                    && bridgeMessage.RawText.StartsWith("packetclientraw", StringComparison.OrdinalIgnoreCase);
+                string bridgeResultMessage;
+                bool applied = applyClientMirror
+                    ? field.TryDispatchOfficialClientPacket(bridgeMessage.Payload, currentTickCount, out bridgeResultMessage)
+                    : field.TryDispatchMiniRoomPacket(bridgeMessage.Payload, currentTickCount, out bridgeResultMessage);
                 _memoryGameOfficialSessionBridge.RecordDispatchResult(
                     bridgeMessage.Source,
                     applied,
@@ -25963,6 +26517,30 @@ namespace HaCreator.MapSimulator
             }
         }
 
+        private void DrainTournamentPacketInbox(int currentTickCount)
+        {
+            TournamentField field = _specialFieldRuntime.Minigames.Tournament;
+            while (_tournamentPacketInbox.TryDequeue(out TournamentPacketInboxMessage message))
+            {
+                if (!field.IsActive)
+                {
+                    _tournamentPacketInbox.RecordDispatchResult(
+                        message.Source,
+                        message.PacketType,
+                        success: false,
+                        message: "runtime inactive");
+                    continue;
+                }
+
+                bool applied = field.TryApplyRawPacket(message.PacketType, message.Payload, currentTickCount, out string errorMessage);
+                _tournamentPacketInbox.RecordDispatchResult(
+                    message.Source,
+                    message.PacketType,
+                    applied,
+                    applied ? field.DescribeStatus() : errorMessage);
+            }
+        }
+
 
         private static bool TryApplyPartyRaidClockInbox(PartyRaidField field, PartyRaidPacketInboxMessage message, int currentTickCount)
         {
@@ -26380,7 +26958,12 @@ namespace HaCreator.MapSimulator
 
         private void HandleChatMessageSubmitted(string message, int tickCount)
         {
-            _playerManager?.TryExecutePetCommand(message, tickCount);
+            if (_playerManager?.TryExecutePetCommand(message, tickCount) == true)
+            {
+                return;
+            }
+
+            _playerManager?.TryTriggerSpecialistPetChatFeedback(message, tickCount);
         }
 
 
@@ -26783,7 +27366,7 @@ namespace HaCreator.MapSimulator
             string listeningText = _loginOfficialSessionBridge.IsRunning
                 ? $"listening on 127.0.0.1:{_loginOfficialSessionBridge.ListenPort}"
                 : $"configured for 127.0.0.1:{_loginOfficialSessionBridgeConfiguredListenPort}";
-            return $"Login packet session bridge {enabledText}, {modeText}, {listeningText}, target {configuredTarget}{processText}, received {_loginOfficialSessionBridge.ReceivedCount} packet(s). {_loginOfficialSessionBridge.LastStatus}";
+            return $"Login packet session bridge {enabledText}, {modeText}, {listeningText}, target {configuredTarget}{processText}, received {_loginOfficialSessionBridge.ReceivedCount} packet(s), sent {_loginOfficialSessionBridge.SentCount} packet(s). {_loginOfficialSessionBridge.LastStatus}";
         }
         private string DescribeLoginPacketTransportStatus()
         {

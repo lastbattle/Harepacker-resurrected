@@ -498,7 +498,7 @@ namespace HaCreator.MapSimulator
                     _ => child.GetString()
                 };
 
-                string normalized = NormalizePacketOwnedSwindleString(rawValue);
+                string normalized = NormalizePacketOwnedSwindleEntry(rawValue);
                 if (!string.IsNullOrWhiteSpace(normalized))
                 {
                     values.Add(normalized);
@@ -508,7 +508,7 @@ namespace HaCreator.MapSimulator
             return values;
         }
 
-        private static string NormalizePacketOwnedSwindleString(string value)
+        private static string NormalizePacketOwnedSwindleEntry(string value)
         {
             if (string.IsNullOrWhiteSpace(value))
             {
@@ -516,8 +516,8 @@ namespace HaCreator.MapSimulator
             }
 
             return value
-                .Replace('\r', ' ')
-                .Replace('\n', ' ')
+                .Replace("\r\n", "\n", StringComparison.Ordinal)
+                .Replace('\r', '\n')
                 .Trim();
         }
 

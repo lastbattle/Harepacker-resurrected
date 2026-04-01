@@ -58,40 +58,32 @@ namespace HaCreator.MapSimulator.UI
         // Maximum number of macro slots
         public const int MAX_MACRO_SLOTS = 5;
 
-        // Macro slot layout constants (from SkillMacro/macroslot2: 168x42)
-        private const int MACRO_SLOT_WIDTH = 168;
-        private const int MACRO_SLOT_HEIGHT = 42;
-        private const int MACRO_SLOT_PADDING = 4;
+        // `CUIMacroSysEx::Draw` highlights rows at (11, 27 + 41*i) and
+        // places the three skill icons at (14 + 34*j, 30 + 41*i).
+        private const int MACRO_SLOT_X = 11;
+        private const int MACRO_SLOT_Y = 27;
+        private const int MACRO_SLOT_WIDTH = 158;
+        private const int MACRO_SLOT_HEIGHT = 38;
+        private const int MACRO_SLOT_SPACING = 41;
+        private const int SKILL_SLOT_START_X = 14;
+        private const int SKILL_SLOT_Y = 30;
+        private const int SKILL_SLOT_SPACING = 34;
+        private const int MACRO_ICON_X = 135;
+        private const int SELECTED_MACRO_ICON_X = 14;
+        private const int SELECTED_MACRO_ICON_Y = 241;
 
-        // Content area offsets (from window edges)
-        private const int CONTENT_OFFSET_X = 20;
-        private const int CONTENT_OFFSET_Y = 50;
-
-        // Skill slot positions within each macro row
-        // Three 32x32 icons with small padding between them
-        private const int SKILL_SLOT_START_X = 4;
-        private const int SKILL_SLOT_Y_OFFSET = 5;
-        private const int SKILL_SLOT_SPACING = 36;
-
-        // Macro name text field position (from macroname: 164x57)
-        private const int NAME_FIELD_WIDTH = 164;
-        private const int NAME_FIELD_HEIGHT = 20;
-        private const int NAME_FIELD_X = CONTENT_OFFSET_X;
-        private const int NAME_FIELD_Y = CONTENT_OFFSET_Y - 30;
+        // `CUIMacroSysEx::OnCreate` builds the owner edit control at (53, 260, 114, 14).
+        private const int NAME_FIELD_WIDTH = 114;
+        private const int NAME_FIELD_HEIGHT = 14;
+        private const int NAME_FIELD_X = 53;
+        private const int NAME_FIELD_Y = 260;
         private const int NAME_FIELD_TEXT_INSET_X = 4;
-        private const int NAME_FIELD_TEXT_INSET_Y = 3;
-        // Button positions (relative to window)
-        // BtOK button origin from UIWindow2: (-145, -255) means 145 from left, 255 from top
-        private const int BUTTON_OK_X = 50;
-        private const int BUTTON_OK_Y = 255;
-        private const int BUTTON_CANCEL_X = 110;
-        private const int BUTTON_CANCEL_Y = 255;
-        private const int BUTTON_DELETE_X = 160;
-        private const int BUTTON_DELETE_Y = 255;
+        private const int NAME_FIELD_TEXT_INSET_Y = 0;
 
-        // Checkbox position for "Notify party members" option
-        private const int CHECKBOX_X = 15;
+        // WZ `Skill/macro/check` resolves to (161, 235) inside the owner.
+        private const int CHECKBOX_X = 161;
         private const int CHECKBOX_Y = 235;
+        private const int CHECKBOX_SIZE = 15;
         #endregion
 
         #region Fields
@@ -127,6 +119,11 @@ namespace HaCreator.MapSimulator.UI
         private Texture2D _selectedSlotTexture;
         private Texture2D _textPixelTexture;
         private Texture2D[] _macroSlotIcons;
+        private Texture2D _foregroundTexture;
+        private Point _foregroundOffset;
+        private Texture2D _contentTexture;
+        private Point _contentOffset;
+        private Texture2D _checkboxTexture;
 
         // Checkbox state
         private bool _notifyPartyMembers = false;
@@ -182,6 +179,12 @@ namespace HaCreator.MapSimulator.UI
                     {
                         LoadMacroForEditing(value);
                     }
+                    else
+                    {
+                        ResetEditingState();
+                    }
+
+                    UpdateOwnerButtonState();
                 }
             }
         }
@@ -210,6 +213,7 @@ namespace HaCreator.MapSimulator.UI
             Array.Clear(_editingSkillIds, 0, _editingSkillIds.Length);
             CancelDrag();
             HideSoftKeyboard();
+            UpdateOwnerButtonState();
         }
 
         /// <summary>
@@ -386,9 +390,46 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        internal void SetOwnerChrome(Texture2D foregroundTexture, Point foregroundOffset, Texture2D contentTexture, Point contentOffset, Texture2D checkboxTexture)
+        {
+            _foregroundTexture = foregroundTexture;
+            _foregroundOffset = foregroundOffset;
+            _contentTexture = contentTexture;
+            _contentOffset = contentOffset;
+            _checkboxTexture = checkboxTexture;
+        }
+
         internal void SetSoftKeyboardSkin(SkillMacroSoftKeyboardSkin skin)
         {
             _softKeyboardSkin = skin;
+        }
+
+        private void UpdateOwnerButtonState()
+        {
+            _btnOK?.SetEnabled(_selectedMacroIndex >= 0);
+        }
+
+        private void ResetEditingState()
+        {
+            _editingMacroIndex = -1;
+            _editingMacroName = string.Empty;
+            _notifyPartyMembers = false;
+            _validationMessage = string.Empty;
+            _editingCursorPosition = 0;
+            _caretBlinkTick = Environment.TickCount;
+            ClearCompositionText();
+            Array.Clear(_editingSkillIds, 0, _editingSkillIds.Length);
+        }
+
+        private void ResetOwnerSession()
+        {
+            _selectedMacroIndex = -1;
+            _hoveredMacroIndex = -1;
+            _hoveredSkillSlot = -1;
+            ResetEditingState();
+            CancelDrag();
+            HideSoftKeyboard();
+            UpdateOwnerButtonState();
         }
         #endregion
 
@@ -401,6 +442,16 @@ namespace HaCreator.MapSimulator.UI
         {
             int windowX = Position.X;
             int windowY = Position.Y;
+
+            if (_foregroundTexture != null)
+            {
+                sprite.Draw(_foregroundTexture, new Vector2(windowX + _foregroundOffset.X, windowY + _foregroundOffset.Y), Color.White);
+            }
+
+            if (_contentTexture != null)
+            {
+                sprite.Draw(_contentTexture, new Vector2(windowX + _contentOffset.X, windowY + _contentOffset.Y), Color.White);
+            }
 
             // Draw macro slots
             for (int i = 0; i < MAX_MACRO_SLOTS; i++)
@@ -442,79 +493,66 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawMacroSlot(SpriteBatch sprite, int macroIndex, int windowX, int windowY)
         {
-            var macro = _macros[macroIndex];
+            SkillMacro macro = _macros[macroIndex];
+            int slotX = windowX + MACRO_SLOT_X;
+            int slotY = windowY + MACRO_SLOT_Y + (macroIndex * MACRO_SLOT_SPACING);
+            bool isSelected = macroIndex == _selectedMacroIndex;
+            bool isHovered = macroIndex == _hoveredMacroIndex;
 
-            // Calculate slot position
-            int slotX = windowX + CONTENT_OFFSET_X;
-            int slotY = windowY + CONTENT_OFFSET_Y + macroIndex * (MACRO_SLOT_HEIGHT + MACRO_SLOT_PADDING);
-
-            // Draw slot background
-            bool isSelected = (macroIndex == _selectedMacroIndex);
-            bool isHovered = (macroIndex == _hoveredMacroIndex);
-
-            Texture2D bgTexture = isSelected ? _selectedSlotTexture : _macroSlotTexture;
-            sprite.Draw(bgTexture, new Rectangle(slotX, slotY, MACRO_SLOT_WIDTH, MACRO_SLOT_HEIGHT), Color.White);
-
-            // Draw hover highlight
-            if (isHovered && !isSelected)
+            if (isSelected && _selectedSlotTexture != null)
             {
-                sprite.Draw(_slotHighlightTexture,
-                    new Rectangle(slotX, slotY, MACRO_SLOT_WIDTH, MACRO_SLOT_HEIGHT),
-                    Color.White * 0.3f);
+                sprite.Draw(_selectedSlotTexture, new Vector2(slotX, slotY), Color.White);
+            }
+            else if (isHovered)
+            {
+                sprite.Draw(_slotHighlightTexture, new Rectangle(slotX, slotY, MACRO_SLOT_WIDTH, MACRO_SLOT_HEIGHT), new Color(255, 255, 255, 72));
             }
 
-            // Draw skill slots (3 skills per macro)
             for (int skillSlot = 0; skillSlot < SKILLS_PER_MACRO; skillSlot++)
             {
-                int skillX = slotX + SKILL_SLOT_START_X + skillSlot * SKILL_SLOT_SPACING;
-                int skillY = slotY + SKILL_SLOT_Y_OFFSET;
-
-                // Draw empty slot background
-                sprite.Draw(_emptySlotTexture,
-                    new Rectangle(skillX, skillY, SKILL_ICON_SIZE, SKILL_ICON_SIZE),
-                    Color.White);
-
-                // Draw skill icon if assigned
+                int skillX = windowX + SKILL_SLOT_START_X + (skillSlot * SKILL_SLOT_SPACING);
+                int skillY = windowY + SKILL_SLOT_Y + (macroIndex * MACRO_SLOT_SPACING);
                 int skillId = macro.SkillIds[skillSlot];
                 if (skillId > 0)
                 {
-                    var icon = GetSkillIcon(skillId);
+                    IDXObject icon = GetSkillIcon(skillId);
                     if (icon != null)
                     {
                         icon.DrawBackground(sprite, null, null, skillX, skillY, Color.White, false, null);
                     }
+                    else
+                    {
+                        sprite.Draw(_emptySlotTexture, new Rectangle(skillX, skillY, SKILL_ICON_SIZE, SKILL_ICON_SIZE), new Color(40, 40, 48, 220));
+                    }
                 }
-
-                // Draw highlight on hovered skill slot
-                if (macroIndex == _hoveredMacroIndex && skillSlot == _hoveredSkillSlot)
+                else
                 {
-                    sprite.Draw(_slotHighlightTexture,
-                        new Rectangle(skillX, skillY, SKILL_ICON_SIZE, SKILL_ICON_SIZE),
-                        Color.White);
+                    sprite.Draw(_emptySlotTexture, new Rectangle(skillX, skillY, SKILL_ICON_SIZE, SKILL_ICON_SIZE), new Color(40, 40, 48, 220));
+                }
+
+                if (isHovered && skillSlot == _hoveredSkillSlot)
+                {
+                    sprite.Draw(_slotHighlightTexture, new Rectangle(skillX, skillY, SKILL_ICON_SIZE, SKILL_ICON_SIZE), new Color(255, 255, 255, 96));
                 }
             }
 
-            // Draw macro name
-            if (_font != null && !string.IsNullOrEmpty(macro.Name))
+            DrawMacroIcon(sprite, macroIndex, new Point(windowX + MACRO_ICON_X, slotY), isSelected ? Color.White : new Color(255, 255, 255, 220));
+        }
+
+        private void DrawMacroIcon(SpriteBatch sprite, int macroIndex, Point position, Color color)
+        {
+            if (_macroSlotIcons != null
+                && macroIndex >= 0
+                && macroIndex < _macroSlotIcons.Length
+                && _macroSlotIcons[macroIndex] != null)
             {
-                int nameX = slotX + SKILL_SLOT_START_X + SKILLS_PER_MACRO * SKILL_SLOT_SPACING + 8;
-                int nameY = slotY + (MACRO_SLOT_HEIGHT - 12) / 2;
-
-                // Truncate name if too long
-                string displayName = macro.Name;
-                if (displayName.Length > 10)
-                    displayName = displayName.Substring(0, 10) + "...";
-
-                sprite.DrawString(_font, displayName, new Vector2(nameX, nameY), Color.White);
+                sprite.Draw(_macroSlotIcons[macroIndex], new Vector2(position.X, position.Y), color);
+                return;
             }
 
-            // Draw macro number indicator
             if (_font != null)
             {
-                string numberText = $"M{macroIndex + 1}";
-                sprite.DrawString(_font, numberText,
-                    new Vector2(slotX - 15, slotY + (MACRO_SLOT_HEIGHT - 12) / 2),
-                    isSelected ? Color.Yellow : Color.LightGray);
+                sprite.DrawString(_font, (macroIndex + 1).ToString(CultureInfo.InvariantCulture), new Vector2(position.X + 10, position.Y + 8), color);
             }
         }
 
@@ -525,13 +563,8 @@ namespace HaCreator.MapSimulator.UI
 
             int fieldX = windowX + NAME_FIELD_X;
             int fieldY = windowY + NAME_FIELD_Y;
-
-            // Draw label
-            sprite.DrawString(_font, "Macro Name:", new Vector2(fieldX, fieldY - 16), Color.LightGray);
-
-            // Draw text field background (simple rectangle)
-            var fieldRect = new Rectangle(fieldX, fieldY, NAME_FIELD_WIDTH, NAME_FIELD_HEIGHT);
-            sprite.Draw(_emptySlotTexture, fieldRect, Color.White);
+            Rectangle fieldRect = new(fieldX, fieldY, NAME_FIELD_WIDTH, NAME_FIELD_HEIGHT);
+            sprite.Draw(_textPixelTexture, fieldRect, new Color(18, 18, 24, 28));
 
             int safeCursorPosition = Math.Clamp(_editingCursorPosition, 0, _editingMacroName?.Length ?? 0);
             string committedPrefix = safeCursorPosition > 0
@@ -574,26 +607,25 @@ namespace HaCreator.MapSimulator.UI
                 float caretOffset = prefixWidth;
                 if (compositionText.Length > 0)
                 {
-                    caretOffset += _font.MeasureString(compositionText).X;
+                    string compositionCaretPrefix = ResolveCompositionCaretPrefix();
+                    caretOffset += compositionCaretPrefix.Length > 0
+                        ? _font.MeasureString(compositionCaretPrefix).X
+                        : 0f;
                 }
 
                 int caretX = fieldX + NAME_FIELD_TEXT_INSET_X + (int)Math.Round(caretOffset);
-                int caretY = fieldY + 2;
+                int caretY = fieldY + 1;
                 sprite.Draw(_textPixelTexture,
-                    new Rectangle(caretX, caretY, 1, Math.Max(12, _font.LineSpacing - 2)),
+                    new Rectangle(caretX, caretY, 1, Math.Max(NAME_FIELD_HEIGHT - 2, _font.LineSpacing - 2)),
                     Color.White);
             }
 
-            string displayText = BuildDisplayedNameText();
-            string byteCountText = $"{SkillMacroNameRules.GetByteCount(displayText)}/{SkillMacroNameRules.MaxNameBytes} bytes";
-            sprite.DrawString(_font, byteCountText,
-                new Vector2(fieldX + 92, fieldY - 16),
-                Color.LightGray);
+            DrawMacroIcon(sprite, _editingMacroIndex, new Point(windowX + SELECTED_MACRO_ICON_X, windowY + SELECTED_MACRO_ICON_Y), Color.White);
 
             if (!string.IsNullOrWhiteSpace(_validationMessage))
             {
                 sprite.DrawString(_font, _validationMessage,
-                    new Vector2(fieldX, fieldY + NAME_FIELD_HEIGHT + 2),
+                    new Vector2(fieldX, fieldY - _font.LineSpacing - 2),
                     Color.IndianRed);
             }
         }
@@ -770,28 +802,22 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawCheckbox(SpriteBatch sprite, int windowX, int windowY)
         {
-            if (_font == null)
+            if (!_notifyPartyMembers)
+            {
                 return;
+            }
 
             int checkX = windowX + CHECKBOX_X;
             int checkY = windowY + CHECKBOX_Y;
 
-            // Draw checkbox (simple 12x12 box)
-            Rectangle checkRect = new Rectangle(checkX, checkY, 12, 12);
-            sprite.Draw(_emptySlotTexture, checkRect, Color.White);
-
-            // Draw check mark if enabled
-            if (_notifyPartyMembers)
+            if (_checkboxTexture != null)
             {
-                // Simple filled inner square to indicate checked
-                Rectangle innerRect = new Rectangle(checkX + 2, checkY + 2, 8, 8);
-                sprite.Draw(_slotHighlightTexture, innerRect, Color.LimeGreen);
+                sprite.Draw(_checkboxTexture, new Vector2(checkX, checkY), Color.White);
+                return;
             }
 
-            // Draw label
-            sprite.DrawString(_font, "Notify party members",
-                new Vector2(checkX + 18, checkY - 1),
-                Color.LightGray);
+            Rectangle checkRect = new(checkX, checkY, CHECKBOX_SIZE, CHECKBOX_SIZE);
+            sprite.Draw(_textPixelTexture, checkRect, new Color(147, 221, 122, 220));
         }
 
         private void DrawDraggedSkill(SpriteBatch sprite)
@@ -867,8 +893,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 _editingSkillIds[i] = _macros[index].SkillIds[i];
             }
-
-            ShowSoftKeyboard();
+            UpdateOwnerButtonState();
         }
 
         /// <summary>
@@ -898,6 +923,7 @@ namespace HaCreator.MapSimulator.UI
 
             OnMacroSaved?.Invoke(_editingMacroIndex, _macros[_editingMacroIndex]);
             _validationMessage = string.Empty;
+            UpdateOwnerButtonState();
             return true;
         }
 
@@ -1104,20 +1130,9 @@ namespace HaCreator.MapSimulator.UI
             if (_selectedMacroIndex < 0 || _selectedMacroIndex >= MAX_MACRO_SLOTS)
                 return;
 
-            // Clear the macro
             _macros[_selectedMacroIndex] = CreateDefaultMacro(_selectedMacroIndex);
-
             OnMacroDeleted?.Invoke(_selectedMacroIndex);
-
-            // Reset editing state
-            _editingMacroIndex = -1;
-            _editingMacroName = "";
-            _notifyPartyMembers = false;
-            _validationMessage = string.Empty;
-            _editingCursorPosition = 0;
-            _caretBlinkTick = Environment.TickCount;
-            ClearCompositionText();
-            Array.Clear(_editingSkillIds, 0, SKILLS_PER_MACRO);
+            LoadMacroForEditing(_selectedMacroIndex);
         }
 
         /// <summary>
@@ -1217,19 +1232,17 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public int GetMacroIndexAtPosition(int mouseX, int mouseY)
         {
-            int relX = mouseX - Position.X - CONTENT_OFFSET_X;
-            int relY = mouseY - Position.Y - CONTENT_OFFSET_Y;
+            int relX = mouseX - Position.X - MACRO_SLOT_X;
+            int relY = mouseY - Position.Y - MACRO_SLOT_Y;
 
             if (relX < 0 || relX > MACRO_SLOT_WIDTH)
                 return -1;
             if (relY < 0)
                 return -1;
 
-            int slotHeight = MACRO_SLOT_HEIGHT + MACRO_SLOT_PADDING;
-            int index = relY / slotHeight;
+            int index = relY / MACRO_SLOT_SPACING;
 
-            // Check if actually within the slot (not in padding)
-            int slotY = index * slotHeight;
+            int slotY = index * MACRO_SLOT_SPACING;
             if (relY - slotY > MACRO_SLOT_HEIGHT)
                 return -1;
 
@@ -1247,11 +1260,10 @@ namespace HaCreator.MapSimulator.UI
             if (macroIndex < 0 || macroIndex >= MAX_MACRO_SLOTS)
                 return -1;
 
-            int slotX = Position.X + CONTENT_OFFSET_X;
-            int slotY = Position.Y + CONTENT_OFFSET_Y + macroIndex * (MACRO_SLOT_HEIGHT + MACRO_SLOT_PADDING);
-
-            int relX = mouseX - slotX - SKILL_SLOT_START_X;
-            int relY = mouseY - slotY - SKILL_SLOT_Y_OFFSET;
+            int skillRowX = Position.X + SKILL_SLOT_START_X;
+            int skillRowY = Position.Y + SKILL_SLOT_Y + (macroIndex * MACRO_SLOT_SPACING);
+            int relX = mouseX - skillRowX;
+            int relY = mouseY - skillRowY;
 
             if (relY < 0 || relY > SKILL_ICON_SIZE)
                 return -1;
@@ -1447,8 +1459,8 @@ namespace HaCreator.MapSimulator.UI
             int checkX = Position.X + CHECKBOX_X;
             int checkY = Position.Y + CHECKBOX_Y;
 
-            return mouseX >= checkX && mouseX <= checkX + 12 &&
-                   mouseY >= checkY && mouseY <= checkY + 12;
+            return mouseX >= checkX && mouseX <= checkX + CHECKBOX_SIZE &&
+                   mouseY >= checkY && mouseY <= checkY + CHECKBOX_SIZE;
         }
 
         private Rectangle GetNameFieldBounds()
@@ -1543,12 +1555,7 @@ namespace HaCreator.MapSimulator.UI
                         _softKeyboardShift = !_softKeyboardShift;
                         break;
                     case SkillMacroSoftKeyboardFunctionKey.Enter:
-                        if (SaveCurrentMacro())
-                        {
-                            HideSoftKeyboard();
-                            Hide();
-                            OnMacroWindowClosed?.Invoke();
-                        }
+                        SaveCurrentMacro();
                         break;
                     case SkillMacroSoftKeyboardFunctionKey.Backspace:
                         RemoveCharacterBeforeCursor();
@@ -1602,26 +1609,13 @@ namespace HaCreator.MapSimulator.UI
         #region Button Handlers
         private void OnOKClicked(UIObject sender)
         {
-            if (SaveCurrentMacro())
-            {
-                Hide();
-                OnMacroWindowClosed?.Invoke();
-            }
+            SaveCurrentMacro();
         }
 
         private void OnCancelClicked(UIObject sender)
         {
-            // Discard changes
-            _editingMacroIndex = -1;
-            _editingMacroName = "";
-            _notifyPartyMembers = false;
-            _validationMessage = string.Empty;
-            _editingCursorPosition = 0;
-            _caretBlinkTick = Environment.TickCount;
-            ClearCompositionText();
-            Array.Clear(_editingSkillIds, 0, SKILLS_PER_MACRO);
+            ResetEditingState();
             HideSoftKeyboard();
-
             Hide();
             OnMacroWindowClosed?.Invoke();
         }
@@ -1629,6 +1623,20 @@ namespace HaCreator.MapSimulator.UI
         private void OnDeleteClicked(UIObject sender)
         {
             DeleteSelectedMacro();
+        }
+
+        public override void Show()
+        {
+            ResetOwnerSession();
+            base.Show();
+        }
+
+        public override void Hide()
+        {
+            HideSoftKeyboard();
+            CancelDrag();
+            ClearCompositionText();
+            base.Hide();
         }
         #endregion
 
@@ -1923,7 +1931,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (_candidateListState.Vertical)
             {
-                int rowHeight = GetCandidateRowHeight();
+                int rowHeight = GetClientCandidateRowHeight();
                 int numberWidth = GetCandidateNumberWidth();
                 for (int i = 0; i < count; i++)
                 {
@@ -2000,10 +2008,10 @@ namespace HaCreator.MapSimulator.UI
                 width = widestEntryWidth + _font.LineSpacing + 7;
                 if (widestEntryWidth > 266)
                 {
-                    width = viewportWidth;
+                    width = Math.Min(viewportWidth, 800);
                 }
 
-                int rowHeight = GetCandidateRowHeight();
+                int rowHeight = GetClientCandidateRowHeight();
                 height = (GetCandidatePageSize() * rowHeight) + 3;
             }
             else
@@ -2020,7 +2028,7 @@ namespace HaCreator.MapSimulator.UI
             int y = origin.Y;
             if (y + height > viewportHeight)
             {
-                y = origin.Y - height - (_font.LineSpacing + 2);
+                y = origin.Y - height - 1;
             }
 
             y = Math.Clamp(y, 0, Math.Max(0, viewportHeight - height));
@@ -2030,14 +2038,14 @@ namespace HaCreator.MapSimulator.UI
         private Point ResolveCandidateWindowOrigin()
         {
             Rectangle bounds = GetNameFieldBounds();
-            int insertionIndex = Math.Clamp(_compositionInsertionIndex >= 0 ? _compositionInsertionIndex : _editingCursorPosition, 0, _editingMacroName.Length);
-            string committedPrefix = insertionIndex > 0 ? _editingMacroName[..insertionIndex] : string.Empty;
-            string compositionPrefix = ResolveCompositionAnchorPrefix();
+            bool useClauseAnchor = ShouldUseCompositionClauseAnchor();
+            string prefix = useClauseAnchor
+                ? ResolveCompositionAnchorPrefix()
+                : ResolveCandidateCaretPrefix();
 
-            float committedWidth = committedPrefix.Length > 0 ? _font.MeasureString(committedPrefix).X : 0f;
-            float compositionWidth = compositionPrefix.Length > 0 ? _font.MeasureString(compositionPrefix).X : 0f;
-            int x = bounds.X + NAME_FIELD_TEXT_INSET_X + (int)Math.Round(committedWidth + compositionWidth);
-            if (_candidateListState.Vertical)
+            float prefixWidth = prefix.Length > 0 ? _font.MeasureString(prefix).X : 0f;
+            int x = bounds.X + NAME_FIELD_TEXT_INSET_X + (int)Math.Round(prefixWidth);
+            if (_candidateListState.Vertical && useClauseAnchor)
             {
                 x -= _font.LineSpacing + 4;
             }
@@ -2049,13 +2057,17 @@ namespace HaCreator.MapSimulator.UI
         {
             if (string.IsNullOrEmpty(_compositionText))
             {
-                return string.Empty;
+                return ResolveCommittedInsertionPrefix();
             }
 
             int anchorIndex = ResolveCompositionAnchorIndex();
-            return anchorIndex <= 0
-                ? string.Empty
-                : _compositionText[..Math.Min(anchorIndex, _compositionText.Length)];
+            string committedPrefix = ResolveCommittedInsertionPrefix();
+            if (anchorIndex <= 0)
+            {
+                return committedPrefix;
+            }
+
+            return committedPrefix + _compositionText[..Math.Min(anchorIndex, _compositionText.Length)];
         }
 
         private int ResolveCompositionAnchorIndex()
@@ -2106,9 +2118,9 @@ namespace HaCreator.MapSimulator.UI
             return Math.Max(1, _candidateListState.PageSize > 0 ? _candidateListState.PageSize : GetVisibleCandidateCount());
         }
 
-        private int GetCandidateRowHeight()
+        private int GetClientCandidateRowHeight()
         {
-            return Math.Max(_font.LineSpacing + 1, 16);
+            return _font.LineSpacing + 1;
         }
 
         private int GetHorizontalCandidateCellWidth()
@@ -2148,6 +2160,50 @@ namespace HaCreator.MapSimulator.UI
         {
             int widestIndex = Math.Max(1, GetVisibleCandidateCount());
             return (int)Math.Ceiling(_font.MeasureString($"{widestIndex}.").X);
+        }
+
+        private bool ShouldUseCompositionClauseAnchor()
+        {
+            return !string.IsNullOrEmpty(_compositionText)
+                && _compositionClauseOffsets.Count >= 2
+                && _compositionCursorPosition >= 0;
+        }
+
+        private string ResolveCandidateCaretPrefix()
+        {
+            string committedPrefix = ResolveCommittedInsertionPrefix();
+            if (string.IsNullOrEmpty(_compositionText))
+            {
+                return committedPrefix;
+            }
+
+            string compositionCaretPrefix = ResolveCompositionCaretPrefix();
+            return compositionCaretPrefix.Length == 0
+                ? committedPrefix
+                : committedPrefix + compositionCaretPrefix;
+        }
+
+        private string ResolveCommittedInsertionPrefix()
+        {
+            int insertionIndex = Math.Clamp(_compositionInsertionIndex >= 0 ? _compositionInsertionIndex : _editingCursorPosition, 0, _editingMacroName.Length);
+            return insertionIndex <= 0
+                ? string.Empty
+                : _editingMacroName[..insertionIndex];
+        }
+
+        private string ResolveCompositionCaretPrefix()
+        {
+            if (string.IsNullOrEmpty(_compositionText))
+            {
+                return string.Empty;
+            }
+
+            int caretIndex = _compositionCursorPosition >= 0
+                ? Math.Clamp(_compositionCursorPosition, 0, _compositionText.Length)
+                : _compositionText.Length;
+            return caretIndex <= 0
+                ? string.Empty
+                : _compositionText[..caretIndex];
         }
 
         private static IReadOnlyList<int> ClampClauseOffsets(IReadOnlyList<int> offsets, int maxLength)

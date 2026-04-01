@@ -482,27 +482,7 @@ namespace HaCreator.MapSimulator.Character
 
             Combat.OnMobSkillHitPlayer = (x, y, skillId, skillLevel) =>
             {
-                if (_combatEffects == null || _mobSkillEffectLoader == null)
-                {
-                    return;
-                }
-
-                var effectData = _mobSkillEffectLoader.LoadMobSkillEffect(skillId, skillLevel);
-                if (effectData?.HasAffectedEffect != true)
-                {
-                    return;
-                }
-
-                int duration = effectData.Time > 0 ? effectData.Time : effectData.AffectedDuration;
-                _combatEffects.AddMobSkillHitEffect(
-                    x,
-                    y,
-                    effectData.AffectedFrames,
-                    skillId,
-                    skillLevel,
-                    Environment.TickCount,
-                    effectData.AffectedRepeat,
-                    duration);
+                PlayMobSkillHitEffect(skillId, skillLevel, Environment.TickCount, x, y);
             };
 
             Combat.OnMobSkillStatusApplied = (skillId, skillLevel, currentTime, sourceX, applyRuntimeStatus) =>
@@ -593,9 +573,15 @@ namespace HaCreator.MapSimulator.Character
             }
 
             MobSkillRuntimeData runtimeData = _mobSkillRuntimeResolver?.Invoke(skillId, Math.Max(1, skillLevel));
+            bool runtimeApplied = !applyRuntimeStatus;
             if (applyRuntimeStatus)
             {
-                TryApplyMobSkillStatus(skillId, runtimeData, currentTime, sourceX);
+                runtimeApplied = TryApplyMobSkillStatus(skillId, runtimeData, currentTime, sourceX);
+            }
+
+            if (!runtimeApplied)
+            {
+                return;
             }
 
             if (!PlayerSkillBlockingStatusMapper.TryMapMobSkill(skillId, out PlayerSkillBlockingStatus status))
@@ -611,6 +597,41 @@ namespace HaCreator.MapSimulator.Character
             {
                 Player.ApplySkillBlockingStatus(status, durationMs, currentTime);
             }
+        }
+
+        internal void PlayMobSkillHitEffect(int skillId, int skillLevel, int currentTime)
+        {
+            if (Player == null)
+            {
+                return;
+            }
+
+            PlayMobSkillHitEffect(skillId, skillLevel, currentTime, Player.X, Player.Y);
+        }
+
+        private void PlayMobSkillHitEffect(int skillId, int skillLevel, int currentTime, float x, float y)
+        {
+            if (_combatEffects == null || _mobSkillEffectLoader == null)
+            {
+                return;
+            }
+
+            var effectData = _mobSkillEffectLoader.LoadMobSkillEffect(skillId, skillLevel);
+            if (effectData?.HasAffectedEffect != true)
+            {
+                return;
+            }
+
+            int duration = effectData.Time > 0 ? effectData.Time : effectData.AffectedDuration;
+            _combatEffects.AddMobSkillHitEffect(
+                x,
+                y,
+                effectData.AffectedFrames,
+                skillId,
+                skillLevel,
+                currentTime,
+                effectData.AffectedRepeat,
+                duration);
         }
 
         /// <summary>
@@ -908,6 +929,11 @@ namespace HaCreator.MapSimulator.Character
         public bool TryExecutePetCommand(string message, int currentTime)
         {
             return Pets.TryExecuteCommand(message, currentTime);
+        }
+
+        public bool TryTriggerSpecialistPetChatFeedback(string message, int currentTime)
+        {
+            return Pets.TryTriggerSpecialistChatFeedback(message, currentTime);
         }
 
         private bool IsDamageBlockedByAffectedArea(int currentTime)

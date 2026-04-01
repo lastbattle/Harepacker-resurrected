@@ -13,6 +13,7 @@ namespace HaCreator.MapSimulator.UI
     internal sealed class EngagementProposalWindow : UIWindowBase
     {
         private const int FrameWidth = 260;
+        private const int TitleTop = 2;
         private const int TextTop = 20;
         private const int TextCenterWidth = 234;
         private const int TextWrapWidth = 200;
@@ -124,6 +125,7 @@ namespace HaCreator.MapSimulator.UI
             int TickCount)
         {
             DrawFrame(sprite);
+            DrawTitle(sprite);
             if (_font == null)
             {
                 return;
@@ -181,6 +183,19 @@ namespace HaCreator.MapSimulator.UI
             }
 
             DrawHorizontalBand(sprite, _assets.Bottom, Position.X, Position.Y + _frameHeight - _assets.BottomHeight, _assets.BottomHeight);
+        }
+
+        private void DrawTitle(SpriteBatch sprite)
+        {
+            Texture2D titleTexture = _assets.Title;
+            if (titleTexture == null)
+            {
+                return;
+            }
+
+            int drawX = Position.X + Math.Max(0, (FrameWidth - titleTexture.Width) / 2);
+            int drawY = Position.Y + TitleTop;
+            sprite.Draw(titleTexture, new Rectangle(drawX, drawY, titleTexture.Width, titleTexture.Height), Color.White);
         }
 
         private void DrawHorizontalBand(SpriteBatch sprite, EngagementProposalBand band, int x, int y, int drawHeight)
@@ -311,13 +326,15 @@ namespace HaCreator.MapSimulator.UI
 
     internal sealed class EngagementProposalWindowAssets
     {
-        internal EngagementProposalWindowAssets(EngagementProposalBand top, EngagementProposalBand center, EngagementProposalBand bottom)
+        internal EngagementProposalWindowAssets(Texture2D title, EngagementProposalBand top, EngagementProposalBand center, EngagementProposalBand bottom)
         {
+            Title = title;
             Top = top ?? throw new ArgumentNullException(nameof(top));
             Center = center ?? throw new ArgumentNullException(nameof(center));
             Bottom = bottom ?? throw new ArgumentNullException(nameof(bottom));
         }
 
+        internal Texture2D Title { get; }
         internal EngagementProposalBand Top { get; }
         internal EngagementProposalBand Center { get; }
         internal EngagementProposalBand Bottom { get; }

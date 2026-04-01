@@ -588,35 +588,126 @@ namespace HaCreator.MapSimulator.Loaders
             WzImageProperty commonNode = skillEntry["common"];
             WzImageProperty infoNode = skillEntry["info"];
             var builder = new StringBuilder();
+            var appendedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            AppendPercentStat(builder, "Damage", skillEntry, levelNode, commonNode, infoNode, level, "damage");
-            AppendIntStat(builder, "Attack Count", skillEntry, levelNode, commonNode, infoNode, level, "attackCount");
-            AppendIntStat(builder, "Mob Count", skillEntry, levelNode, commonNode, infoNode, level, "mobCount");
-            AppendIntStat(builder, "MP Cost", skillEntry, levelNode, commonNode, infoNode, level, "mpCon");
-            AppendIntStat(builder, "HP Cost", skillEntry, levelNode, commonNode, infoNode, level, "hpCon");
-            AppendIntStat(builder, "Cooldown", skillEntry, levelNode, commonNode, infoNode, level, "cooltime", value => $"{value} sec");
-            AppendIntStat(builder, "Duration", skillEntry, levelNode, commonNode, infoNode, level, "time", value => $"{value} sec");
-            AppendRangeStat(builder, levelNode, commonNode, infoNode, level);
-            AppendPercentStat(builder, "Mastery", skillEntry, levelNode, commonNode, infoNode, level, "mastery");
-            AppendPercentStat(builder, "Critical Rate", skillEntry, levelNode, commonNode, infoNode, level, "cr");
-            AppendPercentStat(builder, "Chance", skillEntry, levelNode, commonNode, infoNode, level, "prop");
-            AppendIntStat(builder, "PAD", skillEntry, levelNode, commonNode, infoNode, level, "pad", FormatSignedValue);
-            AppendIntStat(builder, "MAD", skillEntry, levelNode, commonNode, infoNode, level, "mad", FormatSignedValue);
-            AppendIntStat(builder, "PDD", skillEntry, levelNode, commonNode, infoNode, level, "pdd", FormatSignedValue);
-            AppendIntStat(builder, "MDD", skillEntry, levelNode, commonNode, infoNode, level, "mdd", FormatSignedValue);
-            AppendIntStat(builder, "ACC", skillEntry, levelNode, commonNode, infoNode, level, "acc", FormatSignedValue);
-            AppendIntStat(builder, "EVA", skillEntry, levelNode, commonNode, infoNode, level, "eva", FormatSignedValue);
-            AppendIntStat(builder, "Speed", skillEntry, levelNode, commonNode, infoNode, level, "speed", FormatSignedValue);
-            AppendIntStat(builder, "Jump", skillEntry, levelNode, commonNode, infoNode, level, "jump", FormatSignedValue);
-            AppendIntStat(builder, "HP Recovery", skillEntry, levelNode, commonNode, infoNode, level, "hp");
-            AppendIntStat(builder, "MP Recovery", skillEntry, levelNode, commonNode, infoNode, level, "mp");
-            AppendIntStat(builder, "Bullet Count", skillEntry, levelNode, commonNode, infoNode, level, "bulletCount");
-            AppendIntStat(builder, "Bullet Speed", skillEntry, levelNode, commonNode, infoNode, level, "bulletSpeed");
-            AppendIntStat(builder, "X", skillEntry, levelNode, commonNode, infoNode, level, "x");
-            AppendIntStat(builder, "Y", skillEntry, levelNode, commonNode, infoNode, level, "y");
-            AppendIntStat(builder, "Z", skillEntry, levelNode, commonNode, infoNode, level, "z");
+            AppendFallbackStatsFromNode(builder, skillEntry, levelNode, commonNode, infoNode, level, levelNode, appendedKeys);
+            AppendFallbackStatsFromNode(builder, skillEntry, levelNode, commonNode, infoNode, level, commonNode, appendedKeys);
+            AppendFallbackStatsFromNode(builder, skillEntry, levelNode, commonNode, infoNode, level, infoNode, appendedKeys);
+            AppendFallbackStatsInDefaultOrder(builder, skillEntry, levelNode, commonNode, infoNode, level, appendedKeys);
 
             return builder.ToString().Trim();
+        }
+
+        private static void AppendFallbackStatsFromNode(
+            StringBuilder builder,
+            WzSubProperty skillEntry,
+            WzImageProperty levelNode,
+            WzImageProperty commonNode,
+            WzImageProperty infoNode,
+            int level,
+            WzImageProperty sourceNode,
+            ISet<string> appendedKeys)
+        {
+            if (sourceNode == null || appendedKeys == null)
+                return;
+
+            foreach (WzImageProperty property in sourceNode.WzProperties)
+            {
+                if (property == null)
+                    continue;
+
+                string propertyName = property.Name;
+                if (string.IsNullOrWhiteSpace(propertyName))
+                    continue;
+
+                string statKey = ResolveFallbackStatKey(propertyName);
+                if (string.IsNullOrWhiteSpace(statKey) || appendedKeys.Contains(statKey))
+                    continue;
+
+                if (!TryAppendFallbackStat(builder, skillEntry, levelNode, commonNode, infoNode, level, statKey))
+                    continue;
+
+                appendedKeys.Add(statKey);
+            }
+        }
+
+        private static void AppendFallbackStatsInDefaultOrder(
+            StringBuilder builder,
+            WzSubProperty skillEntry,
+            WzImageProperty levelNode,
+            WzImageProperty commonNode,
+            WzImageProperty infoNode,
+            int level,
+            ISet<string> appendedKeys)
+        {
+            foreach (string statKey in FallbackSkillStatOrder)
+            {
+                if (appendedKeys.Contains(statKey))
+                    continue;
+
+                if (!TryAppendFallbackStat(builder, skillEntry, levelNode, commonNode, infoNode, level, statKey))
+                    continue;
+
+                appendedKeys.Add(statKey);
+            }
+        }
+
+        private static string ResolveFallbackStatKey(string propertyName)
+        {
+            if (string.IsNullOrWhiteSpace(propertyName))
+                return null;
+
+            if (string.Equals(propertyName, "lt", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(propertyName, "rb", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(propertyName, "range", StringComparison.OrdinalIgnoreCase))
+            {
+                return "range";
+            }
+
+            return FallbackSkillStatDefinitions.ContainsKey(propertyName)
+                ? propertyName
+                : null;
+        }
+
+        private static bool TryAppendFallbackStat(
+            StringBuilder builder,
+            WzSubProperty skillEntry,
+            WzImageProperty levelNode,
+            WzImageProperty commonNode,
+            WzImageProperty infoNode,
+            int level,
+            string statKey)
+        {
+            if (string.Equals(statKey, "range", StringComparison.OrdinalIgnoreCase))
+            {
+                int originalLength = builder.Length;
+                AppendRangeStat(builder, levelNode, commonNode, infoNode, level);
+                return builder.Length != originalLength;
+            }
+
+            if (!FallbackSkillStatDefinitions.TryGetValue(statKey, out FallbackSkillStatDefinition definition))
+                return false;
+
+            int originalBuilderLength = builder.Length;
+            if (definition.IsPercent)
+            {
+                AppendPercentStat(builder, definition.Label, skillEntry, levelNode, commonNode, infoNode, level, definition.PropertyName);
+            }
+            else
+            {
+                AppendIntStat(
+                    builder,
+                    definition.Label,
+                    skillEntry,
+                    levelNode,
+                    commonNode,
+                    infoNode,
+                    level,
+                    definition.PropertyName,
+                    definition.Formatter);
+            }
+
+            return builder.Length != originalBuilderLength;
         }
 
         private static void AppendPercentStat(
@@ -778,6 +869,86 @@ namespace HaCreator.MapSimulator.Loaders
                 ? $"+{value.ToString(CultureInfo.InvariantCulture)}"
                 : value.ToString(CultureInfo.InvariantCulture);
         }
+
+        private sealed class FallbackSkillStatDefinition
+        {
+            public FallbackSkillStatDefinition(
+                string propertyName,
+                string label,
+                bool isPercent = false,
+                Func<int, string> formatter = null)
+            {
+                PropertyName = propertyName;
+                Label = label;
+                IsPercent = isPercent;
+                Formatter = formatter;
+            }
+
+            public string PropertyName { get; }
+            public string Label { get; }
+            public bool IsPercent { get; }
+            public Func<int, string> Formatter { get; }
+        }
+
+        private static readonly string[] FallbackSkillStatOrder =
+        {
+            "damage",
+            "attackCount",
+            "mobCount",
+            "mpCon",
+            "hpCon",
+            "cooltime",
+            "time",
+            "range",
+            "mastery",
+            "cr",
+            "prop",
+            "pad",
+            "mad",
+            "pdd",
+            "mdd",
+            "acc",
+            "eva",
+            "speed",
+            "jump",
+            "hp",
+            "mp",
+            "bulletCount",
+            "bulletSpeed",
+            "x",
+            "y",
+            "z"
+        };
+
+        private static readonly IReadOnlyDictionary<string, FallbackSkillStatDefinition> FallbackSkillStatDefinitions =
+            new Dictionary<string, FallbackSkillStatDefinition>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["damage"] = new("damage", "Damage", isPercent: true),
+                ["attackCount"] = new("attackCount", "Attack Count"),
+                ["mobCount"] = new("mobCount", "Mob Count"),
+                ["mpCon"] = new("mpCon", "MP Cost"),
+                ["hpCon"] = new("hpCon", "HP Cost"),
+                ["cooltime"] = new("cooltime", "Cooldown", formatter: value => $"{value} sec"),
+                ["time"] = new("time", "Duration", formatter: value => $"{value} sec"),
+                ["mastery"] = new("mastery", "Mastery", isPercent: true),
+                ["cr"] = new("cr", "Critical Rate", isPercent: true),
+                ["prop"] = new("prop", "Chance", isPercent: true),
+                ["pad"] = new("pad", "PAD", formatter: FormatSignedValue),
+                ["mad"] = new("mad", "MAD", formatter: FormatSignedValue),
+                ["pdd"] = new("pdd", "PDD", formatter: FormatSignedValue),
+                ["mdd"] = new("mdd", "MDD", formatter: FormatSignedValue),
+                ["acc"] = new("acc", "ACC", formatter: FormatSignedValue),
+                ["eva"] = new("eva", "EVA", formatter: FormatSignedValue),
+                ["speed"] = new("speed", "Speed", formatter: FormatSignedValue),
+                ["jump"] = new("jump", "Jump", formatter: FormatSignedValue),
+                ["hp"] = new("hp", "HP Recovery"),
+                ["mp"] = new("mp", "MP Recovery"),
+                ["bulletCount"] = new("bulletCount", "Bullet Count"),
+                ["bulletSpeed"] = new("bulletSpeed", "Bullet Speed"),
+                ["x"] = new("x", "X"),
+                ["y"] = new("y", "Y"),
+                ["z"] = new("z", "Z")
+            };
 
         private static bool TryGetNumericPropertyValue(WzImageProperty node, string name, int formulaX, out int value)
         {

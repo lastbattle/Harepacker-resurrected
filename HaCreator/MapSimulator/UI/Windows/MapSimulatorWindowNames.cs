@@ -58,6 +58,7 @@ namespace HaCreator.MapSimulator.UI
         public const string Messenger = "Messenger";
         public const string MapleTv = "MapleTv";
         public const string EngagementProposal = "EngagementProposal";
+        public const string WeddingWishList = "WeddingWishList";
         public const string WeddingInvitation = "WeddingInvitation";
         public const string MemoMailbox = "MemoMailbox";
         public const string MemoSend = "MemoSend";
@@ -72,5 +73,6 @@ namespace HaCreator.MapSimulator.UI
         public const string PersonalShop = "PersonalShop";
         public const string EntrustedShop = "EntrustedShop";
         public const string TradingRoom = "TradingRoom";
+        public const string CashTradingRoom = "CashTradingRoom";
     }
 }

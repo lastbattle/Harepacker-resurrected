@@ -1,6 +1,7 @@
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using System;
+using System.Buffers;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
@@ -67,6 +68,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const int BossHpBarWidth = 288;
         private const int BossHpBarHeight = 16;
         private const int BossHpFramePadding = 4;
+        private static readonly SearchValues<char> SwindleFilteredCharacters = SearchValues.Create("`'\"!?,./\\|[]{}()+*=~:;<>");
 
         private readonly Dictionary<string, bool> _obstacleStates = new(StringComparer.OrdinalIgnoreCase);
         private Texture2D _pixelTexture;
@@ -1005,8 +1007,8 @@ namespace HaCreator.MapSimulator.Interaction
             out string warningText)
         {
             warningText = null;
-            string normalized = NormalizeSwindleText(message);
-            if (string.IsNullOrWhiteSpace(normalized)
+            string filteredMessage = FilterSwindleText(message);
+            if (string.IsNullOrWhiteSpace(filteredMessage)
                 || warningEntries == null
                 || warningEntries.Count == 0)
             {
@@ -1029,7 +1031,7 @@ namespace HaCreator.MapSimulator.Interaction
                         continue;
                     }
 
-                    if (normalized.Contains(keyword, StringComparison.Ordinal))
+                    if (ContainsSwindleKeyword(filteredMessage, keyword))
                     {
                         warningText = entry.WarningTexts[Random.Shared.Next(entry.WarningTexts.Count)];
                         return !string.IsNullOrWhiteSpace(warningText);
@@ -1040,7 +1042,18 @@ namespace HaCreator.MapSimulator.Interaction
             return false;
         }
 
-        private static string NormalizeSwindleText(string message)
+        private static bool ContainsSwindleKeyword(string filteredMessage, string keyword)
+        {
+            if (string.IsNullOrEmpty(filteredMessage)
+                || string.IsNullOrWhiteSpace(keyword))
+            {
+                return false;
+            }
+
+            return filteredMessage.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static string FilterSwindleText(string message)
         {
             if (string.IsNullOrWhiteSpace(message))
             {
@@ -1050,21 +1063,63 @@ namespace HaCreator.MapSimulator.Interaction
             StringBuilder builder = new(message.Length);
             foreach (char ch in message)
             {
-                if (char.IsLetterOrDigit(ch))
+                if (ch < 0x20)
                 {
-                    builder.Append(char.ToLowerInvariant(ch));
+                    continue;
                 }
-                else if (char.IsWhiteSpace(ch) || ch is '.' or '@' or '-' or '_')
+
+                if (SwindleFilteredCharacters.Contains(ch))
                 {
-                    builder.Append(ch == '@' ? ' ' : char.ToLowerInvariant(ch));
+                    continue;
                 }
-                else
-                {
-                    builder.Append(' ');
-                }
+
+                builder.Append(ch);
             }
 
             return builder.ToString();
+        }
+
+        internal static string BuildSwindleWarningForTest(
+            string message,
+            IReadOnlyList<PacketFieldSwindleWarningEntry> warningEntries)
+        {
+            return TryBuildSwindleWarning(message, warningEntries, out string warningText)
+                ? warningText
+                : null;
+        }
+
+        internal static string FilterSwindleTextForTest(string message)
+        {
+            return FilterSwindleText(message);
+        }
+
+        internal static bool ContainsSwindleKeywordForTest(string filteredMessage, string keyword)
+        {
+            return ContainsSwindleKeyword(filteredMessage, keyword);
+        }
+
+        internal static IReadOnlyList<PacketFieldSwindleWarningEntry> CreateSwindleWarningEntriesForTest(
+            params (int GroupId, string[] Keywords, string[] Warnings)[] entries)
+        {
+            if (entries == null || entries.Length == 0)
+            {
+                return Array.Empty<PacketFieldSwindleWarningEntry>();
+            }
+
+            List<PacketFieldSwindleWarningEntry> warningEntries = new(entries.Length);
+            foreach ((int groupId, string[] keywords, string[] warnings) in entries)
+            {
+                if (groupId < 0
+                    || keywords == null
+                    || warnings == null)
+                {
+                    continue;
+                }
+
+                warningEntries.Add(new PacketFieldSwindleWarningEntry(groupId, keywords, warnings));
+            }
+
+            return warningEntries;
         }
 
         private void DrawBossHp(SpriteBatch spriteBatch, SpriteFont font, int renderWidth, int currentTick)

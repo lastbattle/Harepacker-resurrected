@@ -65,7 +65,8 @@ namespace HaCreator.MapSimulator.Fields
         private const int BatteryFillLength = 22;
         private const int DefaultBatteryCapacity = 100;
         private const int BossHudX = 0;
-        private const int BossHudY = 40;
+        private const int BossPointHudY = 40;
+        private const int BossGaugeHudY = 62;
         private const int BossGaugeBackgrdX = 54;
         private const int BossGaugeTextY = 7;
         private const int BossGaugeIconX = 382;
@@ -839,13 +840,13 @@ namespace HaCreator.MapSimulator.Fields
         {
             if (_bossGaugeBackground.IsLoaded)
             {
-                DrawSpriteCopy(spriteBatch, _bossGaugeBackground, BossHudX + BossGaugeBackgrdX, BossHudY);
+                DrawSpriteCopy(spriteBatch, _bossGaugeBackground, BossHudX + BossGaugeBackgrdX, BossGaugeHudY);
             }
 
             if (_bossPointBoard.IsLoaded)
             {
-                DrawSpriteCopy(spriteBatch, _bossPointBoard, BossHudX, BossHudY);
-                DrawNumberCopy(spriteBatch, _fieldPointDigits, _point, BossHudX + FieldPointDrawX, BossHudY + FieldPointDrawY);
+                DrawSpriteCopy(spriteBatch, _bossPointBoard, BossHudX, BossPointHudY);
+                DrawNumberCopy(spriteBatch, _fieldPointDigits, _point, BossHudX + FieldPointDrawX, BossPointHudY + FieldPointDrawY);
             }
 
             if (_bossGaugeFillPixel.IsLoaded)
@@ -854,37 +855,37 @@ namespace HaCreator.MapSimulator.Fields
                 int blueRemaining = GetRemainingGaugeWidth(_blueDamage);
                 for (int x = 0; x < redRemaining; x++)
                 {
-                    DrawSprite(spriteBatch, _bossGaugeFillPixel, BossHudX + BossGaugeFillX + x, BossHudY + BossGaugeFillY);
+                    DrawSprite(spriteBatch, _bossGaugeFillPixel, BossHudX + BossGaugeFillX + x, BossGaugeHudY + BossGaugeFillY);
                 }
 
                 for (int x = 0; x < blueRemaining; x++)
                 {
-                    DrawSprite(spriteBatch, _bossGaugeFillPixel, BossHudX + BossGaugeFillX + BossGaugeLength - 1 - x, BossHudY + BossGaugeFillY);
+                    DrawSprite(spriteBatch, _bossGaugeFillPixel, BossHudX + BossGaugeFillX + BossGaugeLength - 1 - x, BossGaugeHudY + BossGaugeFillY);
                 }
             }
 
             if (_bossGaugeText.IsLoaded)
             {
-                DrawSpriteCopy(spriteBatch, _bossGaugeText, BossHudX, BossHudY + BossGaugeTextY);
+                DrawSpriteCopy(spriteBatch, _bossGaugeText, BossHudX, BossGaugeHudY + BossGaugeTextY);
             }
 
-            DrawBossChargeMeter(spriteBatch, pixelTexture, BossHudX + BossChargeOriginX, BossHudY + BossChargeRedY, _redCharge, new Color(217, 88, 82), alignRight: false);
-            DrawBossChargeMeter(spriteBatch, pixelTexture, BossHudX + BossChargeOriginX, BossHudY + BossChargeBlueY, _blueCharge, new Color(94, 169, 255), alignRight: true);
+            DrawBossChargeMeter(spriteBatch, pixelTexture, BossHudX + BossChargeOriginX, BossGaugeHudY + BossChargeRedY, _redCharge, new Color(217, 88, 82), alignRight: false);
+            DrawBossChargeMeter(spriteBatch, pixelTexture, BossHudX + BossChargeOriginX, BossGaugeHudY + BossChargeBlueY, _blueCharge, new Color(94, 169, 255), alignRight: true);
 
             if (_bossGaugeMobIcon.IsLoaded)
             {
-                DrawSpriteCopy(spriteBatch, _bossGaugeMobIcon, BossHudX + BossGaugeIconX, BossHudY + BossGaugeIconY);
+                DrawSpriteCopy(spriteBatch, _bossGaugeMobIcon, BossHudX + BossGaugeIconX, BossGaugeHudY + BossGaugeIconY);
             }
 
             if (!_bossGaugeBackground.IsLoaded && pixelTexture != null)
             {
-                spriteBatch.Draw(pixelTexture, new Rectangle(0, BossHudY, 436, 48), new Color(14, 16, 20, 220));
+                spriteBatch.Draw(pixelTexture, new Rectangle(0, BossGaugeHudY, 436, 48), new Color(14, 16, 20, 220));
             }
 
             if (font != null && !_bossGaugeText.IsLoaded)
             {
-                DrawOutlinedString(spriteBatch, font, $"RED {_redDamage}", new Vector2(8, BossHudY + 10), Color.IndianRed);
-                DrawOutlinedString(spriteBatch, font, $"BLUE {_blueDamage}", new Vector2(270, BossHudY + 10), Color.LightSkyBlue);
+                DrawOutlinedString(spriteBatch, font, $"RED {_redDamage}", new Vector2(8, BossGaugeHudY + 10), Color.IndianRed);
+                DrawOutlinedString(spriteBatch, font, $"BLUE {_blueDamage}", new Vector2(270, BossGaugeHudY + 10), Color.LightSkyBlue);
             }
         }
 
@@ -1308,6 +1309,8 @@ namespace HaCreator.MapSimulator.Fields
         internal int GetOtherStateX() => StateOtherStageBaseX + ((ClampStage(_otherStage) - 1) * StateStageStepX);
         internal int GetMineStateY() => StateMineY;
         internal int GetOtherStateY() => StateOtherY;
+        internal int GetBossPointHudY() => BossPointHudY;
+        internal int GetBossGaugeHudY() => BossGaugeHudY;
         private static int ClampStage(int stage) => Math.Clamp(stage, 1, 5);
 
         private static bool TryInferModeFromScripts(string onUserEnter, string onFirstUserEnter, out PartyRaidFieldMode mode)

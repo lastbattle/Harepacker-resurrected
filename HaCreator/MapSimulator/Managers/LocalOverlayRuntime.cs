@@ -154,7 +154,13 @@ namespace HaCreator.MapSimulator.Managers
 
         public void SetFieldHazardTransportDetail(string detail, int currentTickCount)
         {
-            LastFieldHazardTransportDetail = detail ?? string.Empty;
+            string normalizedDetail = detail ?? string.Empty;
+            if (string.Equals(LastFieldHazardTransportDetail, normalizedDetail, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            LastFieldHazardTransportDetail = normalizedDetail;
             if (!string.IsNullOrWhiteSpace(LastFieldHazardTransportDetail))
             {
                 LastFieldHazardNoticeExpiresAt = Math.Max(LastFieldHazardNoticeExpiresAt, currentTickCount + 1400);

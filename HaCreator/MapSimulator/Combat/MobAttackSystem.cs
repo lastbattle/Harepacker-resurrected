@@ -2844,23 +2844,33 @@ namespace HaCreator.MapSimulator.Combat
 
         private bool ShouldUseSourceAnchoredEffects(MobItem mobItem, MobAttackEntry attack)
         {
+            List<IDXObject> effectFrames = mobItem.GetAttackEffectFrames(attack.AnimationName);
+            return ShouldUseSourceAnchoredEffects(
+                attack,
+                mobItem.GetAttackProjectileFrames(attack?.AnimationName)?.Count > 0,
+                effectFrames?.Count ?? 0,
+                effectFrames != null && effectFrames.Count > 0 ? effectFrames[0].Width : 0,
+                mobItem.GetAttackExtraEffects(attack?.AnimationName)?.Count ?? 0);
+        }
+
+        internal static bool ShouldUseSourceAnchoredEffects(
+            MobAttackEntry attack,
+            bool hasProjectileFrames,
+            int effectFrameCount,
+            int effectFrameWidth,
+            int extraEffectCount)
+        {
             if (attack == null || !attack.IsRanged || attack.IsAreaOfEffect)
             {
                 return false;
             }
 
-            if (mobItem.GetAttackProjectileFrames(attack.AnimationName)?.Count > 0)
+            if (hasProjectileFrames || effectFrameCount <= 0)
             {
                 return false;
             }
 
-            List<IDXObject> effectFrames = mobItem.GetAttackEffectFrames(attack.AnimationName);
-            if (effectFrames == null || effectFrames.Count == 0)
-            {
-                return false;
-            }
-
-            if (mobItem.GetAttackExtraEffects(attack.AnimationName)?.Count > 0)
+            if (attack.EffectFacingAttach || extraEffectCount > 0)
             {
                 return true;
             }
@@ -2871,7 +2881,7 @@ namespace HaCreator.MapSimulator.Combat
             }
 
             int rangeWidth = Math.Abs(attack.RangeRight - attack.RangeLeft);
-            return rangeWidth > effectFrames[0].Width + 80;
+            return rangeWidth > effectFrameWidth + 80;
         }
 
         private Vector2 GetSourceEffectPosition(MobItem mobItem, MobAttackEntry attack, int currentTime, bool faceLeft)

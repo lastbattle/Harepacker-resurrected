@@ -115,6 +115,7 @@ namespace HaCreator.MapSimulator.UI
             public EquipmentChangeRequestKind Kind { get; init; }
             public int RequestId { get; init; }
             public int RequestedAtTick { get; init; }
+            public int OwnerSessionId { get; init; }
             public InventoryType SourceInventoryType { get; init; }
             public int SourceInventoryIndex { get; init; } = -1;
             public int ItemId { get; init; }
@@ -180,20 +181,32 @@ namespace HaCreator.MapSimulator.UI
                 string fallbackLabel,
                 string valueText,
                 Color valueColor,
-                IReadOnlyList<Texture2D> valueTextures = null)
+                IReadOnlyList<TooltipValueSegment> valueSegments = null)
             {
                 LabelTexture = labelTexture;
                 FallbackLabel = fallbackLabel;
                 ValueText = valueText;
                 ValueColor = valueColor;
-                ValueTextures = valueTextures;
+                ValueSegments = valueSegments;
             }
 
             public Texture2D LabelTexture { get; }
             public string FallbackLabel { get; }
             public string ValueText { get; }
             public Color ValueColor { get; }
-            public IReadOnlyList<Texture2D> ValueTextures { get; }
+            public IReadOnlyList<TooltipValueSegment> ValueSegments { get; }
+        }
+
+        private readonly struct TooltipValueSegment
+        {
+            public TooltipValueSegment(Texture2D texture, string text = null)
+            {
+                Texture = texture;
+                Text = text;
+            }
+
+            public Texture2D Texture { get; }
+            public string Text { get; }
         }
 
         #region Fields
@@ -264,6 +277,7 @@ namespace HaCreator.MapSimulator.UI
         private PendingEquipmentChange _pendingEquipmentChange;
         private PendingCompanionInventoryChange _pendingCompanionInventoryChange;
         private int _nextCompanionInventoryRequestId = 1;
+        private int _equipmentRequestSessionId = 1;
         #endregion
 
         #region Properties
@@ -273,11 +287,19 @@ namespace HaCreator.MapSimulator.UI
         public Action<string> EquipmentEquipBlocked { get; set; }
         public Func<EquipmentChangeRequest, EquipmentChangeResult> EquipmentChangeRequested { get; set; }
         public Func<EquipmentChangeRequest, EquipmentChangeSubmission> EquipmentChangeSubmitted { get; set; }
-        public Func<int, EquipmentChangeResult> EquipmentChangeResultRequested { get; set; }
+        public Func<EquipmentChangeResolutionQuery, EquipmentChangeResult> EquipmentChangeResultRequested { get; set; }
         public override CharacterBuild CharacterBuild
         {
             get => _characterBuild;
-            set => _characterBuild = value;
+            set
+            {
+                if (!ReferenceEquals(_characterBuild, value))
+                {
+                    _equipmentRequestSessionId = NextEquipmentRequestSessionId(_equipmentRequestSessionId);
+                }
+
+                _characterBuild = value;
+            }
         }
         public bool IsDraggingItem => _isDraggingItem;
         public bool HasDraggedCharacterItem => _isDraggingItem && _draggedPart != null && _draggedCompanionKind == CompanionDragKind.None;
@@ -720,7 +742,12 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            EquipmentChangeResult result = EquipmentChangeResultRequested.Invoke(_pendingEquipmentChange.RequestId);
+            EquipmentChangeResult result = EquipmentChangeResultRequested.Invoke(new EquipmentChangeResolutionQuery
+            {
+                RequestId = _pendingEquipmentChange.RequestId,
+                OwnerSessionId = _equipmentRequestSessionId,
+                RequestedAtTick = _pendingEquipmentChange.RequestedAtTick
+            });
             if (result == null || result.IsPending)
             {
                 return;
@@ -832,7 +859,11 @@ namespace HaCreator.MapSimulator.UI
             PendingCompanionInventoryChange pendingChange = _pendingCompanionInventoryChange;
             _pendingCompanionInventoryChange = null;
 
-            if (!TryCommitPendingCompanionInventoryChange(pendingChange, out IReadOnlyList<InventorySlotData> displacedSlots, out string rejectReason))
+            if (!TryCommitPendingCompanionInventoryChange(
+                    pendingChange,
+                    inventoryWindow,
+                    out IReadOnlyList<InventorySlotData> displacedSlots,
+                    out string rejectReason))
             {
                 if (pendingChange.SourceInventoryLocked && inventoryWindow != null)
                 {
@@ -923,6 +954,7 @@ namespace HaCreator.MapSimulator.UI
 
         private bool TryCommitPendingCompanionInventoryChange(
             PendingCompanionInventoryChange pendingChange,
+            InventoryUI inventoryWindow,
             out IReadOnlyList<InventorySlotData> displacedSlots,
             out string rejectReason)
         {
@@ -931,6 +963,24 @@ namespace HaCreator.MapSimulator.UI
             if (pendingChange?.SourceInventorySlot == null)
             {
                 rejectReason = "The companion equipment request is missing its source inventory item.";
+                return false;
+            }
+
+            if (!TryResolvePendingCompanionSourceSlot(
+                    pendingChange,
+                    inventoryWindow,
+                    out InventorySlotData liveSourceSlot,
+                    out rejectReason))
+            {
+                return false;
+            }
+
+            if (!TryValidateCompanionDisplacedInventoryCapacity(
+                    pendingChange,
+                    inventoryWindow,
+                    liveSourceSlot,
+                    out rejectReason))
+            {
                 return false;
             }
 
@@ -945,7 +995,7 @@ namespace HaCreator.MapSimulator.UI
                         return false;
                     }
 
-                    if (!_petEquipmentController.TryEquipItem(targetPet, pendingChange.SourceInventorySlot.ItemId, out IReadOnlyList<CompanionEquipItem> displacedItems, out rejectReason))
+                    if (!_petEquipmentController.TryEquipItem(targetPet, liveSourceSlot.ItemId, out IReadOnlyList<CompanionEquipItem> displacedItems, out rejectReason))
                     {
                         return false;
                     }
@@ -961,7 +1011,7 @@ namespace HaCreator.MapSimulator.UI
                         return false;
                     }
 
-                    if (!_dragonEquipmentController.TryEquipItem(pendingChange.TargetDragonSlot.Value, pendingChange.SourceInventorySlot.ItemId, out IReadOnlyList<CompanionEquipItem> dragonDisplacedItems, out rejectReason))
+                    if (!_dragonEquipmentController.TryEquipItem(pendingChange.TargetDragonSlot.Value, liveSourceSlot.ItemId, out IReadOnlyList<CompanionEquipItem> dragonDisplacedItems, out rejectReason))
                     {
                         return false;
                     }
@@ -976,7 +1026,7 @@ namespace HaCreator.MapSimulator.UI
                         return false;
                     }
 
-                    if (!_mechanicEquipmentController.TryEquipItem(pendingChange.TargetMechanicSlot.Value, pendingChange.SourceInventorySlot.ItemId, out IReadOnlyList<CompanionEquipItem> mechanicDisplacedItems, out rejectReason))
+                    if (!_mechanicEquipmentController.TryEquipItem(pendingChange.TargetMechanicSlot.Value, liveSourceSlot.ItemId, out IReadOnlyList<CompanionEquipItem> mechanicDisplacedItems, out rejectReason))
                     {
                         return false;
                     }
@@ -991,7 +1041,7 @@ namespace HaCreator.MapSimulator.UI
                         return false;
                     }
 
-                    if (!_androidEquipmentController.TryEquipItem(pendingChange.TargetAndroidSlot.Value, pendingChange.SourceInventorySlot.ItemId, out IReadOnlyList<CompanionEquipItem> androidDisplacedItems, out rejectReason))
+                    if (!_androidEquipmentController.TryEquipItem(pendingChange.TargetAndroidSlot.Value, liveSourceSlot.ItemId, out IReadOnlyList<CompanionEquipItem> androidDisplacedItems, out rejectReason))
                     {
                         return false;
                     }
@@ -1002,6 +1052,135 @@ namespace HaCreator.MapSimulator.UI
 
             rejectReason = "Unsupported companion equipment request.";
             return false;
+        }
+
+        private bool TryResolvePendingCompanionSourceSlot(
+            PendingCompanionInventoryChange pendingChange,
+            InventoryUI inventoryWindow,
+            out InventorySlotData liveSourceSlot,
+            out string rejectReason)
+        {
+            liveSourceSlot = pendingChange?.SourceInventorySlot?.Clone();
+            rejectReason = null;
+            if (pendingChange?.SourceInventorySlot == null || inventoryWindow == null)
+            {
+                return true;
+            }
+
+            IReadOnlyList<InventorySlotData> liveSlots = inventoryWindow.GetSlots(pendingChange.SourceInventoryType);
+            if (pendingChange.SourceInventoryIndex < 0 || pendingChange.SourceInventoryIndex >= liveSlots.Count)
+            {
+                liveSourceSlot = null;
+                rejectReason = "The source inventory slot changed before the companion equipment request was accepted.";
+                return false;
+            }
+
+            InventorySlotData candidate = liveSlots[pendingChange.SourceInventoryIndex];
+            if (candidate == null
+                || candidate.ItemId != pendingChange.SourceInventorySlot.ItemId
+                || (candidate.PendingRequestId != 0 && candidate.PendingRequestId != pendingChange.RequestId))
+            {
+                liveSourceSlot = null;
+                rejectReason = "The source inventory slot no longer matches the requested companion item.";
+                return false;
+            }
+
+            liveSourceSlot = candidate.Clone();
+            return true;
+        }
+
+        private bool TryValidateCompanionDisplacedInventoryCapacity(
+            PendingCompanionInventoryChange pendingChange,
+            InventoryUI inventoryWindow,
+            InventorySlotData liveSourceSlot,
+            out string rejectReason)
+        {
+            rejectReason = null;
+            if (inventoryWindow == null)
+            {
+                return true;
+            }
+
+            int displacedItemCount = GetCompanionDisplacedItemCount(pendingChange, liveSourceSlot?.ItemId ?? 0);
+            if (displacedItemCount <= 1)
+            {
+                return true;
+            }
+
+            int currentEquipCount = inventoryWindow.GetSlots(InventoryType.EQUIP).Count;
+            int freeEquipSlots = Math.Max(0, inventoryWindow.GetSlotLimit(InventoryType.EQUIP) - currentEquipCount);
+            int extraSlotsNeeded = displacedItemCount - 1;
+            if (freeEquipSlots >= extraSlotsNeeded)
+            {
+                return true;
+            }
+
+            rejectReason = extraSlotsNeeded == 1
+                ? "There is no free equipment inventory slot for the displaced companion item."
+                : $"There are not enough free equipment inventory slots for the {displacedItemCount} displaced companion items.";
+            return false;
+        }
+
+        private int GetCompanionDisplacedItemCount(PendingCompanionInventoryChange pendingChange, int itemId)
+        {
+            if (pendingChange == null)
+            {
+                return 0;
+            }
+
+            switch (pendingChange.TargetKind)
+            {
+                case CompanionDragKind.Pet:
+                {
+                    PetRuntime targetPet = ResolvePetByRuntimeId(pendingChange.TargetPetRuntimeId);
+                    return targetPet != null
+                           && _petEquipmentController != null
+                           && _petEquipmentController.TryGetItem(targetPet, out _)
+                        ? 1
+                        : 0;
+                }
+                case CompanionDragKind.Dragon:
+                    return pendingChange.TargetDragonSlot.HasValue
+                           && _dragonEquipmentController != null
+                           && _dragonEquipmentController.TryGetItem(pendingChange.TargetDragonSlot.Value, out _)
+                        ? 1
+                        : 0;
+                case CompanionDragKind.Mechanic:
+                    return pendingChange.TargetMechanicSlot.HasValue
+                           && _mechanicEquipmentController != null
+                           && _mechanicEquipmentController.TryGetItem(pendingChange.TargetMechanicSlot.Value, out _)
+                        ? 1
+                        : 0;
+                case CompanionDragKind.Android:
+                    return GetAndroidDisplacedItemCount(pendingChange.TargetAndroidSlot, itemId);
+                default:
+                    return 0;
+            }
+        }
+
+        private int GetAndroidDisplacedItemCount(AndroidEquipSlot? targetSlot, int itemId)
+        {
+            if (!targetSlot.HasValue || _androidEquipmentController == null)
+            {
+                return 0;
+            }
+
+            int displacedCount = _androidEquipmentController.TryGetItem(targetSlot.Value, out _)
+                ? 1
+                : 0;
+            if (targetSlot.Value != AndroidEquipSlot.Clothes || _characterLoader == null)
+            {
+                return displacedCount;
+            }
+
+            CharacterPart incomingPart = _characterLoader.LoadEquipment(itemId);
+            if (incomingPart?.Slot == CharacterEquipSlot.Longcoat
+                && _androidEquipmentController.TryGetItem(AndroidEquipSlot.Pants, out _))
+            {
+                displacedCount++;
+            }
+
+            return displacedCount;
         }
 
         public bool TryHandleInventoryDrop(
@@ -2910,6 +3089,16 @@ namespace HaCreator.MapSimulator.UI
                 segments.Add($"Trade available {part.TradeAvailable} time{(part.TradeAvailable == 1 ? string.Empty : "s")}");
             }
 
+            if (part.IsTradeBlocked)
+            {
+                segments.Add("Untradeable");
+            }
+
+            if (part.IsOneOfAKind)
+            {
+                segments.Add("One-of-a-kind item");
+            }
+
             if (part.KnockbackRate > 0)
             {
                 segments.Add($"Knockback resistance {part.KnockbackRate}%");
@@ -2974,7 +3163,7 @@ namespace HaCreator.MapSimulator.UI
                     "Durability:",
                     value,
                     canUse ? new Color(181, 224, 255) : new Color(255, 186, 186),
-                    BuildTooltipValueTextures(value, canUse, preferGrowthDigits: false)));
+                    BuildTooltipValueSegments(value, canUse, preferGrowthDigits: false)));
             }
 
             return rows;
@@ -2999,7 +3188,7 @@ namespace HaCreator.MapSimulator.UI
                 fallbackLabel,
                 valueText,
                 color,
-                BuildTooltipValueTextures(valueText, enabled: true, preferGrowthDigits: true)));
+                BuildTooltipValueSegments(valueText, enabled: true, preferGrowthDigits: true)));
         }
 
         private void AppendUpgradeSlotRow(List<TooltipLabeledValueRow> rows, CharacterPart part)
@@ -3018,7 +3207,7 @@ namespace HaCreator.MapSimulator.UI
                 "Upgrades Available:",
                 valueText,
                 new Color(255, 232, 176),
-                BuildTooltipValueTextures(valueText, enabled: true, preferGrowthDigits: false)));
+                BuildTooltipValueSegments(valueText, enabled: true, preferGrowthDigits: false)));
         }
 
         private void AppendGrowthRows(List<TooltipLabeledValueRow> rows, CharacterPart part)
@@ -3036,7 +3225,7 @@ namespace HaCreator.MapSimulator.UI
                 "Item Level:",
                 currentLevel.ToString(CultureInfo.InvariantCulture),
                 growthEnabled ? new Color(181, 224, 255) : new Color(192, 192, 192),
-                BuildTooltipValueTextures(currentLevel.ToString(CultureInfo.InvariantCulture), growthEnabled, preferGrowthDigits: true)));
+                BuildTooltipValueSegments(currentLevel.ToString(CultureInfo.InvariantCulture), growthEnabled, preferGrowthDigits: true)));
 
             string expValue = growthEnabled
                 ? $"{Math.Clamp(part.GrowthExpPercent, 0, 99)}%"
@@ -3046,7 +3235,7 @@ namespace HaCreator.MapSimulator.UI
                 "Item EXP:",
                 expValue,
                 growthEnabled ? new Color(181, 224, 255) : new Color(192, 192, 192),
-                BuildTooltipValueTextures(expValue, growthEnabled, preferGrowthDigits: true)));
+                BuildTooltipValueSegments(expValue, growthEnabled, preferGrowthDigits: true)));
         }
 
         private void AppendEnhancementStarRow(List<TooltipLabeledValueRow> rows, int enhancementStarCount)
@@ -3062,7 +3251,7 @@ namespace HaCreator.MapSimulator.UI
                 "Stars:",
                 valueText,
                 new Color(255, 232, 176),
-                BuildTooltipValueTextures(valueText, enabled: true, preferGrowthDigits: false)));
+                BuildTooltipValueSegments(valueText, enabled: true, preferGrowthDigits: false)));
         }
 
         private void AppendSellPriceRow(List<TooltipLabeledValueRow> rows, int sellPrice)
@@ -3078,7 +3267,7 @@ namespace HaCreator.MapSimulator.UI
                 "Mesos:",
                 valueText,
                 new Color(255, 244, 186),
-                BuildTooltipValueTextures(valueText, enabled: true, preferGrowthDigits: false)));
+                BuildTooltipValueSegments(valueText, enabled: true, preferGrowthDigits: false)));
         }
 
         private void AppendAttackSpeedRow(List<TooltipLabeledValueRow> rows, int attackSpeed)
@@ -3094,7 +3283,7 @@ namespace HaCreator.MapSimulator.UI
                 "Attack Speed:",
                 ResolveAttackSpeedText(attackSpeed),
                 new Color(181, 224, 255),
-                speedTexture != null ? new[] { speedTexture } : null));
+                speedTexture != null ? new[] { new TooltipValueSegment(speedTexture) } : null));
         }
 
         private void AppendRequirementRow(List<TooltipLabeledValueRow> rows, string labelKey, int requiredValue, int actualValue)
@@ -3110,7 +3299,7 @@ namespace HaCreator.MapSimulator.UI
                 labelKey + ":",
                 requiredValue.ToString(CultureInfo.InvariantCulture),
                 canUse ? new Color(181, 224, 255) : new Color(255, 186, 186),
-                BuildTooltipValueTextures(requiredValue.ToString(CultureInfo.InvariantCulture), canUse, preferGrowthDigits: false)));
+                BuildTooltipValueSegments(requiredValue.ToString(CultureInfo.InvariantCulture), canUse, preferGrowthDigits: false)));
         }
 
         private IReadOnlyList<TooltipSection> BuildEquipmentTooltipSections(
@@ -3213,7 +3402,7 @@ namespace HaCreator.MapSimulator.UI
         private float MeasureLabeledValueRowHeight(TooltipLabeledValueRow row)
         {
             float labelHeight = row.LabelTexture?.Height ?? (_font?.LineSpacing ?? 0);
-            float valueHeight = MeasureTooltipValueTexturesHeight(row.ValueTextures);
+            float valueHeight = MeasureTooltipValueSegmentsHeight(row.ValueSegments);
             return Math.Max(labelHeight, Math.Max(valueHeight, _font?.LineSpacing ?? 0));
         }
 
@@ -3250,9 +3439,9 @@ namespace HaCreator.MapSimulator.UI
                 valueX = x + (int)Math.Ceiling(_font.MeasureString(row.FallbackLabel).X) + 6;
             }
 
-            if (row.ValueTextures != null && row.ValueTextures.Count > 0)
+            if (row.ValueSegments != null && row.ValueSegments.Count > 0)
             {
-                DrawTooltipValueTextures(sprite, row.ValueTextures, valueX, y);
+                DrawTooltipValueSegments(sprite, row.ValueSegments, valueX, y, row.ValueColor);
             }
             else if (!string.IsNullOrWhiteSpace(row.ValueText))
             {
@@ -3825,6 +4014,9 @@ namespace HaCreator.MapSimulator.UI
 
             EquipmentChangeRequest request = new EquipmentChangeRequest
             {
+                OwnerSessionId = _equipmentRequestSessionId,
+                ExpectedCharacterId = _characterBuild?.Id ?? 0,
+                ExpectedBuildStateToken = _characterBuild?.ComputeEquipmentStateToken() ?? 0,
                 Kind = EquipmentChangeRequestKind.InventoryToCharacter,
                 SourceInventoryType = sourceInventoryType,
                 SourceInventoryIndex = sourceInventoryIndex,
@@ -3853,6 +4045,9 @@ namespace HaCreator.MapSimulator.UI
 
             EquipmentChangeRequest request = new EquipmentChangeRequest
             {
+                OwnerSessionId = _equipmentRequestSessionId,
+                ExpectedCharacterId = _characterBuild?.Id ?? 0,
+                ExpectedBuildStateToken = _characterBuild?.ComputeEquipmentStateToken() ?? 0,
                 Kind = EquipmentChangeRequestKind.CharacterToCharacter,
                 SourceEquipSlot = _draggedPart.Slot,
                 TargetEquipSlot = resolvedTargetSlot,
@@ -3879,6 +4074,9 @@ namespace HaCreator.MapSimulator.UI
 
             EquipmentChangeRequest request = new EquipmentChangeRequest
             {
+                OwnerSessionId = _equipmentRequestSessionId,
+                ExpectedCharacterId = _characterBuild?.Id ?? 0,
+                ExpectedBuildStateToken = _characterBuild?.ComputeEquipmentStateToken() ?? 0,
                 Kind = EquipmentChangeRequestKind.CharacterToInventory,
                 SourceEquipSlot = _draggedPart.Slot,
                 ItemId = _draggedPart.ItemId,
@@ -3920,6 +4118,7 @@ namespace HaCreator.MapSimulator.UI
                     Kind = request.Kind,
                     RequestId = submission.RequestId,
                     RequestedAtTick = submission.RequestedAtTick,
+                    OwnerSessionId = request.OwnerSessionId,
                     SourceInventoryType = sourceInventoryType,
                     SourceInventoryIndex = sourceInventoryIndex,
                     ItemId = itemId,
@@ -3938,6 +4137,16 @@ namespace HaCreator.MapSimulator.UI
             {
                 EquipmentEquipBlocked?.Invoke(message);
             }
+        }
+
+        private static int NextEquipmentRequestSessionId(int currentSessionId)
+        {
+            if (currentSessionId >= int.MaxValue)
+            {
+                return 1;
+            }
+
+            return Math.Max(1, currentSessionId + 1);
         }
 
         private string BuildDragCompareDescription(EquipSlot hoveredSlot)
@@ -4551,7 +4760,7 @@ namespace HaCreator.MapSimulator.UI
             return TryResolveTooltipAsset(source, key);
         }
 
-        private IReadOnlyList<Texture2D> BuildTooltipValueTextures(string valueText, bool enabled, bool preferGrowthDigits)
+        private IReadOnlyList<TooltipValueSegment> BuildTooltipValueSegments(string valueText, bool enabled, bool preferGrowthDigits)
         {
             if (string.IsNullOrWhiteSpace(valueText) || _equipTooltipAssets == null)
             {
@@ -4566,11 +4775,11 @@ namespace HaCreator.MapSimulator.UI
                 return null;
             }
 
-            var textures = new List<Texture2D>(valueText.Length);
+            var segments = new List<TooltipValueSegment>(valueText.Length);
             if (string.Equals(valueText, "MAX", StringComparison.OrdinalIgnoreCase))
             {
                 Texture2D maxTexture = TryResolveTooltipAsset(source, "max");
-                return maxTexture == null ? null : new[] { maxTexture };
+                return maxTexture == null ? null : new[] { new TooltipValueSegment(maxTexture) };
             }
 
             for (int i = 0; i < valueText.Length; i++)
@@ -4586,55 +4795,72 @@ namespace HaCreator.MapSimulator.UI
                     '%' => "percent",
                     _ => char.IsDigit(character) ? character.ToString() : null
                 };
+                if (key == null)
+                {
+                    if (character == '/' || character == '-' || character == '.' || character == ',')
+                    {
+                        segments.Add(new TooltipValueSegment(null, character.ToString()));
+                        continue;
+                    }
+
+                    return null;
+                }
+
                 Texture2D texture = TryResolveTooltipAsset(source, key);
                 if (texture == null)
                 {
                     return null;
                 }
 
-                textures.Add(texture);
+                segments.Add(new TooltipValueSegment(texture));
             }
 
-            return textures.Count == 0 ? null : textures;
+            return segments.Count == 0 ? null : segments;
         }
 
-        private float MeasureTooltipValueTexturesHeight(IReadOnlyList<Texture2D> textures)
+        private float MeasureTooltipValueSegmentsHeight(IReadOnlyList<TooltipValueSegment> segments)
         {
-            if (textures == null || textures.Count == 0)
+            if (segments == null || segments.Count == 0)
             {
                 return 0f;
             }
 
             int height = 0;
-            for (int i = 0; i < textures.Count; i++)
+            for (int i = 0; i < segments.Count; i++)
             {
-                if (textures[i] != null)
+                if (segments[i].Texture != null)
                 {
-                    height = Math.Max(height, textures[i].Height);
+                    height = Math.Max(height, segments[i].Texture.Height);
+                }
+                else if (!string.IsNullOrEmpty(segments[i].Text) && _font != null)
+                {
+                    height = Math.Max(height, _font.LineSpacing);
                 }
             }
 
             return height;
         }
 
-        private void DrawTooltipValueTextures(SpriteBatch sprite, IReadOnlyList<Texture2D> textures, int x, float y)
+        private void DrawTooltipValueSegments(SpriteBatch sprite, IReadOnlyList<TooltipValueSegment> segments, int x, float y, Color color)
         {
-            if (textures == null || textures.Count == 0)
+            if (segments == null || segments.Count == 0)
             {
                 return;
             }
 
             int drawX = x;
-            for (int i = 0; i < textures.Count; i++)
+            for (int i = 0; i < segments.Count; i++)
             {
-                Texture2D texture = textures[i];
-                if (texture == null)
+                if (segments[i].Texture != null)
                 {
-                    continue;
+                    sprite.Draw(segments[i].Texture, new Vector2(drawX, y), Color.White);
+                    drawX += segments[i].Texture.Width + TOOLTIP_BITMAP_GAP;
                 }
-
-                sprite.Draw(texture, new Vector2(drawX, y), Color.White);
-                drawX += texture.Width + TOOLTIP_BITMAP_GAP;
+                else if (!string.IsNullOrEmpty(segments[i].Text))
+                {
+                    DrawTooltipText(sprite, segments[i].Text, new Vector2(drawX, y), color);
+                    drawX += (int)Math.Ceiling(_font.MeasureString(segments[i].Text).X) + TOOLTIP_BITMAP_GAP;
+                }
             }
         }
 

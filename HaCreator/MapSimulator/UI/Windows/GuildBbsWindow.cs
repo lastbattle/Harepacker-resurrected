@@ -33,9 +33,11 @@ namespace HaCreator.MapSimulator.UI
         private const int EmoticonSelectionSize = 22;
         private const int CashEmoticonSpacing = 23;
         private const int BasicEmoticonSpacing = 23;
+        private const int VisibleCashEmoticonCount = 7;
         private const int ComposeBodyLineHeight = 12;
         private const int ComposeBodyVisibleLineCount = 15;
         private const int ComposeScrollBarWidth = 12;
+        private const int CommentScrollBarWidth = 10;
         private const int KeyRepeatDelayMs = 400;
         private const int KeyRepeatRateMs = 35;
 
@@ -60,6 +62,8 @@ namespace HaCreator.MapSimulator.UI
         private int _cursorPosition;
         private int _cursorBlinkTimer;
         private int _composeBodyScrollLine;
+        private bool _isDraggingCommentScrollBar;
+        private int _commentScrollDragOffsetY;
 
         private Func<GuildBbsSnapshot> _snapshotProvider;
         private Action<int> _selectThreadHandler;
@@ -76,6 +80,7 @@ namespace HaCreator.MapSimulator.UI
         private Action<string> _setReplyDraftHandler;
         private Func<int, string> _moveThreadPageHandler;
         private Func<int, string> _moveCommentPageHandler;
+        private Func<int, string> _setCommentPageHandler;
         private Func<int, string> _moveComposeCashPageHandler;
         private Func<int, string> _moveReplyCashPageHandler;
         private Func<GuildBbsEmoticonKind, int, int, string> _selectComposeEmoticonHandler;
@@ -179,6 +184,7 @@ namespace HaCreator.MapSimulator.UI
             Action<string> setReplyDraftHandler,
             Func<int, string> moveThreadPageHandler,
             Func<int, string> moveCommentPageHandler,
+            Func<int, string> setCommentPageHandler,
             Func<int, string> moveComposeCashPageHandler,
             Func<int, string> moveReplyCashPageHandler,
             Func<GuildBbsEmoticonKind, int, int, string> selectComposeEmoticonHandler,
@@ -199,6 +205,7 @@ namespace HaCreator.MapSimulator.UI
             _setReplyDraftHandler = setReplyDraftHandler;
             _moveThreadPageHandler = moveThreadPageHandler;
             _moveCommentPageHandler = moveCommentPageHandler;
+            _setCommentPageHandler = setCommentPageHandler;
             _moveComposeCashPageHandler = moveComposeCashPageHandler;
             _moveReplyCashPageHandler = moveReplyCashPageHandler;
             _selectComposeEmoticonHandler = selectComposeEmoticonHandler;
@@ -259,12 +266,22 @@ namespace HaCreator.MapSimulator.UI
 
             MouseState mouseState = Mouse.GetState();
             HandleScroll(snapshot, mouseState);
+            HandleCommentScrollDrag(snapshot, mouseState);
 
             bool leftReleased = mouseState.LeftButton == ButtonState.Released
                 && _previousMouseState.LeftButton == ButtonState.Pressed;
+            bool releasedCommentDrag = _isDraggingCommentScrollBar && leftReleased;
             if (leftReleased && ContainsPoint(mouseState.X, mouseState.Y))
             {
-                HandleMouseClick(snapshot, mouseState.Position);
+                if (!releasedCommentDrag)
+                {
+                    HandleMouseClick(snapshot, mouseState.Position);
+                }
+            }
+
+            if (leftReleased)
+            {
+                _isDraggingCommentScrollBar = false;
             }
 
             _previousKeyboardState = keyboardState;
@@ -416,6 +433,11 @@ namespace HaCreator.MapSimulator.UI
             }
             else
             {
+                if (snapshot.SelectedThread != null && TryHandleCommentScrollClick(snapshot, mousePosition))
+                {
+                    return;
+                }
+
                 if (snapshot.SelectedThread != null && GetReplyInputBounds().Contains(mousePosition))
                 {
                     ActivateInput(InputTarget.ReplyBody, snapshot, clearExisting: false);
@@ -454,7 +476,7 @@ namespace HaCreator.MapSimulator.UI
 
             for (int i = 0; i < _cashEmoticonTextures.Length; i++)
             {
-                if (!GetCashEmoticonBounds(i).Contains(mousePosition))
+                if (i >= VisibleCashEmoticonCount || !GetCashEmoticonBounds(i).Contains(mousePosition))
                 {
                     continue;
                 }
@@ -490,7 +512,7 @@ namespace HaCreator.MapSimulator.UI
 
             for (int i = 0; i < _cashEmoticonTextures.Length; i++)
             {
-                if (!GetCashEmoticonBounds(i).Contains(mousePosition))
+                if (i >= VisibleCashEmoticonCount || !GetCashEmoticonBounds(i).Contains(mousePosition))
                 {
                     continue;
                 }
@@ -1063,6 +1085,7 @@ namespace HaCreator.MapSimulator.UI
                 commentPaneBounds.Bottom + 2,
                 new Color(96, 103, 114),
                 0.31f);
+            DrawCommentScrollBar(sprite, thread);
 
             Rectangle replyBounds = GetReplyInputBounds();
             DrawTextInputBox(sprite, replyBounds, _activeInputTarget == InputTarget.ReplyBody);
@@ -1087,6 +1110,18 @@ namespace HaCreator.MapSimulator.UI
             sprite.Draw(_pixel, metrics.ThumbBounds, new Color(101, 112, 131, 155));
         }
 
+        private void DrawCommentScrollBar(SpriteBatch sprite, GuildBbsThreadSnapshot thread)
+        {
+            ScrollMetrics metrics = BuildCommentScrollMetrics(thread);
+            if (metrics.MaxScrollLine <= 0)
+            {
+                return;
+            }
+
+            sprite.Draw(_pixel, metrics.TrackBounds, new Color(41, 46, 56, 45));
+            sprite.Draw(_pixel, metrics.ThumbBounds, new Color(101, 112, 131, 155));
+        }
+
         private void DrawEmoticonStrip(SpriteBatch sprite, GuildBbsEmoticonSnapshot selectedEmoticon, int cashPageIndex, int cashPageCount, IReadOnlyList<bool> cashOwnership)
         {
             for (int i = 0; i < _basicEmoticonTextures.Length; i++)
@@ -1094,15 +1129,19 @@ namespace HaCreator.MapSimulator.UI
                 DrawEmoticonSlot(sprite, _basicEmoticonTextures[i], GetBasicEmoticonBounds(i), selectedEmoticon?.Kind == GuildBbsEmoticonKind.Basic && selectedEmoticon.SlotIndex == i);
             }
 
-            for (int i = 0; i < _cashEmoticonTextures.Length; i++)
+            for (int i = 0; i < VisibleCashEmoticonCount; i++)
             {
-                bool isOwned = cashOwnership != null && i < cashOwnership.Count && cashOwnership[i];
+                int globalSlotIndex = GetCashEmoticonGlobalIndex(cashPageIndex, i);
+                Texture2D texture = globalSlotIndex >= 0 && globalSlotIndex < _cashEmoticonTextures.Length
+                    ? _cashEmoticonTextures[globalSlotIndex]
+                    : null;
+                bool isOwned = cashOwnership != null && globalSlotIndex >= 0 && globalSlotIndex < cashOwnership.Count && cashOwnership[globalSlotIndex];
                 DrawEmoticonSlot(
                     sprite,
-                    _cashEmoticonTextures[i],
+                    texture,
                     GetCashEmoticonBounds(i),
-                    selectedEmoticon?.Kind == GuildBbsEmoticonKind.Cash && selectedEmoticon.SlotIndex == i && selectedEmoticon.CashPageIndex == cashPageIndex,
-                    isOwned);
+                    selectedEmoticon?.Kind == GuildBbsEmoticonKind.Cash && selectedEmoticon.SlotIndex == globalSlotIndex && selectedEmoticon.CashPageIndex == cashPageIndex,
+                    globalSlotIndex < _cashEmoticonTextures.Length && isOwned);
             }
 
             Rectangle cashRow = GetCashEmoticonRowBounds();
@@ -1257,10 +1296,11 @@ namespace HaCreator.MapSimulator.UI
         private Rectangle GetComposeBodyBounds() => new(Position.X + 449, Position.Y + 56, 250, 180);
         private Rectangle GetComposeScrollBarBounds() => new(Position.X + 706, Position.Y + 53, ComposeScrollBarWidth, 187);
         private Rectangle GetCommentPaneBounds() => new(GetDetailBounds().X, GetDetailBounds().Y + 186, DetailWidth - 4, 148);
+        private Rectangle GetCommentScrollBarBounds() => new(Position.X + 710, Position.Y + 326, CommentScrollBarWidth, 125);
         private Rectangle GetReplyInputBounds() => new(GetDetailBounds().X, GetDetailBounds().Bottom - 74, DetailWidth - 6, ReplyInputHeight);
         private Rectangle GetBasicEmoticonBounds(int index) => new(Position.X + 426 + (index * BasicEmoticonSpacing), Position.Y + 246, BasicEmoticonSize, BasicEmoticonSize);
         private Rectangle GetCashEmoticonBounds(int index) => new(Position.X + 495 + (index * CashEmoticonSpacing), Position.Y + 246, CashEmoticonSize, CashEmoticonSize);
-        private Rectangle GetCashEmoticonRowBounds() => new(Position.X + 495, Position.Y + 246, (_cashEmoticonTextures.Length * CashEmoticonSpacing), CashEmoticonSize);
+        private Rectangle GetCashEmoticonRowBounds() => new(Position.X + 495, Position.Y + 246, (VisibleCashEmoticonCount * CashEmoticonSpacing), CashEmoticonSize);
 
         private void DrawString(SpriteBatch sprite, string text, float x, float y, Color color, float scale)
         {
@@ -1470,10 +1510,85 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
+        private bool TryHandleCommentScrollClick(GuildBbsSnapshot snapshot, Point mousePosition)
+        {
+            if (snapshot.SelectedThread == null)
+            {
+                return false;
+            }
+
+            Rectangle scrollBounds = GetCommentScrollBarBounds();
+            if (!scrollBounds.Contains(mousePosition))
+            {
+                return false;
+            }
+
+            ScrollMetrics metrics = BuildCommentScrollMetrics(snapshot.SelectedThread);
+            if (metrics.MaxScrollLine <= 0)
+            {
+                return true;
+            }
+
+            if (metrics.ThumbBounds.Contains(mousePosition))
+            {
+                _isDraggingCommentScrollBar = true;
+                _commentScrollDragOffsetY = mousePosition.Y - metrics.ThumbBounds.Y;
+                return true;
+            }
+
+            if (mousePosition.Y < metrics.ThumbBounds.Top)
+            {
+                ShowFeedback(_moveCommentPageHandler?.Invoke(-1));
+                return true;
+            }
+
+            if (mousePosition.Y > metrics.ThumbBounds.Bottom)
+            {
+                ShowFeedback(_moveCommentPageHandler?.Invoke(1));
+                return true;
+            }
+
+            return true;
+        }
+
         private void ScrollComposeBody(int deltaLines)
         {
             ScrollMetrics metrics = BuildComposeScrollMetrics(_inputBuffer.ToString(), GetComposeBodyBounds());
             _composeBodyScrollLine = Math.Clamp(_composeBodyScrollLine + deltaLines, 0, metrics.MaxScrollLine);
+        }
+
+        private void HandleCommentScrollDrag(GuildBbsSnapshot snapshot, MouseState mouseState)
+        {
+            if (snapshot.IsWriteMode || snapshot.SelectedThread == null)
+            {
+                _isDraggingCommentScrollBar = false;
+                return;
+            }
+
+            if (mouseState.LeftButton == ButtonState.Pressed && _previousMouseState.LeftButton == ButtonState.Released)
+            {
+                TryHandleCommentScrollClick(snapshot, mouseState.Position);
+            }
+
+            if (!_isDraggingCommentScrollBar || mouseState.LeftButton != ButtonState.Pressed)
+            {
+                return;
+            }
+
+            ScrollMetrics metrics = BuildCommentScrollMetrics(snapshot.SelectedThread);
+            if (metrics.MaxScrollLine <= 0)
+            {
+                _isDraggingCommentScrollBar = false;
+                return;
+            }
+
+            Rectangle trackBounds = metrics.TrackBounds;
+            int thumbHeight = metrics.ThumbBounds.Height;
+            int travel = Math.Max(1, trackBounds.Height - thumbHeight);
+            int thumbTop = Math.Clamp(mouseState.Y - _commentScrollDragOffsetY, trackBounds.Y, trackBounds.Bottom - thumbHeight);
+            float relative = (thumbTop - trackBounds.Y) / (float)travel;
+            int targetPageIndex = Math.Clamp((int)Math.Round(relative * metrics.MaxScrollLine), 0, metrics.MaxScrollLine);
+            ShowFeedback(_setCommentPageHandler?.Invoke(targetPageIndex));
         }
 
         private void EnsureComposeCursorVisible()
@@ -1534,6 +1649,46 @@ namespace HaCreator.MapSimulator.UI
                 TrackBounds = trackBounds,
                 ThumbBounds = new Rectangle(trackBounds.X, thumbTop, trackBounds.Width, thumbHeight)
             };
+        }
+
+        private ScrollMetrics BuildCommentScrollMetrics(GuildBbsThreadSnapshot thread)
+        {
+            int totalPages = Math.Max(1, thread?.CommentPageCount ?? 1);
+            Rectangle trackBounds = GetCommentScrollBarBounds();
+            if (totalPages <= 1)
+            {
+                return new ScrollMetrics
+                {
+                    TotalLines = totalPages,
+                    VisibleLines = 1,
+                    MaxScrollLine = 0,
+                    TrackBounds = trackBounds,
+                    ThumbBounds = trackBounds
+                };
+            }
+
+            int thumbHeight = Math.Max(18, (int)Math.Round(trackBounds.Height / (float)totalPages));
+            int travel = Math.Max(1, trackBounds.Height - thumbHeight);
+            int pageIndex = Math.Clamp(thread?.CommentPageIndex ?? 0, 0, totalPages - 1);
+            int thumbTop = trackBounds.Y + (int)Math.Round((pageIndex / (float)(totalPages - 1)) * travel);
+            return new ScrollMetrics
+            {
+                TotalLines = totalPages,
+                VisibleLines = 1,
+                MaxScrollLine = totalPages - 1,
+                TrackBounds = trackBounds,
+                ThumbBounds = new Rectangle(trackBounds.X, thumbTop, trackBounds.Width, thumbHeight)
+            };
+        }
+
+        private static int GetCashEmoticonGlobalIndex(int cashPageIndex, int displayIndex)
+        {
+            if (displayIndex < 0 || displayIndex >= VisibleCashEmoticonCount)
+            {
+                return -1;
+            }
+
+            return (Math.Max(0, cashPageIndex) * VisibleCashEmoticonCount) + displayIndex;
         }
 
         private void SetCursorFromPoint(InputTarget target, GuildBbsSnapshot snapshot, Point mousePosition)

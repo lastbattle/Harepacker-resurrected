@@ -40,6 +40,7 @@ namespace HaCreator.MapSimulator.UI
 
         private sealed class ItemMakerRecipe
         {
+            public string RecipeKey { get; init; }
             public int BucketKey { get; init; }
             public int CategoryKey { get; init; }
             public ItemMakerRecipeFamily Family { get; init; }
@@ -108,6 +109,8 @@ namespace HaCreator.MapSimulator.UI
         private readonly List<BackgroundLayer> _backgroundLayers = new();
         private readonly List<ItemMakerRecipe> _allRecipes = new();
         private readonly List<ItemMakerPage> _pages = new();
+        private readonly HashSet<string> _discoveredRecipeKeys = new(StringComparer.Ordinal);
+        private readonly HashSet<string> _unlockedHiddenRecipeKeys = new(StringComparer.Ordinal);
         private readonly HashSet<int> _discoveredRecipeIds = new();
         private readonly HashSet<int> _unlockedHiddenRecipeIds = new();
         private readonly Random _random = new();
@@ -149,8 +152,8 @@ namespace HaCreator.MapSimulator.UI
         public override string WindowName => MapSimulatorWindowNames.ItemMaker;
 
         public event Action<ItemMakerCraftResult> CraftCompleted;
-        public event Action<IReadOnlyCollection<int>> RecipesDiscovered;
-        public event Action<IReadOnlyCollection<int>> HiddenRecipesUnlocked;
+        public event Action<IReadOnlyCollection<string>> RecipesDiscovered;
+        public event Action<IReadOnlyCollection<string>> HiddenRecipesUnlocked;
 
         private IReadOnlyList<ItemMakerRecipe> CurrentRecipes =>
             _selectedPageIndex >= 0 && _selectedPageIndex < _pages.Count
@@ -743,11 +746,29 @@ namespace HaCreator.MapSimulator.UI
 
         private void ResetRecipeState(ItemMakerProgressionSnapshot progression)
         {
+            _discoveredRecipeKeys.Clear();
+            _unlockedHiddenRecipeKeys.Clear();
             _discoveredRecipeIds.Clear();
             _unlockedHiddenRecipeIds.Clear();
             if (progression == null)
             {
                 return;
+            }
+
+            foreach (string recipeKey in progression.DiscoveredRecipeKeys)
+            {
+                if (!string.IsNullOrWhiteSpace(recipeKey))
+                {
+                    _discoveredRecipeKeys.Add(recipeKey);
+                }
+            }
+
+            foreach (string recipeKey in progression.UnlockedHiddenRecipeKeys)
+            {
+                if (!string.IsNullOrWhiteSpace(recipeKey))
+                {
+                    _unlockedHiddenRecipeKeys.Add(recipeKey);
+                }
             }
 
             foreach (int outputItemId in progression.DiscoveredRecipeIds)
@@ -876,6 +897,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 Family = recipe.Family,
                 IsHiddenRecipe = recipe.IsHidden,
+                RecipeKey = recipe.RecipeKey,
                 RecipeOutputItemId = recipe.OutputItemId,
                 CraftedItemId = reward.ItemId,
                 CraftedQuantity = reward.Quantity
@@ -1295,6 +1317,13 @@ namespace HaCreator.MapSimulator.UI
                 : $"Client ItemMake recipe for {GetItemName(itemId)}.";
         }
 
+        private static string CreateRecipeKey(int bucketKey, string recipeName)
+        {
+            return string.IsNullOrWhiteSpace(recipeName)
+                ? string.Empty
+                : string.Format(CultureInfo.InvariantCulture, "{0}/{1}", bucketKey, recipeName.Trim());
+        }
+
         private static ItemMakerDetailSection ResolveDetailSection(ItemMakerMaterial material)
         {
             if (material == null)
@@ -1537,6 +1566,7 @@ namespace HaCreator.MapSimulator.UI
 
             return new ItemMakerRecipe
             {
+                RecipeKey = CreateRecipeKey(bucketKey, recipeData.Name),
                 BucketKey = bucketKey,
                 CategoryKey = categoryKey,
                 Family = ResolveRecipeFamily(outputItemId, categoryKey, ResolveInventoryType(outputItemId), GetItemName(outputItemId)),
@@ -1823,7 +1853,7 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            return _discoveredRecipeIds.Contains(recipe.OutputItemId) || PassesTransientDiscoveryGate(recipe);
+            return IsRecipeDiscovered(recipe) || PassesTransientDiscoveryGate(recipe);
         }
 
         private bool PassesPersistentRecipeGate(ItemMakerRecipe recipe)
@@ -1871,7 +1901,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void SyncDiscoveredRecipes(IEnumerable<ItemMakerRecipe> recipes)
         {
-            List<int> newlyDiscoveredIds = null;
+            List<string> newlyDiscoveredKeys = null;
             foreach (ItemMakerRecipe recipe in recipes)
             {
                 if (!PassesPersistentRecipeGate(recipe) || !PassesTransientDiscoveryGate(recipe))
@@ -1879,22 +1909,22 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
-                if (_discoveredRecipeIds.Add(recipe.OutputItemId))
+                if (MarkRecipeDiscovered(recipe))
                 {
-                    newlyDiscoveredIds ??= new List<int>();
-                    newlyDiscoveredIds.Add(recipe.OutputItemId);
+                    newlyDiscoveredKeys ??= new List<string>();
+                    newlyDiscoveredKeys.Add(recipe.RecipeKey);
                 }
             }
 
-            if (newlyDiscoveredIds?.Count > 0)
+            if (newlyDiscoveredKeys?.Count > 0)
             {
-                RecipesDiscovered?.Invoke(newlyDiscoveredIds);
+                RecipesDiscovered?.Invoke(newlyDiscoveredKeys);
             }
         }
 
         private void SyncUnlockedHiddenRecipes(IEnumerable<ItemMakerRecipe> recipes)
         {
-            List<int> newlyUnlockedIds = null;
+            List<string> newlyUnlockedKeys = null;
             foreach (ItemMakerRecipe recipe in recipes)
             {
                 if (!PassesHiddenRecipeUnlockGate(recipe))
@@ -1902,16 +1932,16 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
-                if (_unlockedHiddenRecipeIds.Add(recipe.OutputItemId))
+                if (MarkHiddenRecipeUnlocked(recipe))
                 {
-                    newlyUnlockedIds ??= new List<int>();
-                    newlyUnlockedIds.Add(recipe.OutputItemId);
+                    newlyUnlockedKeys ??= new List<string>();
+                    newlyUnlockedKeys.Add(recipe.RecipeKey);
                 }
             }
 
-            if (newlyUnlockedIds?.Count > 0)
+            if (newlyUnlockedKeys?.Count > 0)
             {
-                HiddenRecipesUnlocked?.Invoke(newlyUnlockedIds);
+                HiddenRecipesUnlocked?.Invoke(newlyUnlockedKeys);
             }
         }
 
@@ -1938,7 +1968,58 @@ namespace HaCreator.MapSimulator.UI
 
         private bool IsHiddenRecipeUnlocked(ItemMakerRecipe recipe)
         {
-            return recipe.IsHidden && _unlockedHiddenRecipeIds.Contains(recipe.OutputItemId);
+            return recipe.IsHidden
+                   && ((!string.IsNullOrWhiteSpace(recipe.RecipeKey) && _unlockedHiddenRecipeKeys.Contains(recipe.RecipeKey))
+                       || _unlockedHiddenRecipeIds.Contains(recipe.OutputItemId));
+        }
+
+        private bool IsRecipeDiscovered(ItemMakerRecipe recipe)
+        {
+            return recipe != null
+                   && ((!string.IsNullOrWhiteSpace(recipe.RecipeKey) && _discoveredRecipeKeys.Contains(recipe.RecipeKey))
+                       || _discoveredRecipeIds.Contains(recipe.OutputItemId));
+        }
+
+        private bool MarkRecipeDiscovered(ItemMakerRecipe recipe)
+        {
+            if (recipe == null)
+            {
+                return false;
+            }
+
+            bool changed = false;
+            if (!string.IsNullOrWhiteSpace(recipe.RecipeKey))
+            {
+                changed |= _discoveredRecipeKeys.Add(recipe.RecipeKey);
+            }
+
+            if (recipe.OutputItemId > 0)
+            {
+                _discoveredRecipeIds.Add(recipe.OutputItemId);
+            }
+
+            return changed;
+        }
+
+        private bool MarkHiddenRecipeUnlocked(ItemMakerRecipe recipe)
+        {
+            if (recipe == null)
+            {
+                return false;
+            }
+
+            bool changed = false;
+            if (!string.IsNullOrWhiteSpace(recipe.RecipeKey))
+            {
+                changed |= _unlockedHiddenRecipeKeys.Add(recipe.RecipeKey);
+            }
+
+            if (recipe.OutputItemId > 0)
+            {
+                _unlockedHiddenRecipeIds.Add(recipe.OutputItemId);
+            }
+
+            return changed;
         }
 
         private static bool HasExplicitHiddenUnlockGate(ItemMakerRecipe recipe)

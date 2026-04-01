@@ -85,7 +85,7 @@ namespace HaCreator.MapSimulator.Managers
             IReadOnlyList<MonsterBookCardDefinition> catalog = EnsureCatalog();
             MonsterBookRecord record = GetRecord(build, createIfMissing: false);
             IReadOnlyDictionary<int, int> counts = record?.CardCountsByMob ?? new Dictionary<int, int>();
-            HashSet<int> registeredMobIds = record?.RegisteredMobIds ?? new HashSet<int>();
+            int registeredMobId = ResolveRegisteredMobId(record);
 
             List<MonsterBookCardSnapshot> cards = catalog
                 .Select((definition, index) =>
@@ -104,7 +104,7 @@ namespace HaCreator.MapSimulator.Managers
                         Exp = definition.Exp,
                         IsBoss = definition.IsBoss,
                         OwnedCopies = Math.Clamp(ownedCopies, 0, 5),
-                        IsRegistered = registeredMobIds.Contains(definition.MobId),
+                        IsRegistered = registeredMobId > 0 && definition.MobId == registeredMobId,
                         EpisodeText = definition.EpisodeText,
                         RewardLines = definition.RewardLines,
                         HabitatLines = definition.HabitatLines,
@@ -157,20 +157,26 @@ namespace HaCreator.MapSimulator.Managers
             int ownedBossCardTypes = cards.Count(card => card.IsDiscovered && card.IsBoss);
             int ownedNormalCardTypes = cards.Count(card => card.IsDiscovered && !card.IsBoss);
             int totalOwnedCopies = cards.Sum(card => card.OwnedCopies);
+            MonsterBookCardSnapshot registeredCard = registeredMobId > 0
+                ? cards.FirstOrDefault(card => card.MobId == registeredMobId)
+                : null;
 
             return new MonsterBookSnapshot
             {
                 Title = "Monster Book",
                 Subtitle = build == null
                     ? "Monster card ownership is unavailable because there is no active character build."
-                    : "Card ownership is persisted per character and built from the WZ-backed monster-card catalog, with chapter tabs derived from the client's 0238xxxx card buckets, client-shaped right-tab detail panes, local registered-card state, pickup-backed Monster Card ownership, and WZ-backed reward/habitat naming.",
-                StatusText = "The Monster Book owner now routes the overview tab, the nine chapter tabs, the four right-tab detail panes, local search, and register or release context actions through the dedicated Monster Book runtime. Ownership now follows picked-up Monster Card drops sourced from the WZ-backed card catalog, while packet-authored save flow and deeper client search semantics still remain outside this simulator runtime.",
+                    : "Card ownership is persisted per character and built from the WZ-backed monster-card catalog, with chapter tabs derived from the client's 0238xxxx card buckets, client-shaped right-tab detail panes, a singular local registered-card slot, pickup-backed Monster Card ownership, and WZ-backed reward/habitat naming.",
+                StatusText = "The Monster Book owner now routes the overview tab, the nine chapter tabs, the four right-tab detail panes, local search focus and cycling, and register or release context actions through the dedicated Monster Book runtime. Ownership now follows picked-up Monster Card drops sourced from the WZ-backed card catalog, while packet-authored save flow and real server drop authorship still remain outside this simulator runtime.",
                 TotalCardTypes = cards.Count,
                 OwnedCardTypes = ownedCardTypes,
                 CompletedCardTypes = completedCardTypes,
                 OwnedBossCardTypes = ownedBossCardTypes,
                 OwnedNormalCardTypes = ownedNormalCardTypes,
                 TotalOwnedCopies = totalOwnedCopies,
+                RegisteredCardMobId = registeredCard?.MobId ?? 0,
+                RegisteredCardItemId = registeredCard?.CardItemId ?? 0,
+                RegisteredCardName = registeredCard?.Name ?? string.Empty,
                 Grades = grades,
                 Pages = pages
             };
@@ -245,9 +251,20 @@ namespace HaCreator.MapSimulator.Managers
             MonsterBookRecord record = GetRecord(build, createIfMissing: true);
             record.RegisteredMobIds ??= new HashSet<int>();
 
-            bool changed = registered
-                ? record.RegisteredMobIds.Add(mobId)
-                : record.RegisteredMobIds.Remove(mobId);
+            bool changed = false;
+            if (registered)
+            {
+                if (record.RegisteredMobIds.Count != 1 || !record.RegisteredMobIds.Contains(mobId))
+                {
+                    record.RegisteredMobIds.Clear();
+                    changed = record.RegisteredMobIds.Add(mobId);
+                }
+            }
+            else
+            {
+                changed = record.RegisteredMobIds.Remove(mobId);
+            }
+
             if (changed)
             {
                 SaveToDisk();
@@ -532,6 +549,8 @@ namespace HaCreator.MapSimulator.Managers
                         CardCountsByMob = normalizedCounts,
                         RegisteredMobIds = entry.Value.RegisteredMobIds?
                             .Where(mobId => mobId > 0)
+                            .OrderBy(mobId => mobId)
+                            .Take(1)
                             .ToHashSet()
                             ?? new HashSet<int>()
                     };
@@ -756,6 +775,14 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return $"{streetName} - {mapName}";
+        }
+
+        private static int ResolveRegisteredMobId(MonsterBookRecord record)
+        {
+            return record?.RegisteredMobIds?
+                .Where(mobId => mobId > 0)
+                .OrderBy(mobId => mobId)
+                .FirstOrDefault() ?? 0;
         }
 
     }

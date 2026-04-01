@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Character.Skills;
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.Pools;
@@ -9,6 +10,7 @@ using MapleLib.WzLib.Util;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure;
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -30,6 +32,12 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedApspMaxEventType = 13;
         private const string PacketOwnedApspPromptPrimaryLabel = "OK";
         private const string PacketOwnedApspPromptSecondaryLabel = "Cancel";
+        private const int PacketOwnedTutorBalloonHorizontalPadding = 10;
+        private const int PacketOwnedTutorBalloonVerticalPadding = 10;
+        private const int PacketOwnedTutorBalloonBodyExtraWidth = PacketOwnedTutorBalloonHorizontalPadding * 2;
+        private const int PacketOwnedTutorBalloonScreenMargin = 6;
+        private const int PacketOwnedTutorBalloonArrowOverlap = 6;
+        private const int PacketOwnedTutorBalloonAnchorOffsetY = 8;
         private const string PacketOwnedApspPromptExactBody =
             "Congratulations! You have reached Lv.30/50/70 during the event period and have been selected as a winner of an AP/SP reset item!\r\n"
             + "Click the 'OK' button and the AP/SP reset item will be sent to your character's cash locker.\r\n"
@@ -46,6 +54,7 @@ namespace HaCreator.MapSimulator
         private readonly LocalFollowCharacterRuntime _localFollowRuntime = new();
         private readonly TutorRuntime _packetOwnedTutorRuntime = new();
         private readonly LocalUtilityPacketInboxManager _localUtilityPacketInbox = new();
+        private LocalOverlayBalloonSkin _packetOwnedTutorBalloonSkin;
         private PacketOwnedBattleshipDurabilityOverrideState _packetOwnedBattleshipDurabilityOverride;
         private int _packetQuestGuideQuestId;
         private bool _packetOwnedUtilityRequestSent;
@@ -81,8 +90,7 @@ namespace HaCreator.MapSimulator
         private bool _packetOwnedApspPromptActive;
         private int _packetOwnedApspPromptContextToken;
         private int _packetOwnedApspPromptEventType;
-        private int _packetOwnedApspReceiveContextToken;
-        private int _packetOwnedApspSendContextToken;
+        private readonly PacketOwnedApspContextState _packetOwnedApspContextState = new();
         private int _lastPacketOwnedApspFollowUpContextToken;
         private int _lastPacketOwnedApspFollowUpResponseCode;
         private string _lastPacketOwnedEventSoundDescriptor;
@@ -115,6 +123,7 @@ namespace HaCreator.MapSimulator
             MapSimulatorWindowNames.GuildBbs,
             MapSimulatorWindowNames.Messenger,
             MapSimulatorWindowNames.EngagementProposal,
+            MapSimulatorWindowNames.WeddingWishList,
             MapSimulatorWindowNames.MapleTv,
             MapSimulatorWindowNames.MemoMailbox,
             MapSimulatorWindowNames.MemoSend,
@@ -126,6 +135,7 @@ namespace HaCreator.MapSimulator
             MapSimulatorWindowNames.PersonalShop,
             MapSimulatorWindowNames.EntrustedShop,
             MapSimulatorWindowNames.TradingRoom,
+            MapSimulatorWindowNames.CashTradingRoom,
         };
 
         private void StampPacketOwnedUtilityRequestState()
@@ -497,6 +507,7 @@ namespace HaCreator.MapSimulator
                 MapSimulatorWindowNames.GuildSkill => "Guild Skill",
                 MapSimulatorWindowNames.GuildBbs => "Guild BBS",
                 MapSimulatorWindowNames.EngagementProposal => "Engagement Proposal",
+                MapSimulatorWindowNames.WeddingWishList => "Wedding Wish List",
                 MapSimulatorWindowNames.MapleTv => "MapleTV",
                 MapSimulatorWindowNames.MemoMailbox => "Memo Mailbox",
                 MapSimulatorWindowNames.MemoSend => "Memo Send",
@@ -507,6 +518,7 @@ namespace HaCreator.MapSimulator
                 MapSimulatorWindowNames.PersonalShop => "Personal Shop",
                 MapSimulatorWindowNames.EntrustedShop => "Entrusted Shop",
                 MapSimulatorWindowNames.TradingRoom => "Trading Room",
+                MapSimulatorWindowNames.CashTradingRoom => "Cash Trading Room",
                 _ => windowName
             };
         }
@@ -571,14 +583,14 @@ namespace HaCreator.MapSimulator
                 QuestWindowDetailState state = GetQuestWindowDetailStateWithPacketState(questId);
                 bool blockedByPacket = blockedQuestIds.Contains(questId);
                 bool matchingItem = state?.TargetItemId == itemId && itemId > 0;
-                bool isDeliveryAction = state?.PrimaryAction is QuestWindowActionKind.QuestDeliveryAccept or QuestWindowActionKind.QuestDeliveryComplete;
+                bool isDeliveryAction = state?.DeliveryType is QuestDetailDeliveryType.Accept or QuestDetailDeliveryType.Complete;
                 if (!blockedByPacket && (!matchingItem || !isDeliveryAction))
                 {
                     continue;
                 }
 
-                bool completionPhase = state?.PrimaryAction == QuestWindowActionKind.QuestDeliveryComplete;
-                bool canConfirm = state?.PrimaryActionEnabled == true && !blockedByPacket;
+                bool completionPhase = state?.DeliveryType == QuestDetailDeliveryType.Complete;
+                bool canConfirm = state?.DeliveryActionEnabled == true && !blockedByPacket;
                 string npcName = string.IsNullOrWhiteSpace(state?.TargetNpcName)
                     ? "NPC unavailable"
                     : state.TargetNpcName;
@@ -1041,6 +1053,7 @@ namespace HaCreator.MapSimulator
                 : _lastPacketOwnedSkillGuideGrade > 0
                     ? $"Skill guide: grade {_lastPacketOwnedSkillGuideGrade}. {TruncatePacketOwnedUtilityText(_lastPacketOwnedSkillGuideMessage)}"
                     : $"Skill guide: {TruncatePacketOwnedUtilityText(_lastPacketOwnedSkillGuideMessage)}";
+            string apspContextStatus = DescribePacketOwnedApspContextStatus();
             string apspStatus = string.IsNullOrWhiteSpace(_lastPacketOwnedAskApspMessage)
                 ? "AP/SP event: none."
                 : _packetOwnedApspPromptActive
@@ -1076,6 +1089,7 @@ namespace HaCreator.MapSimulator
                 chatStatus,
                 buffzoneStatus,
                 skillGuideStatus,
+                apspContextStatus,
                 apspStatus,
                 tutorStatus,
                 followStatus,
@@ -1415,6 +1429,7 @@ namespace HaCreator.MapSimulator
         private void UpdatePacketOwnedTutorRuntime(int currentTickCount)
         {
             _packetOwnedTutorRuntime.Update(currentTickCount);
+            SyncPacketOwnedTutorSummonState(currentTickCount);
         }
 
         private bool IsPacketOwnedRadioPlaying()
@@ -1428,6 +1443,10 @@ namespace HaCreator.MapSimulator
             _packetOwnedRadioAudio?.Stop();
             _packetOwnedRadioAudio?.Dispose();
             _packetOwnedRadioAudio = null;
+            _lastPacketOwnedRadioTrackDescriptor = null;
+            _lastPacketOwnedRadioResolvedDescriptor = null;
+            _lastPacketOwnedRadioDisplayName = null;
+            _lastPacketOwnedRadioTimeValue = 0;
             _lastPacketOwnedRadioStartTick = int.MinValue;
             _lastPacketOwnedRadioLastPollTick = int.MinValue;
             ApplyUtilityAudioSettings();
@@ -1523,13 +1542,13 @@ namespace HaCreator.MapSimulator
             if (soundProperty != null)
             {
                 resolvedDescriptor = normalizedDescriptor;
-                displayName = normalizedDescriptor.Split('/').LastOrDefault() ?? normalizedDescriptor;
+                displayName = ResolvePacketOwnedRadioDisplayName(soundProperty, normalizedDescriptor.Split('/').LastOrDefault() ?? normalizedDescriptor);
                 return true;
             }
 
             if (TryResolvePacketOwnedWzSound(normalizedDescriptor, "Radio.img", out soundProperty, out resolvedDescriptor))
             {
-                displayName = resolvedDescriptor.Split('/').LastOrDefault() ?? normalizedDescriptor;
+                displayName = ResolvePacketOwnedRadioDisplayName(soundProperty, resolvedDescriptor.Split('/').LastOrDefault() ?? normalizedDescriptor);
                 return true;
             }
 
@@ -1549,13 +1568,33 @@ namespace HaCreator.MapSimulator
                     if (soundProperty != null)
                     {
                         resolvedDescriptor = bgmCandidate;
-                        displayName = normalizedDescriptor;
+                        displayName = ResolvePacketOwnedRadioDisplayName(soundProperty, normalizedDescriptor);
                         return true;
                     }
                 }
             }
 
             return false;
+        }
+
+        private static string ResolvePacketOwnedRadioDisplayName(WzBinaryProperty soundProperty, string fallback)
+        {
+            string normalizedFallback = string.IsNullOrWhiteSpace(fallback) ? "radio track" : fallback.Trim();
+            for (WzObject current = soundProperty?.Parent; current != null; current = current.Parent)
+            {
+                if (current is not WzImageProperty propertyContainer)
+                {
+                    continue;
+                }
+
+                if (propertyContainer["name"] is WzStringProperty nameProperty
+                    && !string.IsNullOrWhiteSpace(nameProperty.Value))
+                {
+                    return nameProperty.Value.Trim();
+                }
+            }
+
+            return normalizedFallback;
         }
 
         private string ApplyPacketOwnedNoticeMessage(string message)
@@ -1807,13 +1846,17 @@ namespace HaCreator.MapSimulator
             if (!enabled)
             {
                 _packetOwnedTutorRuntime.ApplyRemoval("packet-owned tutor branch requested removal.");
+                RemovePacketOwnedTutorSummon();
                 ShowUtilityFeedbackMessage(_packetOwnedTutorRuntime.StatusMessage);
                 return _packetOwnedTutorRuntime.StatusMessage;
             }
 
             int skillId = ResolvePacketOwnedTutorSkillId();
             _packetOwnedTutorRuntime.ApplyHire(skillId, currTickCount);
-            string message = $"Activated packet-owned {DescribePacketOwnedTutorVariant(skillId)} tutor ownership.";
+            string summonDetail = EnsurePacketOwnedTutorSummon(currTickCount);
+            string message = string.IsNullOrWhiteSpace(summonDetail)
+                ? $"Activated packet-owned {DescribePacketOwnedTutorVariant(skillId)} tutor ownership."
+                : $"Activated packet-owned {DescribePacketOwnedTutorVariant(skillId)} tutor ownership. {summonDetail}";
             ShowUtilityFeedbackMessage(message);
             return message;
         }
@@ -1986,21 +2029,51 @@ namespace HaCreator.MapSimulator
 
         private int ResolvePacketOwnedApspReceiveContextToken()
         {
-            SyncPacketOwnedApspContextTokens();
-            return _packetOwnedApspReceiveContextToken;
+            _packetOwnedApspContextState.EnsureSeeded(ResolvePacketOwnedApspSeedCharacterId());
+            return _packetOwnedApspContextState.ReceiveContextToken;
         }
 
         private int ResolvePacketOwnedApspFollowUpContextToken(int promptContextToken)
         {
-            SyncPacketOwnedApspContextTokens();
-            return ResolvePacketOwnedApspFollowUpContextToken(promptContextToken, _packetOwnedApspSendContextToken);
+            _packetOwnedApspContextState.EnsureSeeded(ResolvePacketOwnedApspSeedCharacterId());
+            return ResolvePacketOwnedApspFollowUpContextToken(promptContextToken, _packetOwnedApspContextState.SendContextToken);
         }
 
-        private void SyncPacketOwnedApspContextTokens()
+        private int ResolvePacketOwnedApspSeedCharacterId()
         {
-            int resolvedCharacterId = Math.Max(1, _playerManager?.Player?.Build?.Id ?? 0);
-            _packetOwnedApspReceiveContextToken = resolvedCharacterId;
-            _packetOwnedApspSendContextToken = resolvedCharacterId;
+            return Math.Max(1, _playerManager?.Player?.Build?.Id ?? 0);
+        }
+
+        private string DescribePacketOwnedApspContextStatus()
+        {
+            _packetOwnedApspContextState.EnsureSeeded(ResolvePacketOwnedApspSeedCharacterId());
+            return _packetOwnedApspContextState.Describe();
+        }
+
+        private string SeedPacketOwnedApspContextTokens(int? characterId)
+        {
+            int resolvedCharacterId = Math.Max(1, characterId ?? ResolvePacketOwnedApspSeedCharacterId());
+            _packetOwnedApspContextState.SeedFromCharacterId(resolvedCharacterId);
+            return $"Seeded packet-owned AP/SP CWvsContext tokens from character {resolvedCharacterId}.";
+        }
+
+        private string OverridePacketOwnedApspReceiveContextToken(int receiveContextToken)
+        {
+            _packetOwnedApspContextState.SetReceiveContextToken(receiveContextToken, ResolvePacketOwnedApspSeedCharacterId());
+            return $"Set packet-owned AP/SP receive token (+0x20B4) to {_packetOwnedApspContextState.ReceiveContextToken}. {_packetOwnedApspContextState.Describe()}";
+        }
+
+        private string OverridePacketOwnedApspSendContextToken(int sendContextToken)
+        {
+            _packetOwnedApspContextState.SetSendContextToken(sendContextToken, ResolvePacketOwnedApspSeedCharacterId());
+            return $"Set packet-owned AP/SP send token (+0x2030) to {_packetOwnedApspContextState.SendContextToken}. {_packetOwnedApspContextState.Describe()}";
+        }
+
+        private string OverridePacketOwnedApspContextTokens(int receiveContextToken, int? sendContextToken)
+        {
+            int resolvedSendContextToken = sendContextToken ?? receiveContextToken;
+            _packetOwnedApspContextState.SetContextTokens(receiveContextToken, resolvedSendContextToken, ResolvePacketOwnedApspSeedCharacterId());
+            return $"Set packet-owned AP/SP CWvsContext tokens to recv={_packetOwnedApspContextState.ReceiveContextToken}, send={_packetOwnedApspContextState.SendContextToken}. {_packetOwnedApspContextState.Describe()}";
         }
 
         private static int ResolvePacketOwnedApspFollowUpContextToken(int promptContextToken, int sendContextToken)
@@ -2052,6 +2125,354 @@ namespace HaCreator.MapSimulator
             return $"Tutor: {variant}, waiting for message.";
         }
 
+        private void LoadPacketOwnedTutorAssets()
+        {
+            WzImage chatBalloonImage = Program.FindImage("UI", "ChatBalloon.img");
+            WzSubProperty tutorialBalloonSource = chatBalloonImage?["tutorial"] as WzSubProperty;
+            if (tutorialBalloonSource == null)
+            {
+                return;
+            }
+
+            _packetOwnedTutorBalloonSkin = new LocalOverlayBalloonSkin
+            {
+                NorthWest = LoadUiCanvasTexture(tutorialBalloonSource["nw"] as WzCanvasProperty),
+                NorthEast = LoadUiCanvasTexture(tutorialBalloonSource["ne"] as WzCanvasProperty),
+                SouthWest = LoadUiCanvasTexture(tutorialBalloonSource["sw"] as WzCanvasProperty),
+                SouthEast = LoadUiCanvasTexture(tutorialBalloonSource["se"] as WzCanvasProperty),
+                North = LoadUiCanvasTexture(tutorialBalloonSource["n"] as WzCanvasProperty),
+                South = LoadUiCanvasTexture(tutorialBalloonSource["s"] as WzCanvasProperty),
+                West = LoadUiCanvasTexture(tutorialBalloonSource["w"] as WzCanvasProperty),
+                East = LoadUiCanvasTexture(tutorialBalloonSource["e"] as WzCanvasProperty),
+                Center = LoadUiCanvasTexture(tutorialBalloonSource["c"] as WzCanvasProperty),
+                Arrow = LoadUiArrowSprite(tutorialBalloonSource["arrow"] as WzCanvasProperty),
+                TextColor = Color.Black
+            };
+        }
+
+        private string EnsurePacketOwnedTutorSummon(int currentTickCount)
+        {
+            if (!_packetOwnedTutorRuntime.IsActive)
+            {
+                RemovePacketOwnedTutorSummon();
+                return null;
+            }
+
+            PlayerCharacter player = _playerManager?.Player;
+            if (player?.Build == null)
+            {
+                return "Tutor summon is waiting for a local player.";
+            }
+
+            if (TryGetPacketOwnedTutorSummon(out ActiveSummon summon))
+            {
+                SyncPacketOwnedTutorSummonPose(summon, player, currentTickCount);
+                return null;
+            }
+
+            int ownerCharacterId = player.Build.Id;
+            if (ownerCharacterId <= 0)
+            {
+                return "Tutor summon could not resolve a local character id.";
+            }
+
+            int skillLevel = Math.Max(1, _playerManager?.Skills?.GetSkillLevel(_packetOwnedTutorRuntime.ActiveSkillId) ?? 0);
+            byte moveAction = player.FacingRight ? (byte)0 : (byte)1;
+            var packet = new SummonedCreatePacket(
+                ownerCharacterId,
+                _packetOwnedTutorRuntime.ActiveSummonObjectId,
+                _packetOwnedTutorRuntime.ActiveSkillId,
+                Math.Max(1, player.Level),
+                skillLevel,
+                player.Position,
+                moveAction,
+                0,
+                0,
+                0,
+                2,
+                null,
+                0,
+                Array.Empty<Point>());
+
+            if (!_summonedPool.TryCreate(packet, currentTickCount, out string message))
+            {
+                return $"Tutor summon creation failed: {message}";
+            }
+
+            if (TryGetPacketOwnedTutorSummon(out summon))
+            {
+                SyncPacketOwnedTutorSummonPose(summon, player, currentTickCount);
+            }
+
+            return "Tutor summon owner created from the packet-owned summoned seam.";
+        }
+
+        private void SyncPacketOwnedTutorSummonState(int currentTickCount)
+        {
+            if (!_packetOwnedTutorRuntime.IsActive)
+            {
+                RemovePacketOwnedTutorSummon();
+                return;
+            }
+
+            string summonDetail = EnsurePacketOwnedTutorSummon(currentTickCount);
+            if (!string.IsNullOrWhiteSpace(summonDetail))
+            {
+                return;
+            }
+
+            if (!TryGetPacketOwnedTutorSummon(out ActiveSummon summon))
+            {
+                return;
+            }
+
+            PlayerCharacter player = _playerManager?.Player;
+            if (player != null)
+            {
+                SyncPacketOwnedTutorSummonPose(summon, player, currentTickCount);
+            }
+        }
+
+        private void SyncPacketOwnedTutorSummonPose(ActiveSummon summon, PlayerCharacter player, int currentTickCount)
+        {
+            if (summon == null || player == null)
+            {
+                return;
+            }
+
+            summon.PreviousPositionX = summon.PositionX;
+            summon.PreviousPositionY = summon.PositionY;
+            summon.AnchorX = player.X;
+            summon.AnchorY = player.Y;
+            summon.PositionX = player.X;
+            summon.PositionY = player.Y;
+            summon.FacingRight = player.FacingRight;
+            summon.LastStateChangeTime = currentTickCount;
+            summon.ActorState = _packetOwnedTutorRuntime.HasVisibleMessage(currentTickCount)
+                ? SummonActorState.Prepare
+                : SummonActorState.Idle;
+            summon.CurrentAnimationBranchName = _packetOwnedTutorRuntime.HasVisibleMessage(currentTickCount)
+                ? "say"
+                : null;
+        }
+
+        private void RemovePacketOwnedTutorSummon()
+        {
+            _summonedPool.TryConsumeSummonByObjectId(_packetOwnedTutorRuntime.ActiveSummonObjectId);
+            _summonedPool.TryConsumeSummonByObjectId(TutorRuntime.CygnusTutorObjectId);
+            _summonedPool.TryConsumeSummonByObjectId(TutorRuntime.AranTutorObjectId);
+        }
+
+        private bool TryGetPacketOwnedTutorSummon(out ActiveSummon summon)
+        {
+            summon = null;
+            if (!_packetOwnedTutorRuntime.IsActive || _packetOwnedTutorRuntime.ActiveSummonObjectId <= 0)
+            {
+                return false;
+            }
+
+            summon = _playerManager?.Player?.PacketOwnedSummons?.Summons?
+                .FirstOrDefault(candidate => candidate?.ObjectId == _packetOwnedTutorRuntime.ActiveSummonObjectId && !candidate.IsPendingRemoval);
+            return summon != null;
+        }
+
+        private void DrawPacketOwnedTutorState(int currentTickCount, int mapCenterX, int mapCenterY)
+        {
+            if (!_packetOwnedTutorRuntime.HasVisibleMessage(currentTickCount)
+                || _fontChat == null
+                || _spriteBatch == null
+                || _packetOwnedTutorBalloonSkin?.IsLoaded != true)
+            {
+                return;
+            }
+
+            if (!TryResolvePacketOwnedTutorAnchorScreenPoint(currentTickCount, mapCenterX, mapCenterY, out Point anchor))
+            {
+                return;
+            }
+
+            int requestedWidth = Math.Clamp(
+                _packetOwnedTutorRuntime.ActiveMessageWidth <= 0 ? TutorRuntime.DefaultTextWidth : _packetOwnedTutorRuntime.ActiveMessageWidth,
+                TutorRuntime.MinTextWidth,
+                TutorRuntime.MaxTextWidth);
+            PacketOwnedBalloonWrappedLine[] lines = WrapPacketOwnedBalloonText(_packetOwnedTutorRuntime.ActiveMessageText, requestedWidth);
+            if (lines.Length == 0)
+            {
+                return;
+            }
+
+            Vector2 lineMeasure = MeasureChatTextWithFallback("Ay");
+            int lineHeight = Math.Max(14, (int)Math.Ceiling(lineMeasure.Y));
+            int bodyWidth = requestedWidth + PacketOwnedTutorBalloonBodyExtraWidth;
+            int bodyHeight = (lines.Length * lineHeight) + (PacketOwnedTutorBalloonVerticalPadding * 2);
+            Texture2D arrowTexture = _packetOwnedTutorBalloonSkin.Arrow?.Texture;
+            int arrowWidth = arrowTexture?.Width ?? 0;
+            int arrowHeight = arrowTexture?.Height ?? 0;
+
+            Rectangle bodyBounds = new(
+                anchor.X - (bodyWidth / 2),
+                anchor.Y - bodyHeight - Math.Max(0, arrowHeight - PacketOwnedTutorBalloonArrowOverlap),
+                bodyWidth,
+                bodyHeight);
+            Rectangle arrowBounds = arrowTexture == null
+                ? Rectangle.Empty
+                : new Rectangle(
+                    anchor.X - (arrowWidth / 2),
+                    bodyBounds.Bottom - PacketOwnedTutorBalloonArrowOverlap,
+                    arrowWidth,
+                    arrowHeight);
+            Rectangle canvasBounds = Rectangle.Union(bodyBounds, arrowBounds == Rectangle.Empty ? bodyBounds : arrowBounds);
+            Point canvasShift = ResolvePacketOwnedTutorCanvasShift(canvasBounds);
+            if (canvasShift != Point.Zero)
+            {
+                bodyBounds.Offset(canvasShift);
+                if (arrowBounds != Rectangle.Empty)
+                {
+                    arrowBounds.Offset(canvasShift);
+                }
+            }
+
+            DrawPacketOwnedTutorBalloonNineSlice(bodyBounds);
+            if (arrowTexture != null && arrowBounds != Rectangle.Empty)
+            {
+                _spriteBatch.Draw(arrowTexture, arrowBounds.Location.ToVector2(), Color.White);
+            }
+
+            float drawY = bodyBounds.Y + PacketOwnedTutorBalloonVerticalPadding;
+            for (int lineIndex = 0; lineIndex < lines.Length; lineIndex++)
+            {
+                PacketOwnedBalloonWrappedLine line = lines[lineIndex];
+                if (!line.PreservesLineHeight && (line.Runs == null || line.Runs.Length == 0))
+                {
+                    drawY += lineHeight;
+                    continue;
+                }
+
+                float drawX = bodyBounds.X + ((bodyBounds.Width - line.Width) / 2f);
+                if (line.Runs != null)
+                {
+                    for (int runIndex = 0; runIndex < line.Runs.Length; runIndex++)
+                    {
+                        PacketOwnedBalloonTextRun run = line.Runs[runIndex];
+                        DrawPacketOwnedBalloonRun(
+                            run with { Style = new PacketOwnedBalloonTextStyle(run.Style.Color, run.Style.Emphasis) },
+                            new Vector2(drawX, drawY),
+                            1f);
+                        drawX += MeasurePacketOwnedBalloonRun(run);
+                    }
+                }
+
+                drawY += lineHeight;
+            }
+        }
+
+        private bool TryResolvePacketOwnedTutorAnchorScreenPoint(int currentTickCount, int mapCenterX, int mapCenterY, out Point anchor)
+        {
+            anchor = Point.Zero;
+
+            if (!TryGetPacketOwnedTutorSummon(out ActiveSummon summon))
+            {
+                PlayerCharacter player = _playerManager?.Player;
+                if (player == null)
+                {
+                    return false;
+                }
+
+                anchor = new Point(
+                    (int)Math.Round(player.X - mapShiftX + mapCenterX),
+                    (int)Math.Round(player.Y - mapShiftY + mapCenterY - _packetOwnedTutorRuntime.ResolveActorHeight() - PacketOwnedTutorBalloonAnchorOffsetY));
+                return true;
+            }
+
+            anchor = new Point(
+                (int)Math.Round(summon.PositionX - mapShiftX + mapCenterX),
+                (int)Math.Round(summon.PositionY - mapShiftY + mapCenterY - _packetOwnedTutorRuntime.ResolveActorHeight() - PacketOwnedTutorBalloonAnchorOffsetY));
+            return true;
+        }
+
+        private Point ResolvePacketOwnedTutorCanvasShift(Rectangle canvasBounds)
+        {
+            int minX = PacketOwnedTutorBalloonScreenMargin;
+            int maxX = Math.Max(minX, Width - PacketOwnedTutorBalloonScreenMargin);
+            int minY = PacketOwnedTutorBalloonScreenMargin;
+            int maxY = Math.Max(minY, Height - PacketOwnedTutorBalloonScreenMargin);
+
+            int shiftX = 0;
+            if (canvasBounds.Left < minX)
+            {
+                shiftX = minX - canvasBounds.Left;
+            }
+            else if (canvasBounds.Right > maxX)
+            {
+                shiftX = maxX - canvasBounds.Right;
+            }
+
+            int shiftY = 0;
+            if (canvasBounds.Top < minY)
+            {
+                shiftY = minY - canvasBounds.Top;
+            }
+            else if (canvasBounds.Bottom > maxY)
+            {
+                shiftY = maxY - canvasBounds.Bottom;
+            }
+
+            return shiftX == 0 && shiftY == 0
+                ? Point.Zero
+                : new Point(shiftX, shiftY);
+        }
+
+        private void DrawPacketOwnedTutorBalloonNineSlice(Rectangle bodyBounds)
+        {
+            Texture2D northWest = _packetOwnedTutorBalloonSkin.NorthWest;
+            Texture2D northEast = _packetOwnedTutorBalloonSkin.NorthEast;
+            Texture2D southWest = _packetOwnedTutorBalloonSkin.SouthWest;
+            Texture2D southEast = _packetOwnedTutorBalloonSkin.SouthEast;
+            Texture2D north = _packetOwnedTutorBalloonSkin.North;
+            Texture2D south = _packetOwnedTutorBalloonSkin.South;
+            Texture2D west = _packetOwnedTutorBalloonSkin.West;
+            Texture2D east = _packetOwnedTutorBalloonSkin.East;
+            Texture2D center = _packetOwnedTutorBalloonSkin.Center;
+            if (northWest == null
+                || northEast == null
+                || southWest == null
+                || southEast == null
+                || north == null
+                || south == null
+                || west == null
+                || east == null
+                || center == null)
+            {
+                return;
+            }
+
+            Color tint = Color.White;
+            int leftWidth = northWest.Width;
+            int rightWidth = northEast.Width;
+            int topHeight = northWest.Height;
+            int bottomHeight = southWest.Height;
+            int centerWidth = Math.Max(0, bodyBounds.Width - leftWidth - rightWidth);
+            int centerHeight = Math.Max(0, bodyBounds.Height - topHeight - bottomHeight);
+
+            _spriteBatch.Draw(center, new Rectangle(bodyBounds.X + leftWidth, bodyBounds.Y + topHeight, centerWidth, centerHeight), tint);
+            _spriteBatch.Draw(northWest, new Vector2(bodyBounds.X, bodyBounds.Y), tint);
+            _spriteBatch.Draw(northEast, new Vector2(bodyBounds.Right - rightWidth, bodyBounds.Y), tint);
+            _spriteBatch.Draw(southWest, new Vector2(bodyBounds.X, bodyBounds.Bottom - bottomHeight), tint);
+            _spriteBatch.Draw(southEast, new Vector2(bodyBounds.Right - rightWidth, bodyBounds.Bottom - bottomHeight), tint);
+
+            if (centerWidth > 0)
+            {
+                _spriteBatch.Draw(north, new Rectangle(bodyBounds.X + leftWidth, bodyBounds.Y, centerWidth, north.Height), tint);
+                _spriteBatch.Draw(south, new Rectangle(bodyBounds.X + leftWidth, bodyBounds.Bottom - south.Height, centerWidth, south.Height), tint);
+            }
+
+            if (centerHeight > 0)
+            {
+                _spriteBatch.Draw(west, new Rectangle(bodyBounds.X, bodyBounds.Y + topHeight, west.Width, centerHeight), tint);
+                _spriteBatch.Draw(east, new Rectangle(bodyBounds.Right - east.Width, bodyBounds.Y + topHeight, east.Width, centerHeight), tint);
+            }
+        }
+
         private static string DescribePacketOwnedTutorVariant(int skillId)
         {
             return skillId switch
@@ -2090,13 +2511,6 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            if (!_localFollowRuntime.TryAcceptIncomingRequest(requester, out string message))
-            {
-                ShowUtilityFeedbackMessage(message);
-                HideLoginUtilityDialog();
-                return;
-            }
-
             int localCharacterId = _playerManager?.Player?.Build?.Id ?? 0;
             if (localCharacterId <= 0)
             {
@@ -2105,14 +2519,40 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            _remoteUserPool?.TryApplyFollowCharacter(
-                requester.CharacterId,
-                localCharacterId,
-                transferField: false,
-                transferPosition: null,
-                localCharacterId,
-                _playerManager?.Player?.Position ?? Vector2.Zero,
-                out _);
+            if (_remoteUserPool != null
+                && !_remoteUserPool.TryApplyFollowCharacter(
+                    requester.CharacterId,
+                    localCharacterId,
+                    transferField: false,
+                    transferPosition: null,
+                    localCharacterId,
+                    _playerManager?.Player?.Position ?? Vector2.Zero,
+                    out string followMessage))
+            {
+                ShowUtilityFeedbackMessage(followMessage);
+                HideLoginUtilityDialog();
+                return;
+            }
+
+            if (!_localFollowRuntime.TryAcceptIncomingRequest(requester, out string message))
+            {
+                if (_remoteUserPool != null)
+                {
+                    _remoteUserPool.TryApplyFollowCharacter(
+                        requester.CharacterId,
+                        0,
+                        transferField: false,
+                        transferPosition: null,
+                        localCharacterId,
+                        _playerManager?.Player?.Position ?? Vector2.Zero,
+                        out _);
+                }
+
+                ShowUtilityFeedbackMessage(message);
+                HideLoginUtilityDialog();
+                return;
+            }
+
             HideLoginUtilityDialog();
             ShowUtilityFeedbackMessage(message);
         }
@@ -3139,6 +3579,79 @@ namespace HaCreator.MapSimulator
                     return HandlePacketOwnedAntiMacroCommand(args.Skip(1).ToArray());
 
                 case "apsp":
+                    if (args.Length >= 2)
+                    {
+                        switch (args[1].ToLowerInvariant())
+                        {
+                            case "status":
+                                return ChatCommandHandler.CommandResult.Info(DescribePacketOwnedApspContextStatus());
+
+                            case "seed":
+                                int? apspSeedCharacterId = null;
+                                int parsedApspSeedCharacterId = 0;
+                                if (args.Length >= 3
+                                    && !int.TryParse(args[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out parsedApspSeedCharacterId))
+                                {
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /localutility apsp [status|seed [characterId]|receive <token>|send <token>|context <receiveToken> [sendToken]|<contextToken> <11|12|13>|text]");
+                                }
+
+                                if (args.Length >= 3)
+                                {
+                                    apspSeedCharacterId = parsedApspSeedCharacterId;
+                                }
+
+                                return ChatCommandHandler.CommandResult.Ok(
+                                    SeedPacketOwnedApspContextTokens(apspSeedCharacterId));
+
+                            case "receive":
+                                if (args.Length < 3
+                                    || !int.TryParse(args[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out int apspReceiveToken)
+                                    || apspReceiveToken <= 0)
+                                {
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /localutility apsp [status|seed [characterId]|receive <token>|send <token>|context <receiveToken> [sendToken]|<contextToken> <11|12|13>|text]");
+                                }
+
+                                return ChatCommandHandler.CommandResult.Ok(OverridePacketOwnedApspReceiveContextToken(apspReceiveToken));
+
+                            case "send":
+                                if (args.Length < 3
+                                    || !int.TryParse(args[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out int apspSendToken)
+                                    || apspSendToken <= 0)
+                                {
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /localutility apsp [status|seed [characterId]|receive <token>|send <token>|context <receiveToken> [sendToken]|<contextToken> <11|12|13>|text]");
+                                }
+
+                                return ChatCommandHandler.CommandResult.Ok(OverridePacketOwnedApspSendContextToken(apspSendToken));
+
+                            case "context":
+                                if (args.Length < 3
+                                    || !int.TryParse(args[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out int apspReceiveContextToken)
+                                    || apspReceiveContextToken <= 0)
+                                {
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /localutility apsp [status|seed [characterId]|receive <token>|send <token>|context <receiveToken> [sendToken]|<contextToken> <11|12|13>|text]");
+                                }
+
+                                int? apspSendContextToken = null;
+                                int parsedApspSendContextToken = 0;
+                                if (args.Length >= 4
+                                    && (!int.TryParse(args[3], NumberStyles.Integer, CultureInfo.InvariantCulture, out parsedApspSendContextToken)
+                                        || parsedApspSendContextToken <= 0))
+                                {
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /localutility apsp [status|seed [characterId]|receive <token>|send <token>|context <receiveToken> [sendToken]|<contextToken> <11|12|13>|text]");
+                                }
+
+                                if (args.Length >= 4)
+                                {
+                                    apspSendContextToken = parsedApspSendContextToken;
+                                }
+
+                                return ChatCommandHandler.CommandResult.Ok(
+                                    OverridePacketOwnedApspContextTokens(
+                                        apspReceiveContextToken,
+                                        apspSendContextToken));
+                        }
+                    }
+
                     if (args.Length >= 3
                         && int.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int apspContextToken)
                         && int.TryParse(args[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out int apspEventType))
@@ -3179,7 +3692,7 @@ namespace HaCreator.MapSimulator
 
                 default:
                     return ChatCommandHandler.CommandResult.Error(
-                        "Usage: /localutility [status|inbox [status|start [port]|stop|packet <openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|followfail|damagemeter|hpdec|skillcooltime|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]]|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel|type19|whisper:name|whisperout:name] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv]|classcompetition|skillguide|antimacro [status|launch <normal|admin> [first|retry]|notice <noticeType> [antiMacroType]|result <mode> [antiMacroType] [userName]|clear]|apsp [text]|apsp <contextToken> <11|12|13>|follow <status|request <driverId|name> [auto|manual] [keyinput]|ask <requesterId|name>|accept|decline|attach <driverId|name>|detach [transferX transferY]|passengerdetach [requesterId|name] [transferX transferY]>|followfail [reasonCode [driverId]|text]|packet <openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|follow|followfail|193|243|250|251|252|255|256|262|263|264|265|266|267|270|273|274|275|276|1011|1012> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>]");
+                        "Usage: /localutility [status|inbox [status|start [port]|stop|packet <openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|followfail|damagemeter|hpdec|skillcooltime|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]]|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel|type19|whisper:name|whisperout:name] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv]|classcompetition|skillguide|antimacro [status|launch <normal|admin> [first|retry]|notice <noticeType> [antiMacroType]|result <mode> [antiMacroType] [userName]|clear]|apsp [status|seed [characterId]|receive <token>|send <token>|context <receiveToken> [sendToken]|<contextToken> <11|12|13>|text]|follow <status|request <driverId|name> [auto|manual] [keyinput]|ask <requesterId|name>|accept|decline|attach <driverId|name>|detach [transferX transferY]|passengerdetach [requesterId|name] [transferX transferY]>|followfail [reasonCode [driverId]|text]|packet <openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|follow|followfail|193|243|250|251|252|255|256|262|263|264|265|266|267|270|273|274|275|276|1011|1012> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>]");
             }
         }
 
@@ -3199,7 +3712,7 @@ namespace HaCreator.MapSimulator
                 int port = LocalUtilityPacketInboxManager.DefaultPort;
                 if (args.Length > offset + 1 && (!int.TryParse(args[offset + 1], out port) || port <= 0 || port > ushort.MaxValue))
                 {
-                    return ChatCommandHandler.CommandResult.Error($"Usage: {usagePrefix} [status|start [port]|stop|packet <openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|followfail|damagemeter|hpdec|skillcooltime|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]]");
+                    return ChatCommandHandler.CommandResult.Error($"Usage: {usagePrefix} [status|start [port]|stop|packet <openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|radio|skillguide|antimacro|apspevent|followfail|damagemeter|hpdec|skillcooltime|243|246|247|250|251|252|261|262|263|264|265|266|267|270|273|274|275|276|1011|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]]");
                 }
 
                 _localUtilityPacketInboxConfiguredPort = port;
@@ -3225,7 +3738,7 @@ namespace HaCreator.MapSimulator
             }
 
             return ChatCommandHandler.CommandResult.Error(
-                $"Usage: {usagePrefix} [status|start [port]|stop|packet <openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|followfail|damagemeter|hpdec|skillcooltime|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]]");
+                $"Usage: {usagePrefix} [status|start [port]|stop|packet <openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|radio|skillguide|antimacro|apspevent|followfail|damagemeter|hpdec|skillcooltime|243|246|247|250|251|252|261|262|263|264|265|266|267|270|273|274|275|276|1011|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]]");
         }
 
         private ChatCommandHandler.CommandResult HandlePacketOwnedUtilityPacketCommand(string[] args, bool rawHex)
@@ -3336,8 +3849,8 @@ namespace HaCreator.MapSimulator
                 default:
                     return ChatCommandHandler.CommandResult.Error(
                         rawHex
-                        ? "Usage: /localutility packetraw <openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|follow|followfail|skillcooltime|193|243|246|247|250|251|252|255|256|262|263|264|265|266|267|270|273|274|275|276|1011|1012> <hex>"
-                        : "Usage: /localutility packet <openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|follow|followfail|skillcooltime|193|243|246|247|250|251|252|255|256|262|263|264|265|266|267|270|273|274|275|276|1011|1012> [payloadhex=..|payloadb64=..]");
+                        ? "Usage: /localutility packetraw <openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|radio|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|follow|followfail|skillcooltime|193|243|246|247|250|251|252|255|256|261|262|263|264|265|266|267|270|273|274|275|276|1011|1012> <hex>"
+                        : "Usage: /localutility packet <openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|radio|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|follow|followfail|skillcooltime|193|243|246|247|250|251|252|255|256|261|262|263|264|265|266|267|270|273|274|275|276|1011|1012> [payloadhex=..|payloadb64=..]");
             }
 
             return applied

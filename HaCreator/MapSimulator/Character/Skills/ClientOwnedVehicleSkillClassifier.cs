@@ -6,6 +6,14 @@ namespace HaCreator.MapSimulator.Character.Skills
     internal static class ClientOwnedVehicleSkillClassifier
     {
         private const int BattleshipSkillId = 5221006;
+        private static readonly int[] BattleshipMountedActionSkillIds =
+        {
+            5211004,
+            5211005,
+            5221007,
+            5221008
+        };
+
         private static readonly int[] MechanicVehicleStateSkillIds =
         {
             35111004,
@@ -64,14 +72,22 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
-            if (!string.Equals(skill.ActionName, "cannon", StringComparison.OrdinalIgnoreCase)
-                && !string.Equals(skill.ActionName, "torpedo", StringComparison.OrdinalIgnoreCase))
+            bool hasBattleshipMountedAction = false;
+            foreach (string actionName in EnumerateActionNames(skill))
+            {
+                if (IsBattleshipMountedActionName(actionName))
+                {
+                    hasBattleshipMountedAction = true;
+                    break;
+                }
+            }
+
+            if (!hasBattleshipMountedAction)
             {
                 return false;
             }
 
-            return skill.SkillId == 5221007
-                   || skill.SkillId == 5221008
+            return Array.IndexOf(BattleshipMountedActionSkillIds, skill.SkillId) >= 0
                    || HasRequiredSkill(skill, BattleshipSkillId)
                    || levelData?.RequiredSkill == BattleshipSkillId
                    || HasBattleshipBoardingText(skill);
@@ -189,6 +205,14 @@ namespace HaCreator.MapSimulator.Character.Skills
             return false;
         }
 
+        private static bool IsBattleshipMountedActionName(string actionName)
+        {
+            return string.Equals(actionName, "cannon", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "torpedo", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "fireburner", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "coolingeffect", StringComparison.OrdinalIgnoreCase);
+        }
+
         internal static bool HasRideDescriptionText(SkillData skill)
         {
             if (skill == null)
@@ -243,24 +267,53 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static IEnumerable<string> EnumerateActionNames(SkillData skill)
         {
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            if (skill?.ActionNames != null)
+            {
+                foreach (string actionName in skill.ActionNames)
+                {
+                    if (!string.IsNullOrWhiteSpace(actionName) && seen.Add(actionName))
+                    {
+                        yield return actionName;
+                    }
+                }
+            }
+
             if (!string.IsNullOrWhiteSpace(skill?.ActionName))
             {
-                yield return skill.ActionName;
+                string actionName = skill.ActionName;
+                if (seen.Add(actionName))
+                {
+                    yield return actionName;
+                }
             }
 
             if (!string.IsNullOrWhiteSpace(skill?.PrepareActionName))
             {
-                yield return skill.PrepareActionName;
+                string actionName = skill.PrepareActionName;
+                if (seen.Add(actionName))
+                {
+                    yield return actionName;
+                }
             }
 
             if (!string.IsNullOrWhiteSpace(skill?.KeydownActionName))
             {
-                yield return skill.KeydownActionName;
+                string actionName = skill.KeydownActionName;
+                if (seen.Add(actionName))
+                {
+                    yield return actionName;
+                }
             }
 
             if (!string.IsNullOrWhiteSpace(skill?.KeydownEndActionName))
             {
-                yield return skill.KeydownEndActionName;
+                string actionName = skill.KeydownEndActionName;
+                if (seen.Add(actionName))
+                {
+                    yield return actionName;
+                }
             }
         }
     }

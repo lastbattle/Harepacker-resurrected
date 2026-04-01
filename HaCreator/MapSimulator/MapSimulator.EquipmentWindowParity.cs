@@ -36,9 +36,11 @@ namespace HaCreator.MapSimulator
             return EquipmentChangeSubmission.Accept(request.RequestId, request.RequestedAtTick);
         }
 
-        private EquipmentChangeResult TryResolveEquipmentChangeRequest(int requestId)
+        private EquipmentChangeResult TryResolveEquipmentChangeRequest(EquipmentChangeResolutionQuery resolutionQuery)
         {
-            if (requestId <= 0 || !_pendingEquipmentChangeRequests.TryGetValue(requestId, out PendingEquipmentChangeEnvelope pendingEnvelope))
+            if (resolutionQuery == null
+                || resolutionQuery.RequestId <= 0
+                || !_pendingEquipmentChangeRequests.TryGetValue(resolutionQuery.RequestId, out PendingEquipmentChangeEnvelope pendingEnvelope))
             {
                 return null;
             }
@@ -48,18 +50,32 @@ namespace HaCreator.MapSimulator
                 return null;
             }
 
-            _pendingEquipmentChangeRequests.Remove(requestId);
-
             EquipmentChangeRequest request = pendingEnvelope.Request;
             if (request == null)
             {
+                _pendingEquipmentChangeRequests.Remove(resolutionQuery.RequestId);
                 return EquipmentChangeResult.Reject("Equipment change request is missing.");
             }
+
+            if (resolutionQuery.OwnerSessionId != request.OwnerSessionId
+                || resolutionQuery.RequestedAtTick != request.RequestedAtTick)
+            {
+                _pendingEquipmentChangeRequests.Remove(resolutionQuery.RequestId);
+                return EquipmentChangeResult.Reject("The equipment request session is no longer active.");
+            }
+
+            _pendingEquipmentChangeRequests.Remove(resolutionQuery.RequestId);
 
             CharacterBuild build = _playerManager?.Player?.Build;
             if (build == null)
             {
                 return EquipmentChangeResult.Reject("No live character build is available for this equipment action.");
+            }
+
+            if (EquipmentChangeRequestValidator.TryGetRequestStateRejectReason(request, build, out string requestStateRejectReason))
+            {
+                return EquipmentChangeResult.Reject(requestStateRejectReason)
+                    .WithCompletionMetadata(request.RequestId, request.RequestedAtTick, currTickCount, build.ComputeEquipmentStateToken());
             }
 
             EquipmentChangeResult result = request.Kind switch
@@ -70,7 +86,7 @@ namespace HaCreator.MapSimulator
                 _ => EquipmentChangeResult.Reject("Unsupported equipment change request.")
             };
 
-            return result.WithCompletionMetadata(request.RequestId, request.RequestedAtTick, currTickCount);
+            return result.WithCompletionMetadata(request.RequestId, request.RequestedAtTick, currTickCount, build.ComputeEquipmentStateToken());
         }
 
         private EquipmentChangeResult HandleInventoryToCharacterChange(EquipmentChangeRequest request, CharacterBuild build)

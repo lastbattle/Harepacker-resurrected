@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.UI;
+using Microsoft.Xna.Framework;
 
 namespace HaCreator.MapSimulator
 {
@@ -24,6 +25,7 @@ namespace HaCreator.MapSimulator
         public bool InputMasked { get; init; }
         public int InputMaxLength { get; init; }
         public SoftKeyboardKeyboardType SoftKeyboardType { get; init; } = SoftKeyboardKeyboardType.AlphaNumeric;
+        public Rectangle? InputBoundsOverride { get; init; }
         public int DurationMs { get; init; } = 2400;
     }
 }

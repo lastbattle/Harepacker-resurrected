@@ -147,6 +147,8 @@ namespace HaCreator.MapSimulator.UI
         private UIObject _cancelButton;
         private UIObject _prevButton;
         private UIObject _nextButton;
+        private UIObject _themeActionButton;
+        private UIObject _themeCancelButton;
         private CharacterBuild _characterBuild;
         private IInventoryRuntime _inventory;
         private int _selectedIndex;
@@ -155,6 +157,10 @@ namespace HaCreator.MapSimulator.UI
         private string _statusMessage = "Select equipment and begin enhancement.";
         private bool? _lastUpgradeSucceeded;
         private VisualThemeKind _activeThemeKind = VisualThemeKind.Enhancement;
+        private WindowPresentationState _presentationState = WindowPresentationState.Idle;
+        private int _presentationElapsedMs;
+        private ItemUpgradeAttemptResult _presentationResult;
+        private VisualThemeKind? _lockedThemeKind;
 
         public ItemUpgradeUI(IDXObject frame)
             : base(frame)
@@ -203,6 +209,7 @@ namespace HaCreator.MapSimulator.UI
 
         public void PrepareConsumableSelection(int itemId)
         {
+            ClearPresentationState();
             if (!TryGetConsumableDefinition(itemId, out EnhancementConsumableDefinition definition))
             {
                 return;
@@ -225,6 +232,7 @@ namespace HaCreator.MapSimulator.UI
 
         public void PrepareNpcLaunch()
         {
+            ClearPresentationState();
             _preferredConsumableItemId = null;
             _preferredModifierItemId = null;
             _lastUpgradeSucceeded = null;
@@ -237,6 +245,7 @@ namespace HaCreator.MapSimulator.UI
 
         public void PrepareEquipmentSelection(EquipSlot slot)
         {
+            ClearPresentationState();
             IReadOnlyList<KeyValuePair<EquipSlot, CharacterPart>> candidates = GetCandidates();
             if (candidates.Count == 0)
             {
@@ -283,6 +292,20 @@ namespace HaCreator.MapSimulator.UI
             if (theme == null)
             {
                 return;
+            }
+
+            if (theme.ActionButton != null)
+            {
+                theme.ActionButton.ButtonVisible = false;
+                AddButton(theme.ActionButton);
+                theme.ActionButton.ButtonClickReleased += _ => HandleThemeActionButtonClick();
+            }
+
+            if (theme.CancelButton != null)
+            {
+                theme.CancelButton.ButtonVisible = false;
+                AddButton(theme.CancelButton);
+                theme.CancelButton.ButtonClickReleased += _ => Hide();
             }
 
             _visualThemes[themeKind] = theme;
@@ -339,6 +362,18 @@ namespace HaCreator.MapSimulator.UI
             base.Update(gameTime);
             ClampSelection();
             RefreshVisualTheme();
+
+            if (_presentationState == WindowPresentationState.Casting)
+            {
+                _presentationElapsedMs += (int)gameTime.ElapsedGameTime.TotalMilliseconds;
+                if (_presentationElapsedMs >= ResolveThemeEffectDuration())
+                {
+                    _presentationState = WindowPresentationState.Result;
+                    _presentationElapsedMs = 0;
+                    _statusMessage = _presentationResult.StatusMessage;
+                }
+            }
+
             UpdateButtonStates();
         }
 
@@ -389,6 +424,7 @@ namespace HaCreator.MapSimulator.UI
             EnhancementConsumable modifier = ResolveModifier(consumable);
 
             DrawSelectedItem(sprite, windowX + ItemIconX, windowY + ItemIconY, selectedPart);
+            DrawThemeEffect(sprite, windowX, windowY);
 
             string itemName = string.IsNullOrWhiteSpace(selectedPart.Name) ? $"Equip {selectedPart.ItemId}" : selectedPart.Name;
             DrawShadowedText(sprite, itemName, new Vector2(windowX + DetailTextX, windowY + 40), new Color(255, 220, 120));
@@ -426,6 +462,7 @@ namespace HaCreator.MapSimulator.UI
 
             Color statusColor = _lastUpgradeSucceeded switch
             {
+                _ when _presentationState == WindowPresentationState.Casting => new Color(255, 232, 150),
                 true => new Color(160, 255, 160),
                 false => new Color(255, 170, 170),
                 _ => new Color(220, 220, 220)
@@ -490,7 +527,29 @@ namespace HaCreator.MapSimulator.UI
 
         private void TryApplyUpgrade()
         {
-            TryApplyPreparedUpgrade();
+            if (_presentationState == WindowPresentationState.Casting)
+            {
+                return;
+            }
+
+            if (_presentationState == WindowPresentationState.Result)
+            {
+                ResetPresentationState();
+                return;
+            }
+
+            EnhancementConsumable preparedConsumable = TryResolveCurrentConsumable(out _) ? ResolveCurrentConsumable() : null;
+            VisualThemeKind presentationThemeKind = preparedConsumable != null
+                ? ResolveVisualThemeKind(preparedConsumable.Definition)
+                : ResolveCurrentVisualThemeKind();
+
+            ItemUpgradeAttemptResult result = TryApplyPreparedUpgrade();
+            if (preparedConsumable?.EffectType == ConsumableEffectType.Cube &&
+                result.Success.HasValue &&
+                TryStartThemePresentation(presentationThemeKind, result))
+            {
+                return;
+            }
         }
 
         public ItemUpgradeAttemptResult TryApplyPreparedUpgrade()
@@ -1025,12 +1084,38 @@ namespace HaCreator.MapSimulator.UI
         {
             IReadOnlyList<KeyValuePair<EquipSlot, CharacterPart>> candidates = GetCandidates();
             bool hasCandidates = candidates.Count > 0;
+            bool hasThemeButtons = _themeActionButton != null || _themeCancelButton != null;
+            bool idle = _presentationState == WindowPresentationState.Idle;
+            bool canCycle = idle && hasCandidates && candidates.Count > 1;
 
-            _prevButton?.SetEnabled(hasCandidates && candidates.Count > 1);
-            _nextButton?.SetEnabled(hasCandidates && candidates.Count > 1);
+            if (_prevButton != null)
+            {
+                _prevButton.SetEnabled(canCycle);
+                _prevButton.ButtonVisible = canCycle;
+            }
+
+            if (_nextButton != null)
+            {
+                _nextButton.SetEnabled(canCycle);
+                _nextButton.ButtonVisible = canCycle;
+            }
+
+            if (_startButton != null)
+            {
+                _startButton.ButtonVisible = !hasThemeButtons;
+            }
+
+            if (_cancelButton != null)
+            {
+                _cancelButton.ButtonVisible = !hasThemeButtons;
+                _cancelButton.SetEnabled(idle);
+            }
+
             if (!hasCandidates)
             {
                 _startButton?.SetEnabled(false);
+                _themeActionButton?.SetEnabled(false);
+                _themeCancelButton?.SetEnabled(false);
                 return;
             }
 
@@ -1054,12 +1139,24 @@ namespace HaCreator.MapSimulator.UI
                                 { EffectType: ConsumableEffectType.Hammer } => TryGetHammerBlockReason(consumable, selection.Value, state, out _),
                                 _ => false
                             };
-            _startButton?.SetEnabled(canApply);
+            _startButton?.SetEnabled(idle && canApply);
+
+            if (_themeActionButton != null)
+            {
+                _themeActionButton.ButtonVisible = _presentationState != WindowPresentationState.Casting;
+                _themeActionButton.SetEnabled((_presentationState == WindowPresentationState.Result) || (idle && canApply));
+            }
+
+            if (_themeCancelButton != null)
+            {
+                _themeCancelButton.ButtonVisible = _presentationState != WindowPresentationState.Casting;
+                _themeCancelButton.SetEnabled(idle || _presentationState == WindowPresentationState.Result);
+            }
         }
 
         private void RefreshVisualTheme()
         {
-            ApplyVisualTheme(ResolveCurrentVisualThemeKind());
+            ApplyVisualTheme(_lockedThemeKind ?? ResolveCurrentVisualThemeKind());
         }
 
         private VisualThemeKind ResolveCurrentVisualThemeKind()
@@ -1135,6 +1232,168 @@ namespace HaCreator.MapSimulator.UI
             _gaugeBarTexture = theme.GaugeBarTexture;
             _gaugeFillTexture = theme.GaugeFillTexture;
             _gaugeOffset = theme.GaugeOffset;
+            _themeActionButton = theme.ActionButton;
+            _themeCancelButton = theme.CancelButton;
+        }
+
+        private bool TryResolveCurrentConsumable(out EnhancementConsumable consumable)
+        {
+            consumable = ResolveCurrentConsumable();
+            return consumable != null;
+        }
+
+        private EnhancementConsumable ResolveCurrentConsumable()
+        {
+            IReadOnlyList<KeyValuePair<EquipSlot, CharacterPart>> candidates = GetCandidates();
+            if (candidates.Count == 0)
+            {
+                return null;
+            }
+
+            KeyValuePair<EquipSlot, CharacterPart> selection = candidates[_selectedIndex];
+            UpgradeState state = GetOrCreateState(selection.Key, selection.Value);
+            return ResolveConsumable(state, selection.Value);
+        }
+
+        private void HandleThemeActionButtonClick()
+        {
+            if (_presentationState == WindowPresentationState.Result)
+            {
+                ResetPresentationState();
+                return;
+            }
+
+            TryApplyUpgrade();
+        }
+
+        private bool TryStartThemePresentation(VisualThemeKind themeKind, ItemUpgradeAttemptResult result)
+        {
+            if (!_visualThemes.TryGetValue(themeKind, out WindowVisualTheme theme) ||
+                theme.EffectFrames == null ||
+                theme.EffectFrames.Count == 0)
+            {
+                return false;
+            }
+
+            _lockedThemeKind = themeKind;
+            _presentationState = WindowPresentationState.Casting;
+            _presentationElapsedMs = 0;
+            _presentationResult = result;
+            _statusMessage = $"Using {ResolveConsumableName(result.ConsumableItemId)}...";
+            ApplyVisualTheme(themeKind);
+            return true;
+        }
+
+        private void ResetPresentationState()
+        {
+            ClearPresentationState();
+            _statusMessage = BuildReadyStatusMessage();
+            RefreshVisualTheme();
+            UpdateButtonStates();
+        }
+
+        private void ClearPresentationState()
+        {
+            _presentationState = WindowPresentationState.Idle;
+            _presentationElapsedMs = 0;
+            _presentationResult = default;
+            _lockedThemeKind = null;
+            _lastUpgradeSucceeded = null;
+        }
+
+        private string BuildReadyStatusMessage()
+        {
+            IReadOnlyList<KeyValuePair<EquipSlot, CharacterPart>> candidates = GetCandidates();
+            if (candidates.Count == 0)
+            {
+                return "No equipped item can be upgraded.";
+            }
+
+            if (_preferredModifierItemId.HasValue &&
+                TryGetConsumableDefinition(_preferredModifierItemId.Value, out EnhancementConsumableDefinition modifierDefinition) &&
+                GetConsumableCount(_preferredModifierItemId.Value) > 0)
+            {
+                return $"{modifierDefinition.Name} ready. Choose equipment and a compatible scroll.";
+            }
+
+            if (_preferredConsumableItemId.HasValue &&
+                TryGetConsumableDefinition(_preferredConsumableItemId.Value, out EnhancementConsumableDefinition consumableDefinition) &&
+                GetConsumableCount(_preferredConsumableItemId.Value) > 0)
+            {
+                return $"{consumableDefinition.Name} ready. Choose equipment to enhance.";
+            }
+
+            return "Select equipment and begin enhancement.";
+        }
+
+        private void DrawThemeEffect(SpriteBatch sprite, int windowX, int windowY)
+        {
+            if (_presentationState != WindowPresentationState.Casting ||
+                !_visualThemes.TryGetValue(_lockedThemeKind ?? _activeThemeKind, out WindowVisualTheme theme) ||
+                theme.EffectFrames == null ||
+                theme.EffectFrames.Count == 0)
+            {
+                return;
+            }
+
+            VegaSpellUI.VegaAnimationFrame frame = SelectThemeEffectFrame(theme.EffectFrames, _presentationElapsedMs);
+            if (frame?.Texture == null)
+            {
+                return;
+            }
+
+            Vector2 position = new Vector2(windowX + frame.Offset.X, windowY + frame.Offset.Y);
+            sprite.Draw(frame.Texture, position, Color.White);
+        }
+
+        private static VegaSpellUI.VegaAnimationFrame SelectThemeEffectFrame(IReadOnlyList<VegaSpellUI.VegaAnimationFrame> frames, int elapsedMs)
+        {
+            if (frames == null || frames.Count == 0)
+            {
+                return null;
+            }
+
+            int animationDuration = 0;
+            for (int i = 0; i < frames.Count; i++)
+            {
+                animationDuration += Math.Max(1, frames[i].DelayMs);
+            }
+
+            if (animationDuration <= 0)
+            {
+                return frames[0];
+            }
+
+            int localElapsed = Math.Max(0, elapsedMs) % animationDuration;
+            int running = 0;
+            for (int i = 0; i < frames.Count; i++)
+            {
+                running += Math.Max(1, frames[i].DelayMs);
+                if (localElapsed < running)
+                {
+                    return frames[i];
+                }
+            }
+
+            return frames[^1];
+        }
+
+        private int ResolveThemeEffectDuration()
+        {
+            if (!_visualThemes.TryGetValue(_lockedThemeKind ?? _activeThemeKind, out WindowVisualTheme theme) ||
+                theme.EffectFrames == null ||
+                theme.EffectFrames.Count == 0)
+            {
+                return 0;
+            }
+
+            int duration = 0;
+            for (int i = 0; i < theme.EffectFrames.Count; i++)
+            {
+                duration += Math.Max(1, theme.EffectFrames[i].DelayMs);
+            }
+
+            return Math.Max(duration, 1);
         }
 
         private IReadOnlyList<KeyValuePair<EquipSlot, CharacterPart>> GetCandidates()
@@ -2434,7 +2693,10 @@ namespace HaCreator.MapSimulator.UI
                 Point headerOverlayOffset,
                 Texture2D gaugeBarTexture,
                 Texture2D gaugeFillTexture,
-                Point gaugeOffset)
+                Point gaugeOffset,
+                UIObject actionButton = null,
+                UIObject cancelButton = null,
+                IReadOnlyList<VegaSpellUI.VegaAnimationFrame> effectFrames = null)
             {
                 Frame = frame;
                 BackgroundOverlay = backgroundOverlay;
@@ -2444,6 +2706,9 @@ namespace HaCreator.MapSimulator.UI
                 GaugeBarTexture = gaugeBarTexture;
                 GaugeFillTexture = gaugeFillTexture;
                 GaugeOffset = gaugeOffset;
+                ActionButton = actionButton;
+                CancelButton = cancelButton;
+                EffectFrames = effectFrames ?? Array.Empty<VegaSpellUI.VegaAnimationFrame>();
             }
 
             public IDXObject Frame { get; }
@@ -2454,6 +2719,9 @@ namespace HaCreator.MapSimulator.UI
             public Texture2D GaugeBarTexture { get; }
             public Texture2D GaugeFillTexture { get; }
             public Point GaugeOffset { get; }
+            public UIObject ActionButton { get; }
+            public UIObject CancelButton { get; }
+            public IReadOnlyList<VegaSpellUI.VegaAnimationFrame> EffectFrames { get; }
         }
 
         public readonly struct ModifierPreview
@@ -2662,6 +2930,13 @@ namespace HaCreator.MapSimulator.UI
 
             public float BaseSuccessRate { get; }
             public bool IsValid => BaseSuccessRate > 0f;
+        }
+
+        private enum WindowPresentationState
+        {
+            Idle,
+            Casting,
+            Result
         }
     }
 }

@@ -1,5 +1,7 @@
 using HaCreator.MapSimulator.UI;
 using HaSharedLibrary.Util;
+using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using System;
@@ -7,6 +9,7 @@ using System.Globalization;
 using System.IO;
 using System.Text;
 using SD = System.Drawing;
+using SDG = System.Drawing.Graphics;
 
 namespace HaCreator.MapSimulator
 {
@@ -22,6 +25,8 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedAntiMacroChatReportMode = 10;
         private const int PacketOwnedAntiMacroNoticeMode = 11;
         private const int PacketOwnedAntiMacroDefaultDurationMs = 60000;
+        private static readonly Point PacketOwnedAntiMacroBackground2Offset = new(3, 7);
+        private static readonly Point PacketOwnedAntiMacroBackground3Offset = new(5, 23);
 
         private string _lastPacketOwnedAntiMacroSummary = "Packet-owned anti-macro idle.";
         private string _lastPacketOwnedAntiMacroNotice = string.Empty;
@@ -37,13 +42,15 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            WzSubProperty macroProperty = (Program.FindImage("UI", "UIWindow2.img")?["Macro"] as WzSubProperty);
+
             if (uiWindowManager.GetWindow(MapSimulatorWindowNames.AntiMacro) == null)
             {
                 AntiMacroChallengeWindow window = new(MapSimulatorWindowNames.AntiMacro, adminVariant: false, GraphicsDevice)
                 {
                     Position = new Point(
-                        Math.Max(24, (_renderParams.RenderWidth / 2) - 179),
-                        Math.Max(24, (_renderParams.RenderHeight / 2) - 143))
+                        Math.Max(24, (_renderParams.RenderWidth / 2) - 132),
+                        Math.Max(24, (_renderParams.RenderHeight / 2) - 125))
                 };
                 window.SubmitRequested += HandlePacketOwnedAntiMacroAnswerSubmitted;
                 uiWindowManager.RegisterCustomWindow(window);
@@ -60,6 +67,126 @@ namespace HaCreator.MapSimulator
                 window.SubmitRequested += HandlePacketOwnedAntiMacroAnswerSubmitted;
                 uiWindowManager.RegisterCustomWindow(window);
             }
+
+            if (uiWindowManager.GetWindow(MapSimulatorWindowNames.AntiMacro) is AntiMacroChallengeWindow antiMacroWindow)
+            {
+                ApplyPacketOwnedAntiMacroOwnerVisuals(antiMacroWindow, macroProperty);
+                if (_fontChat != null)
+                {
+                    antiMacroWindow.SetFont(_fontChat);
+                }
+            }
+
+            if (uiWindowManager.GetWindow(MapSimulatorWindowNames.AdminAntiMacro) is AntiMacroChallengeWindow adminWindow && _fontChat != null)
+            {
+                adminWindow.SetFont(_fontChat);
+            }
+        }
+
+        private void ApplyPacketOwnedAntiMacroOwnerVisuals(AntiMacroChallengeWindow window, WzSubProperty macroProperty)
+        {
+            if (window == null || window.IsAdminVariant || macroProperty == null)
+            {
+                return;
+            }
+
+            WzSubProperty step1Property = macroProperty["step1"] as WzSubProperty;
+            if (step1Property == null)
+            {
+                return;
+            }
+
+            Texture2D frameTexture = ComposePacketOwnedAntiMacroFrameTexture(step1Property);
+            UIObject submitButton = CreatePacketOwnedAntiMacroButton(step1Property["btOK"] as WzSubProperty);
+            (Texture2D[] digitTextures, Point[] digitOrigins, Texture2D commaTexture, Point commaOrigin) = LoadPacketOwnedAntiMacroDigits(macroProperty["num1"] as WzSubProperty);
+
+            window.ConfigureVisualAssets(
+                frameTexture,
+                digitTextures,
+                digitOrigins,
+                commaTexture,
+                commaOrigin,
+                submitButton);
+        }
+
+        private Texture2D ComposePacketOwnedAntiMacroFrameTexture(WzSubProperty stepProperty)
+        {
+            if (GraphicsDevice == null || stepProperty == null)
+            {
+                return null;
+            }
+
+            WzCanvasProperty outerCanvas = stepProperty["backgrnd"] as WzCanvasProperty;
+            WzCanvasProperty middleCanvas = stepProperty["backgrnd2"] as WzCanvasProperty;
+            WzCanvasProperty innerCanvas = stepProperty["backgrnd3"] as WzCanvasProperty;
+
+            if (outerCanvas == null || middleCanvas == null || innerCanvas == null)
+            {
+                return null;
+            }
+
+            using SD.Bitmap outerBitmap = outerCanvas.GetLinkedWzCanvasBitmap();
+            using SD.Bitmap middleBitmap = middleCanvas.GetLinkedWzCanvasBitmap();
+            using SD.Bitmap innerBitmap = innerCanvas.GetLinkedWzCanvasBitmap();
+            if (outerBitmap == null || middleBitmap == null || innerBitmap == null)
+            {
+                return null;
+            }
+
+            using SDG graphics = SDG.FromImage(outerBitmap);
+            graphics.DrawImageUnscaled(middleBitmap, PacketOwnedAntiMacroBackground2Offset.X, PacketOwnedAntiMacroBackground2Offset.Y);
+            graphics.DrawImageUnscaled(innerBitmap, PacketOwnedAntiMacroBackground3Offset.X, PacketOwnedAntiMacroBackground3Offset.Y);
+            return outerBitmap.ToTexture2DAndDispose(GraphicsDevice);
+        }
+
+        private UIObject CreatePacketOwnedAntiMacroButton(WzSubProperty buttonProperty)
+        {
+            if (buttonProperty == null || GraphicsDevice == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                return new UIObject(buttonProperty, null, null, flip: false, Point.Zero, GraphicsDevice);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private (Texture2D[] DigitTextures, Point[] DigitOrigins, Texture2D CommaTexture, Point CommaOrigin) LoadPacketOwnedAntiMacroDigits(WzSubProperty digitProperty)
+        {
+            Texture2D[] digitTextures = new Texture2D[10];
+            Point[] digitOrigins = new Point[10];
+            Texture2D commaTexture = null;
+            Point commaOrigin = Point.Zero;
+
+            if (digitProperty == null)
+            {
+                return (digitTextures, digitOrigins, commaTexture, commaOrigin);
+            }
+
+            for (int i = 0; i < digitTextures.Length; i++)
+            {
+                WzCanvasProperty canvas = digitProperty[i.ToString()] as WzCanvasProperty;
+                digitTextures[i] = LoadUiCanvasTexture(canvas);
+                digitOrigins[i] = ResolvePacketOwnedAntiMacroCanvasOrigin(canvas);
+            }
+
+            WzCanvasProperty commaCanvas = digitProperty["comma"] as WzCanvasProperty;
+            commaTexture = LoadUiCanvasTexture(commaCanvas);
+            commaOrigin = ResolvePacketOwnedAntiMacroCanvasOrigin(commaCanvas);
+            return (digitTextures, digitOrigins, commaTexture, commaOrigin);
+        }
+
+        private static Point ResolvePacketOwnedAntiMacroCanvasOrigin(WzCanvasProperty canvasProperty)
+        {
+            WzVectorProperty origin = canvasProperty?["origin"] as WzVectorProperty;
+            return origin == null
+                ? Point.Zero
+                : new Point(origin.X.Value, origin.Y.Value);
         }
 
         private void HandlePacketOwnedAntiMacroAnswerSubmitted(string answer)
@@ -122,7 +249,7 @@ namespace HaCreator.MapSimulator
             _playerManager?.Input?.SetCtrlComboSuppressed(held);
         }
 
-        private string ApplyPacketOwnedAntiMacroChallenge(int antiMacroType, bool firstChallenge, int durationMs, byte[] jpegBytes)
+        private string ApplyPacketOwnedAntiMacroChallenge(int antiMacroType, int answerCount, byte[] jpegBytes)
         {
             RegisterPacketOwnedAntiMacroWindows();
 
@@ -137,11 +264,15 @@ namespace HaCreator.MapSimulator
             uiWindowManager.HideWindow(adminVariant ? MapSimulatorWindowNames.AntiMacro : MapSimulatorWindowNames.AdminAntiMacro);
 
             Texture2D challengeTexture = TryDecodePacketOwnedAntiMacroCanvas(jpegBytes);
-            int expiresAt = Environment.TickCount + Math.Max(1000, durationMs);
-            string statusText = firstChallenge
-                ? "Packet-authored initial challenge; Ctrl combo input is held."
-                : "Packet-authored retry challenge; Ctrl combo input remains held.";
-            challengeWindow.Configure(challengeTexture, expiresAt, firstChallenge, statusText);
+            int expiresAt = Environment.TickCount + PacketOwnedAntiMacroDefaultDurationMs;
+            string statusText = answerCount > 0
+                ? string.Format(
+                    CultureInfo.InvariantCulture,
+                    "Packet-authored challenge; {0} answer{1} remaining. Ctrl combo input is held.",
+                    answerCount,
+                    answerCount == 1 ? string.Empty : "s")
+                : "Packet-authored challenge; Ctrl combo input is held.";
+            challengeWindow.Configure(challengeTexture, expiresAt, answerCount, statusText);
             challengeWindow.Show();
             uiWindowManager.BringToFront(challengeWindow);
 
@@ -174,6 +305,14 @@ namespace HaCreator.MapSimulator
             _lastPacketOwnedAntiMacroNotice = ResolvePacketOwnedAntiMacroNoticeText(noticeType, antiMacroType);
             _lastPacketOwnedAntiMacroSummary = $"Anti-macro notice type {noticeType} / mode {antiMacroType} routed to simulator feedback.";
             ShowUtilityFeedbackMessage(_lastPacketOwnedAntiMacroNotice);
+            return _lastPacketOwnedAntiMacroSummary;
+        }
+
+        private string ApplyPacketOwnedAntiMacroCloseResult(int mode, int antiMacroType)
+        {
+            string clearSummary = ClearPacketOwnedAntiMacro(releaseCombo: true);
+            string noticeSummary = ApplyPacketOwnedAntiMacroNotice(mode, antiMacroType);
+            _lastPacketOwnedAntiMacroSummary = $"{clearSummary} {noticeSummary}";
             return _lastPacketOwnedAntiMacroSummary;
         }
 
@@ -239,8 +378,9 @@ namespace HaCreator.MapSimulator
                 _chat?.AddClientChatMessage(chatText, Environment.TickCount, 12);
             }
 
-            if (mode is PacketOwnedAntiMacroScreenshotReportMode or PacketOwnedAntiMacroScreenshotMode
-                || (mode == PacketOwnedAntiMacroUserReportMode && antiMacroType == 2))
+            if (mode == PacketOwnedAntiMacroScreenshotReportMode
+                || (mode == PacketOwnedAntiMacroUserReportMode && antiMacroType == 2)
+                || (mode == PacketOwnedAntiMacroScreenshotMode && antiMacroType == 2))
             {
                 SavePacketOwnedAntiMacroScreenshot(resolvedName);
             }
@@ -258,8 +398,35 @@ namespace HaCreator.MapSimulator
                 (PacketOwnedAntiMacroUserReportMode, 2) => $"[AntiMacro] Admin report completed for {userName}.",
                 (PacketOwnedAntiMacroScreenshotMode, 2) => $"[AntiMacro] Saved screenshot evidence for {userName}.",
                 (PacketOwnedAntiMacroChatReportMode, 2) => $"[AntiMacro] Report branch acknowledged {userName}.",
-                _ => string.Format(CultureInfo.InvariantCulture, "[AntiMacro] mode {0} applied for {1}.", mode, userName)
+                _ => null
             };
+        }
+
+        private static byte[] ReadPacketOwnedAntiMacroCanvasPayload(BinaryReader reader)
+        {
+            if (reader == null || reader.BaseStream.Position >= reader.BaseStream.Length)
+            {
+                return Array.Empty<byte>();
+            }
+
+            long start = reader.BaseStream.Position;
+            long remaining = reader.BaseStream.Length - start;
+            if (remaining >= sizeof(int))
+            {
+                int candidateLength = reader.ReadInt32();
+                if (candidateLength > 0 && candidateLength <= reader.BaseStream.Length - reader.BaseStream.Position)
+                {
+                    byte[] legacyLengthPrefixedBytes = reader.ReadBytes(candidateLength);
+                    if (reader.BaseStream.Position == reader.BaseStream.Length)
+                    {
+                        return legacyLengthPrefixedBytes;
+                    }
+                }
+
+                reader.BaseStream.Position = start;
+            }
+
+            return reader.ReadBytes((int)(reader.BaseStream.Length - reader.BaseStream.Position));
         }
 
         private bool TryApplyPacketOwnedAntiMacroPayload(byte[] payload, out string message)
@@ -284,27 +451,17 @@ namespace HaCreator.MapSimulator
                 {
                     case PacketOwnedAntiMacroChallengeMode:
                     {
-                        bool firstChallenge = reader.BaseStream.Position < reader.BaseStream.Length && reader.ReadByte() != 0;
-                        int durationMs = reader.BaseStream.Position + sizeof(int) <= reader.BaseStream.Length
-                            ? reader.ReadInt32()
-                            : PacketOwnedAntiMacroDefaultDurationMs;
-                        byte[] jpegBytes = Array.Empty<byte>();
-                        if (reader.BaseStream.Position + sizeof(int) <= reader.BaseStream.Length)
-                        {
-                            int jpegLength = reader.ReadInt32();
-                            if (jpegLength > 0 && reader.BaseStream.Position + jpegLength <= reader.BaseStream.Length)
-                            {
-                                jpegBytes = reader.ReadBytes(jpegLength);
-                            }
-                        }
-
-                        message = ApplyPacketOwnedAntiMacroChallenge(antiMacroType, firstChallenge, durationMs, jpegBytes);
+                        int answerCount = reader.BaseStream.Position < reader.BaseStream.Length
+                            ? reader.ReadByte()
+                            : 0;
+                        byte[] jpegBytes = ReadPacketOwnedAntiMacroCanvasPayload(reader);
+                        message = ApplyPacketOwnedAntiMacroChallenge(antiMacroType, answerCount, jpegBytes);
                         return true;
                     }
 
                     case PacketOwnedAntiMacroDestroyMode:
                     case PacketOwnedAntiMacroResultMode:
-                        message = ClearPacketOwnedAntiMacro(releaseCombo: true);
+                        message = ApplyPacketOwnedAntiMacroCloseResult(mode, antiMacroType);
                         return true;
 
                     case PacketOwnedAntiMacroScreenshotReportMode:
@@ -352,8 +509,10 @@ namespace HaCreator.MapSimulator
                     }
 
                     bool adminVariant = string.Equals(args[1], "admin", StringComparison.OrdinalIgnoreCase);
-                    bool firstChallenge = args.Length < 3 || !string.Equals(args[2], "retry", StringComparison.OrdinalIgnoreCase);
-                    return ChatCommandHandler.CommandResult.Ok(ApplyPacketOwnedAntiMacroChallenge(adminVariant ? 2 : 1, firstChallenge, PacketOwnedAntiMacroDefaultDurationMs, null));
+                    int answerCount = args.Length >= 3 && string.Equals(args[2], "retry", StringComparison.OrdinalIgnoreCase)
+                        ? 1
+                        : 3;
+                    return ChatCommandHandler.CommandResult.Ok(ApplyPacketOwnedAntiMacroChallenge(adminVariant ? 2 : 1, answerCount, null));
 
                 case "notice":
                     if (args.Length < 2 || !int.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int noticeType))
@@ -388,7 +547,7 @@ namespace HaCreator.MapSimulator
                     string userName = args.Length >= 4 ? string.Join(" ", args, 3, args.Length - 3) : string.Empty;
                     if (resultMode is PacketOwnedAntiMacroDestroyMode or PacketOwnedAntiMacroResultMode)
                     {
-                        return ChatCommandHandler.CommandResult.Ok(ClearPacketOwnedAntiMacro(releaseCombo: true));
+                        return ChatCommandHandler.CommandResult.Ok(ApplyPacketOwnedAntiMacroCloseResult(resultMode, antiMacroType));
                     }
 
                     if (resultMode is PacketOwnedAntiMacroScreenshotReportMode or PacketOwnedAntiMacroUserReportMode or PacketOwnedAntiMacroScreenshotMode or PacketOwnedAntiMacroChatReportMode)

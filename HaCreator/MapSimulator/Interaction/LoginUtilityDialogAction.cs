@@ -8,6 +8,7 @@ namespace HaCreator.MapSimulator
         CreateCharacter = 3,
         AccountMigrationDecision = 4,
         EulaDecision = 5,
+        QueueConfirmEula = 16,
         VerifyBirthDate = 6,
         VerifyPic = 7,
         SetPic = 8,

@@ -158,7 +158,7 @@ namespace HaCreator.MapSimulator.UI
 
             FamilyChartSnapshot snapshot = GetSnapshot();
 
-            DrawCenteredText(sprite, snapshot.SelectedMemberName, 7, 34, 209, new Color(80, 58, 31), 0.50f);
+            DrawCenteredText(sprite, snapshot.TitleText, 7, 34, 209, new Color(80, 58, 31), 0.50f);
             DrawRightAlignedText(sprite, $"{Math.Max(0, snapshot.JuniorCount)}/2", 47, 78, 31, new Color(70, 70, 70), 0.42f);
             DrawRightAlignedText(sprite, snapshot.CurrentReputation.ToString("N0"), 47, 100, 153, new Color(70, 70, 70), 0.42f);
             DrawRightAlignedText(sprite, FormatSignedValue(snapshot.TodayReputation), 107, 119, 92, new Color(70, 70, 70), 0.42f);

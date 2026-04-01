@@ -197,6 +197,12 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             Start(listenPort, candidate.RemoteEndpoint.Address.ToString(), candidate.RemoteEndpoint.Port);
+            if (!IsRunning)
+            {
+                status = LastStatus;
+                return false;
+            }
+
             status = $"Monster Carnival official-session bridge discovered {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}. {LastStatus}";
             LastStatus = status;
             return true;
@@ -339,16 +345,14 @@ namespace HaCreator.MapSimulator.Managers
 
                 pair.ClientSession.SendPacket((byte[])raw.Clone());
 
-                if (!TryDecodeOpcode(raw, out int opcode, out byte[] payload)
-                    || opcode < FirstCarnivalOpcode
-                    || opcode > LastCarnivalOpcode)
+                if (!TryDecodeInboundCarnivalPacket(raw, $"official-session:{pair.RemoteEndpoint}", out MonsterCarnivalPacketInboxMessage message))
                 {
                     return;
                 }
 
-                _pendingMessages.Enqueue(new MonsterCarnivalPacketInboxMessage(opcode, payload, $"official-session:{pair.RemoteEndpoint}", $"packetraw {Convert.ToHexString(raw)}"));
+                _pendingMessages.Enqueue(message);
                 ReceivedCount++;
-                LastStatus = $"Queued Monster Carnival opcode {opcode} from live session {pair.RemoteEndpoint}.";
+                LastStatus = $"Queued Monster Carnival opcode {message.PacketType} from live session {pair.RemoteEndpoint}.";
             }
             catch (Exception ex)
             {
@@ -430,17 +434,26 @@ namespace HaCreator.MapSimulator.Managers
             return new MapleCrypto((byte[])iv.Clone(), version);
         }
 
-        private static bool TryDecodeOpcode(byte[] rawPacket, out int opcode, out byte[] payload)
+        internal static bool TryDecodeInboundCarnivalPacket(byte[] rawPacket, string source, out MonsterCarnivalPacketInboxMessage message)
         {
-            opcode = 0;
-            payload = Array.Empty<byte>();
+            message = null;
             if (rawPacket == null || rawPacket.Length < sizeof(short))
             {
                 return false;
             }
 
-            opcode = BitConverter.ToUInt16(rawPacket, 0);
-            payload = rawPacket.Skip(sizeof(short)).ToArray();
+            int opcode = BitConverter.ToUInt16(rawPacket, 0);
+            if (opcode < FirstCarnivalOpcode || opcode > LastCarnivalOpcode)
+            {
+                return false;
+            }
+
+            byte[] payload = rawPacket.Skip(sizeof(short)).ToArray();
+            message = new MonsterCarnivalPacketInboxMessage(
+                opcode,
+                payload,
+                source,
+                $"packetraw {Convert.ToHexString(rawPacket)}");
             return true;
         }
 

@@ -34,6 +34,7 @@ namespace HaCreator.MapSimulator.Interaction
     {
         private const int VisibleThreadCount = 8;
         private const int VisibleCommentCount = 4;
+        private const int VisibleCashEmoticonCount = 7;
         private const int DefaultBasicEmoticonCount = 3;
         private const int DefaultCashEmoticonCount = 8;
         private const int CashEmoticonItemIdStart = 5290000;
@@ -611,6 +612,19 @@ namespace HaCreator.MapSimulator.Interaction
             return $"Guild BBS comment page {_commentPageIndex + 1}/{pageCount}.";
         }
 
+        public string SetCommentPage(int pageIndex)
+        {
+            GuildBbsThreadState selectedThread = GetSelectedThread();
+            if (selectedThread == null)
+            {
+                return "Select a Guild BBS thread before paging its comments.";
+            }
+
+            int pageCount = Math.Max(1, (int)Math.Ceiling(selectedThread.Comments.Count / (double)VisibleCommentCount));
+            _commentPageIndex = Math.Clamp(pageIndex, 0, pageCount - 1);
+            return $"Guild BBS comment page {_commentPageIndex + 1}/{pageCount}.";
+        }
+
         public string MoveComposeCashEmoticonPage(int delta)
         {
             int nextPage = Math.Clamp(_compose.CashEmoticonPageIndex + delta, 0, GetCashEmoticonPageCount() - 1);
@@ -805,14 +819,16 @@ namespace HaCreator.MapSimulator.Interaction
                     resolvedSlot = slotIndex;
                     return true;
                 case GuildBbsEmoticonKind.Cash:
-                    if (slotIndex < 0 || slotIndex >= _cashEmoticonCount)
+                    int resolvedPageIndex = Math.Max(0, cashPageIndex);
+                    int absoluteSlotIndex = (resolvedPageIndex * VisibleCashEmoticonCount) + slotIndex;
+                    if (slotIndex < 0 || slotIndex >= VisibleCashEmoticonCount || absoluteSlotIndex >= _cashEmoticonCount)
                     {
                         return false;
                     }
 
                     resolvedKind = GuildBbsEmoticonKind.Cash;
-                    resolvedSlot = slotIndex;
-                    resolvedPage = Math.Max(0, cashPageIndex);
+                    resolvedSlot = absoluteSlotIndex;
+                    resolvedPage = resolvedPageIndex;
                     return true;
                 default:
                     return false;
@@ -840,7 +856,7 @@ namespace HaCreator.MapSimulator.Interaction
             return kind switch
             {
                 GuildBbsEmoticonKind.Basic => $"Basic {slotIndex + 1}",
-                GuildBbsEmoticonKind.Cash => $"Cash {cashPageIndex + 1}-{slotIndex + 1}",
+                GuildBbsEmoticonKind.Cash => $"Cash {(slotIndex / VisibleCashEmoticonCount) + 1}-{(slotIndex % VisibleCashEmoticonCount) + 1}",
                 _ => "None"
             };
         }
@@ -898,7 +914,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private int GetCashEmoticonPageCount()
         {
-            return 1;
+            return Math.Max(1, (int)Math.Ceiling(_cashEmoticonCount / (double)VisibleCashEmoticonCount));
         }
 
         private bool IsCashEmoticonOwned(int slotIndex)

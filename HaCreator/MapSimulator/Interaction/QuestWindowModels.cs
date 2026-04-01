@@ -25,6 +25,13 @@ namespace HaCreator.MapSimulator.Interaction
         MarkNpc
     }
 
+    internal enum QuestDetailDeliveryType
+    {
+        None,
+        Accept,
+        Complete
+    }
+
     internal enum QuestWorldMapTargetKind
     {
         None,
@@ -75,6 +82,8 @@ namespace HaCreator.MapSimulator.Interaction
         public string TargetMobName { get; init; } = string.Empty;
         public int? TargetItemId { get; init; }
         public string TargetItemName { get; init; } = string.Empty;
+        public QuestDetailDeliveryType DeliveryType { get; init; }
+        public bool DeliveryActionEnabled { get; init; }
         public int? DeliveryCashItemId { get; init; }
         public string DeliveryCashItemName { get; init; } = string.Empty;
         public QuestDetailNpcButtonStyle NpcButtonStyle { get; set; }
@@ -85,6 +94,7 @@ namespace HaCreator.MapSimulator.Interaction
         public bool StateChanged { get; init; }
         public int? QuestId { get; init; }
         public IReadOnlyList<string> Messages { get; init; } = Array.Empty<string>();
+        public IReadOnlyList<string> PublishedScriptNames { get; init; } = Array.Empty<string>();
         public QuestRewardChoicePrompt PendingRewardChoicePrompt { get; init; }
     }
 

@@ -77,8 +77,12 @@ namespace HaCreator.MapSimulator.Character.Skills
         MagicAttack,
         Defense,
         MagicDefense,
+        DefensePercent,
+        MagicDefensePercent,
         Accuracy,
+        AccuracyPercent,
         Avoidability,
+        AvoidabilityPercent,
         Speed,
         Jump,
         MaxHP,
@@ -194,6 +198,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         // Projectile
         public int BulletCount { get; set; } = 1;    // Projectiles per attack
+        public int BulletConsume { get; set; }       // Ammo consumed per cast
         public int BulletSpeed { get; set; }         // Projectile speed
         public List<int> ProjectileSpawnDelaysMs { get; set; } = new();
 
@@ -213,6 +218,10 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int IndieMaxMP { get; set; }          // Big Bang indie max MP boost
         public int MaxHPPercent { get; set; }        // Percentage max HP boost
         public int MaxMPPercent { get; set; }        // Percentage max MP boost
+        public int DefensePercent { get; set; }      // pddR percentage defense boost
+        public int MagicDefensePercent { get; set; } // mddR percentage magic defense boost
+        public int AccuracyPercent { get; set; }     // accR percentage accuracy boost
+        public int AvoidabilityPercent { get; set; } // evaR percentage avoidability boost
         public int AllStat { get; set; }             // Big Bang indie all-stat boost
         public int AbnormalStatusResistance { get; set; } // asrR / indieAsrR
         public int ElementalResistance { get; set; } // terR / indieTerR
@@ -1058,6 +1067,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public float OwnerX { get; set; }            // For homing reference
         public float OwnerY { get; set; }
         public int? PreferredTargetMobId { get; set; }
+        public Vector2? PreferredTargetPosition { get; set; }
         public bool AllowFollowUpQueue { get; set; } = true;
 
         public void Update(float deltaTime, int currentTime)

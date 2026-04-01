@@ -157,6 +157,7 @@ namespace HaCreator.MapSimulator.AI
         public int StartOffset { get; set; }        // Starting slot offset from attackN/info/range/start
         public bool IsRushAttack { get; set; }      // attackN/info/rush or info/attack/N/rush
         public bool IsJumpAttack { get; set; }      // attackN/info/jumpAttack or info/attack/N/jumpAttack
+        public bool EffectFacingAttach { get; set; } // attackN/info/effect/attachfacing
         public bool Tremble { get; set; }           // attackN/info/tremble or info/attack/N/tremble
         public bool IsAngerAttack { get; set; }     // attackN/info/AngerAttack
         public int DiseaseSkillId { get; set; }     // info/attack/N/disease -> MobSkill.img id

@@ -11,11 +11,15 @@ namespace HaCreator.MapSimulator.Interaction
         private const int FamilyEntitlementCount = 5;
         private const int LocalPlayerId = 120;
         private const int DefaultFamilyHeadId = 100;
+        private const string SeedFamilyName = "Starfall";
         private const int RemotePreviewMemberId = 900000;
         private const int DirectJuniorSlotLeft = 5;
         private const int DirectJuniorSlotRight = 6;
         private const int GrandchildSlotStart = 7;
         private const int EntitlementDurationMs = 15 * 60 * 1000;
+        // CUIFamily::Draw.
+        private const int ClientFamilyNoSelectionStringId = 0x1200;
+        private const int ClientFamilyTitleStringId = 0x1202;
         // CUIFamilyChart::Draw / _DrawChartItem.
         private const int ClientFamilyTreeNoSelectionStringId = 0x1200;
         private const int ClientFamilyTreeTitleStringId = 0x1202;
@@ -40,6 +44,7 @@ namespace HaCreator.MapSimulator.Interaction
         private int _preceptIndex;
         private FamilyEntitlementType _entitlementType = FamilyEntitlementType.DropAndExpBuff;
         private int _entitlementUsesLeft = 3;
+        private string _familyName = string.Empty;
         private string _locationSummary = "Maple Island";
         private string _remotePreviewRequestSummary;
         private FamilyPrivilegeState _activePrivilege;
@@ -107,13 +112,12 @@ namespace HaCreator.MapSimulator.Interaction
         internal FamilyChartSnapshot BuildChartSnapshot()
         {
             FamilyMemberState selectedMember = GetSelectedMember();
-            FamilyMemberState headMember = GetMember(_familyHeadId) ?? selectedMember;
             FamilyPrivilegeState activePrivilege = GetActivePrivilege(Environment.TickCount);
             int entitlementPage = Math.Clamp((int)_entitlementType, 0, FamilyEntitlementCount - 1) + 1;
 
             return new FamilyChartSnapshot
             {
-                TitleText = BuildCompactTitle(headMember),
+                TitleText = BuildCompactTitle(),
                 SelectedMemberId = selectedMember?.Id ?? LocalPlayerId,
                 SelectedMemberName = selectedMember?.Name ?? "Player",
                 SelectedRank = GetRankLabel(selectedMember),
@@ -377,7 +381,8 @@ namespace HaCreator.MapSimulator.Interaction
             FamilyMemberState head = GetMember(_familyHeadId);
             string headName = head?.Name ?? "(missing)";
             string selectedName = selectedMember?.Name ?? "(none)";
-            return $"Family roster: {_members.Count} members, head {headName} (#{_familyHeadId}), selected {selectedName} (#{selectedMember?.Id ?? 0}), entitlement {_entitlementUsesLeft} use(s) left on {GetEntitlementLabel(_entitlementType)}.";
+            string familyName = string.IsNullOrWhiteSpace(_familyName) ? "(unset)" : _familyName;
+            return $"Family roster: {_members.Count} members, family {familyName}, head {headName} (#{_familyHeadId}), selected {selectedName} (#{selectedMember?.Id ?? 0}), entitlement {_entitlementUsesLeft} use(s) left on {GetEntitlementLabel(_entitlementType)}.";
         }
 
         internal string ResetToSeedFamily()
@@ -391,6 +396,14 @@ namespace HaCreator.MapSimulator.Interaction
         {
             ResetRuntimeState();
             return "Cleared the simulator family roster. Sync packet members to rebuild it.";
+        }
+
+        internal string SetFamilyNameFromPacket(string familyName)
+        {
+            _familyName = string.IsNullOrWhiteSpace(familyName) ? string.Empty : familyName.Trim();
+            return string.IsNullOrWhiteSpace(_familyName)
+                ? "Cleared the packet-authored family name."
+                : $"Set the packet-authored family name to {_familyName}.";
         }
 
         internal string RemoveMemberFromPacket(int memberId)
@@ -502,11 +515,13 @@ namespace HaCreator.MapSimulator.Interaction
             _preceptIndex = 0;
             _entitlementType = FamilyEntitlementType.DropAndExpBuff;
             _entitlementUsesLeft = 3;
+            _familyName = string.Empty;
             _activePrivilege = null;
         }
 
         private void SeedDefaultFamily()
         {
+            _familyName = SeedFamilyName;
             AddMember(new FamilyMemberState(100, "Ephenia", "Bishop", 126, "Orbis  CH 8", null, 540, 42, true, new Vector2(260f, -20f)));
             AddMember(new FamilyMemberState(110, "Cassia", "Paladin", 94, "Leafre  CH 6", 100, 360, 21, true, new Vector2(180f, 10f)));
             AddMember(new FamilyMemberState(111, "Rowan", "Ranger", 90, "Mu Lung  CH 4", 100, 288, 16, false, new Vector2(340f, 10f)));
@@ -889,11 +904,11 @@ namespace HaCreator.MapSimulator.Interaction
                 : _textResources.FormatTreeTitle(selectedMember.Name);
         }
 
-        private string BuildCompactTitle(FamilyMemberState headMember)
+        private string BuildCompactTitle()
         {
-            return headMember == null
+            return string.IsNullOrWhiteSpace(_familyName)
                 ? _textResources.NoSelectionTitle
-                : _textResources.FormatCompactTitle(headMember.Name);
+                : _textResources.FormatCompactTitle(_familyName);
         }
 
         private string BuildJuniorCountText(FamilyMemberState selectedMember)

@@ -16,6 +16,9 @@ namespace HaCreator.MapSimulator.UI
     {
         public int RequestId { get; set; }
         public int RequestedAtTick { get; set; }
+        public int OwnerSessionId { get; init; }
+        public int ExpectedCharacterId { get; init; }
+        public int ExpectedBuildStateToken { get; init; }
         public EquipmentChangeRequestKind Kind { get; init; }
         public InventoryType SourceInventoryType { get; init; } = InventoryType.NONE;
         public int SourceInventoryIndex { get; init; } = -1;
@@ -97,8 +100,9 @@ namespace HaCreator.MapSimulator.UI
         public int RequestId { get; init; }
         public int RequestedAtTick { get; init; }
         public int CompletedAtTick { get; init; }
+        public int ResolvedBuildStateToken { get; init; }
 
-        internal EquipmentChangeResult WithCompletionMetadata(int requestId, int requestedAtTick, int completedAtTick)
+        internal EquipmentChangeResult WithCompletionMetadata(int requestId, int requestedAtTick, int completedAtTick, int resolvedBuildStateToken)
         {
             return new EquipmentChangeResult
             {
@@ -109,13 +113,51 @@ namespace HaCreator.MapSimulator.UI
                 ReturnedPart = ReturnedPart,
                 RequestId = requestId,
                 RequestedAtTick = requestedAtTick,
-                CompletedAtTick = completedAtTick
+                CompletedAtTick = completedAtTick,
+                ResolvedBuildStateToken = resolvedBuildStateToken
             };
         }
     }
 
+    public sealed class EquipmentChangeResolutionQuery
+    {
+        public int RequestId { get; init; }
+        public int OwnerSessionId { get; init; }
+        public int RequestedAtTick { get; init; }
+    }
+
     internal static class EquipmentChangeRequestValidator
     {
+        internal static bool TryGetRequestStateRejectReason(
+            EquipmentChangeRequest request,
+            CharacterBuild build,
+            out string rejectReason)
+        {
+            if (request == null || build == null)
+            {
+                rejectReason = string.Empty;
+                return false;
+            }
+
+            if (request.ExpectedCharacterId > 0
+                && build.Id > 0
+                && build.Id != request.ExpectedCharacterId)
+            {
+                rejectReason = "The active character changed before the equipment request was accepted.";
+                return true;
+            }
+
+            if (request.ExpectedBuildStateToken != 0
+                && build.ComputeEquipmentStateToken() != request.ExpectedBuildStateToken)
+            {
+                rejectReason = "The equipped item state changed before the request was accepted.";
+                return true;
+            }
+
+            rejectReason = string.Empty;
+            return false;
+        }
+
         internal static bool TryGetCharacterMoveRejectReason(
             CharacterBuild build,
             CharacterPart liveSourcePart,

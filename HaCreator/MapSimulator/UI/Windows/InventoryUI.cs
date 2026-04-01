@@ -70,20 +70,32 @@ namespace HaCreator.MapSimulator.UI
                 string fallbackLabel,
                 string valueText,
                 Color valueColor,
-                IReadOnlyList<Texture2D> valueTextures = null)
+                IReadOnlyList<TooltipValueSegment> valueSegments = null)
             {
                 LabelTexture = labelTexture;
                 FallbackLabel = fallbackLabel;
                 ValueText = valueText;
                 ValueColor = valueColor;
-                ValueTextures = valueTextures;
+                ValueSegments = valueSegments;
             }
 
             public Texture2D LabelTexture { get; }
             public string FallbackLabel { get; }
             public string ValueText { get; }
             public Color ValueColor { get; }
-            public IReadOnlyList<Texture2D> ValueTextures { get; }
+            public IReadOnlyList<TooltipValueSegment> ValueSegments { get; }
+        }
+
+        private readonly struct TooltipValueSegment
+        {
+            public TooltipValueSegment(Texture2D texture, string text = null)
+            {
+                Texture = texture;
+                Text = text;
+            }
+
+            public Texture2D Texture { get; }
+            public string Text { get; }
         }
 
         #region Fields
@@ -1937,6 +1949,16 @@ namespace HaCreator.MapSimulator.UI
                 segments.Add($"Trade available {part.TradeAvailable} time{(part.TradeAvailable == 1 ? string.Empty : "s")}");
             }
 
+            if (part.IsTradeBlocked)
+            {
+                segments.Add("Untradeable");
+            }
+
+            if (part.IsOneOfAKind)
+            {
+                segments.Add("One-of-a-kind item");
+            }
+
             if (part.KnockbackRate > 0)
             {
                 segments.Add($"Knockback resistance {part.KnockbackRate}%");
@@ -2073,7 +2095,7 @@ namespace HaCreator.MapSimulator.UI
                     "Durability:",
                     value,
                     canUse ? new Color(181, 224, 255) : new Color(255, 186, 186),
-                    BuildTooltipValueTextures(value, canUse, false)));
+                    BuildTooltipValueSegments(value, canUse, false)));
             }
 
             return rows;
@@ -2103,7 +2125,7 @@ namespace HaCreator.MapSimulator.UI
                 fallbackLabel,
                 valueText,
                 color,
-                BuildTooltipValueTextures(valueText, true, true)));
+                BuildTooltipValueSegments(valueText, true, true)));
         }
 
         private void AppendUpgradeSlotRow(List<TooltipLabeledValueRow> rows, CharacterPart part)
@@ -2122,7 +2144,7 @@ namespace HaCreator.MapSimulator.UI
                 "Upgrades Available:",
                 valueText,
                 new Color(255, 232, 176),
-                BuildTooltipValueTextures(valueText, true, false)));
+                BuildTooltipValueSegments(valueText, true, false)));
         }
 
         private void AppendGrowthRows(List<TooltipLabeledValueRow> rows, CharacterPart part)
@@ -2140,7 +2162,7 @@ namespace HaCreator.MapSimulator.UI
                 "Item Level:",
                 currentLevel.ToString(CultureInfo.InvariantCulture),
                 growthEnabled ? new Color(181, 224, 255) : new Color(192, 192, 192),
-                BuildTooltipValueTextures(currentLevel.ToString(CultureInfo.InvariantCulture), growthEnabled, true)));
+                BuildTooltipValueSegments(currentLevel.ToString(CultureInfo.InvariantCulture), growthEnabled, true)));
 
             string expValue = growthEnabled
                 ? $"{Math.Clamp(part.GrowthExpPercent, 0, 99)}%"
@@ -2150,7 +2172,7 @@ namespace HaCreator.MapSimulator.UI
                 "Item EXP:",
                 expValue,
                 growthEnabled ? new Color(181, 224, 255) : new Color(192, 192, 192),
-                BuildTooltipValueTextures(expValue, growthEnabled, true)));
+                BuildTooltipValueSegments(expValue, growthEnabled, true)));
         }
 
         private void AppendEnhancementStarRow(List<TooltipLabeledValueRow> rows, int enhancementStarCount)
@@ -2166,7 +2188,7 @@ namespace HaCreator.MapSimulator.UI
                 "Stars:",
                 valueText,
                 new Color(255, 232, 176),
-                BuildTooltipValueTextures(valueText, true, false)));
+                BuildTooltipValueSegments(valueText, true, false)));
         }
 
         private void AppendSellPriceRow(List<TooltipLabeledValueRow> rows, int sellPrice)
@@ -2182,7 +2204,7 @@ namespace HaCreator.MapSimulator.UI
                 "Mesos:",
                 valueText,
                 new Color(255, 244, 186),
-                BuildTooltipValueTextures(valueText, true, false)));
+                BuildTooltipValueSegments(valueText, true, false)));
         }
 
         private void AppendAttackSpeedRow(List<TooltipLabeledValueRow> rows, int attackSpeed)
@@ -2198,7 +2220,7 @@ namespace HaCreator.MapSimulator.UI
                 "Attack Speed:",
                 ResolveAttackSpeedText(attackSpeed),
                 new Color(181, 224, 255),
-                speedTexture != null ? new[] { speedTexture } : null));
+                speedTexture != null ? new[] { new TooltipValueSegment(speedTexture) } : null));
         }
 
         private void AppendRequirementRow(List<TooltipLabeledValueRow> rows, string labelKey, int requiredValue, int actualValue)
@@ -2214,10 +2236,10 @@ namespace HaCreator.MapSimulator.UI
                 labelKey + ":",
                 requiredValue.ToString(CultureInfo.InvariantCulture),
                 canUse ? new Color(181, 224, 255) : new Color(255, 186, 186),
-                BuildTooltipValueTextures(requiredValue.ToString(CultureInfo.InvariantCulture), canUse, false)));
+                BuildTooltipValueSegments(requiredValue.ToString(CultureInfo.InvariantCulture), canUse, false)));
         }
 
-        private IReadOnlyList<Texture2D> BuildTooltipValueTextures(string valueText, bool enabled, bool preferGrowthDigits)
+        private IReadOnlyList<TooltipValueSegment> BuildTooltipValueSegments(string valueText, bool enabled, bool preferGrowthDigits)
         {
             if (string.IsNullOrWhiteSpace(valueText) || _equipTooltipAssets == null)
             {
@@ -2232,11 +2254,11 @@ namespace HaCreator.MapSimulator.UI
                 return null;
             }
 
-            var textures = new List<Texture2D>(valueText.Length);
+            var segments = new List<TooltipValueSegment>(valueText.Length);
             if (string.Equals(valueText, "MAX", StringComparison.OrdinalIgnoreCase))
             {
                 Texture2D maxTexture = TryResolveTooltipAsset(source, "max");
-                return maxTexture == null ? null : new[] { maxTexture };
+                return maxTexture == null ? null : new[] { new TooltipValueSegment(maxTexture) };
             }
 
             for (int i = 0; i < valueText.Length; i++)
@@ -2252,55 +2274,72 @@ namespace HaCreator.MapSimulator.UI
                     '%' => "percent",
                     _ => char.IsDigit(character) ? character.ToString() : null
                 };
+                if (key == null)
+                {
+                    if (character == '/' || character == '-' || character == '.' || character == ',')
+                    {
+                        segments.Add(new TooltipValueSegment(null, character.ToString()));
+                        continue;
+                    }
+
+                    return null;
+                }
+
                 Texture2D texture = TryResolveTooltipAsset(source, key);
                 if (texture == null)
                 {
                     return null;
                 }
 
-                textures.Add(texture);
+                segments.Add(new TooltipValueSegment(texture));
             }
 
-            return textures.Count == 0 ? null : textures;
+            return segments.Count == 0 ? null : segments;
         }
 
-        private float MeasureTooltipValueTexturesHeight(IReadOnlyList<Texture2D> textures)
+        private float MeasureTooltipValueSegmentsHeight(IReadOnlyList<TooltipValueSegment> segments)
         {
-            if (textures == null || textures.Count == 0)
+            if (segments == null || segments.Count == 0)
             {
                 return 0f;
             }
 
             int height = 0;
-            for (int i = 0; i < textures.Count; i++)
+            for (int i = 0; i < segments.Count; i++)
             {
-                if (textures[i] != null)
+                if (segments[i].Texture != null)
                 {
-                    height = Math.Max(height, textures[i].Height);
+                    height = Math.Max(height, segments[i].Texture.Height);
+                }
+                else if (!string.IsNullOrEmpty(segments[i].Text) && _font != null)
+                {
+                    height = Math.Max(height, _font.LineSpacing);
                 }
             }
 
             return height;
         }
 
-        private void DrawTooltipValueTextures(SpriteBatch sprite, IReadOnlyList<Texture2D> textures, int x, float y)
+        private void DrawTooltipValueSegments(SpriteBatch sprite, IReadOnlyList<TooltipValueSegment> segments, int x, float y, Color color)
         {
-            if (textures == null || textures.Count == 0)
+            if (segments == null || segments.Count == 0)
             {
                 return;
             }
 
             int drawX = x;
-            for (int i = 0; i < textures.Count; i++)
+            for (int i = 0; i < segments.Count; i++)
             {
-                Texture2D texture = textures[i];
-                if (texture == null)
+                if (segments[i].Texture != null)
                 {
-                    continue;
+                    sprite.Draw(segments[i].Texture, new Vector2(drawX, y), Color.White);
+                    drawX += segments[i].Texture.Width + TOOLTIP_BITMAP_GAP;
                 }
-
-                sprite.Draw(texture, new Vector2(drawX, y), Color.White);
-                drawX += texture.Width + TOOLTIP_BITMAP_GAP;
+                else if (!string.IsNullOrEmpty(segments[i].Text))
+                {
+                    DrawTooltipText(sprite, segments[i].Text, new Vector2(drawX, y), color);
+                    drawX += (int)Math.Ceiling(_font.MeasureString(segments[i].Text).X) + TOOLTIP_BITMAP_GAP;
+                }
             }
         }
 
@@ -2327,7 +2366,7 @@ namespace HaCreator.MapSimulator.UI
         private float MeasureLabeledValueRowHeight(TooltipLabeledValueRow row)
         {
             float labelHeight = row.LabelTexture?.Height ?? (_font?.LineSpacing ?? 0);
-            float valueHeight = MeasureTooltipValueTexturesHeight(row.ValueTextures);
+            float valueHeight = MeasureTooltipValueSegmentsHeight(row.ValueSegments);
             return Math.Max(labelHeight, Math.Max(valueHeight, _font?.LineSpacing ?? 0));
         }
 
@@ -2364,9 +2403,9 @@ namespace HaCreator.MapSimulator.UI
                 valueX = x + (int)Math.Ceiling(_font.MeasureString(row.FallbackLabel).X) + 6;
             }
 
-            if (row.ValueTextures != null && row.ValueTextures.Count > 0)
+            if (row.ValueSegments != null && row.ValueSegments.Count > 0)
             {
-                DrawTooltipValueTextures(sprite, row.ValueTextures, valueX, y);
+                DrawTooltipValueSegments(sprite, row.ValueSegments, valueX, y, row.ValueColor);
             }
             else if (!string.IsNullOrWhiteSpace(row.ValueText))
             {
