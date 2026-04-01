@@ -1,35 +1,38 @@
 using HaCreator.MapSimulator.Character;
-using HaCreator.MapSimulator.Interaction;
+using HaCreator.MapSimulator.Pools;
 using Microsoft.Xna.Framework;
+using System;
 
-namespace HaCreator.MapSimulator
+namespace HaCreator.MapSimulator.Interaction
 {
-    public partial class MapSimulator
+    internal static class MessengerRemoteUserSynchronizer
     {
         private const string MessengerRemoteUserSourceTag = "messenger";
 
-        private void SyncMessengerRemoteActorsToSharedPool()
+        internal static void Sync(
+            RemoteUserActorPool remoteUserPool,
+            MessengerRuntime messengerRuntime,
+            CharacterBuild localTemplate,
+            Vector2 anchorPosition,
+            Func<string, string, int> resolveSyntheticRemoteUserId)
         {
-            _remoteUserPool.RemoveBySourceTag(MessengerRemoteUserSourceTag);
-
-            CharacterBuild template = _playerManager?.Player?.Build?.Clone();
-            if (template == null)
+            remoteUserPool?.RemoveBySourceTag(MessengerRemoteUserSourceTag);
+            if (remoteUserPool == null || messengerRuntime == null || localTemplate == null || resolveSyntheticRemoteUserId == null)
             {
                 return;
             }
 
-            Vector2 anchorPosition = _playerManager?.Player?.Position ?? Vector2.Zero;
-            foreach (MessengerRemoteParticipantSnapshot snapshot in _messengerRuntime.GetRemoteParticipantSnapshots())
+            foreach (MessengerRemoteParticipantSnapshot snapshot in messengerRuntime.GetRemoteParticipantSnapshots())
             {
-                int characterId = ResolveSyntheticRemoteUserId("messenger", snapshot.Name);
-                CharacterBuild build = template.Clone();
+                int characterId = resolveSyntheticRemoteUserId(MessengerRemoteUserSourceTag, snapshot.Name);
+                CharacterBuild build = localTemplate.Clone();
                 build.Name = snapshot.Name;
                 build.Level = snapshot.Level > 0 ? snapshot.Level : build.Level;
                 build.JobName = string.IsNullOrWhiteSpace(snapshot.JobName) ? build.JobName : snapshot.JobName.Trim();
 
                 if (snapshot.AvatarLook != null)
                 {
-                    _remoteUserPool.TryAddOrUpdateAvatarLook(
+                    remoteUserPool.TryAddOrUpdateAvatarLook(
                         characterId,
                         snapshot.Name,
                         snapshot.AvatarLook,
@@ -43,7 +46,7 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                _remoteUserPool.TryAddOrUpdate(
+                remoteUserPool.TryAddOrUpdate(
                     characterId,
                     build,
                     anchorPosition,

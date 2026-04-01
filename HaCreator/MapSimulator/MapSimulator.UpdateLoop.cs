@@ -160,7 +160,12 @@ namespace HaCreator.MapSimulator
             DrainCookieHousePointInbox();
             _specialFieldRuntime.Update(gameTime, currTickCount);
             SyncWeddingRemoteActorsToSharedPool(_specialFieldRuntime.SpecialEffects.Wedding);
-            SyncMessengerRemoteActorsToSharedPool();
+            MessengerRemoteUserSynchronizer.Sync(
+                _remoteUserPool,
+                _messengerRuntime,
+                _playerManager?.Player?.Build?.Clone(),
+                _playerManager?.Player?.Position ?? Vector2.Zero,
+                ResolveSyntheticRemoteUserId);
             _remoteUserPool.Update(currTickCount);
             _remoteUserPool.SyncPortableChairPairState(_playerManager?.Player);
             EnsureSummonedPacketInboxState(shouldRun: true);
@@ -246,7 +251,7 @@ namespace HaCreator.MapSimulator
             UpdatePacketOwnedLocalOverlayState(currTickCount);
             _localOverlayRuntime.Update(currTickCount);
 
-            _engagementProposalRuntime.UpdateLocalContext(_playerManager?.Player?.Build);
+            _engagementProposalController.UpdateLocalContext(_playerManager?.Player?.Build);
             _mapleTvRuntime.UpdateLocalContext(_playerManager?.Player?.Build);
             _mapleTvRuntime.Update(currTickCount);
             FlushPendingMapleTvSendResultFeedback(currTickCount);

@@ -2678,13 +2678,13 @@ namespace HaCreator.MapSimulator
 
                 {
 
-                    _engagementProposalRuntime.UpdateLocalContext(_playerManager?.Player?.Build);
+                    _engagementProposalController.UpdateLocalContext(_playerManager?.Player?.Build);
 
                     if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
 
                     {
 
-                        return ChatCommandHandler.CommandResult.Info(_engagementProposalRuntime.DescribeStatus());
+                        return ChatCommandHandler.CommandResult.Info(_engagementProposalController.DescribeStatus());
 
                     }
 
@@ -2705,11 +2705,16 @@ namespace HaCreator.MapSimulator
                             int messageArgumentIndex = hasExplicitProposer ? 4 : 3;
 
                             return ChatCommandHandler.CommandResult.Ok(
-                                OpenOutgoingEngagementProposal(
+                                _engagementProposalController.OpenOutgoingProposal(
                                     outgoingProposerName,
                                     outgoingPartnerName,
                                     TryParseOptionalPositiveInt(args, ringItemArgumentIndex, out int openRingItemId) ? openRingItemId : EngagementProposalRuntime.DefaultRingItemId,
-                                    args.Length > messageArgumentIndex ? string.Join(" ", args, messageArgumentIndex, args.Length - messageArgumentIndex) : null));
+                                    args.Length > messageArgumentIndex ? string.Join(" ", args, messageArgumentIndex, args.Length - messageArgumentIndex) : null,
+                                    uiWindowManager,
+                                    _playerManager?.Player?.Build,
+                                    _fontChat,
+                                    ShowUtilityFeedbackMessage,
+                                    () => ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.EngagementProposal)));
 
                         case "incoming":
                             if (args.Length < 2)
@@ -2718,15 +2723,20 @@ namespace HaCreator.MapSimulator
                             }
 
                             return ChatCommandHandler.CommandResult.Ok(
-                                OpenEngagementProposal(
+                                _engagementProposalController.OpenIncomingProposal(
                                     args[1],
                                     _playerManager?.Player?.Build?.Name,
                                     TryParseOptionalPositiveInt(args, 2, out int incomingRingItemId) ? incomingRingItemId : EngagementProposalRuntime.DefaultRingItemId,
                                     TryParseOptionalPositiveInt(args, 3, out int incomingSealItemId) ? incomingSealItemId : EngagementProposalRuntime.DefaultSealItemId,
-                                    args.Length > 4 ? string.Join(" ", args, 4, args.Length - 4) : null));
+                                    args.Length > 4 ? string.Join(" ", args, 4, args.Length - 4) : null,
+                                    uiWindowManager,
+                                    _playerManager?.Player?.Build,
+                                    _fontChat,
+                                    ShowUtilityFeedbackMessage,
+                                    () => ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.EngagementProposal)));
 
                         case "accept":
-                            string acceptMessage = AcceptEngagementProposal();
+                            string acceptMessage = _engagementProposalController.Accept(uiWindowManager);
                             if (string.Equals(acceptMessage, "No engagement proposal is active.", StringComparison.Ordinal))
                             {
                                 return ChatCommandHandler.CommandResult.Error(acceptMessage);
@@ -2735,10 +2745,10 @@ namespace HaCreator.MapSimulator
                             return ChatCommandHandler.CommandResult.Ok(acceptMessage);
 
                         case "dismiss":
-                            return ChatCommandHandler.CommandResult.Ok(DismissEngagementProposal());
+                            return ChatCommandHandler.CommandResult.Ok(_engagementProposalController.Dismiss(uiWindowManager));
 
                         case "clear":
-                            return ChatCommandHandler.CommandResult.Ok(ClearEngagementProposal());
+                            return ChatCommandHandler.CommandResult.Ok(_engagementProposalController.Clear(uiWindowManager));
 
                         default:
                             return ChatCommandHandler.CommandResult.Error("Usage: /engage [open <partnerName> [ringItemId] [message...]|open <proposerName> <partnerName> [ringItemId] [message...]|incoming <proposerName> [ringItemId] [sealItemId] [message...]|accept|dismiss|clear|status]");
@@ -8833,11 +8843,11 @@ namespace HaCreator.MapSimulator
                             return ChatCommandHandler.CommandResult.Ok(_messengerRuntime.SetPresence(string.Join(" ", args.Skip(1).Take(args.Length - 2)), online.Value));
 
                         case "packet":
-                            return HandleMessengerPacketCommand(args);
+                            return MessengerCommandRouter.HandlePacketCommand(args, _messengerRuntime, TryParseBinaryPayloadArgument);
                         case "packetraw":
-                            return HandleMessengerPacketRawCommand(args);
+                            return MessengerCommandRouter.HandlePacketRawCommand(args, _messengerRuntime, TryDecodeHexBytes);
                         case "remote":
-                            return HandleMessengerRemoteCommand(args);
+                            return MessengerCommandRouter.HandleRemoteCommand(args, _messengerRuntime);
 
                         default:
 

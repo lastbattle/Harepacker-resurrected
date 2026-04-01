@@ -422,7 +422,7 @@ namespace HaCreator.MapSimulator
             WireGuildSearchWindowData();
             WireGuildSkillWindowData();
             WireGuildBbsWindowData();
-            WireEngagementProposalWindowData();
+            _engagementProposalController.WireWindow(uiWindowManager, _playerManager?.Player?.Build, _fontChat, ShowUtilityFeedbackMessage);
             WireProgressionUtilityWindowLaunchers();
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ItemMaker) is ItemMakerUI itemMakerWindow)
             {
@@ -1269,7 +1269,7 @@ namespace HaCreator.MapSimulator
             WireGuildSearchWindowData();
             WireGuildSkillWindowData();
             WireGuildBbsWindowData();
-            WireEngagementProposalWindowData();
+            _engagementProposalController.WireWindow(uiWindowManager, _playerManager?.Player?.Build, _fontChat, ShowUtilityFeedbackMessage);
             WireProgressionUtilityWindowLaunchers();
             RefreshMapTransferWindow();
             RefreshWorldMapWindow();

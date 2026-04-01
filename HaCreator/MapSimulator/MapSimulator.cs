@@ -4408,7 +4408,7 @@ namespace HaCreator.MapSimulator
 
             userInfoWindow.FamilyRequested = HandleCharacterInfoFamilyRequest;
 
-            userInfoWindow.PopularityRequested = HandleCharacterInfoPopularityRequest;
+            userInfoWindow.PopularityRequested = (context, direction) => UserInfoPopularityPreviewService.HandleRequest(context, direction, _remoteUserPool);
 
             userInfoWindow.BookCollectionRequested = () => ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.BookCollection);
 
