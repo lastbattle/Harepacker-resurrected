@@ -251,7 +251,6 @@ namespace HaCreator.MapSimulator.Entities
         // Flying mob fields
         private bool _isFlyingMob = false;
         private int _flyingYDirection = 1;  // 1 = moving down, -1 = moving up
-        private bool _flyingInitialized = false;  // One-time Y position adjustment
 
         // Jump physics fields - uses CVecCtrl constants for consistency with client
         // Official values from Map.wz/Physics.img (see CVecCtrl class)

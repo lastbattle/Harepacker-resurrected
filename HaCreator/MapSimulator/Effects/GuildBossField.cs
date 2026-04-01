@@ -132,7 +132,6 @@ namespace HaCreator.MapSimulator.Effects
 
         #region Heal Effect
         private bool _healEffectActive = false;
-        private float _healEffectAlpha = 0f;
         private int _healEffectStartTime;
         private List<HealParticle> _healParticles = new();
         private Random _random = new();
@@ -465,7 +464,6 @@ namespace HaCreator.MapSimulator.Effects
         {
             _healEffectActive = true;
             _healEffectStartTime = currentTimeMs;
-            _healEffectAlpha = 1f;
 
 
             // Create heal particles rising from healer

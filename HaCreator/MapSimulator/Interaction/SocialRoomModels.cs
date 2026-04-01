@@ -4361,6 +4361,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             string ownerName = isLocalParty ? OwnerName : ResolveRemoteTraderName();
             List<TradeVerificationEntry> entries = new();
+            Span<byte> hashInput = stackalloc byte[sizeof(int) * 2];
             foreach (SocialRoomItemEntry item in _items.Where(entry => string.Equals(entry.OwnerName, ownerName, StringComparison.OrdinalIgnoreCase)))
             {
                 int itemId = item.ItemId;
@@ -4369,7 +4370,6 @@ namespace HaCreator.MapSimulator.Interaction
                     continue;
                 }
 
-                Span<byte> hashInput = stackalloc byte[sizeof(int) * 2];
                 BinaryPrimitives.WriteInt32LittleEndian(hashInput, itemId);
                 BinaryPrimitives.WriteInt32LittleEndian(hashInput[sizeof(int)..], Math.Max(1, item.Quantity));
                 entries.Add(new TradeVerificationEntry(itemId, ComputeTradeVerificationChecksum(hashInput)));

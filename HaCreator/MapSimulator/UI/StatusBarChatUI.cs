@@ -954,8 +954,6 @@ namespace HaCreator.MapSimulator.UI
         }
 
         #region IClickableUIObject
-        private Point? mouseOffsetOnDragStart = null;
-
         public bool CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState, MouseCursorItem mouseCursor, int renderWidth, int renderHeight)
         {
             HandleMouseWheel(mouseState);

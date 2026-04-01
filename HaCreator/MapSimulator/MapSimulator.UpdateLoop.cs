@@ -361,8 +361,7 @@ namespace HaCreator.MapSimulator
                     // To center player: RenderWidth/2 = player.X - mapShiftX + mapCenterX
                     // So: mapShiftX = player.X + mapCenterX - RenderWidth/2
                     var player = _playerManager.Player;
-                    mapShiftX = (int)(player.X + _mapCenterX - _renderParams.RenderWidth / 2);
-                    mapShiftY = (int)(player.Y + _mapCenterY - _renderParams.RenderHeight / 2);
+                    CenterCameraOnWorldPosition(player.X, player.Y);
                 }
                 else
                 {
@@ -867,28 +866,20 @@ namespace HaCreator.MapSimulator
                     if (_gameState.PlayerControlEnabled && _playerManager.IsPlayerActive)
                     {
                         var playerPos = _playerManager.GetPlayerPosition();
-                        mapShiftX = (int)(playerPos.X + _mapCenterX - _renderParams.RenderWidth / 2);
-                        mapShiftY = (int)(playerPos.Y + _mapCenterY - _renderParams.RenderHeight / 2);
+                        CenterCameraOnWorldPosition(playerPos.X, playerPos.Y);
 
 
                         // Apply boundary clamping
-                        SetCameraMoveX(true, false, 0);
-                        SetCameraMoveX(false, true, 0);
-                        SetCameraMoveY(true, false, 0);
-                        SetCameraMoveY(false, true, 0);
+                        ClampLegacyCameraToBoundaries();
                     }
                     else if (isPlayerDead)
                     {
                         // Player is dead - keep camera focused on death position
-                        mapShiftX = (int)(player.DeathX + _mapCenterX - _renderParams.RenderWidth / 2);
-                        mapShiftY = (int)(player.DeathY + _mapCenterY - _renderParams.RenderHeight / 2);
+                        CenterCameraOnWorldPosition(player.DeathX, player.DeathY);
 
 
                         // Apply boundary clamping
-                        SetCameraMoveX(true, false, 0);
-                        SetCameraMoveX(false, true, 0);
-                        SetCameraMoveY(true, false, 0);
-                        SetCameraMoveY(false, true, 0);
+                        ClampLegacyCameraToBoundaries();
                     }
                 }
             }
@@ -1042,6 +1033,20 @@ namespace HaCreator.MapSimulator
             UpdateRecommendedLoginWorlds();
             RefreshWorldChannelSelectorWindows();
             SyncRecommendWorldWindow();
+        }
+
+        private void CenterCameraOnWorldPosition(float worldX, float worldY)
+        {
+            mapShiftX = (int)(worldX + _mapCenterX - _renderParams.RenderWidth / 2);
+            mapShiftY = (int)(worldY + _mapCenterY - _renderParams.RenderHeight / 2);
+        }
+
+        private void ClampLegacyCameraToBoundaries()
+        {
+            SetCameraMoveX(true, false, 0);
+            SetCameraMoveX(false, true, 0);
+            SetCameraMoveY(true, false, 0);
+            SetCameraMoveY(false, true, 0);
         }
 
 

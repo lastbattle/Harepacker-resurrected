@@ -56,7 +56,6 @@ namespace HaCreator.MapSimulator.UI
 
         // Hover and selection
         private int _hoveredSlot = -1;
-        private int _selectedSlot = -1;
         private Point _lastMousePosition;
 
         // Drag and drop
@@ -106,7 +105,6 @@ namespace HaCreator.MapSimulator.UI
                 if (value >= BAR_PRIMARY && value <= BAR_CTRL)
                 {
                     _currentBar = value;
-                    _selectedSlot = -1;
                 }
             }
         }

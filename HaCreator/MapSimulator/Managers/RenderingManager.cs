@@ -610,27 +610,24 @@ namespace HaCreator.MapSimulator.Managers
                 if (tooltip.TooltipInstance.CharacterToolTip != null)
                 {
                     Rectangle tooltipRect = tooltip.TooltipInstance.CharacterToolTip.Rectangle;
-                    if (tooltipRect != null)
+                    Rectangle rect = new Rectangle(
+                        tooltipRect.X - (int)context.ShiftCenter.X,
+                        tooltipRect.Y - (int)context.ShiftCenter.Y,
+                        tooltipRect.Width, tooltipRect.Height);
+
+                    if (_gameState.ShowDebugMode && context.DebugTexture != null)
                     {
-                        Rectangle rect = new Rectangle(
-                            tooltipRect.X - (int)context.ShiftCenter.X,
-                            tooltipRect.Y - (int)context.ShiftCenter.Y,
-                            tooltipRect.Width, tooltipRect.Height);
+                        DrawBorder(context.SpriteBatch, rect, 1, Color.White, new Color(Color.Gray, 0.3f), context.DebugTexture);
 
-                        if (_gameState.ShowDebugMode && context.DebugTexture != null)
+                        if (tooltip.CanUpdateDebugText(context.TickCount, 1000))
                         {
-                            DrawBorder(context.SpriteBatch, rect, 1, Color.White, new Color(Color.Gray, 0.3f), context.DebugTexture);
-
-                            if (tooltip.CanUpdateDebugText(context.TickCount, 1000))
-                            {
-                                tooltip.DebugText = $"X: {rect.X}, Y: {rect.Y}";
-                            }
-                            context.SpriteBatch.DrawString(_fontDebugValues, tooltip.DebugText, new Vector2(rect.X, rect.Y), Color.White);
+                            tooltip.DebugText = $"X: {rect.X}, Y: {rect.Y}";
                         }
-
-                        if (!rect.Contains(mouseState.X, mouseState.Y))
-                            continue;
+                        context.SpriteBatch.DrawString(_fontDebugValues, tooltip.DebugText, new Vector2(rect.X, rect.Y), Color.White);
                     }
+
+                    if (!rect.Contains(mouseState.X, mouseState.Y))
+                        continue;
                 }
 
                 tooltip.Draw(context.SpriteBatch, context.SkeletonMeshRenderer, context.GameTime,

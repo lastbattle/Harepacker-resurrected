@@ -179,7 +179,6 @@ namespace HaCreator.MapSimulator.Fields
         private string _statusMessage = "Open a MiniRoom to begin.";
         private MemoryGamePacketType? _lastPacketType;
         private string _lastPacketSummary = "No Match Cards packet dispatched.";
-        private bool _waitingForTimeOverPacket;
         private Func<LoginAvatarLook, CharacterBuild> _miniRoomAvatarBuildFactory;
         private CharacterBuild _localMiniRoomAvatarBuild;
 
@@ -1034,7 +1033,6 @@ namespace HaCreator.MapSimulator.Fields
             _pendingHideTick = 0;
             _resultExpireTick = 0;
             _pendingRemoteActions.Clear();
-            _waitingForTimeOverPacket = false;
 
 
             int pairCount = (_rows * _columns) / 2;
@@ -1164,7 +1162,6 @@ namespace HaCreator.MapSimulator.Fields
                 _statusMessage = "Ready the room, then start the board.";
             }
 
-            _waitingForTimeOverPacket = false;
             SyncMiniRoomRuntime();
         }
 
@@ -1185,7 +1182,6 @@ namespace HaCreator.MapSimulator.Fields
             _resultExpireTick = 0;
             _lastWinnerIndex = -1;
             _pendingRemoteActions.Clear();
-            _waitingForTimeOverPacket = false;
         }
 
 
@@ -1423,7 +1419,6 @@ namespace HaCreator.MapSimulator.Fields
             _resultExpireTick = 0;
             _readyStates[0] = false;
             _readyStates[1] = false;
-            _waitingForTimeOverPacket = false;
             _statusMessage = $"{_playerNames[_currentTurnIndex]}'s turn.";
             _miniRoomRuntime?.AddMiniRoomSystemMessage("System : Start packet applied from MiniRoom payload.");
             SyncMiniRoomRuntime();
@@ -1474,7 +1469,6 @@ namespace HaCreator.MapSimulator.Fields
             {
                 _currentTurnIndex = resultOwner;
                 _turnDeadlineTick = tickCount + 11600;
-                _waitingForTimeOverPacket = true;
                 _statusMessage = $"Mismatch pending. {_playerNames[_currentTurnIndex]} takes the next turn after flip-back.";
                 _miniRoomRuntime?.AddMiniRoomSystemMessage("System : Packet mismatch received. Waiting for time-over flip-back.");
             }
@@ -1494,7 +1488,6 @@ namespace HaCreator.MapSimulator.Fields
                 _currentTurnIndex = scoringPlayerIndex;
                 _turnDeadlineTick = tickCount + 10000;
                 _revealedCardIndices.Clear();
-                _waitingForTimeOverPacket = false;
                 _statusMessage = $"{_playerNames[scoringPlayerIndex]} found a pair.";
                 _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {_playerNames[scoringPlayerIndex]} matched cards {pairedCardIndex} and {cardIndex}.");
             }
@@ -1528,7 +1521,6 @@ namespace HaCreator.MapSimulator.Fields
 
             _currentTurnIndex = Math.Clamp(currentTurnIndex, 0, _playerNames.Length - 1);
             _turnDeadlineTick = tickCount + 10000;
-            _waitingForTimeOverPacket = false;
             _statusMessage = $"{_playerNames[_currentTurnIndex]}'s turn.";
             _miniRoomRuntime?.AddMiniRoomSystemMessage("System : Time-over packet returned the board to the next turn.");
             SyncMiniRoomRuntime();
@@ -1544,7 +1536,6 @@ namespace HaCreator.MapSimulator.Fields
             _pendingHideTick = 0;
             _turnDeadlineTick = 0;
             _resultExpireTick = tickCount + DefaultResultSeconds * 1000;
-            _waitingForTimeOverPacket = false;
 
 
             if (resultType == 1)

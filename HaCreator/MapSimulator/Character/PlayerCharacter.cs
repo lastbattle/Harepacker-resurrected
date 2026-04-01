@@ -323,7 +323,6 @@ namespace HaCreator.MapSimulator.Character
         private int _lastAttackTime;
         private AttackType _currentAttackType;
         private int _attackFrame;
-        private int _attackFrameTimer;
         private string _forcedActionName;
         private bool _sustainedSkillAnimation;
         private SkillAvatarTransformState _activeSkillAvatarTransform;
@@ -937,7 +936,6 @@ namespace HaCreator.MapSimulator.Character
             float maxSpeed = GetMoveSpeed();
             float force = CVecCtrl.WalkAcceleration; // WalkForce / DefaultMass
             float drag = CVecCtrl.WalkDeceleration;  // WalkDrag / DefaultMass
-            float mass = 1.0f;                       // Already divided by mass above
 
             if (State == PlayerState.Ladder || State == PlayerState.Rope)
             {
@@ -1858,7 +1856,6 @@ namespace HaCreator.MapSimulator.Character
             _activeMeleeAfterImage = null;
 
             _attackFrame = 0;
-            _attackFrameTimer = 0;
             _animationStartTime = Environment.TickCount; // Set animation start time for completion check
 
             System.Diagnostics.Debug.WriteLine($"[TriggerSkillAnimation] actionName={actionName}, CurrentAction={CurrentActionName}, State={State}");
@@ -1887,7 +1884,6 @@ namespace HaCreator.MapSimulator.Character
             if (!isSameAction)
             {
                 _attackFrame = 0;
-                _attackFrameTimer = 0;
                 _animationStartTime = Environment.TickCount;
             }
         }

@@ -60,7 +60,6 @@ namespace HaCreator.MapSimulator.Fields
         #endregion
 
         #region Textures
-        private Texture2D _fogTexture;              // Full-screen fog overlay
         private Texture2D _gradientCircle;          // Radial gradient for soft edges
         private Texture2D _pixelTexture;            // 1x1 white pixel for drawing
         private GraphicsDevice _device;
@@ -538,7 +537,6 @@ namespace HaCreator.MapSimulator.Fields
         #region Cleanup
         public void Dispose()
         {
-            _fogTexture?.Dispose();
             _gradientCircle?.Dispose();
             _pixelTexture?.Dispose();
         }

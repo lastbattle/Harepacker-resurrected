@@ -212,9 +212,14 @@ namespace HaCreator.MapSimulator.Managers
             using (NetworkStream stream = client.GetStream())
             using (var reader = new StreamReader(stream))
             {
-                while (!cancellationToken.IsCancellationRequested && !reader.EndOfStream)
+                while (!cancellationToken.IsCancellationRequested)
                 {
                     string line = await reader.ReadLineAsync().ConfigureAwait(false);
+                    if (line == null)
+                    {
+                        break;
+                    }
+
                     if (string.IsNullOrWhiteSpace(line))
                     {
                         continue;

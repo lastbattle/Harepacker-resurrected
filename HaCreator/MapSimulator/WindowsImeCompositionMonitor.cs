@@ -139,6 +139,7 @@ namespace HaCreator.MapSimulator
         private void PublishCompositionState(ImeCompositionState state)
         {
             _lastCompositionState = state ?? ImeCompositionState.Empty;
+            CompositionTextChanged?.Invoke(_lastCompositionState.Text);
             CompositionStateChanged?.Invoke(_lastCompositionState);
         }
 

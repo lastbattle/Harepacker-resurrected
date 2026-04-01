@@ -2037,7 +2037,6 @@ namespace HaCreator.MapSimulator.UI {
         }
 
         #region IClickableUIObject
-        private Point? mouseOffsetOnDragStart = null;
         public bool CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState, MouseCursorItem mouseCursor, int renderWidth, int renderHeight) {
             HandleBuffTrayRightClick(mouseState);
             return UIMouseEventHandler.CheckMouseEvent(shiftCenteredX, shiftCenteredY, this.Position.X, this.Position.Y, mouseState, mouseCursor, uiButtons, false);

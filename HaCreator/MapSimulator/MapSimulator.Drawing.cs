@@ -382,7 +382,6 @@ namespace HaCreator.MapSimulator
                 if (!_tombHasLanded && _tombAnimationStartTime == 0)
                 {
                     _tombAnimationStartTime = Environment.TickCount;
-                    _tombAnimationComplete = false;
 
 
                     // Find the actual ground position below the death location
@@ -435,7 +434,6 @@ namespace HaCreator.MapSimulator
             {
                 // Reset tombstone state when player is alive (respawned)
                 _tombAnimationStartTime = 0;
-                _tombAnimationComplete = false;
                 _tombHasLanded = false;
                 _tombVelocityY = 0;
             }
@@ -503,7 +501,6 @@ namespace HaCreator.MapSimulator
                 {
                     _tombCurrentY = _tombTargetY;
                     _tombHasLanded = true;
-                    _tombAnimationComplete = true; // Switch to land frame when hitting ground
                 }
             }
 
@@ -715,6 +712,9 @@ namespace HaCreator.MapSimulator
             // Once dragging starts, that element keeps exclusive control until mouse is released
             bool minimapIsDragging = miniMapUi != null && miniMapUi.IsDragging;
             bool npcOverlayIsVisible = _npcInteractionOverlay?.IsVisible == true;
+            bool windowBlocksMinimap = npcOverlayIsVisible ||
+                (uiWindowManager != null &&
+                 (uiWindowManager.IsDraggingWindow || uiWindowManager.ContainsPoint(mouseState.X, mouseState.Y)));
 
 
             if (uiWindowManager != null)
@@ -726,19 +726,14 @@ namespace HaCreator.MapSimulator
                     TickCount);
 
 
-                if (!isWindowActive)
-                {
-                    uiWindowManager.ResetAllDragStates();
-                }
                 // Check UI windows - but not if minimap is ALREADY being dragged
-                else if (!minimapIsDragging && !npcOverlayIsVisible)
+                if (ShouldRouteMouseToUiWindows(isWindowActive, minimapIsDragging, npcOverlayIsVisible))
                 {
                     uiWindowManager.CheckMouseEvent((int)shiftCenter.X, (int)shiftCenter.Y, mouseState, mouseCursor, _renderParams.RenderWidth, _renderParams.RenderHeight);
                 }
                 else
                 {
-                    // Reset window drag states if minimap is being dragged
-                    uiWindowManager.ResetAllDragStates();
+                    ResetUiWindowDragStates();
                 }
             }
 
@@ -751,25 +746,26 @@ namespace HaCreator.MapSimulator
             if (miniMapUi != null && isWindowActive)
             {
                 // If minimap is already being dragged, continue dragging regardless of window positions
-                if (minimapIsDragging)
+                if (ShouldRouteMouseToMinimap(minimapIsDragging, windowBlocksMinimap))
                 {
                     miniMapUi.CheckMouseEvent((int)shiftCenter.X, (int)shiftCenter.Y, mouseState, mouseCursor, _renderParams.RenderWidth, _renderParams.RenderHeight);
                 }
-                else
-                {
-                    // Not dragging yet - only start if no window is being dragged or contains the mouse point
-                    // Windows have priority since they're drawn on top
-                    bool windowBlocksMinimap = npcOverlayIsVisible ||
-                        (uiWindowManager != null &&
-                         (uiWindowManager.IsDraggingWindow || uiWindowManager.ContainsPoint(mouseState.X, mouseState.Y)));
-
-
-                    if (!windowBlocksMinimap)
-                    {
-                        miniMapUi.CheckMouseEvent((int)shiftCenter.X, (int)shiftCenter.Y, mouseState, mouseCursor, _renderParams.RenderWidth, _renderParams.RenderHeight);
-                    }
-                }
             }
+        }
+
+        private void ResetUiWindowDragStates()
+        {
+            uiWindowManager?.ResetAllDragStates();
+        }
+
+        private static bool ShouldRouteMouseToUiWindows(bool isWindowActive, bool minimapIsDragging, bool npcOverlayIsVisible)
+        {
+            return isWindowActive && !minimapIsDragging && !npcOverlayIsVisible;
+        }
+
+        private static bool ShouldRouteMouseToMinimap(bool minimapIsDragging, bool windowBlocksMinimap)
+        {
+            return minimapIsDragging || !windowBlocksMinimap;
         }
     }
 }

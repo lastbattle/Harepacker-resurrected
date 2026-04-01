@@ -64,7 +64,6 @@ namespace HaCreator.MapSimulator.Fields
         private int _balrogMoveStartTime;
         private float _balrogStartX, _balrogEndX;
         private float _balrogStartY, _balrogEndY;
-        private float _balrogStartAlpha, _balrogEndAlpha;
         private int _balrogMoveDuration = 1000;
         #endregion
 
@@ -386,9 +385,6 @@ namespace HaCreator.MapSimulator.Fields
             _balrogEndY = _currentY - _shipHeight / 2;
             _balrogX = _balrogStartX;
             _balrogY = _balrogStartY;
-
-            _balrogStartAlpha = 0f;
-            _balrogEndAlpha = 255f;
             _balrogAlpha = 0f;
 
             OnBalrogAppear?.Invoke();

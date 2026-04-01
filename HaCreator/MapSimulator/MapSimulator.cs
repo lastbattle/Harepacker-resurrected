@@ -517,7 +517,6 @@ namespace HaCreator.MapSimulator
         private List<IDXObject> _tombFallFrames; // fall/0..19 animation
         private IDXObject _tombLandFrame; // land/0 (final resting frame)
         private int _tombAnimationStartTime; // When the death occurred
-        private bool _tombAnimationComplete; // Whether fall animation has finished
 
 
         // Tombstone falling physics
@@ -27787,6 +27786,25 @@ namespace HaCreator.MapSimulator
             return $"{DescribeLoginPacketInboxStatus()}{Environment.NewLine}{DescribeLoginOfficialSessionBridgeStatus()}";
         }
 
+        private bool TryHandleLoginPacketMessage(LoginPacketInboxMessage message)
+        {
+            if (message == null)
+            {
+                return false;
+            }
+
+            string[] args = message.Arguments?.Length > 0
+                ? message.Arguments
+                : ParseLoginPacketInboxArguments(message.RawText);
+            if (!TryConfigureLoginPacketPayload(message.PacketType, args, out _, out _))
+            {
+                return false;
+            }
+
+            DispatchLoginRuntimePacket(message.PacketType, out _);
+            return true;
+        }
+
 
 
 
@@ -27800,42 +27818,11 @@ namespace HaCreator.MapSimulator
 
             while (_loginPacketInbox.TryDequeue(out LoginPacketInboxMessage message))
             {
-                if (message == null)
-                {
-                    continue;
-                }
-
-
-                string[] args = message.Arguments?.Length > 0
-                    ? message.Arguments
-                    : ParseLoginPacketInboxArguments(message.RawText);
-                if (!TryConfigureLoginPacketPayload(message.PacketType, args, out _, out _))
-                {
-                    continue;
-                }
-
-
-                DispatchLoginRuntimePacket(message.PacketType, out _);
+                TryHandleLoginPacketMessage(message);
             }
             while (_loginOfficialSessionBridge.TryDequeue(out LoginPacketInboxMessage bridgedMessage))
             {
-                if (bridgedMessage == null)
-                {
-                    continue;
-                }
-
-
-                string[] args = bridgedMessage.Arguments?.Length > 0
-                    ? bridgedMessage.Arguments
-                    : ParseLoginPacketInboxArguments(bridgedMessage.RawText);
-                if (!TryConfigureLoginPacketPayload(bridgedMessage.PacketType, args, out _, out _))
-                {
-                    continue;
-                }
-
-
-                DispatchLoginRuntimePacket(bridgedMessage.PacketType, out _);
-
+                TryHandleLoginPacketMessage(bridgedMessage);
             }
 
         }

@@ -190,8 +190,6 @@ namespace HaCreator.MapSimulator.Fields
         private readonly List<AttackPacketRequest> _pendingAttackPacketRequests = new();
         private int? _lastPacketType;
         private int? _lastScorePacketTick;
-        // Avatar appearances (from WZ)
-        private int[,] _avatarEquip; // [team][gender] = equipment set
         // UI
         private string _currentMessage;
         private int _messageEndTime;

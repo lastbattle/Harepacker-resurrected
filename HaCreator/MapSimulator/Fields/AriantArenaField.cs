@@ -922,10 +922,6 @@ namespace HaCreator.MapSimulator.Fields
 
         private int GetNextIconIndex()
         {
-            if (MaxRankEntries <= 0)
-            {
-                return -1;
-            }
             return Math.Clamp(_entries.Count, 0, MaxRankEntries - 1);
         }
         private static string NormalizeRemoteActionName(string actionName)

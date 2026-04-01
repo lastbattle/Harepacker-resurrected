@@ -66,7 +66,6 @@ namespace HaCreator.MapSimulator
         private LocalOverlayBalloonSkin _packetOwnedTutorBalloonSkin;
         private PacketOwnedBattleshipDurabilityOverrideState _packetOwnedBattleshipDurabilityOverride;
         private int _packetQuestGuideQuestId;
-        private bool _packetOwnedUtilityRequestSent;
         private int _packetOwnedUtilityRequestTick = int.MinValue;
         private int _lastDeliveryQuestId;
         private int _lastDeliveryItemId;
@@ -155,7 +154,6 @@ namespace HaCreator.MapSimulator
 
         private void StampPacketOwnedUtilityRequestState()
         {
-            _packetOwnedUtilityRequestSent = false;
             _packetOwnedUtilityRequestTick = Environment.TickCount;
         }
 

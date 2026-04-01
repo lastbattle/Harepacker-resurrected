@@ -62,6 +62,33 @@ namespace HaCreator.MapSimulator {
 
         private const float MINIMAP_STREETNAME_TOOLTIP_FONTSIZE = 10f;
 
+        private static System.Drawing.Bitmap CreateTextTooltipBitmap(
+            string renderText,
+            System.Drawing.Font font,
+            int widthPadding,
+            int heightPadding,
+            Action<System.Drawing.Graphics, int, int> drawBackground,
+            System.Drawing.Color foregroundColor)
+        {
+            using var measureBitmap = new System.Drawing.Bitmap(1, 1);
+            using var measureGraphics = System.Drawing.Graphics.FromImage(measureBitmap);
+            System.Drawing.SizeF tooltipSize = measureGraphics.MeasureString(renderText, font);
+
+            int effectiveWidth = (int)tooltipSize.Width + widthPadding;
+            int effectiveHeight = (int)tooltipSize.Height + heightPadding;
+
+            var tooltipBitmap = new System.Drawing.Bitmap(effectiveWidth, effectiveHeight);
+            using (System.Drawing.Graphics graphics = System.Drawing.Graphics.FromImage(tooltipBitmap))
+            using (var textBrush = new System.Drawing.SolidBrush(foregroundColor))
+            {
+                drawBackground(graphics, effectiveWidth, effectiveHeight);
+                graphics.DrawString(renderText, font, textBrush, widthPadding / 2f, heightPadding / 2f);
+                graphics.Flush();
+            }
+
+            return tooltipBitmap;
+        }
+
         /// <summary>
         /// Create map simulator board with seamless map transitions.
         /// </summary>
@@ -513,21 +540,14 @@ namespace HaCreator.MapSimulator {
 
             // Create
             using (System.Drawing.Font font = new System.Drawing.Font(GLOBAL_FONT, TOOLTIP_FONTSIZE / UserScreenScaleFactor)) {
-                System.Drawing.Graphics graphics_dummy = System.Drawing.Graphics.FromImage(new System.Drawing.Bitmap(1, 1)); // dummy image just to get the Graphics object for measuring string
-                System.Drawing.SizeF tooltipSize = graphics_dummy.MeasureString(renderText, font);
-
-                int effective_width = (int)tooltipSize.Width + WIDTH_PADDING;
-                int effective_height = (int)tooltipSize.Height + HEIGHT_PADDING;
-
-                System.Drawing.Bitmap bmp_tooltip = new System.Drawing.Bitmap(effective_width, effective_height);
-                using (System.Drawing.Graphics graphics = System.Drawing.Graphics.FromImage(bmp_tooltip)) {
-                    // Frames and background
-                    UIFrameHelper.DrawUIFrame(graphics, color_bgFill, ne, nw, se, sw, e, w, n, s, c, 0, effective_width, effective_height);
-
-                    // Text
-                    graphics.DrawString(renderText, font, new System.Drawing.SolidBrush(color_foreGround), WIDTH_PADDING / 2, HEIGHT_PADDING / 2);
-                    graphics.Flush();
-                }
+                using System.Drawing.Bitmap bmp_tooltip = CreateTextTooltipBitmap(
+                    renderText,
+                    font,
+                    WIDTH_PADDING,
+                    HEIGHT_PADDING,
+                    (graphics, effectiveWidth, effectiveHeight) =>
+                        UIFrameHelper.DrawUIFrame(graphics, color_bgFill, ne, nw, se, sw, e, w, n, s, c, 0, effectiveWidth, effectiveHeight),
+                    color_foreGround);
                 IDXObject dxObj = new DXObject(tooltip.X, tooltip.Y, bmp_tooltip.ToTexture2D(device), 0);
                 TooltipItem item = new TooltipItem(tooltip, dxObj);
 
@@ -558,24 +578,16 @@ namespace HaCreator.MapSimulator {
             // Create
             using (System.Drawing.Font font = new System.Drawing.Font(GLOBAL_FONT, TOOLTIP_FONTSIZE / UserScreenScaleFactor))
             {
-                System.Drawing.Graphics graphics_dummy = System.Drawing.Graphics.FromImage(new System.Drawing.Bitmap(1, 1)); // dummy image just to get the Graphics object for measuring string
-                System.Drawing.SizeF tooltipSize = graphics_dummy.MeasureString(renderText, font);
+                using System.Drawing.Bitmap bmp_tooltip = CreateTextTooltipBitmap(
+                    renderText,
+                    font,
+                    WIDTH_PADDING,
+                    HEIGHT_PADDING,
+                    (graphics, effectiveWidth, effectiveHeight) =>
+                        UIFrameHelper.DrawUIFrame(graphics, color_bgFill, effectiveWidth, effectiveHeight),
+                    color_foreGround);
 
-                int effective_width = (int)tooltipSize.Width + WIDTH_PADDING;
-                int effective_height = (int)tooltipSize.Height + HEIGHT_PADDING;
-
-                System.Drawing.Bitmap bmp_tooltip = new System.Drawing.Bitmap(effective_width, effective_height);
-                using (System.Drawing.Graphics graphics = System.Drawing.Graphics.FromImage(bmp_tooltip))
-                {
-                    // Frames and background
-                    UIFrameHelper.DrawUIFrame(graphics, color_bgFill, effective_width, effective_height);
-
-                    // Text
-                    graphics.DrawString(renderText, font, new System.Drawing.SolidBrush(color_foreGround), (WIDTH_PADDING / 2), HEIGHT_PADDING / 2);
-                    graphics.Flush();
-                }
-
-                int tooltipShiftX = (x - (effective_width / 2));
+                int tooltipShiftX = x - (bmp_tooltip.Width / 2);
 
                 IDXObject dxObj = new DXObject(tooltipShiftX, y, bmp_tooltip.ToTexture2D(device), 0);
                 NameTooltipItem item = new NameTooltipItem(dxObj);

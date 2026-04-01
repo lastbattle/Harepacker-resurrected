@@ -958,22 +958,12 @@ namespace HaCreator.MapSimulator.Loaders
                 graphics.Clear(System.Drawing.Color.Transparent);
                 graphics.DrawImage(backgrnd, 0, 0);
 
-                foreach (var layer in layers.OrderBy(layer => layer.Z))
+                foreach ((WzCanvasProperty canvas, System.Drawing.Bitmap bitmap) in EnumerateOrderedRenderableCanvasLayers(layers))
                 {
-                    if (layer.Canvas == null || layer.Bitmap == null)
-                    {
-                        continue;
-                    }
-
-                    if (!TryGetBitmapDimensions(layer.Bitmap, out _, out _))
-                    {
-                        continue;
-                    }
-
-                    Point layerOrigin = GetCanvasOrigin(layer.Canvas);
+                    Point layerOrigin = GetCanvasOrigin(canvas);
                     int drawX = frameOrigin.X - layerOrigin.X;
                     int drawY = frameOrigin.Y - layerOrigin.Y;
-                    graphics.DrawImage(layer.Bitmap, drawX, drawY);
+                    graphics.DrawImage(bitmap, drawX, drawY);
                 }
             }
 
@@ -1043,12 +1033,7 @@ namespace HaCreator.MapSimulator.Loaders
 
             foreach ((int _, WzCanvasProperty canvas, System.Drawing.Bitmap bitmap) in layers)
             {
-                if (canvas == null || bitmap == null)
-                {
-                    continue;
-                }
-
-                if (!TryGetBitmapDimensions(bitmap, out int width, out int height))
+                if (!TryGetRenderableCanvasLayerDimensions(canvas, bitmap, out int width, out int height))
                 {
                     continue;
                 }
@@ -1064,18 +1049,8 @@ namespace HaCreator.MapSimulator.Loaders
             using (System.Drawing.Graphics graphics = System.Drawing.Graphics.FromImage(composed))
             {
                 graphics.Clear(System.Drawing.Color.Transparent);
-                foreach ((int _, WzCanvasProperty canvas, System.Drawing.Bitmap bitmap) in layers.OrderBy(layer => layer.Z))
+                foreach ((WzCanvasProperty canvas, System.Drawing.Bitmap bitmap) in EnumerateOrderedRenderableCanvasLayers(layers))
                 {
-                    if (canvas == null || bitmap == null)
-                    {
-                        continue;
-                    }
-
-                    if (!TryGetBitmapDimensions(bitmap, out _, out _))
-                    {
-                        continue;
-                    }
-
                     Point drawPosition = ResolveCanvasPosition(anchorOrigin, canvas);
                     graphics.DrawImage(bitmap, drawPosition.X - minX, drawPosition.Y - minY);
                 }
@@ -1093,6 +1068,31 @@ namespace HaCreator.MapSimulator.Loaders
 
             button.X = ResolveCanvasPosition(anchorOrigin, buttonProperty?["normal"]?["0"] as WzCanvasProperty).X;
             button.Y = ResolveCanvasPosition(anchorOrigin, buttonProperty?["normal"]?["0"] as WzCanvasProperty).Y;
+        }
+
+        private static IEnumerable<(WzCanvasProperty Canvas, System.Drawing.Bitmap Bitmap)> EnumerateOrderedRenderableCanvasLayers(
+            IEnumerable<(int Z, WzCanvasProperty Canvas, System.Drawing.Bitmap Bitmap)> layers)
+        {
+            foreach ((int _, WzCanvasProperty canvas, System.Drawing.Bitmap bitmap) in layers.OrderBy(layer => layer.Z))
+            {
+                if (!TryGetRenderableCanvasLayerDimensions(canvas, bitmap, out _, out _))
+                {
+                    continue;
+                }
+
+                yield return (canvas, bitmap);
+            }
+        }
+
+        private static bool TryGetRenderableCanvasLayerDimensions(
+            WzCanvasProperty canvas,
+            System.Drawing.Bitmap bitmap,
+            out int width,
+            out int height)
+        {
+            width = 0;
+            height = 0;
+            return canvas != null && bitmap != null && TryGetBitmapDimensions(bitmap, out width, out height);
         }
 
         private static Point ResolveCanvasPosition(Point anchorOrigin, WzCanvasProperty canvas)

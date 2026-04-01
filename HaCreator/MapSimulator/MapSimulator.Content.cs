@@ -582,16 +582,7 @@ namespace HaCreator.MapSimulator
             ///////////////////////////////////////////////
             ResolveSpawnPosition(out float spawnX, out float spawnY);
 
-
-            SetCameraMoveX(true, false, 0); // true true to center it, in case its out of the boundary
-
-            SetCameraMoveX(false, true, 0);
-
-
-
-            SetCameraMoveY(true, false, 0);
-
-            SetCameraMoveY(false, true, 0);
+            ClampLegacyCameraToBoundaries();
 
 
 
@@ -1685,11 +1676,7 @@ namespace HaCreator.MapSimulator
             ResolveSpawnPosition(out float spawnX, out float spawnY);
 
 
-
-            SetCameraMoveX(true, false, 0);
-            SetCameraMoveX(false, true, 0);
-            SetCameraMoveY(true, false, 0);
-            SetCameraMoveY(false, true, 0);
+            ClampLegacyCameraToBoundaries();
 
 
             // Store map center point for camera calculations

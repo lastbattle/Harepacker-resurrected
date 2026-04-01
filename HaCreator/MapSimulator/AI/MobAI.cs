@@ -314,7 +314,6 @@ namespace HaCreator.MapSimulator.AI
         private MobAIState _state = MobAIState.Idle;
         private MobAIState _previousState = MobAIState.Idle;
         private int _stateStartTime = 0;
-        private int _stateTimer = 0;
 
         // Combat
         private readonly List<MobAttackEntry> _attacks = new List<MobAttackEntry>();
@@ -579,7 +578,6 @@ namespace HaCreator.MapSimulator.AI
             _previousState = _state;
             _state = newState;
             _stateStartTime = currentTick;
-            _stateTimer = 0;
 
             // Reset attack when leaving attack state
             if (_previousState == MobAIState.Attack)
@@ -1826,7 +1824,6 @@ namespace HaCreator.MapSimulator.AI
             }
 
             _stateStartTime = currentTick;
-            _stateTimer = 0;
         }
 
         private bool TryChainNextCombatAction(int currentTick)
