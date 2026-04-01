@@ -1938,16 +1938,18 @@ namespace HaCreator.MapSimulator.Interaction
                 conversationPages = issueConversationPages;
             }
 
+            bool hasAuthoredConversation = conversationPages.Count > 0;
+
             string fallbackStageText = state == QuestStateType.Not_Started
                 ? FirstNonEmpty(definition.StartDescription, definition.DemandSummary)
                 : FirstNonEmpty(definition.ProgressDescription, definition.CompletionDescription, definition.DemandSummary);
 
-            if (!string.IsNullOrWhiteSpace(fallbackStageText) && conversationPages.Count == 0)
+            if (!string.IsNullOrWhiteSpace(fallbackStageText) && !hasAuthoredConversation)
             {
                 summary = $"{summary}\n\n{fallbackStageText}";
             }
 
-            if (conversationPages.Count == 0)
+            if (!hasAuthoredConversation)
             {
                 pages.Add(new NpcInteractionPage
                 {
@@ -1985,7 +1987,7 @@ namespace HaCreator.MapSimulator.Interaction
                 details.AddRange(issues);
             }
 
-            if (details.Count > 0)
+            if (!hasAuthoredConversation && details.Count > 0)
             {
                 string detailText = string.Join("\n", details);
                 pages.Add(new NpcInteractionPage
@@ -4860,6 +4862,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             AppendConversationChoice(property["yes"], "Yes", choices);
             AppendConversationChoice(property["no"], "No", choices);
+            AppendAdditionalConversationChoices(property, choices);
         }
 
         private static void AppendConversationChoice(WzImageProperty property, string label, ICollection<NpcInteractionChoice> choices)
@@ -4880,6 +4883,48 @@ namespace HaCreator.MapSimulator.Interaction
                 Label = label,
                 Pages = branchPages
             });
+        }
+
+        private static void AppendAdditionalConversationChoices(WzImageProperty property, ICollection<NpcInteractionChoice> choices)
+        {
+            if (property?.WzProperties == null)
+            {
+                return;
+            }
+
+            var existingLabels = new HashSet<string>(
+                choices?.Where(choice => choice != null)
+                    .Select(choice => choice.Label)
+                    .Where(label => !string.IsNullOrWhiteSpace(label)) ??
+                Array.Empty<string>(),
+                StringComparer.OrdinalIgnoreCase);
+
+            for (int i = 0; i < property.WzProperties.Count; i++)
+            {
+                WzImageProperty child = property.WzProperties[i];
+                if (!ShouldExposeConversationBranchChoice(child))
+                {
+                    continue;
+                }
+
+                string label = FormatConversationBranchChoiceLabel(child.Name);
+                if (string.IsNullOrWhiteSpace(label) || !existingLabels.Add(label))
+                {
+                    continue;
+                }
+
+                IReadOnlyList<NpcInteractionPage> branchPages = ParseBranchPages(child);
+                if (branchPages.Count == 0)
+                {
+                    branchPages = CreateUnavailableSelectionPages(label);
+                }
+
+                choices.Add(new NpcInteractionChoice
+                {
+                    Label = label,
+                    Pages = branchPages
+                });
+            }
         }
 
         private static void AppendInlineSelectionChoices(
@@ -5026,6 +5071,48 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return ParseConversationPages(property);
+        }
+
+        private static bool ShouldExposeConversationBranchChoice(WzImageProperty property)
+        {
+            if (property == null ||
+                string.IsNullOrWhiteSpace(property.Name) ||
+                IsConversationReservedPropertyName(property.Name))
+            {
+                return false;
+            }
+
+            return property.WzProperties?.Count > 0 || property is WzStringProperty;
+        }
+
+        private static bool IsConversationReservedPropertyName(string propertyName)
+        {
+            if (string.IsNullOrWhiteSpace(propertyName))
+            {
+                return true;
+            }
+
+            if (IsConversationTextNodeName(propertyName))
+            {
+                return true;
+            }
+
+            return propertyName.Equals("yes", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("no", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("ask", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("stop", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("lost", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("info", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("npc", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("job", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("quest", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string FormatConversationBranchChoiceLabel(string branchName)
+        {
+            return string.IsNullOrWhiteSpace(branchName)
+                ? string.Empty
+                : char.ToUpperInvariant(branchName[0]) + branchName[1..];
         }
 
         private static bool TryGetStopPages(

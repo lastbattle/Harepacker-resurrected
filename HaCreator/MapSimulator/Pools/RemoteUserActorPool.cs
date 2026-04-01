@@ -59,6 +59,7 @@ namespace HaCreator.MapSimulator.Pools
         private const int RelationshipOverlayNearRangeY = 100;
         private const int NewYearCardOverlayNearRangeX = 250;
         private const int NewYearCardOverlayNearRangeY = 250;
+        private const int NewYearCardOverlayTextVerticalOffset = -42;
         private static readonly EquipSlot[] BattlefieldAppearanceSlots =
         {
             EquipSlot.Cap,
@@ -112,6 +113,7 @@ namespace HaCreator.MapSimulator.Pools
         public IEnumerable<RemoteUserActor> Actors => _actorsById.Values;
         public int PreparedSkillWorldOverlayCount => _preparedSkillWorldOverlayCount;
         public int HelperMarkerCount => _helperMarkerCount;
+        public Action<int, string> ActorRemovedCallback { get; set; }
 
         public void Initialize(CharacterLoader loader, SkillLoader skillLoader)
         {
@@ -124,6 +126,7 @@ namespace HaCreator.MapSimulator.Pools
             foreach (RemoteUserActor actor in _actorsById.Values.ToArray())
             {
                 ClearActorFollowLinks(actor);
+                NotifyActorRemoved(actor.CharacterId, actor.Name);
             }
 
             _actorsById.Clear();
@@ -145,6 +148,7 @@ namespace HaCreator.MapSimulator.Pools
                 if (_actorsById.TryGetValue(characterId, out RemoteUserActor actor))
                 {
                     ClearActorFollowLinks(actor);
+                    NotifyActorRemoved(actor.CharacterId, actor.Name);
                     _actorIdsByName.Remove(actor.Name);
                     _actorsById.Remove(characterId);
                 }
@@ -168,6 +172,7 @@ namespace HaCreator.MapSimulator.Pools
                 if (_actorsById.TryGetValue(characterId, out RemoteUserActor actor))
                 {
                     ClearActorFollowLinks(actor);
+                    NotifyActorRemoved(actor.CharacterId, actor.Name);
                     _actorIdsByName.Remove(actor.Name);
                     _actorsById.Remove(characterId);
                 }
@@ -808,9 +813,15 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             ClearActorFollowLinks(actor);
+            NotifyActorRemoved(actor.CharacterId, actor.Name);
             _actorsById.Remove(characterId);
             _actorIdsByName.Remove(actor.Name);
             return true;
+        }
+
+        private void NotifyActorRemoved(int characterId, string name)
+        {
+            ActorRemovedCallback?.Invoke(characterId, name);
         }
 
         public void Update(int currentTime, PlayerCharacter localPlayer = null)
@@ -1275,6 +1286,7 @@ namespace HaCreator.MapSimulator.Pools
                     spriteBatch,
                     skeletonMeshRenderer,
                     actor,
+                    font,
                     localPlayer,
                     mapShiftX,
                     mapShiftY,
@@ -1484,6 +1496,7 @@ namespace HaCreator.MapSimulator.Pools
             SpriteBatch spriteBatch,
             SkeletonMeshRenderer skeletonMeshRenderer,
             RemoteUserActor actor,
+            SpriteFont font,
             PlayerCharacter localPlayer,
             int mapShiftX,
             int mapShiftY,
@@ -1506,6 +1519,7 @@ namespace HaCreator.MapSimulator.Pools
                     skeletonMeshRenderer,
                     actor,
                     overlay,
+                    font,
                     localPlayer,
                     mapShiftX,
                     mapShiftY,
@@ -1523,6 +1537,7 @@ namespace HaCreator.MapSimulator.Pools
             SkeletonMeshRenderer skeletonMeshRenderer,
             RemoteUserActor actor,
             RemoteRelationshipOverlayState overlay,
+            SpriteFont font,
             PlayerCharacter localPlayer,
             int mapShiftX,
             int mapShiftY,
@@ -1584,10 +1599,12 @@ namespace HaCreator.MapSimulator.Pools
                     elapsedTime);
             }
 
-            if (overlay.Effect?.SharedLayers == null
-                || overlay.Effect.SharedLayers.Count == 0
-                || partnerCharacterId <= 0
-                || (relationshipStatus & 2) == 0)
+            bool canDrawSharedRelationshipSurface = partnerCharacterId > 0 && (relationshipStatus & 2) != 0;
+            bool hasSharedLayers = overlay.Effect?.SharedLayers != null && overlay.Effect.SharedLayers.Count > 0;
+            bool shouldDrawNewYearCardText = overlay.RelationshipType == RemoteRelationshipOverlayType.NewYearCard
+                && font != null
+                && canDrawSharedRelationshipSurface;
+            if (!canDrawSharedRelationshipSurface || (!hasSharedLayers && !shouldDrawNewYearCardText))
             {
                 return;
             }
@@ -1602,6 +1619,22 @@ namespace HaCreator.MapSimulator.Pools
             int midpointScreenX = (int)Math.Round((actor.Position.X + partnerPosition.X) * 0.5f) - mapShiftX + centerX;
             int midpointScreenY = (int)Math.Round((actor.Position.Y + partnerPosition.Y) * 0.5f) - mapShiftY + centerY
                 + PlayerCharacter.PortableChairCoupleMidpointScreenYOffset;
+            if (shouldDrawNewYearCardText)
+            {
+                DrawRelationshipTextTag(
+                    spriteBatch,
+                    font,
+                    overlay.RelationshipType,
+                    BuildRelationshipTextTagText(actor, localPlayer, partnerCharacterId),
+                    midpointScreenX,
+                    midpointScreenY + NewYearCardOverlayTextVerticalOffset);
+            }
+
+            if (!hasSharedLayers)
+            {
+                return;
+            }
+
             DrawItemEffectLayers(
                 spriteBatch,
                 skeletonMeshRenderer,
@@ -1610,6 +1643,110 @@ namespace HaCreator.MapSimulator.Pools
                 midpointScreenY,
                 partnerFacingRight,
                 elapsedTime);
+        }
+
+        private void DrawRelationshipTextTag(
+            SpriteBatch spriteBatch,
+            SpriteFont font,
+            RemoteRelationshipOverlayType relationshipType,
+            string text,
+            int centerX,
+            int topY)
+        {
+            if (spriteBatch == null
+                || font == null
+                || string.IsNullOrWhiteSpace(text)
+                || _loader == null)
+            {
+                return;
+            }
+
+            RelationshipTextTagStyle style = _loader.LoadRelationshipTextTagStyle(relationshipType);
+            if (style?.IsReady != true)
+            {
+                Vector2 fallbackSize = font.MeasureString(text);
+                DrawOutlinedText(
+                    spriteBatch,
+                    font,
+                    text,
+                    new Vector2(centerX - (fallbackSize.X * 0.5f), topY),
+                    Color.Black,
+                    Color.White);
+                return;
+            }
+
+            Vector2 textSize = font.MeasureString(text);
+            int textWidth = Math.Max(1, (int)Math.Ceiling(textSize.X));
+            int totalWidth = Math.Max(style.Left.Width + style.Right.Width, textWidth + 10);
+            float leftX = centerX - (totalWidth * 0.5f);
+            int middleStartX = (int)Math.Round(leftX) + style.Left.Width;
+            int middleEndX = (int)Math.Round(leftX) + totalWidth - style.Right.Width;
+
+            spriteBatch.Draw(style.Left, new Vector2(leftX, topY), Color.White);
+            for (int offsetX = middleStartX; offsetX < middleEndX; offsetX += style.Middle.Width)
+            {
+                int remainingWidth = middleEndX - offsetX;
+                if (remainingWidth <= 0)
+                {
+                    break;
+                }
+
+                int drawWidth = Math.Min(style.Middle.Width, remainingWidth);
+                spriteBatch.Draw(
+                    style.Middle,
+                    new Rectangle(offsetX, topY, drawWidth, style.Middle.Height),
+                    new Rectangle(0, 0, drawWidth, style.Middle.Height),
+                    Color.White);
+            }
+
+            spriteBatch.Draw(style.Right, new Vector2(leftX + totalWidth - style.Right.Width, topY), Color.White);
+            DrawOutlinedText(
+                spriteBatch,
+                font,
+                text,
+                new Vector2(centerX - (textSize.X * 0.5f), topY + 2f),
+                Color.Black,
+                style.TextColor);
+        }
+
+        private string BuildRelationshipTextTagText(RemoteUserActor ownerActor, PlayerCharacter localPlayer, int partnerCharacterId)
+        {
+            if (ownerActor == null || partnerCharacterId <= 0)
+            {
+                return null;
+            }
+
+            string ownerName = string.IsNullOrWhiteSpace(ownerActor.Name)
+                ? ownerActor.CharacterId.ToString()
+                : ownerActor.Name.Trim();
+            string partnerName = ResolveRelationshipPartnerName(localPlayer, partnerCharacterId);
+            if (string.IsNullOrWhiteSpace(partnerName))
+            {
+                return ownerName;
+            }
+
+            return string.Equals(ownerName, partnerName, StringComparison.OrdinalIgnoreCase)
+                ? ownerName
+                : $"{ownerName} <-> {partnerName}";
+        }
+
+        private string ResolveRelationshipPartnerName(PlayerCharacter localPlayer, int partnerCharacterId)
+        {
+            if (partnerCharacterId <= 0)
+            {
+                return null;
+            }
+
+            if (localPlayer?.Build?.Id == partnerCharacterId)
+            {
+                return string.IsNullOrWhiteSpace(localPlayer.Build.Name)
+                    ? partnerCharacterId.ToString()
+                    : localPlayer.Build.Name.Trim();
+            }
+
+            return _actorsById.TryGetValue(partnerCharacterId, out RemoteUserActor actor)
+                ? (string.IsNullOrWhiteSpace(actor.Name) ? partnerCharacterId.ToString() : actor.Name.Trim())
+                : partnerCharacterId.ToString();
         }
 
         private static void DrawItemEffectLayers(

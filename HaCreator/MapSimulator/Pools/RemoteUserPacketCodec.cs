@@ -11,6 +11,7 @@ namespace HaCreator.MapSimulator.Pools
     public enum RemoteUserPacketType
     {
         UserFollowCharacter = -1001,
+        UserDropPickup = -1002,
         UserEnterField = 179,
         UserLeaveField = 180,
         UserMove = 181,
@@ -34,7 +35,69 @@ namespace HaCreator.MapSimulator.Pools
         bool FacingRight,
         string ActionName,
         bool IsVisibleInWorld,
-        int? PortableChairItemId);
+        int? PortableChairItemId,
+        RemoteUserTemporaryStatSnapshot TemporaryStats);
+
+    public readonly record struct RemoteUserTemporaryStatSnapshot(
+        int EncodedLength,
+        int[] MaskWords,
+        byte[] RawPayload)
+    {
+        public bool HasPayload => RawPayload != null && RawPayload.Length > 0;
+
+        public bool HasActiveMaskBits
+        {
+            get
+            {
+                if (MaskWords == null)
+                {
+                    return false;
+                }
+
+                for (int i = 0; i < MaskWords.Length; i++)
+                {
+                    if (MaskWords[i] != 0)
+                    {
+                        return true;
+                    }
+                }
+
+                return false;
+            }
+        }
+
+        public int ActiveMaskBitCount
+        {
+            get
+            {
+                if (MaskWords == null)
+                {
+                    return 0;
+                }
+
+                int count = 0;
+                for (int i = 0; i < MaskWords.Length; i++)
+                {
+                    count += CountBits(MaskWords[i]);
+                }
+
+                return count;
+            }
+        }
+
+        private static int CountBits(int value)
+        {
+            uint remaining = unchecked((uint)value);
+            int count = 0;
+            while (remaining != 0)
+            {
+                remaining &= remaining - 1;
+                count++;
+            }
+
+            return count;
+        }
+    }
 
     public readonly record struct RemoteUserLeaveFieldPacket(int CharacterId);
 
@@ -61,6 +124,11 @@ namespace HaCreator.MapSimulator.Pools
         string SkillName);
 
     public readonly record struct RemoteUserPreparedSkillClearPacket(int CharacterId);
+    public readonly record struct RemoteUserDropPickupPacket(
+        int DropId,
+        int ActorId,
+        DropPickupActorKind ActorKind,
+        string ActorName);
 
     public readonly record struct RemoteUserMeleeAttackPacket(
         int CharacterId,
@@ -238,7 +306,17 @@ namespace HaCreator.MapSimulator.Pools
                     return false;
                 }
 
-                packet = new RemoteUserEnterFieldPacket(characterId, name, avatarLook, x, y, facingRight, actionName, isVisibleInWorld, null);
+                packet = new RemoteUserEnterFieldPacket(
+                    characterId,
+                    name,
+                    avatarLook,
+                    x,
+                    y,
+                    facingRight,
+                    actionName,
+                    isVisibleInWorld,
+                    null,
+                    default);
                 return true;
             }
             catch (InvalidOperationException ex)
@@ -262,11 +340,15 @@ namespace HaCreator.MapSimulator.Pools
                 reader.ReadString16();
                 reader.ReadBytes(6);
 
-                int avatarLookOffset = FindOfficialAvatarLookOffset(payload, reader.Offset, out error);
+                int temporaryStatOffset = reader.Offset;
+                int avatarLookOffset = FindOfficialAvatarLookOffset(payload, temporaryStatOffset, out error);
                 if (avatarLookOffset < 0)
                 {
                     return false;
                 }
+
+                RemoteUserTemporaryStatSnapshot temporaryStats =
+                    DecodeOfficialRemoteTemporaryStats(payload, temporaryStatOffset, avatarLookOffset);
 
                 var avatarReader = new PacketReader(payload.Slice(avatarLookOffset));
                 if (!LoginAvatarLookCodec.TryDecode(avatarReader.ReadRemainingBytes(), out LoginAvatarLook avatarLook, out string avatarError))
@@ -311,7 +393,8 @@ namespace HaCreator.MapSimulator.Pools
                     DecodeFacingRight(moveAction),
                     ResolveActionNameFromMoveAction(moveAction, portableChairItemId),
                     true,
-                    portableChairItemId > 0 ? portableChairItemId : null);
+                    portableChairItemId > 0 ? portableChairItemId : null,
+                    temporaryStats);
                 return true;
             }
             catch (InvalidOperationException ex)
@@ -468,6 +551,50 @@ namespace HaCreator.MapSimulator.Pools
 
             packet = new RemoteUserPreparedSkillClearPacket(clearPacket.CharacterId);
             return true;
+        }
+
+        public static bool TryParseDropPickup(ReadOnlySpan<byte> payload, out RemoteUserDropPickupPacket packet, out string error)
+        {
+            packet = default;
+            error = null;
+
+            try
+            {
+                var reader = new PacketReader(payload);
+                int dropId = reader.ReadInt32();
+                int actorId = reader.ReadInt32();
+                byte actorKindRaw = reader.ReadByte();
+                if (!Enum.IsDefined(typeof(DropPickupActorKind), (int)actorKindRaw))
+                {
+                    error = $"Remote user drop-pickup packet actor kind {actorKindRaw} is not recognized.";
+                    return false;
+                }
+
+                string actorName = reader.ReadString8();
+                if (reader.RemainingLength != 0)
+                {
+                    error = $"Remote user drop-pickup packet has {reader.RemainingLength} unread bytes remaining.";
+                    return false;
+                }
+
+                if (dropId <= 0)
+                {
+                    error = $"Remote user drop-pickup packet drop ID {dropId} is invalid.";
+                    return false;
+                }
+
+                packet = new RemoteUserDropPickupPacket(
+                    dropId,
+                    actorId,
+                    (DropPickupActorKind)actorKindRaw,
+                    actorName);
+                return true;
+            }
+            catch (InvalidOperationException ex)
+            {
+                error = ex.Message;
+                return false;
+            }
         }
 
         public static bool TryParseMeleeAttack(ReadOnlySpan<byte> payload, out RemoteUserMeleeAttackPacket packet, out string error)
@@ -709,6 +836,42 @@ namespace HaCreator.MapSimulator.Pools
         }
 
         private const int OfficialEnterFieldSuffixLength = (sizeof(int) * 6) + (sizeof(short) * 2) + sizeof(byte);
+
+        internal static RemoteUserTemporaryStatSnapshot DecodeOfficialRemoteTemporaryStats(
+            ReadOnlySpan<byte> payload,
+            int temporaryStatOffset,
+            int avatarLookOffset)
+        {
+            if (temporaryStatOffset < 0
+                || avatarLookOffset < temporaryStatOffset
+                || avatarLookOffset > payload.Length)
+            {
+                return default;
+            }
+
+            int encodedLength = avatarLookOffset - temporaryStatOffset;
+            if (encodedLength <= 0)
+            {
+                return default;
+            }
+
+            byte[] rawPayload = payload.Slice(temporaryStatOffset, encodedLength).ToArray();
+            int[] maskWords = Array.Empty<int>();
+            if (rawPayload.Length >= sizeof(int) * 4)
+            {
+                maskWords = new int[4];
+                for (int i = 0; i < maskWords.Length; i++)
+                {
+                    int offset = i * sizeof(int);
+                    maskWords[i] = rawPayload[offset]
+                        | (rawPayload[offset + 1] << 8)
+                        | (rawPayload[offset + 2] << 16)
+                        | (rawPayload[offset + 3] << 24);
+                }
+            }
+
+            return new RemoteUserTemporaryStatSnapshot(encodedLength, maskWords, rawPayload);
+        }
 
         private static int FindOfficialAvatarLookOffset(ReadOnlySpan<byte> payload, int searchStartOffset, out string error)
         {

@@ -384,7 +384,7 @@ namespace HaCreator.MapSimulator.Pools
 
             SkillData skill = _skillLoader?.LoadSkill(packet.SkillId);
             SkillLevelData levelData = skill?.GetLevel(packet.SkillLevel);
-            int durationMs = ResolveSummonDurationMs(skill, levelData);
+            int durationMs = ResolveSummonDurationMs(skill, levelData, packet.SkillLevel);
 
             RemoveExistingState(packet.SummonedObjectId);
 
@@ -634,6 +634,7 @@ namespace HaCreator.MapSimulator.Pools
                         BeginPacketOwnedAttackAnimation(teslaState, currentTime);
                     }
 
+                    SpawnPacketTeslaTriangleEffect(teslaStates, currentTime);
                     SpawnPacketTeslaAttackProjectiles(teslaStates, targets, currentTime, useTeslaPerTargetDelayJitter: true);
                     SchedulePacketAttackImpactEffects(teslaStates[0].Summon, targets, currentTime, useTeslaPerTargetDelayJitter: true);
                     return;
@@ -2017,7 +2018,7 @@ namespace HaCreator.MapSimulator.Pools
             state.Summon.LastAttackAnimationStartTime = currentTime;
             state.Summon.CurrentAnimationBranchName = SummonRuntimeRules.ResolveSelfDestructFinalBranch(
                 state.Summon.SkillData,
-                ResolveSummonAssistType(state.Summon.SkillData));
+                state.Summon.AssistType);
 
             bool hasPrepareAnimation = string.IsNullOrWhiteSpace(state.Summon.CurrentAnimationBranchName)
                 && state.Summon.SkillData.SummonAttackPrepareAnimation?.Frames.Count > 0;
@@ -2043,9 +2044,9 @@ namespace HaCreator.MapSimulator.Pools
             return true;
         }
 
-        private static int ResolveSummonDurationMs(SkillData skill, SkillLevelData levelData)
+        private static int ResolveSummonDurationMs(SkillData skill, SkillLevelData levelData, int skillLevel)
         {
-            return SummonRuntimeRules.ResolveDurationMs(skill, levelData);
+            return SummonRuntimeRules.ResolveDurationMs(skill, levelData, skillLevel);
         }
 
         private bool DoesClientCancelMatchSkillId(int activeSkillId, int requestedSkillId)
@@ -2097,7 +2098,8 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            int attackWindowMs = ResolveSelfDestructAttackWindowMs(state.Summon);
+            string actionBranchName = ResolvePacketOwnedSelfDestructActionBranch(state, requiresNaturalExpiry);
+            int attackWindowMs = ResolveSelfDestructActionWindowMs(state.Summon, actionBranchName);
             if (attackWindowMs <= 0)
             {
                 return false;
@@ -2106,8 +2108,10 @@ namespace HaCreator.MapSimulator.Pools
             state.RemovalReason = 0;
             state.Summon.ExpiryActionTriggered = true;
             state.Summon.LastAttackAnimationStartTime = currentTime;
-            state.Summon.CurrentAnimationBranchName = ResolveSelfDestructAttackBranch(state.Summon);
-            state.Summon.ActorState = state.Summon.SkillData?.SummonAttackPrepareAnimation?.Frames.Count > 0
+            state.Summon.CurrentAnimationBranchName = actionBranchName;
+            bool hasPrepareAnimation = string.IsNullOrWhiteSpace(actionBranchName)
+                && state.Summon.SkillData?.SummonAttackPrepareAnimation?.Frames.Count > 0;
+            state.Summon.ActorState = hasPrepareAnimation
                 ? SummonActorState.Prepare
                 : SummonActorState.Attack;
             state.Summon.LastStateChangeTime = currentTime;
@@ -2161,6 +2165,7 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
+            Vector2[] assignedSources = ResolvePacketTeslaProjectileSources(teslaStates);
             for (int i = 0; i < teslaStates.Count; i++)
             {
                 PacketOwnedSummonState teslaState = teslaStates[i];
@@ -2171,21 +2176,23 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
+                Vector2 source = i < assignedSources.Length
+                    ? assignedSources[i]
+                    : new Vector2(teslaCoil.PositionX, teslaCoil.PositionY);
                 MobItem target = targets
-                    .OrderBy(candidate => Vector2.DistanceSquared(GetMobHitboxCenter(candidate, currentTime), new Vector2(teslaCoil.PositionX, teslaCoil.PositionY)))
+                    .OrderBy(candidate => Vector2.DistanceSquared(GetMobHitboxCenter(candidate, currentTime), source))
                     .FirstOrDefault();
                 if (target == null)
                 {
                     continue;
                 }
 
-                Vector2 source = new(teslaCoil.PositionX, teslaCoil.PositionY);
                 Vector2 targetCenter = GetMobHitboxCenter(target, currentTime);
                 int impactDelayMs = Math.Max(
                     60,
                     useTeslaPerTargetDelayJitter
-                        ? ResolvePacketTeslaTargetImpactDelayMs(teslaCoil, target, currentTime)
-                        : ResolvePacketAttackImpactDelayMs(teslaCoil, target, currentTime));
+                        ? ResolvePacketTeslaTargetImpactDelayMs(teslaCoil, source, target, currentTime)
+                        : ResolvePacketAttackImpactDelayMs(teslaCoil, source, target, currentTime));
                 SpawnPacketProjectileVisual(
                     teslaCoil,
                     source,
@@ -2295,6 +2302,26 @@ namespace HaCreator.MapSimulator.Pools
             }
         }
 
+        private void SpawnPacketTeslaTriangleEffect(IReadOnlyList<PacketOwnedSummonState> teslaStates, int currentTime)
+        {
+            if (!TryResolvePacketTeslaTriangleVertices(teslaStates, out Vector2 left, out Vector2 apex, out Vector2 right))
+            {
+                return;
+            }
+
+            SkillData skill = teslaStates?[0]?.Summon?.SkillData;
+            if (skill?.SummonNamedAnimations == null
+                || !skill.SummonNamedAnimations.TryGetValue("attackTriangle", out SkillAnimation animation)
+                || animation?.Frames.Count <= 0)
+            {
+                return;
+            }
+
+            Vector2 triangleCenter = (left + apex + right) / 3f;
+            bool facingRight = teslaStates[0]?.Summon?.FacingRight ?? true;
+            SpawnHitEffect(TeslaCoilSkillId, animation, triangleCenter.X, triangleCenter.Y, facingRight, currentTime);
+        }
+
         private void SpawnHitEffect(int skillId, SkillAnimation animation, float x, float y, bool facingRight, int currentTime)
         {
             if (animation == null)
@@ -2329,7 +2356,15 @@ namespace HaCreator.MapSimulator.Pools
 
         private int ResolvePacketTeslaTargetImpactDelayMs(ActiveSummon summon, MobItem target, int currentTime)
         {
-            int baseDelayMs = ResolvePacketAttackImpactDelayMs(summon, target, currentTime);
+            Vector2 source = summon == null
+                ? Vector2.Zero
+                : new Vector2(summon.PositionX, summon.PositionY);
+            return ResolvePacketTeslaTargetImpactDelayMs(summon, source, target, currentTime);
+        }
+
+        private int ResolvePacketTeslaTargetImpactDelayMs(ActiveSummon summon, Vector2 source, MobItem target, int currentTime)
+        {
+            int baseDelayMs = ResolvePacketAttackImpactDelayMs(summon, source, target, currentTime);
             return baseDelayMs + ResolveTeslaPerTargetJitterMs(baseDelayMs);
         }
 
@@ -2346,6 +2381,14 @@ namespace HaCreator.MapSimulator.Pools
 
         private static int ResolvePacketAttackImpactDelayMs(ActiveSummon summon, MobItem target, int currentTime)
         {
+            Vector2 source = summon == null
+                ? Vector2.Zero
+                : new Vector2(summon.PositionX, summon.PositionY);
+            return ResolvePacketAttackImpactDelayMs(summon, source, target, currentTime);
+        }
+
+        private static int ResolvePacketAttackImpactDelayMs(ActiveSummon summon, Vector2 source, MobItem target, int currentTime)
+        {
             if (summon?.SkillData == null || target == null)
             {
                 return 0;
@@ -2360,11 +2403,98 @@ namespace HaCreator.MapSimulator.Pools
                 return delayMs;
             }
 
-            Vector2 summonCenter = new(summon.PositionX, summon.PositionY);
             Vector2 targetCenter = GetMobHitboxCenter(target, currentTime);
-            float distance = Vector2.Distance(summonCenter, targetCenter);
+            float distance = Vector2.Distance(source, targetCenter);
             int travelDelayMs = (int)MathF.Round(distance * 1000f / projectileSpeed);
             return Math.Max(delayMs, travelDelayMs);
+        }
+
+        private static Vector2[] ResolvePacketTeslaProjectileSources(IReadOnlyList<PacketOwnedSummonState> teslaStates)
+        {
+            if (teslaStates == null || teslaStates.Count == 0)
+            {
+                return Array.Empty<Vector2>();
+            }
+
+            Vector2[] triangleVertices = ResolvePacketTeslaTriangleVerticesOrFallback(teslaStates);
+            if (triangleVertices.Length == 0)
+            {
+                return Array.Empty<Vector2>();
+            }
+
+            Vector2[] assignedSources = new Vector2[teslaStates.Count];
+            List<Vector2> remainingVertices = triangleVertices.ToList();
+            for (int i = 0; i < teslaStates.Count; i++)
+            {
+                ActiveSummon summon = teslaStates[i]?.Summon;
+                Vector2 summonPosition = summon == null
+                    ? Vector2.Zero
+                    : new Vector2(summon.PositionX, summon.PositionY);
+                if (remainingVertices.Count == 0)
+                {
+                    assignedSources[i] = summonPosition;
+                    continue;
+                }
+
+                int nearestIndex = 0;
+                float nearestDistance = Vector2.DistanceSquared(summonPosition, remainingVertices[0]);
+                for (int vertexIndex = 1; vertexIndex < remainingVertices.Count; vertexIndex++)
+                {
+                    float distance = Vector2.DistanceSquared(summonPosition, remainingVertices[vertexIndex]);
+                    if (distance < nearestDistance)
+                    {
+                        nearestDistance = distance;
+                        nearestIndex = vertexIndex;
+                    }
+                }
+
+                assignedSources[i] = remainingVertices[nearestIndex];
+                remainingVertices.RemoveAt(nearestIndex);
+            }
+
+            return assignedSources;
+        }
+
+        private static Vector2[] ResolvePacketTeslaTriangleVerticesOrFallback(IReadOnlyList<PacketOwnedSummonState> teslaStates)
+        {
+            if (TryResolvePacketTeslaTriangleVertices(teslaStates, out Vector2 left, out Vector2 apex, out Vector2 right))
+            {
+                return new[] { left, apex, right };
+            }
+
+            return teslaStates
+                .Where(static state => state?.Summon != null)
+                .Select(static state => new Vector2(state.Summon.PositionX, state.Summon.PositionY))
+                .Take(3)
+                .ToArray();
+        }
+
+        private static bool TryResolvePacketTeslaTriangleVertices(
+            IReadOnlyList<PacketOwnedSummonState> teslaStates,
+            out Vector2 left,
+            out Vector2 apex,
+            out Vector2 right)
+        {
+            left = Vector2.Zero;
+            apex = Vector2.Zero;
+            right = Vector2.Zero;
+            if (teslaStates == null || teslaStates.Count == 0)
+            {
+                return false;
+            }
+
+            Point[] packetTrianglePoints = teslaStates
+                .Select(static state => state?.TeslaTrianglePoints)
+                .FirstOrDefault(static points => points?.Length >= 3);
+            if (packetTrianglePoints == null || packetTrianglePoints.Length < 3)
+            {
+                return false;
+            }
+
+            left = new Vector2(packetTrianglePoints[0].X, packetTrianglePoints[0].Y);
+            apex = new Vector2(packetTrianglePoints[1].X, packetTrianglePoints[1].Y);
+            right = new Vector2(packetTrianglePoints[2].X, packetTrianglePoints[2].Y);
+            return true;
         }
 
         private void PlayPacketMobAttackFeedback(PacketOwnedSummonState state, SummonedHitPacket packet, int currentTime)
@@ -2839,7 +2969,7 @@ namespace HaCreator.MapSimulator.Pools
                 : null;
         }
 
-        private static int ResolveSelfDestructAttackWindowMs(ActiveSummon summon)
+        private static int ResolveSelfDestructActionWindowMs(ActiveSummon summon, string branchName)
         {
             if (summon?.SkillData == null)
             {
@@ -2848,9 +2978,8 @@ namespace HaCreator.MapSimulator.Pools
 
             int prepareDurationMs = GetSkillAnimationDuration(summon.SkillData.SummonAttackPrepareAnimation) ?? 0;
             SkillAnimation attackAnimation = summon.SkillData.SummonAttackAnimation;
-            string attackBranchName = ResolveSelfDestructAttackBranch(summon);
-            if (!string.IsNullOrWhiteSpace(attackBranchName)
-                && summon.SkillData.SummonNamedAnimations.TryGetValue(attackBranchName, out SkillAnimation branchAnimation)
+            if (!string.IsNullOrWhiteSpace(branchName)
+                && summon.SkillData.SummonNamedAnimations.TryGetValue(branchName, out SkillAnimation branchAnimation)
                 && branchAnimation?.Frames.Count > 0)
             {
                 attackAnimation = branchAnimation;
@@ -2880,7 +3009,24 @@ namespace HaCreator.MapSimulator.Pools
                 return null;
             }
 
-            return SummonRuntimeRules.ResolvePacketSkillBranch(skill, state.LastSkillAction);
+            return SummonRuntimeRules.ResolvePacketSkillBranch(skill, state.LastSkillAction, summon.AssistType);
+        }
+
+        private static string ResolvePacketOwnedSelfDestructActionBranch(PacketOwnedSummonState state, bool requiresNaturalExpiry)
+        {
+            ActiveSummon summon = state?.Summon;
+            if (summon?.SkillData == null)
+            {
+                return null;
+            }
+
+            string finalBranch = SummonRuntimeRules.ResolveSelfDestructFinalBranch(
+                summon.SkillData,
+                summon.AssistType);
+            string attackBranch = ResolveSelfDestructAttackBranch(summon);
+            return requiresNaturalExpiry
+                ? finalBranch ?? attackBranch
+                : attackBranch ?? finalBranch;
         }
 
         private static int? GetSkillAnimationDuration(SkillAnimation animation)

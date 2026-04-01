@@ -167,16 +167,10 @@ namespace HaCreator.MapSimulator.Loaders
                 return null;
             }
 
-            var specificLevelNode = levelNode[level.ToString()];
-            if (specificLevelNode == null)
+            if (MobSkillLevelResolver.ResolveLevelNode(levelNode as WzSubProperty, level) == null)
             {
-                // Try level 1 as fallback
-                specificLevelNode = levelNode["1"];
-                if (specificLevelNode == null)
-                {
-                    System.Diagnostics.Debug.WriteLine($"[MobSkillEffectLoader] Level {level} not found for skill {skillId}");
-                    return null;
-                }
+                System.Diagnostics.Debug.WriteLine($"[MobSkillEffectLoader] Level {level} not found for skill {skillId}");
+                return null;
             }
 
             var effectData = new MobSkillEffectData
@@ -186,7 +180,8 @@ namespace HaCreator.MapSimulator.Loaders
             };
 
             // Load affected effect (plays on player)
-            var affectedNode = specificLevelNode["affected"];
+            var levelProperty = levelNode as WzSubProperty;
+            var affectedNode = MobSkillLevelResolver.FindInheritedProperty(levelProperty, level, "affected");
             if (affectedNode != null)
             {
                 var usedProps = new ConcurrentBag<WzObject>();
@@ -219,7 +214,7 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             // Load skill effect (plays at mob or screen)
-            var effectNode = specificLevelNode["effect"];
+            var effectNode = MobSkillLevelResolver.FindInheritedProperty(levelProperty, level, "effect");
             if (effectNode != null)
             {
                 var usedProps = new ConcurrentBag<WzObject>();
@@ -234,14 +229,14 @@ namespace HaCreator.MapSimulator.Loaders
                 }
             }
 
-            var tileNode = specificLevelNode["tile"];
+            var tileNode = MobSkillLevelResolver.FindInheritedProperty(levelProperty, level, "tile");
             if (tileNode != null)
             {
                 effectData.TileAnimation = LoadTileAnimation(tileNode);
             }
 
             // Load mob icon effect
-            var mobNode = specificLevelNode["mob"];
+            var mobNode = MobSkillLevelResolver.FindInheritedProperty(levelProperty, level, "mob");
             if (mobNode != null)
             {
                 var usedProps = new ConcurrentBag<WzObject>();
@@ -249,7 +244,7 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             // Get skill duration
-            var timeNode = specificLevelNode["time"];
+            var timeNode = MobSkillLevelResolver.FindInheritedProperty(levelProperty, level, "time");
             if (timeNode != null)
             {
                 effectData.Time = ((WzIntProperty)timeNode).Value;

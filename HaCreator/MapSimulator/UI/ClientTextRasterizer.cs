@@ -88,7 +88,7 @@ namespace HaCreator.MapSimulator.UI
             return measuredSize;
         }
 
-        public void DrawString(SpriteBatch spriteBatch, string text, Vector2 position, Color color, float scale = 1.0f)
+        public void DrawString(SpriteBatch spriteBatch, string text, Vector2 position, Color color, float scale = 1.0f, float? maxWidth = null)
         {
             if (spriteBatch == null || string.IsNullOrEmpty(text))
             {
@@ -101,10 +101,27 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            spriteBatch.Draw(
-                rasterText.Texture,
-                new Vector2(position.X + rasterText.OffsetX, position.Y + rasterText.OffsetY),
-                Color.White);
+            Vector2 drawPosition = new Vector2(position.X + rasterText.OffsetX, position.Y + rasterText.OffsetY);
+            if (maxWidth.HasValue)
+            {
+                int sourceWidth = (int)Math.Floor((position.X + maxWidth.Value) - drawPosition.X);
+                if (sourceWidth <= 0)
+                {
+                    return;
+                }
+
+                if (sourceWidth < rasterText.Texture.Width)
+                {
+                    spriteBatch.Draw(
+                        rasterText.Texture,
+                        drawPosition,
+                        new Rectangle(0, 0, sourceWidth, rasterText.Texture.Height),
+                        Color.White);
+                    return;
+                }
+            }
+
+            spriteBatch.Draw(rasterText.Texture, drawPosition, Color.White);
         }
 
         private RasterTextTexture GetOrCreateRasterText(string text, float scale, Color color)

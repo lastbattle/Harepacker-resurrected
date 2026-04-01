@@ -119,6 +119,9 @@ namespace HaCreator.MapSimulator.UI
         public string CurrentInput => _inputText;
         public int ExpiresAt => _expiresAt;
         public bool IsAdminVariant => _adminVariant;
+        public Point ActiveFrameSize => new(
+            _frameTexture?.Width ?? FallbackWindowWidth,
+            _frameTexture?.Height ?? FallbackWindowHeight);
 
         public override void SetFont(SpriteFont font)
         {

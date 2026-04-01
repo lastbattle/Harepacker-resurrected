@@ -14,7 +14,7 @@ using AnimationFrame = HaCreator.MapSimulator.UI.CharacterSelectWindow.Animation
 
 namespace HaCreator.MapSimulator.UI
 {
-    public sealed class LoginCreateCharacterWindow : UIWindowBase
+    public abstract class LoginCreateCharacterWindowBase : UIWindowBase
     {
         private static readonly Point StageBasePosition = new(220, 180);
         private static readonly Point RaceStatusPosition = new(224, 420);
@@ -57,8 +57,9 @@ namespace HaCreator.MapSimulator.UI
         private readonly UIObject _confirmButton;
         private readonly UIObject _cancelButton;
         private readonly UIObject _checkButton;
+        private readonly string _windowName;
+        private readonly LoginCreateCharacterStage _fixedStage;
         private SpriteFont _font;
-        private LoginCreateCharacterStage _stage;
         private IReadOnlyList<string> _raceLabels = Array.Empty<string>();
         private int _selectedRaceIndex;
         private LoginCreateCharacterRaceKind _selectedRace = LoginCreateCharacterRaceKind.Explorer;
@@ -73,8 +74,10 @@ namespace HaCreator.MapSimulator.UI
         private CharacterGender _gender = CharacterGender.Male;
         private KeyboardState _previousKeyboardState;
 
-        public LoginCreateCharacterWindow(
+        protected LoginCreateCharacterWindowBase(
             IDXObject frame,
+            string windowName,
+            LoginCreateCharacterStage fixedStage,
             IReadOnlyDictionary<LoginCreateCharacterRaceKind, IReadOnlyDictionary<LoginCreateCharacterStage, Texture2D>> framesByRaceAndStage,
             IReadOnlyList<Texture2D> jobTextures,
             IReadOnlyDictionary<LoginCreateCharacterRaceKind, IReadOnlyList<Texture2D>> avatarEnabledTexturesByRace,
@@ -88,6 +91,8 @@ namespace HaCreator.MapSimulator.UI
             UIObject checkButton)
             : base(frame)
         {
+            _windowName = windowName ?? MapSimulatorWindowNames.LoginCreateCharacter;
+            _fixedStage = fixedStage;
             _framesByRaceAndStage = framesByRaceAndStage?.ToDictionary(
                 pair => pair.Key,
                 pair => pair.Value?.ToDictionary(stagePair => stagePair.Key, stagePair => stagePair.Value) ?? new Dictionary<LoginCreateCharacterStage, Texture2D>())
@@ -125,7 +130,7 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        public override string WindowName => MapSimulatorWindowNames.LoginCreateCharacter;
+        public override string WindowName => _windowName;
         public override bool SupportsDragging => false;
         public override bool CapturesKeyboardInput => true;
 
@@ -149,7 +154,7 @@ namespace HaCreator.MapSimulator.UI
             LoginCreateCharacterFlowState state,
             CharacterBuild previewBuild)
         {
-            _stage = state?.Stage ?? LoginCreateCharacterStage.RaceSelect;
+            _ = state;
             _raceLabels = LoginCreateCharacterFlowState.SupportedRaces
                 .Select(LoginCreateCharacterFlowState.GetRaceLabel)
                 .ToArray();
@@ -183,7 +188,7 @@ namespace HaCreator.MapSimulator.UI
             base.Update(gameTime);
 
             KeyboardState keyboardState = Keyboard.GetState();
-            if (_stage != LoginCreateCharacterStage.NameSelect || !IsVisible)
+            if (_fixedStage != LoginCreateCharacterStage.NameSelect || !IsVisible)
             {
                 _previousKeyboardState = keyboardState;
                 return;
@@ -249,20 +254,20 @@ namespace HaCreator.MapSimulator.UI
             }
 
             DrawStageText(sprite);
-            if (_stage == LoginCreateCharacterStage.JobSelect)
+            if (_fixedStage == LoginCreateCharacterStage.JobSelect)
             {
                 DrawJobOptions(sprite);
             }
-            else if (_stage == LoginCreateCharacterStage.AvatarSelect)
+            else if (_fixedStage == LoginCreateCharacterStage.AvatarSelect)
             {
                 DrawPreview(sprite, skeletonMeshRenderer, tickCount);
                 DrawAvatarOptions(sprite, tickCount);
             }
-            else if (_stage == LoginCreateCharacterStage.NameSelect)
+            else if (_fixedStage == LoginCreateCharacterStage.NameSelect)
             {
                 DrawNameEntry(sprite);
             }
-            else if (_stage == LoginCreateCharacterStage.RaceSelect)
+            else if (_fixedStage == LoginCreateCharacterStage.RaceSelect)
             {
                 DrawRaceCards(sprite);
             }
@@ -285,7 +290,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             Point localPoint = new(mouseState.X - Position.X, mouseState.Y - Position.Y);
-            if (_stage == LoginCreateCharacterStage.RaceSelect)
+            if (_fixedStage == LoginCreateCharacterStage.RaceSelect)
             {
                 foreach (KeyValuePair<LoginCreateCharacterRaceKind, Rectangle> raceCard in RaceCardBoundsByRace)
                 {
@@ -314,7 +319,7 @@ namespace HaCreator.MapSimulator.UI
                     return true;
                 }
             }
-            else if (_stage == LoginCreateCharacterStage.JobSelect)
+            else if (_fixedStage == LoginCreateCharacterStage.JobSelect)
             {
                 Point stageOrigin = GetStageOrigin();
                 int jobIndex = HitTestListItem(
@@ -329,7 +334,7 @@ namespace HaCreator.MapSimulator.UI
                     return true;
                 }
             }
-            else if (_stage == LoginCreateCharacterStage.AvatarSelect)
+            else if (_fixedStage == LoginCreateCharacterStage.AvatarSelect)
             {
                 Point stageOrigin = GetStageOrigin();
                 Rectangle nameDisplayBounds = new(stageOrigin.X + NameDisplayBounds.X, stageOrigin.Y + NameDisplayBounds.Y, NameDisplayBounds.Width, NameDisplayBounds.Height);
@@ -391,7 +396,7 @@ namespace HaCreator.MapSimulator.UI
         private void DrawStageText(SpriteBatch sprite)
         {
             Point stageOrigin = GetStageOrigin();
-            Rectangle stageStatusBounds = _stage == LoginCreateCharacterStage.RaceSelect
+            Rectangle stageStatusBounds = _fixedStage == LoginCreateCharacterStage.RaceSelect
                 ? new Rectangle(Position.X + RaceStatusPosition.X, Position.Y + RaceStatusPosition.Y, RaceStatusBounds.Width, RaceStatusBounds.Height)
                 : new Rectangle(Position.X + stageOrigin.X + StatusBounds.X, Position.Y + stageOrigin.Y + StatusBounds.Y, StatusBounds.Width, StatusBounds.Height);
             DrawParagraph(sprite, _statusMessage, stageStatusBounds, StatusTextColor);
@@ -639,11 +644,11 @@ namespace HaCreator.MapSimulator.UI
         {
             if (_confirmButton != null)
             {
-                _confirmButton.SetVisible(_stage != LoginCreateCharacterStage.NameSelect);
-                _confirmButton.SetEnabled(_stage != LoginCreateCharacterStage.AvatarSelect || !string.IsNullOrWhiteSpace(_checkedName));
+                _confirmButton.SetVisible(_fixedStage != LoginCreateCharacterStage.NameSelect);
+                _confirmButton.SetEnabled(_fixedStage != LoginCreateCharacterStage.AvatarSelect || !string.IsNullOrWhiteSpace(_checkedName));
                 Point stageOrigin = GetStageOrigin();
-                _confirmButton.X = stageOrigin.X + (_stage == LoginCreateCharacterStage.RaceSelect ? 26 : 18);
-                _confirmButton.Y = stageOrigin.Y + (_stage == LoginCreateCharacterStage.RaceSelect ? 144 : 238);
+                _confirmButton.X = stageOrigin.X + (_fixedStage == LoginCreateCharacterStage.RaceSelect ? 26 : 18);
+                _confirmButton.Y = stageOrigin.Y + (_fixedStage == LoginCreateCharacterStage.RaceSelect ? 144 : 238);
             }
 
             if (_cancelButton != null)
@@ -651,14 +656,14 @@ namespace HaCreator.MapSimulator.UI
                 _cancelButton.SetVisible(true);
                 _cancelButton.SetEnabled(true);
                 Point stageOrigin = GetStageOrigin();
-                _cancelButton.X = stageOrigin.X + (_stage == LoginCreateCharacterStage.RaceSelect ? 110 : 102);
-                _cancelButton.Y = stageOrigin.Y + (_stage == LoginCreateCharacterStage.RaceSelect ? 144 : 238);
+                _cancelButton.X = stageOrigin.X + (_fixedStage == LoginCreateCharacterStage.RaceSelect ? 110 : 102);
+                _cancelButton.Y = stageOrigin.Y + (_fixedStage == LoginCreateCharacterStage.RaceSelect ? 144 : 238);
             }
 
             if (_checkButton != null)
             {
-                _checkButton.SetVisible(_stage == LoginCreateCharacterStage.NameSelect);
-                _checkButton.SetEnabled(_stage == LoginCreateCharacterStage.NameSelect && !string.IsNullOrWhiteSpace(_displayName));
+                _checkButton.SetVisible(_fixedStage == LoginCreateCharacterStage.NameSelect);
+                _checkButton.SetEnabled(_fixedStage == LoginCreateCharacterStage.NameSelect && !string.IsNullOrWhiteSpace(_displayName));
                 Point stageOrigin = GetStageOrigin();
                 _checkButton.X = stageOrigin.X + 20;
                 _checkButton.Y = stageOrigin.Y + 188;
@@ -721,14 +726,14 @@ namespace HaCreator.MapSimulator.UI
         {
             texture = null;
             if (_framesByRaceAndStage.TryGetValue(_selectedRace, out Dictionary<LoginCreateCharacterStage, Texture2D> raceStages) &&
-                raceStages.TryGetValue(_stage, out texture) &&
+                raceStages.TryGetValue(_fixedStage, out texture) &&
                 texture != null)
             {
                 return true;
             }
 
             return _framesByRaceAndStage.TryGetValue(LoginCreateCharacterRaceKind.Explorer, out Dictionary<LoginCreateCharacterStage, Texture2D> explorerStages) &&
-                   explorerStages.TryGetValue(_stage, out texture) &&
+                   explorerStages.TryGetValue(_fixedStage, out texture) &&
                    texture != null;
         }
 
@@ -782,6 +787,142 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return frames[^1];
+        }
+    }
+
+    public sealed class LoginCreateCharacterRaceSelectWindow : LoginCreateCharacterWindowBase
+    {
+        public LoginCreateCharacterRaceSelectWindow(
+            IDXObject frame,
+            IReadOnlyDictionary<LoginCreateCharacterRaceKind, IReadOnlyDictionary<LoginCreateCharacterStage, Texture2D>> framesByRaceAndStage,
+            IReadOnlyList<Texture2D> jobTextures,
+            IReadOnlyDictionary<LoginCreateCharacterRaceKind, IReadOnlyList<Texture2D>> avatarEnabledTexturesByRace,
+            IReadOnlyDictionary<LoginCreateCharacterRaceKind, IReadOnlyList<Texture2D>> avatarDisabledTexturesByRace,
+            IReadOnlyDictionary<LoginCreateCharacterRaceKind, Texture2D> racePreviewTexturesByRace,
+            IReadOnlyList<CharacterSelectWindow.AnimationFrame> diceFrames,
+            Texture2D leftArrowTexture,
+            Texture2D rightArrowTexture,
+            UIObject confirmButton,
+            UIObject cancelButton,
+            UIObject checkButton)
+            : base(
+                frame,
+                MapSimulatorWindowNames.LoginCreateCharacterRaceSelect,
+                LoginCreateCharacterStage.RaceSelect,
+                framesByRaceAndStage,
+                jobTextures,
+                avatarEnabledTexturesByRace,
+                avatarDisabledTexturesByRace,
+                racePreviewTexturesByRace,
+                diceFrames,
+                leftArrowTexture,
+                rightArrowTexture,
+                confirmButton,
+                cancelButton,
+                checkButton)
+        {
+        }
+    }
+
+    public sealed class LoginCreateCharacterJobSelectWindow : LoginCreateCharacterWindowBase
+    {
+        public LoginCreateCharacterJobSelectWindow(
+            IDXObject frame,
+            IReadOnlyDictionary<LoginCreateCharacterRaceKind, IReadOnlyDictionary<LoginCreateCharacterStage, Texture2D>> framesByRaceAndStage,
+            IReadOnlyList<Texture2D> jobTextures,
+            IReadOnlyDictionary<LoginCreateCharacterRaceKind, IReadOnlyList<Texture2D>> avatarEnabledTexturesByRace,
+            IReadOnlyDictionary<LoginCreateCharacterRaceKind, IReadOnlyList<Texture2D>> avatarDisabledTexturesByRace,
+            IReadOnlyDictionary<LoginCreateCharacterRaceKind, Texture2D> racePreviewTexturesByRace,
+            IReadOnlyList<CharacterSelectWindow.AnimationFrame> diceFrames,
+            Texture2D leftArrowTexture,
+            Texture2D rightArrowTexture,
+            UIObject confirmButton,
+            UIObject cancelButton,
+            UIObject checkButton)
+            : base(
+                frame,
+                MapSimulatorWindowNames.LoginCreateCharacterJobSelect,
+                LoginCreateCharacterStage.JobSelect,
+                framesByRaceAndStage,
+                jobTextures,
+                avatarEnabledTexturesByRace,
+                avatarDisabledTexturesByRace,
+                racePreviewTexturesByRace,
+                diceFrames,
+                leftArrowTexture,
+                rightArrowTexture,
+                confirmButton,
+                cancelButton,
+                checkButton)
+        {
+        }
+    }
+
+    public sealed class LoginCreateCharacterAvatarSelectWindow : LoginCreateCharacterWindowBase
+    {
+        public LoginCreateCharacterAvatarSelectWindow(
+            IDXObject frame,
+            IReadOnlyDictionary<LoginCreateCharacterRaceKind, IReadOnlyDictionary<LoginCreateCharacterStage, Texture2D>> framesByRaceAndStage,
+            IReadOnlyList<Texture2D> jobTextures,
+            IReadOnlyDictionary<LoginCreateCharacterRaceKind, IReadOnlyList<Texture2D>> avatarEnabledTexturesByRace,
+            IReadOnlyDictionary<LoginCreateCharacterRaceKind, IReadOnlyList<Texture2D>> avatarDisabledTexturesByRace,
+            IReadOnlyDictionary<LoginCreateCharacterRaceKind, Texture2D> racePreviewTexturesByRace,
+            IReadOnlyList<CharacterSelectWindow.AnimationFrame> diceFrames,
+            Texture2D leftArrowTexture,
+            Texture2D rightArrowTexture,
+            UIObject confirmButton,
+            UIObject cancelButton,
+            UIObject checkButton)
+            : base(
+                frame,
+                MapSimulatorWindowNames.LoginCreateCharacterAvatarSelect,
+                LoginCreateCharacterStage.AvatarSelect,
+                framesByRaceAndStage,
+                jobTextures,
+                avatarEnabledTexturesByRace,
+                avatarDisabledTexturesByRace,
+                racePreviewTexturesByRace,
+                diceFrames,
+                leftArrowTexture,
+                rightArrowTexture,
+                confirmButton,
+                cancelButton,
+                checkButton)
+        {
+        }
+    }
+
+    public sealed class LoginCreateCharacterNameSelectWindow : LoginCreateCharacterWindowBase
+    {
+        public LoginCreateCharacterNameSelectWindow(
+            IDXObject frame,
+            IReadOnlyDictionary<LoginCreateCharacterRaceKind, IReadOnlyDictionary<LoginCreateCharacterStage, Texture2D>> framesByRaceAndStage,
+            IReadOnlyList<Texture2D> jobTextures,
+            IReadOnlyDictionary<LoginCreateCharacterRaceKind, IReadOnlyList<Texture2D>> avatarEnabledTexturesByRace,
+            IReadOnlyDictionary<LoginCreateCharacterRaceKind, IReadOnlyList<Texture2D>> avatarDisabledTexturesByRace,
+            IReadOnlyDictionary<LoginCreateCharacterRaceKind, Texture2D> racePreviewTexturesByRace,
+            IReadOnlyList<CharacterSelectWindow.AnimationFrame> diceFrames,
+            Texture2D leftArrowTexture,
+            Texture2D rightArrowTexture,
+            UIObject confirmButton,
+            UIObject cancelButton,
+            UIObject checkButton)
+            : base(
+                frame,
+                MapSimulatorWindowNames.LoginCreateCharacterNameSelect,
+                LoginCreateCharacterStage.NameSelect,
+                framesByRaceAndStage,
+                jobTextures,
+                avatarEnabledTexturesByRace,
+                avatarDisabledTexturesByRace,
+                racePreviewTexturesByRace,
+                diceFrames,
+                leftArrowTexture,
+                rightArrowTexture,
+                confirmButton,
+                cancelButton,
+                checkButton)
+        {
         }
     }
 }

@@ -36,8 +36,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 3121004 => new PreparedSkillHudProfile(true, "KeyDownBar", 2000),
                 3221001 => new PreparedSkillHudProfile(true, "KeyDownBar", 900),
                 4341003 => new PreparedSkillHudProfile(true, "KeyDownBar", 1200),
-                // `Skill/531.img/skill/5311002/common/time` owns the charge window,
-                // so the generic HUD/runtime gauge should fall back to the loaded WZ duration.
+                // `Skill/531.img/skill/5311002/common/time` owns the authored
+                // Monkey Wave charge window, so the runtime should fall back to loaded WZ time.
                 5311002 => new PreparedSkillHudProfile(true, "KeyDownBar", 0),
                 5201002 => new PreparedSkillHudProfile(true, "KeyDownBar", 1000),
                 13111002 => new PreparedSkillHudProfile(true, "KeyDownBar", 1000),

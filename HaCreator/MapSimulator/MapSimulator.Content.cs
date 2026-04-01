@@ -510,6 +510,9 @@ namespace HaCreator.MapSimulator
                 cashShopWindowReload.SetInventory(uiWindowManager.InventoryWindow as IInventoryRuntime);
                 cashShopWindowReload.SetCashBalances(_loginAccountCashShopNxCredit);
                 cashShopWindowReload.TryConsumeCashBalance = TryConsumeLoginAccountCashShopNxCredit;
+                cashShopWindowReload.ResolveStorageExpansionCommoditySerialNumber = ResolveStorageExpansionCommoditySerialNumber;
+                cashShopWindowReload.GetStorageExpansionStatusSummary = GetStorageExpansionStatusSummary;
+                cashShopWindowReload.StorageExpansionResolved = HandleStorageExpansionResolved;
                 cashShopWindowReload.WindowHidden = _ => uiWindowManager.HideWindow(MapSimulatorWindowNames.CashAvatarPreview);
             }
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashAvatarPreview) is CashAvatarPreviewWindow cashAvatarPreviewReload
@@ -914,6 +917,9 @@ namespace HaCreator.MapSimulator
                 cashShopWindowRebuild.SetInventory(uiWindowManager.InventoryWindow as IInventoryRuntime);
                 cashShopWindowRebuild.SetCashBalances(_loginAccountCashShopNxCredit);
                 cashShopWindowRebuild.TryConsumeCashBalance = TryConsumeLoginAccountCashShopNxCredit;
+                cashShopWindowRebuild.ResolveStorageExpansionCommoditySerialNumber = ResolveStorageExpansionCommoditySerialNumber;
+                cashShopWindowRebuild.GetStorageExpansionStatusSummary = GetStorageExpansionStatusSummary;
+                cashShopWindowRebuild.StorageExpansionResolved = HandleStorageExpansionResolved;
                 cashShopWindowRebuild.WindowHidden = _ => uiWindowManager.HideWindow(MapSimulatorWindowNames.CashAvatarPreview);
             }
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashAvatarPreview) is CashAvatarPreviewWindow cashAvatarPreviewRebuild
@@ -1624,6 +1630,9 @@ namespace HaCreator.MapSimulator
                 cashShopWindow.SetInventory(uiWindowManager.InventoryWindow as IInventoryRuntime);
                 cashShopWindow.SetCashBalances(_loginAccountCashShopNxCredit);
                 cashShopWindow.TryConsumeCashBalance = TryConsumeLoginAccountCashShopNxCredit;
+                cashShopWindow.ResolveStorageExpansionCommoditySerialNumber = ResolveStorageExpansionCommoditySerialNumber;
+                cashShopWindow.GetStorageExpansionStatusSummary = GetStorageExpansionStatusSummary;
+                cashShopWindow.StorageExpansionResolved = HandleStorageExpansionResolved;
                 cashShopWindow.WindowHidden = _ => uiWindowManager.HideWindow(MapSimulatorWindowNames.CashAvatarPreview);
             }
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashAvatarPreview) is CashAvatarPreviewWindow cashAvatarPreviewWindow

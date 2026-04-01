@@ -1579,7 +1579,13 @@ namespace HaCreator.MapSimulator.UI
             bool usesRandomReward = randomRewards.Count > 0;
             int outputQuantity = (recipeData["itemNum"] as WzIntProperty)?.Value ?? 1;
             int requiredItemId = Math.Max(0, (recipeData["reqItem"] as WzIntProperty)?.Value ?? 0);
-            bool isHidden = ((recipeData["hide"] as WzIntProperty)?.Value ?? 0) != 0;
+            bool authoredHidden = ((recipeData["hide"] as WzIntProperty)?.Value ?? 0) != 0;
+            int requiredEquipItemId = Math.Max(0, (recipeData["reqEquip"] as WzIntProperty)?.Value ?? 0);
+            bool isHidden = ShouldTreatRecipeAsHidden(
+                authoredHidden,
+                requiredItemId,
+                requiredEquipItemId,
+                requiredQuestStates.Count);
 
             return new ItemMakerRecipe
             {
@@ -1597,7 +1603,7 @@ namespace HaCreator.MapSimulator.UI
                 RequiredLevel = (recipeData["reqLevel"] as WzIntProperty)?.Value ?? 0,
                 RequiredSkillLevel = (recipeData["reqSkillLevel"] as WzIntProperty)?.Value ?? 0,
                 RequiredItemId = requiredItemId,
-                RequiredEquipItemId = Math.Max(0, (recipeData["reqEquip"] as WzIntProperty)?.Value ?? 0),
+                RequiredEquipItemId = requiredEquipItemId,
                 MesoCost = Math.Max(0, (recipeData["meso"] as WzIntProperty)?.Value ?? 0),
                 CatalystItemId = Math.Max(0, (recipeData["catalyst"] as WzIntProperty)?.Value ?? 0),
                 UsesRandomReward = usesRandomReward,
@@ -1695,6 +1701,29 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return $"Category {categoryKey}";
+        }
+
+        internal static bool ShouldTreatRecipeAsHidden(
+            bool authoredHide,
+            int requiredItemId,
+            int requiredEquipItemId,
+            int requiredQuestRequirementCount)
+        {
+            if (authoredHide)
+            {
+                return true;
+            }
+
+            if (requiredEquipItemId > 0 || requiredQuestRequirementCount > 0)
+            {
+                return true;
+            }
+
+            // v115 ItemMake carries a set of quest-etc gated maker hints without an explicit hide
+            // property on the row itself. Keep `hide` authoritative when present, but preserve a
+            // narrow unlock-gate fallback for those 403xxxx hint items instead of treating every
+            // reqItem recipe as hidden again.
+            return requiredItemId / 10000 == 403;
         }
 
         private void RebuildVisiblePages()

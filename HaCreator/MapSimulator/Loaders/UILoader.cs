@@ -1508,16 +1508,28 @@ namespace HaCreator.MapSimulator.Loaders
                 useFrameMinMap = minMapProperty;
             }
 
+            WzSubProperty compactFrameProperty = useFrameMinMap ?? useFrameMaxMap;
+            WzSubProperty expandedFrameProperty = useFrameMaxMap ?? useFrameMinMap;
+
             // Wz frames
-            System.Drawing.Bitmap c = ((WzCanvasProperty)useFrameMaxMap?["c"])?.GetLinkedWzCanvasBitmap(); // the bg color
-            System.Drawing.Bitmap e = ((WzCanvasProperty)useFrameMaxMap?["e"])?.GetLinkedWzCanvasBitmap();
-            System.Drawing.Bitmap n = ((WzCanvasProperty)useFrameMaxMap?["n"])?.GetLinkedWzCanvasBitmap();
-            System.Drawing.Bitmap s = ((WzCanvasProperty)useFrameMaxMap?["s"])?.GetLinkedWzCanvasBitmap();
-            System.Drawing.Bitmap w = ((WzCanvasProperty)useFrameMaxMap?["w"])?.GetLinkedWzCanvasBitmap();
-            System.Drawing.Bitmap ne = ((WzCanvasProperty)useFrameMaxMap?["ne"])?.GetLinkedWzCanvasBitmap(); // top right
-            System.Drawing.Bitmap nw = ((WzCanvasProperty)useFrameMaxMap?["nw"])?.GetLinkedWzCanvasBitmap(); // top left
-            System.Drawing.Bitmap se = ((WzCanvasProperty)useFrameMaxMap?["se"])?.GetLinkedWzCanvasBitmap(); // bottom right
-            System.Drawing.Bitmap sw = ((WzCanvasProperty)useFrameMaxMap?["sw"])?.GetLinkedWzCanvasBitmap(); // bottom left
+            System.Drawing.Bitmap compactC = ((WzCanvasProperty)compactFrameProperty?["c"])?.GetLinkedWzCanvasBitmap(); // the bg color
+            System.Drawing.Bitmap compactE = ((WzCanvasProperty)compactFrameProperty?["e"])?.GetLinkedWzCanvasBitmap();
+            System.Drawing.Bitmap compactN = ((WzCanvasProperty)compactFrameProperty?["n"])?.GetLinkedWzCanvasBitmap();
+            System.Drawing.Bitmap compactS = ((WzCanvasProperty)compactFrameProperty?["s"])?.GetLinkedWzCanvasBitmap();
+            System.Drawing.Bitmap compactW = ((WzCanvasProperty)compactFrameProperty?["w"])?.GetLinkedWzCanvasBitmap();
+            System.Drawing.Bitmap compactNe = ((WzCanvasProperty)compactFrameProperty?["ne"])?.GetLinkedWzCanvasBitmap();
+            System.Drawing.Bitmap compactNw = ((WzCanvasProperty)compactFrameProperty?["nw"])?.GetLinkedWzCanvasBitmap();
+            System.Drawing.Bitmap compactSe = ((WzCanvasProperty)compactFrameProperty?["se"])?.GetLinkedWzCanvasBitmap();
+            System.Drawing.Bitmap compactSw = ((WzCanvasProperty)compactFrameProperty?["sw"])?.GetLinkedWzCanvasBitmap();
+            System.Drawing.Bitmap expandedC = ((WzCanvasProperty)expandedFrameProperty?["c"])?.GetLinkedWzCanvasBitmap();
+            System.Drawing.Bitmap expandedE = ((WzCanvasProperty)expandedFrameProperty?["e"])?.GetLinkedWzCanvasBitmap();
+            System.Drawing.Bitmap expandedN = ((WzCanvasProperty)expandedFrameProperty?["n"])?.GetLinkedWzCanvasBitmap();
+            System.Drawing.Bitmap expandedS = ((WzCanvasProperty)expandedFrameProperty?["s"])?.GetLinkedWzCanvasBitmap();
+            System.Drawing.Bitmap expandedW = ((WzCanvasProperty)expandedFrameProperty?["w"])?.GetLinkedWzCanvasBitmap();
+            System.Drawing.Bitmap expandedNe = ((WzCanvasProperty)expandedFrameProperty?["ne"])?.GetLinkedWzCanvasBitmap();
+            System.Drawing.Bitmap expandedNw = ((WzCanvasProperty)expandedFrameProperty?["nw"])?.GetLinkedWzCanvasBitmap();
+            System.Drawing.Bitmap expandedSe = ((WzCanvasProperty)expandedFrameProperty?["se"])?.GetLinkedWzCanvasBitmap();
+            System.Drawing.Bitmap expandedSw = ((WzCanvasProperty)expandedFrameProperty?["sw"])?.GetLinkedWzCanvasBitmap();
 
             // Constants
             const int MAPMARK_MAPNAME_LEFT_MARGIN = 4;
@@ -1577,8 +1589,8 @@ namespace HaCreator.MapSimulator.Loaders
             mapNameMarkStackPanel.AddRenderable(haUITextMapNameStreetName);
             fullMiniMapStackPanel.AddRenderable(mapNameMarkStackPanel);
 
-            System.Drawing.Bitmap finalMininisedMinimapBitmap = HaUIHelper.RenderAndMergeMinimapUIFrame(fullMiniMapStackPanel, color_bgFill, ne, nw, se, sw, e, w, n, s,
-                c, mapMark != null ? mapMark.Height : 0);
+            System.Drawing.Bitmap finalMininisedMinimapBitmap = HaUIHelper.RenderAndMergeMinimapUIFrame(fullMiniMapStackPanel, color_bgFill, compactNe, compactNw, compactSe, compactSw, compactE, compactW, compactN, compactS,
+                compactC, mapMark != null ? mapMark.Height : 0);
 
             HaUIGrid minimapUiGrid = new HaUIGrid(1, 1);
             minimapUiGrid.GetInfo().Margins.Top = 10;
@@ -1587,12 +1599,15 @@ namespace HaCreator.MapSimulator.Loaders
             minimapUiGrid.AddRenderable(minimapUiImage);
             fullMiniMapStackPanel.AddRenderable(minimapUiGrid);
 
-            // Render final minimap Bitmap with UI frames
-            System.Drawing.Bitmap finalFullMinimapBitmap = HaUIHelper.RenderAndMergeMinimapUIFrame(fullMiniMapStackPanel, color_bgFill, ne, nw, se, sw, e, w, n, s,
-                c, mapMark != null ? mapMark.Height : 0);
+            // Render compact and expanded minimap bitmaps with the client-owned option frames.
+            System.Drawing.Bitmap finalCompactMinimapBitmap = HaUIHelper.RenderAndMergeMinimapUIFrame(fullMiniMapStackPanel, color_bgFill, compactNe, compactNw, compactSe, compactSw, compactE, compactW, compactN, compactS,
+                compactC, mapMark != null ? mapMark.Height : 0);
+            System.Drawing.Bitmap finalExpandedMinimapBitmap = HaUIHelper.RenderAndMergeMinimapUIFrame(fullMiniMapStackPanel, color_bgFill, expandedNe, expandedNw, expandedSe, expandedSw, expandedE, expandedW, expandedN, expandedS,
+                expandedC, mapMark != null ? mapMark.Height : 0);
 
             Texture2D texturer_miniMapMinimised = finalMininisedMinimapBitmap.ToTexture2DAndDispose(device);
-            Texture2D texturer_miniMap = finalFullMinimapBitmap.ToTexture2DAndDispose(device);
+            Texture2D texturer_miniMapCompact = finalCompactMinimapBitmap.ToTexture2DAndDispose(device);
+            Texture2D texturer_miniMapExpanded = finalExpandedMinimapBitmap.ToTexture2DAndDispose(device);
 
             // Dots pixel
             System.Drawing.Bitmap bmp_DotPixel = new System.Drawing.Bitmap(2, 4);
@@ -1601,11 +1616,12 @@ namespace HaCreator.MapSimulator.Loaders
                 graphics.FillRectangle(new System.Drawing.SolidBrush(System.Drawing.Color.Yellow), new System.Drawing.RectangleF(0, 0, bmp_DotPixel.Width, bmp_DotPixel.Height));
                 graphics.Flush();
             }
-            IDXObject dxObj_miniMapPixel = new DXObject(0, n.Height, bmp_DotPixel.ToTexture2DAndDispose(device), 0);
+            IDXObject dxObj_miniMapPixel = new DXObject(0, compactN?.Height ?? expandedN?.Height ?? 0, bmp_DotPixel.ToTexture2DAndDispose(device), 0);
 
             // Map
             IDXObject dxObj_miniMap_Minimised = new DXObject(0, 0, texturer_miniMapMinimised, 0);
-            IDXObject dxObj_miniMap = new DXObject(0, 0, texturer_miniMap, 0); // starting position of the minimap in the map
+            IDXObject dxObj_miniMap = new DXObject(0, 0, texturer_miniMapCompact, 0);
+            IDXObject dxObj_miniMapExpanded = new DXObject(0, 0, texturer_miniMapExpanded, 0);
 
             // need to calculate how much x position, where the map is shifted to the center by HorizontalAlignment
             // to compensate for in the character dot position indicator
@@ -1850,7 +1866,7 @@ namespace HaCreator.MapSimulator.Loaders
                         IDXObject dxObjNpcList = new DXObject(0, 0, npcListBitmap.ToTexture2DAndDispose(device), 0);
                         npcListPanel = new BaseDXDrawableItem(dxObjNpcList, false)
                         {
-                            Position = new Point(Math.Max(0, texturer_miniMap.Width - dxObjNpcList.Width), texturer_miniMap.Height + 4)
+                            Position = new Point(Math.Max(0, texturer_miniMapExpanded.Width - dxObjNpcList.Width), texturer_miniMapExpanded.Height + 4)
                         };
                     }
                 }
@@ -1860,6 +1876,10 @@ namespace HaCreator.MapSimulator.Loaders
                 new BaseDXDrawableItem(dxObj_miniMapPixel, false)
                 {
                     Position = minimapImageOffset // map is on the center
+                },
+                new BaseDXDrawableItem(dxObj_miniMapExpanded, false)
+                {
+                    Position = new Point(MAP_IMAGE_TEXT_PADDING, 0)
                 },
                 new BaseDXDrawableItem(dxObj_miniMap_Minimised, false)
                 {
@@ -1897,7 +1917,7 @@ namespace HaCreator.MapSimulator.Loaders
                 UIObject objUIBtMap = new UIObject(BtMap, BtMouseClickSoundProperty, BtMouseOverSoundProperty,
                     false,
                     new Point(MAP_IMAGE_TEXT_PADDING, MAP_IMAGE_TEXT_PADDING), device);
-                objUIBtMap.X = texturer_miniMap.Width - objUIBtMap.CanvasSnapshotWidth - 8; // render at the (width of minimap - obj width)
+                objUIBtMap.X = texturer_miniMapCompact.Width - objUIBtMap.CanvasSnapshotWidth - 8;
 
                 UIObject objUIBtBig = null;
                 if (BtBig != null)
@@ -1905,18 +1925,29 @@ namespace HaCreator.MapSimulator.Loaders
                     objUIBtBig = new UIObject(BtBig, BtMouseClickSoundProperty, BtMouseOverSoundProperty,
                         false,
                         new Point(MAP_IMAGE_TEXT_PADDING, MAP_IMAGE_TEXT_PADDING), device);
-                    objUIBtBig.X = objUIBtMap.X - objUIBtBig.CanvasSnapshotWidth; // render at the (width of minimap - obj width)*/
+                    objUIBtBig.X = objUIBtMap.X - objUIBtBig.CanvasSnapshotWidth;
+                }
+
+                WzSubProperty BtSmall = (WzSubProperty)minimapFrameProperty["BtSmall"];
+                UIObject objUIBtSmall = null;
+                if (BtSmall != null)
+                {
+                    objUIBtSmall = new UIObject(BtSmall, BtMouseClickSoundProperty, BtMouseOverSoundProperty,
+                        false,
+                        new Point(MAP_IMAGE_TEXT_PADDING, MAP_IMAGE_TEXT_PADDING), device);
+                    objUIBtSmall.X = objUIBtMap.X - objUIBtSmall.CanvasSnapshotWidth;
+                    objUIBtSmall.SetVisible(false);
                 }
 
                 UIObject objUIBtMax = new UIObject(BtMax, BtMouseClickSoundProperty, BtMouseOverSoundProperty,
                     false,
                     new Point(MAP_IMAGE_TEXT_PADDING, MAP_IMAGE_TEXT_PADDING), device);
-                objUIBtMax.X = objUIBtBig.X - objUIBtMax.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
+                objUIBtMax.X = (objUIBtBig ?? objUIBtSmall ?? objUIBtMap).X - objUIBtMax.CanvasSnapshotWidth;
 
                 UIObject objUIBtMin = new UIObject(BtMin, BtMouseClickSoundProperty, BtMouseOverSoundProperty,
                     false,
                     new Point(MAP_IMAGE_TEXT_PADDING, MAP_IMAGE_TEXT_PADDING), device);
-                objUIBtMin.X = objUIBtMax.X - objUIBtMin.CanvasSnapshotWidth; // render at the (width of minimap - obj width)
+                objUIBtMin.X = objUIBtMax.X - objUIBtMin.CanvasSnapshotWidth;
 
                 UIObject objUIBtNpc = null;
                 if (BtNpc != null)
@@ -1924,13 +1955,13 @@ namespace HaCreator.MapSimulator.Loaders
                     objUIBtNpc = new UIObject(BtNpc, BtMouseClickSoundProperty, BtMouseOverSoundProperty,
                         false,
                         new Point(MAP_IMAGE_TEXT_PADDING, MAP_IMAGE_TEXT_PADDING), device);
-                    objUIBtNpc.X = objUIBtBig.X - objUIBtNpc.CanvasSnapshotWidth;
+                    objUIBtNpc.X = (objUIBtBig ?? objUIBtSmall ?? objUIBtMap).X - objUIBtNpc.CanvasSnapshotWidth;
                     objUIBtMax.X = objUIBtNpc.X - objUIBtMax.CanvasSnapshotWidth;
                     objUIBtMin.X = objUIBtMax.X - objUIBtMin.CanvasSnapshotWidth;
                     objUIBtNpc.SetVisible(false);
                 }
 
-                minimapItem.InitializeMinimapButtons(objUIBtMin, objUIBtMax, objUIBtBig, objUIBtMap, objUIBtNpc);
+                minimapItem.InitializeMinimapButtons(objUIBtMin, objUIBtMax, objUIBtBig, objUIBtSmall, objUIBtMap, objUIBtNpc);
             }
             else
             {
@@ -1941,7 +1972,7 @@ namespace HaCreator.MapSimulator.Loaders
                 UIObject objUIBtMap = new UIObject(BtMap, BtMouseClickSoundProperty, BtMouseOverSoundProperty,
                     false,
                     new Point(MAP_IMAGE_TEXT_PADDING, MAP_IMAGE_TEXT_PADDING), device);
-                objUIBtMap.X = texturer_miniMap.Width - objUIBtMap.CanvasSnapshotWidth - 8; // render at the (width of minimap - obj width)
+                objUIBtMap.X = texturer_miniMapCompact.Width - objUIBtMap.CanvasSnapshotWidth - 8;
 
                 UIObject objUIBtMax = new UIObject(BtMax, BtMouseClickSoundProperty, BtMouseOverSoundProperty,
                     false,
@@ -1955,7 +1986,7 @@ namespace HaCreator.MapSimulator.Loaders
 
                 // BaseClickableUIObject objUINpc = new BaseClickableUIObject(BtNpc, false, new Point(objUIBtMap.CanvasSnapshotWidth + objUIBtBig.CanvasSnapshotWidth + objUIBtMax.CanvasSnapshotWidth + objUIBtMin.CanvasSnapshotWidth, MAP_IMAGE_PADDING), device);
 
-                minimapItem.InitializeMinimapButtons(objUIBtMin, objUIBtMax, null, objUIBtMap);
+                minimapItem.InitializeMinimapButtons(objUIBtMin, objUIBtMax, null, null, objUIBtMap);
             }
             return minimapItem;
         }

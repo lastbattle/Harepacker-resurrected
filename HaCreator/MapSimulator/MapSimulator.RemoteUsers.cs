@@ -875,6 +875,39 @@ namespace HaCreator.MapSimulator
                         : clearMessage;
                     return cleared;
 
+                case RemoteUserPacketType.UserDropPickup:
+                    if (!RemoteUserPacketCodec.TryParseDropPickup(payload, out RemoteUserDropPickupPacket dropPickupPacket, out string dropPickupError))
+                    {
+                        result = dropPickupError;
+                        return false;
+                    }
+
+                    if (_dropPool == null)
+                    {
+                        result = "Drop-pickup packets require an active drop pool.";
+                        return false;
+                    }
+
+                    DropItem drop = _dropPool.GetDrop(dropPickupPacket.DropId);
+                    if (drop == null)
+                    {
+                        result = $"Drop-pickup packet referenced drop {dropPickupPacket.DropId}, but that drop is not active.";
+                        return false;
+                    }
+
+                    string pickupActorName = ResolveRemotePickupActorName(dropPickupPacket.ActorKind, dropPickupPacket.ActorId, dropPickupPacket.ActorName);
+                    bool pickupApplied = _dropPool.ResolveRemotePickup(
+                        drop,
+                        dropPickupPacket.ActorId,
+                        currentTime,
+                        dropPickupPacket.ActorKind,
+                        pickupActorName,
+                        pickedByPet: dropPickupPacket.ActorKind == DropPickupActorKind.Pet);
+                    result = pickupApplied
+                        ? $"Applied {DescribeRemoteUserPacketType(packetType)} for drop {dropPickupPacket.DropId}."
+                        : $"Remote drop pickup could not be applied for drop {dropPickupPacket.DropId}.";
+                    return pickupApplied;
+
                 case RemoteUserPacketType.UserMeleeAttack:
                     if (!RemoteUserPacketCodec.TryParseMeleeAttack(payload, out RemoteUserMeleeAttackPacket meleePacket, out string meleeError))
                     {
@@ -938,6 +971,23 @@ namespace HaCreator.MapSimulator
             return 0x40000000 | (Math.Abs(hash) & 0x3FFFFFFF);
         }
 
+        private string ResolveRemotePickupActorName(DropPickupActorKind actorKind, int actorId, string actorName)
+        {
+            if (!string.IsNullOrWhiteSpace(actorName))
+            {
+                return actorName.Trim();
+            }
+
+            return actorKind switch
+            {
+                DropPickupActorKind.Player when actorId > 0 && _remoteUserPool.TryGetActor(actorId, out RemoteUserActor actor)
+                    => actor.Name,
+                DropPickupActorKind.Mob when actorId > 0
+                    => ResolveMobPickupSourceName(actorId),
+                _ => null
+            };
+        }
+
         private static bool TryParseRemoteUserHelperMarker(string text, out MinimapUI.HelperMarkerType? markerType)
         {
             markerType = text?.ToLowerInvariant() switch
@@ -995,6 +1045,7 @@ namespace HaCreator.MapSimulator
                 "mount" => (int)RemoteUserPacketType.UserMount,
                 "prepare" => (int)RemoteUserPacketType.UserPreparedSkill,
                 "preparedclear" => (int)RemoteUserPacketType.UserPreparedSkillClear,
+                "pickup" or "droppickup" => (int)RemoteUserPacketType.UserDropPickup,
                 "melee" or "attack" or "meleeattack" => (int)RemoteUserPacketType.UserMeleeAttack,
                 "effect" or "itemeffect" or "ringeffect" => (int)RemoteUserPacketType.UserItemEffect,
                 _ => 0
@@ -1018,6 +1069,7 @@ namespace HaCreator.MapSimulator
                 (int)RemoteUserPacketType.UserMount => "remote user remote mount packet",
                 (int)RemoteUserPacketType.UserPreparedSkill => "remote user remote prepared-skill packet",
                 (int)RemoteUserPacketType.UserPreparedSkillClear => "remote user remote prepared-skill clear packet",
+                (int)RemoteUserPacketType.UserDropPickup => "remote user remote drop-pickup packet",
                 (int)RemoteUserPacketType.UserMeleeAttack => "remote user remote melee-attack packet",
                 (int)RemoteUserPacketType.UserItemEffect => "remote user remote item-effect packet",
                 _ => $"remote user packet {packetType}"

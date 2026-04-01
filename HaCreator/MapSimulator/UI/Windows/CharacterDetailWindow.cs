@@ -59,10 +59,18 @@ namespace HaCreator.MapSimulator.UI
         {
             "DotumChe.ttf",
             "Dotum.ttf",
+            "dotum.ttc",
             "GulimChe.ttf",
             "Gulim.ttf",
             "gulim.ttc",
             "batang.ttc"
+        };
+        private static readonly string[] BasicBlackFontSearchDirectorySuffixes =
+        {
+            string.Empty,
+            "Fonts",
+            "Content",
+            Path.Combine("Content", "Fonts")
         };
         private static readonly string[] BasicBlackFontFamilyCandidates =
         {
@@ -463,29 +471,33 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            string candidatePath = Path.GetFullPath(configuredFontPath.Trim());
-            if (!File.Exists(candidatePath))
+            string candidatePath;
+            try
+            {
+                candidatePath = Path.GetFullPath(configuredFontPath.Trim());
+            }
+            catch
             {
                 return false;
             }
 
-            resolvedFontPath = candidatePath;
+            if (!TryResolveFontPath(candidatePath, out resolvedFontPath))
+            {
+                return false;
+            }
+
             configuredFontFace = Environment.GetEnvironmentVariable(faceEnvironmentVariable);
             return true;
         }
 
         private static bool TryResolveBundledBasicBlackFontPath(out string resolvedFontPath)
         {
-            foreach (string rootDirectory in EnumerateBasicBlackFontSearchRoots())
+            foreach (string candidatePath in EnumerateBasicBlackFontCandidatePaths())
             {
-                foreach (string fileName in BasicBlackFontFileCandidates)
+                if (File.Exists(candidatePath))
                 {
-                    string candidatePath = Path.Combine(rootDirectory, fileName);
-                    if (File.Exists(candidatePath))
-                    {
-                        resolvedFontPath = candidatePath;
-                        return true;
-                    }
+                    resolvedFontPath = candidatePath;
+                    return true;
                 }
             }
 
@@ -493,41 +505,127 @@ namespace HaCreator.MapSimulator.UI
             return false;
         }
 
-        private static IEnumerable<string> EnumerateBasicBlackFontSearchRoots()
+        private static bool TryResolveFontPath(string candidatePath, out string resolvedFontPath)
+        {
+            if (File.Exists(candidatePath))
+            {
+                resolvedFontPath = candidatePath;
+                return true;
+            }
+
+            if (!Directory.Exists(candidatePath))
+            {
+                resolvedFontPath = null;
+                return false;
+            }
+
+            foreach (string discoveredFontPath in EnumerateCandidateFontPaths(candidatePath))
+            {
+                if (File.Exists(discoveredFontPath))
+                {
+                    resolvedFontPath = discoveredFontPath;
+                    return true;
+                }
+            }
+
+            resolvedFontPath = null;
+            return false;
+        }
+
+        private static IEnumerable<string> EnumerateBasicBlackFontCandidatePaths()
         {
             HashSet<string> seenPaths = new(StringComparer.OrdinalIgnoreCase);
 
-            foreach (string candidate in new[]
+            foreach (string rootDirectory in EnumerateBasicBlackFontSearchRoots())
+            {
+                foreach (string candidatePath in EnumerateCandidateFontPaths(rootDirectory))
+                {
+                    if (seenPaths.Add(candidatePath))
+                    {
+                        yield return candidatePath;
+                    }
+                }
+            }
+        }
+
+        private static IEnumerable<string> EnumerateCandidateFontPaths(string rootDirectory)
+        {
+            if (string.IsNullOrWhiteSpace(rootDirectory) || !Directory.Exists(rootDirectory))
+            {
+                yield break;
+            }
+
+            foreach (string fileName in BasicBlackFontFileCandidates)
+            {
+                string directCandidatePath = Path.Combine(rootDirectory, fileName);
+                if (File.Exists(directCandidatePath))
+                {
+                    yield return directCandidatePath;
+                }
+            }
+
+            IEnumerable<string> recursiveMatches;
+            try
+            {
+                recursiveMatches = Directory.EnumerateFiles(rootDirectory, "*", SearchOption.AllDirectories);
+            }
+            catch
+            {
+                yield break;
+            }
+
+            foreach (string recursiveMatch in recursiveMatches)
+            {
+                string fileName = Path.GetFileName(recursiveMatch);
+                if (BasicBlackFontFileCandidates.Any(candidate => string.Equals(candidate, fileName, StringComparison.OrdinalIgnoreCase)))
+                {
+                    yield return recursiveMatch;
+                }
+            }
+        }
+
+        private static IEnumerable<string> EnumerateBasicBlackFontSearchRoots()
+        {
+            HashSet<string> seenPaths = new(StringComparer.OrdinalIgnoreCase);
+            string windowsFontsDirectory = Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.Windows),
+                "Fonts");
+
+            foreach (string baseDirectory in new[]
                      {
                          AppContext.BaseDirectory,
-                         Path.Combine(AppContext.BaseDirectory, "Fonts"),
-                         Path.Combine(AppContext.BaseDirectory, "Content"),
                          Environment.CurrentDirectory,
-                         Path.Combine(Environment.CurrentDirectory, "Fonts"),
-                         Path.Combine(Environment.CurrentDirectory, "Content")
+                         windowsFontsDirectory
                      })
             {
-                if (string.IsNullOrWhiteSpace(candidate))
+                if (string.IsNullOrWhiteSpace(baseDirectory))
                 {
                     continue;
                 }
 
-                string fullPath;
-                try
+                foreach (string suffix in BasicBlackFontSearchDirectorySuffixes)
                 {
-                    fullPath = Path.GetFullPath(candidate);
-                }
-                catch
-                {
-                    continue;
-                }
+                    string candidate = string.IsNullOrEmpty(suffix)
+                        ? baseDirectory
+                        : Path.Combine(baseDirectory, suffix);
 
-                if (!Directory.Exists(fullPath) || !seenPaths.Add(fullPath))
-                {
-                    continue;
-                }
+                    string fullPath;
+                    try
+                    {
+                        fullPath = Path.GetFullPath(candidate);
+                    }
+                    catch
+                    {
+                        continue;
+                    }
 
-                yield return fullPath;
+                    if (!Directory.Exists(fullPath) || !seenPaths.Add(fullPath))
+                    {
+                        continue;
+                    }
+
+                    yield return fullPath;
+                }
             }
         }
 

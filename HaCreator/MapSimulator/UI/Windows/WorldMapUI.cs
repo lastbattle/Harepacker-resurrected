@@ -1428,6 +1428,28 @@ namespace HaCreator.MapSimulator.UI
                 SearchInputBoxHeight);
         }
 
+        private Rectangle GetSearchResultListBounds(int visibleRowCount)
+        {
+            if (visibleRowCount <= 0)
+            {
+                return Rectangle.Empty;
+            }
+
+            return new Rectangle(
+                Position.X + ListStartX,
+                Position.Y + ListStartY,
+                ListWidth,
+                visibleRowCount * RowHeight);
+        }
+
+        private Viewport BuildOwnerViewport()
+        {
+            Rectangle ownerBounds = GetOwnerBounds();
+            int viewportWidth = Math.Max(1, ownerBounds.Right);
+            int viewportHeight = Math.Max(1, ownerBounds.Bottom);
+            return new Viewport(0, 0, viewportWidth, viewportHeight);
+        }
+
         private Rectangle GetImeCandidateWindowBounds(Viewport viewport)
         {
             int visibleCount = GetVisibleCandidateCount();
@@ -2070,7 +2092,58 @@ namespace HaCreator.MapSimulator.UI
 
         private static string BuildSearchResultKey(SearchResultEntry entry)
         {
-            return $"{entry.Kind}:{entry.MapId}:{entry.Label}";
+            if (entry == null)
+            {
+                return string.Empty;
+            }
+
+            return $"{entry.Kind}:{entry.MapId}:{entry.Label}:{entry.Description}";
+        }
+
+        public override bool CanStartDragAt(int x, int y)
+        {
+            if (!base.CanStartDragAt(x, y))
+            {
+                return false;
+            }
+
+            if (!_searchMode)
+            {
+                return true;
+            }
+
+            if (GetSearchInputBounds().Contains(x, y))
+            {
+                return false;
+            }
+
+            Rectangle candidateBounds = GetImeCandidateWindowBounds(BuildOwnerViewport());
+            if (!candidateBounds.IsEmpty && candidateBounds.Contains(x, y))
+            {
+                return false;
+            }
+
+            Rectangle searchResultBounds = GetSearchResultListBounds(GetVisibleSearchResults().Count);
+            return searchResultBounds.IsEmpty || !searchResultBounds.Contains(x, y);
+        }
+
+        protected override IEnumerable<Rectangle> GetAdditionalInteractiveBounds()
+        {
+            foreach (Rectangle bounds in base.GetAdditionalInteractiveBounds())
+            {
+                yield return bounds;
+            }
+
+            if (!_searchMode)
+            {
+                yield break;
+            }
+
+            Rectangle candidateBounds = GetImeCandidateWindowBounds(BuildOwnerViewport());
+            if (!candidateBounds.IsEmpty)
+            {
+                yield return candidateBounds;
+            }
         }
 
         private bool IsSearchResultSelected(SearchResultEntry entry)

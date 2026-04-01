@@ -28,6 +28,7 @@ namespace HaCreator.MapSimulator.Managers
         private sealed class MonsterBookCardDefinition
         {
             public int CardItemId { get; init; }
+            public string CardItemName { get; init; } = string.Empty;
             public int MobId { get; init; }
             public string Name { get; init; } = string.Empty;
             public int Level { get; init; }
@@ -95,6 +96,7 @@ namespace HaCreator.MapSimulator.Managers
                     return new MonsterBookCardSnapshot
                     {
                         CardItemId = definition.CardItemId,
+                        CardItemName = definition.CardItemName,
                         MobId = definition.MobId,
                         GradeIndex = gradeIndex,
                         GradeLabel = BuildGradeLabel(gradeIndex),
@@ -368,9 +370,11 @@ namespace HaCreator.MapSimulator.Managers
                         out string episodeText,
                         out IReadOnlyList<string> rewardLines,
                         out IReadOnlyList<string> habitatLines);
+                    string cardItemName = ResolveItemName(cardItemId);
                     definitions.Add(new MonsterBookCardDefinition
                     {
                         CardItemId = cardItemId,
+                        CardItemName = cardItemName,
                         MobId = mobId,
                         Name = string.IsNullOrWhiteSpace(mobName) ? $"Mob #{mobId}" : mobName,
                         Level = Math.Max(0, level),
@@ -380,7 +384,7 @@ namespace HaCreator.MapSimulator.Managers
                         EpisodeText = episodeText,
                         RewardLines = rewardLines,
                         HabitatLines = habitatLines,
-                        SearchText = BuildSearchText(cardItemId, mobName, mobId, rewardLines, habitatLines, episodeText)
+                        SearchText = BuildSearchText(cardItemId, cardItemName, mobName, mobId, rewardLines, habitatLines, episodeText)
                     });
                 }
             }
@@ -705,13 +709,13 @@ namespace HaCreator.MapSimulator.Managers
             return new[] { categoryText, typeText, attackText, elementText };
         }
 
-        private static string BuildSearchText(int cardItemId, string mobName, int mobId, IReadOnlyList<string> rewardLines, IReadOnlyList<string> habitatLines, string episodeText)
+        private static string BuildSearchText(int cardItemId, string cardItemName, string mobName, int mobId, IReadOnlyList<string> rewardLines, IReadOnlyList<string> habitatLines, string episodeText)
         {
             IEnumerable<string> parts = new[]
             {
                 mobName,
                 mobId.ToString(CultureInfo.InvariantCulture),
-                ResolveItemName(cardItemId),
+                cardItemName,
                 cardItemId > 0 ? cardItemId.ToString(CultureInfo.InvariantCulture) : string.Empty,
                 episodeText
             }

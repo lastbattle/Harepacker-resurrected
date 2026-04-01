@@ -826,11 +826,16 @@ namespace HaCreator.MapSimulator.Loaders
                 if (macroIconProp != null)
                 {
                     Texture2D[] macroIcons = new Texture2D[5];
+                    Texture2D[] macroDisabledIcons = new Texture2D[5];
+                    Texture2D[] macroMouseOverIcons = new Texture2D[5];
                     for (int i = 0; i < 5; i++)
                     {
-                        macroIcons[i] = LoadCanvasTexture(macroIconProp[i.ToString()] as WzSubProperty, "icon", device);
+                        WzSubProperty macroIconStateProperty = macroIconProp[i.ToString()] as WzSubProperty;
+                        macroIcons[i] = LoadCanvasTexture(macroIconStateProperty, "icon", device);
+                        macroDisabledIcons[i] = LoadCanvasTexture(macroIconStateProperty, "iconDisabled", device);
+                        macroMouseOverIcons[i] = LoadCanvasTexture(macroIconStateProperty, "iconMouseOver", device);
                     }
-                    macroUI.SetMacroSlotIcons(macroIcons);
+                    macroUI.SetMacroSlotIcons(macroIcons, macroDisabledIcons, macroMouseOverIcons);
                 }
 
 

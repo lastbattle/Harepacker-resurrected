@@ -48,6 +48,7 @@ namespace HaCreator.MapSimulator.UI
         }
 
         private readonly BaseDXDrawableItem _pixelDot;
+        private readonly BaseDXDrawableItem _expandedFrame;
         private readonly BaseDXDrawableItem _collapsedFrame;
         private readonly BaseDXDrawableItem _userMarker;
         private readonly BaseDXDrawableItem _npcMarker;
@@ -65,6 +66,7 @@ namespace HaCreator.MapSimulator.UI
         private UIObject _btnMin;
         private UIObject _btnMax;
         private UIObject _btnBig;
+        private UIObject _btnSmall;
         private UIObject _btnMap;
         private UIObject _btnNpc;
 
@@ -101,8 +103,7 @@ namespace HaCreator.MapSimulator.UI
         private int _minimapOriginY = 0;
         private HelperMarkerType? _localPlayerHelperMarkerType;
 
-        public Action FullMapRequested { get; set; }
-        public Action MapTransferRequested { get; set; }
+        public Action WorldMapRequested { get; set; }
         public Func<NpcItem, NpcMarkerType> ResolveNpcMarkerType { get; set; }
         public Func<NpcItem, string> ResolveNpcTooltipText { get; set; }
         public Func<PortalItem, string> ResolvePortalTooltipText { get; set; }
@@ -160,6 +161,7 @@ namespace HaCreator.MapSimulator.UI
         public MinimapUI(
             IDXObject frame,
             BaseDXDrawableItem _pixelDot,
+            BaseDXDrawableItem expandedFrame,
             BaseDXDrawableItem _collapsedFrame,
             int minimapImageWidth,
             int minimapImageHeight,
@@ -174,6 +176,7 @@ namespace HaCreator.MapSimulator.UI
             : base(frame, false)
         {
             this._pixelDot = _pixelDot;
+            _expandedFrame = expandedFrame;
             this._collapsedFrame = _collapsedFrame;
             _minimapImageWidth = minimapImageWidth;
             _minimapImageHeight = minimapImageHeight;
@@ -195,6 +198,7 @@ namespace HaCreator.MapSimulator.UI
             UIObject _btnMin,
             UIObject _btnMax,
             UIObject _btnBig,
+            UIObject _btnSmall,
             UIObject _btnMap,
             UIObject _btnNpc = null)
         {
@@ -202,6 +206,8 @@ namespace HaCreator.MapSimulator.UI
             this._btnMax = _btnMax;
             if (_btnBig != null)
                 this._btnBig = _btnBig;
+            if (_btnSmall != null)
+                this._btnSmall = _btnSmall;
             this._btnMap = _btnMap;
             this._btnNpc = _btnNpc;
 
@@ -209,19 +215,26 @@ namespace HaCreator.MapSimulator.UI
             uiButtons.Add(_btnMax);
             if (_btnBig != null)
                 uiButtons.Add(_btnBig);
+            if (_btnSmall != null)
+                uiButtons.Add(_btnSmall);
             if (_btnNpc != null)
                 uiButtons.Add(_btnNpc);
             uiButtons.Add(_btnMap);
 
             _btnMax.SetButtonState(UIObjectState.Disabled); // start maximised
+            if (_btnSmall != null)
+                _btnSmall.SetVisible(false);
 
             _btnMin.ButtonClickReleased += ObjUIBtMin_ButtonClickReleased;
             _btnMax.ButtonClickReleased += ObjUIBtMax_ButtonClickReleased;
             if (_btnBig != null)
                 _btnBig.ButtonClickReleased += ObjUIBtBig_ButtonClickReleased;
+            if (_btnSmall != null)
+                _btnSmall.ButtonClickReleased += ObjUIBtSmall_ButtonClickReleased;
             if (_btnNpc != null)
                 _btnNpc.ButtonClickReleased += ObjUIBtNpc_ButtonClickReleased;
             _btnMap.ButtonClickReleased += ObjUIBtMap_ButtonClickReleased;
+            UpdateButtonLayout();
         }
 
         public void SetNpcMarkers(IReadOnlyList<NpcItem> npcMarkers)
@@ -235,6 +248,7 @@ namespace HaCreator.MapSimulator.UI
             _btnNpc.SetVisible(hasNpcMarkers);
             _showNpcMarkers = hasNpcMarkers && _showNpcMarkers;
             _btnNpc.SetButtonState(_showNpcMarkers ? UIObjectState.Disabled : UIObjectState.Normal);
+            UpdateButtonLayout();
         }
 
         public void SetPortalMarkers(IReadOnlyList<PortalItem> portalMarkers)
@@ -308,7 +322,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 ResetHoverTargets();
 
-                base.Draw(sprite, skeletonMeshRenderer, gameTime,
+                GetActiveExpandedFrame().Draw(sprite, skeletonMeshRenderer, gameTime,
                    0, 0, centerX, centerY,
                    drawReflectionInfo,
                    renderParameters,
@@ -418,8 +432,10 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public bool ContainsPoint(int x, int y)
         {
-            int frameWidth = _bIsCollapsedState ? _collapsedFrame.LastFrameDrawn?.Width ?? 100 : this.LastFrameDrawn?.Width ?? 100;
-            int frameHeight = _bIsCollapsedState ? _collapsedFrame.LastFrameDrawn?.Height ?? 100 : this.LastFrameDrawn?.Height ?? 100;
+            BaseDXDrawableItem activeFrame = GetVisibleFrame();
+            IDXObject activeFrameDrawn = activeFrame?.LastFrameDrawn ?? activeFrame?.Frame0;
+            int frameWidth = activeFrameDrawn?.Width ?? 100;
+            int frameHeight = activeFrameDrawn?.Height ?? 100;
 
             Rectangle rect = new Rectangle(
                 this.Position.X,
@@ -458,10 +474,13 @@ namespace HaCreator.MapSimulator.UI
                 // if drag has not started, initialize the offset
                 if (mouseOffsetOnDragStart == null)
                 {
+                    BaseDXDrawableItem activeFrame = GetVisibleFrame();
+                    IDXObject activeFrameDrawn = activeFrame?.LastFrameDrawn ?? activeFrame?.Frame0;
                     Rectangle rect = new Rectangle(
                         this.Position.X,
                         this.Position.Y,
-                        this.LastFrameDrawn.Width, this.LastFrameDrawn.Height);
+                        activeFrameDrawn?.Width ?? 0,
+                        activeFrameDrawn?.Height ?? 0);
                     if (!rect.Contains(mouseState.X, mouseState.Y))
                     {
                         return false;
@@ -475,18 +494,18 @@ namespace HaCreator.MapSimulator.UI
                 int newY = mouseState.Y - mouseOffsetOnDragStart.Value.Y;
 
                 // Get the current frame dimensions for boundary checking
-                int frameWidth = _bIsCollapsedState ? _collapsedFrame.LastFrameDrawn.Width : this.LastFrameDrawn.Width;
-                int frameHeight = _bIsCollapsedState ? _collapsedFrame.LastFrameDrawn.Height : this.LastFrameDrawn.Height;
+                BaseDXDrawableItem dragFrame = GetVisibleFrame();
+                IDXObject dragFrameDrawn = dragFrame?.LastFrameDrawn ?? dragFrame?.Frame0;
+                int frameWidth = dragFrameDrawn?.Width ?? 0;
+                int frameHeight = dragFrameDrawn?.Height ?? 0;
 
                 // Enforce screen boundary constraints
                 newX = Math.Max(0, Math.Min(newX, renderWidth - frameWidth));
                 newY = Math.Max(0, Math.Min(newY, renderHeight - frameHeight));
 
                 this.Position = new Point(newX, newY);
-                if (_bIsCollapsedState)
-                {
-                    this._collapsedFrame.Position = new Point(newX, newY);
-                }
+                _expandedFrame?.CopyObjectPosition(this);
+                _collapsedFrame?.CopyObjectPosition(this);
             }
             else
             {
@@ -510,33 +529,11 @@ namespace HaCreator.MapSimulator.UI
 
             _btnMin.SetButtonState(UIObjectState.Disabled);
             _btnMax.SetButtonState(UIObjectState.Normal);
-
-            _btnMap.X = this._collapsedFrame.Frame0.Width - _btnMap.CanvasSnapshotWidth - 8;
-            if (_btnBig != null)
-            {
-                _btnBig.X = _btnMap.X - _btnBig.CanvasSnapshotWidth;
-                if (_btnNpc != null)
-                {
-                    _btnNpc.X = _btnBig.X - _btnNpc.CanvasSnapshotWidth;
-                    _btnMax.X = _btnNpc.X - _btnMax.CanvasSnapshotWidth;
-                }
-                else
-                {
-                    _btnMax.X = _btnBig.X - _btnMax.CanvasSnapshotWidth;
-                }
-                _btnMin.X = _btnMax.X - _btnMin.CanvasSnapshotWidth;
-            }
-            else
-            {
-                _btnMax.X = _btnMap.X - _btnMax.CanvasSnapshotWidth;
-                _btnMin.X = _btnMax.X - _btnMin.CanvasSnapshotWidth;
-            }
-
-            BaseDXDrawableItem baseItem = (BaseDXDrawableItem)this;
-            _collapsedFrame.CopyObjectPosition(baseItem);
+            SyncFramePositionsFrom(GetActiveExpandedFrame());
 
             _currentOption = 0;
             this._bIsCollapsedState = true;
+            UpdateButtonLayout();
         }
 
         /// <summary>
@@ -547,32 +544,10 @@ namespace HaCreator.MapSimulator.UI
         {
             _btnMin.SetButtonState(UIObjectState.Normal);
             _btnMax.SetButtonState(UIObjectState.Disabled);
-
-            if (_btnBig != null)
-            {
-                _btnMap.X = this.Frame0.Width - _btnMap.CanvasSnapshotWidth - 8;
-                _btnBig.X = _btnMap.X - _btnBig.CanvasSnapshotWidth;
-                if (_btnNpc != null)
-                {
-                    _btnNpc.X = _btnBig.X - _btnNpc.CanvasSnapshotWidth;
-                    _btnMax.X = _btnNpc.X - _btnMax.CanvasSnapshotWidth;
-                }
-                else
-                {
-                    _btnMax.X = _btnBig.X - _btnMax.CanvasSnapshotWidth;
-                }
-                _btnMin.X = _btnMax.X - _btnMin.CanvasSnapshotWidth;
-            }
-            else
-            {
-                _btnMap.X = this.Frame0.Width - _btnMap.CanvasSnapshotWidth - 8;
-                _btnMax.X = _btnMap.X - _btnMax.CanvasSnapshotWidth;
-                _btnMin.X = _btnMax.X - _btnMin.CanvasSnapshotWidth;
-            }
-            this.CopyObjectPosition(_collapsedFrame);
-
-            _currentOption = _previousExpandedOption > 0 ? _previousExpandedOption : 1;
+            _currentOption = NormalizeExpandedOption(_previousExpandedOption > 0 ? _previousExpandedOption : 1);
+            SyncFramePositionsFrom(_collapsedFrame);
             this._bIsCollapsedState = false;
+            UpdateButtonLayout();
         }
 
         /// <summary>
@@ -580,7 +555,15 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         private void ObjUIBtBig_ButtonClickReleased(UIObject sender)
         {
-            FullMapRequested?.Invoke();
+            SetExpandedOption(2);
+        }
+
+        /// <summary>
+        /// On 'BtSmall' clicked.
+        /// </summary>
+        private void ObjUIBtSmall_ButtonClickReleased(UIObject sender)
+        {
+            SetExpandedOption(1);
         }
 
         /// <summary>
@@ -601,7 +584,101 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         private void ObjUIBtMap_ButtonClickReleased(UIObject sender)
         {
-            MapTransferRequested?.Invoke();
+            WorldMapRequested?.Invoke();
+        }
+
+        private void SetExpandedOption(int option)
+        {
+            BaseDXDrawableItem previousFrame = GetVisibleFrame();
+            _currentOption = NormalizeExpandedOption(option);
+            _previousExpandedOption = _currentOption;
+            _bIsCollapsedState = false;
+            SyncFramePositionsFrom(previousFrame);
+            UpdateButtonLayout();
+        }
+
+        private int NormalizeExpandedOption(int option)
+        {
+            if (_expandedFrame == null || _btnSmall == null)
+            {
+                return 1;
+            }
+
+            return option >= 2 ? 2 : 1;
+        }
+
+        private BaseDXDrawableItem GetActiveExpandedFrame()
+        {
+            return _currentOption >= 2 && _expandedFrame != null ? _expandedFrame : this;
+        }
+
+        private BaseDXDrawableItem GetVisibleFrame()
+        {
+            return _bIsCollapsedState ? _collapsedFrame : GetActiveExpandedFrame();
+        }
+
+        private void SyncFramePositionsFrom(BaseDXDrawableItem source)
+        {
+            if (source == null)
+            {
+                return;
+            }
+
+            this.CopyObjectPosition(source);
+            _expandedFrame?.CopyObjectPosition(source);
+            _collapsedFrame?.CopyObjectPosition(source);
+        }
+
+        private void UpdateButtonLayout()
+        {
+            if (_btnMap == null || _btnMax == null || _btnMin == null)
+            {
+                return;
+            }
+
+            if (_btnBig != null)
+            {
+                _btnBig.SetVisible(!_bIsCollapsedState && NormalizeExpandedOption(_currentOption) == 1);
+            }
+
+            if (_btnSmall != null)
+            {
+                _btnSmall.SetVisible(!_bIsCollapsedState && NormalizeExpandedOption(_currentOption) >= 2);
+            }
+
+            int frameWidth = GetVisibleFrame()?.Frame0?.Width ?? Frame0?.Width ?? 0;
+            int rightEdge = frameWidth - 8;
+
+            rightEdge = PositionButtonFromRight(_btnMap, rightEdge);
+
+            UIObject sizeToggleButton = _btnSmall?.ButtonVisible == true
+                ? _btnSmall
+                : _btnBig?.ButtonVisible == true
+                    ? _btnBig
+                    : null;
+            if (sizeToggleButton != null)
+            {
+                rightEdge = PositionButtonFromRight(sizeToggleButton, rightEdge);
+            }
+
+            if (_btnNpc?.ButtonVisible == true)
+            {
+                rightEdge = PositionButtonFromRight(_btnNpc, rightEdge);
+            }
+
+            rightEdge = PositionButtonFromRight(_btnMax, rightEdge);
+            PositionButtonFromRight(_btnMin, rightEdge);
+        }
+
+        private static int PositionButtonFromRight(UIObject button, int rightEdge)
+        {
+            if (button == null)
+            {
+                return rightEdge;
+            }
+
+            button.X = rightEdge - button.CanvasSnapshotWidth;
+            return button.X;
         }
 
         private void DrawNpcMarkers(

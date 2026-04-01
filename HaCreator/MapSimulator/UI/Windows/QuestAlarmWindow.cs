@@ -415,7 +415,8 @@ namespace HaCreator.MapSimulator.UI
         private void OpenQuestLog()
         {
             QuestAlarmSnapshot snapshot = _currentSnapshot ?? RefreshFilteredSnapshot();
-            QuestLogRequested?.Invoke(_selectedQuestId, snapshot.HasAlertAnimation);
+            int launchQuestId = ResolveQuestLogLaunchQuestId(snapshot);
+            QuestLogRequested?.Invoke(launchQuestId, snapshot.HasAlertAnimation);
         }
 
         private void ShowMaximizedIfAvailable()
@@ -984,21 +985,36 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            foreach (QuestAlarmEntrySnapshot entry in fullSnapshot.Entries ?? Array.Empty<QuestAlarmEntrySnapshot>())
-            {
-                if (_autoTrackEnabled)
-                {
-                    _hiddenAutoQuestIds.Add(entry.QuestId);
-                }
-            }
-
             _trackedQuestIds.Clear();
+            _hiddenAutoQuestIds.Clear();
             _selectedQuestId = -1;
             _scrollOffset = 0;
             UpdateButtonStates();
             SavePersistedState();
             Hide();
             StatusMessageRequested?.Invoke("Quest Alarm cleared all tracked quests.");
+        }
+
+        private int ResolveQuestLogLaunchQuestId(QuestAlarmSnapshot snapshot)
+        {
+            if (snapshot?.Entries == null || snapshot.Entries.Count == 0)
+            {
+                return _selectedQuestId;
+            }
+
+            if (snapshot.HasAlertAnimation)
+            {
+                for (int i = 0; i < snapshot.Entries.Count; i++)
+                {
+                    QuestAlarmEntrySnapshot entry = snapshot.Entries[i];
+                    if (entry.IsRecentlyUpdated)
+                    {
+                        return entry.QuestId;
+                    }
+                }
+            }
+
+            return _selectedQuestId;
         }
 
         private void HandleKeyboardInput(KeyboardState keyboardState, QuestAlarmSnapshot snapshot)

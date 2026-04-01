@@ -94,6 +94,7 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Regex PercentRateRegex = new Regex(@"Success\s*rate\s*:\s*(\d+)\s*%", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex VegaModifierRegex = new Regex(@"enables\s+a\s+(\d+)\s*%\s+success\s+rate\s+on\s+a\s+(\d+)\s*%\s+scroll", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex ScrollTargetRegex = new Regex(@"Scroll\s+for\s+(.+?)\s+for\s", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex PercentChanceRegex = new Regex(@"(\d+)\s*%\s+chance", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly IReadOnlyDictionary<int, EnhancementConsumableDefinition> ConsumableDefinitions =
             new Dictionary<int, EnhancementConsumableDefinition>
             {
@@ -2475,7 +2476,10 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            int success = Math.Max(0, (info["success"] as WzIntProperty)?.Value ?? 100);
+            int? explicitSuccess = (info["success"] as WzIntProperty)?.Value;
+            int success = explicitSuccess.HasValue
+                ? Math.Max(0, explicitSuccess.Value)
+                : ResolveHammerSuccessRateFromDescription(itemId);
             definition = new EnhancementConsumableDefinition(
                 itemId,
                 ResolveCachedItemNameOrFallback(itemId),
@@ -2493,6 +2497,29 @@ namespace HaCreator.MapSimulator.UI
                 0,
                 hammerBehavior);
             return true;
+        }
+
+        private static int ResolveHammerSuccessRateFromDescription(int itemId)
+        {
+            string description = ResolveCachedItemDescription(itemId);
+            if (!string.IsNullOrWhiteSpace(description))
+            {
+                Match explicitChanceMatch = PercentChanceRegex.Match(description);
+                if (explicitChanceMatch.Success &&
+                    int.TryParse(explicitChanceMatch.Groups[1].Value, out int explicitChance))
+                {
+                    return Math.Clamp(explicitChance, 0, 100);
+                }
+
+                Match genericPercentMatch = PercentRateRegex.Match(description);
+                if (genericPercentMatch.Success &&
+                    int.TryParse(genericPercentMatch.Groups[1].Value, out int genericPercent))
+                {
+                    return Math.Clamp(genericPercent, 0, 100);
+                }
+            }
+
+            return 100;
         }
 
         private sealed class UpgradeState

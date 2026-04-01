@@ -14,6 +14,18 @@ namespace HaCreator.MapSimulator.Character.Skills
             5221008
         };
 
+        private static readonly int[] BattleshipVehicleValidSupportSkillIds =
+        {
+            5201002,
+            5201003,
+            5211001,
+            5211002,
+            5211004,
+            5211005,
+            5221000,
+            5221010
+        };
+
         private static readonly int[] MechanicVehicleStateSkillIds =
         {
             35111004,
@@ -110,6 +122,17 @@ namespace HaCreator.MapSimulator.Character.Skills
                    || string.Equals(skill.ActionName, "siege_pre", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(skill.ActionName, "tank_siegepre", StringComparison.OrdinalIgnoreCase)
                    || HasMechanicVehicleStateText(skill);
+        }
+
+        internal static bool IsClientOwnedVehicleValidSupportSkill(SkillData skill)
+        {
+            if (skill == null)
+            {
+                return false;
+            }
+
+            return Array.IndexOf(BattleshipVehicleValidSupportSkillIds, skill.SkillId) >= 0
+                   && HasBattleshipSupportText(skill);
         }
 
         internal static bool UsesVehicleOwnershipOrMountSkill(SkillData skill)
@@ -249,6 +272,24 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return false;
+        }
+
+        private static bool HasBattleshipSupportText(SkillData skill)
+        {
+            if (skill == null)
+            {
+                return false;
+            }
+
+            string combinedText = $"{skill.Name} {skill.Description}";
+            return combinedText.IndexOf("grenade", StringComparison.OrdinalIgnoreCase) >= 0
+                   || combinedText.IndexOf("gun booster", StringComparison.OrdinalIgnoreCase) >= 0
+                   || combinedText.IndexOf("octopus", StringComparison.OrdinalIgnoreCase) >= 0
+                   || combinedText.IndexOf("gaviota", StringComparison.OrdinalIgnoreCase) >= 0
+                   || combinedText.IndexOf("flamethrower", StringComparison.OrdinalIgnoreCase) >= 0
+                   || combinedText.IndexOf("ice splitter", StringComparison.OrdinalIgnoreCase) >= 0
+                   || combinedText.IndexOf("maple warrior", StringComparison.OrdinalIgnoreCase) >= 0
+                   || combinedText.IndexOf("hero's will", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private static bool HasMechanicVehicleStateText(SkillData skill)

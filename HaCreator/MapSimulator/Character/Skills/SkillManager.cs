@@ -66,6 +66,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             public int Level { get; init; }
             public int ExecuteTime { get; init; }
             public bool IsQueuedFinalAttack { get; init; }
+            public bool IsQueuedSparkAttack { get; init; }
             public bool RevalidateSkillLevelOnExecute { get; init; }
             public bool QueueFollowUps { get; init; }
             public int? PreferredTargetMobId { get; init; }
@@ -1098,6 +1099,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const int WildHunterJaguarJumpSkillId = 33001002;
         private const int ROCKET_BOOSTER_LANDING_RECOVERY_MS = 500;
         private const int BATTLESHIP_TAMING_MOB_ID = 1932000;
+        private const int BATTLESHIP_SKILL_ID = 5221006;
         private const int MECHANIC_TAMING_MOB_ID = 1932016;
         private const int MECHANIC_KEYDOWN_MAX_DURATION_MS = 8000;
         private const int CLIENT_VEHICLE_OWNERSHIP_GRACE_WINDOW_MS = 1000;
@@ -2611,6 +2613,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                    || ClientOwnedVehicleSkillClassifier.IsClientOwnedVehicleActionSkill(skill)
                    || ClientOwnedVehicleSkillClassifier.IsClientOwnedVehicleStateSkill(skill)
                    || ClientOwnedVehicleSkillClassifier.UsesMechanicVehicleMountSkill(skill)
+                   || ClientOwnedVehicleSkillClassifier.IsClientOwnedVehicleValidSupportSkill(skill)
                    || UsesEquippedClientOwnedVehicleMountFallback(skill, skill?.SkillId ?? 0);
         }
 
@@ -2821,8 +2824,11 @@ namespace HaCreator.MapSimulator.Character.Skills
         private bool RecordVehicleValidCancel(int skillId, int currentTime)
         {
             SkillData skill = GetSkillData(skillId);
-            if (!IsClientOwnedVehicleSkill(skill)
-                && !IsClientOwnedVehicleToggleSkill(skillId))
+            int trackingSkillId = ResolveClientOwnedVehicleTrackingSkillId(
+                skillId,
+                skill,
+                HasActiveClientOwnedVehicleTrackingOwner);
+            if (trackingSkillId <= 0)
             {
                 return false;
             }
@@ -2832,9 +2838,56 @@ namespace HaCreator.MapSimulator.Character.Skills
                 _clientVehicleValidStartTime = currentTime;
             }
 
-            _lastClientVehicleValidSkillId = skillId;
+            _lastClientVehicleValidSkillId = trackingSkillId;
             _clientVehicleValidCount++;
             return true;
+        }
+
+        internal static int ResolveClientOwnedVehicleTrackingSkillId(
+            int skillId,
+            SkillData skill,
+            Func<int, bool> isVehicleOwnerActive)
+        {
+            if (ClientOwnedVehicleSkillClassifier.IsClientOwnedVehicleValidSupportSkill(skill)
+                && isVehicleOwnerActive?.Invoke(BATTLESHIP_SKILL_ID) == true)
+            {
+                return BATTLESHIP_SKILL_ID;
+            }
+
+            if (skill != null && UsesClientOwnedVehicleTrackingSkill(skill))
+            {
+                return skill.SkillId;
+            }
+
+            if (IsClientOwnedVehicleToggleSkill(skillId))
+            {
+                return skillId;
+            }
+
+            return 0;
+        }
+
+        private bool HasActiveClientOwnedVehicleTrackingOwner(int ownerSkillId)
+        {
+            if (ownerSkillId <= 0)
+            {
+                return false;
+            }
+
+            if (_activeSkillMount?.SkillId == ownerSkillId)
+            {
+                return true;
+            }
+
+            for (int i = _buffs.Count - 1; i >= 0; i--)
+            {
+                if (_buffs[i]?.SkillData?.SkillId == ownerSkillId)
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private bool CleanupKeydownPrepareAnimationOnCancel(int skillId)
@@ -3509,6 +3562,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             bool allowDeferredExecution = true,
             bool revalidateDeferredExecutionSkillLevel = false,
             bool isQueuedFinalAttack = false,
+            bool isQueuedSparkAttack = false,
             bool? facingRightOverride = null,
             Vector2? attackOriginOverride = null,
             int shootRange0Override = 0)
@@ -3526,6 +3580,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     facingRight,
                     revalidateDeferredExecutionSkillLevel,
                     isQueuedFinalAttack,
+                    isQueuedSparkAttack,
                     attackOriginOverride,
                     shootRange0Override))
             {
@@ -3567,8 +3622,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 allowDeferredExecution: false,
                 revalidateDeferredExecutionSkillLevel: false,
                 facingRightOverride: facingRight,
-                attackOriginOverride,
-                shootRange0Override);
+                attackOriginOverride: attackOriginOverride,
+                shootRange0Override: shootRange0Override);
         }
 
         private void ExecuteAttackPayload(
@@ -3580,6 +3635,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             Vector2? preferredTargetPositionOverride = null,
             bool allowDeferredExecution = true,
             bool revalidateDeferredExecutionSkillLevel = false,
+            bool isQueuedSparkAttack = false,
             bool? facingRightOverride = null,
             Vector2? attackOriginOverride = null,
             int shootRange0Override = 0)
@@ -3597,6 +3653,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     facingRight,
                     revalidateDeferredExecutionSkillLevel,
                     false,
+                    isQueuedSparkAttack,
                     attackOriginOverride,
                     shootRange0Override))
             {
@@ -3954,6 +4011,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             bool facingRight,
             bool revalidateSkillLevelOnExecute,
             bool isQueuedFinalAttack,
+            bool isQueuedSparkAttack,
             Vector2? attackOriginOverride = null,
             int shootRange0Override = 0)
         {
@@ -3983,6 +4041,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     ActionName = rocketBoosterStartupActionName,
                     StoredVerticalLaunchSpeed = rocketBoosterLaunchSpeed,
                     IsQueuedFinalAttack = isQueuedFinalAttack,
+                    IsQueuedSparkAttack = isQueuedSparkAttack,
                     ShootRange0 = shootRange0Override
                 });
                 return true;
@@ -4010,6 +4069,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 FacingRight = facingRight,
                 AttackOrigin = attackOrigin,
                 IsQueuedFinalAttack = isQueuedFinalAttack,
+                IsQueuedSparkAttack = isQueuedSparkAttack,
                 ShootRange0 = shootRange0Override
             });
             return true;
@@ -5397,6 +5457,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                     pending.PreferredTargetPosition,
                     allowDeferredExecution: false,
                     revalidateDeferredExecutionSkillLevel: false,
+                    isQueuedFinalAttack: pending.IsQueuedFinalAttack,
+                    isQueuedSparkAttack: pending.IsQueuedSparkAttack,
                     facingRightOverride: pending.FacingRight,
                     attackOriginOverride: pending.AttackOrigin,
                     shootRange0Override: pending.ShootRange0);
@@ -8552,7 +8614,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 sameSkillSummons.Clear();
             }
 
-            int durationMs = ResolveSummonDurationMs(skill, levelData);
+            int durationMs = ResolveSummonDurationMs(skill, levelData, level);
             int summonCountToSpawn = ResolveSummonSpawnCount(skill, maxConcurrentSummons, sameSkillSummons.Count);
             for (int spawnIndex = 0; spawnIndex < summonCountToSpawn; spawnIndex++)
             {
@@ -8643,9 +8705,9 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
         }
 
-        private static int ResolveSummonDurationMs(SkillData skill, SkillLevelData levelData)
+        private static int ResolveSummonDurationMs(SkillData skill, SkillLevelData levelData, int level)
         {
-            return SummonRuntimeRules.ResolveDurationMs(skill, levelData);
+            return SummonRuntimeRules.ResolveDurationMs(skill, levelData, level);
         }
 
         private static int ResolveMaxConcurrentSummons(SkillData skill, SkillLevelData levelData)
@@ -9645,53 +9707,103 @@ namespace HaCreator.MapSimulator.Character.Skills
                 .Select(entry => entry.Mob);
         }
 
-        private static int[] ResolveSg88ManualAttackTargetOrder(
+        internal static int[] ResolveSg88ManualAttackTargetOrder(
             Vector2 summonPosition,
             Vector2 ownerPosition,
-            IReadOnlyList<Vector2> candidateCenters)
+            IReadOnlyList<Rectangle> candidateHitboxes,
+            Rectangle primaryClusterRange)
         {
-            if (candidateCenters == null || candidateCenters.Count == 0)
+            if (candidateHitboxes == null || candidateHitboxes.Count == 0)
             {
                 return Array.Empty<int>();
             }
 
-            int primaryIndex = Enumerable.Range(0, candidateCenters.Count)
-                .Select(index =>
+            var candidates = candidateHitboxes
+                .Select((hitbox, index) => new
                 {
-                    Vector2 center = candidateCenters[index];
+                    Index = index,
+                    Hitbox = hitbox,
+                    Center = new Vector2(hitbox.Center.X, hitbox.Center.Y)
+                })
+                .Where(entry => !entry.Hitbox.IsEmpty)
+                .ToList();
+            if (candidates.Count == 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            var primaryTarget = candidates
+                .Select(candidate =>
+                {
+                    Vector2 center = candidate.Center;
                     float deltaY = center.Y - ownerPosition.Y;
                     return new
                     {
-                        Index = index,
+                        candidate.Index,
+                        candidate.Hitbox,
                         OwnerDistanceSq = Vector2.DistanceSquared(center, ownerPosition),
                         VerticalDistance = MathF.Abs(deltaY),
-                        SummonDistanceSq = Vector2.DistanceSquared(center, summonPosition)
+                        SummonDistanceSq = Vector2.DistanceSquared(center, summonPosition),
+                        candidate.Center
                     };
                 })
                 .OrderBy(entry => entry.OwnerDistanceSq)
                 .ThenBy(entry => entry.VerticalDistance)
                 .ThenBy(entry => entry.SummonDistanceSq)
                 .ThenBy(entry => entry.Index)
-                .Select(entry => entry.Index)
                 .First();
 
-            bool preferLeft = candidateCenters[primaryIndex].X < summonPosition.X;
-            int[] preferredSide = Enumerable.Range(0, candidateCenters.Count)
-                .Where(index => (candidateCenters[index].X < summonPosition.X) == preferLeft)
-                .ToArray();
-            if (preferredSide.Length == 0)
+            bool preferLeft = primaryTarget.Center.X < summonPosition.X
+                || (MathF.Abs(primaryTarget.Center.X - summonPosition.X) < 0.5f && ownerPosition.X < summonPosition.X);
+            Rectangle primaryHitbox = primaryTarget.Hitbox;
+            Point primaryHitPoint = ResolveSg88ManualPrimaryHitPoint(primaryHitbox, summonPosition, preferLeft);
+            Rectangle clusterBounds = ResolveSg88ManualClusterBounds(primaryHitPoint, primaryClusterRange);
+
+            var preferredSide = candidates
+                .Where(entry => (entry.Center.X < summonPosition.X) == preferLeft)
+                .ToList();
+            if (preferredSide.Count == 0)
             {
-                preferredSide = Enumerable.Range(0, candidateCenters.Count).ToArray();
+                preferredSide = candidates;
             }
 
-            Vector2 primaryCenter = candidateCenters[primaryIndex];
             return preferredSide
-                .OrderBy(index => index == primaryIndex ? 0 : 1)
-                .ThenBy(index => Vector2.DistanceSquared(candidateCenters[index], primaryCenter))
-                .ThenBy(index => Vector2.DistanceSquared(candidateCenters[index], ownerPosition))
-                .ThenBy(index => Vector2.DistanceSquared(candidateCenters[index], summonPosition))
-                .ThenBy(index => index)
+                .Where(entry => entry.Index == primaryTarget.Index
+                    || clusterBounds.IsEmpty
+                    || clusterBounds.Intersects(entry.Hitbox))
+                .OrderBy(entry => entry.Index == primaryTarget.Index ? 0 : 1)
+                .ThenBy(entry => Vector2.DistanceSquared(entry.Center, new Vector2(primaryHitPoint.X, primaryHitPoint.Y)))
+                .ThenBy(entry => Vector2.DistanceSquared(entry.Center, ownerPosition))
+                .ThenBy(entry => Vector2.DistanceSquared(entry.Center, summonPosition))
+                .ThenBy(entry => entry.Index)
+                .Select(entry => entry.Index)
                 .ToArray();
+        }
+
+        internal static Point ResolveSg88ManualPrimaryHitPoint(Rectangle hitbox, Vector2 summonPosition, bool preferLeft)
+        {
+            if (hitbox.IsEmpty)
+            {
+                return Point.Zero;
+            }
+
+            int y = Math.Clamp((int)MathF.Round(summonPosition.Y), hitbox.Top, hitbox.Bottom);
+            int x = preferLeft ? hitbox.Right : hitbox.Left;
+            return new Point(x, y);
+        }
+
+        internal static Rectangle ResolveSg88ManualClusterBounds(Point primaryHitPoint, Rectangle primaryClusterRange)
+        {
+            if (primaryClusterRange.IsEmpty)
+            {
+                return Rectangle.Empty;
+            }
+
+            return new Rectangle(
+                primaryHitPoint.X + primaryClusterRange.X,
+                primaryHitPoint.Y + primaryClusterRange.Y,
+                primaryClusterRange.Width,
+                primaryClusterRange.Height);
         }
 
         private bool ApplySummonAttackToMob(
@@ -10009,6 +10121,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
+            SpawnTeslaTriangleEffect(summon.SkillData, triangleCenter, summon.FacingRight, currentTime);
+
             foreach (ActiveSummon teslaCoil in teslaCoils)
             {
                 MobItem targetForCoil = resolvedTargets
@@ -10076,6 +10190,18 @@ namespace HaCreator.MapSimulator.Character.Skills
             SpawnTeslaCoilAttackProjectiles(teslaCoils, resolvedTargets, targetImpactDelaysMs, currentTime);
 
             return true;
+        }
+
+        private void SpawnTeslaTriangleEffect(SkillData skill, Vector2 triangleCenter, bool facingRight, int currentTime)
+        {
+            if (skill?.SummonNamedAnimations == null
+                || !skill.SummonNamedAnimations.TryGetValue("attackTriangle", out SkillAnimation animation)
+                || animation?.Frames.Count <= 0)
+            {
+                return;
+            }
+
+            SpawnHitEffect(skill.SkillId, animation, triangleCenter.X, triangleCenter.Y, facingRight, currentTime);
         }
 
         private bool ProcessSummonMobSupport(ActiveSummon summon, int currentTime)
@@ -10282,6 +10408,8 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             Vector2 summonCenter = GetSummonPosition(summon);
             Vector2 ownerPosition = new(_player.X, _player.Y);
+            SkillLevelData levelData = summon.LevelData;
+            Rectangle primaryClusterRange = summon.SkillData.GetAttackRange(levelData?.Level ?? summon.Level, facingRight: true);
             var candidates = candidateTargets
                 .Where(IsMobAttackable)
                 .Select(mob => new
@@ -10293,6 +10421,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 .Select(entry => new
                 {
                     entry.Mob,
+                    entry.Hitbox,
                     Center = GetMobHitboxCenter(entry.Mob, currentTime)
                 })
                 .ToList();
@@ -10304,7 +10433,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             int[] orderedIndices = ResolveSg88ManualAttackTargetOrder(
                 summonCenter,
                 ownerPosition,
-                candidates.Select(entry => entry.Center).ToArray());
+                candidates.Select(entry => entry.Hitbox).ToArray(),
+                primaryClusterRange);
             if (orderedIndices.Length == 0)
             {
                 return Enumerable.Empty<MobItem>();
@@ -13864,19 +13994,18 @@ namespace HaCreator.MapSimulator.Character.Skills
                 level,
                 levelData,
                 currentTime,
-                new Vector2(_player.X, _player.Y),
                 queuedAttack.FacingRight);
-                ExecuteSkillPayload(
-                    skill,
-                    level,
-                    currentTime,
-                    queueFollowUps: false,
-                    preferredTargetMobId: queuedAttack.TargetMobId,
-                    preferredTargetPositionOverride: queuedAttack.TargetPosition,
-                    revalidateDeferredExecutionSkillLevel: true,
-                    isQueuedFinalAttack: true,
-                    facingRightOverride: queuedAttack.FacingRight,
-                    shootRange0Override: queuedAttack.ShootRange0);
+            ExecuteSkillPayload(
+                skill,
+                level,
+                currentTime,
+                queueFollowUps: false,
+                preferredTargetMobId: queuedAttack.TargetMobId,
+                preferredTargetPositionOverride: queuedAttack.TargetPosition,
+                revalidateDeferredExecutionSkillLevel: true,
+                isQueuedFinalAttack: true,
+                facingRightOverride: queuedAttack.FacingRight,
+                shootRange0Override: queuedAttack.ShootRange0);
         }
 
         private void ExecuteQueuedSparkAttack(QueuedSparkAttack queuedAttack, int currentTime)
@@ -13892,7 +14021,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return;
 
             Vector2 attackOrigin = ResolveQueuedSparkAttackOrigin(queuedAttack, currentTime);
-            BeginQueuedFollowUpCast(skill, level, levelData, currentTime, attackOrigin, queuedAttack.FacingRight);
+            BeginQueuedFollowUpCast(skill, level, levelData, currentTime, queuedAttack.FacingRight);
             ExecuteAttackPayload(
                 skill,
                 level,
@@ -13902,6 +14031,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 preferredTargetPositionOverride: queuedAttack.PreferredTargetPosition,
                 allowDeferredExecution: true,
                 revalidateDeferredExecutionSkillLevel: true,
+                isQueuedSparkAttack: true,
                 facingRightOverride: queuedAttack.FacingRight,
                 attackOriginOverride: attackOrigin);
         }
@@ -13969,7 +14099,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (targets.Count == 0)
                 return;
 
-            BeginQueuedFollowUpCast(skill, level, levelData, currentTime, attackOrigin, queuedAttack.FacingRight);
+            BeginQueuedFollowUpCast(skill, level, levelData, currentTime, queuedAttack.FacingRight);
 
             AttackResolutionMode mode = GetAttackResolutionMode(skill);
             int attackCount = Math.Max(1, levelData.AttackCount);
@@ -14569,6 +14699,28 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
         }
 
+        private void ClearDeferredQueuedSparkPayloads()
+        {
+            if (_deferredSkillPayloads.Count == 0)
+            {
+                return;
+            }
+
+            DeferredSkillPayload[] retainedPayloads = _deferredSkillPayloads
+                .Where(payload => payload?.IsQueuedSparkAttack != true)
+                .ToArray();
+            if (retainedPayloads.Length == _deferredSkillPayloads.Count)
+            {
+                return;
+            }
+
+            _deferredSkillPayloads.Clear();
+            foreach (DeferredSkillPayload payload in retainedPayloads)
+            {
+                _deferredSkillPayloads.Enqueue(payload);
+            }
+        }
+
         private void QueueOrReplaceSerialAttack(
             SkillData skill,
             int level,
@@ -14608,6 +14760,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (sparkBuff == null)
                 return;
 
+            ClearDeferredQueuedSparkPayloads();
             _queuedSparkAttack = new QueuedSparkAttack
             {
                 SkillId = sparkBuff.SkillId,
@@ -14690,7 +14843,6 @@ namespace HaCreator.MapSimulator.Character.Skills
             int level,
             SkillLevelData levelData,
             int currentTime,
-            Vector2 castOrigin,
             bool facingRight)
         {
             if (_player == null || skill == null || levelData == null)
@@ -14714,8 +14866,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 SecondaryEffectAnimation = GetInitialCastSecondaryEffect(skill),
                 CastTime = currentTime,
                 CasterId = 0,
-                CasterX = castOrigin.X,
-                CasterY = castOrigin.Y,
+                CasterX = _player.X,
+                CasterY = _player.Y,
                 FacingRight = facingRight
             };
 

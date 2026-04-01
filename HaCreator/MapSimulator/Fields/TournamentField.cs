@@ -33,14 +33,18 @@ namespace HaCreator.MapSimulator.Fields
         private int _statusMessageUntil;
         private string _lastPacketSummary;
         private string _lastPayloadHex;
+        private string _lastDialogOwner;
         private int[] _lastStringPoolIds = Array.Empty<int>();
+        private int[] _lastPrizeItemIds = Array.Empty<int>();
 
         public bool IsActive => _isActive;
         public int MapId => _mapId;
         public int LastPacketType => _lastPacketType;
         public string CurrentStatusMessage => _statusMessage;
         public string LastPacketSummary => _lastPacketSummary;
+        public string LastDialogOwner => _lastDialogOwner;
         public IReadOnlyList<int> LastStringPoolIds => _lastStringPoolIds;
+        public IReadOnlyList<int> LastPrizeItemIds => _lastPrizeItemIds;
 
         public void Configure(MapInfo mapInfo)
         {
@@ -102,10 +106,10 @@ namespace HaCreator.MapSimulator.Fields
                 : $"StringPool ids: {string.Join(", ", _lastStringPoolIds.Select(id => $"0x{id:X}"))}";
             DrawShadowedText(spriteBatch, font, stringPoolText, new Vector2(panelX + 12, panelY + 80), Color.Silver, 0.85f);
 
-            string payloadText = string.IsNullOrWhiteSpace(_lastPayloadHex)
-                ? "payload: none"
-                : $"payload: {TrimForDisplay(_lastPayloadHex, 52)}";
-            DrawShadowedText(spriteBatch, font, payloadText, new Vector2(panelX + 12, panelY + 100), Color.Silver, 0.85f);
+            string dialogText = string.IsNullOrWhiteSpace(_lastDialogOwner)
+                ? "dialog: none"
+                : $"dialog: {_lastDialogOwner}";
+            DrawShadowedText(spriteBatch, font, TrimForDisplay(dialogText, 52), new Vector2(panelX + 12, panelY + 100), Color.Silver, 0.85f);
 
             if (!string.IsNullOrWhiteSpace(_statusMessage))
             {
@@ -196,8 +200,9 @@ namespace HaCreator.MapSimulator.Fields
             string stringPoolText = _lastStringPoolIds.Length == 0
                 ? "none"
                 : string.Join("/", _lastStringPoolIds.Select(id => $"0x{id:X}"));
+            string dialogText = string.IsNullOrWhiteSpace(_lastDialogOwner) ? "none" : _lastDialogOwner;
             string summary = string.IsNullOrWhiteSpace(_lastPacketSummary) ? "No packet applied yet." : _lastPacketSummary;
-            return $"Tournament: active | map={_mapId} | last={packetText} | stringPool={stringPoolText} | summary={summary}";
+            return $"Tournament: active | map={_mapId} | last={packetText} | dialog={dialogText} | stringPool={stringPoolText} | summary={summary}";
         }
 
         public void Reset()
@@ -209,7 +214,9 @@ namespace HaCreator.MapSimulator.Fields
             _statusMessageUntil = 0;
             _lastPacketSummary = null;
             _lastPayloadHex = null;
+            _lastDialogOwner = null;
             _lastStringPoolIds = Array.Empty<int>();
+            _lastPrizeItemIds = Array.Empty<int>();
         }
 
         private void ApplyTournamentNotice(BinaryReader reader, int currentTimeMs)
@@ -232,34 +239,47 @@ namespace HaCreator.MapSimulator.Fields
                 };
 
             string summary = branch == 0
-                ? $"notice (374) blocked-branch code={noticeCode}"
-                : $"notice (374) round-branch code={noticeCode}";
-            SetStatus(FormatStringPoolMessage(message), currentTimeMs, new[] { message.StringPoolId }, summary);
+                ? $"notice (374) blocked-entry code={noticeCode}"
+                : $"notice (374) round-result code={noticeCode}";
+            SetStatus(
+                FormatStringPoolMessage(message),
+                currentTimeMs,
+                new[] { message.StringPoolId },
+                summary,
+                "CUtilDlg::Notice");
         }
 
         private void ApplyMatchTable(byte[] payload, int currentTimeMs)
         {
             SetStatus(
-                $"Tournament match table payload received ({payload.Length} byte(s)); the client opens CMatchTableDlg directly from opcode 375.",
+                $"Tournament match table payload received ({payload.Length} byte(s)); the client constructs CMatchTableDlg and runs it modally from opcode 375.",
                 currentTimeMs,
                 Array.Empty<int>(),
-                $"match-table (375) bytes={payload.Length}");
+                $"match-table (375) bytes={payload.Length}",
+                "CMatchTableDlg::DoModal");
         }
 
         private void ApplyPrize(BinaryReader reader, int currentTimeMs)
         {
             byte prizeCode = reader.ReadByte();
             bool hasItems = reader.ReadByte() != 0;
+            _lastPrizeItemIds = Array.Empty<int>();
             if (hasItems)
             {
                 int firstItemId = reader.ReadInt32();
                 int secondItemId = reader.ReadInt32();
-                TournamentClientMessage message = new(0x3AA, $"Tournament prize notice awarded item ids {firstItemId} and {secondItemId}.");
+                _lastPrizeItemIds = new[] { firstItemId, secondItemId };
+                string firstItemName = ResolveItemName(firstItemId);
+                string secondItemName = ResolveItemName(secondItemId);
+                TournamentClientMessage message = new(
+                    0x3AA,
+                    $"Tournament prize notice awarded {FormatItemLabel(firstItemId, firstItemName)} and {FormatItemLabel(secondItemId, secondItemName)}.");
                 SetStatus(
                     FormatStringPoolMessage(message),
                     currentTimeMs,
                     new[] { message.StringPoolId },
-                    $"set-prize (376) code={prizeCode} items={firstItemId},{secondItemId}");
+                    $"set-prize (376) code={prizeCode} items={FormatSummaryItemList(_lastPrizeItemIds)}",
+                    "CUtilDlg::Notice");
                 return;
             }
 
@@ -271,7 +291,8 @@ namespace HaCreator.MapSimulator.Fields
                 FormatStringPoolMessage(fallbackMessage),
                 currentTimeMs,
                 new[] { fallbackMessage.StringPoolId },
-                $"set-prize (376) code={prizeCode} items=none");
+                $"set-prize (376) code={prizeCode} items=none",
+                "CUtilDlg::Notice");
         }
 
         private void ApplyUew(BinaryReader reader, int currentTimeMs)
@@ -289,15 +310,43 @@ namespace HaCreator.MapSimulator.Fields
                 ? FormatStringPoolMessage(message.Value)
                 : $"Tournament UEW packet reported code {uewCode}.";
             int[] ids = message.HasValue ? new[] { message.Value.StringPoolId } : Array.Empty<int>();
-            SetStatus(fallback, currentTimeMs, ids, $"uew (377) code={uewCode}");
+            SetStatus(fallback, currentTimeMs, ids, $"uew (377) code={uewCode}", "CUtilDlg::Notice");
         }
 
-        private void SetStatus(string text, int currentTimeMs, IReadOnlyList<int> stringPoolIds, string packetSummary)
+        private void SetStatus(string text, int currentTimeMs, IReadOnlyList<int> stringPoolIds, string packetSummary, string dialogOwner = null)
         {
             _statusMessage = text;
             _statusMessageUntil = currentTimeMs + StatusDurationMs;
             _lastPacketSummary = packetSummary;
+            _lastDialogOwner = dialogOwner;
             _lastStringPoolIds = stringPoolIds?.Where(id => id > 0).Distinct().ToArray() ?? Array.Empty<int>();
+        }
+
+        private static string FormatSummaryItemList(IEnumerable<int> itemIds)
+        {
+            int[] items = itemIds?.Where(id => id > 0).ToArray() ?? Array.Empty<int>();
+            return items.Length == 0
+                ? "none"
+                : string.Join(",", items);
+        }
+
+        private static string FormatItemLabel(int itemId, string itemName)
+        {
+            return string.IsNullOrWhiteSpace(itemName)
+                ? $"item {itemId}"
+                : $"{itemName} ({itemId})";
+        }
+
+        private static string ResolveItemName(int itemId)
+        {
+            if (itemId <= 0
+                || Program.InfoManager?.ItemNameCache == null
+                || !Program.InfoManager.ItemNameCache.TryGetValue(itemId, out Tuple<string, string, string> itemInfo))
+            {
+                return null;
+            }
+
+            return string.IsNullOrWhiteSpace(itemInfo.Item2) ? null : itemInfo.Item2.Trim();
         }
 
         private static string DescribePacketType(int packetType)

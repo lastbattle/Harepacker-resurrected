@@ -510,7 +510,7 @@ namespace HaCreator.MapSimulator.Combat
 
                 bool targetedSummoned = projectile.TargetInfo?.TargetType == MobTargetType.Summoned;
                 Rectangle projectileHitbox = projectile.GetHitbox(currentTime);
-                if (TryApplyPuppetHit(projectile.SourceMob, projectile.Attack, projectile.TargetInfo, projectileHitbox, currentTime) ||
+                if (TryApplyPuppetHit(projectile.SourceMob, projectile.Attack, projectile.TargetInfo, projectileHitbox, currentTime, requireGroundedForJumpAttack: false) ||
                     TryApplyTargetMobHit(projectile.SourceMob, projectile.Attack, projectile.TargetInfo, projectileHitbox, currentTime) ||
                     (!targetedSummoned &&
                      projectile.TargetInfo?.TargetType != MobTargetType.Mob &&
@@ -596,14 +596,20 @@ namespace HaCreator.MapSimulator.Combat
                     {
                         bool targetedSummoned = groundAttack.TargetInfo?.TargetType == MobTargetType.Summoned;
                         bool targetedMob = groundAttack.TargetInfo?.TargetType == MobTargetType.Mob;
-                        TryApplyPuppetHit(groundAttack.SourceMob, groundAttack.Attack, groundAttack.TargetInfo, groundAttack.Area, currentTime);
+                        TryApplyPuppetHit(
+                            groundAttack.SourceMob,
+                            groundAttack.Attack,
+                            groundAttack.TargetInfo,
+                            groundAttack.Area,
+                            currentTime,
+                            requireGroundedForJumpAttack: false);
                         TryApplyTargetMobHit(groundAttack.SourceMob, groundAttack.Attack, groundAttack.TargetInfo, groundAttack.Area, currentTime);
 
                         if (!targetedSummoned &&
                             !targetedMob &&
                             playerManager?.Combat != null &&
                             playerManager.IsPlayerActive &&
-                            CanHitPlayerTarget(groundAttack.Attack))
+                            CanHitPlayerTarget(groundAttack.Attack, requireGroundedForJumpAttack: false))
                         {
                             playerManager.Combat.TryApplyMobHit(
                                 groundAttack.SourceMob,
@@ -614,7 +620,13 @@ namespace HaCreator.MapSimulator.Combat
 
                         if (!targetedSummoned && !targetedMob)
                         {
-                            ApplyAreaPuppetHits(groundAttack.SourceMob, groundAttack.Attack, groundAttack.Area, groundAttack.TargetInfo, currentTime);
+                            ApplyAreaPuppetHits(
+                                groundAttack.SourceMob,
+                                groundAttack.Attack,
+                                groundAttack.Area,
+                                groundAttack.TargetInfo,
+                                currentTime,
+                                requireGroundedForJumpAttack: false);
                             ApplyAreaMobHits(groundAttack.SourceMob, groundAttack.Attack, groundAttack.Area, groundAttack.TargetInfo, currentTime);
                         }
                     }
@@ -667,14 +679,20 @@ namespace HaCreator.MapSimulator.Combat
                     {
                         bool targetedSummoned = directAttack.TargetInfo?.TargetType == MobTargetType.Summoned;
                         bool targetedMob = directAttack.TargetInfo?.TargetType == MobTargetType.Mob;
-                        TryApplyPuppetHit(directAttack.SourceMob, directAttack.Attack, directAttack.TargetInfo, attackArea, currentTime);
+                        TryApplyPuppetHit(
+                            directAttack.SourceMob,
+                            directAttack.Attack,
+                            directAttack.TargetInfo,
+                            attackArea,
+                            currentTime,
+                            requireGroundedForJumpAttack: true);
                         TryApplyTargetMobHit(directAttack.SourceMob, directAttack.Attack, directAttack.TargetInfo, attackArea, currentTime);
 
                         if (!targetedSummoned &&
                             !targetedMob &&
                             playerManager?.Combat != null &&
                             playerManager.IsPlayerActive &&
-                            CanHitPlayerTarget(directAttack.Attack) &&
+                            CanHitPlayerTarget(directAttack.Attack, requireGroundedForJumpAttack: true) &&
                             !attackArea.IsEmpty)
                         {
                             playerManager.Combat.TryApplyMobHit(
@@ -686,7 +704,13 @@ namespace HaCreator.MapSimulator.Combat
 
                         if (!targetedSummoned && !targetedMob && !attackArea.IsEmpty)
                         {
-                            ApplyAreaPuppetHits(directAttack.SourceMob, directAttack.Attack, attackArea, directAttack.TargetInfo, currentTime);
+                            ApplyAreaPuppetHits(
+                                directAttack.SourceMob,
+                                directAttack.Attack,
+                                attackArea,
+                                directAttack.TargetInfo,
+                                currentTime,
+                                requireGroundedForJumpAttack: true);
                             ApplyAreaMobHits(directAttack.SourceMob, directAttack.Attack, attackArea, directAttack.TargetInfo, currentTime);
                         }
                     }
@@ -1920,7 +1944,7 @@ namespace HaCreator.MapSimulator.Combat
             ref MobTargetInfo resolvedTargetInfo,
             ref Vector2 resolvedTargetPoint)
         {
-            if (!CanHitPlayerTarget(attack) || _playerHitboxAccessor == null)
+            if (_playerHitboxAccessor == null)
             {
                 return;
             }
@@ -1971,7 +1995,10 @@ namespace HaCreator.MapSimulator.Combat
             for (int i = 0; i < puppets.Count; i++)
             {
                 PuppetInfo puppet = puppets[i];
-                if (puppet == null || !puppet.IsActive || puppet.ObjectId == excludedTargetId || !CanHitPuppetTarget(attack, puppet))
+                if (puppet == null ||
+                    !puppet.IsActive ||
+                    puppet.ObjectId == excludedTargetId ||
+                    !CanHitPuppetTarget(attack, puppet, requireGroundedForJumpAttack: false))
                 {
                     continue;
                 }
@@ -2293,7 +2320,8 @@ namespace HaCreator.MapSimulator.Combat
             MobAttackEntry attack,
             MobTargetInfo targetInfo,
             Rectangle hitbox,
-            int currentTime)
+            int currentTime,
+            bool requireGroundedForJumpAttack)
         {
             if (hitbox.IsEmpty || targetInfo?.TargetType != MobTargetType.Summoned)
             {
@@ -2301,7 +2329,9 @@ namespace HaCreator.MapSimulator.Combat
             }
 
             PuppetInfo puppet = FindTargetPuppet(targetInfo);
-            if (puppet == null || !CanHitPuppetTarget(attack, puppet) || !CreatePuppetHitbox(puppet).Intersects(hitbox))
+            if (puppet == null ||
+                !CanHitPuppetTarget(attack, puppet, requireGroundedForJumpAttack) ||
+                !CreatePuppetHitbox(puppet).Intersects(hitbox))
             {
                 return false;
             }
@@ -2324,7 +2354,7 @@ namespace HaCreator.MapSimulator.Combat
 
             if (targetInfo.TargetType == MobTargetType.Player)
             {
-                if (playerManager?.Combat == null || !playerManager.IsPlayerActive || !CanHitPlayerTarget(attack))
+                if (playerManager?.Combat == null || !playerManager.IsPlayerActive)
                 {
                     return false;
                 }
@@ -2345,7 +2375,7 @@ namespace HaCreator.MapSimulator.Combat
             if (targetInfo.TargetType == MobTargetType.Summoned)
             {
                 PuppetInfo puppet = FindTargetPuppet(targetInfo);
-                if (puppet == null || !CanHitPuppetTarget(attack, puppet))
+                if (puppet == null || !CanHitPuppetTarget(attack, puppet, requireGroundedForJumpAttack: false))
                 {
                     return false;
                 }
@@ -2424,14 +2454,30 @@ namespace HaCreator.MapSimulator.Combat
             return attack?.AttackType == 1 && targetInfo != null && targetInfo.IsValid;
         }
 
-        private bool CanHitPlayerTarget(MobAttackEntry attack)
+        internal bool CanHitPlayerTarget(MobAttackEntry attack, bool requireGroundedForJumpAttack)
         {
-            return attack?.IsJumpAttack != true || (_playerGroundedAccessor?.Invoke() ?? true);
+            return CanHitPlayerTarget(
+                attack,
+                requireGroundedForJumpAttack,
+                _playerGroundedAccessor?.Invoke() ?? true);
         }
 
-        private static bool CanHitPuppetTarget(MobAttackEntry attack, PuppetInfo puppet)
+        internal static bool CanHitPlayerTarget(MobAttackEntry attack, bool requireGroundedForJumpAttack, bool isGrounded)
         {
-            return attack?.IsJumpAttack != true || puppet?.IsGrounded == true;
+            return !ShouldGateJumpAttackOnGroundedTarget(attack, requireGroundedForJumpAttack) || isGrounded;
+        }
+
+        internal static bool CanHitPuppetTarget(MobAttackEntry attack, PuppetInfo puppet, bool requireGroundedForJumpAttack)
+        {
+            return !ShouldGateJumpAttackOnGroundedTarget(attack, requireGroundedForJumpAttack) || puppet?.IsGrounded == true;
+        }
+
+        internal static bool ShouldGateJumpAttackOnGroundedTarget(MobAttackEntry attack, bool requireGroundedForJumpAttack)
+        {
+            // CMob::ProcessAttack only applies the jumpAttack grounded check in the
+            // untargeted direct-rect branch. Locked-target, projectile, and area
+            // impact paths still hit airborne player or summoned bodies on overlap.
+            return requireGroundedForJumpAttack && attack?.IsJumpAttack == true;
         }
 
         private bool TryApplyTargetMobHit(
@@ -2471,7 +2517,8 @@ namespace HaCreator.MapSimulator.Combat
             MobAttackEntry attack,
             Rectangle hitbox,
             MobTargetInfo targetInfo,
-            int currentTime)
+            int currentTime,
+            bool requireGroundedForJumpAttack)
         {
             if (hitbox.IsEmpty)
             {
@@ -2495,7 +2542,8 @@ namespace HaCreator.MapSimulator.Combat
                     continue;
                 }
 
-                if (!CanHitPuppetTarget(attack, puppet) || !CreatePuppetHitbox(puppet).Intersects(hitbox))
+                if (!CanHitPuppetTarget(attack, puppet, requireGroundedForJumpAttack) ||
+                    !CreatePuppetHitbox(puppet).Intersects(hitbox))
                 {
                     continue;
                 }
@@ -2571,17 +2619,17 @@ namespace HaCreator.MapSimulator.Combat
             bool targetedSummoned = targetInfo?.TargetType == MobTargetType.Summoned;
             bool targetedMob = targetInfo?.TargetType == MobTargetType.Mob;
             bool hitAny =
-                TryApplyPuppetHit(sourceMob, attack, targetInfo, hitbox, currentTime) ||
+                TryApplyPuppetHit(sourceMob, attack, targetInfo, hitbox, currentTime, requireGroundedForJumpAttack: false) ||
                 TryApplyTargetMobHit(sourceMob, attack, targetInfo, hitbox, currentTime);
 
             if (!targetedSummoned &&
                 !targetedMob &&
                 playerManager?.Combat != null &&
                 playerManager.IsPlayerActive &&
-                CanHitPlayerTarget(attack))
+                CanHitPlayerTarget(attack, requireGroundedForJumpAttack: false))
             {
                 hitAny |= playerManager.Combat.TryApplyMobHit(sourceMob, hitbox, currentTime, attack);
-                hitAny |= ApplyAreaPuppetHits(sourceMob, attack, hitbox, targetInfo, currentTime);
+                hitAny |= ApplyAreaPuppetHits(sourceMob, attack, hitbox, targetInfo, currentTime, requireGroundedForJumpAttack: false);
                 hitAny |= ApplyAreaMobHits(sourceMob, attack, hitbox, targetInfo, currentTime);
             }
 

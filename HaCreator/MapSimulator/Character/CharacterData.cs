@@ -878,6 +878,16 @@ namespace HaCreator.MapSimulator.Character
         }
     }
 
+    public sealed class RelationshipTextTagStyle
+    {
+        public Texture2D Left { get; set; }
+        public Texture2D Middle { get; set; }
+        public Texture2D Right { get; set; }
+        public Color TextColor { get; set; } = Color.White;
+        public bool IsReady => Left != null && Middle != null && Right != null;
+        public int Height => Math.Max(Math.Max(Left?.Height ?? 0, Middle?.Height ?? 0), Right?.Height ?? 0);
+    }
+
     #endregion
 
     #region Character Build

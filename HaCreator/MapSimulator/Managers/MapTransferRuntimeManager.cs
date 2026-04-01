@@ -170,8 +170,21 @@ namespace HaCreator.MapSimulator.Managers
                 };
             }
 
+            int targetSlotIndex = request.SlotIndex;
+            if (targetSlotIndex < 0)
+            {
+                targetSlotIndex = FindFirstEmptySlot(slots);
+                if (targetSlotIndex < 0 || targetSlotIndex >= slots.Length)
+                {
+                    return new MapTransferRuntimeResponse
+                    {
+                        FailureMessage = "All saved teleport slots are already filled."
+                    };
+                }
+            }
+
             int existingSlotIndex = FindSlot(slots, request.MapId);
-            if (existingSlotIndex >= 0 && existingSlotIndex != request.SlotIndex)
+            if (existingSlotIndex >= 0 && existingSlotIndex != targetSlotIndex)
             {
                 return new MapTransferRuntimeResponse
                 {
@@ -181,9 +194,6 @@ namespace HaCreator.MapSimulator.Managers
                 };
             }
 
-            int targetSlotIndex = request.SlotIndex >= 0
-                ? request.SlotIndex
-                : FindFirstEmptySlot(slots);
             if (targetSlotIndex < 0 || targetSlotIndex >= slots.Length)
             {
                 return new MapTransferRuntimeResponse

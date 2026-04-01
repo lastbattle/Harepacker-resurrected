@@ -95,6 +95,11 @@ namespace HaCreator.MapSimulator
         private int? _lastPacketOwnedFollowFailureReason;
         private int _lastPacketOwnedFollowFailureDriverId;
         private bool _lastPacketOwnedFollowFailureClearedPending;
+        private int _lastPacketOwnedDirectionModeTick = int.MinValue;
+        private bool _lastPacketOwnedDirectionModeEnabled;
+        private int _lastPacketOwnedDirectionModeDelayMs;
+        private int _lastPacketOwnedStandAloneTick = int.MinValue;
+        private bool _lastPacketOwnedStandAloneEnabled;
         private int _lastPacketOwnedSkillGuideGrade;
         private bool _packetOwnedApspPromptActive;
         private int _packetOwnedApspPromptContextToken;
@@ -519,9 +524,9 @@ namespace HaCreator.MapSimulator
                 MapSimulatorWindowNames.EngagementProposal => "Engagement Proposal",
                 MapSimulatorWindowNames.WeddingWishList => "Wedding Wish List",
                 MapSimulatorWindowNames.MapleTv => "MapleTV",
-                MapSimulatorWindowNames.MemoMailbox => "Memo Mailbox",
-                MapSimulatorWindowNames.MemoSend => "Memo Send",
-                MapSimulatorWindowNames.MemoGet => "Memo Package",
+                MapSimulatorWindowNames.MemoMailbox => "Parcel Delivery",
+                MapSimulatorWindowNames.MemoSend => "Parcel Send Info",
+                MapSimulatorWindowNames.MemoGet => "Parcel Package",
                 MapSimulatorWindowNames.QuestDelivery => "Quest Delivery",
                 MapSimulatorWindowNames.ClassCompetition => "Class Competition",
                 MapSimulatorWindowNames.MiniRoom => "Mini Room",
@@ -957,6 +962,15 @@ namespace HaCreator.MapSimulator
                 case LocalUtilityPacketInboxManager.FollowCharacterClientPacketType:
                     return TryApplyPacketOwnedFollowCharacterPayload(payload, out message);
 
+                case LocalUtilityPacketInboxManager.SitResultPacketType:
+                    return TryApplyPacketOwnedChairSitResultPayload(payload, out message);
+
+                case LocalUtilityPacketInboxManager.SetDirectionModePacketType:
+                    return TryApplyPacketOwnedDirectionModePayload(payload, out message);
+
+                case LocalUtilityPacketInboxManager.SetStandAloneModePacketType:
+                    return TryApplyPacketOwnedStandAloneModePayload(payload, out message);
+
                 case LocalUtilityPacketInboxManager.FollowCharacterFailedPacketType:
                 case LocalUtilityPacketInboxManager.FollowCharacterFailedClientPacketType:
                     return TryApplyPacketOwnedFollowCharacterFailedPayload(payload, out message);
@@ -992,6 +1006,117 @@ namespace HaCreator.MapSimulator
                 default:
                     message = $"Unsupported local utility packet type {packetType}.";
                     return false;
+            }
+        }
+
+        private bool TryApplyPacketOwnedChairSitResultPayload(byte[] payload, out string message)
+        {
+            message = null;
+            PlayerCharacter player = _playerManager?.Player;
+            if (player?.Build == null)
+            {
+                message = "Sit-result payload could not be applied because the local player is not initialized.";
+                return false;
+            }
+
+            if (payload == null || payload.Length < 1)
+            {
+                message = "Sit-result payload must contain at least the success flag.";
+                return false;
+            }
+
+            StampPacketOwnedUtilityRequestState();
+
+            using var stream = new MemoryStream(payload, writable: false);
+            using var reader = new BinaryReader(stream, Encoding.Default, leaveOpen: false);
+
+            bool succeeded = reader.ReadByte() != 0;
+            if (!succeeded)
+            {
+                player.ApplyPacketOwnedChairStandCorrection();
+                message = "Packet-owned sit result rejected the chair request and forced a stand-up correction.";
+                return true;
+            }
+
+            if (stream.Length - stream.Position < sizeof(ushort))
+            {
+                player.ApplyPacketOwnedChairStandCorrection();
+                message = "Sit-result payload is missing the seat index.";
+                return false;
+            }
+
+            int seatIndex = reader.ReadUInt16();
+            if (!TryResolvePacketOwnedChairSeatPosition(_mapBoard?.MapInfo?.id ?? 0, seatIndex, out Vector2 seatPosition))
+            {
+                player.ApplyPacketOwnedChairStandCorrection();
+                message = $"Packet-owned sit result returned seat {seatIndex}, but the current field does not expose that seat index. Forced a stand-up correction.";
+                return true;
+            }
+
+            if (!IsPacketOwnedChairSeatValidForPlayer(player, seatPosition))
+            {
+                player.ApplyPacketOwnedChairStandCorrection();
+                message = $"Packet-owned sit result returned seat {seatIndex}, but the local player is outside the client chair rectangle for that seat. Forced a stand-up correction.";
+                return true;
+            }
+
+            player.SetPortableChairPairRequestActive(false);
+            player.ClearPortableChairExternalOwnerPair();
+            player.ApplyPacketOwnedSitPlacement(seatPosition.X, seatPosition.Y);
+            message = $"Applied packet-owned sit result for seat {seatIndex} at ({seatPosition.X:0},{seatPosition.Y:0}).";
+            return true;
+        }
+
+        private static bool IsPacketOwnedChairSeatValidForPlayer(PlayerCharacter player, Vector2 seatPosition)
+        {
+            if (player == null)
+            {
+                return false;
+            }
+
+            return player.X >= seatPosition.X - 10f
+                && player.X <= seatPosition.X + 10f
+                && player.Y >= seatPosition.Y - 30f
+                && player.Y <= seatPosition.Y + 30f;
+        }
+
+        private static bool TryResolvePacketOwnedChairSeatPosition(int mapId, int seatIndex, out Vector2 seatPosition)
+        {
+            seatPosition = Vector2.Zero;
+            if (mapId <= 0 || seatIndex < 0)
+            {
+                return false;
+            }
+
+            WzImage mapImage = TryGetMapImageForMetadataLookup(mapId);
+            if (mapImage == null)
+            {
+                return false;
+            }
+
+            bool shouldUnparse = !mapImage.Parsed;
+            try
+            {
+                if (!mapImage.Parsed)
+                {
+                    mapImage.ParseImage();
+                }
+
+                if (mapImage["seat"] is not WzSubProperty seatParent
+                    || seatParent[seatIndex.ToString(CultureInfo.InvariantCulture)] is not WzVectorProperty seatVector)
+                {
+                    return false;
+                }
+
+                seatPosition = new Vector2(seatVector.X.Value, seatVector.Y.Value);
+                return true;
+            }
+            finally
+            {
+                if (shouldUnparse)
+                {
+                    mapImage.UnparseImage();
+                }
             }
         }
 
@@ -1031,6 +1156,90 @@ namespace HaCreator.MapSimulator
                 message = $"Delivery-quest payload could not be decoded: {ex.Message}";
                 return false;
             }
+        }
+
+        private bool TryApplyPacketOwnedDirectionModePayload(byte[] payload, out string message)
+        {
+            message = "Direction-mode payload is missing.";
+            if (payload == null || payload.Length == 0)
+            {
+                return false;
+            }
+
+            if (payload.Length != 1 && payload.Length < 5)
+            {
+                message = "Direction-mode payload must contain an enable byte and an optional 32-bit delay.";
+                return false;
+            }
+
+            try
+            {
+                using var stream = new MemoryStream(payload, writable: false);
+                using var reader = new BinaryReader(stream, Encoding.Default, leaveOpen: false);
+                bool enabled = reader.ReadByte() != 0;
+                int delayMs = reader.BaseStream.Position <= reader.BaseStream.Length - sizeof(int)
+                    ? reader.ReadInt32()
+                    : 0;
+                message = ApplyPacketOwnedDirectionMode(enabled, delayMs);
+                return true;
+            }
+            catch (Exception ex) when (ex is EndOfStreamException or IOException)
+            {
+                message = $"Direction-mode payload could not be decoded: {ex.Message}";
+                return false;
+            }
+        }
+
+        private bool TryApplyPacketOwnedStandAloneModePayload(byte[] payload, out string message)
+        {
+            message = "Stand-alone payload is missing.";
+            if (payload == null || payload.Length < 1)
+            {
+                return false;
+            }
+
+            try
+            {
+                bool enabled = payload[0] != 0;
+                message = ApplyPacketOwnedStandAloneMode(enabled);
+                return true;
+            }
+            catch (Exception ex) when (ex is IndexOutOfRangeException)
+            {
+                message = $"Stand-alone payload could not be decoded: {ex.Message}";
+                return false;
+            }
+        }
+
+        private string ApplyPacketOwnedDirectionMode(bool enabled, int delayMs)
+        {
+            StampPacketOwnedUtilityRequestState();
+            int currentTickCount = Environment.TickCount;
+            _lastPacketOwnedDirectionModeTick = currentTickCount;
+            _lastPacketOwnedDirectionModeEnabled = enabled;
+            _lastPacketOwnedDirectionModeDelayMs = Math.Max(0, delayMs);
+            _gameState.SetPacketDirectionMode(enabled, currentTickCount, delayMs);
+
+            string message = enabled
+                ? "Applied packet-authored direction mode immediately."
+                : delayMs > 0
+                    ? $"Queued packet-authored direction-mode release in {Math.Max(0, delayMs)} ms."
+                    : "Cleared packet-authored direction mode immediately.";
+            ShowUtilityFeedbackMessage(message);
+            return message;
+        }
+
+        private string ApplyPacketOwnedStandAloneMode(bool enabled)
+        {
+            StampPacketOwnedUtilityRequestState();
+            _lastPacketOwnedStandAloneTick = Environment.TickCount;
+            _lastPacketOwnedStandAloneEnabled = enabled;
+            _gameState.SetStandAloneMode(enabled);
+            string message = enabled
+                ? "Enabled the packet-authored stand-alone control flag."
+                : "Cleared the packet-authored stand-alone control flag.";
+            ShowUtilityFeedbackMessage(message);
+            return message;
         }
 
         private string DescribePacketOwnedUtilityDispatchStatus(int currentTickCount)
@@ -1087,6 +1296,7 @@ namespace HaCreator.MapSimulator
                 : _lastPacketOwnedFollowFailureReason.HasValue
                     ? $"{localFollowStatus} Follow failure: reason {_lastPacketOwnedFollowFailureReason.Value}, driver {_lastPacketOwnedFollowFailureDriverId}, cleared={_lastPacketOwnedFollowFailureClearedPending}. {TruncatePacketOwnedUtilityText(_lastPacketOwnedFollowFailureMessage)}"
                     : $"{localFollowStatus} Follow failure: {TruncatePacketOwnedUtilityText(_lastPacketOwnedFollowFailureMessage)}";
+            string localControlStatus = DescribePacketOwnedLocalControlStatus(currentTickCount);
             string soundStatus = string.IsNullOrWhiteSpace(_lastPacketOwnedEventSoundDescriptor) && string.IsNullOrWhiteSpace(_lastPacketOwnedMinigameSoundDescriptor)
                 ? "Sound cues: none."
                 : $"Sound cues: event={(_lastPacketOwnedEventSoundDescriptor ?? "none")}, minigame={(_lastPacketOwnedMinigameSoundDescriptor ?? "none")}.";
@@ -1112,10 +1322,24 @@ namespace HaCreator.MapSimulator
                 apspStatus,
                 tutorStatus,
                 followStatus,
+                localControlStatus,
                 soundStatus,
                 radioStatus,
                 antiMacroStatus
             });
+        }
+
+        private string DescribePacketOwnedLocalControlStatus(int currentTickCount)
+        {
+            string directionStatus = _lastPacketOwnedDirectionModeTick == int.MinValue
+                ? $"Local control: packet direction mode inactive, scripted direction mode={_gameState.ScriptedDirectionModeActive.ToString().ToLowerInvariant()}, packet direction mode={_gameState.PacketDirectionModeActive.ToString().ToLowerInvariant()}."
+                : _gameState.PacketDirectionModeReleaseAt != int.MinValue
+                    ? $"Local control: packet direction request enabled={_lastPacketOwnedDirectionModeEnabled.ToString().ToLowerInvariant()}, releaseDelay={_lastPacketOwnedDirectionModeDelayMs}, dueIn={Math.Max(0, unchecked(_gameState.PacketDirectionModeReleaseAt - currentTickCount))} ms, scripted direction mode={_gameState.ScriptedDirectionModeActive.ToString().ToLowerInvariant()}, packet direction mode={_gameState.PacketDirectionModeActive.ToString().ToLowerInvariant()}."
+                    : $"Local control: packet direction request enabled={_lastPacketOwnedDirectionModeEnabled.ToString().ToLowerInvariant()}, delay={_lastPacketOwnedDirectionModeDelayMs}, scripted direction mode={_gameState.ScriptedDirectionModeActive.ToString().ToLowerInvariant()}, packet direction mode={_gameState.PacketDirectionModeActive.ToString().ToLowerInvariant()}.";
+            string standAloneStatus = _lastPacketOwnedStandAloneTick == int.MinValue
+                ? $"Stand-alone flag={_gameState.StandAloneModeActive.ToString().ToLowerInvariant()}."
+                : $"Stand-alone request enabled={_lastPacketOwnedStandAloneEnabled.ToString().ToLowerInvariant()}, flag={_gameState.StandAloneModeActive.ToString().ToLowerInvariant()}, age={Math.Max(0, unchecked(currentTickCount - _lastPacketOwnedStandAloneTick))} ms.";
+            return $"{directionStatus} {standAloneStatus}";
         }
 
         private static string TruncatePacketOwnedUtilityText(string value, int maxLength = 80)
@@ -1281,6 +1505,37 @@ namespace HaCreator.MapSimulator
             };
         }
 
+        private static bool TryParsePacketOwnedBooleanToken(string token, out bool value)
+        {
+            value = false;
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            switch (token.Trim().ToLowerInvariant())
+            {
+                case "1":
+                case "on":
+                case "true":
+                case "enable":
+                case "enabled":
+                    value = true;
+                    return true;
+
+                case "0":
+                case "off":
+                case "false":
+                case "disable":
+                case "disabled":
+                    value = false;
+                    return true;
+
+                default:
+                    return false;
+            }
+        }
+
         private string ReportUnsupportedPacketOwnedOpenUi(int uiType, int defaultTab)
         {
             string message = defaultTab >= 0
@@ -1318,7 +1573,7 @@ namespace HaCreator.MapSimulator
             }
 
             string message = focusedCommodity
-                ? $"Stored packet-owned commodity SN {_lastPacketOwnedCommoditySerialNumber}, requested shop migration, and focused the matching Cash Shop sample row. {shopMessage}"
+                ? $"Stored packet-owned commodity SN {_lastPacketOwnedCommoditySerialNumber}, requested shop migration, and focused the matching Cash Shop row. {shopMessage}"
                 : $"Stored packet-owned commodity SN {_lastPacketOwnedCommoditySerialNumber} and requested shop migration. {shopMessage}";
             ShowUtilityFeedbackMessage(message);
             return message;
@@ -3619,6 +3874,29 @@ namespace HaCreator.MapSimulator
                 case "inbox":
                     return HandlePacketOwnedUtilityInboxCommand(args);
 
+                case "directionmode":
+                    if (args.Length < 2 || !TryParsePacketOwnedBooleanToken(args[1], out bool directionModeEnabled))
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /localutility directionmode <on|off|1|0> [delayMs]");
+                    }
+
+                    int directionModeDelay = 0;
+                    if (args.Length >= 3 && !int.TryParse(args[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out directionModeDelay))
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /localutility directionmode <on|off|1|0> [delayMs]");
+                    }
+
+                    return ChatCommandHandler.CommandResult.Ok(ApplyPacketOwnedDirectionMode(directionModeEnabled, directionModeDelay));
+
+                case "standalone":
+                case "standalonemode":
+                    if (args.Length < 2 || !TryParsePacketOwnedBooleanToken(args[1], out bool standAloneEnabled))
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /localutility standalone <on|off|1|0>");
+                    }
+
+                    return ChatCommandHandler.CommandResult.Ok(ApplyPacketOwnedStandAloneMode(standAloneEnabled));
+
                 case "openui":
                     if (args.Length < 2 || !int.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int uiType))
                     {
@@ -3870,7 +4148,7 @@ namespace HaCreator.MapSimulator
 
                 default:
                     return ChatCommandHandler.CommandResult.Error(
-                        "Usage: /localutility [status|inbox [status|start [port]|stop|packet <openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|followfail|damagemeter|hpdec|skillcooltime|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]]|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel|type19|whisper:name|whisperout:name] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv]|classcompetition|skillguide|antimacro [status|launch <normal|admin> [first|retry]|notice <noticeType> [antiMacroType]|result <mode> [antiMacroType] [userName]|clear]|apsp [status|seed [characterId]|receive <token>|send <token>|context <receiveToken> [sendToken]|<contextToken> <11|12|13>|text]|follow <status|request <driverId|name> [auto|manual] [keyinput]|ask <requesterId|name>|accept|decline|attach <driverId|name>|detach [transferX transferY]|passengerdetach [requesterId|name] [transferX transferY]>|followfail [reasonCode [driverId]|text]|packet <openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|follow|followfail|193|243|250|251|252|255|256|262|263|264|265|266|267|270|273|274|275|276|1011|1012> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>]");
+                        "Usage: /localutility [status|inbox [status|start [port]|stop|packet <sitresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|followfail|directionmode|standalone|damagemeter|hpdec|skillcooltime|231|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|1013|1014|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]]|directionmode <on|off|1|0> [delayMs]|standalone <on|off|1|0>|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel|type19|whisper:name|whisperout:name] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv]|classcompetition|skillguide|antimacro [status|launch <normal|admin> [first|retry]|notice <noticeType> [antiMacroType]|result <mode> [antiMacroType] [userName]|clear]|apsp [status|seed [characterId]|receive <token>|send <token>|context <receiveToken> [sendToken]|<contextToken> <11|12|13>|text]|follow <status|request <driverId|name> [auto|manual] [keyinput]|ask <requesterId|name>|accept|decline|attach <driverId|name>|detach [transferX transferY]|passengerdetach [requesterId|name] [transferX transferY]>|followfail [reasonCode [driverId]|text]|packet <sitresult|openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|directionmode|standalone|follow|followfail|193|231|243|250|251|252|255|256|262|263|264|265|266|267|270|273|274|275|276|1011|1012|1013|1014> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>]");
             }
         }
 
@@ -3890,7 +4168,7 @@ namespace HaCreator.MapSimulator
                 int port = LocalUtilityPacketInboxManager.DefaultPort;
                 if (args.Length > offset + 1 && (!int.TryParse(args[offset + 1], out port) || port <= 0 || port > ushort.MaxValue))
                 {
-                    return ChatCommandHandler.CommandResult.Error($"Usage: {usagePrefix} [status|start [port]|stop|packet <openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|radio|skillguide|antimacro|apspevent|followfail|damagemeter|hpdec|skillcooltime|243|246|247|250|251|252|261|262|263|264|265|266|267|270|273|274|275|276|1011|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]]");
+                    return ChatCommandHandler.CommandResult.Error($"Usage: {usagePrefix} [status|start [port]|stop|packet <sitresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|radio|skillguide|antimacro|apspevent|followfail|directionmode|standalone|damagemeter|hpdec|skillcooltime|231|243|246|247|250|251|252|261|262|263|264|265|266|267|270|273|274|275|276|1011|1013|1014|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]]");
                 }
 
                 _localUtilityPacketInboxConfiguredPort = port;
@@ -3916,7 +4194,7 @@ namespace HaCreator.MapSimulator
             }
 
             return ChatCommandHandler.CommandResult.Error(
-                $"Usage: {usagePrefix} [status|start [port]|stop|packet <openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|radio|skillguide|antimacro|apspevent|followfail|damagemeter|hpdec|skillcooltime|243|246|247|250|251|252|261|262|263|264|265|266|267|270|273|274|275|276|1011|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]]");
+                $"Usage: {usagePrefix} [status|start [port]|stop|packet <sitresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|radio|skillguide|antimacro|apspevent|followfail|directionmode|standalone|damagemeter|hpdec|skillcooltime|231|243|246|247|250|251|252|261|262|263|264|265|266|267|270|273|274|275|276|1011|1013|1014|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]]");
         }
 
         private ChatCommandHandler.CommandResult HandlePacketOwnedUtilityPacketCommand(string[] args, bool rawHex)
@@ -4017,6 +4295,15 @@ namespace HaCreator.MapSimulator
                 case "apspevent":
                     applied = TryApplyPacketOwnedAskApspEventPayload(payload, out message);
                     break;
+                case "directionmode":
+                case "setdirectionmode":
+                    applied = TryApplyPacketOwnedDirectionModePayload(payload, out message);
+                    break;
+                case "standalone":
+                case "standalonemode":
+                case "setstandalonemode":
+                    applied = TryApplyPacketOwnedStandAloneModePayload(payload, out message);
+                    break;
                 case "follow":
                 case "followcharacter":
                     applied = TryApplyPacketOwnedFollowCharacterPayload(payload, out message);
@@ -4027,8 +4314,8 @@ namespace HaCreator.MapSimulator
                 default:
                     return ChatCommandHandler.CommandResult.Error(
                         rawHex
-                        ? "Usage: /localutility packetraw <openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|radio|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|follow|followfail|skillcooltime|193|243|246|247|250|251|252|255|256|261|262|263|264|265|266|267|270|273|274|275|276|1011|1012> <hex>"
-                        : "Usage: /localutility packet <openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|radio|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|follow|followfail|skillcooltime|193|243|246|247|250|251|252|255|256|261|262|263|264|265|266|267|270|273|274|275|276|1011|1012> [payloadhex=..|payloadb64=..]");
+                ? "Usage: /localutility packetraw <sitresult|openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|radio|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|directionmode|standalone|follow|followfail|skillcooltime|193|231|243|246|247|250|251|252|255|256|261|262|263|264|265|266|267|270|273|274|275|276|1011|1012|1013|1014> <hex>"
+                : "Usage: /localutility packet <sitresult|openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|radio|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|directionmode|standalone|follow|followfail|skillcooltime|193|231|243|246|247|250|251|252|255|256|261|262|263|264|265|266|267|270|273|274|275|276|1011|1012|1013|1014> [payloadhex=..|payloadb64=..]");
             }
 
             return applied
@@ -4283,6 +4570,32 @@ namespace HaCreator.MapSimulator
                 Position: actor.Position,
                 FacingRight: actor.FacingRight);
             return true;
+        }
+
+        private void HandlePacketOwnedRemoteActorRemoved(int characterId, string removedName)
+        {
+            if (characterId <= 0)
+            {
+                return;
+            }
+
+            bool shouldDismissFollowPrompt =
+                _loginUtilityDialogAction == LoginUtilityDialogAction.ConfirmFollowCharacterRequest
+                && _localFollowRuntime.IncomingRequesterId == characterId;
+            Func<int, string> nameResolver = removedId =>
+                removedId == characterId ? removedName : ResolvePacketOwnedRemoteCharacterName(removedId);
+            if (!_localFollowRuntime.TryClearMissingRemoteCharacter(characterId, nameResolver, out string message))
+            {
+                return;
+            }
+
+            StampPacketOwnedUtilityRequestState();
+            if (shouldDismissFollowPrompt)
+            {
+                HideLoginUtilityDialog();
+            }
+
+            ShowUtilityFeedbackMessage(message);
         }
 
         private void ApplyLocalFollowPlayerResult(LocalFollowApplyResult result)

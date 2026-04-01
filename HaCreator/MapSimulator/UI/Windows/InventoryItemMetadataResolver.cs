@@ -22,6 +22,19 @@ namespace HaCreator.MapSimulator.UI
             };
         }
 
+        public static InventoryType ResolveInventoryType(InventorySlotData slot, InventoryType fallback = InventoryType.NONE)
+        {
+            if (slot?.PreferredInventoryType.HasValue == true
+                && slot.PreferredInventoryType.Value != InventoryType.NONE)
+            {
+                return slot.PreferredInventoryType.Value;
+            }
+
+            return slot != null && slot.ItemId > 0
+                ? ResolveInventoryType(slot.ItemId)
+                : fallback;
+        }
+
         public static int ResolveMaxStack(InventoryType type, int? slotMax = null)
         {
             int defaultValue = type switch
@@ -89,6 +102,28 @@ namespace HaCreator.MapSimulator.UI
             isCashItem = GetIntValue(infoProperty["cash"]) == 1;
             isNotForSale = GetIntValue(infoProperty["notSale"]) == 1;
             isQuestItem = GetIntValue(infoProperty["quest"]) == 1;
+            return true;
+        }
+
+        public static bool TryResolveMaxStackForItem(int itemId, out int maxStackSize)
+        {
+            maxStackSize = ResolveMaxStack(ResolveInventoryType(itemId));
+            WzSubProperty itemProperty = LoadItemProperty(itemId);
+            if (itemProperty?["info"] is not WzSubProperty infoProperty)
+            {
+                return false;
+            }
+
+            int? slotMax = infoProperty["slotMax"] switch
+            {
+                WzIntProperty intProperty => intProperty.Value,
+                WzShortProperty shortProperty => shortProperty.Value,
+                WzFloatProperty floatProperty => (int)floatProperty.Value,
+                WzDoubleProperty doubleProperty => (int)doubleProperty.Value,
+                _ => null
+            };
+
+            maxStackSize = ResolveMaxStack(ResolveInventoryType(itemId), slotMax);
             return true;
         }
 

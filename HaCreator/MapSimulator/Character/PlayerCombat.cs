@@ -45,6 +45,7 @@ namespace HaCreator.MapSimulator.Character
 
         // State
         private int _lastHitTime;
+        private int _invincibilityDurationMs = INVINCIBILITY_DURATION;
         private readonly List<int> _recentlyHitMobs = new(); // Prevent multi-hit exploits
         private Func<int, bool> _damageBlockedEvaluator;
         private float _additionalPlayerMissChance;
@@ -263,7 +264,7 @@ namespace HaCreator.MapSimulator.Character
                 return;
 
             // Check invincibility frames
-            if (currentTime - _lastHitTime < INVINCIBILITY_DURATION)
+            if (currentTime - _lastHitTime < _invincibilityDurationMs)
                 return;
 
             var playerHitbox = _player.GetHitbox();
@@ -299,7 +300,7 @@ namespace HaCreator.MapSimulator.Character
             if (_damageBlockedEvaluator?.Invoke(currentTime) == true)
                 return false;
 
-            if (currentTime - _lastHitTime < INVINCIBILITY_DURATION)
+            if (currentTime - _lastHitTime < _invincibilityDurationMs)
                 return false;
 
             if (hitbox.IsEmpty || !_player.GetHitbox().Intersects(hitbox))
@@ -374,6 +375,7 @@ namespace HaCreator.MapSimulator.Character
             }
 
             _lastHitTime = currentTime;
+            _invincibilityDurationMs = INVINCIBILITY_DURATION;
 
             // Calculate damage from mob
             var currentAttack = attackOverride ?? mob.AI?.GetCurrentAttack();
@@ -494,7 +496,7 @@ namespace HaCreator.MapSimulator.Character
                 return;
 
             // Check invincibility frames
-            if (currentTime - _lastHitTime < INVINCIBILITY_DURATION)
+            if (currentTime - _lastHitTime < _invincibilityDurationMs)
                 return;
 
             var playerHitbox = _player.GetHitbox();
@@ -532,6 +534,7 @@ namespace HaCreator.MapSimulator.Character
         private void ProcessTouchDamage(MobItem mob, int currentTime)
         {
             _lastHitTime = currentTime;
+            _invincibilityDurationMs = INVINCIBILITY_DURATION;
 
             // Touch damage is typically lower than attack damage (body collision)
             // Use a portion of the mob's attack damage or a default
@@ -571,7 +574,7 @@ namespace HaCreator.MapSimulator.Character
         /// </summary>
         public bool IsInvincible(int currentTime)
         {
-            return currentTime - _lastHitTime < INVINCIBILITY_DURATION;
+            return currentTime - _lastHitTime < _invincibilityDurationMs;
         }
 
         /// <summary>
@@ -579,16 +582,17 @@ namespace HaCreator.MapSimulator.Character
         /// </summary>
         public int GetInvincibilityRemaining(int currentTime)
         {
-            int remaining = INVINCIBILITY_DURATION - (currentTime - _lastHitTime);
+            int remaining = _invincibilityDurationMs - (currentTime - _lastHitTime);
             return Math.Max(0, remaining);
         }
 
         /// <summary>
         /// Force invincibility (e.g., after respawn)
         /// </summary>
-        public void SetInvincible(int currentTime)
+        public void SetInvincible(int currentTime, int durationMs = INVINCIBILITY_DURATION)
         {
             _lastHitTime = currentTime;
+            _invincibilityDurationMs = Math.Max(0, durationMs);
         }
 
         private Vector2 GetPlayerKnockbackVelocity(float sourceX)

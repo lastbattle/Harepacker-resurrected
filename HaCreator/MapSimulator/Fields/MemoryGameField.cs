@@ -138,6 +138,7 @@ namespace HaCreator.MapSimulator.Fields
         private readonly Dictionary<int, MiniRoomParticipantState> _miniRoomParticipants = new();
         private readonly int[] _scores = new int[2];
         private readonly bool[] _readyStates = new bool[2];
+        private readonly bool[] _leaveBookingStates = new bool[2];
         private readonly string[] _playerNames = new string[2];
         private readonly int[] _wins = new int[2];
         private readonly int[] _losses = new int[2];
@@ -275,6 +276,7 @@ namespace HaCreator.MapSimulator.Fields
         public int LastWinnerIndex => _lastWinnerIndex;
         public IReadOnlyList<int> Scores => _scores;
         public IReadOnlyList<bool> ReadyStates => _readyStates;
+        public IReadOnlyList<bool> LeaveBookingStates => _leaveBookingStates;
         public IReadOnlyList<string> PlayerNames => _playerNames;
         public string Title => _title;
         public MemoryGamePacketType? LastPacketType => _lastPacketType;
@@ -578,6 +580,32 @@ namespace HaCreator.MapSimulator.Fields
         }
 
 
+        public bool TryRequestRoomExit(int playerIndex, out string message)
+        {
+            if (_stage == RoomStage.Hidden)
+            {
+                message = "Memory Game room is already closed.";
+                return false;
+            }
+
+
+            if (!IsValidPlayerIndex(playerIndex))
+            {
+                message = $"Invalid player index: {playerIndex}.";
+                return false;
+            }
+
+
+            if (_stage == RoomStage.Lobby)
+            {
+                return TryResolveLobbyExit(playerIndex, out message);
+            }
+
+
+            return TryApplyLeaveBookingStatus(playerIndex, !_leaveBookingStates[playerIndex], out message);
+        }
+
+
         public bool TryDispatchPacket(
             MemoryGamePacketType packetType,
             int tickCount,
@@ -672,8 +700,8 @@ namespace HaCreator.MapSimulator.Fields
                 MiniRoomBaseLeavePacketType => TryDispatchPacket(MemoryGamePacketType.EndRoom, tickCount, out message),
                 MemoryGameTieRequestPacketType => TryApplyTieRequestStatus(_localPlayerIndex, out message),
                 MemoryGameClientGiveUpPacketType => TryDispatchPacket(MemoryGamePacketType.GiveUp, tickCount, out message, _localPlayerIndex),
-                MemoryGameClientBookLeavePacketType => TryApplyLeaveBookingStatus(booked: true, out message),
-                MemoryGameClientCancelLeavePacketType => TryApplyLeaveBookingStatus(booked: false, out message),
+                MemoryGameClientBookLeavePacketType => TryApplyLeaveBookingStatus(_localPlayerIndex, booked: true, out message),
+                MemoryGameClientCancelLeavePacketType => TryApplyLeaveBookingStatus(_localPlayerIndex, booked: false, out message),
                 MemoryGameReadyPacketType => TryDispatchPacket(MemoryGamePacketType.SetReady, tickCount, out message, _localPlayerIndex, readyState: true),
                 MemoryGameCancelReadyPacketType => TryDispatchPacket(MemoryGamePacketType.SetReady, tickCount, out message, _localPlayerIndex, readyState: false),
                 MemoryGameClientTurnUpCardPacketType => TryApplyClientTurnUpCardPacket(packetBytes, tickCount, out message),
@@ -870,7 +898,7 @@ namespace HaCreator.MapSimulator.Fields
                         TryGiveUp(_localPlayerIndex, out message);
                         return true;
                     case 3:
-                        TryEndRoom(out message);
+                        TryRequestRoomExit(_localPlayerIndex, out message);
                         return true;
                     case 4:
                         message = "Ban is not modeled for the simulator MiniRoom.";
@@ -961,7 +989,7 @@ namespace HaCreator.MapSimulator.Fields
         {
             string playerOneName = string.IsNullOrWhiteSpace(_playerNames[0]) ? "Player" : _playerNames[0];
             string playerTwoName = string.IsNullOrWhiteSpace(_playerNames[1]) ? "Opponent" : _playerNames[1];
-            return $"{_title}: stage={_stage}, turn={_currentTurnIndex}, ready=[{_readyStates[0]},{_readyStates[1]}], score={_scores[0]}-{_scores[1]}, players={playerOneName}/{playerTwoName}, cards={_cards.Count}, pendingHide={_pendingHideTick > 0}, lastPacket={_lastPacketType?.ToString() ?? "None"}";
+            return $"{_title}: stage={_stage}, turn={_currentTurnIndex}, ready=[{_readyStates[0]},{_readyStates[1]}], leave=[{_leaveBookingStates[0]},{_leaveBookingStates[1]}], score={_scores[0]}-{_scores[1]}, players={playerOneName}/{playerTwoName}, cards={_cards.Count}, pendingHide={_pendingHideTick > 0}, lastPacket={_lastPacketType?.ToString() ?? "None"}";
         }
 
 
@@ -973,6 +1001,8 @@ namespace HaCreator.MapSimulator.Fields
             _scores[1] = 0;
             _readyStates[0] = false;
             _readyStates[1] = false;
+            _leaveBookingStates[0] = false;
+            _leaveBookingStates[1] = false;
             _playerNames[0] = "Player";
             _playerNames[1] = "Opponent";
             _rows = 0;
@@ -1110,6 +1140,16 @@ namespace HaCreator.MapSimulator.Fields
 
         private void ReturnToLobby()
         {
+            if (TryResolveBookedLeaveAfterRound(out string leaveResolutionMessage))
+            {
+                _statusMessage = leaveResolutionMessage;
+            }
+
+            if (_stage == RoomStage.Hidden)
+            {
+                return;
+            }
+
             _cards.Clear();
             _revealedCardIndices.Clear();
             _scores[0] = 0;
@@ -1119,7 +1159,11 @@ namespace HaCreator.MapSimulator.Fields
             _resultExpireTick = 0;
             _lastWinnerIndex = -1;
             _stage = RoomStage.Lobby;
-            _statusMessage = "Ready the room, then start the board.";
+            if (string.IsNullOrWhiteSpace(_statusMessage))
+            {
+                _statusMessage = "Ready the room, then start the board.";
+            }
+
             _waitingForTimeOverPacket = false;
             SyncMiniRoomRuntime();
         }
@@ -1133,6 +1177,8 @@ namespace HaCreator.MapSimulator.Fields
             _scores[1] = 0;
             _readyStates[0] = false;
             _readyStates[1] = false;
+            _leaveBookingStates[0] = false;
+            _leaveBookingStates[1] = false;
             _currentTurnIndex = 0;
             _pendingHideTick = 0;
             _turnDeadlineTick = 0;
@@ -1315,9 +1361,17 @@ namespace HaCreator.MapSimulator.Fields
         }
 
 
-        private bool TryApplyLeaveBookingStatus(bool booked, out string message)
+        private bool TryApplyLeaveBookingStatus(int playerIndex, bool booked, out string message)
         {
-            string playerName = ResolveParticipantName(_localPlayerIndex);
+            if (!IsValidPlayerIndex(playerIndex))
+            {
+                message = $"Invalid player index: {playerIndex}.";
+                return false;
+            }
+
+
+            _leaveBookingStates[playerIndex] = booked;
+            string playerName = ResolveParticipantName(playerIndex);
             _statusMessage = booked
                 ? $"{playerName} booked a leave request for the next round."
                 : $"{playerName} canceled the pending leave request.";
@@ -1745,9 +1799,15 @@ namespace HaCreator.MapSimulator.Fields
                     RemoteActionType.Reveal => MemoryGamePacketType.RevealCard,
                     RemoteActionType.Tie => MemoryGamePacketType.ClaimTie,
                     RemoteActionType.GiveUp => MemoryGamePacketType.GiveUp,
-                    RemoteActionType.End => MemoryGamePacketType.EndRoom,
+                    RemoteActionType.End => MemoryGamePacketType.SelectMatchCardsMode,
                     _ => MemoryGamePacketType.SelectMatchCardsMode
                 };
+
+                if (action.ActionType == RemoteActionType.End)
+                {
+                    TryRequestRoomExit(action.PlayerIndex, out _);
+                    continue;
+                }
 
 
                 TryDispatchPacket(packetType, tickCount, out _, action.PlayerIndex, action.CardIndex, action.ReadyState);
@@ -1782,6 +1842,8 @@ namespace HaCreator.MapSimulator.Fields
 
             CharacterBuild guestBuild = ResolveParticipantAvatarBuild(1);
 
+            string roomStatus = BuildRoomStatusMessage();
+
 
 
             _miniRoomRuntime.SyncMiniRoomMatchCards(
@@ -1793,7 +1855,7 @@ namespace HaCreator.MapSimulator.Fields
                 _scores[0],
                 _scores[1],
                 _currentTurnIndex,
-                _statusMessage,
+                roomStatus,
                 roomState,
                 BuildParticipantDetail(0, includeScore: true),
                 BuildParticipantDetail(1, includeScore: true),
@@ -1965,6 +2027,12 @@ namespace HaCreator.MapSimulator.Fields
             }
 
 
+            if (slot >= 0 && slot < _leaveBookingStates.Length && _leaveBookingStates[slot])
+            {
+                detailParts.Add("Leaving after round");
+            }
+
+
             if (_miniRoomParticipants.TryGetValue(slot, out MiniRoomParticipantState participant))
             {
                 if (participant.JobCode > 0)
@@ -2133,6 +2201,100 @@ namespace HaCreator.MapSimulator.Fields
         }
 
 
+        private string BuildRoomStatusMessage()
+        {
+            string leaveStatus = BuildLeaveBookingSummary();
+            return string.IsNullOrWhiteSpace(leaveStatus)
+                ? _statusMessage
+                : $"{_statusMessage} {leaveStatus}";
+        }
+
+
+        private string BuildLeaveBookingSummary()
+        {
+            List<string> pendingSeats = new();
+            for (int i = 0; i < _leaveBookingStates.Length; i++)
+            {
+                if (_leaveBookingStates[i])
+                {
+                    pendingSeats.Add(ResolveParticipantName(i));
+                }
+            }
+
+
+            return pendingSeats.Count == 0
+                ? string.Empty
+                : $"Pending leave: {string.Join(", ", pendingSeats)}.";
+        }
+
+
+        private string GetExitButtonLabel()
+        {
+            if (_stage == RoomStage.Lobby)
+            {
+                return "End";
+            }
+
+
+            return _leaveBookingStates[_localPlayerIndex] ? "Stay" : "Leave";
+        }
+
+
+        private bool TryResolveLobbyExit(int playerIndex, out string message)
+        {
+            if (playerIndex == 0 || playerIndex == _localPlayerIndex)
+            {
+                return TryEndRoom(out message);
+            }
+
+
+            _leaveBookingStates[playerIndex] = false;
+            _readyStates[playerIndex] = false;
+            string playerName = ResolveParticipantName(playerIndex);
+            _miniRoomParticipants.Remove(playerIndex);
+            _playerNames[playerIndex] = playerIndex == 1 ? "Opponent" : $"Seat {playerIndex}";
+            _statusMessage = ResolveMiniRoomGameMessage(4, playerName);
+            _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {_statusMessage}");
+            SyncMiniRoomRuntime();
+            message = $"{playerName} left the Match Cards room from the lobby.";
+            return true;
+        }
+
+
+        private bool TryResolveBookedLeaveAfterRound(out string message)
+        {
+            message = null;
+            for (int playerIndex = 0; playerIndex < _leaveBookingStates.Length; playerIndex++)
+            {
+                if (!_leaveBookingStates[playerIndex])
+                {
+                    continue;
+                }
+
+
+                _leaveBookingStates[playerIndex] = false;
+                string playerName = ResolveParticipantName(playerIndex);
+                if (playerIndex == 0 || playerIndex == _localPlayerIndex)
+                {
+                    Reset();
+                    message = $"{playerName} left the Match Cards room after the round.";
+                    _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {message}");
+                    return true;
+                }
+
+
+                _readyStates[playerIndex] = false;
+                _miniRoomParticipants.Remove(playerIndex);
+                _playerNames[playerIndex] = playerIndex == 1 ? "Opponent" : $"Seat {playerIndex}";
+                message = $"{playerName} left the Match Cards room after the round.";
+                _miniRoomRuntime?.AddMiniRoomSystemMessage($"System : {message}");
+            }
+
+
+            return !string.IsNullOrWhiteSpace(message);
+        }
+
+
 
         private void GetLayout(int viewportWidth, int viewportHeight, out Rectangle outer, out Rectangle boardArea, out Rectangle sidebar, out Rectangle[] buttonRects)
         {
@@ -2219,7 +2381,7 @@ namespace HaCreator.MapSimulator.Fields
             DrawButton(spriteBatch, pixel, font, dialogX + ClientReadyButtonX, dialogY + ClientReadyButtonY, _readyStates[_localPlayerIndex] ? _startButtonTexture : _readyButtonTexture, GetPrimaryButtonLabel());
             DrawButton(spriteBatch, pixel, font, dialogX + ClientTieButtonX, dialogY + ClientTieButtonY, _tieButtonTexture, "Tie");
             DrawButton(spriteBatch, pixel, font, dialogX + ClientGiveUpButtonX, dialogY + ClientGiveUpButtonY, _giveUpButtonTexture, "Give Up");
-            DrawButton(spriteBatch, pixel, font, dialogX + ClientEndButtonX, dialogY + ClientEndButtonY, _endButtonTexture, "End");
+            DrawButton(spriteBatch, pixel, font, dialogX + ClientEndButtonX, dialogY + ClientEndButtonY, _endButtonTexture, GetExitButtonLabel());
             DrawButton(spriteBatch, pixel, font, dialogX + ClientBanButtonX, dialogY + ClientBanButtonY, _banButtonTexture, string.Empty);
         }
 

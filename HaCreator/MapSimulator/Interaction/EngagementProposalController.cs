@@ -97,6 +97,16 @@ namespace HaCreator.MapSimulator.Interaction
             return message;
         }
 
+        internal bool TryBuildWeddingInvitationHandoff(
+            CharacterBuild build,
+            WeddingInvitationStyle style,
+            out WeddingInvitationHandoff handoff,
+            out string message)
+        {
+            _runtime.UpdateLocalContext(build);
+            return _runtime.TryBuildWeddingInvitationHandoff(build, style, out handoff, out message);
+        }
+
         private void ShowWindow(
             UIWindowManager windowManager,
             CharacterBuild build,

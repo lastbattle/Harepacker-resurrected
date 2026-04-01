@@ -34,6 +34,8 @@ namespace HaCreator.MapSimulator
         private const string PacketOwnedAntiMacroAdminCanvas0Path = "Macro/admin/0";
         private const string PacketOwnedAntiMacroAdminCanvas1Path = "Macro/admin/1";
         private const string PacketOwnedAntiMacroAdminCanvas2Path = "Macro/admin/2";
+        private const string PacketOwnedAntiMacroNormalStepPath = "step1";
+        private const string PacketOwnedAntiMacroAdminStepPath = "step1_admin";
 
         private string _lastPacketOwnedAntiMacroSummary = "Packet-owned anti-macro idle.";
         private string _lastPacketOwnedAntiMacroNotice = string.Empty;
@@ -48,7 +50,7 @@ namespace HaCreator.MapSimulator
         private bool _packetOwnedAntiMacroAwaitingResult;
 
         private sealed record PacketOwnedAntiMacroNoticeDefinition(int StringPoolId, string Text, string AvatarCanvasPath);
-        private sealed record PacketOwnedAntiMacroChatDefinition(int StringPoolId, string Text, bool SaveScreenshot);
+        private sealed record PacketOwnedAntiMacroChatDefinition(int StringPoolId, string FormatText, bool SaveScreenshot);
 
         private void RegisterPacketOwnedAntiMacroWindows()
         {
@@ -61,24 +63,16 @@ namespace HaCreator.MapSimulator
 
             if (uiWindowManager.GetWindow(MapSimulatorWindowNames.AntiMacro) == null)
             {
-                AntiMacroChallengeWindow window = new(MapSimulatorWindowNames.AntiMacro, adminVariant: false, GraphicsDevice)
-                {
-                    Position = new Point(
-                        Math.Max(24, (_renderParams.RenderWidth / 2) - 132),
-                        Math.Max(24, (_renderParams.RenderHeight / 2) - 125))
-                };
+                AntiMacroChallengeWindow window = new(MapSimulatorWindowNames.AntiMacro, adminVariant: false, GraphicsDevice);
+                window.Position = ResolvePacketOwnedAntiMacroWindowPosition(window);
                 window.SubmitRequested += HandlePacketOwnedAntiMacroAnswerSubmitted;
                 uiWindowManager.RegisterCustomWindow(window);
             }
 
             if (uiWindowManager.GetWindow(MapSimulatorWindowNames.AdminAntiMacro) == null)
             {
-                AntiMacroChallengeWindow window = new(MapSimulatorWindowNames.AdminAntiMacro, adminVariant: true, GraphicsDevice)
-                {
-                    Position = new Point(
-                        Math.Max(24, (_renderParams.RenderWidth / 2) - 179),
-                        Math.Max(24, (_renderParams.RenderHeight / 2) - 143))
-                };
+                AntiMacroChallengeWindow window = new(MapSimulatorWindowNames.AdminAntiMacro, adminVariant: true, GraphicsDevice);
+                window.Position = ResolvePacketOwnedAntiMacroWindowPosition(window);
                 window.SubmitRequested += HandlePacketOwnedAntiMacroAnswerSubmitted;
                 uiWindowManager.RegisterCustomWindow(window);
             }
@@ -106,9 +100,13 @@ namespace HaCreator.MapSimulator
                 }
             }
 
-            if (uiWindowManager.GetWindow(MapSimulatorWindowNames.AdminAntiMacro) is AntiMacroChallengeWindow adminWindow && _fontChat != null)
+            if (uiWindowManager.GetWindow(MapSimulatorWindowNames.AdminAntiMacro) is AntiMacroChallengeWindow adminWindow)
             {
-                adminWindow.SetFont(_fontChat);
+                ApplyPacketOwnedAntiMacroOwnerVisuals(adminWindow, macroProperty);
+                if (_fontChat != null)
+                {
+                    adminWindow.SetFont(_fontChat);
+                }
             }
 
             if (uiWindowManager.GetWindow(MapSimulatorWindowNames.AntiMacroNotice) is AntiMacroNoticeWindow noticeWindow)
@@ -127,19 +125,22 @@ namespace HaCreator.MapSimulator
 
         private void ApplyPacketOwnedAntiMacroOwnerVisuals(AntiMacroChallengeWindow window, WzSubProperty macroProperty)
         {
-            if (window == null || window.IsAdminVariant || macroProperty == null)
+            if (window == null || macroProperty == null)
             {
                 return;
             }
 
-            WzSubProperty step1Property = macroProperty["step1"] as WzSubProperty;
-            if (step1Property == null)
+            string stepPath = window.IsAdminVariant
+                ? PacketOwnedAntiMacroAdminStepPath
+                : PacketOwnedAntiMacroNormalStepPath;
+            WzSubProperty stepProperty = macroProperty[stepPath] as WzSubProperty;
+            if (stepProperty == null)
             {
                 return;
             }
 
-            Texture2D frameTexture = ComposePacketOwnedAntiMacroFrameTexture(step1Property);
-            UIObject submitButton = CreatePacketOwnedAntiMacroButton(step1Property["btOK"] as WzSubProperty);
+            Texture2D frameTexture = ComposePacketOwnedAntiMacroFrameTexture(stepProperty);
+            UIObject submitButton = CreatePacketOwnedAntiMacroButton(stepProperty["btOK"] as WzSubProperty);
             (Texture2D[] digitTextures, Point[] digitOrigins, Texture2D commaTexture, Point commaOrigin) = LoadPacketOwnedAntiMacroDigits(macroProperty["num1"] as WzSubProperty);
 
             window.ConfigureVisualAssets(
@@ -149,6 +150,17 @@ namespace HaCreator.MapSimulator
                 commaTexture,
                 commaOrigin,
                 submitButton);
+            window.Position = ResolvePacketOwnedAntiMacroWindowPosition(window);
+        }
+
+        private Point ResolvePacketOwnedAntiMacroWindowPosition(AntiMacroChallengeWindow window)
+        {
+            Point frameSize = window?.ActiveFrameSize ?? Point.Zero;
+            int width = frameSize.X > 0 ? frameSize.X : 265;
+            int height = frameSize.Y > 0 ? frameSize.Y : 250;
+            return new Point(
+                Math.Max(24, (_renderParams.RenderWidth / 2) - (width / 2)),
+                Math.Max(24, (_renderParams.RenderHeight / 2) - (height / 2)));
         }
 
         private Texture2D ComposePacketOwnedAntiMacroFrameTexture(WzSubProperty stepProperty)
@@ -396,17 +408,17 @@ namespace HaCreator.MapSimulator
         {
             return (noticeType, antiMacroType) switch
             {
-                (0, _) => new PacketOwnedAntiMacroNoticeDefinition(0xC84, "Anti-macro challenge acknowledged.", PacketOwnedAntiMacroAdminCanvas0Path),
-                (1, _) => new PacketOwnedAntiMacroNoticeDefinition(0xC85, "Anti-macro challenge failed.", PacketOwnedAntiMacroAdminCanvas0Path),
-                (2, _) => new PacketOwnedAntiMacroNoticeDefinition(0xC86, "Anti-macro challenge timed out.", PacketOwnedAntiMacroAdminCanvas0Path),
-                (3, _) => new PacketOwnedAntiMacroNoticeDefinition(0xC87, "Anti-macro challenge was cancelled.", PacketOwnedAntiMacroAdminCanvas0Path),
-                (7, 2) => new PacketOwnedAntiMacroNoticeDefinition(0xC9A, "Admin anti-macro challenge ended.", PacketOwnedAntiMacroAdminCanvas2Path),
-                (7, _) => new PacketOwnedAntiMacroNoticeDefinition(0xC89, "Anti-macro challenge ended.", PacketOwnedAntiMacroAdminCanvas2Path),
-                (9, 1) => new PacketOwnedAntiMacroNoticeDefinition(0xC88, "Anti-macro result marked the target as suspicious.", PacketOwnedAntiMacroAdminCanvas1Path),
-                (9, 2) => new PacketOwnedAntiMacroNoticeDefinition(0x1A65, "Admin anti-macro result marked the target as suspicious.", PacketOwnedAntiMacroAdminCanvas1Path),
-                (9, 3) => new PacketOwnedAntiMacroNoticeDefinition(0xC99, "Anti-macro report branch completed.", PacketOwnedAntiMacroAdminCanvas1Path),
-                (9, 4) => new PacketOwnedAntiMacroNoticeDefinition(0xC99, "Anti-macro screenshot branch completed.", PacketOwnedAntiMacroAdminCanvas1Path),
-                (11, _) => new PacketOwnedAntiMacroNoticeDefinition(0xC98, "Anti-macro report was rejected.", PacketOwnedAntiMacroAdminCanvas1Path),
+                (0, _) => new PacketOwnedAntiMacroNoticeDefinition(0xC84, "The user cannot be found.", PacketOwnedAntiMacroAdminCanvas0Path),
+                (1, _) => new PacketOwnedAntiMacroNoticeDefinition(0xC85, "You cannot use it on a user that isn't in the middle of attack.", PacketOwnedAntiMacroAdminCanvas0Path),
+                (2, _) => new PacketOwnedAntiMacroNoticeDefinition(0xC86, "This user has already been tested before.", PacketOwnedAntiMacroAdminCanvas0Path),
+                (3, _) => new PacketOwnedAntiMacroNoticeDefinition(0xC87, "This user is currently going through the Lie Detector Test.", PacketOwnedAntiMacroAdminCanvas0Path),
+                (7, 2) => new PacketOwnedAntiMacroNoticeDefinition(0xC9A, "You will be sanctioned for using a macro-assisted program.", PacketOwnedAntiMacroAdminCanvas2Path),
+                (7, _) => new PacketOwnedAntiMacroNoticeDefinition(0xC89, "The Lie Detector Test confirms that you have been botting. Repeated failure of the test will result in game restrictions.", PacketOwnedAntiMacroAdminCanvas2Path),
+                (9, 1) => new PacketOwnedAntiMacroNoticeDefinition(0xC88, "Thank you for cooperating with the Lie Detector Test. You'll be rewarded 5000 mesos for not botting.", PacketOwnedAntiMacroAdminCanvas1Path),
+                (9, 2) => new PacketOwnedAntiMacroNoticeDefinition(0x1A65, "Thank you for your cooperation.", PacketOwnedAntiMacroAdminCanvas1Path),
+                (9, 3) => new PacketOwnedAntiMacroNoticeDefinition(0xC99, "You have succesfully passed the Lie Detector Test. Thank you for participating!", PacketOwnedAntiMacroAdminCanvas1Path),
+                (9, 4) => new PacketOwnedAntiMacroNoticeDefinition(0xC99, "You have succesfully passed the Lie Detector Test. Thank you for participating!", PacketOwnedAntiMacroAdminCanvas1Path),
+                (11, _) => new PacketOwnedAntiMacroNoticeDefinition(0xC98, "The user has failed the Lie Detector Test. You'll be rewarded 7000 mesos from the user.", PacketOwnedAntiMacroAdminCanvas1Path),
                 _ => new PacketOwnedAntiMacroNoticeDefinition(
                     -1,
                     string.Format(CultureInfo.InvariantCulture, "Anti-macro notice type {0} (mode {1}) reached the simulator bridge.", noticeType, antiMacroType),
@@ -451,12 +463,13 @@ namespace HaCreator.MapSimulator
         private string ApplyPacketOwnedAntiMacroUserBranch(int mode, int antiMacroType, string userName)
         {
             string resolvedName = string.IsNullOrWhiteSpace(userName) ? "Unknown" : userName.Trim();
-            PacketOwnedAntiMacroChatDefinition definition = ResolvePacketOwnedAntiMacroChatDefinition(mode, antiMacroType, resolvedName);
+            PacketOwnedAntiMacroChatDefinition definition = ResolvePacketOwnedAntiMacroChatDefinition(mode, antiMacroType);
             _lastPacketOwnedAntiMacroChatStringPoolId = definition?.StringPoolId ?? -1;
-            if (!string.IsNullOrWhiteSpace(definition?.Text))
+            string chatText = FormatPacketOwnedAntiMacroClientString(definition?.FormatText, resolvedName);
+            if (!string.IsNullOrWhiteSpace(chatText))
             {
                 _chat?.AddClientChatMessage(
-                    FormatPacketOwnedAntiMacroStringPoolText(definition.Text, definition.StringPoolId),
+                    FormatPacketOwnedAntiMacroStringPoolText(chatText, definition.StringPoolId),
                     Environment.TickCount,
                     12);
             }
@@ -470,17 +483,31 @@ namespace HaCreator.MapSimulator
             return _lastPacketOwnedAntiMacroSummary;
         }
 
-        private static PacketOwnedAntiMacroChatDefinition ResolvePacketOwnedAntiMacroChatDefinition(int mode, int antiMacroType, string userName)
+        private static PacketOwnedAntiMacroChatDefinition ResolvePacketOwnedAntiMacroChatDefinition(int mode, int antiMacroType)
         {
             return (mode, antiMacroType) switch
             {
-                (PacketOwnedAntiMacroScreenshotReportMode, _) => new PacketOwnedAntiMacroChatDefinition(0xC8E, $"Saved report evidence for {userName}.", SaveScreenshot: true),
-                (PacketOwnedAntiMacroUserReportMode, 1) => new PacketOwnedAntiMacroChatDefinition(0xC8D, $"Report completed for {userName}.", SaveScreenshot: false),
-                (PacketOwnedAntiMacroUserReportMode, 2) => new PacketOwnedAntiMacroChatDefinition(0xC8F, $"Admin report completed for {userName}.", SaveScreenshot: true),
-                (PacketOwnedAntiMacroScreenshotMode, 2) => new PacketOwnedAntiMacroChatDefinition(0xC91, $"Saved screenshot evidence for {userName}.", SaveScreenshot: true),
-                (PacketOwnedAntiMacroChatReportMode, 2) => new PacketOwnedAntiMacroChatDefinition(0xC90, $"Report branch acknowledged {userName}.", SaveScreenshot: false),
+                (PacketOwnedAntiMacroScreenshotReportMode, _) => new PacketOwnedAntiMacroChatDefinition(0xC8E, "%s_The screenshot has been saved. You have been notified of macro-assisted program monitoring.", SaveScreenshot: true),
+                (PacketOwnedAntiMacroUserReportMode, 1) => new PacketOwnedAntiMacroChatDefinition(0xC8D, "%s have used the Lie Detector Test.", SaveScreenshot: false),
+                (PacketOwnedAntiMacroUserReportMode, 2) => new PacketOwnedAntiMacroChatDefinition(0xC8F, "%s_The screenshot has been saved. The Lie Detector has been activated.", SaveScreenshot: true),
+                (PacketOwnedAntiMacroScreenshotMode, 2) => new PacketOwnedAntiMacroChatDefinition(0xC91, "%s_The screenshot has been saved. It appears that you may be using a macro-assisted program.", SaveScreenshot: true),
+                (PacketOwnedAntiMacroChatReportMode, 2) => new PacketOwnedAntiMacroChatDefinition(0xC90, "%s_You have passed the Lie Detector Test.", SaveScreenshot: false),
                 _ => null
             };
+        }
+
+        private static string FormatPacketOwnedAntiMacroClientString(string formatText, string userName)
+        {
+            if (string.IsNullOrWhiteSpace(formatText))
+            {
+                return string.Empty;
+            }
+
+            string resolvedName = string.IsNullOrWhiteSpace(userName) ? "Unknown" : userName.Trim();
+            return formatText
+                .Replace("%s", resolvedName, StringComparison.Ordinal)
+                .Replace('_', ' ')
+                .Trim();
         }
 
         private static string FormatPacketOwnedAntiMacroStringPoolText(string text, int stringPoolId)
@@ -492,13 +519,53 @@ namespace HaCreator.MapSimulator
 
         private static string ResolvePacketOwnedAntiMacroScreenshotBaseFolder()
         {
-            string picturesFolder = Environment.GetFolderPath(Environment.SpecialFolder.MyPictures);
-            if (string.IsNullOrWhiteSpace(picturesFolder))
+            switch (ResolvePacketOwnedAntiMacroScreenshotFolderMode())
             {
-                return Path.Combine(Environment.CurrentDirectory, "MapleStory");
+                case 1:
+                    return TrimPacketOwnedAntiMacroTrailingDirectorySeparator(
+                        Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory));
+
+                case 2:
+                    return @"C:\";
+
+                default:
+                {
+                    string baseDirectory = AppContext.BaseDirectory;
+                    if (string.IsNullOrWhiteSpace(baseDirectory))
+                    {
+                        return string.Empty;
+                    }
+
+                    string trimmedBaseDirectory = TrimPacketOwnedAntiMacroTrailingDirectorySeparator(baseDirectory);
+                    string parentDirectory = Path.GetDirectoryName(trimmedBaseDirectory);
+                    return string.IsNullOrWhiteSpace(parentDirectory)
+                        ? trimmedBaseDirectory
+                        : TrimPacketOwnedAntiMacroTrailingDirectorySeparator(parentDirectory);
+                }
+            }
+        }
+
+        private static int ResolvePacketOwnedAntiMacroScreenshotFolderMode()
+        {
+            string configuredValue = Environment.GetEnvironmentVariable("MAPSIM_CLIENT_SCREENSHOT_MODE");
+            return int.TryParse(configuredValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedMode)
+                && parsedMode is >= 0 and <= 2
+                ? parsedMode
+                : 0;
+        }
+
+        private static string TrimPacketOwnedAntiMacroTrailingDirectorySeparator(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return string.Empty;
             }
 
-            return Path.Combine(picturesFolder, "MapleStory");
+            string root = Path.GetPathRoot(path);
+            string trimmed = path.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar);
+            return string.IsNullOrEmpty(trimmed) && !string.IsNullOrEmpty(root)
+                ? root
+                : trimmed;
         }
 
         private static WzCanvasProperty ResolvePacketOwnedAntiMacroCanvas(string path)

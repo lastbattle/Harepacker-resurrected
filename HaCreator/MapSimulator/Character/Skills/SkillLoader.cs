@@ -50,6 +50,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             "heal",
             "support",
             "subsummon",
+            "attackTriangle",
             "skill1",
             "skill2",
             "skill3",
@@ -343,6 +344,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 skill.MaxLevel = GetInt(commonNode, "maxLevel", 1);
                 skill.SummonSubTimeFormula = GetString(commonNode, "subTime");
+                skill.SummonTimeFormula = GetString(commonNode, "time");
                 skill.SummonSelfDestructionFormula = GetString(commonNode, "selfDestruction");
             }
 

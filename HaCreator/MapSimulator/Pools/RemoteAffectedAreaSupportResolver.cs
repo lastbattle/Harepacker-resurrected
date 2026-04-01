@@ -232,7 +232,12 @@ namespace HaCreator.MapSimulator.Pools
                    || skill?.HasInvincibleMetadata == true;
         }
 
-        public static bool CanAffectLocalPlayer(SkillData skill, int localPlayerId, int ownerId, bool ownerIsPartyMember)
+        public static bool CanAffectLocalPlayer(
+            SkillData skill,
+            int localPlayerId,
+            int ownerId,
+            bool ownerIsPartyMember,
+            SkillLevelData levelData = null)
         {
             if (skill == null || localPlayerId <= 0 || ownerId <= 0)
             {
@@ -244,7 +249,7 @@ namespace HaCreator.MapSimulator.Pools
                 return true;
             }
 
-            return ownerIsPartyMember && IsFriendlyPlayerAreaSkill(skill);
+            return ownerIsPartyMember && IsFriendlyPlayerAreaSkill(skill, levelData);
         }
 
         public static bool IsHostilePlayerAreaSkill(SkillData skill, SkillLevelData levelData = null)

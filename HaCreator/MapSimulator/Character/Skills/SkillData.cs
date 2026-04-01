@@ -492,6 +492,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool SelfDestructMinion { get; set; }
         public string SummonSelfDestructionFormula { get; set; }
         public string SummonSubTimeFormula { get; set; }
+        public string SummonTimeFormula { get; set; }
         public string TriggerCondition { get; set; }
         public bool IsSwallowSkill { get; set; }
         public int[] DummySkillParents { get; set; } = Array.Empty<int>();
@@ -770,6 +771,13 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return 1000;
+        }
+
+        public int ResolveSummonDurationSeconds(int level)
+        {
+            return TryEvaluateSkillFormula(SummonTimeFormula, level, out int durationSeconds)
+                ? Math.Max(0, durationSeconds)
+                : 0;
         }
 
         public int ResolveSummonSelfDestructionDamagePercent(int level)
@@ -1072,6 +1080,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int? PreferredTargetMobId { get; set; }
         public Vector2? PreferredTargetPosition { get; set; }
         public bool AllowFollowUpQueue { get; set; } = true;
+        public bool ForceCritical { get; set; }
 
         public void Update(float deltaTime, int currentTime)
         {

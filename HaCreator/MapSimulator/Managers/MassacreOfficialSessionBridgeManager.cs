@@ -1,36 +1,33 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
-using System.Linq;
-using System.Net.NetworkInformation;
-using System.Net;
-using System.Net.Sockets;
 using System.Diagnostics;
+using System.Linq;
+using System.Net;
+using System.Net.NetworkInformation;
+using System.Net.Sockets;
 using System.Runtime.InteropServices;
 using System.Threading;
 using System.Threading.Tasks;
-using HaCreator.MapSimulator.Effects;
 using MapleLib.MapleCryptoLib;
 using MapleLib.PacketLib;
 
 namespace HaCreator.MapSimulator.Managers
 {
     /// <summary>
-    /// Built-in Guild Boss transport bridge that proxies a live Maple session,
-    /// decrypts guild-boss packets in-process, and can inject opcode 259 without
-    /// an external line-based bridge.
+    /// Built-in Massacre transport bridge that proxies a live Maple session
+    /// and feeds inbound Massacre packets into the existing packet-owned seam.
     /// </summary>
-    public sealed class GuildBossOfficialSessionBridgeManager : IDisposable
+    public sealed class MassacreOfficialSessionBridgeManager : IDisposable
     {
-        public const int DefaultListenPort = 18488;
+        public const int DefaultListenPort = 18489;
         private const string DefaultProcessName = "MapleStory";
         private const int AddressFamilyInet = 2;
         private const int ErrorInsufficientBuffer = 122;
-        private const int PacketTypeHealerMove = 344;
-        private const int PacketTypePulleyStateChange = 345;
-        private const int OutboundPulleyRequestOpcode = 259;
+        private const int PacketTypeIncGauge = 173;
+        private const int PacketTypeResult = 174;
 
-        private readonly ConcurrentQueue<GuildBossPacketInboxMessage> _pendingMessages = new();
+        private readonly ConcurrentQueue<MassacrePacketInboxMessage> _pendingMessages = new();
         private readonly object _sync = new();
 
         private TcpListener _listener;
@@ -91,8 +88,7 @@ namespace HaCreator.MapSimulator.Managers
         public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
         public bool HasConnectedSession => _activePair?.InitCompleted == true;
         public int ReceivedCount { get; private set; }
-        public int SentCount { get; private set; }
-        public string LastStatus { get; private set; } = "Guild boss official-session bridge inactive.";
+        public string LastStatus { get; private set; } = "Massacre official-session bridge inactive.";
 
         public string DescribeStatus()
         {
@@ -102,7 +98,7 @@ namespace HaCreator.MapSimulator.Managers
             string session = HasConnectedSession
                 ? $"connected session {_activePair?.ClientEndpoint ?? "unknown-client"} -> {_activePair?.RemoteEndpoint ?? "unknown-remote"}"
                 : "no active Maple session";
-            return $"Guild boss official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}. {LastStatus}";
+            return $"Massacre official-session bridge {lifecycle}; {session}; received={ReceivedCount}. {LastStatus}";
         }
 
         public static IReadOnlyList<SessionDiscoveryCandidate> DiscoverEstablishedSessions(
@@ -182,14 +178,14 @@ namespace HaCreator.MapSimulator.Managers
                     _listener = new TcpListener(IPAddress.Loopback, ListenPort);
                     _listener.Start();
                     _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
-                    LastStatus = $"Guild boss official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}.";
+                    LastStatus = $"Massacre official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}.";
                     status = LastStatus;
                     return true;
                 }
                 catch (Exception ex)
                 {
                     StopInternal(clearPending: true);
-                    LastStatus = $"Guild boss official-session bridge failed to start: {ex.Message}";
+                    LastStatus = $"Massacre official-session bridge failed to start: {ex.Message}";
                     status = LastStatus;
                     return false;
                 }
@@ -221,12 +217,12 @@ namespace HaCreator.MapSimulator.Managers
 
             if (!TryStart(listenPort, candidate.RemoteEndpoint.Address.ToString(), candidate.RemoteEndpoint.Port, out string startStatus))
             {
-                status = $"Guild boss official-session bridge discovered {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}, but startup failed. {startStatus}";
+                status = $"Massacre official-session bridge discovered {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}, but startup failed. {startStatus}";
                 LastStatus = status;
                 return false;
             }
 
-            status = $"Guild boss official-session bridge discovered {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}. {startStatus}";
+            status = $"Massacre official-session bridge discovered {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}. {startStatus}";
             LastStatus = status;
             return true;
         }
@@ -249,51 +245,22 @@ namespace HaCreator.MapSimulator.Managers
             lock (_sync)
             {
                 StopInternal(clearPending: true);
-                LastStatus = "Guild boss official-session bridge stopped.";
+                LastStatus = "Massacre official-session bridge stopped.";
             }
         }
 
-        public bool TryDequeue(out GuildBossPacketInboxMessage message)
+        public bool TryDequeue(out MassacrePacketInboxMessage message)
         {
             return _pendingMessages.TryDequeue(out message);
-        }
-
-        public bool TrySendPulleyRequest(GuildBossField.PulleyPacketRequest request, out string status)
-        {
-            BridgePair pair = _activePair;
-            if (pair == null || !pair.InitCompleted)
-            {
-                status = "Guild boss official-session bridge has no active Maple session.";
-                LastStatus = status;
-                return false;
-            }
-
-            try
-            {
-                PacketWriter writer = new PacketWriter();
-                writer.WriteShort((short)OutboundPulleyRequestOpcode);
-                pair.ServerSession.SendPacket(writer.ToArray());
-                SentCount++;
-                status = $"Injected Guild Boss opcode {OutboundPulleyRequestOpcode} into live session {pair.RemoteEndpoint}.";
-                LastStatus = status;
-                return true;
-            }
-            catch (Exception ex)
-            {
-                status = $"Guild boss official-session injection failed: {ex.Message}";
-                LastStatus = status;
-                ClearActivePair(pair, status);
-                return false;
-            }
         }
 
         public void RecordDispatchResult(string source, int packetType, bool success, string message)
         {
             string packetLabel = packetType switch
             {
-                PacketTypeHealerMove => "Guild boss healer",
-                PacketTypePulleyStateChange => "Guild boss pulley",
-                _ => $"Guild boss packet {packetType}"
+                PacketTypeIncGauge => "Massacre inc gauge",
+                PacketTypeResult => "Massacre result",
+                _ => $"Massacre packet {packetType}"
             };
             string summary = string.IsNullOrWhiteSpace(message) ? packetLabel : $"{packetLabel}: {message}";
             LastStatus = success
@@ -327,7 +294,7 @@ namespace HaCreator.MapSimulator.Managers
             }
             catch (Exception ex)
             {
-                LastStatus = $"Guild boss official-session bridge error: {ex.Message}";
+                LastStatus = $"Massacre official-session bridge error: {ex.Message}";
             }
         }
 
@@ -340,7 +307,7 @@ namespace HaCreator.MapSimulator.Managers
                 {
                     if (_activePair != null)
                     {
-                        LastStatus = "Rejected Guild boss official-session client because a live Maple session is already attached.";
+                        LastStatus = "Rejected Massacre official-session client because a live Maple session is already attached.";
                         client.Close();
                         return;
                     }
@@ -354,23 +321,23 @@ namespace HaCreator.MapSimulator.Managers
                 pair = new BridgePair(client, server, clientSession, serverSession);
 
                 clientSession.OnPacketReceived += (packet, isInit) => HandleClientPacket(pair, packet, isInit);
-                clientSession.OnClientDisconnected += _ => ClearActivePair(pair, $"Guild boss official-session client disconnected: {pair.ClientEndpoint}.");
+                clientSession.OnClientDisconnected += _ => ClearActivePair(pair, $"Massacre official-session client disconnected: {pair.ClientEndpoint}.");
                 serverSession.OnPacketReceived += (packet, isInit) => HandleServerPacket(pair, packet, isInit);
-                serverSession.OnClientDisconnected += _ => ClearActivePair(pair, $"Guild boss official-session server disconnected: {pair.RemoteEndpoint}.");
+                serverSession.OnClientDisconnected += _ => ClearActivePair(pair, $"Massacre official-session server disconnected: {pair.RemoteEndpoint}.");
 
                 lock (_sync)
                 {
                     _activePair = pair;
                 }
 
-                LastStatus = $"Guild boss official-session bridge connected {pair.ClientEndpoint} -> {pair.RemoteEndpoint}. Waiting for Maple init packet.";
+                LastStatus = $"Massacre official-session bridge connected {pair.ClientEndpoint} -> {pair.RemoteEndpoint}. Waiting for Maple init packet.";
                 serverSession.WaitForDataNoEncryption();
             }
             catch (Exception ex)
             {
                 client.Close();
                 pair?.Close();
-                LastStatus = $"Guild boss official-session bridge connect failed: {ex.Message}";
+                LastStatus = $"Massacre official-session bridge connect failed: {ex.Message}";
             }
         }
 
@@ -393,26 +360,25 @@ namespace HaCreator.MapSimulator.Managers
                     pair.ClientSession.RIV = CreateCrypto(clientSendIv, pair.Version);
                     pair.ClientSession.SendInitialPacket(pair.Version, patchLocation, clientSendIv, clientReceiveIv, serverType);
                     pair.InitCompleted = true;
-                    LastStatus = $"Guild boss official-session bridge initialized Maple crypto for {pair.ClientEndpoint} <-> {pair.RemoteEndpoint}.";
+                    LastStatus = $"Massacre official-session bridge initialized Maple crypto for {pair.ClientEndpoint} <-> {pair.RemoteEndpoint}.";
                     pair.ClientSession.WaitForData();
                     return;
                 }
 
                 pair.ClientSession.SendPacket((byte[])raw.Clone());
 
-                if (!TryDecodeOpcode(raw, out int opcode, out byte[] payload)
-                    || (opcode != PacketTypeHealerMove && opcode != PacketTypePulleyStateChange))
+                if (!TryDecodeInboundMassacrePacket(raw, $"official-session:{pair.RemoteEndpoint}", out MassacrePacketInboxMessage message))
                 {
                     return;
                 }
 
-                _pendingMessages.Enqueue(new GuildBossPacketInboxMessage(opcode, payload, $"official-session:{pair.RemoteEndpoint}", $"packetraw {Convert.ToHexString(raw)}"));
+                _pendingMessages.Enqueue(message);
                 ReceivedCount++;
-                LastStatus = $"Queued Guild Boss opcode {opcode} from live session {pair.RemoteEndpoint}.";
+                LastStatus = $"Queued Massacre opcode {message.PacketType} from live session {pair.RemoteEndpoint}.";
             }
             catch (Exception ex)
             {
-                ClearActivePair(pair, $"Guild boss official-session server handling failed: {ex.Message}");
+                ClearActivePair(pair, $"Massacre official-session server handling failed: {ex.Message}");
             }
         }
 
@@ -425,18 +391,11 @@ namespace HaCreator.MapSimulator.Managers
 
             try
             {
-                byte[] raw = packet.ToArray();
-                pair.ServerSession.SendPacket((byte[])raw.Clone());
-
-                if (TryDecodeOpcode(raw, out int opcode, out _)
-                    && opcode == OutboundPulleyRequestOpcode)
-                {
-                    LastStatus = $"Forwarded live Guild Boss opcode {OutboundPulleyRequestOpcode} from {pair.ClientEndpoint} to {pair.RemoteEndpoint}.";
-                }
+                pair.ServerSession.SendPacket(packet.ToArray());
             }
             catch (Exception ex)
             {
-                ClearActivePair(pair, $"Guild boss official-session client handling failed: {ex.Message}");
+                ClearActivePair(pair, $"Massacre official-session client handling failed: {ex.Message}");
             }
         }
 
@@ -489,13 +448,36 @@ namespace HaCreator.MapSimulator.Managers
                 }
 
                 ReceivedCount = 0;
-                SentCount = 0;
             }
         }
 
         private static MapleCrypto CreateCrypto(byte[] iv, short version)
         {
             return new MapleCrypto((byte[])iv.Clone(), version);
+        }
+
+        internal static bool TryDecodeInboundMassacrePacket(byte[] rawPacket, string source, out MassacrePacketInboxMessage message)
+        {
+            message = null;
+            if (rawPacket == null || rawPacket.Length < sizeof(short))
+            {
+                return false;
+            }
+
+            int opcode = BitConverter.ToUInt16(rawPacket, 0);
+            if (opcode != PacketTypeIncGauge && opcode != PacketTypeResult)
+            {
+                return false;
+            }
+
+            byte[] payload = rawPacket.Skip(sizeof(short)).ToArray();
+            message = new MassacrePacketInboxMessage(
+                MassacrePacketInboxMessageKind.Packet,
+                source,
+                $"packetraw {Convert.ToHexString(rawPacket)}",
+                packetType: opcode,
+                payload: payload);
+            return true;
         }
 
         private static IEnumerable<TcpRowOwnerPid> EnumerateTcpRows()
@@ -577,7 +559,7 @@ namespace HaCreator.MapSimulator.Managers
             string normalized = NormalizeProcessSelector(selector);
             if (normalized.Length == 0)
             {
-                error = "Guild boss official-session discovery requires a process name or pid when a selector is provided.";
+                error = "Massacre official-session discovery requires a process name or pid when a selector is provided.";
                 return false;
             }
 
@@ -614,16 +596,16 @@ namespace HaCreator.MapSimulator.Managers
             IReadOnlyList<SessionDiscoveryCandidate> filteredCandidates = FilterCandidatesByLocalPort(candidates, localPort);
             if (filteredCandidates.Count == 0)
             {
-                status = $"Guild boss official-session discovery found no established TCP session for {DescribeDiscoveryScope(owningProcessId, owningProcessName, remotePort, localPort)}.";
+                status = $"Massacre official-session discovery found no established TCP session for {DescribeDiscoveryScope(owningProcessId, owningProcessName, remotePort, localPort)}.";
                 candidate = default;
                 return false;
             }
 
             if (filteredCandidates.Count > 1)
             {
-                string matches = string.Join(", ", filteredCandidates.Select(match =>
-                    $"{match.RemoteEndpoint.Address}:{match.RemoteEndpoint.Port} via {match.LocalEndpoint.Address}:{match.LocalEndpoint.Port}"));
-                status = $"Guild boss official-session discovery found multiple candidates for {DescribeDiscoveryScope(owningProcessId, owningProcessName, remotePort, localPort)}: {matches}. Use /guildboss session discover to inspect them, or add a localPort filter.";
+                string matches = string.Join(", ", filteredCandidates.Select(candidate =>
+                    $"{candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} via {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}"));
+                status = $"Massacre official-session discovery found multiple candidates for {DescribeDiscoveryScope(owningProcessId, owningProcessName, remotePort, localPort)}: {matches}. Use /massacre session discover to inspect them, or add a localPort filter.";
                 candidate = default;
                 return false;
             }
@@ -674,20 +656,6 @@ namespace HaCreator.MapSimulator.Managers
                 : $"{selectorLabel} on remote port {remotePort}";
         }
 
-        private static bool TryDecodeOpcode(byte[] rawPacket, out int opcode, out byte[] payload)
-        {
-            opcode = 0;
-            payload = Array.Empty<byte>();
-            if (rawPacket == null || rawPacket.Length < sizeof(short))
-            {
-                return false;
-            }
-
-            opcode = BitConverter.ToUInt16(rawPacket, 0);
-            payload = rawPacket.Skip(sizeof(short)).ToArray();
-            return true;
-        }
-
         [StructLayout(LayoutKind.Sequential)]
         private struct TcpRowOwnerPid
         {
@@ -703,16 +671,24 @@ namespace HaCreator.MapSimulator.Managers
 
         private enum TcpTableClass
         {
-            TcpTableOwnerPidAll = 5
+            TcpTableBasicListener,
+            TcpTableBasicConnections,
+            TcpTableBasicAll,
+            TcpTableOwnerPidListener,
+            TcpTableOwnerPidConnections,
+            TcpTableOwnerPidAll,
+            TcpTableOwnerModuleListener,
+            TcpTableOwnerModuleConnections,
+            TcpTableOwnerModuleAll
         }
 
         [DllImport("iphlpapi.dll", SetLastError = true)]
         private static extern int GetExtendedTcpTable(
             IntPtr pTcpTable,
-            ref int dwOutBufLen,
-            bool sort,
+            ref int pdwSize,
+            [MarshalAs(UnmanagedType.Bool)] bool sort,
             int ipVersion,
-            TcpTableClass tblClass,
-            int reserved);
+            TcpTableClass tableClass,
+            uint reserved);
     }
 }

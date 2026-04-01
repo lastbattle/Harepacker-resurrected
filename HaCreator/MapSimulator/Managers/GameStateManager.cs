@@ -70,15 +70,41 @@ namespace HaCreator.MapSimulator.Managers
         public bool PlayerControlEnabled { get; set; } = true;
 
         /// <summary>
-        /// True while scripted UI or field sequences should block player input without enabling free camera.
+        /// True while locally inferred scripted UI or field owners hold direction mode.
         /// </summary>
-        public bool DirectionModeActive { get; private set; } = false;
+        public bool ScriptedDirectionModeActive { get; private set; } = false;
 
         /// <summary>
-        /// Tick count when a delayed direction-mode release should occur.
+        /// Tick count when a delayed scripted direction-mode release should occur.
         /// int.MinValue means no delayed release is pending.
         /// </summary>
-        public int DirectionModeReleaseAt { get; private set; } = int.MinValue;
+        public int ScriptedDirectionModeReleaseAt { get; private set; } = int.MinValue;
+
+        /// <summary>
+        /// True while the packet-owned SetDirectionMode seam is holding direction mode directly.
+        /// </summary>
+        public bool PacketDirectionModeActive { get; private set; } = false;
+
+        /// <summary>
+        /// Tick count when a delayed packet-authored direction-mode release should occur.
+        /// int.MinValue means no delayed release is pending.
+        /// </summary>
+        public int PacketDirectionModeReleaseAt { get; private set; } = int.MinValue;
+
+        /// <summary>
+        /// Combined direction-mode state visible to the rest of the simulator.
+        /// </summary>
+        public bool DirectionModeActive => ScriptedDirectionModeActive || PacketDirectionModeActive;
+
+        /// <summary>
+        /// Backward-compatible alias for the locally inferred release timer.
+        /// </summary>
+        public int DirectionModeReleaseAt => ScriptedDirectionModeReleaseAt;
+
+        /// <summary>
+        /// Mirrors the packet-authored CWvsContext stand-alone flag.
+        /// </summary>
+        public bool StandAloneModeActive { get; private set; } = false;
 
         /// <summary>
         /// True when local gameplay input should reach the player character.
@@ -182,8 +208,11 @@ namespace HaCreator.MapSimulator.Managers
 
             // Reset camera/control state
             PlayerControlEnabled = true;
-            DirectionModeActive = false;
-            DirectionModeReleaseAt = int.MinValue;
+            ScriptedDirectionModeActive = false;
+            ScriptedDirectionModeReleaseAt = int.MinValue;
+            PacketDirectionModeActive = false;
+            PacketDirectionModeReleaseAt = int.MinValue;
+            StandAloneModeActive = false;
             UseSmoothCamera = true;
 
             // Reset UI/debug state
@@ -233,8 +262,8 @@ namespace HaCreator.MapSimulator.Managers
         /// </summary>
         public void EnterDirectionMode()
         {
-            DirectionModeActive = true;
-            DirectionModeReleaseAt = int.MinValue;
+            ScriptedDirectionModeActive = true;
+            ScriptedDirectionModeReleaseAt = int.MinValue;
         }
 
         /// <summary>
@@ -242,13 +271,13 @@ namespace HaCreator.MapSimulator.Managers
         /// </summary>
         public void RequestLeaveDirectionMode(int currentTickCount, int delayMs)
         {
-            if (!DirectionModeActive)
+            if (!ScriptedDirectionModeActive)
             {
-                DirectionModeReleaseAt = int.MinValue;
+                ScriptedDirectionModeReleaseAt = int.MinValue;
                 return;
             }
 
-            DirectionModeReleaseAt = currentTickCount + Math.Max(0, delayMs);
+            ScriptedDirectionModeReleaseAt = currentTickCount + Math.Max(0, delayMs);
         }
 
         /// <summary>
@@ -256,8 +285,32 @@ namespace HaCreator.MapSimulator.Managers
         /// </summary>
         public void ExitDirectionModeImmediate()
         {
-            DirectionModeActive = false;
-            DirectionModeReleaseAt = int.MinValue;
+            ScriptedDirectionModeActive = false;
+            ScriptedDirectionModeReleaseAt = int.MinValue;
+        }
+
+        /// <summary>
+        /// Apply the client-shaped packet-owned direction-mode write.
+        /// </summary>
+        public void SetPacketDirectionMode(bool enabled, int currentTickCount, int delayMs)
+        {
+            PacketDirectionModeReleaseAt = int.MinValue;
+
+            if (enabled || delayMs <= 0)
+            {
+                PacketDirectionModeActive = enabled;
+                return;
+            }
+
+            PacketDirectionModeReleaseAt = currentTickCount + Math.Max(0, delayMs);
+        }
+
+        /// <summary>
+        /// Apply the packet-authored CWvsContext stand-alone flag.
+        /// </summary>
+        public void SetStandAloneMode(bool enabled)
+        {
+            StandAloneModeActive = enabled;
         }
 
         /// <summary>
@@ -265,12 +318,19 @@ namespace HaCreator.MapSimulator.Managers
         /// </summary>
         public void UpdateDirectionMode(int currentTickCount)
         {
-            if (!DirectionModeActive || DirectionModeReleaseAt == int.MinValue)
+            if (PacketDirectionModeReleaseAt != int.MinValue
+                && unchecked(currentTickCount - PacketDirectionModeReleaseAt) >= 0)
+            {
+                PacketDirectionModeActive = false;
+                PacketDirectionModeReleaseAt = int.MinValue;
+            }
+
+            if (!ScriptedDirectionModeActive || ScriptedDirectionModeReleaseAt == int.MinValue)
             {
                 return;
             }
 
-            if (unchecked(currentTickCount - DirectionModeReleaseAt) >= 0)
+            if (unchecked(currentTickCount - ScriptedDirectionModeReleaseAt) >= 0)
             {
                 ExitDirectionModeImmediate();
             }

@@ -169,6 +169,7 @@ namespace HaCreator.MapSimulator.Interaction
                     RenewalCost = skill.GetGuildRenewalCost(Math.Max(1, skill.CurrentLevel)),
                     DurationMinutes = skill.GetGuildDurationMinutes(Math.Max(1, skill.CurrentLevel)),
                     RemainingDurationMinutes = GetRemainingDurationMinutes(skill),
+                    GuildPriceUnit = Math.Max(1, skill.GuildPriceUnit),
                     IconTexture = skill.IconTexture,
                     DisabledIconTexture = skill.IconDisabledTexture,
                     IsRecommended = _isInGuild && skill.SkillId == _recommendedSkillId,
@@ -654,6 +655,7 @@ namespace HaCreator.MapSimulator.Interaction
         public int RenewalCost { get; init; }
         public int DurationMinutes { get; init; }
         public int RemainingDurationMinutes { get; init; }
+        public int GuildPriceUnit { get; init; } = 1;
         public Microsoft.Xna.Framework.Graphics.Texture2D IconTexture { get; init; }
         public Microsoft.Xna.Framework.Graphics.Texture2D DisabledIconTexture { get; init; }
         public bool IsRecommended { get; init; }

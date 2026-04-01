@@ -84,6 +84,15 @@ namespace HaCreator.MapSimulator.UI
         private const int CHECKBOX_X = 161;
         private const int CHECKBOX_Y = 235;
         private const int CHECKBOX_SIZE = 15;
+
+        // `CUIMacroSysEx::OnCreate` loads the change-name button tooltip from
+        // StringPool 0x1108 and `OnButtonClicked` shows StringPool 0x0D01 after saving.
+        // The exact localized client payload is still unresolved in the simulator, so
+        // keep the fallback text scoped to this owner seam.
+        private const int CHANGE_NAME_TOOLTIP_STRING_POOL_ID = 0x1108;
+        private const int SAVE_NOTICE_STRING_POOL_ID = 0x0D01;
+        private const string CHANGE_NAME_TOOLTIP_FALLBACK = "Save the selected macro.";
+        private const string SAVE_NOTICE_FALLBACK = "The selected macro has been saved.";
         #endregion
 
         #region Fields
@@ -119,6 +128,8 @@ namespace HaCreator.MapSimulator.UI
         private Texture2D _selectedSlotTexture;
         private Texture2D _textPixelTexture;
         private Texture2D[] _macroSlotIcons;
+        private Texture2D[] _macroSlotDisabledIcons;
+        private Texture2D[] _macroSlotMouseOverIcons;
         private Texture2D _foregroundTexture;
         private Point _foregroundOffset;
         private Texture2D _contentTexture;
@@ -128,6 +139,8 @@ namespace HaCreator.MapSimulator.UI
         // Checkbox state
         private bool _notifyPartyMembers = false;
         private string _validationMessage = string.Empty;
+        private string _ownerNoticeMessage = string.Empty;
+        private Color _ownerNoticeColor = Color.White;
         private int _editingCursorPosition;
         private int _caretBlinkTick;
         private string _compositionText = string.Empty;
@@ -382,12 +395,15 @@ namespace HaCreator.MapSimulator.UI
         /// <summary>
         /// Set the macro slot icon textures (5 icons for the 5 macro slots)
         /// </summary>
-        public void SetMacroSlotIcons(Texture2D[] icons)
+        public void SetMacroSlotIcons(Texture2D[] icons, Texture2D[] disabledIcons = null, Texture2D[] mouseOverIcons = null)
         {
             if (icons != null)
             {
                 _macroSlotIcons = icons;
             }
+
+            _macroSlotDisabledIcons = disabledIcons;
+            _macroSlotMouseOverIcons = mouseOverIcons;
         }
 
         internal void SetOwnerChrome(Texture2D foregroundTexture, Point foregroundOffset, Texture2D contentTexture, Point contentOffset, Texture2D checkboxTexture)
@@ -415,6 +431,7 @@ namespace HaCreator.MapSimulator.UI
             _editingMacroName = string.Empty;
             _notifyPartyMembers = false;
             _validationMessage = string.Empty;
+            ClearOwnerNotice();
             _editingCursorPosition = 0;
             _caretBlinkTick = Environment.TickCount;
             ClearCompositionText();
@@ -536,17 +553,15 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
 
-            DrawMacroIcon(sprite, macroIndex, new Point(windowX + MACRO_ICON_X, slotY), isSelected ? Color.White : new Color(255, 255, 255, 220));
+            DrawMacroIcon(sprite, macroIndex, new Point(windowX + MACRO_ICON_X, slotY), isHovered, macro.IsEnabled, isSelected ? Color.White : new Color(255, 255, 255, 220));
         }
 
-        private void DrawMacroIcon(SpriteBatch sprite, int macroIndex, Point position, Color color)
+        private void DrawMacroIcon(SpriteBatch sprite, int macroIndex, Point position, bool hovered, bool enabled, Color color)
         {
-            if (_macroSlotIcons != null
-                && macroIndex >= 0
-                && macroIndex < _macroSlotIcons.Length
-                && _macroSlotIcons[macroIndex] != null)
+            Texture2D iconTexture = ResolveMacroIconTexture(macroIndex, hovered, enabled);
+            if (iconTexture != null)
             {
-                sprite.Draw(_macroSlotIcons[macroIndex], new Vector2(position.X, position.Y), color);
+                sprite.Draw(iconTexture, new Vector2(position.X, position.Y), color);
                 return;
             }
 
@@ -620,7 +635,10 @@ namespace HaCreator.MapSimulator.UI
                     Color.White);
             }
 
-            DrawMacroIcon(sprite, _editingMacroIndex, new Point(windowX + SELECTED_MACRO_ICON_X, windowY + SELECTED_MACRO_ICON_Y), Color.White);
+            bool selectedMacroEnabled = _editingMacroIndex >= 0
+                && _editingMacroIndex < MAX_MACRO_SLOTS
+                && _macros[_editingMacroIndex].IsEnabled;
+            DrawMacroIcon(sprite, _editingMacroIndex, new Point(windowX + SELECTED_MACRO_ICON_X, windowY + SELECTED_MACRO_ICON_Y), false, selectedMacroEnabled, Color.White);
 
             if (!string.IsNullOrWhiteSpace(_validationMessage))
             {
@@ -628,6 +646,45 @@ namespace HaCreator.MapSimulator.UI
                     new Vector2(fieldX, fieldY - _font.LineSpacing - 2),
                     Color.IndianRed);
             }
+            else if (!string.IsNullOrWhiteSpace(_ownerNoticeMessage))
+            {
+                sprite.DrawString(_font, _ownerNoticeMessage,
+                    new Vector2(fieldX, fieldY - _font.LineSpacing - 2),
+                    _ownerNoticeColor);
+            }
+        }
+
+        private Texture2D ResolveMacroIconTexture(int macroIndex, bool hovered, bool enabled)
+        {
+            if (macroIndex < 0)
+            {
+                return null;
+            }
+
+            if (!enabled
+                && _macroSlotDisabledIcons != null
+                && macroIndex < _macroSlotDisabledIcons.Length
+                && _macroSlotDisabledIcons[macroIndex] != null)
+            {
+                return _macroSlotDisabledIcons[macroIndex];
+            }
+
+            if (hovered
+                && _macroSlotMouseOverIcons != null
+                && macroIndex < _macroSlotMouseOverIcons.Length
+                && _macroSlotMouseOverIcons[macroIndex] != null)
+            {
+                return _macroSlotMouseOverIcons[macroIndex];
+            }
+
+            if (_macroSlotIcons != null
+                && macroIndex < _macroSlotIcons.Length
+                && _macroSlotIcons[macroIndex] != null)
+            {
+                return _macroSlotIcons[macroIndex];
+            }
+
+            return null;
         }
 
         private void DrawSoftKeyboard(SpriteBatch sprite)
@@ -886,6 +943,7 @@ namespace HaCreator.MapSimulator.UI
             _editingCursorPosition = _editingMacroName.Length;
             _notifyPartyMembers = _macros[index].NotifyParty;
             _validationMessage = string.Empty;
+            ClearOwnerNotice();
             _caretBlinkTick = Environment.TickCount;
             ClearCompositionText();
 
@@ -923,6 +981,9 @@ namespace HaCreator.MapSimulator.UI
 
             OnMacroSaved?.Invoke(_editingMacroIndex, _macros[_editingMacroIndex]);
             _validationMessage = string.Empty;
+            SetOwnerNotice(
+                $"{SAVE_NOTICE_FALLBACK} (StringPool 0x{SAVE_NOTICE_STRING_POOL_ID:X3} fallback)",
+                new Color(216, 226, 183));
             UpdateOwnerButtonState();
             return true;
         }
@@ -1102,6 +1163,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             ClearCompositionText();
+            ClearOwnerNotice();
             _editingMacroName = updatedText;
             _editingCursorPosition = updatedCaretIndex;
             _validationMessage = string.Empty;
@@ -1116,6 +1178,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             ClearCompositionText();
+            ClearOwnerNotice();
             _editingMacroName = updatedText;
             _editingCursorPosition = updatedCaretIndex;
             _validationMessage = string.Empty;
@@ -1133,6 +1196,7 @@ namespace HaCreator.MapSimulator.UI
             _macros[_selectedMacroIndex] = CreateDefaultMacro(_selectedMacroIndex);
             OnMacroDeleted?.Invoke(_selectedMacroIndex);
             LoadMacroForEditing(_selectedMacroIndex);
+            ClearOwnerNotice();
         }
 
         /// <summary>
@@ -1151,6 +1215,7 @@ namespace HaCreator.MapSimulator.UI
             if (macroIndex == _editingMacroIndex)
             {
                 _editingSkillIds[skillSlot] = skillId;
+                ClearOwnerNotice();
             }
         }
 
@@ -1348,15 +1413,17 @@ namespace HaCreator.MapSimulator.UI
                 if (leftButton && IsPointInNameField(mouseX, mouseY))
                 {
                     ClearCompositionText();
+                    ClearOwnerNotice();
                     _editingCursorPosition = ResolveNameCursorFromMouse(mouseX);
                     _caretBlinkTick = Environment.TickCount;
                     ShowSoftKeyboard(resetDismissedState: true);
                 }
 
                 // Check checkbox
-                if (IsPointInCheckbox(mouseX, mouseY) && leftButton)
+                if (_editingMacroIndex >= 0 && IsPointInCheckbox(mouseX, mouseY) && leftButton)
                 {
                     _notifyPartyMembers = !_notifyPartyMembers;
+                    ClearOwnerNotice();
                 }
                 return;
             }
@@ -1456,6 +1523,11 @@ namespace HaCreator.MapSimulator.UI
 
         private bool IsPointInCheckbox(int mouseX, int mouseY)
         {
+            if (_editingMacroIndex < 0)
+            {
+                return false;
+            }
+
             int checkX = Position.X + CHECKBOX_X;
             int checkY = Position.Y + CHECKBOX_Y;
 
@@ -1693,6 +1765,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             ClearCompositionText();
+            ClearOwnerNotice();
             if (SkillMacroNameRules.TryInsertBestEffort(_editingMacroName, _editingCursorPosition, text, out string updatedText, out int insertedLength, out string error))
             {
                 _editingMacroName = updatedText;
@@ -1745,6 +1818,7 @@ namespace HaCreator.MapSimulator.UI
             _compositionClauseOffsets = ClampClauseOffsets(effectiveState.ClauseOffsets, preview.Length);
             _compositionCursorPosition = Math.Clamp(effectiveState.CursorPosition, -1, preview.Length);
             _validationMessage = string.Empty;
+            ClearOwnerNotice();
             _caretBlinkTick = Environment.TickCount;
         }
 
@@ -1791,6 +1865,7 @@ namespace HaCreator.MapSimulator.UI
             if (keyboardState.IsKeyDown(Keys.Left) && _previousKeyboardState.IsKeyUp(Keys.Left))
             {
                 ClearCompositionText();
+                ClearOwnerNotice();
                 _editingCursorPosition = SkillMacroNameRules.GetPreviousCaretStop(_editingMacroName, _editingCursorPosition);
                 _caretBlinkTick = Environment.TickCount;
             }
@@ -1798,6 +1873,7 @@ namespace HaCreator.MapSimulator.UI
             if (keyboardState.IsKeyDown(Keys.Right) && _previousKeyboardState.IsKeyUp(Keys.Right))
             {
                 ClearCompositionText();
+                ClearOwnerNotice();
                 _editingCursorPosition = SkillMacroNameRules.GetNextCaretStop(_editingMacroName, _editingCursorPosition);
                 _caretBlinkTick = Environment.TickCount;
             }
@@ -1805,6 +1881,7 @@ namespace HaCreator.MapSimulator.UI
             if (keyboardState.IsKeyDown(Keys.Home) && _previousKeyboardState.IsKeyUp(Keys.Home))
             {
                 ClearCompositionText();
+                ClearOwnerNotice();
                 _editingCursorPosition = 0;
                 _caretBlinkTick = Environment.TickCount;
             }
@@ -1812,6 +1889,7 @@ namespace HaCreator.MapSimulator.UI
             if (keyboardState.IsKeyDown(Keys.End) && _previousKeyboardState.IsKeyUp(Keys.End))
             {
                 ClearCompositionText();
+                ClearOwnerNotice();
                 _editingCursorPosition = _editingMacroName.Length;
                 _validationMessage = string.Empty;
                 _caretBlinkTick = Environment.TickCount;
@@ -1852,6 +1930,7 @@ namespace HaCreator.MapSimulator.UI
                 string normalizedClipboardText = clipboardText.Replace("\r", string.Empty).Replace("\n", string.Empty);
 
                 ClearCompositionText();
+                ClearOwnerNotice();
                 if (SkillMacroNameRules.TryInsertBestEffort(_editingMacroName, _editingCursorPosition, normalizedClipboardText, out string updatedText, out int insertedLength, out string error))
                 {
                     _editingMacroName = updatedText;
@@ -1868,6 +1947,18 @@ namespace HaCreator.MapSimulator.UI
             {
                 _validationMessage = "Clipboard paste is not available right now.";
             }
+        }
+
+        private void SetOwnerNotice(string message, Color color)
+        {
+            _ownerNoticeMessage = message ?? string.Empty;
+            _ownerNoticeColor = color;
+        }
+
+        private void ClearOwnerNotice()
+        {
+            _ownerNoticeMessage = string.Empty;
+            _ownerNoticeColor = Color.White;
         }
 
         private static string SanitizeCompositionText(string text)

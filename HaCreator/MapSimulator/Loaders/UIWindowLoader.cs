@@ -550,7 +550,11 @@ namespace HaCreator.MapSimulator.Loaders
             int screenWidth,
             int screenHeight)
         {
-            if (manager == null || manager.GetWindow(MapSimulatorWindowNames.LoginCreateCharacter) != null)
+            if (manager == null
+                || manager.GetWindow(MapSimulatorWindowNames.LoginCreateCharacterRaceSelect) != null
+                || manager.GetWindow(MapSimulatorWindowNames.LoginCreateCharacterJobSelect) != null
+                || manager.GetWindow(MapSimulatorWindowNames.LoginCreateCharacterAvatarSelect) != null
+                || manager.GetWindow(MapSimulatorWindowNames.LoginCreateCharacterNameSelect) != null)
             {
                 return;
             }
@@ -593,25 +597,73 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
 
-            LoginCreateCharacterWindow window = new LoginCreateCharacterWindow(
-                new DXObject(0, 0, frameTexture, 0),
-                stageTexturesByRace,
-                LoadIndexedCanvasTextureList(newCharProperty?["jobSelect"] as WzSubProperty, device),
-                avatarEnabledTexturesByRace,
-                avatarDisabledTexturesByRace,
-                racePreviewTexturesByRace,
-                LoadCharacterSelectAnimationFrames(newCharProperty?["dice"] as WzSubProperty, device),
-                LoadCanvasTexture(newCharProperty?["BtLeft"]?["normal"] as WzSubProperty, "0", device),
-                LoadCanvasTexture(newCharProperty?["BtRight"]?["normal"] as WzSubProperty, "0", device),
-                LoadButton(newCharProperty, "BtYes", btClickSound, btOverSound, device),
-                LoadButton(newCharProperty, "BtNo", btClickSound, btOverSound, device),
-                LoadButton(newCharProperty, "BtCheck", btClickSound, btOverSound, device))
+            IReadOnlyList<Texture2D> jobTextures = LoadIndexedCanvasTextureList(newCharProperty?["jobSelect"] as WzSubProperty, device);
+            IReadOnlyList<CharacterSelectWindow.AnimationFrame> diceFrames = LoadCharacterSelectAnimationFrames(newCharProperty?["dice"] as WzSubProperty, device);
+            Texture2D leftArrowTexture = LoadCanvasTexture(newCharProperty?["BtLeft"]?["normal"] as WzSubProperty, "0", device);
+            Texture2D rightArrowTexture = LoadCanvasTexture(newCharProperty?["BtRight"]?["normal"] as WzSubProperty, "0", device);
+            Point windowPosition = new(Math.Max(0, (screenWidth / 2) - 400), Math.Max(0, (screenHeight / 2) - 300));
+
+            LoginCreateCharacterWindowBase[] windows =
             {
-                Position = new Point(Math.Max(0, (screenWidth / 2) - 400), Math.Max(0, (screenHeight / 2) - 300))
+                new LoginCreateCharacterRaceSelectWindow(
+                    new DXObject(0, 0, frameTexture, 0),
+                    stageTexturesByRace,
+                    jobTextures,
+                    avatarEnabledTexturesByRace,
+                    avatarDisabledTexturesByRace,
+                    racePreviewTexturesByRace,
+                    diceFrames,
+                    leftArrowTexture,
+                    rightArrowTexture,
+                    LoadButton(newCharProperty, "BtYes", btClickSound, btOverSound, device),
+                    LoadButton(newCharProperty, "BtNo", btClickSound, btOverSound, device),
+                    LoadButton(newCharProperty, "BtCheck", btClickSound, btOverSound, device)),
+                new LoginCreateCharacterJobSelectWindow(
+                    new DXObject(0, 0, frameTexture, 0),
+                    stageTexturesByRace,
+                    jobTextures,
+                    avatarEnabledTexturesByRace,
+                    avatarDisabledTexturesByRace,
+                    racePreviewTexturesByRace,
+                    diceFrames,
+                    leftArrowTexture,
+                    rightArrowTexture,
+                    LoadButton(newCharProperty, "BtYes", btClickSound, btOverSound, device),
+                    LoadButton(newCharProperty, "BtNo", btClickSound, btOverSound, device),
+                    LoadButton(newCharProperty, "BtCheck", btClickSound, btOverSound, device)),
+                new LoginCreateCharacterAvatarSelectWindow(
+                    new DXObject(0, 0, frameTexture, 0),
+                    stageTexturesByRace,
+                    jobTextures,
+                    avatarEnabledTexturesByRace,
+                    avatarDisabledTexturesByRace,
+                    racePreviewTexturesByRace,
+                    diceFrames,
+                    leftArrowTexture,
+                    rightArrowTexture,
+                    LoadButton(newCharProperty, "BtYes", btClickSound, btOverSound, device),
+                    LoadButton(newCharProperty, "BtNo", btClickSound, btOverSound, device),
+                    LoadButton(newCharProperty, "BtCheck", btClickSound, btOverSound, device)),
+                new LoginCreateCharacterNameSelectWindow(
+                    new DXObject(0, 0, frameTexture, 0),
+                    stageTexturesByRace,
+                    jobTextures,
+                    avatarEnabledTexturesByRace,
+                    avatarDisabledTexturesByRace,
+                    racePreviewTexturesByRace,
+                    diceFrames,
+                    leftArrowTexture,
+                    rightArrowTexture,
+                    LoadButton(newCharProperty, "BtYes", btClickSound, btOverSound, device),
+                    LoadButton(newCharProperty, "BtNo", btClickSound, btOverSound, device),
+                    LoadButton(newCharProperty, "BtCheck", btClickSound, btOverSound, device))
             };
 
-
-            manager.RegisterCustomWindow(window);
+            foreach (LoginCreateCharacterWindowBase window in windows)
+            {
+                window.Position = windowPosition;
+                manager.RegisterCustomWindow(window);
+            }
 
         }
 
@@ -1445,7 +1497,11 @@ namespace HaCreator.MapSimulator.Loaders
                     return "Family chart opened from the profile window.";
                 };
 
-                characterInfo.BookCollectionRequested = () => manager.ShowWindow(MapSimulatorWindowNames.BookCollection);
+                characterInfo.BookCollectionRequested = _ =>
+                {
+                    manager.ShowWindow(MapSimulatorWindowNames.BookCollection);
+                    return "Collection book opened.";
+                };
 
             }
 
@@ -2447,7 +2503,7 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
 
-            UIWindowBase memoMailboxWindow = CreateMemoMailboxWindow(uiWindow1Image, basicImage, soundUIImage, device, position);
+            UIWindowBase memoMailboxWindow = CreateMemoMailboxWindow(uiWindow2Image, basicImage, soundUIImage, device, position);
 
             manager.RegisterCustomWindow(memoMailboxWindow);
 
@@ -3514,15 +3570,14 @@ namespace HaCreator.MapSimulator.Loaders
 
 
         private static UIWindowBase CreateMemoMailboxWindow(
-            WzImage uiWindow1Image,
+            WzImage uiWindow2Image,
             WzImage basicImage,
             WzImage soundUIImage,
             GraphicsDevice device,
             Point position)
         {
-            WzSubProperty memoProperty = uiWindow1Image?["Memo"] as WzSubProperty;
-            WzCanvasProperty background = memoProperty?["backgrnd"] as WzCanvasProperty;
-            Texture2D frameTexture = background?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device);
+            WzSubProperty deliveryProperty = uiWindow2Image?["Delivery"] as WzSubProperty;
+            Texture2D frameTexture = LoadCanvasTexture(deliveryProperty, "backgrnd", device);
             if (frameTexture == null)
             {
                 return CreatePlaceholderUtilityWindow(
@@ -3530,20 +3585,45 @@ namespace HaCreator.MapSimulator.Loaders
                     soundUIImage,
                     device,
                     MapSimulatorWindowNames.MemoMailbox,
-                    "Memo",
-                    "Fallback owner for the simulator memo inbox and mailbox flow.",
+                    "Parcel Delivery",
+                    "Fallback owner for the simulator parcel receive/send/quick-send flow.",
                     position);
             }
 
 
+            WzSubProperty memoProperty = uiWindow2Image?["Memo"] as WzSubProperty;
             Texture2D unreadTexture = LoadCanvasTexture(memoProperty, "check0", device);
             Texture2D readTexture = LoadCanvasTexture(memoProperty, "check1", device);
+            WzSubProperty tabEnabledProperty = deliveryProperty?["Tab"]?["enabled"] as WzSubProperty;
+            WzSubProperty tabDisabledProperty = deliveryProperty?["Tab"]?["disabled"] as WzSubProperty;
             MemoMailboxWindow window = new MemoMailboxWindow(
                 new DXObject(0, 0, frameTexture, 0),
                 MapSimulatorWindowNames.MemoMailbox,
                 device,
                 unreadTexture,
-                readTexture)
+                readTexture,
+                new[]
+                {
+                    LoadCanvasTexture(tabEnabledProperty, "0", device),
+                    LoadCanvasTexture(tabEnabledProperty, "1", device),
+                    LoadCanvasTexture(tabEnabledProperty, "2", device)
+                },
+                new[]
+                {
+                    LoadCanvasTexture(tabDisabledProperty, "0", device),
+                    LoadCanvasTexture(tabDisabledProperty, "1", device),
+                    LoadCanvasTexture(tabDisabledProperty, "2", device)
+                },
+                LoadWindowCanvasLayerWithOffset(deliveryProperty?["Keep"] as WzSubProperty, "base", device, out Point receiveBaseOffset),
+                receiveBaseOffset,
+                LoadWindowCanvasLayerWithOffset(deliveryProperty?["Keep"] as WzSubProperty, "text", device, out Point receiveTextOffset),
+                receiveTextOffset,
+                LoadWindowCanvasLayerWithOffset(deliveryProperty?["Send"] as WzSubProperty, "base", device, out Point sendBaseOffset),
+                sendBaseOffset,
+                LoadWindowCanvasLayerWithOffset(deliveryProperty?["Quick"] as WzSubProperty, "base", device, out Point quickBaseOffset),
+                quickBaseOffset,
+                LoadWindowCanvasLayerWithOffset(deliveryProperty?["Quick"] as WzSubProperty, "text", device, out Point quickTextOffset),
+                quickTextOffset)
             {
                 Position = position
             };
@@ -3551,10 +3631,22 @@ namespace HaCreator.MapSimulator.Loaders
 
             WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
             WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
-            window.InitializeButtons(
-                LoadButton(memoProperty, "BtSave", btClickSound, btOverSound, device),
-                LoadButton(memoProperty, "BtDelete", btClickSound, btOverSound, device),
-                LoadButton(memoProperty, "BtOpen", btClickSound, btOverSound, device));
+            WzSubProperty receiveProperty = deliveryProperty?["Keep"] as WzSubProperty;
+            WzSubProperty sendProperty = deliveryProperty?["Send"] as WzSubProperty;
+            WzSubProperty quickProperty = deliveryProperty?["Quick"] as WzSubProperty;
+            window.InitializeReceiveButtons(
+                LoadButton(receiveProperty, "BtGet", btClickSound, btOverSound, device),
+                LoadButton(receiveProperty, "BtDelete", btClickSound, btOverSound, device));
+            window.InitializeSendButtons(
+                LoadButton(sendProperty, "BtSend", btClickSound, btOverSound, device),
+                LoadButton(sendProperty, "BtMeso", btClickSound, btOverSound, device),
+                LoadButton(sendProperty, "BtOpen", btClickSound, btOverSound, device),
+                LoadButton(sendProperty, "BtClose", btClickSound, btOverSound, device));
+            window.InitializeQuickButtons(
+                LoadButton(quickProperty, "BtSend", btClickSound, btOverSound, device),
+                LoadButton(quickProperty, "BtMeso", btClickSound, btOverSound, device),
+                LoadButton(quickProperty, "BtOpen", btClickSound, btOverSound, device),
+                LoadButton(quickProperty, "BtClose", btClickSound, btOverSound, device));
 
 
             WzSubProperty closeButtonProperty = basicImage?["BtClose"] as WzSubProperty;
@@ -3654,14 +3746,15 @@ namespace HaCreator.MapSimulator.Loaders
             GraphicsDevice device,
             Point position)
         {
-            WzSubProperty memoProperty = uiWindow2Image?["Memo"]?["Get"] as WzSubProperty;
-            if (memoProperty == null)
+            WzSubProperty deliveryInfoProperty = uiWindow2Image?["Delivery"]?["Keep_Info"] as WzSubProperty;
+            WzSubProperty deliveryKeepProperty = uiWindow2Image?["Delivery"]?["Keep"] as WzSubProperty;
+            if (deliveryInfoProperty == null || deliveryKeepProperty == null)
             {
                 return null;
             }
 
 
-            Texture2D frameTexture = LoadCanvasTexture(memoProperty, "backgrnd", device);
+            Texture2D frameTexture = LoadCanvasTexture(deliveryInfoProperty, "backgrnd", device);
             if (frameTexture == null)
             {
                 return null;
@@ -3670,31 +3763,24 @@ namespace HaCreator.MapSimulator.Loaders
 
             WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
             WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
-            WzSubProperty sheetProperty = memoProperty["sheet"] as WzSubProperty;
-            IDXObject sheetLayer = LoadWindowCanvasLayerWithOffset(sheetProperty, "innerCenter", device, out Point sheetOffset)
-                ?? LoadWindowCanvasLayerWithOffset(sheetProperty, "innerTop", device, out sheetOffset);
-
-
             MemoGetWindow window = new MemoGetWindow(
                 new DXObject(0, 0, frameTexture, 0),
-                LoadWindowCanvasLayerWithOffset(memoProperty, "backgrnd2", device, out Point overlayOffset),
+                LoadWindowCanvasLayerWithOffset(deliveryInfoProperty, "backgrnd2", device, out Point overlayOffset),
                 overlayOffset,
-                LoadWindowCanvasLayerWithOffset(memoProperty, "backgrnd3", device, out Point headerOffset),
+                LoadWindowCanvasLayerWithOffset(deliveryInfoProperty, "backgrnd3", device, out Point headerOffset),
                 headerOffset,
-                sheetLayer,
-                sheetOffset,
-                LoadWindowCanvasLayerWithOffset(memoProperty, "line", device, out Point lineOffset),
-                lineOffset)
+                null,
+                Point.Zero,
+                null,
+                Point.Zero)
             {
                 Position = position
             };
 
 
             window.InitializeControls(
-
-                LoadButton(memoProperty, "BtOK", btClickSound, btOverSound, device),
-
-                LoadButton(memoProperty, "BtClame", btClickSound, btOverSound, device));
+                LoadButton(deliveryKeepProperty, "BtDelete", btClickSound, btOverSound, device),
+                LoadButton(deliveryKeepProperty, "BtGet", btClickSound, btOverSound, device));
 
 
 
@@ -4773,7 +4859,8 @@ namespace HaCreator.MapSimulator.Loaders
 
             EngagementProposalWindow window = new(
                 new EngagementProposalWindowAssets(
-                    LoadCanvasTexture(sourceProperty, "title", device),
+                    LoadCanvasTexture(sourceProperty, "text", device)
+                    ?? LoadCanvasTexture(sourceProperty, "title", device),
                     LoadEngagementProposalBand(sourceProperty["top"] as WzSubProperty, device, 35),
                     LoadEngagementProposalBand(sourceProperty["center"] as WzSubProperty, device, 5),
                     LoadEngagementProposalBand(sourceProperty["bottom"] as WzSubProperty, device, 35)),
@@ -6420,18 +6507,26 @@ namespace HaCreator.MapSimulator.Loaders
             for (int i = 0; i < starterEquipIds.Length; i++)
             {
                 int itemId = starterEquipIds[i];
-                if (inventory.GetItemCount(InventoryType.EQUIP, itemId) > 0)
+                bool isCashItem = InventoryItemMetadataResolver.TryResolveTradeRestrictionFlags(
+                    itemId,
+                    out bool resolvedCashItem,
+                    out _,
+                    out _)
+                    && resolvedCashItem;
+                InventoryType inventoryType = isCashItem ? InventoryType.CASH : InventoryType.EQUIP;
+                if (inventory.GetItemCount(inventoryType, itemId) > 0)
                 {
                     continue;
                 }
 
 
-                inventory.AddItem(InventoryType.EQUIP, new InventorySlotData
+                inventory.AddItem(inventoryType, new InventorySlotData
                 {
                     ItemId = itemId,
                     ItemTexture = LoadSeedInventoryItemIcon(itemId, device),
                     Quantity = 1,
                     MaxStackSize = 1,
+                    PreferredInventoryType = inventoryType,
                     GradeFrameIndex = 0
                 });
             }

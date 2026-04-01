@@ -18,6 +18,7 @@ namespace HaCreator.MapSimulator.UI
     public sealed class MonsterBookCardSnapshot
     {
         public int CardItemId { get; init; }
+        public string CardItemName { get; init; } = string.Empty;
         public int MobId { get; init; }
         public int GradeIndex { get; init; }
         public string GradeLabel { get; init; } = string.Empty;

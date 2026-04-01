@@ -139,6 +139,54 @@ namespace HaCreator.MapSimulator.Interaction
             return TrySendPrimaryAction(out response, out message);
         }
 
+        internal bool TryBuildWeddingInvitationHandoff(
+            CharacterBuild localBuild,
+            WeddingInvitationStyle style,
+            out WeddingInvitationHandoff handoff,
+            out string message)
+        {
+            if (_acceptedProposal == null)
+            {
+                handoff = null;
+                message = "Accept an incoming engagement proposal before opening the downstream wedding invitation owner.";
+                return false;
+            }
+
+            string localName = NormalizeName(localBuild?.Name, _localCharacterName);
+            bool localIsBride = localBuild?.Gender == CharacterGender.Female;
+            bool localIsGroom = localBuild?.Gender == CharacterGender.Male;
+            string proposerName = NormalizeName(_acceptedProposal.ProposerName, DefaultPlayerName);
+            string partnerName = NormalizeName(_acceptedProposal.PartnerName, DefaultPartnerName);
+
+            string groomName;
+            string brideName;
+            if (localIsBride)
+            {
+                brideName = NamesMatch(localName, proposerName) ? proposerName : partnerName;
+                groomName = NamesMatch(brideName, proposerName) ? partnerName : proposerName;
+            }
+            else if (localIsGroom)
+            {
+                groomName = NamesMatch(localName, proposerName) ? proposerName : partnerName;
+                brideName = NamesMatch(groomName, proposerName) ? partnerName : proposerName;
+            }
+            else
+            {
+                groomName = proposerName;
+                brideName = partnerName;
+            }
+
+            handoff = new WeddingInvitationHandoff
+            {
+                GroomName = groomName,
+                BrideName = brideName,
+                Style = style,
+                Proposal = _acceptedProposal
+            };
+            message = $"Prepared wedding invitation handoff for {handoff.GroomName} and {handoff.BrideName} from the accepted engagement proposal snapshot.";
+            return true;
+        }
+
         internal string Dismiss()
         {
             if (!_isOpen)
@@ -322,6 +370,14 @@ namespace HaCreator.MapSimulator.Interaction
                 : DefaultPlayerName;
         }
 
+        private static bool NamesMatch(string left, string right)
+        {
+            return string.Equals(
+                left?.Trim(),
+                right?.Trim(),
+                StringComparison.OrdinalIgnoreCase);
+        }
+
         private static string FormatPayload(IReadOnlyList<byte> payload)
         {
             if (payload == null || payload.Count == 0)
@@ -371,5 +427,13 @@ namespace HaCreator.MapSimulator.Interaction
         public string PartnerName { get; init; } = string.Empty;
         public string RingItemName { get; init; } = string.Empty;
         public string SealItemName { get; init; } = string.Empty;
+    }
+
+    internal sealed class WeddingInvitationHandoff
+    {
+        public string GroomName { get; init; } = string.Empty;
+        public string BrideName { get; init; } = string.Empty;
+        public WeddingInvitationStyle Style { get; init; }
+        public EngagementProposalAcceptedSnapshot Proposal { get; init; }
     }
 }

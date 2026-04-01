@@ -12,6 +12,14 @@ namespace HaCreator.MapSimulator.UI
 {
     public sealed class AdminShopWishListUI : UIWindowBase
     {
+        private sealed class CategoryDisplayRow
+        {
+            public AdminShopDialogUI.WishlistCategoryNode Node { get; init; }
+            public int Depth { get; init; }
+            public bool IsExpanded { get; init; }
+            public bool HasChildren => Node?.Children?.Count > 0;
+        }
+
         private enum PopupMode
         {
             None,
@@ -32,12 +40,12 @@ namespace HaCreator.MapSimulator.UI
         private const int MainTitleBandHeight = 16;
         private const int CategoryPopupOffsetY = 18;
         private const int PopupHeaderY = 12;
-        private const int CategoryListX = 56;
+        private const int CategoryListX = 18;
         private const int CategoryListY = 24;
-        private const int CategoryListWidth = 170;
-        private const int CategoryRowHeight = 24;
+        private const int CategoryListWidth = 206;
+        private const int CategoryRowHeight = 21;
         private const int CategoryVisibleRows = 7;
-        private const int CategoryPopupFooterY = 222;
+        private const int CategoryPopupFooterY = 236;
         private const int ResultListX = 18;
         private const int ResultListY = 32;
         private const int ResultListWidth = 206;
@@ -47,20 +55,6 @@ namespace HaCreator.MapSimulator.UI
         private const int ResultFooterY = 234;
         private const int ScrollBarX = 233;
         private const int ScrollBarY = 23;
-        private static readonly string[] CategoryLabels =
-        {
-            "All",
-            "Equip",
-            "Use",
-            "Etc",
-            "Cash",
-            "Recipe",
-            "Scroll",
-            "Special",
-            "Package",
-            "Button"
-        };
-
         private readonly Texture2D _categoryPopupTexture;
         private readonly Texture2D _searchFieldTexture;
         private readonly Texture2D _pixelTexture;
@@ -80,14 +74,17 @@ namespace HaCreator.MapSimulator.UI
         private SpriteFont _font;
         private AdminShopDialogUI _sourceDialog;
         private IReadOnlyList<AdminShopDialogUI.WishlistPriceRange> _priceRanges = Array.Empty<AdminShopDialogUI.WishlistPriceRange>();
+        private IReadOnlyList<AdminShopDialogUI.WishlistCategoryNode> _categoryTree = Array.Empty<AdminShopDialogUI.WishlistCategoryNode>();
         private List<AdminShopDialogUI.WishlistSearchResult> _searchResults = new();
+        private readonly List<CategoryDisplayRow> _categoryRows = new();
+        private readonly HashSet<string> _expandedCategoryKeys = new(StringComparer.OrdinalIgnoreCase);
         private string _searchQuery = string.Empty;
         private string _compositionText = string.Empty;
         private string _statusMessage = "Type an item name, then submit through SearchItemName.";
         private KeyboardState _previousKeyboardState;
         private MouseState _previousMouseState;
         private Point? _dragStartOffset;
-        private int _selectedCategoryIndex;
+        private string _selectedCategoryKey = "all";
         private int _selectedPriceRangeIndex;
         private int _categoryScrollOffset;
         private int _resultScrollOffset;
@@ -201,11 +198,15 @@ namespace HaCreator.MapSimulator.UI
         {
             _sourceDialog = sourceDialog;
             _priceRanges = sourceDialog?.GetWishlistPriceRanges() ?? Array.Empty<AdminShopDialogUI.WishlistPriceRange>();
+            _categoryTree = sourceDialog?.GetWishlistCategoryTree() ?? Array.Empty<AdminShopDialogUI.WishlistCategoryNode>();
             _searchResults = new List<AdminShopDialogUI.WishlistSearchResult>();
             _searchQuery = sourceDialog?.GetWishlistSuggestedQuery() ?? string.Empty;
-            _selectedCategoryIndex = Math.Clamp(sourceDialog?.GetWishlistSuggestedCategoryIndex() ?? 0, 0, CategoryLabels.Length - 1);
+            _selectedCategoryKey = sourceDialog?.GetWishlistSuggestedCategoryKey() ?? "all";
             _selectedPriceRangeIndex = NormalizePriceRangeIndex(sourceDialog?.GetWishlistSuggestedPriceRangeIndex() ?? 0);
-            _categoryScrollOffset = Math.Clamp(_selectedCategoryIndex - 2, 0, Math.Max(0, CategoryLabels.Length - CategoryVisibleRows));
+            _expandedCategoryKeys.Clear();
+            EnsureCategoryPathExpanded(_selectedCategoryKey);
+            RefreshCategoryRows();
+            EnsureSelectedCategoryVisible();
             _resultScrollOffset = 0;
             _selectedResultIndex = 0;
             _compositionText = string.Empty;
@@ -231,6 +232,8 @@ namespace HaCreator.MapSimulator.UI
             _popupMode = PopupMode.None;
             _dragStartOffset = null;
             _searchResults.Clear();
+            _categoryRows.Clear();
+            _expandedCategoryKeys.Clear();
             UpdatePopupButtons();
         }
 
@@ -392,7 +395,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             sprite.DrawString(_font, TrimToWidth(BuildRenderedQuery(), SearchTextWidth), new Vector2(Position.X + SearchTextX, Position.Y + SearchTextY), new Color(50, 56, 94));
-            sprite.DrawString(_font, CategoryLabels[_selectedCategoryIndex], new Vector2(Position.X + CategoryTextX, Position.Y + CategoryTextY), new Color(50, 56, 94));
+            sprite.DrawString(_font, TrimToWidth(GetSelectedCategoryLabel(), 172f), new Vector2(Position.X + CategoryTextX, Position.Y + CategoryTextY), new Color(50, 56, 94));
             sprite.DrawString(_font, TrimToWidth(GetSelectedPriceRangeLabel(), 172f), new Vector2(Position.X + PriceTextX, Position.Y + PriceTextY), new Color(50, 56, 94));
             sprite.DrawString(_font, TrimToWidth(_statusMessage, 224f), new Vector2(Position.X + StatusTextX, Position.Y + StatusTextY), new Color(255, 233, 160));
 
@@ -427,22 +430,29 @@ namespace HaCreator.MapSimulator.UI
                 sprite.Draw(_pixelTexture, popupBounds, new Color(74, 134, 186));
             }
 
+            string header = TrimToWidth("CUIAdminShopWishListCategory", 184f);
+            sprite.DrawString(_font, header, new Vector2(popupBounds.X + CategoryListX, popupBounds.Y + PopupHeaderY), Color.White);
             for (int row = 0; row < CategoryVisibleRows; row++)
             {
                 int categoryIndex = _categoryScrollOffset + row;
-                if (categoryIndex >= CategoryLabels.Length)
+                if (categoryIndex >= _categoryRows.Count)
                 {
                     break;
                 }
 
+                CategoryDisplayRow categoryRow = _categoryRows[categoryIndex];
                 Rectangle rowBounds = GetCategoryRowBounds(row);
-                bool selected = categoryIndex == _selectedCategoryIndex;
+                bool selected = string.Equals(categoryRow.Node?.Key, _selectedCategoryKey, StringComparison.OrdinalIgnoreCase);
                 sprite.Draw(_pixelTexture, rowBounds, selected ? new Color(255, 255, 255, 120) : new Color(255, 255, 255, 40));
-                sprite.DrawString(_font, CategoryLabels[categoryIndex], new Vector2(rowBounds.X + 8, rowBounds.Y + 4), selected ? new Color(40, 55, 96) : Color.White);
+                string prefix = categoryRow.HasChildren ? (categoryRow.IsExpanded ? "- " : "+ ") : "  ";
+                string label = prefix + new string(' ', categoryRow.Depth * 2) + categoryRow.Node.Label;
+                sprite.DrawString(_font, TrimToWidth(label, 182f), new Vector2(rowBounds.X + 6, rowBounds.Y + 2), selected ? new Color(40, 55, 96) : Color.White);
             }
 
             DrawPopupScrollBar(sprite);
-            sprite.DrawString(_font, "ToggleAddOn switched the category add-on.", new Vector2(popupBounds.X + 18, popupBounds.Y + CategoryPopupFooterY), new Color(255, 233, 160));
+            string footer = $"Selected: {TrimToWidth(GetSelectedCategoryLabel(), 172f)}";
+            sprite.DrawString(_font, footer, new Vector2(popupBounds.X + 18, popupBounds.Y + CategoryPopupFooterY - 14), new Color(255, 233, 160));
+            sprite.DrawString(_font, "Left/Right collapse or expand. Enter confirms.", new Vector2(popupBounds.X + 18, popupBounds.Y + CategoryPopupFooterY), new Color(255, 233, 160));
         }
 
         private void DrawResultsPopup(SpriteBatch sprite)
@@ -602,27 +612,39 @@ namespace HaCreator.MapSimulator.UI
             {
                 if (WasPressed(keyboardState, Keys.Up))
                 {
-                    SelectCategory(_selectedCategoryIndex - 1, true);
+                    MoveCategorySelection(-1);
                 }
                 else if (WasPressed(keyboardState, Keys.Down))
                 {
-                    SelectCategory(_selectedCategoryIndex + 1, true);
+                    MoveCategorySelection(1);
                 }
                 else if (WasPressed(keyboardState, Keys.PageUp))
                 {
-                    SelectCategory(_selectedCategoryIndex - CategoryVisibleRows, true);
+                    MoveCategorySelection(-CategoryVisibleRows);
                 }
                 else if (WasPressed(keyboardState, Keys.PageDown))
                 {
-                    SelectCategory(_selectedCategoryIndex + CategoryVisibleRows, true);
+                    MoveCategorySelection(CategoryVisibleRows);
                 }
                 else if (WasPressed(keyboardState, Keys.Home))
                 {
-                    SelectCategory(0, true);
+                    SelectCategoryByRowIndex(0, true);
                 }
                 else if (WasPressed(keyboardState, Keys.End))
                 {
-                    SelectCategory(CategoryLabels.Length - 1, true);
+                    SelectCategoryByRowIndex(_categoryRows.Count - 1, true);
+                }
+                else if (WasPressed(keyboardState, Keys.Left))
+                {
+                    CollapseSelectedCategoryOrMoveToParent();
+                }
+                else if (WasPressed(keyboardState, Keys.Right))
+                {
+                    ExpandSelectedCategoryOrMoveToFirstChild();
+                }
+                else if (WasPressed(keyboardState, Keys.Enter))
+                {
+                    ClosePopup($"Wish-list category set to {GetSelectedCategoryLabel()}.");
                 }
 
                 return;
@@ -646,7 +668,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            IReadOnlyList<AdminShopDialogUI.WishlistSearchResult> results = _sourceDialog.SearchWishlistEntries(_searchQuery, _selectedCategoryIndex, _selectedPriceRangeIndex, out _statusMessage);
+            IReadOnlyList<AdminShopDialogUI.WishlistSearchResult> results = _sourceDialog.SearchWishlistEntries(_searchQuery, _selectedCategoryKey, _selectedPriceRangeIndex, out _statusMessage);
             _searchResults = results.ToList();
             _selectedResultIndex = 0;
             _resultScrollOffset = 0;
@@ -657,7 +679,18 @@ namespace HaCreator.MapSimulator.UI
 
         private void ToggleAddOn()
         {
-            _popupMode = _popupMode == PopupMode.Category ? PopupMode.None : PopupMode.Category;
+            if (_popupMode == PopupMode.Category)
+            {
+                _popupMode = PopupMode.None;
+                _statusMessage = "ToggleAddOn closed the wish-list category add-on.";
+                UpdatePopupButtons();
+                return;
+            }
+
+            EnsureCategoryPathExpanded(_selectedCategoryKey);
+            RefreshCategoryRows();
+            EnsureSelectedCategoryVisible();
+            _popupMode = PopupMode.Category;
             _statusMessage = _popupMode == PopupMode.Category
                 ? "ToggleAddOn opened the wish-list category add-on."
                 : "ToggleAddOn closed the wish-list category add-on.";
@@ -671,30 +704,23 @@ namespace HaCreator.MapSimulator.UI
 
         private void SelectVisibleCategory(int rowIndex)
         {
-            SelectCategory(_categoryScrollOffset + rowIndex, false);
+            SelectCategoryByRowIndex(_categoryScrollOffset + rowIndex, true);
         }
 
-        private void SelectCategory(int categoryIndex, bool keepPopupOpen)
+        private void SelectCategory(string categoryKey, bool keepPopupOpen)
         {
-            _selectedCategoryIndex = Math.Clamp(categoryIndex, 0, CategoryLabels.Length - 1);
-            if (_selectedCategoryIndex < _categoryScrollOffset)
-            {
-                _categoryScrollOffset = _selectedCategoryIndex;
-            }
-            else if (_selectedCategoryIndex >= _categoryScrollOffset + CategoryVisibleRows)
-            {
-                _categoryScrollOffset = _selectedCategoryIndex - CategoryVisibleRows + 1;
-            }
-
-            _categoryScrollOffset = Math.Clamp(_categoryScrollOffset, 0, Math.Max(0, CategoryLabels.Length - CategoryVisibleRows));
+            _selectedCategoryKey = string.IsNullOrWhiteSpace(categoryKey) ? "all" : categoryKey;
+            EnsureCategoryPathExpanded(_selectedCategoryKey);
+            RefreshCategoryRows();
+            EnsureSelectedCategoryVisible();
             _popupMode = keepPopupOpen ? PopupMode.Category : PopupMode.None;
-            _statusMessage = $"Wish-list category set to {CategoryLabels[_selectedCategoryIndex]}.";
+            _statusMessage = $"Wish-list category set to {GetSelectedCategoryLabel()}.";
             UpdatePopupButtons();
         }
 
         private void ScrollCategories(int delta)
         {
-            _categoryScrollOffset = Math.Clamp(_categoryScrollOffset + delta, 0, Math.Max(0, CategoryLabels.Length - CategoryVisibleRows));
+            _categoryScrollOffset = Math.Clamp(_categoryScrollOffset + delta, 0, Math.Max(0, _categoryRows.Count - CategoryVisibleRows));
             UpdatePopupButtons();
         }
 
@@ -855,7 +881,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             AdminShopDialogUI.WishlistSearchResult selectedResult = _searchResults[_selectedResultIndex];
-            if (_sourceDialog.TryApplyWishlistSearchResult(selectedResult.EntryKey, _selectedCategoryIndex, out _statusMessage))
+            if (_sourceDialog.TryApplyWishlistSearchResult(selectedResult.EntryKey, _selectedCategoryKey, out _statusMessage))
             {
                 Hide();
             }
@@ -913,7 +939,7 @@ namespace HaCreator.MapSimulator.UI
         {
             return _popupMode switch
             {
-                PopupMode.Category => Math.Max(0, CategoryLabels.Length - CategoryVisibleRows),
+                PopupMode.Category => Math.Max(0, _categoryRows.Count - CategoryVisibleRows),
                 PopupMode.Results => Math.Max(0, _searchResults.Count - ResultVisibleRows),
                 _ => 0
             };
@@ -927,6 +953,208 @@ namespace HaCreator.MapSimulator.UI
                 PopupMode.Results => _resultScrollOffset,
                 _ => 0
             };
+        }
+
+        private void MoveCategorySelection(int delta)
+        {
+            if (_categoryRows.Count == 0)
+            {
+                return;
+            }
+
+            int selectedIndex = GetSelectedCategoryRowIndex();
+            if (selectedIndex < 0)
+            {
+                selectedIndex = 0;
+            }
+
+            SelectCategoryByRowIndex(selectedIndex + delta, true);
+        }
+
+        private void SelectCategoryByRowIndex(int rowIndex, bool keepPopupOpen)
+        {
+            if (_categoryRows.Count == 0)
+            {
+                return;
+            }
+
+            int normalizedIndex = Math.Clamp(rowIndex, 0, _categoryRows.Count - 1);
+            CategoryDisplayRow row = _categoryRows[normalizedIndex];
+            SelectCategory(row.Node?.Key, keepPopupOpen);
+        }
+
+        private int GetSelectedCategoryRowIndex()
+        {
+            for (int i = 0; i < _categoryRows.Count; i++)
+            {
+                if (string.Equals(_categoryRows[i].Node?.Key, _selectedCategoryKey, StringComparison.OrdinalIgnoreCase))
+                {
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+
+        private void EnsureSelectedCategoryVisible()
+        {
+            int selectedIndex = GetSelectedCategoryRowIndex();
+            if (selectedIndex < 0)
+            {
+                _categoryScrollOffset = 0;
+                return;
+            }
+
+            if (selectedIndex < _categoryScrollOffset)
+            {
+                _categoryScrollOffset = selectedIndex;
+            }
+            else if (selectedIndex >= _categoryScrollOffset + CategoryVisibleRows)
+            {
+                _categoryScrollOffset = selectedIndex - CategoryVisibleRows + 1;
+            }
+
+            _categoryScrollOffset = Math.Clamp(_categoryScrollOffset, 0, Math.Max(0, _categoryRows.Count - CategoryVisibleRows));
+        }
+
+        private void RefreshCategoryRows()
+        {
+            _categoryRows.Clear();
+            foreach (AdminShopDialogUI.WishlistCategoryNode node in _categoryTree)
+            {
+                AppendCategoryRows(node, 0);
+            }
+        }
+
+        private void AppendCategoryRows(AdminShopDialogUI.WishlistCategoryNode node, int depth)
+        {
+            if (node == null)
+            {
+                return;
+            }
+
+            bool isExpanded = _expandedCategoryKeys.Contains(node.Key);
+            _categoryRows.Add(new CategoryDisplayRow
+            {
+                Node = node,
+                Depth = depth,
+                IsExpanded = isExpanded
+            });
+
+            if (!isExpanded || node.Children == null)
+            {
+                return;
+            }
+
+            foreach (AdminShopDialogUI.WishlistCategoryNode child in node.Children)
+            {
+                AppendCategoryRows(child, depth + 1);
+            }
+        }
+
+        private void EnsureCategoryPathExpanded(string categoryKey)
+        {
+            if (string.IsNullOrWhiteSpace(categoryKey))
+            {
+                categoryKey = "all";
+            }
+
+            if (TryFindCategoryPath(_categoryTree, categoryKey, out List<AdminShopDialogUI.WishlistCategoryNode> path))
+            {
+                foreach (AdminShopDialogUI.WishlistCategoryNode pathNode in path)
+                {
+                    if (pathNode.Children?.Count > 0)
+                    {
+                        _expandedCategoryKeys.Add(pathNode.Key);
+                    }
+                }
+            }
+            else
+            {
+                _expandedCategoryKeys.Add("all");
+            }
+        }
+
+        private void CollapseSelectedCategoryOrMoveToParent()
+        {
+            if (!TryFindCategoryPath(_categoryTree, _selectedCategoryKey, out List<AdminShopDialogUI.WishlistCategoryNode> path) || path.Count == 0)
+            {
+                return;
+            }
+
+            AdminShopDialogUI.WishlistCategoryNode selectedNode = path[^1];
+            if (selectedNode.Children?.Count > 0 && _expandedCategoryKeys.Contains(selectedNode.Key))
+            {
+                _expandedCategoryKeys.Remove(selectedNode.Key);
+                RefreshCategoryRows();
+                EnsureSelectedCategoryVisible();
+                UpdatePopupButtons();
+                return;
+            }
+
+            if (path.Count > 1)
+            {
+                SelectCategory(path[^2].Key, true);
+            }
+        }
+
+        private void ExpandSelectedCategoryOrMoveToFirstChild()
+        {
+            if (!TryFindCategoryPath(_categoryTree, _selectedCategoryKey, out List<AdminShopDialogUI.WishlistCategoryNode> path) || path.Count == 0)
+            {
+                return;
+            }
+
+            AdminShopDialogUI.WishlistCategoryNode selectedNode = path[^1];
+            if (selectedNode.Children?.Count > 0)
+            {
+                _expandedCategoryKeys.Add(selectedNode.Key);
+                RefreshCategoryRows();
+                SelectCategory(selectedNode.Children[0].Key, true);
+            }
+        }
+
+        private string GetSelectedCategoryLabel()
+        {
+            return _sourceDialog?.GetWishlistCategoryLabel(_selectedCategoryKey) ?? "All";
+        }
+
+        private static bool TryFindCategoryPath(
+            IReadOnlyList<AdminShopDialogUI.WishlistCategoryNode> roots,
+            string categoryKey,
+            out List<AdminShopDialogUI.WishlistCategoryNode> path)
+        {
+            List<AdminShopDialogUI.WishlistCategoryNode> resolvedPath = new();
+            if (roots == null || roots.Count == 0)
+            {
+                path = resolvedPath;
+                return false;
+            }
+
+            bool Search(IReadOnlyList<AdminShopDialogUI.WishlistCategoryNode> nodes)
+            {
+                foreach (AdminShopDialogUI.WishlistCategoryNode node in nodes)
+                {
+                    resolvedPath.Add(node);
+                    if (string.Equals(node.Key, categoryKey, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+
+                    if (node.Children != null && Search(node.Children))
+                    {
+                        return true;
+                    }
+
+                    resolvedPath.RemoveAt(resolvedPath.Count - 1);
+                }
+
+                return false;
+            }
+
+            bool found = Search(roots);
+            path = resolvedPath;
+            return found;
         }
 
         private string BuildRenderedQuery()

@@ -547,6 +547,11 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            if (!slotData.PreferredInventoryType.HasValue || slotData.PreferredInventoryType.Value == InventoryType.NONE)
+            {
+                slotData.PreferredInventoryType = type;
+            }
+
             if (string.IsNullOrWhiteSpace(slotData.ItemName))
             {
                 slotData.ItemName = ResolveItemName(slotData.ItemId);

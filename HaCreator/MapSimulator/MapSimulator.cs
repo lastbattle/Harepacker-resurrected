@@ -436,6 +436,7 @@ namespace HaCreator.MapSimulator
         private readonly GuildBossPacketTransportManager _guildBossTransport = new GuildBossPacketTransportManager();
         private readonly GuildBossOfficialSessionBridgeManager _guildBossOfficialSessionBridge = new GuildBossOfficialSessionBridgeManager();
         private readonly MassacrePacketInboxManager _massacrePacketInbox = new MassacrePacketInboxManager();
+        private readonly MassacreOfficialSessionBridgeManager _massacreOfficialSessionBridge = new MassacreOfficialSessionBridgeManager();
         private readonly DojoPacketInboxManager _dojoPacketInbox = new DojoPacketInboxManager();
         private readonly PartyRaidPacketInboxManager _partyRaidPacketInbox = new PartyRaidPacketInboxManager();
         private readonly TournamentPacketInboxManager _tournamentPacketInbox = new TournamentPacketInboxManager();
@@ -687,11 +688,13 @@ namespace HaCreator.MapSimulator
         private bool _loginAccountSpwEnabled;
         private string _loginAccountSecondaryPassword = string.Empty;
         private long _loginAccountCashShopNxCredit = DefaultCashShopNxCredit;
+        private readonly List<LoginCharacterAccountStore.CashShopStorageExpansionRecordState> _loginAccountStorageExpansionHistory = new();
         private bool _loginAccountMigrationAccepted;
         private string _activeConnectionNoticeTitle = "Connection Notice";
         private string _activeConnectionNoticeBody = string.Empty;
         private const int ClientPicEditMaxLength = 8;
         private const long DefaultCashShopNxCredit = 10000L;
+        private const int MaxStorageExpansionHistoryEntries = 24;
         private ConnectionNoticeWindowVariant _activeConnectionNoticeVariant = ConnectionNoticeWindowVariant.Notice;
         private int? _activeConnectionNoticeTextIndex;
         private bool _activeConnectionNoticeShowProgress;
@@ -1775,12 +1778,27 @@ namespace HaCreator.MapSimulator
 
             if (uiWindowManager.GetWindow(MapSimulatorWindowNames.MemoMailbox) is MemoMailboxWindow memoMailboxWindow)
             {
-                memoMailboxWindow.SetSnapshotProvider(_memoMailbox.GetSnapshot);
+                memoMailboxWindow.SetSnapshotProvider(_memoMailbox.GetSnapshot, _memoMailbox.GetDraftSnapshot);
                 memoMailboxWindow.SetActions(
+                    tab => _memoMailbox.SetActiveTab(tab),
                     memoId => _memoMailbox.OpenMemo(memoId),
-                    memoId => _memoMailbox.KeepMemo(memoId),
                     memoId => _memoMailbox.DeleteMemo(memoId),
-                    OpenMemoAttachmentWindow);
+                    OpenMemoAttachmentWindow,
+                    () =>
+                    {
+                        _memoMailbox.TryDispatchActiveDraft(out string message);
+                        ShowUtilityFeedbackMessage(message);
+                        return message;
+                    },
+                    visible => _memoMailbox.SetTaxInfoVisible(visible),
+                    tab =>
+                    {
+                        _memoMailbox.SetActiveTab(tab);
+                        ShowUtilityFeedbackMessage(
+                            tab == ParcelDialogTab.QuickSend
+                                ? "Quick Send money button selected. Use /memo draft meso <amount> to stage the field."
+                                : "Send money button selected. Use /memo draft meso <amount> or /memo draft item ... to update the parcel.");
+                    });
                 memoMailboxWindow.SetFont(_fontChat);
             }
 
@@ -1795,6 +1813,7 @@ namespace HaCreator.MapSimulator
                         {
                             ShowUtilityFeedbackMessage(message);
                             memoSendWindow.Hide();
+                            _memoMailbox.SetActiveTab(ParcelDialogTab.Receive);
                             ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.MemoMailbox);
                         }
                         else
@@ -1981,6 +2000,7 @@ namespace HaCreator.MapSimulator
 
 
             _socialListRuntime.UpdateLocalContext(_playerManager?.Player?.Build, GetCurrentMapTransferDisplayName(), 1);
+            _socialListRuntime.SocialChatObserved = TryTriggerSpecialistPetSocialFeedback;
             socialListWindow.SetSnapshotProvider(_socialListRuntime.BuildSnapshot);
             socialListWindow.SetHandlers(
                 tab => _socialListRuntime.SelectTab(tab),
@@ -2566,6 +2586,7 @@ namespace HaCreator.MapSimulator
                 GetCurrentMapTransferDisplayName(),
                 _socialListRuntime.GetLocalGuildRoleLabel(),
                 ResolveOwnedGuildBbsCashEmoticonIds(guildBbsWindow.CashEmoticonSlotCount));
+            _guildBbsRuntime.SocialChatObserved = TryTriggerSpecialistPetSocialFeedback;
 
 
             guildBbsWindow.SetSnapshotProvider(_guildBbsRuntime.BuildSnapshot);
@@ -2650,19 +2671,12 @@ namespace HaCreator.MapSimulator
                 miniMapUi.ResolveNpcTooltipText = ResolveMinimapNpcTooltipText;
                 miniMapUi.ResolvePortalTooltipText = ResolveMinimapPortalTooltipText;
                 EnsureMinimapTooltipResources();
-                miniMapUi.FullMapRequested = () =>
+                miniMapUi.WorldMapRequested = () =>
                 {
                     _worldMapRequestMode = WorldMapRequestMode.DirectTransfer;
                     _mapTransferEditDestination = null;
                     RefreshWorldMapWindow();
                     uiWindowManager?.ShowWindow(MapSimulatorWindowNames.WorldMap);
-                };
-                miniMapUi.MapTransferRequested = () =>
-                {
-                    _worldMapRequestMode = WorldMapRequestMode.DirectTransfer;
-                    _mapTransferEditDestination = null;
-                    RefreshMapTransferWindow();
-                    uiWindowManager?.ShowWindow(MapSimulatorWindowNames.MapTransfer);
                 };
             }
 
@@ -2689,7 +2703,11 @@ namespace HaCreator.MapSimulator
             if (statusBarChatUI != null)
             {
                 statusBarChatUI.CharacterInfoRequested = () => ShowCharacterInfoWindow();
-                statusBarChatUI.MemoMailboxRequested = () => ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.MemoMailbox);
+                statusBarChatUI.MemoMailboxRequested = () =>
+                {
+                    _memoMailbox.SetActiveTab(ParcelDialogTab.Receive);
+                    ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.MemoMailbox);
+                };
             }
 
 
@@ -2886,7 +2904,11 @@ namespace HaCreator.MapSimulator
             userInfoWindow.TradingRoomRequested = HandleCharacterInfoTradingRoomRequest;
             userInfoWindow.FamilyRequested = HandleCharacterInfoFamilyRequest;
             userInfoWindow.PopularityRequested = (context, direction) => UserInfoPopularityPreviewService.HandleRequest(context, direction, _remoteUserPool);
-            userInfoWindow.BookCollectionRequested = () => ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.BookCollection);
+            userInfoWindow.BookCollectionRequested = _ =>
+            {
+                ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.BookCollection);
+                return "Collection book opened.";
+            };
         }
         private string HandleCharacterInfoPartyRequest(UserInfoUI.UserInfoActionContext context)
         {
@@ -3759,7 +3781,7 @@ namespace HaCreator.MapSimulator
             CharacterBuild build = _playerManager?.Player?.Build;
             if (build != null)
             {
-                AppendRepairDurabilityEquippedEntries(entries, build.Equipment);
+                AppendRepairDurabilityEquippedEntries(entries, build);
             }
 
             return entries
@@ -3807,16 +3829,33 @@ namespace HaCreator.MapSimulator
 
         private static void AppendRepairDurabilityEquippedEntries(
             ICollection<RepairDurabilityWindow.RepairEntry> entries,
-            IReadOnlyDictionary<Character.EquipSlot, CharacterPart> equipment)
+            CharacterBuild build)
         {
-            if (entries == null || equipment == null)
+            if (entries == null || build == null)
             {
                 return;
             }
 
-
-            foreach ((Character.EquipSlot slot, CharacterPart part) in equipment)
+            HashSet<Character.EquipSlot> candidateSlots = new();
+            if (build.Equipment != null)
             {
+                foreach (Character.EquipSlot slot in build.Equipment.Keys)
+                {
+                    candidateSlots.Add(slot);
+                }
+            }
+
+            if (build.HiddenEquipment != null)
+            {
+                foreach (Character.EquipSlot slot in build.HiddenEquipment.Keys)
+                {
+                    candidateSlots.Add(slot);
+                }
+            }
+
+            foreach (Character.EquipSlot slot in candidateSlots)
+            {
+                CharacterPart part = ResolveRepairDurabilityEquippedPart(build, slot);
                 if (!TryGetRepairDurabilityValues(part, out int currentDurability, out int maxDurability))
                 {
                     continue;
@@ -3835,6 +3874,8 @@ namespace HaCreator.MapSimulator
                     EncodedSlotPosition = encodedPosition,
                     Slot = slot,
                     IsInventorySlot = false,
+                    IsHiddenSlot = build.HiddenEquipment?.TryGetValue(slot, out CharacterPart hiddenPart) == true
+                        && ReferenceEquals(part, hiddenPart),
                     SlotLabel = BuildRepairDurabilitySlotLabel(slot),
                     ItemName = ResolveRepairDurabilityItemName(part, part.ItemId),
                     CurrentDurability = currentDurability,
@@ -3845,6 +3886,28 @@ namespace HaCreator.MapSimulator
                     Icon = part.IconRaw ?? part.Icon
                 });
             }
+        }
+
+        private static CharacterPart ResolveRepairDurabilityEquippedPart(CharacterBuild build, Character.EquipSlot slot)
+        {
+            if (build == null)
+            {
+                return null;
+            }
+
+            CharacterPart visiblePart = EquipSlotStateResolver.GetEquippedPart(build, slot);
+            CharacterPart underlyingPart = EquipSlotStateResolver.ResolveUnderlyingPart(build, slot);
+            if (underlyingPart != null)
+            {
+                return underlyingPart;
+            }
+
+            return slot switch
+            {
+                Character.EquipSlot.Coat => EquipSlotStateResolver.ResolveDisplayedPart(build, Character.EquipSlot.Coat),
+                Character.EquipSlot.Pants => EquipSlotStateResolver.ResolveDisplayedPart(build, Character.EquipSlot.Pants),
+                _ => visiblePart ?? EquipSlotStateResolver.ResolveDisplayedPart(build, slot)
+            };
         }
 
 
@@ -4051,7 +4114,9 @@ namespace HaCreator.MapSimulator
                 OperationCode = RepairDurabilityAllOpcode,
                 RepairAll = true,
                 TotalCost = totalCost,
-                Entries = entries.Where(candidate => ResolveRepairDurabilityTargetPart(candidate) != null).ToArray(),
+                Entries = entries
+                    .Where(candidate => ResolveRepairDurabilityTargetPart(candidate) != null)
+                    .ToArray(),
                 RequestLabel = requestLabel
             };
 
@@ -4217,7 +4282,27 @@ namespace HaCreator.MapSimulator
             }
 
             int repairedCount = 0;
-            List<RepairDurabilityWindow.RepairEntry> liveEntries = BuildRepairDurabilityEntries();
+            IReadOnlyList<RepairDurabilityWindow.RepairEntry> requestedEntries = request.Entries ?? Array.Empty<RepairDurabilityWindow.RepairEntry>();
+            if (requestedEntries.Count <= 0)
+            {
+                ShowUtilityFeedbackMessage("Repair-all response failed because none of the requested equipment entries are still available.");
+                RefreshRepairDurabilityWindow(request.NpcTemplateId, request.PreferredItemId);
+                return;
+            }
+
+            List<RepairDurabilityWindow.RepairEntry> liveEntries = new();
+            foreach (RepairDurabilityWindow.RepairEntry requestedEntry in requestedEntries)
+            {
+                RepairDurabilityWindow.RepairEntry liveEntry = FindLiveRepairDurabilityEntry(
+                    requestedEntry?.EncodedSlotPosition ?? int.MinValue,
+                    requestedEntry?.Part?.ItemId ?? requestedEntry?.InventorySlot?.ItemId ?? 0);
+                if (liveEntry != null
+                    && liveEntries.All(candidate => candidate.EncodedSlotPosition != liveEntry.EncodedSlotPosition))
+                {
+                    liveEntries.Add(liveEntry);
+                }
+            }
+
             if (liveEntries.Count <= 0)
             {
                 ShowUtilityFeedbackMessage("Repair-all response failed because none of the requested equipment entries are still available.");
@@ -4714,34 +4799,69 @@ namespace HaCreator.MapSimulator
             characterSelectWindow.DeleteRequested -= HandleLoginCharacterDeleteRequested;
             characterSelectWindow.DeleteRequested += HandleLoginCharacterDeleteRequested;
         }
-        private void WireLoginCreateCharacterWindow()
+        private IEnumerable<LoginCreateCharacterWindowBase> EnumerateLoginCreateCharacterWindows()
         {
-            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.LoginCreateCharacter) is not LoginCreateCharacterWindow createCharacterWindow)
+            if (uiWindowManager == null)
             {
-                return;
+                yield break;
             }
 
+            string[] windowNames =
+            {
+                MapSimulatorWindowNames.LoginCreateCharacterRaceSelect,
+                MapSimulatorWindowNames.LoginCreateCharacterJobSelect,
+                MapSimulatorWindowNames.LoginCreateCharacterAvatarSelect,
+                MapSimulatorWindowNames.LoginCreateCharacterNameSelect
+            };
 
-            createCharacterWindow.RaceSelected -= HandleLoginCreateCharacterRaceSelected;
-            createCharacterWindow.RaceSelected += HandleLoginCreateCharacterRaceSelected;
-            createCharacterWindow.JobSelected -= HandleLoginCreateCharacterJobSelected;
-            createCharacterWindow.JobSelected += HandleLoginCreateCharacterJobSelected;
-            createCharacterWindow.AvatarShiftRequested -= HandleLoginCreateCharacterAvatarShiftRequested;
-            createCharacterWindow.AvatarShiftRequested += HandleLoginCreateCharacterAvatarShiftRequested;
-            createCharacterWindow.GenderToggleRequested -= HandleLoginCreateCharacterGenderToggleRequested;
-            createCharacterWindow.GenderToggleRequested += HandleLoginCreateCharacterGenderToggleRequested;
-            createCharacterWindow.DiceRequested -= HandleLoginCreateCharacterDiceRequested;
-            createCharacterWindow.DiceRequested += HandleLoginCreateCharacterDiceRequested;
-            createCharacterWindow.NameEditRequested -= HandleLoginCreateCharacterNameEditRequested;
-            createCharacterWindow.NameEditRequested += HandleLoginCreateCharacterNameEditRequested;
-            createCharacterWindow.NameChanged -= HandleLoginCreateCharacterNameChanged;
-            createCharacterWindow.NameChanged += HandleLoginCreateCharacterNameChanged;
-            createCharacterWindow.ConfirmRequested -= HandleLoginCreateCharacterConfirmRequested;
-            createCharacterWindow.ConfirmRequested += HandleLoginCreateCharacterConfirmRequested;
-            createCharacterWindow.CancelRequested -= HandleLoginCreateCharacterCancelRequested;
-            createCharacterWindow.CancelRequested += HandleLoginCreateCharacterCancelRequested;
-            createCharacterWindow.DuplicateCheckRequested -= HandleLoginCreateCharacterDuplicateCheckRequested;
-            createCharacterWindow.DuplicateCheckRequested += HandleLoginCreateCharacterDuplicateCheckRequested;
+            for (int i = 0; i < windowNames.Length; i++)
+            {
+                if (uiWindowManager.GetWindow(windowNames[i]) is LoginCreateCharacterWindowBase window)
+                {
+                    yield return window;
+                }
+            }
+        }
+
+        private LoginCreateCharacterWindowBase GetLoginCreateCharacterWindow(LoginCreateCharacterStage stage)
+        {
+            string windowName = stage switch
+            {
+                LoginCreateCharacterStage.RaceSelect => MapSimulatorWindowNames.LoginCreateCharacterRaceSelect,
+                LoginCreateCharacterStage.JobSelect => MapSimulatorWindowNames.LoginCreateCharacterJobSelect,
+                LoginCreateCharacterStage.AvatarSelect => MapSimulatorWindowNames.LoginCreateCharacterAvatarSelect,
+                LoginCreateCharacterStage.NameSelect => MapSimulatorWindowNames.LoginCreateCharacterNameSelect,
+                _ => MapSimulatorWindowNames.LoginCreateCharacterRaceSelect
+            };
+
+            return uiWindowManager?.GetWindow(windowName) as LoginCreateCharacterWindowBase;
+        }
+
+        private void WireLoginCreateCharacterWindow()
+        {
+            foreach (LoginCreateCharacterWindowBase createCharacterWindow in EnumerateLoginCreateCharacterWindows())
+            {
+                createCharacterWindow.RaceSelected -= HandleLoginCreateCharacterRaceSelected;
+                createCharacterWindow.RaceSelected += HandleLoginCreateCharacterRaceSelected;
+                createCharacterWindow.JobSelected -= HandleLoginCreateCharacterJobSelected;
+                createCharacterWindow.JobSelected += HandleLoginCreateCharacterJobSelected;
+                createCharacterWindow.AvatarShiftRequested -= HandleLoginCreateCharacterAvatarShiftRequested;
+                createCharacterWindow.AvatarShiftRequested += HandleLoginCreateCharacterAvatarShiftRequested;
+                createCharacterWindow.GenderToggleRequested -= HandleLoginCreateCharacterGenderToggleRequested;
+                createCharacterWindow.GenderToggleRequested += HandleLoginCreateCharacterGenderToggleRequested;
+                createCharacterWindow.DiceRequested -= HandleLoginCreateCharacterDiceRequested;
+                createCharacterWindow.DiceRequested += HandleLoginCreateCharacterDiceRequested;
+                createCharacterWindow.NameEditRequested -= HandleLoginCreateCharacterNameEditRequested;
+                createCharacterWindow.NameEditRequested += HandleLoginCreateCharacterNameEditRequested;
+                createCharacterWindow.NameChanged -= HandleLoginCreateCharacterNameChanged;
+                createCharacterWindow.NameChanged += HandleLoginCreateCharacterNameChanged;
+                createCharacterWindow.ConfirmRequested -= HandleLoginCreateCharacterConfirmRequested;
+                createCharacterWindow.ConfirmRequested += HandleLoginCreateCharacterConfirmRequested;
+                createCharacterWindow.CancelRequested -= HandleLoginCreateCharacterCancelRequested;
+                createCharacterWindow.CancelRequested += HandleLoginCreateCharacterCancelRequested;
+                createCharacterWindow.DuplicateCheckRequested -= HandleLoginCreateCharacterDuplicateCheckRequested;
+                createCharacterWindow.DuplicateCheckRequested += HandleLoginCreateCharacterDuplicateCheckRequested;
+            }
         }
 
 
@@ -8035,7 +8155,9 @@ namespace HaCreator.MapSimulator
                 20 => $"DeleteCharacterResult hit the client security warning path{targetText}.",
                 22 => $"DeleteCharacterResult returned the client warning 34{targetText}.",
                 24 => $"DeleteCharacterResult returned the client warning 39{targetText}.",
-                26 => $"DeleteCharacterResult returned the client direct-notice branch (StringPool 0xFD4){targetText}.",
+                26 when LoginClientDirectNoticeText.TryResolve(LoginClientDirectNoticeText.DeleteCharacterTransferStringPoolId, out string directNoticeText)
+                    => $"{directNoticeText}{targetText}",
+                26 => $"DeleteCharacterResult returned the client direct-notice branch (StringPool 0x{LoginClientDirectNoticeText.DeleteCharacterTransferStringPoolId:X}){targetText}.",
                 29 => $"DeleteCharacterResult returned the client warning 54{targetText}.",
                 35 or 36 => $"DeleteCharacterResult returned the client warning 50{targetText}.",
                 byte resultCode => packetProfile.CharacterId.HasValue
@@ -8063,7 +8185,9 @@ namespace HaCreator.MapSimulator
             return packetProfile?.ResultCode switch
             {
                 10 => "CreateNewCharacterResult blocked character creation on the client security path.",
-                26 => "CreateNewCharacterResult returned the client direct-notice branch (StringPool 0xFD9).",
+                26 when LoginClientDirectNoticeText.TryResolve(LoginClientDirectNoticeText.CreateCharacterTransferStringPoolId, out string directNoticeText)
+                    => directNoticeText,
+                26 => $"CreateNewCharacterResult returned the client direct-notice branch (StringPool 0x{LoginClientDirectNoticeText.CreateCharacterTransferStringPoolId:X}).",
                 30 => "CreateNewCharacterResult reported that the selected starter name is not available.",
                 byte resultCode => $"CreateNewCharacterResult returned server code {FormatSelectorPacketCode(resultCode)}.",
                 _ => "CreateNewCharacterResult did not include a result code.",
@@ -8711,6 +8835,12 @@ namespace HaCreator.MapSimulator
 
 
             _loginAccountCashShopNxCredit = Math.Max(0L, storedState?.CashShopNxCredit ?? DefaultCashShopNxCredit);
+            _loginAccountStorageExpansionHistory.Clear();
+            foreach (LoginCharacterAccountStore.CashShopStorageExpansionRecordState record in storedState?.StorageExpansionHistory
+                         ?? Array.Empty<LoginCharacterAccountStore.CashShopStorageExpansionRecordState>())
+            {
+                _loginAccountStorageExpansionHistory.Add(CloneStorageExpansionHistoryRecord(record));
+            }
 
             _loginAccountId = storedState?.AccountId;
 
@@ -8851,7 +8981,9 @@ namespace HaCreator.MapSimulator
 
                 _loginAccountSecondaryPassword,
 
-                ResolveLoginRosterAccountId());
+                ResolveLoginRosterAccountId(),
+
+                _loginAccountStorageExpansionHistory);
 
 
 
@@ -8865,7 +8997,96 @@ namespace HaCreator.MapSimulator
             {
                 cashShopWindow.SetCashBalances(_loginAccountCashShopNxCredit);
                 cashShopWindow.TryConsumeCashBalance = TryConsumeLoginAccountCashShopNxCredit;
+                cashShopWindow.ResolveStorageExpansionCommoditySerialNumber = ResolveStorageExpansionCommoditySerialNumber;
+                cashShopWindow.GetStorageExpansionStatusSummary = GetStorageExpansionStatusSummary;
+                cashShopWindow.StorageExpansionResolved = HandleStorageExpansionResolved;
             }
+        }
+
+
+        private int ResolveStorageExpansionCommoditySerialNumber()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStatus) is CashServiceStageWindow cashServiceStageWindow
+                && cashServiceStageWindow.TryGetPendingCommoditySerialNumber(out int pendingCommoditySerialNumber))
+            {
+                return pendingCommoditySerialNumber;
+            }
+
+            return _lastPacketOwnedCommoditySerialNumber > 0
+                ? _lastPacketOwnedCommoditySerialNumber
+                : 0;
+        }
+
+
+        private string GetStorageExpansionStatusSummary()
+        {
+            LoginCharacterAccountStore.CashShopStorageExpansionRecordState lastRecord = _loginAccountStorageExpansionHistory.Count > 0
+                ? _loginAccountStorageExpansionHistory[_loginAccountStorageExpansionHistory.Count - 1]
+                : null;
+            if (lastRecord == null)
+            {
+                return $"Account NX {_loginAccountCashShopNxCredit.ToString("N0", CultureInfo.InvariantCulture)}; no stored trunk-expansion result yet.";
+            }
+
+            string outcome = lastRecord.ResultSubtype == 1 ? "Last result: success" : "Last result: rejected";
+            string commodityText = lastRecord.CommoditySerialNumber > 0
+                ? $"SN {lastRecord.CommoditySerialNumber.ToString(CultureInfo.InvariantCulture)}"
+                : "local cash seam";
+            string reasonText = lastRecord.FailureReason > 0
+                ? $", reason {lastRecord.FailureReason.ToString(CultureInfo.InvariantCulture)}"
+                : string.Empty;
+            return $"{outcome} via {commodityText}, slot limit {lastRecord.SlotLimitAfterResult.ToString(CultureInfo.InvariantCulture)}, price {lastRecord.NxPrice.ToString("N0", CultureInfo.InvariantCulture)} NX{reasonText}.";
+        }
+
+
+        private void HandleStorageExpansionResolved(AdminShopDialogUI.StorageExpansionResolution resolution)
+        {
+            if (resolution == null)
+            {
+                return;
+            }
+
+            _loginAccountStorageExpansionHistory.Add(new LoginCharacterAccountStore.CashShopStorageExpansionRecordState
+            {
+                CommoditySerialNumber = Math.Max(0, resolution.CommoditySerialNumber),
+                ResultSubtype = resolution.ResultSubtype,
+                FailureReason = Math.Max(0, resolution.FailureReason),
+                NxPrice = Math.Max(0L, resolution.NxPrice),
+                SlotLimitAfterResult = Math.Max(0, resolution.SlotLimitAfterResult),
+                Message = resolution.Message ?? string.Empty,
+                AppliedAtUtc = DateTime.UtcNow
+            });
+
+            while (_loginAccountStorageExpansionHistory.Count > MaxStorageExpansionHistoryEntries)
+            {
+                _loginAccountStorageExpansionHistory.RemoveAt(0);
+            }
+
+            PersistLoginCharacterRosterToAccountStore(
+                _loginCharacterRoster.Entries,
+                _loginCharacterRoster.SlotCount,
+                _loginCharacterRoster.BuyCharacterCount);
+        }
+
+
+        private static LoginCharacterAccountStore.CashShopStorageExpansionRecordState CloneStorageExpansionHistoryRecord(
+            LoginCharacterAccountStore.CashShopStorageExpansionRecordState record)
+        {
+            if (record == null)
+            {
+                return null;
+            }
+
+            return new LoginCharacterAccountStore.CashShopStorageExpansionRecordState
+            {
+                CommoditySerialNumber = Math.Max(0, record.CommoditySerialNumber),
+                ResultSubtype = record.ResultSubtype,
+                FailureReason = Math.Max(0, record.FailureReason),
+                NxPrice = Math.Max(0L, record.NxPrice),
+                SlotLimitAfterResult = Math.Max(0, record.SlotLimitAfterResult),
+                Message = record.Message ?? string.Empty,
+                AppliedAtUtc = record.AppliedAtUtc == default ? DateTime.UtcNow : record.AppliedAtUtc
+            };
         }
 
 
@@ -9450,27 +9671,35 @@ namespace HaCreator.MapSimulator
             WireLoginCreateCharacterWindow();
 
 
-            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.LoginCreateCharacter) is not LoginCreateCharacterWindow createCharacterWindow)
-            {
-                return;
-            }
-
-
             bool shouldShow = IsLoginRuntimeSceneActive &&
                               _loginCreateCharacterFlow != null &&
                               (_loginRuntime.CurrentStep == LoginStep.NewCharacter ||
                                _loginRuntime.CurrentStep == LoginStep.NewCharacterAvatar);
             if (!shouldShow)
             {
-                createCharacterWindow.Hide();
+                foreach (LoginCreateCharacterWindowBase window in EnumerateLoginCreateCharacterWindows())
+                {
+                    window.Hide();
+                }
                 return;
             }
 
 
             CharacterBuild previewBuild = _loginCreateCharacterFlow.CreatePreviewBuild(_playerManager?.Loader);
-            createCharacterWindow.Configure(_loginCreateCharacterFlow, previewBuild);
-            createCharacterWindow.Show();
-            uiWindowManager.BringToFront(createCharacterWindow);
+            LoginCreateCharacterWindowBase createCharacterWindow = GetLoginCreateCharacterWindow(_loginCreateCharacterFlow.Stage);
+            foreach (LoginCreateCharacterWindowBase window in EnumerateLoginCreateCharacterWindows())
+            {
+                if (ReferenceEquals(window, createCharacterWindow))
+                {
+                    window.Configure(_loginCreateCharacterFlow, previewBuild);
+                    window.Show();
+                    uiWindowManager.BringToFront(window);
+                }
+                else
+                {
+                    window.Hide();
+                }
+            }
         }
 
 
@@ -11150,6 +11379,12 @@ namespace HaCreator.MapSimulator
             string packetText,
             string packetDetail)
         {
+            string directNoticeText = LoginClientDirectNoticeText.TryResolve(
+                LoginClientDirectNoticeText.CreateCharacterTransferStringPoolId,
+                out string resolvedDirectNoticeText)
+                ? resolvedDirectNoticeText
+                : $"Character creation returned the client direct-notice branch (StringPool 0x{LoginClientDirectNoticeText.CreateCharacterTransferStringPoolId:X}).";
+
             return packetProfile?.ResultCode switch
             {
                 0 => null,
@@ -11157,7 +11392,7 @@ namespace HaCreator.MapSimulator
                 26 => new LoginPacketDialogPromptConfiguration
                 {
                     Title = "Login Utility",
-                    Body = CombineLoginDialogBody(packetText, "Character creation returned the client direct-notice branch (StringPool 0xFD9).", packetDetail),
+                    Body = CombineLoginDialogBody(packetText, directNoticeText, packetDetail),
                     ButtonLayout = LoginUtilityDialogButtonLayout.Ok,
                     Action = LoginUtilityDialogAction.DismissOnly,
                 },
@@ -11172,6 +11407,12 @@ namespace HaCreator.MapSimulator
             string packetText,
             string packetDetail)
         {
+            string directNoticeText = LoginClientDirectNoticeText.TryResolve(
+                LoginClientDirectNoticeText.DeleteCharacterTransferStringPoolId,
+                out string resolvedDirectNoticeText)
+                ? resolvedDirectNoticeText
+                : $"Character deletion returned the client direct-notice branch (StringPool 0x{LoginClientDirectNoticeText.DeleteCharacterTransferStringPoolId:X}).";
+
             return packetProfile?.ResultCode switch
             {
                 0 => null,
@@ -11185,7 +11426,7 @@ namespace HaCreator.MapSimulator
                 26 => new LoginPacketDialogPromptConfiguration
                 {
                     Title = "Login Utility",
-                    Body = CombineLoginDialogBody(packetText, "Character deletion returned the client direct-notice branch (StringPool 0xFD4).", packetDetail),
+                    Body = CombineLoginDialogBody(packetText, directNoticeText, packetDetail),
                     ButtonLayout = LoginUtilityDialogButtonLayout.Ok,
                     Action = LoginUtilityDialogAction.DismissOnly,
                 },
@@ -12672,6 +12913,7 @@ namespace HaCreator.MapSimulator
             _monsterCarnivalPacketInbox.Dispose();
             _guildBossTransport.Dispose();
             _guildBossOfficialSessionBridge.Dispose();
+            _massacreOfficialSessionBridge.Dispose();
 
             _dojoPacketInbox.Dispose();
             _transportPacketInbox.Dispose();
@@ -14813,8 +15055,7 @@ namespace HaCreator.MapSimulator
             }
             WzSubProperty skillNode = mobSkillImage?[skillId.ToString()] as WzSubProperty;
             WzSubProperty levelNode = skillNode?["level"] as WzSubProperty;
-            WzSubProperty selectedLevel = ResolveMobSkillLevelNode(levelNode, level);
-            if (selectedLevel == null)
+            if (MobSkillLevelResolver.ResolveLevelNode(levelNode, level) == null)
             {
                 return null;
             }
@@ -14822,25 +15063,31 @@ namespace HaCreator.MapSimulator
 
             var summonInfo = new MobSummonSkillInfo
             {
-                Limit = MapleLib.WzLib.WzStructure.InfoTool.GetInt(selectedLevel["limit"], 0)
+                Limit = MobSkillLevelResolver.ResolveInheritedInt(levelNode, level, "limit")
             };
 
 
-            WzVectorProperty lt = selectedLevel["lt"] as WzVectorProperty;
-            if (lt != null)
+            Point? lt = MobSkillLevelResolver.ResolveInheritedVector(levelNode, level, "lt");
+            if (lt.HasValue)
             {
-                summonInfo.Lt = new Point(lt.X.Value, lt.Y.Value);
+                summonInfo.Lt = lt.Value;
             }
 
 
-            WzVectorProperty rb = selectedLevel["rb"] as WzVectorProperty;
-            if (rb != null)
+            Point? rb = MobSkillLevelResolver.ResolveInheritedVector(levelNode, level, "rb");
+            if (rb.HasValue)
             {
-                summonInfo.Rb = new Point(rb.X.Value, rb.Y.Value);
+                summonInfo.Rb = rb.Value;
             }
 
 
-            foreach (WzImageProperty child in selectedLevel.WzProperties)
+            WzSubProperty summonLevelNode = MobSkillLevelResolver.FindLevelNode(
+                levelNode,
+                level,
+                static candidate => candidate.WzProperties.Any(
+                    child => int.TryParse(child.Name, out _) &&
+                             MapleLib.WzLib.WzStructure.InfoTool.GetInt(child, 0) > 0));
+            foreach (WzImageProperty child in summonLevelNode?.WzProperties?.Cast<WzImageProperty>() ?? Enumerable.Empty<WzImageProperty>())
             {
                 if (!int.TryParse(child.Name, out _))
                 {
@@ -14887,35 +15134,34 @@ namespace HaCreator.MapSimulator
 
             WzSubProperty skillNode = mobSkillImage?[skillId.ToString()] as WzSubProperty;
             WzSubProperty levelNode = skillNode?["level"] as WzSubProperty;
-            WzSubProperty selectedLevel = ResolveMobSkillLevelNode(levelNode, level);
-            if (selectedLevel == null)
+            if (MobSkillLevelResolver.ResolveLevelNode(levelNode, level) == null)
             {
                 return null;
             }
 
 
-            Point? lt = ResolveMobSkillInheritedVector(levelNode, level, "lt");
+            Point? lt = MobSkillLevelResolver.ResolveInheritedVector(levelNode, level, "lt");
 
-            Point? rb = ResolveMobSkillInheritedVector(levelNode, level, "rb");
+            Point? rb = MobSkillLevelResolver.ResolveInheritedVector(levelNode, level, "rb");
 
-            int durationSeconds = ResolveMobSkillInheritedInt(levelNode, level, "time");
+            int durationSeconds = MobSkillLevelResolver.ResolveInheritedInt(levelNode, level, "time");
 
 
 
             var runtimeData = new MobSkillRuntimeData
             {
-                X = ResolveMobSkillInheritedInt(levelNode, level, "x"),
-                Y = ResolveMobSkillInheritedInt(levelNode, level, "y"),
+                X = MobSkillLevelResolver.ResolveInheritedInt(levelNode, level, "x"),
+                Y = MobSkillLevelResolver.ResolveInheritedInt(levelNode, level, "y"),
                 Hp = Math.Max(
-                    ResolveMobSkillInheritedInt(levelNode, level, "hp"),
-                    ResolveMobSkillInheritedInt(levelNode, level, "HP")),
+                    MobSkillLevelResolver.ResolveInheritedInt(levelNode, level, "hp"),
+                    MobSkillLevelResolver.ResolveInheritedInt(levelNode, level, "HP")),
                 DurationMs = Math.Max(0, durationSeconds) * 1000,
                 IntervalMs = Math.Max(
-                    ResolveMobSkillInheritedInt(levelNode, level, "interval"),
-                    ResolveMobSkillInheritedInt(levelNode, level, "inteval")) * 1000,
-                PropPercent = ResolveMobSkillInheritedInt(levelNode, level, "prop"),
-                Count = ResolveMobSkillInheritedInt(levelNode, level, "count"),
-                TargetMobType = (MobSkillTargetMobType)ResolveMobSkillInheritedInt(levelNode, level, "targetMobType"),
+                    MobSkillLevelResolver.ResolveInheritedInt(levelNode, level, "interval"),
+                    MobSkillLevelResolver.ResolveInheritedInt(levelNode, level, "inteval")) * 1000,
+                PropPercent = MobSkillLevelResolver.ResolveInheritedInt(levelNode, level, "prop"),
+                Count = MobSkillLevelResolver.ResolveInheritedInt(levelNode, level, "count"),
+                TargetMobType = (MobSkillTargetMobType)MobSkillLevelResolver.ResolveInheritedInt(levelNode, level, "targetMobType"),
                 Lt = lt,
                 Rb = rb
             };
@@ -14924,131 +15170,6 @@ namespace HaCreator.MapSimulator
             _mobSkillRuntimeCache[cacheKey] = runtimeData;
             return runtimeData;
         }
-        private static WzSubProperty ResolveMobSkillLevelNode(WzSubProperty levelNode, int level)
-        {
-            return levelNode?[level.ToString()] as WzSubProperty ?? levelNode?["1"] as WzSubProperty;
-        }
-        private static int ResolveMobSkillInheritedInt(WzSubProperty levelNode, int level, string propertyName, int defaultValue = 0)
-        {
-            if (levelNode == null || string.IsNullOrWhiteSpace(propertyName))
-            {
-                return defaultValue;
-            }
-
-
-            if (TryGetMobSkillLevelInt(levelNode, level, propertyName, out int resolvedValue))
-            {
-                return resolvedValue;
-            }
-
-
-            return defaultValue;
-        }
-        private static bool TryGetMobSkillLevelInt(WzSubProperty levelNode, int level, string propertyName, out int value)
-        {
-            value = 0;
-            if (levelNode == null || string.IsNullOrWhiteSpace(propertyName))
-            {
-                return false;
-            }
-
-
-            if (TryReadMobSkillLevelInt(levelNode, level, propertyName, out value))
-            {
-                return true;
-            }
-
-
-            var fallbackLevels = new List<int>();
-            foreach (WzImageProperty child in levelNode.WzProperties)
-            {
-                if (int.TryParse(child.Name, out int candidateLevel) && candidateLevel < level)
-                {
-                    fallbackLevels.Add(candidateLevel);
-                }
-            }
-
-
-            fallbackLevels.Sort((left, right) => right.CompareTo(left));
-            foreach (int candidateLevel in fallbackLevels)
-            {
-                if (TryReadMobSkillLevelInt(levelNode, candidateLevel, propertyName, out value))
-                {
-                    return true;
-                }
-            }
-
-
-            return TryReadMobSkillLevelInt(levelNode, 1, propertyName, out value);
-        }
-        private static Point? ResolveMobSkillInheritedVector(WzSubProperty levelNode, int level, string propertyName)
-        {
-            if (TryGetMobSkillLevelVector(levelNode, level, propertyName, out Point point))
-            {
-                return point;
-            }
-
-
-            return null;
-        }
-        private static bool TryGetMobSkillLevelVector(WzSubProperty levelNode, int level, string propertyName, out Point value)
-        {
-            value = Point.Zero;
-            if (levelNode == null || string.IsNullOrWhiteSpace(propertyName))
-            {
-                return false;
-            }
-
-
-            if (TryReadMobSkillLevelVector(levelNode, level, propertyName, out value))
-            {
-                return true;
-            }
-
-
-            var fallbackLevels = new List<int>();
-            foreach (WzImageProperty child in levelNode.WzProperties)
-            {
-                if (int.TryParse(child.Name, out int candidateLevel) && candidateLevel < level)
-                {
-                    fallbackLevels.Add(candidateLevel);
-                }
-            }
-
-
-            fallbackLevels.Sort((left, right) => right.CompareTo(left));
-            foreach (int candidateLevel in fallbackLevels)
-            {
-                if (TryReadMobSkillLevelVector(levelNode, candidateLevel, propertyName, out value))
-                {
-                    return true;
-                }
-            }
-
-
-            return TryReadMobSkillLevelVector(levelNode, 1, propertyName, out value);
-        }
-        private static bool TryReadMobSkillLevelInt(WzSubProperty levelNode, int level, string propertyName, out int value)
-        {
-            value = 0;
-            if (levelNode?[level.ToString()] is not WzSubProperty levelProperty)
-            {
-                return false;
-            }
-
-
-            WzImageProperty child = levelProperty[propertyName];
-            if (child == null)
-            {
-                return false;
-            }
-
-
-            value = MapleLib.WzLib.WzStructure.InfoTool.GetInt(child, 0);
-            return true;
-
-        }
-
 
 
         private static long GetMobSkillEffectKey(MobItem mobItem, int currentTick)
@@ -21166,6 +21287,7 @@ namespace HaCreator.MapSimulator
             ApplyPersistedPacketOwnedFuncKeyConfig();
             _playerManager.SetMobSkillRuntimeResolver(ResolveMobSkillRuntimeData);
             _remoteUserPool.Initialize(_playerManager.Loader, _playerManager.SkillLoader);
+            _remoteUserPool.ActorRemovedCallback = HandlePacketOwnedRemoteActorRemoved;
             _summonedPool.Initialize(
                 _playerManager.SkillLoader,
                 _mobPool,
@@ -25776,6 +25898,7 @@ namespace HaCreator.MapSimulator
             else
             {
                 _massacrePacketInbox.Stop();
+                _massacreOfficialSessionBridge.Stop();
             }
         }
 
@@ -26526,6 +26649,26 @@ namespace HaCreator.MapSimulator
                     message,
                     applied,
                     applied ? field.DescribeStatus() : resultMessage);
+            }
+
+            while (_massacreOfficialSessionBridge.TryDequeue(out MassacrePacketInboxMessage bridgeMessage))
+            {
+                if (!field.IsActive)
+                {
+                    _massacreOfficialSessionBridge.RecordDispatchResult(
+                        bridgeMessage.Source,
+                        bridgeMessage.PacketType,
+                        success: false,
+                        message: "runtime inactive");
+                    continue;
+                }
+
+                bool applied = TryApplyMassacreInboxMessage(field, bridgeMessage, currentTickCount, out string bridgeResultMessage);
+                _massacreOfficialSessionBridge.RecordDispatchResult(
+                    bridgeMessage.Source,
+                    bridgeMessage.PacketType,
+                    applied,
+                    applied ? field.DescribeStatus() : bridgeResultMessage);
             }
         }
 

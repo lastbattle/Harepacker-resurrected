@@ -222,6 +222,12 @@ namespace HaCreator.MapSimulator.UI
                 : "Commodity migration cleared.";
         }
 
+        public bool TryGetPendingCommoditySerialNumber(out int pendingCommoditySerialNumber)
+        {
+            pendingCommoditySerialNumber = _pendingCommoditySerialNumber;
+            return pendingCommoditySerialNumber > 0;
+        }
+
         public bool TryFocusCommoditySerialNumber(int commoditySerialNumber)
         {
             if (_stageKind != CashServiceStageKind.CashShop || commoditySerialNumber <= 0)

@@ -804,7 +804,7 @@ namespace HaCreator.MapSimulator.Entities
                     AnimationName = animationName,
                     Range = DetermineSkillRange(skillData, isBoss),
                     Cooldown = DetermineSkillCooldown(skillData, isBoss),
-                    SourceIndex = skillIndex,
+                    SourceIndex = skillData.SourceIndex >= 0 ? skillData.SourceIndex : skillIndex,
                     Priority = skillData.Priority,
                     PreSkillIndex = skillData.PreSkillCount > 0 ? skillData.PreSkillIndex : -1,
                     PreSkillCount = skillData.PreSkillCount,

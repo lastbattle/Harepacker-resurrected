@@ -3,6 +3,13 @@ using System.Collections.Generic;
 
 namespace HaCreator.MapSimulator.Interaction
 {
+    internal enum ParcelDialogTab
+    {
+        Receive = 0,
+        Send = 1,
+        QuickSend = 2
+    }
+
     internal enum ParcelComposeMode
     {
         Send,
@@ -21,6 +28,7 @@ namespace HaCreator.MapSimulator.Interaction
         public bool CanSend { get; init; }
         public bool CanQuickSend { get; init; }
         public ParcelComposeMode ActiveMode { get; init; }
+        public ParcelDialogTab ActiveTab { get; init; }
         public bool ShowTaxInfo { get; init; }
         public string ModeSummary { get; init; } = string.Empty;
         public string TaxSummary { get; init; } = string.Empty;
@@ -57,6 +65,7 @@ namespace HaCreator.MapSimulator.Interaction
     internal sealed class MemoMailboxSnapshot
     {
         public IReadOnlyList<MemoMailboxEntrySnapshot> Entries { get; init; } = Array.Empty<MemoMailboxEntrySnapshot>();
+        public ParcelDialogTab ActiveTab { get; init; }
         public int UnreadCount { get; init; }
         public int ClaimableCount { get; init; }
         public string LastActionSummary { get; init; } = string.Empty;

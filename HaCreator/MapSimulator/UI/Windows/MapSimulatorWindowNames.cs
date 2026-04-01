@@ -34,6 +34,10 @@ namespace HaCreator.MapSimulator.UI
         public const string AvatarPreviewCarousel = "AvatarPreviewCarousel";
         public const string LoginTitle = "LoginTitle";
         public const string LoginCreateCharacter = "LoginCreateCharacter";
+        public const string LoginCreateCharacterRaceSelect = "LoginCreateCharacterRaceSelect";
+        public const string LoginCreateCharacterJobSelect = "LoginCreateCharacterJobSelect";
+        public const string LoginCreateCharacterAvatarSelect = "LoginCreateCharacterAvatarSelect";
+        public const string LoginCreateCharacterNameSelect = "LoginCreateCharacterNameSelect";
         public const string ConnectionNotice = "ConnectionNotice";
         public const string LoginUtilityDialog = "LoginUtilityDialog";
         public const string AntiMacro = "AntiMacro";
@@ -56,7 +60,10 @@ namespace HaCreator.MapSimulator.UI
         public const string SocialList = "SocialList";
         public const string SocialSearch = "SocialSearch";
         public const string GuildSearch = "GuildSearch";
+        public const string GuildRank = "GuildRank";
         public const string GuildManage = "GuildManage";
+        public const string GuildMark = "GuildMark";
+        public const string GuildCreateAgreement = "GuildCreateAgreement";
         public const string AllianceEditor = "AllianceEditor";
         public const string GuildSkill = "GuildSkill";
         public const string GuildBbs = "GuildBbs";

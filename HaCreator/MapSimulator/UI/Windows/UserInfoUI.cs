@@ -254,7 +254,7 @@ namespace HaCreator.MapSimulator.UI
         public Func<UserInfoActionContext, PopularityChangeDirection, string> PopularityRequested { get; set; }
         public Action PersonalShopRequested { get; set; }
         public Action EntrustedShopRequested { get; set; }
-        public Action BookCollectionRequested { get; set; }
+        public Func<UserInfoActionContext, string> BookCollectionRequested { get; set; }
 
         public override CharacterBuild CharacterBuild
         {
@@ -1389,7 +1389,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (_collectClaimButton != null)
             {
-                bool showCollectButtons = _currentPage == UserInfoPage.Collect;
+                bool showCollectButtons = _currentPage == UserInfoPage.Collect && !remoteInspection;
                 _collectClaimButton.ButtonVisible = showCollectButtons;
                 _collectClaimButton.SetEnabled(showCollectButtons && !_exceptionPopupOpen && CanClaimCollectReward() && !_collectRewardClaimed);
             }
@@ -1754,8 +1754,10 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            BookCollectionRequested.Invoke();
-            _statusMessage = "Collection book opened.";
+            string message = BookCollectionRequested.Invoke(BuildCurrentActionContext());
+            _statusMessage = string.IsNullOrWhiteSpace(message)
+                ? "Collection book opened."
+                : message;
         }
 
         private void ClaimCollectReward()
@@ -1790,6 +1792,11 @@ namespace HaCreator.MapSimulator.UI
 
         private bool CanClaimCollectReward()
         {
+            if (IsRemoteInspectionActive())
+            {
+                return false;
+            }
+
             ItemMakerProgressionSnapshot progression = GetCollectionSnapshot();
             MonsterBookSnapshot snapshot = GetMonsterBookSnapshot();
             return progression.SuccessfulCrafts > 0

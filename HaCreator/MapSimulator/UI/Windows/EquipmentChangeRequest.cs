@@ -190,6 +190,41 @@ namespace HaCreator.MapSimulator.UI
             return TryGetBattlefieldRejectReason(liveSourcePart, battlefieldRestrictionResolver, out rejectReason);
         }
 
+        internal static bool TryGetInventorySourceRejectReason(
+            EquipmentChangeRequest request,
+            InventorySlotData liveSlot,
+            out string rejectReason)
+        {
+            if (request == null)
+            {
+                rejectReason = "The source inventory slot no longer matches the requested item.";
+                return true;
+            }
+
+            if (liveSlot == null || liveSlot.ItemId != request.ItemId)
+            {
+                rejectReason = "The source inventory slot no longer matches the requested item.";
+                return true;
+            }
+
+            if (liveSlot.PendingRequestId != 0 && liveSlot.PendingRequestId != request.RequestId)
+            {
+                rejectReason = "The source inventory slot no longer matches the requested item.";
+                return true;
+            }
+
+            // The delayed equipment path locks the source slot in-place until completion.
+            // Treat that self-owned pending lock as valid instead of rejecting our own request.
+            if (liveSlot.IsDisabled && liveSlot.PendingRequestId != request.RequestId)
+            {
+                rejectReason = "The source inventory slot no longer matches the requested item.";
+                return true;
+            }
+
+            rejectReason = string.Empty;
+            return false;
+        }
+
         private static bool TryGetSlotStateRejectReason(
             CharacterBuild build,
             HaCreator.MapSimulator.Character.EquipSlot slot,

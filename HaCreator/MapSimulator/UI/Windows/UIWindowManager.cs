@@ -571,7 +571,7 @@ namespace HaCreator.MapSimulator.UI
                         mouseIsOverWindow)
                     {
                         BringToFront(window);
-                        if (window.SupportsDragging)
+                        if (window.SupportsDragging && window.CanStartDragAt(mouseState.X, mouseState.Y))
                         {
                             _draggingWindow = window;
                         }
@@ -891,7 +891,7 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            InventoryType inventoryType = InventoryItemMetadataResolver.ResolveInventoryType(previewSlot.ItemId);
+            InventoryType inventoryType = InventoryItemMetadataResolver.ResolveInventoryType(previewSlot);
             if (!inventoryWindow.CanAcceptItem(inventoryType, previewSlot.ItemId, Math.Max(1, previewSlot.Quantity), previewSlot.MaxStackSize))
             {
                 return false;

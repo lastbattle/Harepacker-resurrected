@@ -1907,7 +1907,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "engage",
                 "Inspect or drive the dedicated engagement proposal dialog seam",
-                "/engage [open <partnerName> [ringItemId] [message...]|open <proposerName> <partnerName> [ringItemId] [message...]|incoming <proposerName> [ringItemId] [sealItemId] [message...]|accept|dismiss|clear|status]",
+                "/engage [open <partnerName> [ringItemId] [message...]|open <proposerName> <partnerName> [ringItemId] [message...]|incoming <proposerName> [ringItemId] [sealItemId] [message...]|accept|dismiss|invitation [neat|sweet|premium]|clear|status]",
                 args =>
                 {
                     _engagementProposalController.UpdateLocalContext(_playerManager?.Player?.Build);
@@ -1974,11 +1974,38 @@ namespace HaCreator.MapSimulator
                         case "dismiss":
                             return ChatCommandHandler.CommandResult.Ok(_engagementProposalController.Dismiss(uiWindowManager));
 
+                        case "invitation":
+                            WeddingInvitationStyle invitationStyle = WeddingInvitationStyle.Neat;
+                            if (args.Length >= 2 && !Enum.TryParse(args[1], true, out invitationStyle))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /engage invitation [neat|sweet|premium]");
+                            }
+
+                            if (!_engagementProposalController.TryBuildWeddingInvitationHandoff(
+                                    _playerManager?.Player?.Build,
+                                    invitationStyle,
+                                    out WeddingInvitationHandoff invitationHandoff,
+                                    out string invitationHandoffMessage))
+                            {
+                                return ChatCommandHandler.CommandResult.Error(invitationHandoffMessage);
+                            }
+
+                            return ChatCommandHandler.CommandResult.Ok(
+                                _weddingInvitationController.OpenInvitation(
+                                    invitationHandoff.GroomName,
+                                    invitationHandoff.BrideName,
+                                    invitationHandoff.Style,
+                                    uiWindowManager,
+                                    _playerManager?.Player?.Build,
+                                    _fontChat,
+                                    ShowUtilityFeedbackMessage,
+                                    () => ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.WeddingInvitation)));
+
                         case "clear":
                             return ChatCommandHandler.CommandResult.Ok(_engagementProposalController.Clear(uiWindowManager));
 
                         default:
-                            return ChatCommandHandler.CommandResult.Error("Usage: /engage [open <partnerName> [ringItemId] [message...]|open <proposerName> <partnerName> [ringItemId] [message...]|incoming <proposerName> [ringItemId] [sealItemId] [message...]|accept|dismiss|clear|status]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /engage [open <partnerName> [ringItemId] [message...]|open <proposerName> <partnerName> [ringItemId] [message...]|incoming <proposerName> [ringItemId] [sealItemId] [message...]|accept|dismiss|invitation [neat|sweet|premium]|clear|status]");
                     }
                 });
 
@@ -2098,9 +2125,9 @@ namespace HaCreator.MapSimulator
                             }
 
 
-                            _guildBossOfficialSessionBridge.Start(listenPort, args[3], remotePort);
-
-                            return ChatCommandHandler.CommandResult.Ok(_guildBossOfficialSessionBridge.LastStatus);
+                            return _guildBossOfficialSessionBridge.TryStart(listenPort, args[3], remotePort, out string startMessage)
+                                ? ChatCommandHandler.CommandResult.Ok(startMessage)
+                                : ChatCommandHandler.CommandResult.Error(startMessage);
 
                         }
 
@@ -4029,7 +4056,7 @@ namespace HaCreator.MapSimulator
 
                 "Inspect or drive the Massacre timerboard and gauge flow",
 
-                "/massacre [status|clock <seconds>|kill [gauge]|inc <value>|info <hit> <miss> <cool> [skill]|stage <index>|params <maxGauge> <decayPerSec>|bonus|result <clear|fail> [score] [rank]|reset|inbox [status|start [port]|stop]]",
+                "/massacre [status|clock <seconds>|kill [gauge]|inc <value>|info <hit> <miss> <cool> [skill]|stage <index>|params <maxGauge> <decayPerSec>|bonus|result <clear|fail> [score] [rank]|reset|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]]",
                 args =>
                 {
                     MassacreField massacre = _specialFieldRuntime.SpecialEffects.Massacre;
@@ -4042,7 +4069,7 @@ namespace HaCreator.MapSimulator
                     if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
                     {
                         return ChatCommandHandler.CommandResult.Info(
-                            $"{massacre.DescribeStatus()}{Environment.NewLine}{_massacrePacketInbox.LastStatus}");
+                            $"{massacre.DescribeStatus()}{Environment.NewLine}{_massacrePacketInbox.LastStatus}{Environment.NewLine}{_massacreOfficialSessionBridge.DescribeStatus()}");
                     }
 
 
@@ -4051,7 +4078,7 @@ namespace HaCreator.MapSimulator
                         if (args.Length == 1 || string.Equals(args[1], "status", StringComparison.OrdinalIgnoreCase))
                         {
                             return ChatCommandHandler.CommandResult.Info(
-                                $"{massacre.DescribeStatus()}{Environment.NewLine}{_massacrePacketInbox.LastStatus}");
+                                $"{massacre.DescribeStatus()}{Environment.NewLine}{_massacrePacketInbox.LastStatus}{Environment.NewLine}{_massacreOfficialSessionBridge.DescribeStatus()}");
                         }
 
 
@@ -4081,6 +4108,92 @@ namespace HaCreator.MapSimulator
 
                         return ChatCommandHandler.CommandResult.Error("Usage: /massacre inbox [status|start [port]|stop]");
 
+                    }
+
+                    if (string.Equals(args[0], "session", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (args.Length == 1 || string.Equals(args[1], "status", StringComparison.OrdinalIgnoreCase))
+                        {
+                            return ChatCommandHandler.CommandResult.Info(
+                                $"{massacre.DescribeStatus()}{Environment.NewLine}{_massacreOfficialSessionBridge.DescribeStatus()}");
+                        }
+
+                        if (string.Equals(args[1], "discover", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (args.Length < 3
+                                || !int.TryParse(args[2], out int discoverRemotePort)
+                                || discoverRemotePort <= 0)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /massacre session discover <remotePort> [processName|pid] [localPort]");
+                            }
+
+                            string processSelector = args.Length >= 4 ? args[3] : null;
+                            int? localPortFilter = null;
+                            if (args.Length >= 5)
+                            {
+                                if (!int.TryParse(args[4], out int parsedLocalPort) || parsedLocalPort <= 0)
+                                {
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /massacre session discover <remotePort> [processName|pid] [localPort]");
+                                }
+
+                                localPortFilter = parsedLocalPort;
+                            }
+
+                            return ChatCommandHandler.CommandResult.Info(
+                                _massacreOfficialSessionBridge.DescribeDiscoveredSessions(discoverRemotePort, processSelector, localPortFilter));
+                        }
+
+                        if (string.Equals(args[1], "start", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (args.Length < 5
+                                || !int.TryParse(args[2], out int listenPort)
+                                || listenPort <= 0
+                                || !int.TryParse(args[4], out int remotePort)
+                                || remotePort <= 0)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /massacre session start <listenPort> <serverHost> <serverPort>");
+                            }
+
+                            return _massacreOfficialSessionBridge.TryStart(listenPort, args[3], remotePort, out string startMessage)
+                                ? ChatCommandHandler.CommandResult.Ok(startMessage)
+                                : ChatCommandHandler.CommandResult.Error(startMessage);
+                        }
+
+                        if (string.Equals(args[1], "startauto", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (args.Length < 4
+                                || !int.TryParse(args[2], out int autoListenPort)
+                                || autoListenPort <= 0
+                                || !int.TryParse(args[3], out int autoRemotePort)
+                                || autoRemotePort <= 0)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /massacre session startauto <listenPort> <remotePort> [processName|pid] [localPort]");
+                            }
+
+                            string processSelector = args.Length >= 5 ? args[4] : null;
+                            int? localPortFilter = null;
+                            if (args.Length >= 6)
+                            {
+                                if (!int.TryParse(args[5], out int parsedLocalPort) || parsedLocalPort <= 0)
+                                {
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /massacre session startauto <listenPort> <remotePort> [processName|pid] [localPort]");
+                                }
+
+                                localPortFilter = parsedLocalPort;
+                            }
+
+                            return _massacreOfficialSessionBridge.TryStartFromDiscovery(autoListenPort, autoRemotePort, processSelector, localPortFilter, out string startStatus)
+                                ? ChatCommandHandler.CommandResult.Ok(startStatus)
+                                : ChatCommandHandler.CommandResult.Error(startStatus);
+                        }
+
+                        if (string.Equals(args[1], "stop", StringComparison.OrdinalIgnoreCase))
+                        {
+                            _massacreOfficialSessionBridge.Stop();
+                            return ChatCommandHandler.CommandResult.Ok(_massacreOfficialSessionBridge.LastStatus);
+                        }
+
+                        return ChatCommandHandler.CommandResult.Error("Usage: /massacre session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]");
                     }
 
 
@@ -4274,7 +4387,7 @@ namespace HaCreator.MapSimulator
 
 
 
-                    return ChatCommandHandler.CommandResult.Error("Usage: /massacre [status|clock <seconds>|kill [gauge]|inc <value>|info <hit> <miss> <cool> [skill]|stage <index>|params <maxGauge> <decayPerSec>|bonus|result <clear|fail> [score] [rank]|reset|inbox [status|start [port]|stop]]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /massacre [status|clock <seconds>|kill [gauge]|inc <value>|info <hit> <miss> <cool> [skill]|stage <index>|params <maxGauge> <decayPerSec>|bonus|result <clear|fail> [score] [rank]|reset|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]]");
                 });
 
 
@@ -4777,7 +4890,8 @@ namespace HaCreator.MapSimulator
                         }
                         case "end":
                         {
-                            if (!field.TryEndRoom(out string endMessage))
+                            int playerIndex = args.Length >= 2 && int.TryParse(args[1], out int parsedPlayer) ? parsedPlayer : field.LocalPlayerIndex;
+                            if (!field.TryRequestRoomExit(playerIndex, out string endMessage))
                             {
                                 return ChatCommandHandler.CommandResult.Error(endMessage);
                             }
@@ -5495,8 +5609,8 @@ namespace HaCreator.MapSimulator
 
             _chat.CommandHandler.RegisterCommand(
                 "memo",
-                "Drive simulator memo inbox, compose, and package-claim flows",
-                "/memo [status|open|compose|send|claim [memoId]|draft <recipient|subject|body|item|meso|clearattachment|reset> ...|deliver <sender>|<subject>|<body> [|item:<id>:<qty>|meso:<amount>]]",
+                "Drive simulator parcel receive/send/quick-send and package-claim flows",
+                "/memo [status|open|compose|quick|tab <receive|send|quick>|send|claim [memoId]|draft <recipient|subject|body|item|meso|clearattachment|reset> ...|deliver <sender>|<subject>|<body> [|item:<id>:<qty>|meso:<amount>]|packet <status|clear|reset|deliver <sender>|<subject>|<body> [|read|keep|claimed|item:<id>:<qty>|meso:<amount>]>]",
                 args =>
                 {
                     MemoMailboxSnapshot mailboxSnapshot = _memoMailbox.GetSnapshot();
@@ -5513,13 +5627,40 @@ namespace HaCreator.MapSimulator
                     {
                         case "open":
                         case "inbox":
+                            _memoMailbox.SetActiveTab(ParcelDialogTab.Receive);
                             ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.MemoMailbox);
-                            return ChatCommandHandler.CommandResult.Ok("Opened the memo inbox.");
+                            return ChatCommandHandler.CommandResult.Ok("Opened the parcel receive tab.");
                         case "compose":
-                            ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.MemoSend);
-                            return ChatCommandHandler.CommandResult.Ok("Opened the memo send dialog. Use /memo draft ... to edit the current draft.");
+                            _memoMailbox.SetActiveTab(ParcelDialogTab.Send);
+                            ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.MemoMailbox);
+                            return ChatCommandHandler.CommandResult.Ok("Opened the parcel send tab. Use /memo draft ... to edit the current draft.");
+                        case "quick":
+                            _memoMailbox.SetActiveTab(ParcelDialogTab.QuickSend);
+                            ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.MemoMailbox);
+                            return ChatCommandHandler.CommandResult.Ok("Opened the parcel quick-send tab.");
+                        case "tab":
+                            if (args.Length < 2)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /memo tab <receive|send|quick>");
+                            }
+
+                            ParcelDialogTab requestedTab = args[1].ToLowerInvariant() switch
+                            {
+                                "receive" or "keep" => ParcelDialogTab.Receive,
+                                "send" => ParcelDialogTab.Send,
+                                "quick" or "quicksend" => ParcelDialogTab.QuickSend,
+                                _ => (ParcelDialogTab)(-1)
+                            };
+                            if (!Enum.IsDefined(typeof(ParcelDialogTab), requestedTab))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /memo tab <receive|send|quick>");
+                            }
+
+                            _memoMailbox.SetActiveTab(requestedTab);
+                            ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.MemoMailbox);
+                            return ChatCommandHandler.CommandResult.Ok($"Switched the parcel dialog to the {args[1].Trim()} tab.");
                         case "send":
-                            if (_memoMailbox.TrySendDraft(out string sendMessage))
+                            if (_memoMailbox.TryDispatchActiveDraft(out string sendMessage))
                             {
                                 uiWindowManager?.HideWindow(MapSimulatorWindowNames.MemoSend);
                                 ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.MemoMailbox);
@@ -5685,8 +5826,111 @@ namespace HaCreator.MapSimulator
                             _memoMailbox.DeliverMemo(sender, subject, body, DateTimeOffset.Now, false, false, attachmentItemId, attachmentQuantity, attachmentMeso);
                             return ChatCommandHandler.CommandResult.Ok($"Delivered memo '{subject}' from {sender}.");
                         }
+                        case "packet":
+                        {
+                            if (args.Length == 1 || string.Equals(args[1], "status", StringComparison.OrdinalIgnoreCase))
+                            {
+                                return ChatCommandHandler.CommandResult.Info(
+                                    $"Parcel session: {mailboxSnapshot.Entries.Count} row(s), active tab {mailboxSnapshot.ActiveTab}, unread {mailboxSnapshot.UnreadCount}, claimable {mailboxSnapshot.ClaimableCount}.");
+                            }
+
+                            if (string.Equals(args[1], "clear", StringComparison.OrdinalIgnoreCase))
+                            {
+                                _memoMailbox.ClearParcelSession();
+                                return ChatCommandHandler.CommandResult.Ok("Cleared the packet-shaped parcel receive session.");
+                            }
+
+                            if (string.Equals(args[1], "reset", StringComparison.OrdinalIgnoreCase))
+                            {
+                                _memoMailbox.ResetToSeedParcelSession();
+                                return ChatCommandHandler.CommandResult.Ok("Restored the seeded parcel receive session.");
+                            }
+
+                            if (string.Equals(args[1], "deliver", StringComparison.OrdinalIgnoreCase))
+                            {
+                                string joinedPacket = string.Join(" ", args.Skip(2));
+                                string[] segments = joinedPacket.Split('|');
+                                if (segments.Length < 3)
+                                {
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /memo packet deliver <sender>|<subject>|<body> [|read|keep|claimed|item:<id>:<qty>|meso:<amount>]");
+                                }
+
+                                bool isRead = false;
+                                bool isKept = false;
+                                bool isClaimed = false;
+                                int attachmentItemId = 0;
+                                int attachmentQuantity = 0;
+                                int attachmentMeso = 0;
+                                for (int i = 3; i < segments.Length; i++)
+                                {
+                                    string flag = segments[i].Trim();
+                                    if (flag.Equals("read", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        isRead = true;
+                                        continue;
+                                    }
+
+                                    if (flag.Equals("keep", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        isKept = true;
+                                        continue;
+                                    }
+
+                                    if (flag.Equals("claimed", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        isClaimed = true;
+                                        continue;
+                                    }
+
+                                    if (flag.StartsWith("item:", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        string[] itemParts = flag.Split(':');
+                                        if (itemParts.Length < 2
+                                            || !int.TryParse(itemParts[1], out attachmentItemId)
+                                            || attachmentItemId <= 0)
+                                        {
+                                            return ChatCommandHandler.CommandResult.Error("Item attachment format is item:<itemId>:<qty>.");
+                                        }
+
+                                        attachmentQuantity = itemParts.Length >= 3 && int.TryParse(itemParts[2], out int parsedQty)
+                                            ? parsedQty
+                                            : 1;
+                                        continue;
+                                    }
+
+                                    if (flag.StartsWith("meso:", StringComparison.OrdinalIgnoreCase))
+                                    {
+                                        string[] mesoParts = flag.Split(':');
+                                        if (mesoParts.Length < 2 || !int.TryParse(mesoParts[1], out attachmentMeso) || attachmentMeso <= 0)
+                                        {
+                                            return ChatCommandHandler.CommandResult.Error("Meso attachment format is meso:<amount>.");
+                                        }
+
+                                        continue;
+                                    }
+
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /memo packet deliver <sender>|<subject>|<body> [|read|keep|claimed|item:<id>:<qty>|meso:<amount>]");
+                                }
+
+                                return _memoMailbox.TryDeliverPacketOwnedParcel(
+                                    segments[0].Trim(),
+                                    segments[1].Trim(),
+                                    segments[2].Trim(),
+                                    isRead,
+                                    isKept,
+                                    isClaimed,
+                                    attachmentItemId,
+                                    attachmentQuantity,
+                                    attachmentMeso,
+                                    out string packetMessage)
+                                    ? ChatCommandHandler.CommandResult.Ok(packetMessage)
+                                    : ChatCommandHandler.CommandResult.Error(packetMessage);
+                            }
+
+                            return ChatCommandHandler.CommandResult.Error("Usage: /memo packet <status|clear|reset|deliver <sender>|<subject>|<body> [|read|keep|claimed|item:<id>:<qty>|meso:<amount>]>");
+                        }
                         default:
-                            return ChatCommandHandler.CommandResult.Error("Usage: /memo [status|open|compose|send|claim [memoId]|draft <recipient|subject|body|item|meso|clearattachment|reset> ...|deliver <sender>|<subject>|<body> [|item:<id>:<qty>|meso:<amount>]]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /memo [status|open|compose|quick|tab <receive|send|quick>|send|claim [memoId]|draft <recipient|subject|body|item|meso|clearattachment|reset> ...|deliver <sender>|<subject>|<body> [|item:<id>:<qty>|meso:<amount>]|packet <status|clear|reset|deliver <sender>|<subject>|<body> [|read|keep|claimed|item:<id>:<qty>|meso:<amount>]>]");
                     }
                 });
 
@@ -6242,7 +6486,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "localutility",
                 "Inspect or drive packet-authored local utility and event dispatch handlers",
-                    "/localutility [status|inbox [status|start [port]|stop|packet <openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|followfail|damagemeter|hpdec|skillcooltime|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]]|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv]|classcompetition|skillguide|antimacro [status|launch <normal|admin> [first|retry]|notice <noticeType> [antiMacroType]|result <mode> [antiMacroType] [userName]|clear]|apsp [status|seed [characterId]|receive <token>|send <token>|context <receiveToken> [sendToken]|<contextToken> <11|12|13>|text]|followfail [text]|packet <openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|skillguide|antimacro|apspevent|followfail|skillcooltime|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>]",
+                    "/localutility [status|inbox [status|start [port]|stop|packet <sitresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|followfail|directionmode|standalone|damagemeter|hpdec|skillcooltime|231|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|1013|1014|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]]|directionmode <on|off|1|0> [delayMs]|standalone <on|off|1|0>|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv]|classcompetition|skillguide|antimacro [status|launch <normal|admin> [first|retry]|notice <noticeType> [antiMacroType]|result <mode> [antiMacroType] [userName]|clear]|apsp [status|seed [characterId]|receive <token>|send <token>|context <receiveToken> [sendToken]|<contextToken> <11|12|13>|text]|followfail [text]|packet <sitresult|openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|skillguide|antimacro|apspevent|directionmode|standalone|followfail|skillcooltime|231|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|1013|1014> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>]",
                 HandlePacketOwnedUtilityCommand);
 
             _chat.CommandHandler.RegisterCommand(
@@ -6255,7 +6499,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "localutilitypacket",
                 "Inspect or inject packet-owned local utility and event dispatch payloads through the loopback inbox",
-                    "/localutilitypacket [status|start [port]|stop|packet <openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|followfail|damagemeter|hpdec|skillcooltime|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]]",
+                    "/localutilitypacket [status|start [port]|stop|packet <sitresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|followfail|directionmode|standalone|damagemeter|hpdec|skillcooltime|231|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|1013|1014|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]]",
                 HandlePacketOwnedUtilityCommand);
 
 
@@ -7253,7 +7497,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "scriptmsg",
                 "Inspect or drive packet-authored CScriptMan script-message dialogs",
-                "/scriptmsg [status|clear|transport <status|start [port]|stop>|say <npcId> <text>|yesno <npcId> <text>|menu <npcId> <text>|text <npcId> <minLen> <maxLen> <defaultText> <prompt>|number <npcId> <default> <min> <max> <prompt>|box <npcId> <columns> <lines> <defaultText> <prompt>|packet <payloadhex=..|payloadb64=..>|packetraw <hex>]",
+                "/scriptmsg [status|clear|transport <status|start [port]|stop>|say <npcId> <text>|sayimage <npcId> <imagePath[,imagePath...]>|yesno <npcId> <text>|menu <npcId> <text>|quiz <npcId> <default> <min> <max> <prompt>|speedquiz <npcId> <defaultText> <prompt> [option1,option2,...]|avatar <npcId> <prompt> <itemId[,itemId...]>|mavatar <npcId> <prompt> <itemId[,itemId...]>|pet <npcId> <prompt> <itemId[,itemId...]>|petall <npcId> <prompt> <itemId[,itemId...]>|slidemenu <npcId> <skin> <prompt> <option1,option2,...>|text <npcId> <minLen> <maxLen> <defaultText> <prompt>|number <npcId> <default> <min> <max> <prompt>|box <npcId> <columns> <lines> <defaultText> <prompt>|packet <payloadhex=..|payloadb64=..>|packetraw <hex>]",
                 args =>
                 {
                     if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
@@ -7344,6 +7588,37 @@ namespace HaCreator.MapSimulator
                                 ? ChatCommandHandler.CommandResult.Ok(menuMessage)
                                 : ChatCommandHandler.CommandResult.Error(menuMessage);
 
+                        case "quiz":
+                            if (args.Length < 6 ||
+                                !int.TryParse(args[1], out int quizNpcId) ||
+                                !int.TryParse(args[2], out int quizDefaultValue) ||
+                                !int.TryParse(args[3], out int quizMinValue) ||
+                                !int.TryParse(args[4], out int quizMaxValue))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg quiz <npcId> <default> <min> <max> <prompt>");
+                            }
+
+                            return TryApplyPacketOwnedScriptMessagePacket(
+                                BuildScriptMessageQuizPacket(quizNpcId, string.Join(" ", args.Skip(5)), quizDefaultValue, quizMinValue, quizMaxValue),
+                                out string quizMessage)
+                                ? ChatCommandHandler.CommandResult.Ok(quizMessage)
+                                : ChatCommandHandler.CommandResult.Error(quizMessage);
+
+                        case "speedquiz":
+                            if (args.Length < 4 || !int.TryParse(args[1], out int speedQuizNpcId))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg speedquiz <npcId> <defaultText> <prompt> [option1,option2,...]");
+                            }
+
+                            string[] speedQuizOptions = args.Length >= 5
+                                ? args[4].Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                                : Array.Empty<string>();
+                            return TryApplyPacketOwnedScriptMessagePacket(
+                                BuildScriptMessageSpeedQuizPacket(speedQuizNpcId, args[3], args[2], speedQuizOptions),
+                                out string speedQuizMessage)
+                                ? ChatCommandHandler.CommandResult.Ok(speedQuizMessage)
+                                : ChatCommandHandler.CommandResult.Error(speedQuizMessage);
+
                         case "sayimage":
                             if (args.Length < 3 || !int.TryParse(args[1], out int sayImageNpcId))
                             {
@@ -7392,6 +7667,60 @@ namespace HaCreator.MapSimulator
                                 out string membershopAvatarMessage)
                                 ? ChatCommandHandler.CommandResult.Ok(membershopAvatarMessage)
                                 : ChatCommandHandler.CommandResult.Error(membershopAvatarMessage);
+
+                        case "pet":
+                            if (args.Length < 4 || !int.TryParse(args[1], out int petNpcId))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg pet <npcId> <prompt> <itemId[,itemId...]>");
+                            }
+
+                            if (!TryParsePacketOwnedItemIdList(args[3], out int[] petItemIds))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg pet <npcId> <prompt> <itemId[,itemId...]>");
+                            }
+
+                            return TryApplyPacketOwnedScriptMessagePacket(
+                                BuildScriptMessagePetPacket(petNpcId, args[2], petItemIds),
+                                out string petMessage)
+                                ? ChatCommandHandler.CommandResult.Ok(petMessage)
+                                : ChatCommandHandler.CommandResult.Error(petMessage);
+
+                        case "petall":
+                            if (args.Length < 4 || !int.TryParse(args[1], out int petAllNpcId))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg petall <npcId> <prompt> <itemId[,itemId...]>");
+                            }
+
+                            if (!TryParsePacketOwnedItemIdList(args[3], out int[] petAllItemIds))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg petall <npcId> <prompt> <itemId[,itemId...]>");
+                            }
+
+                            return TryApplyPacketOwnedScriptMessagePacket(
+                                BuildScriptMessagePetAllPacket(petAllNpcId, args[2], petAllItemIds),
+                                out string petAllMessage)
+                                ? ChatCommandHandler.CommandResult.Ok(petAllMessage)
+                                : ChatCommandHandler.CommandResult.Error(petAllMessage);
+
+                        case "slidemenu":
+                            if (args.Length < 5 ||
+                                !int.TryParse(args[1], out int slideMenuNpcId) ||
+                                !byte.TryParse(args[2], out byte slideMenuSkin))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg slidemenu <npcId> <skin> <prompt> <option1,option2,...>");
+                            }
+
+                            string[] slideMenuOptions = args[4].Split(new[] { ',' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+                            if (slideMenuOptions.Length == 0)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg slidemenu <npcId> <skin> <prompt> <option1,option2,...>");
+                            }
+
+                            return TryApplyPacketOwnedScriptMessagePacket(
+                                BuildScriptMessageSlideMenuPacket(slideMenuNpcId, slideMenuSkin, args[3], slideMenuOptions),
+                                out string slideMenuMessage)
+                                ? ChatCommandHandler.CommandResult.Ok(slideMenuMessage)
+                                : ChatCommandHandler.CommandResult.Error(slideMenuMessage);
 
                         case "text":
 
@@ -7485,7 +7814,7 @@ namespace HaCreator.MapSimulator
 
 
                         default:
-                            return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg [status|clear|transport <status|start [port]|stop>|say <npcId> <text>|sayimage <npcId> <imagePath[,imagePath...]>|yesno <npcId> <text>|menu <npcId> <text>|avatar <npcId> <prompt> <itemId[,itemId...]>|mavatar <npcId> <prompt> <itemId[,itemId...]>|text <npcId> <minLen> <maxLen> <defaultText> <prompt>|number <npcId> <default> <min> <max> <prompt>|box <npcId> <columns> <lines> <defaultText> <prompt>|packet <payloadhex=..|payloadb64=..>|packetraw <hex>]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg [status|clear|transport <status|start [port]|stop>|say <npcId> <text>|sayimage <npcId> <imagePath[,imagePath...]>|yesno <npcId> <text>|menu <npcId> <text>|quiz <npcId> <default> <min> <max> <prompt>|speedquiz <npcId> <defaultText> <prompt> [option1,option2,...]|avatar <npcId> <prompt> <itemId[,itemId...]>|mavatar <npcId> <prompt> <itemId[,itemId...]>|pet <npcId> <prompt> <itemId[,itemId...]>|petall <npcId> <prompt> <itemId[,itemId...]>|slidemenu <npcId> <skin> <prompt> <option1,option2,...>|text <npcId> <minLen> <maxLen> <defaultText> <prompt>|number <npcId> <default> <min> <max> <prompt>|box <npcId> <columns> <lines> <defaultText> <prompt>|packet <payloadhex=..|payloadb64=..>|packetraw <hex>]");
                     }
                 });
 
@@ -7741,6 +8070,40 @@ namespace HaCreator.MapSimulator
             return stream.ToArray();
         }
 
+        private static byte[] BuildScriptMessageQuizPacket(int npcId, string prompt, int defaultValue, int minValue, int maxValue)
+        {
+            using var stream = new MemoryStream();
+            using var writer = new BinaryWriter(stream, Encoding.Default, leaveOpen: true);
+            writer.Write((byte)4);
+            writer.Write(npcId);
+            writer.Write((byte)6);
+            writer.Write((byte)0);
+            WritePacketOwnedMapleString(writer, prompt);
+            writer.Write(defaultValue);
+            writer.Write(minValue);
+            writer.Write(maxValue);
+            return stream.ToArray();
+        }
+
+        private static byte[] BuildScriptMessageSpeedQuizPacket(int npcId, string prompt, string defaultText, IReadOnlyList<string> options)
+        {
+            using var stream = new MemoryStream();
+            using var writer = new BinaryWriter(stream, Encoding.Default, leaveOpen: true);
+            writer.Write((byte)4);
+            writer.Write(npcId);
+            writer.Write((byte)7);
+            writer.Write((byte)0);
+            WritePacketOwnedMapleString(writer, prompt);
+            WritePacketOwnedMapleString(writer, defaultText);
+            writer.Write((byte)Math.Min(byte.MaxValue, options?.Count ?? 0));
+            foreach (string option in options ?? Array.Empty<string>())
+            {
+                WritePacketOwnedMapleString(writer, option);
+            }
+
+            return stream.ToArray();
+        }
+
         private static byte[] BuildScriptMessageAvatarPacket(int npcId, string prompt, IReadOnlyList<int> itemIds)
         {
             return BuildScriptMessageAvatarPacketCore(npcId, 8, prompt, itemIds);
@@ -7749,6 +8112,35 @@ namespace HaCreator.MapSimulator
         private static byte[] BuildScriptMessageMembershopAvatarPacket(int npcId, string prompt, IReadOnlyList<int> itemIds)
         {
             return BuildScriptMessageAvatarPacketCore(npcId, 9, prompt, itemIds);
+        }
+
+        private static byte[] BuildScriptMessagePetPacket(int npcId, string prompt, IReadOnlyList<int> petIds)
+        {
+            return BuildScriptMessageIndexedSelectionPacket(npcId, 10, prompt, petIds);
+        }
+
+        private static byte[] BuildScriptMessagePetAllPacket(int npcId, string prompt, IReadOnlyList<int> petIds)
+        {
+            return BuildScriptMessageIndexedSelectionPacket(npcId, 11, prompt, petIds);
+        }
+
+        private static byte[] BuildScriptMessageSlideMenuPacket(int npcId, byte skin, string prompt, IReadOnlyList<string> options)
+        {
+            using var stream = new MemoryStream();
+            using var writer = new BinaryWriter(stream, Encoding.Default, leaveOpen: true);
+            writer.Write((byte)4);
+            writer.Write(npcId);
+            writer.Write((byte)12);
+            writer.Write((byte)0);
+            WritePacketOwnedMapleString(writer, prompt);
+            writer.Write(skin);
+            writer.Write((byte)Math.Min(byte.MaxValue, options?.Count ?? 0));
+            foreach (string option in options ?? Array.Empty<string>())
+            {
+                WritePacketOwnedMapleString(writer, option);
+            }
+
+            return stream.ToArray();
         }
 
         private static byte[] BuildScriptMessageAvatarPacketCore(int npcId, byte messageType, string prompt, IReadOnlyList<int> itemIds)
@@ -7764,6 +8156,24 @@ namespace HaCreator.MapSimulator
             foreach (int itemId in itemIds ?? Array.Empty<int>())
             {
                 writer.Write(itemId);
+            }
+
+            return stream.ToArray();
+        }
+
+        private static byte[] BuildScriptMessageIndexedSelectionPacket(int npcId, byte messageType, string prompt, IReadOnlyList<int> values)
+        {
+            using var stream = new MemoryStream();
+            using var writer = new BinaryWriter(stream, Encoding.Default, leaveOpen: true);
+            writer.Write((byte)4);
+            writer.Write(npcId);
+            writer.Write(messageType);
+            writer.Write((byte)0);
+            WritePacketOwnedMapleString(writer, prompt);
+            writer.Write((byte)Math.Min(byte.MaxValue, values?.Count ?? 0));
+            foreach (int value in values ?? Array.Empty<int>())
+            {
+                writer.Write(value);
             }
 
             return stream.ToArray();

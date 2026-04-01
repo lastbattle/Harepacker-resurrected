@@ -799,7 +799,7 @@ namespace HaCreator.MapSimulator.UI
                                 InventorySlotData displacedSlot = displacedSlots[i];
                                 if (displacedSlot != null)
                                 {
-                                    inventoryWindow.AddItem(InventoryType.EQUIP, displacedSlot);
+                                    inventoryWindow.AddItem(ResolveInventoryTypeForSlot(displacedSlot), displacedSlot);
                                 }
                             }
                         }
@@ -817,7 +817,7 @@ namespace HaCreator.MapSimulator.UI
                         InventorySlotData returnedSlot = CreateInventorySlot(result.ReturnedPart);
                         if (returnedSlot != null)
                         {
-                            inventoryWindow.AddItem(InventoryType.EQUIP, returnedSlot);
+                            inventoryWindow.AddItem(ResolveInventoryTypeForSlot(returnedSlot), returnedSlot);
                         }
                     }
                     break;
@@ -902,7 +902,7 @@ namespace HaCreator.MapSimulator.UI
                         InventorySlotData displacedSlot = displacedSlots[i];
                         if (displacedSlot != null)
                         {
-                            inventoryWindow.AddItem(InventoryType.EQUIP, displacedSlot);
+                            inventoryWindow.AddItem(ResolveInventoryTypeForSlot(displacedSlot), displacedSlot);
                         }
                     }
                 }
@@ -1119,31 +1119,52 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
-            int displacedItemCount = GetCompanionDisplacedItemCount(pendingChange, liveSourceSlot?.ItemId ?? 0);
-            if (displacedItemCount <= 1)
+            Dictionary<InventoryType, int> displacedCounts = GetCompanionDisplacedInventoryCounts(
+                pendingChange,
+                liveSourceSlot?.ItemId ?? 0);
+            if (displacedCounts.Count == 0)
             {
                 return true;
             }
 
-            int currentEquipCount = inventoryWindow.GetSlots(InventoryType.EQUIP).Count;
-            int freeEquipSlots = Math.Max(0, inventoryWindow.GetSlotLimit(InventoryType.EQUIP) - currentEquipCount);
-            int extraSlotsNeeded = displacedItemCount - 1;
-            if (freeEquipSlots >= extraSlotsNeeded)
+            InventoryType sourceInventoryType = InventoryItemMetadataResolver.ResolveInventoryType(
+                liveSourceSlot,
+                pendingChange.SourceInventoryType);
+            foreach ((InventoryType inventoryType, int displacedCount) in displacedCounts)
             {
-                return true;
+                if (displacedCount <= 0)
+                {
+                    continue;
+                }
+
+                int currentCount = inventoryWindow.GetSlots(inventoryType).Count;
+                int availableSlots = Math.Max(0, inventoryWindow.GetSlotLimit(inventoryType) - currentCount);
+                if (inventoryType == sourceInventoryType)
+                {
+                    availableSlots++;
+                }
+
+                if (availableSlots >= displacedCount)
+                {
+                    continue;
+                }
+
+                string inventoryLabel = ResolveInventoryLabel(inventoryType);
+                rejectReason = displacedCount == 1
+                    ? $"There is no free {inventoryLabel} inventory slot for the displaced companion item."
+                    : $"There are not enough free {inventoryLabel} inventory slots for the {displacedCount} displaced companion items.";
+                return false;
             }
 
-            rejectReason = extraSlotsNeeded == 1
-                ? "There is no free equipment inventory slot for the displaced companion item."
-                : $"There are not enough free equipment inventory slots for the {displacedItemCount} displaced companion items.";
-            return false;
+            return true;
         }
 
-        private int GetCompanionDisplacedItemCount(PendingCompanionInventoryChange pendingChange, int itemId)
+        private Dictionary<InventoryType, int> GetCompanionDisplacedInventoryCounts(PendingCompanionInventoryChange pendingChange, int itemId)
         {
+            Dictionary<InventoryType, int> displacedCounts = new();
             if (pendingChange == null)
             {
-                return 0;
+                return displacedCounts;
             }
 
             switch (pendingChange.TargetKind)
@@ -1151,54 +1172,107 @@ namespace HaCreator.MapSimulator.UI
                 case CompanionDragKind.Pet:
                 {
                     PetRuntime targetPet = ResolvePetByRuntimeId(pendingChange.TargetPetRuntimeId);
-                    return targetPet != null
-                           && _petEquipmentController != null
-                           && _petEquipmentController.TryGetItem(targetPet, out _)
-                        ? 1
-                        : 0;
+                    if (targetPet != null
+                        && _petEquipmentController != null
+                        && _petEquipmentController.TryGetItem(targetPet, out CompanionEquipItem petItem))
+                    {
+                        AddDisplacedInventoryCount(displacedCounts, ResolveInventoryTypeForCompanionItem(petItem));
+                    }
+
+                    return displacedCounts;
                 }
                 case CompanionDragKind.Dragon:
-                    return pendingChange.TargetDragonSlot.HasValue
-                           && _dragonEquipmentController != null
-                           && _dragonEquipmentController.TryGetItem(pendingChange.TargetDragonSlot.Value, out _)
-                        ? 1
-                        : 0;
+                    if (pendingChange.TargetDragonSlot.HasValue
+                        && _dragonEquipmentController != null
+                        && _dragonEquipmentController.TryGetItem(pendingChange.TargetDragonSlot.Value, out CompanionEquipItem dragonItem))
+                    {
+                        AddDisplacedInventoryCount(displacedCounts, ResolveInventoryTypeForCompanionItem(dragonItem));
+                    }
+
+                    return displacedCounts;
                 case CompanionDragKind.Mechanic:
-                    return pendingChange.TargetMechanicSlot.HasValue
-                           && _mechanicEquipmentController != null
-                           && _mechanicEquipmentController.TryGetItem(pendingChange.TargetMechanicSlot.Value, out _)
-                        ? 1
-                        : 0;
+                    if (pendingChange.TargetMechanicSlot.HasValue
+                        && _mechanicEquipmentController != null
+                        && _mechanicEquipmentController.TryGetItem(pendingChange.TargetMechanicSlot.Value, out CompanionEquipItem mechanicItem))
+                    {
+                        AddDisplacedInventoryCount(displacedCounts, ResolveInventoryTypeForCompanionItem(mechanicItem));
+                    }
+
+                    return displacedCounts;
                 case CompanionDragKind.Android:
-                    return GetAndroidDisplacedItemCount(pendingChange.TargetAndroidSlot, itemId);
+                    return GetAndroidDisplacedInventoryCounts(displacedCounts, pendingChange.TargetAndroidSlot, itemId);
                 default:
-                    return 0;
+                    return displacedCounts;
             }
         }
 
-        private int GetAndroidDisplacedItemCount(AndroidEquipSlot? targetSlot, int itemId)
+        private Dictionary<InventoryType, int> GetAndroidDisplacedInventoryCounts(
+            Dictionary<InventoryType, int> displacedCounts,
+            AndroidEquipSlot? targetSlot,
+            int itemId)
         {
             if (!targetSlot.HasValue || _androidEquipmentController == null)
             {
-                return 0;
+                return displacedCounts;
             }
 
-            int displacedCount = _androidEquipmentController.TryGetItem(targetSlot.Value, out _)
-                ? 1
-                : 0;
+            if (_androidEquipmentController.TryGetItem(targetSlot.Value, out CompanionEquipItem currentItem))
+            {
+                AddDisplacedInventoryCount(displacedCounts, ResolveInventoryTypeForCompanionItem(currentItem));
+            }
+
             if (targetSlot.Value != AndroidEquipSlot.Clothes || _characterLoader == null)
             {
-                return displacedCount;
+                return displacedCounts;
             }
 
             CharacterPart incomingPart = _characterLoader.LoadEquipment(itemId);
             if (incomingPart?.Slot == CharacterEquipSlot.Longcoat
-                && _androidEquipmentController.TryGetItem(AndroidEquipSlot.Pants, out _))
+                && _androidEquipmentController.TryGetItem(AndroidEquipSlot.Pants, out CompanionEquipItem pantsItem))
             {
-                displacedCount++;
+                AddDisplacedInventoryCount(displacedCounts, ResolveInventoryTypeForCompanionItem(pantsItem));
             }
 
-            return displacedCount;
+            return displacedCounts;
+        }
+
+        private static void AddDisplacedInventoryCount(Dictionary<InventoryType, int> displacedCounts, InventoryType inventoryType)
+        {
+            if (displacedCounts == null || inventoryType == InventoryType.NONE)
+            {
+                return;
+            }
+
+            displacedCounts.TryGetValue(inventoryType, out int existingCount);
+            displacedCounts[inventoryType] = existingCount + 1;
+        }
+
+        private static InventoryType ResolveInventoryTypeForCompanionItem(CompanionEquipItem item)
+        {
+            return item?.IsCash == true ? InventoryType.CASH : InventoryType.EQUIP;
+        }
+
+        private static InventoryType ResolveInventoryTypeForSlot(InventorySlotData slot, InventoryType fallback = InventoryType.EQUIP)
+        {
+            return InventoryItemMetadataResolver.ResolveInventoryType(slot, fallback);
+        }
+
+        private static bool IsSupportedCompanionSourceInventory(InventoryType inventoryType)
+        {
+            return inventoryType is InventoryType.EQUIP or InventoryType.CASH;
+        }
+
+        private static string ResolveInventoryLabel(InventoryType inventoryType)
+        {
+            return inventoryType switch
+            {
+                InventoryType.CASH => "cash",
+                InventoryType.EQUIP => "equipment",
+                InventoryType.USE => "use",
+                InventoryType.SETUP => "setup",
+                InventoryType.ETC => "etc",
+                _ => "item"
+            };
         }
 
         public bool TryHandleInventoryDrop(
@@ -1212,7 +1286,7 @@ namespace HaCreator.MapSimulator.UI
             displacedSlots = Array.Empty<InventorySlotData>();
             if (draggedSlotData == null
                 || draggedSlotData.IsDisabled
-                || InventoryItemMetadataResolver.ResolveInventoryType(draggedSlotData.ItemId) != InventoryType.EQUIP)
+                || !IsSupportedCompanionSourceInventory(sourceInventoryType))
             {
                 return false;
             }
@@ -4554,6 +4628,7 @@ namespace HaCreator.MapSimulator.UI
                 ItemTexture = LoadInventoryItemIcon(part.ItemId),
                 Quantity = 1,
                 MaxStackSize = 1,
+                PreferredInventoryType = part.IsCash ? InventoryType.CASH : InventoryType.EQUIP,
                 GradeFrameIndex = 0,
                 ItemName = string.IsNullOrWhiteSpace(part.Name) ? $"Equip {part.ItemId}" : part.Name,
                 ItemTypeName = string.IsNullOrWhiteSpace(part.ItemCategory) ? "Equip" : part.ItemCategory,
@@ -4661,6 +4736,7 @@ namespace HaCreator.MapSimulator.UI
                     ItemTexture = item.ItemTexture,
                     Quantity = 1,
                     MaxStackSize = 1,
+                    PreferredInventoryType = ResolveInventoryTypeForCompanionItem(item),
                     GradeFrameIndex = 0,
                     ItemName = item.Name,
                     ItemTypeName = string.IsNullOrWhiteSpace(item.ItemCategory) ? "Equip" : item.ItemCategory,
@@ -4687,6 +4763,7 @@ namespace HaCreator.MapSimulator.UI
                 ItemTexture = item.ItemTexture,
                 Quantity = 1,
                 MaxStackSize = 1,
+                PreferredInventoryType = ResolveInventoryTypeForCompanionItem(item),
                 GradeFrameIndex = 0,
                 ItemName = item.Name,
                 ItemTypeName = string.IsNullOrWhiteSpace(item.ItemCategory) ? "Equip" : item.ItemCategory,

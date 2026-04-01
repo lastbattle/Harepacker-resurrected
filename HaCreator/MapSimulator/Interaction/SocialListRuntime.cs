@@ -57,6 +57,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal SocialListTab CurrentTab => _currentTab;
         internal int TrackedEntriesCount => _trackedEntriesCount;
+        internal Action<string, int> SocialChatObserved { get; set; }
 
         internal void UpdateLocalContext(CharacterBuild build, string locationSummary, int channel)
         {
@@ -822,7 +823,9 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Select a friend entry before opening friend chat.";
             }
 
-            return $"[Friend] {_playerName} -> {selectedFriend.Name}: Checking in from {_locationSummary}.";
+            string message = $"[Friend] {_playerName} -> {selectedFriend.Name}: Checking in from {_locationSummary}.";
+            NotifySocialChatObserved(message);
+            return message;
         }
 
         private string GroupWhisperFriend()
@@ -885,7 +888,9 @@ namespace HaCreator.MapSimulator.Interaction
                 return $"Select a {owner} entry before whispering.";
             }
 
-            return $"[Whisper] {_playerName} -> {selectedEntry.Name}: Meet in {selectedEntry.LocationSummary}.";
+            string message = $"[Whisper] {_playerName} -> {selectedEntry.Name}: Meet in {selectedEntry.LocationSummary}.";
+            NotifySocialChatObserved(message);
+            return message;
         }
 
         private string MemoSelectedFriend()
@@ -1052,7 +1057,9 @@ namespace HaCreator.MapSimulator.Interaction
         private string SendPartyChat()
         {
             int onlineCount = _entriesByTab[SocialListTab.Party].Count(entry => entry.IsOnline);
-            return $"[Party] {_playerName}: Ready check sent to {onlineCount} visible party member(s).";
+            string message = $"[Party] {_playerName}: Ready check sent to {onlineCount} visible party member(s).";
+            NotifySocialChatObserved(message);
+            return message;
         }
 
         private string ChangePartyLeader()
@@ -1224,7 +1231,19 @@ namespace HaCreator.MapSimulator.Interaction
         private string SendAllianceChat()
         {
             int onlineCount = _entriesByTab[SocialListTab.Alliance].Count(entry => entry.IsOnline);
-            return $"[Alliance] {_playerName}: Union notice check sent across {onlineCount} visible alliance entries.";
+            string message = $"[Alliance] {_playerName}: Union notice check sent across {onlineCount} visible alliance entries.";
+            NotifySocialChatObserved(message);
+            return message;
+        }
+
+        private void NotifySocialChatObserved(string message)
+        {
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                return;
+            }
+
+            SocialChatObserved?.Invoke(message, Environment.TickCount);
         }
 
         private string AddBlacklistEntry()

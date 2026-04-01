@@ -158,6 +158,37 @@ namespace HaCreator.MapSimulator.Interaction
             return $"{resolvedName} was upserted into the packet-owned {GetHeaderTitle(tab)} roster.";
         }
 
+        internal string SetPacketSyncSummary(SocialListTab tab, string summary)
+        {
+            _packetOwnedRosterByTab[tab] = true;
+            _lastPacketSyncSummaryByTab[tab] = string.IsNullOrWhiteSpace(summary)
+                ? "Packet synchronization summary updated without a concrete delta."
+                : summary.Trim();
+            return $"{GetHeaderTitle(tab)} packet summary updated.";
+        }
+
+        internal string ResolvePacketOwnedRequest(SocialListTab tab, bool approved, string summary = null)
+        {
+            string pendingRequest = _lastPendingRequestByTab.TryGetValue(tab, out string pending) && !string.IsNullOrWhiteSpace(pending)
+                ? pending
+                : null;
+            if (string.IsNullOrWhiteSpace(pendingRequest))
+            {
+                return $"There is no staged packet-owned request on the {GetHeaderTitle(tab)} roster.";
+            }
+
+            _packetOwnedRosterByTab[tab] = true;
+            _lastPendingRequestByTab[tab] = null;
+            _lastPacketSyncSummaryByTab[tab] = string.IsNullOrWhiteSpace(summary)
+                ? approved
+                    ? $"Server approved the staged {pendingRequest.ToLowerInvariant()} request."
+                    : $"Server rejected the staged {pendingRequest.ToLowerInvariant()} request."
+                : summary.Trim();
+            return approved
+                ? $"Server approval cleared the staged {pendingRequest.ToLowerInvariant()} request."
+                : $"Server rejection cleared the staged {pendingRequest.ToLowerInvariant()} request.";
+        }
+
         internal string SelectEntryByName(SocialListTab tab, string entryName)
         {
             if (string.IsNullOrWhiteSpace(entryName))

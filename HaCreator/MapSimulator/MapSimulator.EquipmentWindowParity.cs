@@ -25,7 +25,7 @@ namespace HaCreator.MapSimulator
                 return EquipmentChangeSubmission.Reject("Equipment change request is missing.");
             }
 
-            request.RequestId = _nextEquipmentChangeRequestId++;
+            request.RequestId = GetNextEquipmentChangeRequestId();
             request.RequestedAtTick = currTickCount;
             _pendingEquipmentChangeRequests[request.RequestId] = new PendingEquipmentChangeEnvelope
             {
@@ -34,6 +34,18 @@ namespace HaCreator.MapSimulator
             };
 
             return EquipmentChangeSubmission.Accept(request.RequestId, request.RequestedAtTick);
+        }
+
+        private int GetNextEquipmentChangeRequestId()
+        {
+            int requestId = _nextEquipmentChangeRequestId++;
+            if (requestId <= 0)
+            {
+                _nextEquipmentChangeRequestId = 2;
+                requestId = 1;
+            }
+
+            return requestId;
         }
 
         private EquipmentChangeResult TryResolveEquipmentChangeRequest(EquipmentChangeResolutionQuery resolutionQuery)
@@ -113,9 +125,9 @@ namespace HaCreator.MapSimulator
             }
 
             InventorySlotData liveSlot = liveSlots[request.SourceInventoryIndex];
-            if (liveSlot == null || liveSlot.IsDisabled || liveSlot.ItemId != request.ItemId)
+            if (EquipmentChangeRequestValidator.TryGetInventorySourceRejectReason(request, liveSlot, out string sourceRejectReason))
             {
-                return EquipmentChangeResult.Reject("The source inventory slot no longer matches the requested item.");
+                return EquipmentChangeResult.Reject(sourceRejectReason);
             }
 
             EquipSlotVisualState targetState = EquipSlotStateResolver.ResolveVisualState(build, request.TargetEquipSlot.Value);

@@ -55,6 +55,7 @@ namespace HaCreator.MapSimulator.Character
         private readonly Dictionary<int, CharacterPart> _morphCache = new();
         private readonly Dictionary<int, PortableChair> _portableChairCache = new();
         private readonly Dictionary<int, ItemEffectAnimationSet> _itemEffectCache = new();
+        private readonly Dictionary<RemoteRelationshipOverlayType, RelationshipTextTagStyle> _relationshipTextTagCache = new();
         private readonly Dictionary<CharacterGender, StarterAvatarRandomizationCatalog> _starterAvatarCatalogCache = new();
 
         // Standard actions to load
@@ -541,6 +542,49 @@ namespace HaCreator.MapSimulator.Character
             return effectSet;
         }
 
+        public RelationshipTextTagStyle LoadRelationshipTextTagStyle(RemoteRelationshipOverlayType relationshipType)
+        {
+            if (relationshipType != RemoteRelationshipOverlayType.NewYearCard)
+            {
+                return null;
+            }
+
+            if (_relationshipTextTagCache.TryGetValue(relationshipType, out RelationshipTextTagStyle cachedStyle))
+            {
+                return cachedStyle;
+            }
+
+            WzImage nameTagImage = Program.FindImage("UI", "NameTag.img");
+            if (nameTagImage == null)
+            {
+                return null;
+            }
+
+            nameTagImage.ParseImage();
+            WzSubProperty styleProperty = nameTagImage["11"] as WzSubProperty;
+            if (styleProperty == null)
+            {
+                return null;
+            }
+
+            int textColorArgb = InfoTool.GetInt(styleProperty["clr"], unchecked((int)0xFFFFFFFF));
+            var style = new RelationshipTextTagStyle
+            {
+                Left = LoadRelationshipTextTagTexture(styleProperty, "w"),
+                Middle = LoadRelationshipTextTagTexture(styleProperty, "c"),
+                Right = LoadRelationshipTextTagTexture(styleProperty, "e"),
+                TextColor = new Color(unchecked((uint)textColorArgb))
+            };
+
+            if (!style.IsReady)
+            {
+                return null;
+            }
+
+            _relationshipTextTagCache[relationshipType] = style;
+            return style;
+        }
+
         private void LoadPortableChairLayers(WzSubProperty chairProperty, ICollection<PortableChairLayer> layers)
         {
             if (chairProperty == null || layers == null)
@@ -629,6 +673,12 @@ namespace HaCreator.MapSimulator.Character
                    && layer.Animation.Frames.Count == 1
                    && frame.Texture.Width <= 4
                    && frame.Texture.Height <= 4;
+        }
+
+        private Texture2D LoadRelationshipTextTagTexture(WzSubProperty parentProperty, string childName)
+        {
+            WzCanvasProperty canvas = parentProperty?[childName] as WzCanvasProperty;
+            return canvas?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(_device);
         }
 
         private PortableChairLayer LoadPortableChairLayer(WzSubProperty layerProperty)

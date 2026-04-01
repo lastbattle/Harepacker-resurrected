@@ -165,6 +165,7 @@ namespace HaCreator.MapSimulator.Character
             public bool QueuedFacingRight { get; set; }
             public bool ObservedPlayerFacingRight { get; set; }
             public bool ObservedPlayerFloatingState { get; set; }
+            public int ObservedPlayerActionTriggerTime { get; set; } = int.MinValue;
         }
 
         private sealed class MirrorImageState
@@ -244,6 +245,17 @@ namespace HaCreator.MapSimulator.Character
         // CActionMan action metadata uses 150 as the default alpha for composed character pieces.
         private static readonly Color ShadowPartnerTint = new(255, 255, 255, 150);
         private static readonly Color MirrorImageTint = new(128, 128, 128, 208);
+        private static readonly HashSet<string> MirrorImageUnderCharacterZLayers = new(StringComparer.Ordinal)
+        {
+            "backHair",
+            "backHairOverCape",
+            "backWing",
+            "cape",
+            "shield",
+            "shieldOverBody",
+            "weaponBelowBody",
+            "backBody"
+        };
 
         #endregion
 
@@ -338,6 +350,7 @@ namespace HaCreator.MapSimulator.Character
 
         // Hit state tracking
         private int _hitStateStartTime;
+        private int _hitStateDurationMs = HIT_STUN_DURATION;
 
         // Input state
         private bool _inputLeft;
@@ -546,6 +559,39 @@ namespace HaCreator.MapSimulator.Character
             _nextPortableChairRecoveryTime = Environment.TickCount + PORTABLE_CHAIR_RECOVERY_INTERVAL_MS;
             ConfigurePortableChairPairPreview(chair);
             return true;
+        }
+
+        public void ApplyPacketOwnedSitPlacement(float x, float y)
+        {
+            Physics.X = x;
+            Physics.Y = y;
+            Physics.VelocityX = 0;
+            Physics.VelocityY = 0;
+            Physics.CurrentAction = MoveAction.Stand;
+            ClearForcedActionName();
+            State = PlayerState.Sitting;
+            CurrentAction = CharacterAction.Sit;
+            CurrentActionName = GetPortableChairActionName(Build?.ActivePortableChair);
+            _animationStartTime = Environment.TickCount;
+        }
+
+        public void ApplyPacketOwnedChairStandCorrection()
+        {
+            if (Build?.ActivePortableChair != null)
+            {
+                ClearPortableChair();
+                return;
+            }
+
+            SetPortableChairPairRequestActive(false);
+            ClearPortableChairExternalOwnerPair();
+            if (State == PlayerState.Sitting)
+            {
+                State = Physics.IsOnFoothold() ? PlayerState.Standing : PlayerState.Falling;
+                CurrentAction = CharacterAction.Stand1;
+                CurrentActionName = CharacterPart.GetActionString(CharacterAction.Stand1);
+                _animationStartTime = Environment.TickCount;
+            }
         }
 
         public void ClearPortableChair(bool standUp = true)
@@ -1469,7 +1515,7 @@ namespace HaCreator.MapSimulator.Character
             // Handle Hit state recovery (knockback stun)
             if (State == PlayerState.Hit)
             {
-                if (currentTime - _hitStateStartTime >= HIT_STUN_DURATION)
+                if (currentTime - _hitStateStartTime >= Math.Max(1, _hitStateDurationMs))
                 {
                     // Hit stun is over - return to appropriate state based on physics
                     if (Physics.IsOnLadder())
@@ -2040,7 +2086,9 @@ namespace HaCreator.MapSimulator.Character
                 ObservedPlayerActionName = CurrentActionName,
                 QueuedActionName = useSpawnAction ? resolvedActionName : null,
                 QueuedFacingRight = FacingRight,
-                ObservedPlayerFacingRight = FacingRight
+                ObservedPlayerFacingRight = FacingRight,
+                ObservedPlayerFloatingState = State is PlayerState.Swimming or PlayerState.Flying,
+                ObservedPlayerActionTriggerTime = GetShadowPartnerObservedActionTriggerTime()
             };
 
             return !string.IsNullOrWhiteSpace(_activeShadowPartner.CurrentActionName);
@@ -2465,13 +2513,8 @@ namespace HaCreator.MapSimulator.Character
                 return;
             }
 
-            // Enter hit state (knockback stun)
-            ClearPortableChair(standUp: false);
-            State = PlayerState.Hit;
-            _hitStateStartTime = Environment.TickCount;
-            _hitExpressionEndTime = _hitStateStartTime + FACE_HIT_EXPRESSION_DURATION_MS;
-            Physics.CurrentAction = MoveAction.Hit;
-            CacheLadderStateForRegrab();
+            int currentTime = Environment.TickCount;
+            EnterHitState(currentTime, HIT_STUN_DURATION);
 
             // Apply knockback velocity
             if (knockbackX != 0 || knockbackY != 0)
@@ -2499,16 +2542,44 @@ namespace HaCreator.MapSimulator.Character
         {
             if (!IsAlive) return;
 
-            // Enter hit state for knockback animation
-            ClearPortableChair(standUp: false);
-            State = PlayerState.Hit;
-            _hitStateStartTime = Environment.TickCount;
-            _hitExpressionEndTime = _hitStateStartTime + FACE_HIT_EXPRESSION_DURATION_MS;
-            Physics.CurrentAction = MoveAction.Hit;
-            CacheLadderStateForRegrab();
+            EnterHitState(Environment.TickCount, HIT_STUN_DURATION);
 
             // Use Impact for immediate knockback
             Physics.Impact(knockbackX, knockbackY);
+        }
+
+        public void ApplyPacketDamageReaction(int damage, int hitDurationMs, float knockbackX = 0, float knockbackY = 0)
+        {
+            if (!IsAlive || GodMode)
+                return;
+
+            if (damage > 0)
+            {
+                HP -= damage;
+                OnDamaged?.Invoke(this, damage);
+                if (HP <= 0)
+                {
+                    Die();
+                    return;
+                }
+            }
+
+            EnterHitState(Environment.TickCount, hitDurationMs);
+            if (knockbackX != 0 || knockbackY != 0)
+            {
+                Physics.Impact(knockbackX, knockbackY);
+            }
+        }
+
+        private void EnterHitState(int currentTime, int hitDurationMs)
+        {
+            ClearPortableChair(standUp: false);
+            State = PlayerState.Hit;
+            _hitStateStartTime = currentTime;
+            _hitStateDurationMs = Math.Max(1, hitDurationMs);
+            _hitExpressionEndTime = currentTime + Math.Max(FACE_HIT_EXPRESSION_DURATION_MS, _hitStateDurationMs);
+            Physics.CurrentAction = MoveAction.Hit;
+            CacheLadderStateForRegrab();
         }
 
         private void CacheLadderStateForRegrab()
@@ -3439,6 +3510,11 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
+            if (TryGetMirrorImageSourceLayerFromZLayer(part, out sourceLayer))
+            {
+                return true;
+            }
+
             sourceLayer = part.PartType switch
             {
                 CharacterPartType.HairBelowBody or CharacterPartType.Cape or CharacterPartType.Shield
@@ -3458,30 +3534,43 @@ namespace HaCreator.MapSimulator.Character
                     or CharacterPartType.Accessory or CharacterPartType.AccessoryOverHair
                     or CharacterPartType.Face_Accessory or CharacterPartType.Eye_Accessory
                     => MirrorImageSourceLayer.OverFace,
-                _ => ResolveMirrorImageFallbackSourceLayer(part)
+                _ => ResolveMirrorImageSourceLayerFromZIndex(part.ZIndex, preferUnderCharacter: false)
             };
 
             return true;
         }
 
-        private static MirrorImageSourceLayer ResolveMirrorImageFallbackSourceLayer(AssembledPart part)
+        private static bool TryGetMirrorImageSourceLayerFromZLayer(AssembledPart part, out MirrorImageSourceLayer sourceLayer)
         {
-            if (part.ZIndex <= 10)
+            sourceLayer = default;
+            if (part == null || string.IsNullOrWhiteSpace(part.ZLayer))
             {
-                return MirrorImageSourceLayer.UnderCharacter;
+                return false;
             }
 
-            if (part.ZIndex < 60)
+            bool preferUnderCharacter = MirrorImageUnderCharacterZLayers.Contains(part.ZLayer)
+                || part.ZLayer.StartsWith("back", StringComparison.Ordinal);
+            sourceLayer = ResolveMirrorImageSourceLayerFromZIndex(part.ZIndex, preferUnderCharacter);
+            return true;
+        }
+
+        private static MirrorImageSourceLayer ResolveMirrorImageSourceLayerFromZIndex(int zIndex, bool preferUnderCharacter)
+        {
+            int headZ = ZMapReference.GetZIndex("head");
+            if (zIndex < headZ)
             {
-                return MirrorImageSourceLayer.OverCharacter;
+                return preferUnderCharacter
+                    ? MirrorImageSourceLayer.UnderCharacter
+                    : MirrorImageSourceLayer.OverCharacter;
             }
 
-            if (part.ZIndex < 65)
+            int faceZ = ZMapReference.GetZIndex("face");
+            if (zIndex < faceZ)
             {
                 return MirrorImageSourceLayer.UnderFace;
             }
 
-            if (part.ZIndex == 65)
+            if (zIndex == faceZ)
             {
                 return MirrorImageSourceLayer.Face;
             }
@@ -3686,13 +3775,16 @@ namespace HaCreator.MapSimulator.Character
 
             string playerActionName = GetShadowPartnerObservedPlayerActionName();
             bool isFloatingState = State is PlayerState.Swimming or PlayerState.Flying;
+            int actionTriggerTime = GetShadowPartnerObservedActionTriggerTime();
             if (!string.Equals(playerActionName, _activeShadowPartner.ObservedPlayerActionName, StringComparison.OrdinalIgnoreCase)
                 || isFloatingState != _activeShadowPartner.ObservedPlayerFloatingState
-                || FacingRight != _activeShadowPartner.ObservedPlayerFacingRight)
+                || FacingRight != _activeShadowPartner.ObservedPlayerFacingRight
+                || actionTriggerTime != _activeShadowPartner.ObservedPlayerActionTriggerTime)
             {
                 _activeShadowPartner.ObservedPlayerActionName = playerActionName;
                 _activeShadowPartner.ObservedPlayerFloatingState = isFloatingState;
                 _activeShadowPartner.ObservedPlayerFacingRight = FacingRight;
+                _activeShadowPartner.ObservedPlayerActionTriggerTime = actionTriggerTime;
                 RefreshShadowPartnerClientOffsetTarget(currentTime, FacingRight);
                 if (IsShadowPartnerAttackAction(playerActionName))
                 {
@@ -3839,6 +3931,21 @@ namespace HaCreator.MapSimulator.Character
                 PlayerState.Dead => "dead",
                 _ => CurrentActionName
             };
+        }
+
+        private int GetShadowPartnerObservedActionTriggerTime()
+        {
+            if (State != PlayerState.Attacking)
+            {
+                return int.MinValue;
+            }
+
+            if (CurrentSkillAnimationStartTime != int.MinValue)
+            {
+                return CurrentSkillAnimationStartTime;
+            }
+
+            return _lastAttackTime;
         }
 
         private string ResolveShadowPartnerActionName(string playerActionName, string fallbackActionName)
@@ -4251,13 +4358,27 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
-            if (CharacterPart.TryGetClientRawActionCode(CurrentActionName, out int rawActionCode)
+            if (TryGetMirrorImageClientRawActionCode(out int rawActionCode)
                 && rawActionCode == 48)
             {
                 return false;
             }
 
             return !IsMirrorImageSuppressedAction(CurrentActionName);
+        }
+
+        private bool TryGetMirrorImageClientRawActionCode(out int rawActionCode)
+        {
+            rawActionCode = default;
+
+            if (State == PlayerState.Attacking
+                && !string.IsNullOrWhiteSpace(_forcedActionName)
+                && CharacterPart.TryGetClientRawActionCode(_forcedActionName, out rawActionCode))
+            {
+                return true;
+            }
+
+            return CharacterPart.TryGetClientRawActionCode(CurrentActionName, out rawActionCode);
         }
 
         private bool IsMechanicTamingMobStateActive()

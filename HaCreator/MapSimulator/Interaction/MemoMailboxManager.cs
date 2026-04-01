@@ -50,6 +50,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private readonly List<MemoState> _memos = new();
         private readonly MemoDraftState _draft = new();
+        private ParcelDialogTab _activeTab = ParcelDialogTab.Receive;
         private ParcelComposeMode _composeMode = ParcelComposeMode.Send;
         private bool _showTaxInfo;
         private int _nextMemoId = 1;
@@ -85,6 +86,7 @@ namespace HaCreator.MapSimulator.Interaction
             return new MemoMailboxSnapshot
             {
                 Entries = entries,
+                ActiveTab = _activeTab,
                 UnreadCount = entries.Count(entry => !entry.IsRead),
                 ClaimableCount = entries.Count(entry => entry.CanClaimAttachment),
                 LastActionSummary = _lastActionSummary
@@ -107,6 +109,7 @@ namespace HaCreator.MapSimulator.Interaction
                 CanSend = CanSendDraft(),
                 CanQuickSend = CanQuickSendDraft(),
                 ActiveMode = _composeMode,
+                ActiveTab = _activeTab,
                 ShowTaxInfo = _showTaxInfo,
                 ModeSummary = BuildModeSummary(),
                 TaxSummary = BuildTaxSummary()
@@ -239,23 +242,38 @@ namespace HaCreator.MapSimulator.Interaction
         internal void ResetDraftState()
         {
             ResetDraft();
-            _composeMode = ParcelComposeMode.Send;
-            _showTaxInfo = false;
-            _lastActionSummary = "Parcel compose state reset to the default simulator draft.";
+            ApplyActiveTab(ParcelDialogTab.Send, "Parcel compose state reset to the default simulator draft.");
+        }
+
+        internal void SetActiveTab(ParcelDialogTab tab)
+        {
+            ApplyActiveTab(
+                tab,
+                tab switch
+                {
+                    ParcelDialogTab.Send => "Parcel send tab selected.",
+                    ParcelDialogTab.QuickSend => "Quick delivery tab selected.",
+                    _ => "Parcel receive tab selected."
+                });
         }
 
         internal void SetComposeMode(ParcelComposeMode mode)
         {
-            _composeMode = mode;
-            _showTaxInfo = false;
-            _lastActionSummary = mode == ParcelComposeMode.QuickSend
-                ? "Quick delivery tab selected."
-                : "Parcel send tab selected.";
+            ApplyActiveTab(
+                mode == ParcelComposeMode.QuickSend ? ParcelDialogTab.QuickSend : ParcelDialogTab.Send,
+                mode == ParcelComposeMode.QuickSend
+                    ? "Quick delivery tab selected."
+                    : "Parcel send tab selected.");
         }
 
         internal void ToggleTaxInfo()
         {
-            _showTaxInfo = !_showTaxInfo;
+            SetTaxInfoVisible(!_showTaxInfo);
+        }
+
+        internal void SetTaxInfoVisible(bool visible)
+        {
+            _showTaxInfo = visible;
             _lastActionSummary = _showTaxInfo
                 ? "Opened parcel fee information."
                 : "Closed parcel fee information.";
@@ -453,9 +471,12 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal bool TryDispatchActiveDraft(out string message)
         {
-            return _composeMode == ParcelComposeMode.QuickSend
-                ? TryQuickSendDraft(out message)
-                : TrySendDraft(out message);
+            return _activeTab switch
+            {
+                ParcelDialogTab.QuickSend => TryQuickSendDraft(out message),
+                ParcelDialogTab.Send => TrySendDraft(out message),
+                _ => FailActiveDispatch(out message)
+            };
         }
 
         private MemoState FindMemo(int memoId)
@@ -605,10 +626,12 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string BuildModeSummary()
         {
-            return _composeMode switch
+            return _activeTab switch
             {
-                ParcelComposeMode.QuickSend =>
+                ParcelDialogTab.QuickSend =>
                     "Quick Send tab: recipient and body are required; the simulator keeps item parcels disabled here to match the client split.",
+                ParcelDialogTab.Receive =>
+                    "Receive tab: delivered parcel state stays separate from memo, whisper, and messenger surfaces.",
                 _ =>
                     "Send tab: recipient and body are required; optional item or meso packages still flow through the simulator draft seam."
             };
@@ -616,13 +639,29 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string BuildTaxSummary()
         {
-            return _composeMode switch
+            return _activeTab switch
             {
-                ParcelComposeMode.QuickSend =>
+                ParcelDialogTab.QuickSend =>
                     "Quick-delivery fee info is informational only here. Use /memo draft meso <amount> to stage the money field.",
                 _ =>
                     "Parcel fee info is informational only here. Use /memo draft item ... or /memo draft meso ... to stage the package payload."
             };
+        }
+
+        private static bool FailActiveDispatch(out string message)
+        {
+            message = "Receive tab parcels cannot be dispatched. Switch to Send or Quick Send.";
+            return false;
+        }
+
+        private void ApplyActiveTab(ParcelDialogTab tab, string actionSummary)
+        {
+            _activeTab = tab;
+            _composeMode = tab == ParcelDialogTab.QuickSend
+                ? ParcelComposeMode.QuickSend
+                : ParcelComposeMode.Send;
+            _showTaxInfo = false;
+            _lastActionSummary = actionSummary;
         }
 
         private string ResolveDraftParcelLabel(string fallback = "Parcel delivery")

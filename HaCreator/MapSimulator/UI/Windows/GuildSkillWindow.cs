@@ -513,6 +513,11 @@ namespace HaCreator.MapSimulator.UI
                 lines.Add($"Renew: {FormatMeso(entry.RenewalCost)}");
             }
 
+            if (entry.GuildPriceUnit > 1 && (entry.ActivationCost > 0 || entry.RenewalCost > 0))
+            {
+                lines.Add($"Cost unit: {FormatMeso(entry.GuildPriceUnit)}");
+            }
+
             if (entry.CurrentLevel > 0 && entry.DurationMinutes > 0 && entry.RemainingDurationMinutes <= 0)
             {
                 lines.Add(entry.CanRenew ? "State: Inactive" : "State: View only");

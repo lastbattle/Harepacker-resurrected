@@ -121,6 +121,7 @@ namespace HaCreator.MapSimulator.Interaction
         }
 
         public bool IsWriteMode { get; private set; }
+        public Action<string, int> SocialChatObserved { get; set; }
 
         public void ConfigureEmoticonCatalog(int basicEmoticonCount, int cashEmoticonCount)
         {
@@ -476,6 +477,7 @@ namespace HaCreator.MapSimulator.Interaction
                 _draftCounter++;
             }
 
+            NotifySocialChatObserved(resolvedBody);
             IsWriteMode = false;
             _compose = new GuildBbsComposeState();
             SelectThread(_selectedThreadId);
@@ -536,6 +538,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             IReadOnlyList<GuildBbsCommentState> orderedComments = selectedThread.Comments.OrderBy(comment => comment.CreatedAt).ToArray();
             _commentPageIndex = Math.Max(0, (orderedComments.Count - 1) / VisibleCommentCount);
+            NotifySocialChatObserved(replyBody);
             return $"Added a Guild BBS reply to thread #{selectedThread.ThreadId}.";
         }
 
@@ -1197,6 +1200,16 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return thread;
+        }
+
+        private void NotifySocialChatObserved(string message)
+        {
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                return;
+            }
+
+            SocialChatObserved?.Invoke(message, Environment.TickCount);
         }
     }
 

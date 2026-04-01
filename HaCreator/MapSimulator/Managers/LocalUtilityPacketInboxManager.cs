@@ -46,7 +46,10 @@ namespace HaCreator.MapSimulator.Managers
         public const int RadioSchedulePacketType = 1010;
         public const int AntiMacroResultPacketType = 1011;
         public const int FollowCharacterPacketType = 1012;
+        public const int SetDirectionModePacketType = 1013;
+        public const int SetStandAloneModePacketType = 1014;
         public const int FollowCharacterClientPacketType = 193;
+        public const int SitResultPacketType = 231;
         public const int OpenSkillGuideClientPacketType = 262;
         public const int PlayEventSoundClientPacketType = 246;
         public const int PlayMinigameSoundClientPacketType = 247;
@@ -287,7 +290,10 @@ namespace HaCreator.MapSimulator.Managers
                     || packetType == FollowCharacterFailedPacketType
                     || packetType == FollowCharacterFailedClientPacketType
                     || packetType == FollowCharacterPacketType
+                    || packetType == SetDirectionModePacketType
+                    || packetType == SetStandAloneModePacketType
                     || packetType == FollowCharacterClientPacketType
+                    || packetType == SitResultPacketType
                     || packetType == RadioSchedulePacketType
                     || packetType == RadioScheduleClientPacketType
                     || packetType == AntiMacroResultPacketType
@@ -376,6 +382,29 @@ namespace HaCreator.MapSimulator.Managers
                 || token.Equals("followcharacter", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = FollowCharacterPacketType;
+                return true;
+            }
+
+            if (token.Equals("sitresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("chairsit", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onsitresult", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = SitResultPacketType;
+                return true;
+            }
+
+            if (token.Equals("directionmode", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("setdirectionmode", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = SetDirectionModePacketType;
+                return true;
+            }
+
+            if (token.Equals("standalone", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("standalonemode", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("setstandalonemode", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = SetStandAloneModePacketType;
                 return true;
             }
 
@@ -573,6 +602,7 @@ namespace HaCreator.MapSimulator.Managers
         {
             return packetType switch
             {
+                SitResultPacketType => "OnSitResult(231)",
                 OpenUiPacketType => "OpenUI(1000)",
                 OpenUiWithOptionPacketType => "OpenUIWithOption(1001)",
                 GoToCommoditySnPacketType => "GoToCommoditySN(1002)",
@@ -586,6 +616,8 @@ namespace HaCreator.MapSimulator.Managers
                 RadioSchedulePacketType => "RadioSchedule(1010)",
                 AntiMacroResultPacketType => "AntiMacroResult(1011)",
                 FollowCharacterPacketType => "FollowCharacter(1012)",
+                SetDirectionModePacketType => "SetDirectionMode(1013)",
+                SetStandAloneModePacketType => "SetStandAloneMode(1014)",
                 FollowCharacterClientPacketType => "FollowCharacter(193)",
                 PlayEventSoundClientPacketType => "PlayEventSound(246)",
                 PlayMinigameSoundClientPacketType => "PlayMinigameSound(247)",

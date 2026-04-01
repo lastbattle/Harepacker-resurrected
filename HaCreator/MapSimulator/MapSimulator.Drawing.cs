@@ -288,6 +288,7 @@ namespace HaCreator.MapSimulator
             // Draw chat messages and input box
             if (!_gameState.HideUIMode)
             {
+                _skillCooldownNoticeUI.SetScreenSize(_renderParams.RenderWidth, _renderParams.RenderHeight);
                 if (statusBarChatUI == null)
                 {
                     _chat.Draw(_spriteBatch, TickCount);
