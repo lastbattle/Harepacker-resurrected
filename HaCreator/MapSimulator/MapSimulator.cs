@@ -132,6 +132,8 @@ namespace HaCreator.MapSimulator
 
         private const int DefaultLowMpWarningThresholdPercent = 20;
 
+        private const bool EnablePacketConnectionsByDefault = false;
+
         private const int ReactorCollisionCheckIntervalMs = 1000;
 
         private const int PetAutoSpeechPreLevelReminderCooldownMs = 420000;
@@ -694,7 +696,7 @@ namespace HaCreator.MapSimulator
         private readonly LoginPacketInboxManager _loginPacketInbox = new LoginPacketInboxManager();
         private readonly LoginOfficialSessionBridgeManager _loginOfficialSessionBridge = new LoginOfficialSessionBridgeManager();
 
-        private bool _loginPacketInboxEnabled = true;
+        private bool _loginPacketInboxEnabled = EnablePacketConnectionsByDefault;
 
         private int _loginPacketInboxConfiguredPort = LoginPacketInboxManager.DefaultPort;
         private bool _loginOfficialSessionBridgeEnabled;
@@ -40521,4 +40523,3 @@ namespace HaCreator.MapSimulator
 
 
 }
-

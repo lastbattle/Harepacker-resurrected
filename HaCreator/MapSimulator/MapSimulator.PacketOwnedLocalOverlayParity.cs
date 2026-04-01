@@ -62,7 +62,7 @@ namespace HaCreator.MapSimulator
         private readonly LocalOverlayPacketInboxManager _localOverlayPacketInbox = new();
         private FieldHazardPetAutoConsumeRequest? _pendingFieldHazardPetAutoConsumeRequest;
         private LocalOverlayBalloonSkin _packetOwnedBalloonSkin;
-        private bool _localOverlayPacketInboxEnabled = true;
+        private bool _localOverlayPacketInboxEnabled = EnablePacketConnectionsByDefault;
         private int _localOverlayPacketInboxConfiguredPort = LocalOverlayPacketInboxManager.DefaultPort;
         private int _fieldHazardSharedPetConsumeItemId;
         private InventoryType _fieldHazardSharedPetConsumeInventoryType = InventoryType.NONE;
@@ -1935,6 +1935,27 @@ namespace HaCreator.MapSimulator
                 return ChatCommandHandler.CommandResult.Info($"{DescribeLocalOverlayPacketInboxStatus()} {_localOverlayPacketInbox.LastStatus}");
             }
 
+            if (string.Equals(args[offset], "start", StringComparison.OrdinalIgnoreCase))
+            {
+                int port = LocalOverlayPacketInboxManager.DefaultPort;
+                if (args.Length > offset + 1 && (!int.TryParse(args[offset + 1], out port) || port <= 0 || port > ushort.MaxValue))
+                {
+                    return ChatCommandHandler.CommandResult.Error($"Usage: {usagePrefix} [status|start [port]|stop|packet <fade|balloon> [payloadhex=..|payloadb64=..]|packetraw <fade|balloon> <hex>]");
+                }
+
+                _localOverlayPacketInboxConfiguredPort = port;
+                _localOverlayPacketInboxEnabled = true;
+                EnsureLocalOverlayPacketInboxState(shouldRun: true);
+                return ChatCommandHandler.CommandResult.Ok($"{DescribeLocalOverlayPacketInboxStatus()} {_localOverlayPacketInbox.LastStatus}");
+            }
+
+            if (string.Equals(args[offset], "stop", StringComparison.OrdinalIgnoreCase))
+            {
+                _localOverlayPacketInboxEnabled = false;
+                EnsureLocalOverlayPacketInboxState(shouldRun: false);
+                return ChatCommandHandler.CommandResult.Ok($"{DescribeLocalOverlayPacketInboxStatus()} {_localOverlayPacketInbox.LastStatus}");
+            }
+
             if (string.Equals(args[offset], "packet", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(args[offset], "packetraw", StringComparison.OrdinalIgnoreCase))
             {
@@ -1970,7 +1991,7 @@ namespace HaCreator.MapSimulator
             }
 
             return ChatCommandHandler.CommandResult.Error(
-                $"Usage: {usagePrefix} [status|packet <fade|balloon> [payloadhex=..|payloadb64=..]|packetraw <fade|balloon> <hex>]");
+                $"Usage: {usagePrefix} [status|start [port]|stop|packet <fade|balloon> [payloadhex=..|payloadb64=..]|packetraw <fade|balloon> <hex>]");
         }
 
         private static bool TryParsePacketOwnedFadeAlpha(string value, out int alpha, out string error)

@@ -9378,7 +9378,7 @@ namespace HaCreator.MapSimulator
 
                 "Inspect or drive packet-authored local overlays, damage-meter timing, and field-hazard notices",
 
-                "/localoverlay [status|clear [fade|balloon|damagemeter|hazard|all]|fade <fadeInMs> <holdMs> <fadeOutMs> [alpha]|balloon avatar <width> <lifetimeSec> <text>|balloon world <x> <y> <width> <lifetimeSec> <text>|damagemeter <seconds>|damagemeterclear|hazard <damage> [message]|hazardclear|packet <fade|balloon|damagemeter|hpdec> [payloadhex=..|payloadb64=..]|packetraw <fade|balloon|damagemeter|hpdec> <hex>|inbox [status|packet <fade|balloon> [payloadhex=..|payloadb64=..]|packetraw <fade|balloon> <hex>]]",
+                "/localoverlay [status|clear [fade|balloon|damagemeter|hazard|all]|fade <fadeInMs> <holdMs> <fadeOutMs> [alpha]|balloon avatar <width> <lifetimeSec> <text>|balloon world <x> <y> <width> <lifetimeSec> <text>|damagemeter <seconds>|damagemeterclear|hazard <damage> [message]|hazardclear|packet <fade|balloon|damagemeter|hpdec> [payloadhex=..|payloadb64=..]|packetraw <fade|balloon|damagemeter|hpdec> <hex>|inbox [status|start [port]|stop|packet <fade|balloon> [payloadhex=..|payloadb64=..]|packetraw <fade|balloon> <hex>]]",
 
                 HandlePacketOwnedLocalOverlayCommand);
 
@@ -9388,7 +9388,7 @@ namespace HaCreator.MapSimulator
 
                 "Inspect or inject packet-owned field fade and balloon payloads through the loopback inbox",
 
-                "/localoverlaypacket [status|packet <fade|balloon> [payloadhex=..|payloadb64=..]|packetraw <fade|balloon> <hex>]",
+                "/localoverlaypacket [status|start [port]|stop|packet <fade|balloon> [payloadhex=..|payloadb64=..]|packetraw <fade|balloon> <hex>]",
 
                 HandlePacketOwnedLocalOverlayInboxCommand);
 
@@ -9400,7 +9400,7 @@ namespace HaCreator.MapSimulator
 
                 "Inspect or drive packet-authored local utility and event dispatch handlers",
 
-                    "/localutility [status|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv]|classcompetition|skillguide|antimacro [status|launch <normal|admin> [first|retry]|notice <noticeType> [antiMacroType]|result <mode> [antiMacroType] [userName]|clear]|apsp [text]|apsp <contextToken> <11|12|13>|followfail [text]|packet <openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|skillguide|antimacro|apspevent|followfail|skillcooltime|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>]",
+                    "/localutility [status|inbox [status|start [port]|stop|packet <openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|followfail|damagemeter|hpdec|skillcooltime|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]]|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv]|classcompetition|skillguide|antimacro [status|launch <normal|admin> [first|retry]|notice <noticeType> [antiMacroType]|result <mode> [antiMacroType] [userName]|clear]|apsp [text]|apsp <contextToken> <11|12|13>|followfail [text]|packet <openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|skillguide|antimacro|apspevent|followfail|skillcooltime|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>]",
 
                 HandlePacketOwnedUtilityCommand);
 
@@ -9423,7 +9423,7 @@ namespace HaCreator.MapSimulator
 
                 "Inspect or inject packet-owned local utility and event dispatch payloads through the loopback inbox",
 
-                    "/localutilitypacket [status|packet <openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|followfail|damagemeter|hpdec|skillcooltime|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]]",
+                    "/localutilitypacket [status|start [port]|stop|packet <openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|followfail|damagemeter|hpdec|skillcooltime|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]]",
 
                 HandlePacketOwnedUtilityCommand);
 

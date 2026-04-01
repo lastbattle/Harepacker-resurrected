@@ -95,7 +95,7 @@ namespace HaCreator.MapSimulator
         private int _lastPacketOwnedRadioTimeValue;
         private int _lastPacketOwnedRadioStartTick = int.MinValue;
         private int _lastPacketOwnedRadioLastPollTick = int.MinValue;
-        private bool _localUtilityPacketInboxEnabled = true;
+        private bool _localUtilityPacketInboxEnabled = EnablePacketConnectionsByDefault;
         private int _localUtilityPacketInboxConfiguredPort = LocalUtilityPacketInboxManager.DefaultPort;
 
         private static readonly string[] UniqueModelessUtilityWindowNames =
@@ -2998,6 +2998,9 @@ namespace HaCreator.MapSimulator
                 case "status":
                     return ChatCommandHandler.CommandResult.Info($"{DescribeLocalUtilityPacketInboxStatus()} {DescribePacketOwnedUtilityDispatchStatus(currentTickCount)} {_localUtilityPacketInbox.LastStatus}");
 
+                case "inbox":
+                    return HandlePacketOwnedUtilityInboxCommand(args);
+
                 case "openui":
                     if (args.Length < 2 || !int.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int uiType))
                     {
@@ -3176,8 +3179,53 @@ namespace HaCreator.MapSimulator
 
                 default:
                     return ChatCommandHandler.CommandResult.Error(
-                        "Usage: /localutility [status|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel|type19|whisper:name|whisperout:name] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv]|classcompetition|skillguide|antimacro [status|launch <normal|admin> [first|retry]|notice <noticeType> [antiMacroType]|result <mode> [antiMacroType] [userName]|clear]|apsp [text]|apsp <contextToken> <11|12|13>|follow <status|request <driverId|name> [auto|manual] [keyinput]|ask <requesterId|name>|accept|decline|attach <driverId|name>|detach [transferX transferY]|passengerdetach [requesterId|name] [transferX transferY]>|followfail [reasonCode [driverId]|text]|packet <openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|follow|followfail|193|243|250|251|252|255|256|262|263|264|265|266|267|270|273|274|275|276|1011|1012> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>]");
+                        "Usage: /localutility [status|inbox [status|start [port]|stop|packet <openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|followfail|damagemeter|hpdec|skillcooltime|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]]|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel|type19|whisper:name|whisperout:name] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv]|classcompetition|skillguide|antimacro [status|launch <normal|admin> [first|retry]|notice <noticeType> [antiMacroType]|result <mode> [antiMacroType] [userName]|clear]|apsp [text]|apsp <contextToken> <11|12|13>|follow <status|request <driverId|name> [auto|manual] [keyinput]|ask <requesterId|name>|accept|decline|attach <driverId|name>|detach [transferX transferY]|passengerdetach [requesterId|name] [transferX transferY]>|followfail [reasonCode [driverId]|text]|packet <openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|follow|followfail|193|243|250|251|252|255|256|262|263|264|265|266|267|270|273|274|275|276|1011|1012> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>]");
             }
+        }
+
+        private ChatCommandHandler.CommandResult HandlePacketOwnedUtilityInboxCommand(string[] args)
+        {
+            int offset = args.Length > 0 && string.Equals(args[0], "inbox", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+            string usagePrefix = offset == 0 ? "/localutilitypacket" : "/localutility inbox";
+            int currentTickCount = Environment.TickCount;
+
+            if (args.Length <= offset || string.Equals(args[offset], "status", StringComparison.OrdinalIgnoreCase))
+            {
+                return ChatCommandHandler.CommandResult.Info($"{DescribeLocalUtilityPacketInboxStatus()} {DescribePacketOwnedUtilityDispatchStatus(currentTickCount)} {_localUtilityPacketInbox.LastStatus}");
+            }
+
+            if (string.Equals(args[offset], "start", StringComparison.OrdinalIgnoreCase))
+            {
+                int port = LocalUtilityPacketInboxManager.DefaultPort;
+                if (args.Length > offset + 1 && (!int.TryParse(args[offset + 1], out port) || port <= 0 || port > ushort.MaxValue))
+                {
+                    return ChatCommandHandler.CommandResult.Error($"Usage: {usagePrefix} [status|start [port]|stop|packet <openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|followfail|damagemeter|hpdec|skillcooltime|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]]");
+                }
+
+                _localUtilityPacketInboxConfiguredPort = port;
+                _localUtilityPacketInboxEnabled = true;
+                EnsureLocalUtilityPacketInboxState(shouldRun: true);
+                return ChatCommandHandler.CommandResult.Ok($"{DescribeLocalUtilityPacketInboxStatus()} {DescribePacketOwnedUtilityDispatchStatus(currentTickCount)} {_localUtilityPacketInbox.LastStatus}");
+            }
+
+            if (string.Equals(args[offset], "stop", StringComparison.OrdinalIgnoreCase))
+            {
+                _localUtilityPacketInboxEnabled = false;
+                EnsureLocalUtilityPacketInboxState(shouldRun: false);
+                return ChatCommandHandler.CommandResult.Ok($"{DescribeLocalUtilityPacketInboxStatus()} {DescribePacketOwnedUtilityDispatchStatus(currentTickCount)} {_localUtilityPacketInbox.LastStatus}");
+            }
+
+            if (string.Equals(args[offset], "packet", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(args[offset], "packetraw", StringComparison.OrdinalIgnoreCase))
+            {
+                string[] packetArgs = args.Skip(offset).ToArray();
+                return HandlePacketOwnedUtilityPacketCommand(
+                    packetArgs,
+                    rawHex: string.Equals(packetArgs[0], "packetraw", StringComparison.OrdinalIgnoreCase));
+            }
+
+            return ChatCommandHandler.CommandResult.Error(
+                $"Usage: {usagePrefix} [status|start [port]|stop|packet <openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|followfail|damagemeter|hpdec|skillcooltime|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]]");
         }
 
         private ChatCommandHandler.CommandResult HandlePacketOwnedUtilityPacketCommand(string[] args, bool rawHex)

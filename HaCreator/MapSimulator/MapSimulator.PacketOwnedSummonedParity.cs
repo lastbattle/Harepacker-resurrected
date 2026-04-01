@@ -8,7 +8,7 @@ namespace HaCreator.MapSimulator
     public partial class MapSimulator
     {
         private readonly SummonedPacketInboxManager _summonedPacketInbox = new();
-        private bool _summonedPacketInboxEnabled = true;
+        private bool _summonedPacketInboxEnabled = EnablePacketConnectionsByDefault;
         private int _summonedPacketInboxConfiguredPort = SummonedPacketInboxManager.DefaultPort;
 
         private void RegisterSummonedPacketChatCommand()
