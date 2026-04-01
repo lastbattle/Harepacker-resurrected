@@ -108,6 +108,14 @@ It does three things that the old notes did not do well:
 - `CField::OnChaosZakumTimer` at `0x531020`
 - `CField::OnHontaleTimer` at `0x5311d0`
 - `CField::OnPacket` at `0x546d50`
+- `CStage::OnPacket` at `0x71b0b0`
+- `CStage::OnSetField` at `0x71b150`
+- `CStage::OnSetITC` at `0x71c000`
+- `CStage::OnSetCashShop` at `0x71bfa0`
+- `CMapLoadable::OnPacket` at `0x61fd80`
+- `CMapLoadable::OnSetBackEffect` at `0x620160`
+- `CMapLoadable::OnSetMapObjectVisible` at `0x61fe40`
+- `CMapLoadable::OnClearBackEffect` at `0x620150`
 - `CScriptMan::OnPacket` at `0x6de360`
 - `CUserLocal::OnFieldFadeOutForce` at `0x9057f0`
 - `CUISkill::Draw` at `0x84ed90`
@@ -188,6 +196,20 @@ This is another packet-owned surface that the current backlog set does not descr
 Notes:
 The same `CField::OnPacket` decompile exposes another client-owned surface that is still absent from the backlog set. These handlers are not well-described by the existing scripted-field or feedback rows: they cover packet-authored weather/broadcast effects, GM or admin-result dialogs, OX-style quiz state, stalk/follow-result notices, a dedicated quickslot-keymap init path, foothold-info request/reply exchange, and the separate Rock-Paper-Scissors dialog owner. That is a distinct packet bucket between generic field messaging and the broader progression/utility window backlog.
 
+### 5. Stage-transition and map-load presentation parity discovered by direct `CField::OnPacket` decompile
+
+- `CStage::OnPacket` at `0x71b0b0`
+- `CStage::OnSetField` at `0x71b150`
+- `CStage::OnSetITC` at `0x71c000`
+- `CStage::OnSetCashShop` at `0x71bfa0`
+- `CMapLoadable::OnPacket` at `0x61fd80`
+- `CMapLoadable::OnSetBackEffect` at `0x620160`
+- `CMapLoadable::OnSetMapObjectVisible` at `0x61fe40`
+- `CMapLoadable::OnClearBackEffect` at `0x620150`
+
+Notes:
+The same `CField::OnPacket` decompile also hands packet families `141` to `146` to two owners that the backlog never names anywhere else. `CStage::OnPacket` owns the stage-switch family for field, ITC, and Cash Shop transitions instead of leaving those jumps implied by login or UI code, while `CMapLoadable::OnPacket` owns packet-authored map back-effects, object-visibility toggles, and back-effect clears instead of treating them as generic field-effect fallout. That is a separate packet surface above the more specific field-feedback, field-state, and cash-stage rows.
+
 ## Current State Summary
 
 MapSimulator is no longer "missing player simulation".
@@ -244,6 +266,12 @@ The main baseline updates worth keeping visible are:
 |--------|------|-----|----------------|--------------|
 | Missing | Field utility, quickslot-init, foothold-info, and RPS packet parity | A direct re-check of `CField::OnPacket` shows a still-untracked client-owned packet bucket outside the existing scripted-field and field-feedback rows: `OnBlowWeather` (`158`) for packet-authored weather/broadcast overlays, `OnAdminResult` (`160`) for GM/admin result dialogs, `OnQuiz` (`161`) for quiz-state ownership, `OnStalkResult` (`172`) for stalk/follow-result feedback, `CQuickslotKeyMappedMan::OnInit` (`175`) for packet-owned quickslot keymap hydration, `OnFootHoldInfo` (`176`) plus `OnRequestFootHoldInfo` (`177`) for foothold-info exchange, and `CRPSGameDlg::OnPacket` (`371`) for the Rock-Paper-Scissors dialog owner. A codebase search in `HaCreator/MapSimulator` did not surface any dedicated runtime or packet bridge named for those handlers, so this surface is still effectively absent from the simulator plan rather than merely undocumented polish. | If these handlers stay collapsed into a generic “misc packet” assumption, parity work will miss several visible client-owned flows that are neither ordinary UI windows nor general field notices: packet weather and admin-result prompts, quiz/minigame ownership, stalk-result feedback, quickslot-init sync, foothold-data round trips, and the separate RPS dialog all have their own dispatcher slots in the field owner and should not disappear behind unrelated rows. | packet-owned field utility layer (`CField::OnPacket`, `CField::OnBlowWeather`, `CField::OnAdminResult`, `CField::OnQuiz`, `CField::OnStalkResult`, `CQuickslotKeyMappedMan::OnInit`, `CField::OnFootHoldInfo`, `CField::OnRequestFootHoldInfo`, `CRPSGameDlg::OnPacket`) |
 
+### 5. Stage-transition and map-load presentation parity
+
+| Status | Area | Gap | Why it matters | Primary seam |
+|--------|------|-----|----------------|--------------|
+| Missing | Packet-owned stage-transition and map-load presentation parity | A follow-up decompile of `CField::OnPacket` uncovered another untracked dispatcher surface. Packet types `141` to `143` are not handled by the field rows directly; they route through `CStage::OnPacket`, which then fans into `OnSetField`, `OnSetITC`, and `OnSetCashShop`. Packet types `144` to `146` likewise route through `CMapLoadable::OnPacket`, which owns `OnSetBackEffect`, `OnSetMapObjectVisible`, and `OnClearBackEffect`. None of the current backlog files name those owners or track the packet-authored transition/presentation family they own, even though these packets sit above the already-tracked external cash-service stage row and the existing field-effect/object-state rows. | If these owners stay implicit, future parity work can keep overloading login flow, cash-shop stage work, or generic field-effect rows while still missing the actual packet dispatch seam that swaps stages and mutates map presentation during load/runtime. Tracking them explicitly keeps stage changes, packet-owned back effects, and map-object visibility toggles anchored to the client owners that `CField::OnPacket` actually calls. | packet-owned stage/map-load layer (`CField::OnPacket`, `CStage::OnPacket`, `CStage::OnSetField`, `CStage::OnSetITC`, `CStage::OnSetCashShop`, `CMapLoadable::OnPacket`, `CMapLoadable::OnSetBackEffect`, `CMapLoadable::OnSetMapObjectVisible`, `CMapLoadable::OnClearBackEffect`) |
+
 ## Priority Order
 
 If the goal is visible parity first, the next work should be sequenced like this:
@@ -264,6 +292,8 @@ If the goal is visible parity first, the next work should be sequenced like this
    Add the packet-owned field messaging, warn-dialog, forced-fade, obstacle, field-effect, and boss-timer surface before more status-bar or field-overlay polish is tracked as isolated UI work.
 8. Field-utility packet pass:
    Add the packet-owned weather/admin-result/quiz/stalk-result, quickslot-init, foothold-info, and RPS dialog surface before those handlers get misfiled under unrelated UI or field rows.
+9. Stage/map-load packet pass:
+   Add the packet-owned `CStage` and `CMapLoadable` bridge for field or Cash Shop or ITC stage switches plus back-effect/object-visibility mutations before those transitions get scattered across login, field-effect, or cash-stage rows.
 
 ## Working Rule For Future Updates
 
