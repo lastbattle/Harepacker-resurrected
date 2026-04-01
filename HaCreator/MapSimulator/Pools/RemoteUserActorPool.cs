@@ -110,6 +110,8 @@ namespace HaCreator.MapSimulator.Pools
 
         public int Count => _actorsById.Count;
         public IEnumerable<RemoteUserActor> Actors => _actorsById.Values;
+        public int PreparedSkillWorldOverlayCount => _preparedSkillWorldOverlayCount;
+        public int HelperMarkerCount => _helperMarkerCount;
 
         public void Initialize(CharacterLoader loader, SkillLoader skillLoader)
         {
@@ -888,7 +890,10 @@ namespace HaCreator.MapSimulator.Pools
             _preparedSkillWorldOverlayCount = 0;
             foreach (RemoteUserActor actor in _actorsById.Values)
             {
-                if (!actor.IsVisibleInWorld)
+                RemotePreparedSkillState prepared = actor.PreparedSkill;
+                if (!actor.IsVisibleInWorld
+                    || prepared == null
+                    || PreparedSkillHudRules.IsDragonOverlaySkill(prepared.SkillId))
                 {
                     continue;
                 }
@@ -900,11 +905,6 @@ namespace HaCreator.MapSimulator.Pools
                 }
 
                 _preparedSkillWorldOverlayCount++;
-            }
-
-            if (_preparedSkillWorldOverlayBuffer.Count > _preparedSkillWorldOverlayCount)
-            {
-                _preparedSkillWorldOverlayBuffer.RemoveRange(_preparedSkillWorldOverlayCount, _preparedSkillWorldOverlayBuffer.Count - _preparedSkillWorldOverlayCount);
             }
 
             return _preparedSkillWorldOverlayBuffer;
@@ -1199,11 +1199,6 @@ namespace HaCreator.MapSimulator.Pools
                 marker.TooltipText = actor.Name;
             }
 
-            if (_helperMarkerBuffer.Count > _helperMarkerCount)
-            {
-                _helperMarkerBuffer.RemoveRange(_helperMarkerCount, _helperMarkerBuffer.Count - _helperMarkerCount);
-            }
-
             return _helperMarkerBuffer;
         }
 
@@ -1257,11 +1252,13 @@ namespace HaCreator.MapSimulator.Pools
                     tickCount,
                     drawFrontLayers: false);
                 DrawMeleeAfterImage(spriteBatch, skeletonMeshRenderer, actor, screenX, screenY, tickCount);
-                StatusBarPreparedSkillRenderData preparedOverlay = BuildPreparedSkillWorldOverlay(actor, tickCount, 0);
                 if (statusBarUi != null
-                    && preparedOverlay != null
-                    && PreparedSkillHudRules.IsDragonOverlaySkill(preparedOverlay.SkillId))
+                    && actor.PreparedSkill != null
+                    && PreparedSkillHudRules.IsDragonOverlaySkill(actor.PreparedSkill.SkillId))
                 {
+                    StatusBarPreparedSkillRenderData preparedOverlay = BuildPreparedSkillWorldOverlay(actor, tickCount, 0);
+                    if (preparedOverlay != null)
+                    {
                     statusBarUi.DrawPreparedSkillWorldOverlay(
                         spriteBatch,
                         mapShiftX,
@@ -1270,6 +1267,7 @@ namespace HaCreator.MapSimulator.Pools
                         centerY,
                         tickCount,
                         preparedOverlay);
+                    }
                 }
 
                 frame.Draw(spriteBatch, skeletonMeshRenderer, screenX, screenY, actor.FacingRight, Color.White);

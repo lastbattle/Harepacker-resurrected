@@ -58,6 +58,8 @@ namespace HaCreator.MapSimulator.Interaction
             SeedDefaultFamily();
         }
 
+        internal int TrackedMembersCount => _trackedMembersCount;
+
         internal void UpdateLocalContext(CharacterBuild build, string locationSummary, int channel)
         {
             _locationSummary = string.IsNullOrWhiteSpace(locationSummary) ? "Field" : locationSummary.Trim();
@@ -182,11 +184,6 @@ namespace HaCreator.MapSimulator.Interaction
                 snapshot.IsOnline = member.IsOnline;
                 snapshot.SimulatedPosition = member.SimulatedPosition;
                 snapshot.IsLocalPlayer = member.Id == LocalPlayerId;
-            }
-
-            if (_trackedMembersBuffer.Count > _trackedMembersCount)
-            {
-                _trackedMembersBuffer.RemoveRange(_trackedMembersCount, _trackedMembersBuffer.Count - _trackedMembersCount);
             }
 
             return _trackedMembersBuffer;

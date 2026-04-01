@@ -132,7 +132,6 @@ namespace HaCreator.MapSimulator
         private ReactorItem[] _reactorsArray;
         private PortalItem[] _portalsArray;
         private TooltipItem[] _tooltipsArray;
-        private readonly List<MobMovementInfo> _groundMobMovementBuffer = new();
         private readonly List<MobItem> _frameActiveMobs = new();
         private readonly List<MobItem> _frameMovableMobs = new();
         private readonly List<long> _expiredMobSkillEffectKeys = new();
@@ -13356,31 +13355,6 @@ namespace HaCreator.MapSimulator
         private MouseState _oldMouseState = Mouse.GetState();
 
 
-        private IReadOnlyList<MobMovementInfo> CollectGroundMobMovementInfos()
-        {
-            _groundMobMovementBuffer.Clear();
-            if (_frameMovableMobs.Count == 0)
-            {
-                return _groundMobMovementBuffer;
-            }
-
-
-            for (int i = 0; i < _frameMovableMobs.Count; i++)
-            {
-                MobMovementInfo movementInfo = _frameMovableMobs[i].MovementInfo;
-                if (movementInfo != null)
-                {
-                    _groundMobMovementBuffer.Add(movementInfo);
-                }
-            }
-
-
-            return _groundMobMovementBuffer;
-
-        }
-
-
-
         private void RefreshFrameMobSnapshot()
         {
             _frameActiveMobs.Clear();
@@ -18384,11 +18358,6 @@ namespace HaCreator.MapSimulator
             marker.PreferredMarkerType = ResolveMinimapEmployeeMarkerType(snapshot);
             marker.TooltipText = tooltipText;
 
-            if (_minimapEmployeeMarkersBuffer.Count > _minimapEmployeeMarkersCount)
-            {
-                _minimapEmployeeMarkersBuffer.RemoveRange(_minimapEmployeeMarkersCount, _minimapEmployeeMarkersBuffer.Count - _minimapEmployeeMarkersCount);
-            }
-
             return _minimapEmployeeMarkersBuffer;
         }
 
@@ -18420,8 +18389,8 @@ namespace HaCreator.MapSimulator
 
             miniMapUi.SetLocalPlayerHelperMarker(ResolveLocalPlayerMinimapHelperMarker());
             EnsureMinimapTooltipResources();
-            miniMapUi.SetTrackedUserMarkers(BuildMinimapTrackedUserMarkers());
-            miniMapUi.SetEmployeeMarkers(BuildMinimapEmployeeMarkers(_playerManager?.Player));
+            miniMapUi.SetTrackedUserMarkers(BuildMinimapTrackedUserMarkers(), _minimapTrackedUserMarkersCount);
+            miniMapUi.SetEmployeeMarkers(BuildMinimapEmployeeMarkers(_playerManager?.Player), _minimapEmployeeMarkersCount);
 
         }
 
@@ -18443,10 +18412,12 @@ namespace HaCreator.MapSimulator
 
 
             IReadOnlyList<SocialTrackedEntrySnapshot> trackedEntries = _socialListRuntime.BuildTrackedEntriesSnapshot();
+            int trackedEntryCount = _socialListRuntime.TrackedEntriesCount;
             Dictionary<string, MinimapTrackedUserState> trackedUsers = _minimapTrackedUsersBuffer;
             trackedUsers.Clear();
-            foreach (SocialTrackedEntrySnapshot entry in trackedEntries)
+            for (int i = 0; i < trackedEntryCount; i++)
             {
+                SocialTrackedEntrySnapshot entry = trackedEntries[i];
                 if (entry == null || entry.IsLocalPlayer || !entry.IsOnline || !IsSameTrackedField(entry.LocationSummary, currentLocationSummary))
                 {
                     continue;
@@ -18477,8 +18448,9 @@ namespace HaCreator.MapSimulator
             }
 
 
-            foreach (SocialTrackedEntrySnapshot entry in trackedEntries)
+            for (int i = 0; i < trackedEntryCount; i++)
             {
+                SocialTrackedEntrySnapshot entry = trackedEntries[i];
                 if (_remoteUserPool.TryGetPosition(entry.Name, out Vector2 remotePosition)
                     && trackedUsers.TryGetValue(entry.Name, out MinimapTrackedUserState trackedState))
                 {
@@ -18488,8 +18460,11 @@ namespace HaCreator.MapSimulator
             }
 
 
-            foreach (FamilyTrackedMemberSnapshot member in _familyChartRuntime.BuildTrackedMembersSnapshot())
+            IReadOnlyList<FamilyTrackedMemberSnapshot> trackedMembers = _familyChartRuntime.BuildTrackedMembersSnapshot();
+            int trackedMemberCount = _familyChartRuntime.TrackedMembersCount;
+            for (int i = 0; i < trackedMemberCount; i++)
             {
+                FamilyTrackedMemberSnapshot member = trackedMembers[i];
                 if (member == null || member.IsLocalPlayer || !member.IsOnline || !IsSameTrackedField(member.LocationSummary, currentLocationSummary))
                 {
                     continue;
@@ -18518,7 +18493,7 @@ namespace HaCreator.MapSimulator
 
             _minimapTrackedUserMarkersCount = 0;
             IReadOnlyList<MinimapUI.TrackedUserMarker> remoteMarkers = _remoteUserPool.BuildHelperMarkers();
-            for (int i = 0; i < remoteMarkers.Count; i++)
+            for (int i = 0; i < _remoteUserPool.HelperMarkerCount; i++)
             {
                 MinimapUI.TrackedUserMarker marker = GetOrCreateMinimapTrackedUserMarker(_minimapTrackedUserMarkersCount++);
                 MinimapUI.TrackedUserMarker remoteMarker = remoteMarkers[i];
@@ -18556,12 +18531,6 @@ namespace HaCreator.MapSimulator
                 marker.ShowDirectionOverlay = true;
                 marker.TooltipText = BuildMinimapTrackedUserTooltipText(state);
             }
-
-            if (_minimapTrackedUserMarkersBuffer.Count > _minimapTrackedUserMarkersCount)
-            {
-                _minimapTrackedUserMarkersBuffer.RemoveRange(_minimapTrackedUserMarkersCount, _minimapTrackedUserMarkersBuffer.Count - _minimapTrackedUserMarkersCount);
-            }
-
 
             return _minimapTrackedUserMarkersBuffer;
 

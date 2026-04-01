@@ -76,7 +76,9 @@ namespace HaCreator.MapSimulator.UI
         private IReadOnlyList<NpcItem> _npcMarkers = Array.Empty<NpcItem>();
         private IReadOnlyList<PortalItem> _portalMarkers = Array.Empty<PortalItem>();
         private IReadOnlyList<TrackedUserMarker> _trackedUserMarkers = Array.Empty<TrackedUserMarker>();
+        private int _trackedUserMarkerCount;
         private IReadOnlyList<EmployeeMarker> _employeeMarkers = Array.Empty<EmployeeMarker>();
+        private int _employeeMarkerCount;
         private bool _showNpcMarkers;
         private SpriteFont _tooltipFont;
         private Texture2D _tooltipPixelTexture;
@@ -243,11 +245,25 @@ namespace HaCreator.MapSimulator.UI
         public void SetTrackedUserMarkers(IReadOnlyList<TrackedUserMarker> trackedUserMarkers)
         {
             _trackedUserMarkers = trackedUserMarkers ?? Array.Empty<TrackedUserMarker>();
+            _trackedUserMarkerCount = _trackedUserMarkers.Count;
+        }
+
+        public void SetTrackedUserMarkers(IReadOnlyList<TrackedUserMarker> trackedUserMarkers, int count)
+        {
+            _trackedUserMarkers = trackedUserMarkers ?? Array.Empty<TrackedUserMarker>();
+            _trackedUserMarkerCount = Math.Clamp(count, 0, _trackedUserMarkers.Count);
         }
 
         public void SetEmployeeMarkers(IReadOnlyList<EmployeeMarker> employeeMarkers)
         {
             _employeeMarkers = employeeMarkers ?? Array.Empty<EmployeeMarker>();
+            _employeeMarkerCount = _employeeMarkers.Count;
+        }
+
+        public void SetEmployeeMarkers(IReadOnlyList<EmployeeMarker> employeeMarkers, int count)
+        {
+            _employeeMarkers = employeeMarkers ?? Array.Empty<EmployeeMarker>();
+            _employeeMarkerCount = Math.Clamp(count, 0, _employeeMarkers.Count);
         }
 
         public void SetLocalPlayerHelperMarker(HelperMarkerType? helperMarkerType)
@@ -736,11 +752,12 @@ namespace HaCreator.MapSimulator.UI
             RenderParameters renderParameters,
             int tickCount)
         {
-            if (_bIsCollapsedState || _helperMarkers.Count == 0 || _trackedUserMarkers.Count == 0)
+            if (_bIsCollapsedState || _helperMarkers.Count == 0 || _trackedUserMarkerCount == 0)
                 return;
 
-            foreach (TrackedUserMarker trackedUser in _trackedUserMarkers)
+            for (int i = 0; i < _trackedUserMarkerCount; i++)
             {
+                TrackedUserMarker trackedUser = _trackedUserMarkers[i];
                 if (trackedUser == null)
                     continue;
 
@@ -764,11 +781,12 @@ namespace HaCreator.MapSimulator.UI
             RenderParameters renderParameters,
             int tickCount)
         {
-            if (_bIsCollapsedState || _employeeMarkers.Count == 0)
+            if (_bIsCollapsedState || _employeeMarkerCount == 0)
                 return;
 
-            foreach (EmployeeMarker employee in _employeeMarkers)
+            for (int i = 0; i < _employeeMarkerCount; i++)
             {
+                EmployeeMarker employee = _employeeMarkers[i];
                 if (employee == null)
                     continue;
 

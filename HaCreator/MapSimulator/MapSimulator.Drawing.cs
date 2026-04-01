@@ -640,8 +640,10 @@ namespace HaCreator.MapSimulator
                     TickCount);
 
 
-                foreach (StatusBarPreparedSkillRenderData remotePreparedSkill in _remoteUserPool.BuildPreparedSkillWorldOverlays(TickCount))
+                IReadOnlyList<StatusBarPreparedSkillRenderData> remotePreparedSkills = _remoteUserPool.BuildPreparedSkillWorldOverlays(TickCount);
+                for (int i = 0; i < _remoteUserPool.PreparedSkillWorldOverlayCount; i++)
                 {
+                    StatusBarPreparedSkillRenderData remotePreparedSkill = remotePreparedSkills[i];
                     statusBarUi.DrawPreparedSkillWorldOverlay(
                         _spriteBatch,
                         mapShiftX,

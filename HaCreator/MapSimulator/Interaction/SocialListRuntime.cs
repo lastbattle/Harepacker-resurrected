@@ -56,6 +56,7 @@ namespace HaCreator.MapSimulator.Interaction
         }
 
         internal SocialListTab CurrentTab => _currentTab;
+        internal int TrackedEntriesCount => _trackedEntriesCount;
 
         internal void UpdateLocalContext(CharacterBuild build, string locationSummary, int channel)
         {
@@ -174,11 +175,6 @@ namespace HaCreator.MapSimulator.Interaction
                     snapshot.IsLeader = entry.IsLeader;
                     snapshot.IsLocalPlayer = entry.IsLocalPlayer;
                 }
-            }
-
-            if (_trackedEntriesBuffer.Count > _trackedEntriesCount)
-            {
-                _trackedEntriesBuffer.RemoveRange(_trackedEntriesCount, _trackedEntriesBuffer.Count - _trackedEntriesCount);
             }
 
             return _trackedEntriesBuffer;

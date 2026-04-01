@@ -918,7 +918,7 @@ namespace HaCreator.MapSimulator
             _limitedViewField.Update(gameTime, playerX, playerY);
 
 
-            _passengerSync.SyncGroundMobPassengers(CollectGroundMobMovementInfos(), _dynamicFootholds, _transportField);
+            _passengerSync.SyncGroundMobPassengers(_frameMovableMobs, _dynamicFootholds, _transportField);
 
 
 

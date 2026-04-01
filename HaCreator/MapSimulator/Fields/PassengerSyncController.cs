@@ -40,16 +40,17 @@ namespace HaCreator.MapSimulator.Fields
             return false;
         }
 
-        public int SyncGroundMobPassengers(IEnumerable<MobMovementInfo> movementInfos, DynamicFootholdSystem dynamicFootholds, TransportationField transportField)
+        public int SyncGroundMobPassengers(IReadOnlyList<MobItem> movableMobs, DynamicFootholdSystem dynamicFootholds, TransportationField transportField)
         {
-            if (movementInfos == null)
+            if (movableMobs == null || movableMobs.Count == 0)
             {
                 return 0;
             }
 
             int syncedCount = 0;
-            foreach (MobMovementInfo movement in movementInfos)
+            for (int i = 0; i < movableMobs.Count; i++)
             {
+                MobMovementInfo movement = movableMobs[i]?.MovementInfo;
                 if (!CanAttachGroundMob(movement))
                 {
                     continue;
