@@ -52,9 +52,41 @@ namespace HaCreator.MapSimulator.Pools
             EquipSlot.Cape,
         };
         private static readonly Dictionary<int, RemoteDragonHudMetadata> RemoteDragonHudMetadataCache = new();
+        private static readonly IComparer<RemoteUserActor> VisibleWorldActorComparer = Comparer<RemoteUserActor>.Create(static (left, right) =>
+        {
+            if (ReferenceEquals(left, right))
+            {
+                return 0;
+            }
+
+            if (left is null)
+            {
+                return 1;
+            }
+
+            if (right is null)
+            {
+                return -1;
+            }
+
+            int yComparison = left.Position.Y.CompareTo(right.Position.Y);
+            if (yComparison != 0)
+            {
+                return yComparison;
+            }
+
+            return StringComparer.OrdinalIgnoreCase.Compare(left.Name, right.Name);
+        });
 
         private readonly Dictionary<int, RemoteUserActor> _actorsById = new();
         private readonly Dictionary<string, int> _actorIdsByName = new(StringComparer.OrdinalIgnoreCase);
+        private readonly List<RemoteUserActor> _visibleWorldActorsBuffer = new();
+        private readonly List<StatusBarPreparedSkillRenderData> _preparedSkillWorldOverlayBuffer = new();
+        private readonly List<MinimapUI.TrackedUserMarker> _helperMarkerBuffer = new();
+        private readonly HashSet<(int LeftId, int RightId)> _renderedCouplePairsBuffer = new();
+        private readonly HashSet<(int ItemId, int LeftId, int RightId)> _renderedItemEffectPairsBuffer = new();
+        private int _preparedSkillWorldOverlayCount;
+        private int _helperMarkerCount;
         private CharacterLoader _loader;
         private SkillLoader _skillLoader;
 
@@ -806,22 +838,32 @@ namespace HaCreator.MapSimulator.Pools
 
         public IReadOnlyList<StatusBarPreparedSkillRenderData> BuildPreparedSkillWorldOverlays(int currentTime)
         {
-            List<StatusBarPreparedSkillRenderData> overlays = new();
-            foreach (RemoteUserActor actor in _actorsById.Values.Where(static value => value.IsVisibleInWorld))
+            _preparedSkillWorldOverlayCount = 0;
+            foreach (RemoteUserActor actor in _actorsById.Values)
             {
-                StatusBarPreparedSkillRenderData overlay = BuildPreparedSkillWorldOverlay(actor, currentTime);
+                if (!actor.IsVisibleInWorld)
+                {
+                    continue;
+                }
+
+                StatusBarPreparedSkillRenderData overlay = BuildPreparedSkillWorldOverlay(actor, currentTime, _preparedSkillWorldOverlayCount);
                 if (overlay == null || PreparedSkillHudRules.IsDragonOverlaySkill(overlay.SkillId))
                 {
                     continue;
                 }
 
-                overlays.Add(overlay);
+                _preparedSkillWorldOverlayCount++;
             }
 
-            return overlays;
+            if (_preparedSkillWorldOverlayBuffer.Count > _preparedSkillWorldOverlayCount)
+            {
+                _preparedSkillWorldOverlayBuffer.RemoveRange(_preparedSkillWorldOverlayCount, _preparedSkillWorldOverlayBuffer.Count - _preparedSkillWorldOverlayCount);
+            }
+
+            return _preparedSkillWorldOverlayBuffer;
         }
 
-        private static StatusBarPreparedSkillRenderData BuildPreparedSkillWorldOverlay(RemoteUserActor actor, int currentTime)
+        private StatusBarPreparedSkillRenderData BuildPreparedSkillWorldOverlay(RemoteUserActor actor, int currentTime, int bufferIndex)
         {
             RemotePreparedSkillState prepared = actor?.PreparedSkill;
             if (prepared == null)
@@ -841,24 +883,23 @@ namespace HaCreator.MapSimulator.Pools
                 return null;
             }
 
-            return new StatusBarPreparedSkillRenderData
-            {
-                SkillId = prepared.SkillId,
-                SkillName = prepared.SkillName,
-                SkinKey = prepared.SkinKey,
-                Surface = PreparedSkillHudSurface.World,
-                RemainingMs = remainingMs,
-                DurationMs = duration,
-                GaugeDurationMs = prepared.GaugeDurationMs > 0 ? prepared.GaugeDurationMs : duration,
-                Progress = progress,
-                IsKeydownSkill = prepared.IsKeydownSkill,
-                IsHolding = isHolding,
-                HoldElapsedMs = holdElapsedMs,
-                MaxHoldDurationMs = prepared.MaxHoldDurationMs,
-                TextVariant = prepared.TextVariant,
-                ShowText = prepared.ShowText && !PreparedSkillHudRules.IsDragonOverlaySkill(prepared.SkillId),
-                WorldAnchor = ResolvePreparedSkillWorldAnchor(actor, prepared, currentTime)
-            };
+            StatusBarPreparedSkillRenderData overlay = GetOrCreatePreparedSkillWorldOverlay(bufferIndex);
+            overlay.SkillId = prepared.SkillId;
+            overlay.SkillName = prepared.SkillName;
+            overlay.SkinKey = prepared.SkinKey;
+            overlay.Surface = PreparedSkillHudSurface.World;
+            overlay.RemainingMs = remainingMs;
+            overlay.DurationMs = duration;
+            overlay.GaugeDurationMs = prepared.GaugeDurationMs > 0 ? prepared.GaugeDurationMs : duration;
+            overlay.Progress = progress;
+            overlay.IsKeydownSkill = prepared.IsKeydownSkill;
+            overlay.IsHolding = isHolding;
+            overlay.HoldElapsedMs = holdElapsedMs;
+            overlay.MaxHoldDurationMs = prepared.MaxHoldDurationMs;
+            overlay.TextVariant = prepared.TextVariant;
+            overlay.ShowText = prepared.ShowText && !PreparedSkillHudRules.IsDragonOverlaySkill(prepared.SkillId);
+            overlay.WorldAnchor = ResolvePreparedSkillWorldAnchor(actor, prepared, currentTime);
+            return overlay;
         }
 
         private static bool TryResolvePreparedSkillPhase(
@@ -1089,7 +1130,7 @@ namespace HaCreator.MapSimulator.Pools
 
         public IReadOnlyList<MinimapUI.TrackedUserMarker> BuildHelperMarkers()
         {
-            List<MinimapUI.TrackedUserMarker> markers = new();
+            _helperMarkerCount = 0;
             foreach (RemoteUserActor actor in _actorsById.Values)
             {
                 MinimapUI.HelperMarkerType? markerType = actor.HelperMarkerType;
@@ -1103,17 +1144,20 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
-                markers.Add(new MinimapUI.TrackedUserMarker
-                {
-                    WorldX = actor.Position.X,
-                    WorldY = actor.Position.Y,
-                    MarkerType = markerType.Value,
-                    ShowDirectionOverlay = actor.ShowDirectionOverlay,
-                    TooltipText = actor.Name
-                });
+                MinimapUI.TrackedUserMarker marker = GetOrCreateHelperMarker(_helperMarkerCount++);
+                marker.WorldX = actor.Position.X;
+                marker.WorldY = actor.Position.Y;
+                marker.MarkerType = markerType.Value;
+                marker.ShowDirectionOverlay = actor.ShowDirectionOverlay;
+                marker.TooltipText = actor.Name;
             }
 
-            return markers;
+            if (_helperMarkerBuffer.Count > _helperMarkerCount)
+            {
+                _helperMarkerBuffer.RemoveRange(_helperMarkerCount, _helperMarkerBuffer.Count - _helperMarkerCount);
+            }
+
+            return _helperMarkerBuffer;
         }
 
         public void Draw(
@@ -1128,13 +1172,13 @@ namespace HaCreator.MapSimulator.Pools
             PlayerCharacter localPlayer = null,
             StatusBarUI statusBarUi = null)
         {
-            var renderedCouplePairs = new HashSet<(int LeftId, int RightId)>();
-            var renderedItemEffectPairs = new HashSet<(int ItemId, int LeftId, int RightId)>();
-            foreach (RemoteUserActor actor in _actorsById.Values
-                .Where(static value => value.IsVisibleInWorld)
-                .OrderBy(static value => value.Position.Y)
-                .ThenBy(static value => value.Name, StringComparer.OrdinalIgnoreCase))
+            List<RemoteUserActor> visibleActors = BuildVisibleWorldActorBuffer();
+            _renderedCouplePairsBuffer.Clear();
+            _renderedItemEffectPairsBuffer.Clear();
+
+            for (int i = 0; i < visibleActors.Count; i++)
             {
+                RemoteUserActor actor = visibleActors[i];
                 AssembledFrame frame = actor.Assembler.GetFrameAtTime(actor.ActionName, tickCount)
                     ?? actor.Assembler.GetFrameAtTime(CharacterPart.GetActionString(CharacterAction.Stand1), tickCount);
                 if (frame == null)
@@ -1155,7 +1199,7 @@ namespace HaCreator.MapSimulator.Pools
                     centerY,
                     tickCount,
                     drawFrontLayers: false,
-                    renderedCouplePairs);
+                    _renderedCouplePairsBuffer);
                 DrawPortableChairCoupleSharedLayers(
                     spriteBatch,
                     skeletonMeshRenderer,
@@ -1166,7 +1210,7 @@ namespace HaCreator.MapSimulator.Pools
                     tickCount,
                     drawFrontLayers: false);
                 DrawMeleeAfterImage(spriteBatch, skeletonMeshRenderer, actor, screenX, screenY, tickCount);
-                StatusBarPreparedSkillRenderData preparedOverlay = BuildPreparedSkillWorldOverlay(actor, tickCount);
+                StatusBarPreparedSkillRenderData preparedOverlay = BuildPreparedSkillWorldOverlay(actor, tickCount, 0);
                 if (statusBarUi != null
                     && preparedOverlay != null
                     && PreparedSkillHudRules.IsDragonOverlaySkill(preparedOverlay.SkillId))
@@ -1194,7 +1238,7 @@ namespace HaCreator.MapSimulator.Pools
                     screenX,
                     screenY,
                     tickCount,
-                    renderedItemEffectPairs);
+                    _renderedItemEffectPairsBuffer);
                 DrawPortableChairCoupleSharedLayers(
                     spriteBatch,
                     skeletonMeshRenderer,
@@ -1215,7 +1259,7 @@ namespace HaCreator.MapSimulator.Pools
                     centerY,
                     tickCount,
                     drawFrontLayers: true,
-                    renderedCouplePairs);
+                    _renderedCouplePairsBuffer);
 
                 if (font == null)
                 {
@@ -1227,6 +1271,45 @@ namespace HaCreator.MapSimulator.Pools
                 Vector2 textPosition = new(screenX - (textSize.X / 2f), topY - textSize.Y - 10f);
                 DrawOutlinedText(spriteBatch, font, actor.Name, textPosition, Color.Black, ResolveNameColor(actor));
             }
+        }
+
+        private List<RemoteUserActor> BuildVisibleWorldActorBuffer()
+        {
+            _visibleWorldActorsBuffer.Clear();
+            foreach (RemoteUserActor actor in _actorsById.Values)
+            {
+                if (actor.IsVisibleInWorld)
+                {
+                    _visibleWorldActorsBuffer.Add(actor);
+                }
+            }
+
+            if (_visibleWorldActorsBuffer.Count > 1)
+            {
+                _visibleWorldActorsBuffer.Sort(VisibleWorldActorComparer);
+            }
+
+            return _visibleWorldActorsBuffer;
+        }
+
+        private StatusBarPreparedSkillRenderData GetOrCreatePreparedSkillWorldOverlay(int index)
+        {
+            while (_preparedSkillWorldOverlayBuffer.Count <= index)
+            {
+                _preparedSkillWorldOverlayBuffer.Add(new StatusBarPreparedSkillRenderData());
+            }
+
+            return _preparedSkillWorldOverlayBuffer[index];
+        }
+
+        private MinimapUI.TrackedUserMarker GetOrCreateHelperMarker(int index)
+        {
+            while (_helperMarkerBuffer.Count <= index)
+            {
+                _helperMarkerBuffer.Add(new MinimapUI.TrackedUserMarker());
+            }
+
+            return _helperMarkerBuffer[index];
         }
 
         private void DrawPortableChairCoupleMidpointEffects(

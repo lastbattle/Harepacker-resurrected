@@ -59,6 +59,7 @@ namespace HaCreator.MapSimulator.UI
         private int _previousScrollWheelValue;
         private bool _isDraggingScrollThumb;
         private int _scrollThumbDragOffsetY;
+        private SocialListSnapshot _currentSnapshot = new();
 
         private readonly struct HeaderLayer
         {
@@ -96,7 +97,8 @@ namespace HaCreator.MapSimulator.UI
         internal void SetSnapshotProvider(Func<SocialListSnapshot> snapshotProvider)
         {
             _snapshotProvider = snapshotProvider;
-            UpdateButtonStates(GetSnapshot());
+            _currentSnapshot = GetSnapshot();
+            UpdateButtonStates(_currentSnapshot);
         }
 
         internal void SetHandlers(
@@ -178,7 +180,7 @@ namespace HaCreator.MapSimulator.UI
         {
             base.Update(gameTime);
 
-            SocialListSnapshot snapshot = GetSnapshot();
+            SocialListSnapshot snapshot = RefreshSnapshot();
             UpdateButtonStates(snapshot);
 
             MouseState mouseState = Mouse.GetState();
@@ -222,7 +224,7 @@ namespace HaCreator.MapSimulator.UI
         {
             DrawLayer(sprite, _overlay, _overlayOffset, drawReflectionInfo, skeletonMeshRenderer, gameTime);
 
-            SocialListSnapshot snapshot = GetSnapshot();
+            SocialListSnapshot snapshot = _currentSnapshot ?? RefreshSnapshot();
             DrawTabStrip(sprite, snapshot);
             DrawHeader(sprite, snapshot, drawReflectionInfo, skeletonMeshRenderer, gameTime);
 
@@ -258,6 +260,12 @@ namespace HaCreator.MapSimulator.UI
         private SocialListSnapshot GetSnapshot()
         {
             return _snapshotProvider?.Invoke() ?? new SocialListSnapshot();
+        }
+
+        private SocialListSnapshot RefreshSnapshot()
+        {
+            _currentSnapshot = GetSnapshot();
+            return _currentSnapshot;
         }
 
         private void UpdateButtonStates(SocialListSnapshot snapshot)

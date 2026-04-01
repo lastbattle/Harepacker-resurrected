@@ -28,6 +28,7 @@ namespace HaCreator.MapSimulator.UI
         private Action<string> _feedbackHandler;
         private SpriteFont _font;
         private MouseState _previousMouseState;
+        private GuildSearchSnapshot _currentSnapshot = new();
 
         public GuildSearchWindow(
             IDXObject frame,
@@ -56,7 +57,7 @@ namespace HaCreator.MapSimulator.UI
         internal void SetSnapshotProvider(Func<GuildSearchSnapshot> snapshotProvider)
         {
             _snapshotProvider = snapshotProvider;
-            UpdateButtonStates(GetSnapshot());
+            UpdateButtonStates(RefreshSnapshot());
         }
 
         internal void SetHandlers(
@@ -94,7 +95,7 @@ namespace HaCreator.MapSimulator.UI
         {
             base.Update(gameTime);
 
-            GuildSearchSnapshot snapshot = GetSnapshot();
+            GuildSearchSnapshot snapshot = RefreshSnapshot();
             UpdateButtonStates(snapshot);
 
             MouseState mouseState = Mouse.GetState();
@@ -135,14 +136,15 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            GuildSearchSnapshot snapshot = GetSnapshot();
+            GuildSearchSnapshot snapshot = _currentSnapshot ?? RefreshSnapshot();
             DrawEntryList(sprite, snapshot);
             DrawSummary(sprite, snapshot);
         }
 
-        private GuildSearchSnapshot GetSnapshot()
+        private GuildSearchSnapshot RefreshSnapshot()
         {
-            return _snapshotProvider?.Invoke() ?? new GuildSearchSnapshot();
+            _currentSnapshot = _snapshotProvider?.Invoke() ?? new GuildSearchSnapshot();
+            return _currentSnapshot;
         }
 
         private void UpdateButtonStates(GuildSearchSnapshot snapshot)

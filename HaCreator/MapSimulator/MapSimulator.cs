@@ -220,6 +220,8 @@ namespace HaCreator.MapSimulator
         private int _visibleMobsCount;
         private NpcItem[] _visibleNpcs;
         private int _visibleNpcsCount;
+        private TooltipItem[] _visibleTooltips;
+        private int _visibleTooltipsCount;
         private bool[] _reactorVisibilityBuffer;
 
 
@@ -362,6 +364,31 @@ namespace HaCreator.MapSimulator
         private readonly Func<int, int, ReflectionDrawableBoundary> _mobMirrorBoundaryResolver;
         private readonly Func<int, int, ReflectionDrawableBoundary> _npcMirrorBoundaryResolver;
         private readonly Random _mobSkillRandom = new Random();
+        private static readonly IComparer<MinimapTrackedUserState> MinimapTrackedUserStateNameComparer = Comparer<MinimapTrackedUserState>.Create(static (left, right) =>
+        {
+            if (ReferenceEquals(left, right))
+            {
+                return 0;
+            }
+
+            if (left is null)
+            {
+                return 1;
+            }
+
+            if (right is null)
+            {
+                return -1;
+            }
+
+            return StringComparer.OrdinalIgnoreCase.Compare(left.Name, right.Name);
+        });
+        private readonly Dictionary<string, MinimapTrackedUserState> _minimapTrackedUsersBuffer = new(StringComparer.OrdinalIgnoreCase);
+        private readonly List<MinimapTrackedUserState> _sortedMinimapTrackedUsersBuffer = new();
+        private readonly List<MinimapUI.TrackedUserMarker> _minimapTrackedUserMarkersBuffer = new();
+        private readonly List<MinimapUI.EmployeeMarker> _minimapEmployeeMarkersBuffer = new(1);
+        private int _minimapTrackedUserMarkersCount;
+        private int _minimapEmployeeMarkersCount;
 
 
         // Consolidated effect management
@@ -12937,7 +12964,9 @@ namespace HaCreator.MapSimulator
                 _useSpatialPartitioning ? _visiblePortals : null,
                 _useSpatialPartitioning ? _visiblePortalsCount : 0,
                 _useSpatialPartitioning ? _visibleReactors : null,
-                _useSpatialPartitioning ? _visibleReactorsCount : 0);
+                _useSpatialPartitioning ? _visibleReactorsCount : 0,
+                _visibleTooltips,
+                _visibleTooltipsCount);
         }
 
 
@@ -13406,7 +13435,9 @@ namespace HaCreator.MapSimulator
                 _useSpatialPartitioning ? _visiblePortals : null,
                 _useSpatialPartitioning ? _visiblePortalsCount : 0,
                 _useSpatialPartitioning ? _visibleReactors : null,
-                _useSpatialPartitioning ? _visibleReactorsCount : 0);
+                _useSpatialPartitioning ? _visibleReactorsCount : 0,
+                _visibleTooltips,
+                _visibleTooltipsCount);
 
 
             // Update mirror boundaries only for entities that may render this frame.
@@ -13564,7 +13595,7 @@ namespace HaCreator.MapSimulator
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private void UpdateVisibleEntityBuffers(int centerX, int centerY, int viewWidth, int viewHeight)
         {
-            EnsureVisibleEntityBufferCapacity(_mobsArray?.Length ?? 0, _npcsArray?.Length ?? 0);
+            EnsureVisibleEntityBufferCapacity(_mobsArray?.Length ?? 0, _npcsArray?.Length ?? 0, _tooltipsArray?.Length ?? 0);
 
 
             _visibleMobsCount = 0;
@@ -13614,10 +13645,39 @@ namespace HaCreator.MapSimulator
                     _visibleNpcs[_visibleNpcsCount++] = npc;
                 }
             }
+
+            _visibleTooltipsCount = 0;
+            if (_tooltipsArray != null)
+            {
+                for (int i = 0; i < _tooltipsArray.Length; i++)
+                {
+                    TooltipItem tooltip = _tooltipsArray[i];
+                    if (tooltip?.TooltipInstance == null)
+                    {
+                        continue;
+                    }
+
+                    ToolTipInstance tooltipInstance = tooltip.TooltipInstance;
+                    if (!IsWorldEntityInView(
+                            tooltipInstance.X,
+                            tooltipInstance.Y,
+                            tooltipInstance.Width,
+                            tooltipInstance.Height,
+                            centerX,
+                            centerY,
+                            viewWidth,
+                            viewHeight))
+                    {
+                        continue;
+                    }
+
+                    _visibleTooltips[_visibleTooltipsCount++] = tooltip;
+                }
+            }
         }
 
 
-        private void EnsureVisibleEntityBufferCapacity(int mobCapacity, int npcCapacity)
+        private void EnsureVisibleEntityBufferCapacity(int mobCapacity, int npcCapacity, int tooltipCapacity)
         {
             if (_visibleMobs == null || _visibleMobs.Length < mobCapacity)
             {
@@ -13628,6 +13688,11 @@ namespace HaCreator.MapSimulator
             if (_visibleNpcs == null || _visibleNpcs.Length < npcCapacity)
             {
                 _visibleNpcs = new NpcItem[Math.Max(npcCapacity, 1)];
+            }
+
+            if (_visibleTooltips == null || _visibleTooltips.Length < tooltipCapacity)
+            {
+                _visibleTooltips = new TooltipItem[Math.Max(tooltipCapacity, 1)];
             }
         }
 
@@ -18086,6 +18151,7 @@ namespace HaCreator.MapSimulator
         private IReadOnlyList<MinimapUI.EmployeeMarker> BuildMinimapEmployeeMarkers(PlayerCharacter player)
 
         {
+            _minimapEmployeeMarkersCount = 0;
 
             SocialRoomFieldActorSnapshot snapshot = GetSocialRoomEmployeeFieldActorSnapshot();
             if (snapshot == null || player == null)
@@ -18118,17 +18184,19 @@ namespace HaCreator.MapSimulator
             }
 
 
-            return new[]
+            MinimapUI.EmployeeMarker marker = GetOrCreateMinimapEmployeeMarker(_minimapEmployeeMarkersCount++);
+            marker.WorldX = worldX;
+            marker.WorldY = worldY;
+            marker.ShowDirectionOverlay = true;
+            marker.PreferredMarkerType = ResolveMinimapEmployeeMarkerType(snapshot);
+            marker.TooltipText = tooltipText;
+
+            if (_minimapEmployeeMarkersBuffer.Count > _minimapEmployeeMarkersCount)
             {
-                new MinimapUI.EmployeeMarker
-                {
-                    WorldX = worldX,
-                    WorldY = worldY,
-                    ShowDirectionOverlay = true,
-                    PreferredMarkerType = ResolveMinimapEmployeeMarkerType(snapshot),
-                    TooltipText = tooltipText
-                }
-            };
+                _minimapEmployeeMarkersBuffer.RemoveRange(_minimapEmployeeMarkersCount, _minimapEmployeeMarkersBuffer.Count - _minimapEmployeeMarkersCount);
+            }
+
+            return _minimapEmployeeMarkersBuffer;
         }
 
 
@@ -18181,8 +18249,10 @@ namespace HaCreator.MapSimulator
             RefreshGuildSkillUiContext();
 
 
-            Dictionary<string, MinimapTrackedUserState> trackedUsers = new(StringComparer.OrdinalIgnoreCase);
-            foreach (SocialTrackedEntrySnapshot entry in _socialListRuntime.BuildTrackedEntriesSnapshot())
+            IReadOnlyList<SocialTrackedEntrySnapshot> trackedEntries = _socialListRuntime.BuildTrackedEntriesSnapshot();
+            Dictionary<string, MinimapTrackedUserState> trackedUsers = _minimapTrackedUsersBuffer;
+            trackedUsers.Clear();
+            foreach (SocialTrackedEntrySnapshot entry in trackedEntries)
             {
                 if (entry == null || entry.IsLocalPlayer || !entry.IsOnline || !IsSameTrackedField(entry.LocationSummary, currentLocationSummary))
                 {
@@ -18214,7 +18284,7 @@ namespace HaCreator.MapSimulator
             }
 
 
-            foreach (SocialTrackedEntrySnapshot entry in _socialListRuntime.BuildTrackedEntriesSnapshot())
+            foreach (SocialTrackedEntrySnapshot entry in trackedEntries)
             {
                 if (_remoteUserPool.TryGetPosition(entry.Name, out Vector2 remotePosition)
                     && trackedUsers.TryGetValue(entry.Name, out MinimapTrackedUserState trackedState))
@@ -18253,43 +18323,54 @@ namespace HaCreator.MapSimulator
             }
 
 
-            List<MinimapUI.TrackedUserMarker> markers = new(trackedUsers.Count + _remoteUserPool.Count);
-
-
-
-            foreach (MinimapUI.TrackedUserMarker remoteMarker in _remoteUserPool.BuildHelperMarkers())
-
-
-
+            _minimapTrackedUserMarkersCount = 0;
+            IReadOnlyList<MinimapUI.TrackedUserMarker> remoteMarkers = _remoteUserPool.BuildHelperMarkers();
+            for (int i = 0; i < remoteMarkers.Count; i++)
             {
-
-
-
-                markers.Add(remoteMarker);
-
-
-
+                MinimapUI.TrackedUserMarker marker = GetOrCreateMinimapTrackedUserMarker(_minimapTrackedUserMarkersCount++);
+                MinimapUI.TrackedUserMarker remoteMarker = remoteMarkers[i];
+                marker.WorldX = remoteMarker.WorldX;
+                marker.WorldY = remoteMarker.WorldY;
+                marker.MarkerType = remoteMarker.MarkerType;
+                marker.ShowDirectionOverlay = remoteMarker.ShowDirectionOverlay;
+                marker.TooltipText = remoteMarker.TooltipText;
             }
-            int syntheticIndex = 0;
-            foreach (MinimapTrackedUserState state in trackedUsers.Values.OrderBy(value => value.Name, StringComparer.OrdinalIgnoreCase))
+
+            _sortedMinimapTrackedUsersBuffer.Clear();
+            foreach (MinimapTrackedUserState trackedUserState in trackedUsers.Values)
             {
+                _sortedMinimapTrackedUsersBuffer.Add(trackedUserState);
+            }
+
+            if (_sortedMinimapTrackedUsersBuffer.Count > 1)
+            {
+                _sortedMinimapTrackedUsersBuffer.Sort(MinimapTrackedUserStateNameComparer);
+            }
+
+            int syntheticIndex = 0;
+            for (int i = 0; i < _sortedMinimapTrackedUsersBuffer.Count; i++)
+            {
+                MinimapTrackedUserState state = _sortedMinimapTrackedUsersBuffer[i];
                 Vector2 position = state.HasPosition
                     ? state.Position
                     : ResolveSyntheticTrackedUserPosition(player.X, player.Y, syntheticIndex++);
 
 
-                markers.Add(new MinimapUI.TrackedUserMarker
-                {
-                    WorldX = position.X,
-                    WorldY = position.Y,
-                    MarkerType = ResolveMinimapTrackedUserMarkerType(state),
-                    ShowDirectionOverlay = true,
-                    TooltipText = BuildMinimapTrackedUserTooltipText(state)
-                });
+                MinimapUI.TrackedUserMarker marker = GetOrCreateMinimapTrackedUserMarker(_minimapTrackedUserMarkersCount++);
+                marker.WorldX = position.X;
+                marker.WorldY = position.Y;
+                marker.MarkerType = ResolveMinimapTrackedUserMarkerType(state);
+                marker.ShowDirectionOverlay = true;
+                marker.TooltipText = BuildMinimapTrackedUserTooltipText(state);
+            }
+
+            if (_minimapTrackedUserMarkersBuffer.Count > _minimapTrackedUserMarkersCount)
+            {
+                _minimapTrackedUserMarkersBuffer.RemoveRange(_minimapTrackedUserMarkersCount, _minimapTrackedUserMarkersBuffer.Count - _minimapTrackedUserMarkersCount);
             }
 
 
-            return markers;
+            return _minimapTrackedUserMarkersBuffer;
 
         }
 
@@ -18298,6 +18379,26 @@ namespace HaCreator.MapSimulator
         private static bool IsSameTrackedField(string left, string right)
         {
             return string.Equals(NormalizeTrackedFieldLocation(left), NormalizeTrackedFieldLocation(right), StringComparison.OrdinalIgnoreCase);
+        }
+
+        private MinimapUI.TrackedUserMarker GetOrCreateMinimapTrackedUserMarker(int index)
+        {
+            while (_minimapTrackedUserMarkersBuffer.Count <= index)
+            {
+                _minimapTrackedUserMarkersBuffer.Add(new MinimapUI.TrackedUserMarker());
+            }
+
+            return _minimapTrackedUserMarkersBuffer[index];
+        }
+
+        private MinimapUI.EmployeeMarker GetOrCreateMinimapEmployeeMarker(int index)
+        {
+            while (_minimapEmployeeMarkersBuffer.Count <= index)
+            {
+                _minimapEmployeeMarkersBuffer.Add(new MinimapUI.EmployeeMarker());
+            }
+
+            return _minimapEmployeeMarkersBuffer[index];
         }
 
 

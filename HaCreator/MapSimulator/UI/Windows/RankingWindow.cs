@@ -28,6 +28,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly string _windowName;
         private SpriteFont _font;
         private Func<RankingWindowSnapshot> _snapshotProvider;
+        private RankingWindowSnapshot _currentSnapshot = new();
 
         public RankingWindow(IDXObject frame, string windowName, Texture2D highlightTexture)
             : base(frame)
@@ -49,6 +50,7 @@ namespace HaCreator.MapSimulator.UI
         public void SetSnapshotProvider(Func<RankingWindowSnapshot> snapshotProvider)
         {
             _snapshotProvider = snapshotProvider;
+            _currentSnapshot = RefreshSnapshot();
         }
 
         public override void SetFont(SpriteFont font)
@@ -91,7 +93,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            RankingWindowSnapshot snapshot = _snapshotProvider?.Invoke() ?? new RankingWindowSnapshot();
+            RankingWindowSnapshot snapshot = _currentSnapshot ?? RefreshSnapshot();
             sprite.DrawString(_font, snapshot.Title, new Vector2(Position.X + 18, Position.Y + 16), Color.White);
             DrawWrappedText(sprite, snapshot.Subtitle, Position.X + 18, Position.Y + 38, Math.Max(220f, (CurrentFrame?.Width ?? 303) - 36f), new Color(220, 220, 220));
 
@@ -173,6 +175,12 @@ namespace HaCreator.MapSimulator.UI
             {
                 yield return currentLine;
             }
+        }
+
+        private RankingWindowSnapshot RefreshSnapshot()
+        {
+            _currentSnapshot = _snapshotProvider?.Invoke() ?? new RankingWindowSnapshot();
+            return _currentSnapshot;
         }
     }
 }

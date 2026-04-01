@@ -37,6 +37,7 @@ namespace HaCreator.MapSimulator.UI
         private KeyboardState _previousKeyboardState;
         private int _hoveredIndex = -1;
         private int _firstVisibleIndex;
+        private GuildSkillSnapshot _currentSnapshot = new();
 
         private const int ListX = 15;
         private const int ListY = 57;
@@ -94,7 +95,7 @@ namespace HaCreator.MapSimulator.UI
         internal void SetSnapshotProvider(Func<GuildSkillSnapshot> snapshotProvider)
         {
             _snapshotProvider = snapshotProvider;
-            UpdateButtonLayout(GetSnapshot());
+            UpdateButtonLayout(RefreshSnapshot());
         }
 
         internal void SetHandlers(
@@ -113,7 +114,7 @@ namespace HaCreator.MapSimulator.UI
         {
             base.Update(gameTime);
 
-            GuildSkillSnapshot snapshot = GetSnapshot();
+            GuildSkillSnapshot snapshot = RefreshSnapshot();
             EnsureSelectionVisible(snapshot);
             EnsureRowBounds();
             UpdateButtonLayout(snapshot);
@@ -166,15 +167,16 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            GuildSkillSnapshot snapshot = GetSnapshot();
+            GuildSkillSnapshot snapshot = _currentSnapshot ?? RefreshSnapshot();
             DrawEntries(sprite, snapshot);
             DrawSummary(sprite, snapshot);
             DrawTooltip(sprite, snapshot);
         }
 
-        private GuildSkillSnapshot GetSnapshot()
+        private GuildSkillSnapshot RefreshSnapshot()
         {
-            return _snapshotProvider?.Invoke() ?? new GuildSkillSnapshot();
+            _currentSnapshot = _snapshotProvider?.Invoke() ?? new GuildSkillSnapshot();
+            return _currentSnapshot;
         }
 
         private void UpdateButtonLayout(GuildSkillSnapshot snapshot)

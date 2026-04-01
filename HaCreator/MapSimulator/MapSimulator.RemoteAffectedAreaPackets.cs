@@ -356,11 +356,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            return _socialListRuntime
-                .BuildTrackedEntriesSnapshot()
-                .Any(entry => entry?.Tab == Interaction.SocialListTab.Party
-                              && !entry.IsLocalPlayer
-                              && string.Equals(entry.Name, actor.Name, StringComparison.OrdinalIgnoreCase));
+            return _socialListRuntime.IsTrackedPartyMember(actor.Name);
         }
     }
 }

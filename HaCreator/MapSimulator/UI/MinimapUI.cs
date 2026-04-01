@@ -7,7 +7,6 @@ using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -57,8 +56,11 @@ namespace HaCreator.MapSimulator.UI
         private readonly BaseDXDrawableItem _portalMarker;
         private readonly BaseDXDrawableItem _npcListPanel;
         private readonly IReadOnlyDictionary<DirectionArrow, BaseDXDrawableItem> _directionMarkers;
+        private readonly HashSet<BaseDXDrawableItem> _directionMarkerSet;
         private readonly IReadOnlyDictionary<HelperMarkerType, BaseDXDrawableItem> _helperMarkers;
         private readonly List<UIObject> uiButtons = new List<UIObject>();
+        private readonly List<HoverTargetEntry> _hoverTargets = new();
+        private int _hoverTargetCount;
 
         private UIObject _btnMin;
         private UIObject _btnMax;
@@ -80,6 +82,9 @@ namespace HaCreator.MapSimulator.UI
         private Texture2D _tooltipPixelTexture;
         private Rectangle _hoverTooltipAnchor = Rectangle.Empty;
         private string _hoverTooltipText;
+        private readonly List<string> _hoverTooltipLines = new();
+        private float _hoverTooltipMaxWidth;
+        private int _hoverTooltipVisibleLineCount;
 
         private int _lastMinimapToggleTime = 0;
         private const int MINIMAP_TOGGLE_COOLDOWN_MS = 200; // Cooldown in milliseconds
@@ -102,20 +107,28 @@ namespace HaCreator.MapSimulator.UI
 
         public sealed class TrackedUserMarker
         {
-            public float WorldX { get; init; }
-            public float WorldY { get; init; }
-            public HelperMarkerType MarkerType { get; init; }
-            public bool ShowDirectionOverlay { get; init; } = true;
-            public string TooltipText { get; init; }
+            public float WorldX { get; set; }
+            public float WorldY { get; set; }
+            public HelperMarkerType MarkerType { get; set; }
+            public bool ShowDirectionOverlay { get; set; } = true;
+            public string TooltipText { get; set; }
         }
 
         public sealed class EmployeeMarker
         {
-            public float WorldX { get; init; }
-            public float WorldY { get; init; }
-            public bool ShowDirectionOverlay { get; init; } = true;
-            public HelperMarkerType? PreferredMarkerType { get; init; }
-            public string TooltipText { get; init; }
+            public float WorldX { get; set; }
+            public float WorldY { get; set; }
+            public bool ShowDirectionOverlay { get; set; } = true;
+            public HelperMarkerType? PreferredMarkerType { get; set; }
+            public string TooltipText { get; set; }
+        }
+
+        private sealed class HoverTargetEntry
+        {
+            public Rectangle Bounds { get; set; }
+            public string TooltipText { get; set; }
+            public NpcItem Npc { get; set; }
+            public PortalItem Portal { get; set; }
         }
 
         /// <summary>
@@ -169,6 +182,7 @@ namespace HaCreator.MapSimulator.UI
             _npcListPanel = npcListPanel;
             _portalMarker = portalMarker;
             _directionMarkers = directionMarkers ?? new Dictionary<DirectionArrow, BaseDXDrawableItem>();
+            _directionMarkerSet = new HashSet<BaseDXDrawableItem>(_directionMarkers.Values);
             _helperMarkers = helperMarkers ?? new Dictionary<HelperMarkerType, BaseDXDrawableItem>();
         }
 
@@ -251,6 +265,9 @@ namespace HaCreator.MapSimulator.UI
         {
             _hoverTooltipAnchor = Rectangle.Empty;
             _hoverTooltipText = null;
+            _hoverTooltipLines.Clear();
+            _hoverTooltipMaxWidth = 0f;
+            _hoverTooltipVisibleLineCount = 0;
         }
 
         public override void Draw(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,
@@ -273,6 +290,8 @@ namespace HaCreator.MapSimulator.UI
             }
             else
             {
+                ResetHoverTargets();
+
                 base.Draw(sprite, skeletonMeshRenderer, gameTime,
                    0, 0, centerX, centerY,
                    drawReflectionInfo,
@@ -590,7 +609,11 @@ namespace HaCreator.MapSimulator.UI
                 if (marker == null)
                     continue;
 
-                DrawMarkerWithDirectionOverlay(marker, minimapPoint, true, sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, tickCount);
+                Rectangle hoverBounds = DrawMarkerWithDirectionOverlay(marker, minimapPoint, true, sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, tickCount);
+                if (!hoverBounds.IsEmpty)
+                {
+                    AddHoverTarget(npc, hoverBounds);
+                }
             }
         }
 
@@ -611,11 +634,15 @@ namespace HaCreator.MapSimulator.UI
                     continue;
 
                 Point minimapPoint = WorldToMinimap(portal.PortalInstance.X, portal.PortalInstance.Y);
-                DrawMarkerWithDirectionOverlay(_portalMarker, minimapPoint, true, sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, tickCount);
+                Rectangle hoverBounds = DrawMarkerWithDirectionOverlay(_portalMarker, minimapPoint, true, sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, tickCount);
+                if (!hoverBounds.IsEmpty)
+                {
+                    AddHoverTarget(portal, hoverBounds);
+                }
             }
         }
 
-        private void DrawDirectionOverlayForPoint(
+        private Rectangle DrawDirectionOverlayForPoint(
             Point minimapPoint,
             SpriteBatch sprite,
             SkeletonMeshRenderer skeletonMeshRenderer,
@@ -625,11 +652,11 @@ namespace HaCreator.MapSimulator.UI
             int tickCount)
         {
             if (IsWithinMinimapImage(minimapPoint))
-                return;
+                return Rectangle.Empty;
 
             DirectionArrow direction = ResolveDirectionArrow(minimapPoint);
             if (!_directionMarkers.TryGetValue(direction, out BaseDXDrawableItem arrow) || arrow == null)
-                return;
+                return Rectangle.Empty;
 
             Point drawPoint = ClampDirectionArrowPoint(minimapPoint);
             arrow.Draw(sprite, skeletonMeshRenderer, gameTime,
@@ -637,6 +664,8 @@ namespace HaCreator.MapSimulator.UI
                 drawReflectionInfo,
                 renderParameters,
                 tickCount);
+
+            return GetMarkerScreenBounds(arrow, drawPoint);
         }
 
         private Point WorldToMinimap(int worldX, int worldY)
@@ -719,7 +748,11 @@ namespace HaCreator.MapSimulator.UI
                 if (!_helperMarkers.TryGetValue(trackedUser.MarkerType, out BaseDXDrawableItem marker) || marker == null)
                     continue;
 
-                DrawMarkerWithDirectionOverlay(marker, minimapPoint, trackedUser.ShowDirectionOverlay, sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, tickCount);
+                Rectangle hoverBounds = DrawMarkerWithDirectionOverlay(marker, minimapPoint, trackedUser.ShowDirectionOverlay, sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, tickCount);
+                if (!hoverBounds.IsEmpty && !string.IsNullOrWhiteSpace(trackedUser.TooltipText))
+                {
+                    AddHoverTarget(trackedUser.TooltipText, hoverBounds);
+                }
             }
         }
 
@@ -744,11 +777,15 @@ namespace HaCreator.MapSimulator.UI
                     continue;
 
                 Point minimapPoint = WorldToMinimap((int)employee.WorldX, (int)employee.WorldY);
-                DrawMarkerWithDirectionOverlay(marker, minimapPoint, employee.ShowDirectionOverlay, sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, tickCount);
+                Rectangle hoverBounds = DrawMarkerWithDirectionOverlay(marker, minimapPoint, employee.ShowDirectionOverlay, sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, tickCount);
+                if (!hoverBounds.IsEmpty && !string.IsNullOrWhiteSpace(employee.TooltipText))
+                {
+                    AddHoverTarget(employee.TooltipText, hoverBounds);
+                }
             }
         }
 
-        private void DrawMarkerWithDirectionOverlay(
+        private Rectangle DrawMarkerWithDirectionOverlay(
             BaseDXDrawableItem marker,
             Point minimapPoint,
             bool showDirectionOverlay,
@@ -761,7 +798,7 @@ namespace HaCreator.MapSimulator.UI
         {
             if (marker == null)
             {
-                return;
+                return Rectangle.Empty;
             }
 
             if (IsWithinMinimapImage(minimapPoint))
@@ -771,12 +808,12 @@ namespace HaCreator.MapSimulator.UI
                     drawReflectionInfo,
                     renderParameters,
                     tickCount);
-                return;
+                return GetMarkerScreenBounds(marker, minimapPoint);
             }
 
             if (showDirectionOverlay)
             {
-                DrawDirectionOverlayForPoint(
+                return DrawDirectionOverlayForPoint(
                     minimapPoint,
                     sprite,
                     skeletonMeshRenderer,
@@ -785,6 +822,8 @@ namespace HaCreator.MapSimulator.UI
                     renderParameters,
                     tickCount);
             }
+
+            return Rectangle.Empty;
         }
 
         private void DrawNpcListPanel(
@@ -859,178 +898,28 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            if (TrySetHoveredTrackedUserTooltip(mouseState))
+            for (int i = 0; i < _hoverTargetCount; i++)
             {
-                return true;
-            }
-
-            if (TrySetHoveredNpcTooltip(mouseState))
-            {
-                return true;
-            }
-
-            if (TrySetHoveredEmployeeTooltip(mouseState))
-            {
-                return true;
-            }
-
-            return TrySetHoveredPortalTooltip(mouseState);
-        }
-
-        private bool TrySetHoveredTrackedUserTooltip(MouseState mouseState)
-        {
-            foreach (TrackedUserMarker trackedUser in _trackedUserMarkers)
-            {
-                if (trackedUser == null || string.IsNullOrWhiteSpace(trackedUser.TooltipText))
+                HoverTargetEntry hoverTarget = _hoverTargets[i];
+                if (hoverTarget.Bounds.IsEmpty || !hoverTarget.Bounds.Contains(mouseState.X, mouseState.Y))
                 {
                     continue;
                 }
 
-                Point minimapPoint = WorldToMinimap((int)trackedUser.WorldX, (int)trackedUser.WorldY);
-                if (!_helperMarkers.TryGetValue(trackedUser.MarkerType, out BaseDXDrawableItem marker) || marker == null)
-                {
-                    continue;
-                }
-
-                Rectangle hoverRect = Rectangle.Empty;
-                if (IsWithinMinimapImage(minimapPoint))
-                {
-                    hoverRect = GetMarkerScreenBounds(marker, minimapPoint, mouseState);
-                }
-                else if (trackedUser.ShowDirectionOverlay)
-                {
-                    DirectionArrow direction = ResolveDirectionArrow(minimapPoint);
-                    if (_directionMarkers.TryGetValue(direction, out BaseDXDrawableItem arrow) && arrow != null)
-                    {
-                        hoverRect = GetMarkerScreenBounds(arrow, ClampDirectionArrowPoint(minimapPoint), mouseState);
-                    }
-                }
-
-                if (!hoverRect.IsEmpty)
-                {
-                    SetHoveredTooltip(trackedUser.TooltipText, hoverRect);
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        private bool TrySetHoveredNpcTooltip(MouseState mouseState)
-        {
-            if (!_showNpcMarkers || ResolveAnyNpcMarker() == null || _npcMarkers.Count == 0)
-            {
-                return false;
-            }
-
-            foreach (NpcItem npc in _npcMarkers)
-            {
-                if (npc?.NpcInstance == null || !npc.IsVisible)
-                {
-                    continue;
-                }
-
-                string tooltipText = ResolveNpcTooltipText?.Invoke(npc);
+                string tooltipText = ResolveHoverTargetTooltipText(hoverTarget);
                 if (string.IsNullOrWhiteSpace(tooltipText))
                 {
                     continue;
                 }
 
-                Point minimapPoint = WorldToMinimap(npc.CurrentX, npc.CurrentY);
-                BaseDXDrawableItem marker = ResolveNpcMarker(npc);
-                Rectangle hoverRect = GetMarkerScreenBounds(marker, minimapPoint, mouseState);
-                if (hoverRect.IsEmpty)
-                {
-                    continue;
-                }
-
-                SetHoveredTooltip(tooltipText, hoverRect);
+                SetHoveredTooltip(tooltipText, hoverTarget.Bounds);
                 return true;
             }
 
             return false;
         }
 
-        private bool TrySetHoveredEmployeeTooltip(MouseState mouseState)
-        {
-            if (_employeeMarkers.Count == 0)
-            {
-                return false;
-            }
-
-            foreach (EmployeeMarker employee in _employeeMarkers)
-            {
-                if (employee == null || string.IsNullOrWhiteSpace(employee.TooltipText))
-                {
-                    continue;
-                }
-
-                BaseDXDrawableItem marker = ResolveEmployeeMarker(employee);
-                if (marker == null)
-                {
-                    continue;
-                }
-
-                Point minimapPoint = WorldToMinimap((int)employee.WorldX, (int)employee.WorldY);
-                Rectangle hoverRect = Rectangle.Empty;
-                if (IsWithinMinimapImage(minimapPoint))
-                {
-                    hoverRect = GetMarkerScreenBounds(marker, minimapPoint, mouseState);
-                }
-                else if (employee.ShowDirectionOverlay)
-                {
-                    DirectionArrow direction = ResolveDirectionArrow(minimapPoint);
-                    if (_directionMarkers.TryGetValue(direction, out BaseDXDrawableItem arrow) && arrow != null)
-                    {
-                        hoverRect = GetMarkerScreenBounds(arrow, ClampDirectionArrowPoint(minimapPoint), mouseState);
-                    }
-                }
-
-                if (!hoverRect.IsEmpty)
-                {
-                    SetHoveredTooltip(employee.TooltipText, hoverRect);
-                    return true;
-                }
-            }
-
-            return false;
-        }
-
-        private bool TrySetHoveredPortalTooltip(MouseState mouseState)
-        {
-            if (_portalMarker == null || _portalMarkers.Count == 0)
-            {
-                return false;
-            }
-
-            foreach (PortalItem portal in _portalMarkers)
-            {
-                if (portal?.PortalInstance == null || !portal.IsVisible)
-                {
-                    continue;
-                }
-
-                string tooltipText = ResolvePortalTooltipText?.Invoke(portal);
-                if (string.IsNullOrWhiteSpace(tooltipText))
-                {
-                    continue;
-                }
-
-                Point minimapPoint = WorldToMinimap(portal.PortalInstance.X, portal.PortalInstance.Y);
-                Rectangle hoverRect = GetMarkerScreenBounds(_portalMarker, minimapPoint, mouseState);
-                if (hoverRect.IsEmpty)
-                {
-                    continue;
-                }
-
-                SetHoveredTooltip(tooltipText, hoverRect);
-                return true;
-            }
-
-            return false;
-        }
-
-        private Rectangle GetMarkerScreenBounds(BaseDXDrawableItem marker, Point minimapPoint, MouseState mouseState)
+        private Rectangle GetMarkerScreenBounds(BaseDXDrawableItem marker, Point minimapPoint)
         {
             if (marker == null)
             {
@@ -1038,7 +927,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             bool withinMinimap = IsWithinMinimapImage(minimapPoint);
-            if (!withinMinimap && !_directionMarkers.Values.Contains(marker))
+            if (!withinMinimap && !_directionMarkerSet.Contains(marker))
             {
                 return Rectangle.Empty;
             }
@@ -1056,7 +945,84 @@ namespace HaCreator.MapSimulator.UI
                 frame.Width,
                 frame.Height);
 
-            return rect.Contains(mouseState.X, mouseState.Y) ? rect : Rectangle.Empty;
+            return rect;
+        }
+
+        private void ResetHoverTargets()
+        {
+            _hoverTargetCount = 0;
+        }
+
+        private void AddHoverTarget(string tooltipText, Rectangle bounds)
+        {
+            if (string.IsNullOrWhiteSpace(tooltipText) || bounds.IsEmpty)
+            {
+                return;
+            }
+
+            HoverTargetEntry hoverTarget = GetOrCreateHoverTarget(_hoverTargetCount++);
+            hoverTarget.Bounds = bounds;
+            hoverTarget.TooltipText = tooltipText;
+            hoverTarget.Npc = null;
+            hoverTarget.Portal = null;
+        }
+
+        private void AddHoverTarget(NpcItem npc, Rectangle bounds)
+        {
+            if (npc == null || bounds.IsEmpty)
+            {
+                return;
+            }
+
+            HoverTargetEntry hoverTarget = GetOrCreateHoverTarget(_hoverTargetCount++);
+            hoverTarget.Bounds = bounds;
+            hoverTarget.TooltipText = null;
+            hoverTarget.Npc = npc;
+            hoverTarget.Portal = null;
+        }
+
+        private void AddHoverTarget(PortalItem portal, Rectangle bounds)
+        {
+            if (portal == null || bounds.IsEmpty)
+            {
+                return;
+            }
+
+            HoverTargetEntry hoverTarget = GetOrCreateHoverTarget(_hoverTargetCount++);
+            hoverTarget.Bounds = bounds;
+            hoverTarget.TooltipText = null;
+            hoverTarget.Npc = null;
+            hoverTarget.Portal = portal;
+        }
+
+        private HoverTargetEntry GetOrCreateHoverTarget(int index)
+        {
+            while (_hoverTargets.Count <= index)
+            {
+                _hoverTargets.Add(new HoverTargetEntry());
+            }
+
+            return _hoverTargets[index];
+        }
+
+        private string ResolveHoverTargetTooltipText(HoverTargetEntry hoverTarget)
+        {
+            if (!string.IsNullOrWhiteSpace(hoverTarget.TooltipText))
+            {
+                return hoverTarget.TooltipText;
+            }
+
+            if (hoverTarget.Npc != null)
+            {
+                return ResolveNpcTooltipText?.Invoke(hoverTarget.Npc);
+            }
+
+            if (hoverTarget.Portal != null)
+            {
+                return ResolvePortalTooltipText?.Invoke(hoverTarget.Portal);
+            }
+
+            return null;
         }
 
         private void SetHoveredTooltip(string tooltipText, Rectangle anchor)
@@ -1066,13 +1032,23 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            _hoverTooltipText = tooltipText.Trim();
+            string normalizedText = tooltipText.Trim();
+            if (!string.Equals(_hoverTooltipText, normalizedText, StringComparison.Ordinal))
+            {
+                _hoverTooltipText = normalizedText;
+                RefreshHoveredTooltipLayout();
+            }
+
             _hoverTooltipAnchor = anchor;
         }
 
-        private void DrawHoveredTooltip(SpriteBatch sprite, int renderWidth, int renderHeight)
+        private void RefreshHoveredTooltipLayout()
         {
-            if (_tooltipFont == null || _tooltipPixelTexture == null || string.IsNullOrWhiteSpace(_hoverTooltipText) || _hoverTooltipAnchor.IsEmpty)
+            _hoverTooltipLines.Clear();
+            _hoverTooltipMaxWidth = 0f;
+            _hoverTooltipVisibleLineCount = 0;
+
+            if (_tooltipFont == null || string.IsNullOrWhiteSpace(_hoverTooltipText))
             {
                 return;
             }
@@ -1081,27 +1057,34 @@ namespace HaCreator.MapSimulator.UI
                 .Replace("\r\n", "\n")
                 .Split(new[] { '\n' }, StringSplitOptions.None);
 
-            float maxWidth = 0f;
-            int visibleLineCount = 0;
             for (int i = 0; i < lines.Length; i++)
             {
-                if (string.IsNullOrWhiteSpace(lines[i]))
+                string line = lines[i];
+                _hoverTooltipLines.Add(line);
+                if (string.IsNullOrWhiteSpace(line))
                 {
                     continue;
                 }
 
-                maxWidth = Math.Max(maxWidth, _tooltipFont.MeasureString(lines[i]).X);
-                visibleLineCount++;
+                _hoverTooltipMaxWidth = Math.Max(_hoverTooltipMaxWidth, _tooltipFont.MeasureString(line).X);
+                _hoverTooltipVisibleLineCount++;
             }
+        }
 
-            if (visibleLineCount == 0)
+        private void DrawHoveredTooltip(SpriteBatch sprite, int renderWidth, int renderHeight)
+        {
+            if (_tooltipFont == null
+                || _tooltipPixelTexture == null
+                || string.IsNullOrWhiteSpace(_hoverTooltipText)
+                || _hoverTooltipAnchor.IsEmpty
+                || _hoverTooltipVisibleLineCount == 0)
             {
                 return;
             }
 
             int lineHeight = _tooltipFont.LineSpacing;
-            int tooltipWidth = (int)Math.Ceiling(maxWidth) + (TOOLTIP_PADDING * 2);
-            int tooltipHeight = (visibleLineCount * lineHeight) + ((visibleLineCount - 1) * TOOLTIP_LINE_GAP) + (TOOLTIP_PADDING * 2);
+            int tooltipWidth = (int)Math.Ceiling(_hoverTooltipMaxWidth) + (TOOLTIP_PADDING * 2);
+            int tooltipHeight = (_hoverTooltipVisibleLineCount * lineHeight) + ((_hoverTooltipVisibleLineCount - 1) * TOOLTIP_LINE_GAP) + (TOOLTIP_PADDING * 2);
             int tooltipX = _hoverTooltipAnchor.Right + TOOLTIP_MARGIN;
             int tooltipY = _hoverTooltipAnchor.Top - 4;
 
@@ -1123,16 +1106,17 @@ namespace HaCreator.MapSimulator.UI
             DrawTooltipBorder(sprite, tooltipRect);
 
             float drawY = tooltipRect.Y + TOOLTIP_PADDING;
-            for (int i = 0; i < lines.Length; i++)
+            for (int i = 0; i < _hoverTooltipLines.Count; i++)
             {
-                if (string.IsNullOrWhiteSpace(lines[i]))
+                string line = _hoverTooltipLines[i];
+                if (string.IsNullOrWhiteSpace(line))
                 {
                     continue;
                 }
 
                 Vector2 textPosition = new Vector2(tooltipRect.X + TOOLTIP_PADDING, drawY);
-                sprite.DrawString(_tooltipFont, lines[i], textPosition + Vector2.One, Color.Black);
-                sprite.DrawString(_tooltipFont, lines[i], textPosition, Color.White);
+                sprite.DrawString(_tooltipFont, line, textPosition + Vector2.One, Color.Black);
+                sprite.DrawString(_tooltipFont, line, textPosition, Color.White);
                 drawY += lineHeight + TOOLTIP_LINE_GAP;
             }
         }

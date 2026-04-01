@@ -42,7 +42,7 @@ namespace HaCreator.MapSimulator.UI
         internal void SetSnapshotProvider(Func<WeddingInvitationSnapshot> snapshotProvider)
         {
             _snapshotProvider = snapshotProvider;
-            RefreshLayout(GetSnapshot());
+            RefreshLayout(RefreshSnapshot());
         }
 
         internal void SetActionHandlers(Func<string> acceptHandler, Func<string> dismissHandler, Action<string> feedbackHandler)
@@ -73,7 +73,7 @@ namespace HaCreator.MapSimulator.UI
         {
             base.Update(gameTime);
 
-            WeddingInvitationSnapshot snapshot = GetSnapshot();
+            WeddingInvitationSnapshot snapshot = RefreshSnapshot();
             RefreshLayout(snapshot);
 
             KeyboardState keyboardState = Keyboard.GetState();
@@ -148,9 +148,10 @@ namespace HaCreator.MapSimulator.UI
             sprite.DrawString(_font, name, new Vector2(Position.X + offsetX, Position.Y + offsetY), Color.Black);
         }
 
-        private WeddingInvitationSnapshot GetSnapshot()
+        private WeddingInvitationSnapshot RefreshSnapshot()
         {
-            return _snapshotProvider?.Invoke() ?? new WeddingInvitationSnapshot();
+            _lastSnapshot = _snapshotProvider?.Invoke() ?? new WeddingInvitationSnapshot();
+            return _lastSnapshot;
         }
 
         private void ShowFeedback(string message)

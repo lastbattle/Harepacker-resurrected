@@ -7,7 +7,6 @@ using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -38,6 +37,7 @@ namespace HaCreator.MapSimulator.UI
         private UIObject _keepButton;
         private UIObject _deleteButton;
         private UIObject _actionButton;
+        private MemoMailboxSnapshot _currentSnapshot = new();
 
         private sealed class RowLayout
         {
@@ -70,6 +70,7 @@ namespace HaCreator.MapSimulator.UI
         internal void SetSnapshotProvider(Func<MemoMailboxSnapshot> snapshotProvider)
         {
             _snapshotProvider = snapshotProvider;
+            _currentSnapshot = RefreshSnapshot();
         }
 
         internal void SetActions(
@@ -100,7 +101,7 @@ namespace HaCreator.MapSimulator.UI
         {
             base.Update(gameTime);
 
-            MemoMailboxSnapshot snapshot = GetSnapshot();
+            MemoMailboxSnapshot snapshot = RefreshSnapshot();
             EnsureSelection(snapshot);
             UpdateButtonVisibility();
 
@@ -132,7 +133,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            MemoMailboxSnapshot snapshot = GetSnapshot();
+            MemoMailboxSnapshot snapshot = _currentSnapshot ?? RefreshSnapshot();
             EnsureSelection(snapshot);
 
             Rectangle contentBounds = GetContentBounds();
@@ -220,8 +221,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawOpenedMemo(SpriteBatch sprite, MemoMailboxSnapshot snapshot, Rectangle contentBounds)
         {
-            MemoMailboxEntrySnapshot memo = snapshot.Entries.FirstOrDefault(entry => entry.MemoId == _openedMemoId);
-            if (memo == null)
+            if (!TryGetEntry(snapshot, _openedMemoId, out MemoMailboxEntrySnapshot memo))
             {
                 ReturnToInbox();
                 return;
@@ -294,7 +294,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void OpenSelectedMemo(MemoMailboxSnapshot snapshot)
         {
-            if (_selectedMemoId <= 0 || snapshot.Entries.All(entry => entry.MemoId != _selectedMemoId))
+            if (_selectedMemoId <= 0 || !ContainsEntry(snapshot, _selectedMemoId))
             {
                 return;
             }
@@ -325,10 +325,10 @@ namespace HaCreator.MapSimulator.UI
             _deleteMemoRequested?.Invoke(deletedMemoId);
             _openedMemoId = -1;
 
-            MemoMailboxSnapshot snapshot = GetSnapshot();
+            MemoMailboxSnapshot snapshot = RefreshSnapshot();
             if (_selectedMemoId == deletedMemoId)
             {
-                _selectedMemoId = snapshot.Entries.FirstOrDefault()?.MemoId ?? -1;
+                _selectedMemoId = GetFirstEntryId(snapshot);
             }
 
             UpdateButtonVisibility();
@@ -347,7 +347,13 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            MemoMailboxEntrySnapshot memo = GetSnapshot().Entries.FirstOrDefault(entry => entry.MemoId == _openedMemoId);
+            MemoMailboxSnapshot snapshot = _currentSnapshot ?? RefreshSnapshot();
+            if (!TryGetEntry(snapshot, _openedMemoId, out MemoMailboxEntrySnapshot memo))
+            {
+                ReturnToInbox();
+                return;
+            }
+
             if (memo?.CanClaimAttachment == true)
             {
                 _attachmentRequested?.Invoke(_openedMemoId);
@@ -359,13 +365,13 @@ namespace HaCreator.MapSimulator.UI
 
         private void EnsureSelection(MemoMailboxSnapshot snapshot)
         {
-            if (_selectedMemoId > 0 && snapshot.Entries.Any(entry => entry.MemoId == _selectedMemoId))
+            if (_selectedMemoId > 0 && ContainsEntry(snapshot, _selectedMemoId))
             {
                 return;
             }
 
-            _selectedMemoId = snapshot.Entries.FirstOrDefault()?.MemoId ?? -1;
-            if (_openedMemoId > 0 && snapshot.Entries.All(entry => entry.MemoId != _openedMemoId))
+            _selectedMemoId = GetFirstEntryId(snapshot);
+            if (_openedMemoId > 0 && !ContainsEntry(snapshot, _openedMemoId))
             {
                 _openedMemoId = -1;
             }
@@ -390,9 +396,42 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private MemoMailboxSnapshot GetSnapshot()
+        private MemoMailboxSnapshot RefreshSnapshot()
         {
-            return _snapshotProvider?.Invoke() ?? new MemoMailboxSnapshot();
+            _currentSnapshot = _snapshotProvider?.Invoke() ?? new MemoMailboxSnapshot();
+            return _currentSnapshot;
+        }
+
+        private static bool TryGetEntry(MemoMailboxSnapshot snapshot, int memoId, out MemoMailboxEntrySnapshot entry)
+        {
+            foreach (MemoMailboxEntrySnapshot candidate in snapshot.Entries)
+            {
+                if (candidate.MemoId != memoId)
+                {
+                    continue;
+                }
+
+                entry = candidate;
+                return true;
+            }
+
+            entry = null;
+            return false;
+        }
+
+        private static bool ContainsEntry(MemoMailboxSnapshot snapshot, int memoId)
+        {
+            return TryGetEntry(snapshot, memoId, out _);
+        }
+
+        private static int GetFirstEntryId(MemoMailboxSnapshot snapshot)
+        {
+            foreach (MemoMailboxEntrySnapshot entry in snapshot.Entries)
+            {
+                return entry.MemoId;
+            }
+
+            return -1;
         }
 
         private Rectangle GetContentBounds()

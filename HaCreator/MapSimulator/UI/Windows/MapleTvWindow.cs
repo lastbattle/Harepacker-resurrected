@@ -50,6 +50,7 @@ namespace HaCreator.MapSimulator.UI
         private CharacterAssembler _receiverAssembler;
         private string _senderBuildKey;
         private string _receiverBuildKey;
+        private MapleTvSnapshot _currentSnapshot = new();
 
         public MapleTvWindow(
             IDXObject selfFrame,
@@ -68,7 +69,7 @@ namespace HaCreator.MapSimulator.UI
             _selfOverlayOffset = selfOverlayOffset;
             _receiverOverlayOffset = receiverOverlayOffset;
             _visualAssets = visualAssets;
-            RefreshFrame(GetSnapshot());
+            RefreshFrame(_currentSnapshot);
         }
 
         public override string WindowName => MapSimulatorWindowNames.MapleTv;
@@ -78,7 +79,7 @@ namespace HaCreator.MapSimulator.UI
         internal void SetSnapshotProvider(Func<MapleTvSnapshot> snapshotProvider)
         {
             _snapshotProvider = snapshotProvider;
-            RefreshFrame(GetSnapshot());
+            RefreshFrame(RefreshSnapshot());
         }
 
         internal void SetActionHandlers(
@@ -102,7 +103,7 @@ namespace HaCreator.MapSimulator.UI
             ConfigureButton(_okButton, () => ShowFeedback(_publishHandler?.Invoke()));
             ConfigureButton(_cancelButton, () => ShowFeedback(_clearHandler?.Invoke()));
             ConfigureButton(_receiverButton, () => ShowFeedback(_toggleReceiverHandler?.Invoke()));
-            UpdateButtonStates(GetSnapshot());
+            UpdateButtonStates(_currentSnapshot ?? RefreshSnapshot());
         }
 
         public override void SetFont(SpriteFont font)
@@ -113,7 +114,7 @@ namespace HaCreator.MapSimulator.UI
         public override void Update(GameTime gameTime)
         {
             base.Update(gameTime);
-            MapleTvSnapshot snapshot = GetSnapshot();
+            MapleTvSnapshot snapshot = RefreshSnapshot();
             RefreshFrame(snapshot);
             UpdateButtonStates(snapshot);
             RefreshAssemblers(snapshot);
@@ -131,7 +132,7 @@ namespace HaCreator.MapSimulator.UI
             RenderParameters renderParameters,
             int TickCount)
         {
-            MapleTvSnapshot snapshot = GetSnapshot();
+            MapleTvSnapshot snapshot = _currentSnapshot ?? RefreshSnapshot();
             DrawLayer(
                 sprite,
                 snapshot.UseReceiver ? _receiverOverlay : _selfOverlay,
@@ -200,7 +201,7 @@ namespace HaCreator.MapSimulator.UI
             int renderWidth,
             int tickCount)
         {
-            MapleTvSnapshot snapshot = GetSnapshot();
+            MapleTvSnapshot snapshot = _currentSnapshot ?? RefreshSnapshot();
             if (_font == null || _visualAssets == null || (!snapshot.IsShowingMessage && !snapshot.QueueExists))
             {
                 return;
@@ -279,9 +280,10 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private MapleTvSnapshot GetSnapshot()
+        private MapleTvSnapshot RefreshSnapshot()
         {
-            return _snapshotProvider?.Invoke() ?? new MapleTvSnapshot();
+            _currentSnapshot = _snapshotProvider?.Invoke() ?? new MapleTvSnapshot();
+            return _currentSnapshot;
         }
 
         private void RefreshAssemblers(MapleTvSnapshot snapshot)

@@ -83,6 +83,8 @@ namespace HaCreator.MapSimulator.Managers
         private int _visiblePortalsCount;
         private ReactorItem[] _visibleReactors;
         private int _visibleReactorsCount;
+        private TooltipItem[] _visibleTooltips;
+        private int _visibleTooltipsCount;
         private readonly List<DropItem> _renderableDropsBuffer = new List<DropItem>();
 
         #endregion
@@ -190,7 +192,9 @@ namespace HaCreator.MapSimulator.Managers
             PortalItem[] visiblePortals,
             int visiblePortalsCount,
             ReactorItem[] visibleReactors,
-            int visibleReactorsCount)
+            int visibleReactorsCount,
+            TooltipItem[] visibleTooltips,
+            int visibleTooltipsCount)
         {
             _visibleMapObjects = visibleMapObjects;
             _visibleMapObjectsCount = visibleMapObjectsCount;
@@ -202,7 +206,14 @@ namespace HaCreator.MapSimulator.Managers
             _visiblePortalsCount = visiblePortalsCount;
             _visibleReactors = visibleReactors;
             _visibleReactorsCount = visibleReactorsCount;
-            _useVisibleRenderSets = visibleMapObjects != null || visibleMobs != null || visibleNpcs != null || visiblePortals != null || visibleReactors != null;
+            _visibleTooltips = visibleTooltips;
+            _visibleTooltipsCount = visibleTooltipsCount;
+            _useVisibleRenderSets = visibleMapObjects != null
+                || visibleMobs != null
+                || visibleNpcs != null
+                || visiblePortals != null
+                || visibleReactors != null
+                || visibleTooltips != null;
         }
 
         /// <summary>
@@ -581,9 +592,21 @@ namespace HaCreator.MapSimulator.Managers
             var mapBoard = _getMapBoard();
             if (mapBoard == null) return;
 
-            for (int i = 0; i < _tooltipsArray.Length; i++)
+            TooltipItem[] tooltips = _useVisibleRenderSets && _visibleTooltips != null
+                ? _visibleTooltips
+                : _tooltipsArray;
+            int tooltipCount = _useVisibleRenderSets && _visibleTooltips != null
+                ? _visibleTooltipsCount
+                : _tooltipsArray.Length;
+
+            for (int i = 0; i < tooltipCount; i++)
             {
-                TooltipItem tooltip = _tooltipsArray[i];
+                TooltipItem tooltip = tooltips[i];
+                if (tooltip == null)
+                {
+                    continue;
+                }
+
                 if (tooltip.TooltipInstance.CharacterToolTip != null)
                 {
                     Rectangle tooltipRect = tooltip.TooltipInstance.CharacterToolTip.Rectangle;

@@ -56,6 +56,7 @@ namespace HaCreator.MapSimulator.UI
         private Keys _lastHeldKey = Keys.None;
         private int _keyHoldStartTime;
         private int _lastKeyRepeatTime;
+        private GuildManageSnapshot _currentSnapshot = new();
 
         public GuildManageWindow(
             IDXObject frame,
@@ -98,7 +99,7 @@ namespace HaCreator.MapSimulator.UI
 
         public override string WindowName => MapSimulatorWindowNames.GuildManage;
 
-        public override bool CapturesKeyboardInput => GetSnapshot().IsEditing;
+        public override bool CapturesKeyboardInput => _currentSnapshot?.IsEditing == true;
 
         public override void SetFont(SpriteFont font)
         {
@@ -108,8 +109,9 @@ namespace HaCreator.MapSimulator.UI
         internal void SetSnapshotProvider(Func<GuildManageSnapshot> snapshotProvider)
         {
             _snapshotProvider = snapshotProvider;
-            SyncInputBuffer(GetSnapshot());
-            UpdateButtonStates(GetSnapshot());
+            GuildManageSnapshot snapshot = RefreshSnapshot();
+            SyncInputBuffer(snapshot);
+            UpdateButtonStates(snapshot);
         }
 
         internal void SetHandlers(
@@ -153,7 +155,7 @@ namespace HaCreator.MapSimulator.UI
         {
             base.Update(gameTime);
 
-            GuildManageSnapshot snapshot = GetSnapshot();
+            GuildManageSnapshot snapshot = RefreshSnapshot();
             SyncInputBuffer(snapshot);
             UpdateButtonStates(snapshot);
 
@@ -185,7 +187,7 @@ namespace HaCreator.MapSimulator.UI
         {
             DrawLayer(sprite, _overlay, _overlayOffset, drawReflectionInfo, skeletonMeshRenderer, gameTime);
 
-            GuildManageSnapshot snapshot = GetSnapshot();
+            GuildManageSnapshot snapshot = _currentSnapshot ?? RefreshSnapshot();
             DrawTabStrip(sprite, snapshot);
 
             if (_baseLayers.TryGetValue(snapshot.CurrentTab, out IDXObject baseLayer))
@@ -230,9 +232,10 @@ namespace HaCreator.MapSimulator.UI
             button.ButtonClickReleased += _ => action?.Invoke();
         }
 
-        private GuildManageSnapshot GetSnapshot()
+        private GuildManageSnapshot RefreshSnapshot()
         {
-            return _snapshotProvider?.Invoke() ?? new GuildManageSnapshot();
+            _currentSnapshot = _snapshotProvider?.Invoke() ?? new GuildManageSnapshot();
+            return _currentSnapshot;
         }
 
         private void UpdateButtonStates(GuildManageSnapshot snapshot)

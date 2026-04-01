@@ -37,6 +37,7 @@ namespace HaCreator.MapSimulator.UI
         private Func<string> _dismissHandler;
         private Action<string> _feedbackHandler;
         private IReadOnlyList<string> _wrappedLines = Array.Empty<string>();
+        private EngagementProposalSnapshot _currentSnapshot = new();
         private int _frameHeight = HeightPadding + (MinimumLineCount * TextSlotHeight);
 
         internal EngagementProposalWindow(EngagementProposalWindowAssets assets, GraphicsDevice device)
@@ -55,7 +56,7 @@ namespace HaCreator.MapSimulator.UI
         internal void SetSnapshotProvider(Func<EngagementProposalSnapshot> snapshotProvider)
         {
             _snapshotProvider = snapshotProvider;
-            RefreshLayout(GetSnapshot());
+            RefreshLayout(RefreshSnapshot());
         }
 
         internal void SetActionHandlers(Func<string> acceptHandler, Func<string> dismissHandler, Action<string> feedbackHandler)
@@ -80,7 +81,7 @@ namespace HaCreator.MapSimulator.UI
         public override void SetFont(SpriteFont font)
         {
             _font = font;
-            RefreshLayout(GetSnapshot());
+            RefreshLayout(_currentSnapshot ?? RefreshSnapshot());
         }
 
         internal void CenterOnViewport()
@@ -95,7 +96,7 @@ namespace HaCreator.MapSimulator.UI
         {
             base.Update(gameTime);
 
-            EngagementProposalSnapshot snapshot = GetSnapshot();
+            EngagementProposalSnapshot snapshot = RefreshSnapshot();
             RefreshLayout(snapshot);
 
             KeyboardState keyboardState = Keyboard.GetState();
@@ -292,9 +293,10 @@ namespace HaCreator.MapSimulator.UI
             return WrapText(text, TextWrapWidth).Count;
         }
 
-        private EngagementProposalSnapshot GetSnapshot()
+        private EngagementProposalSnapshot RefreshSnapshot()
         {
-            return _snapshotProvider?.Invoke() ?? new EngagementProposalSnapshot();
+            _currentSnapshot = _snapshotProvider?.Invoke() ?? new EngagementProposalSnapshot();
+            return _currentSnapshot;
         }
 
         private void ShowFeedback(string message)

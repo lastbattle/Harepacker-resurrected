@@ -98,6 +98,7 @@ namespace HaCreator.MapSimulator.UI
         private UIObject _replyDeleteButton;
         private UIObject _emoticonLeftButton;
         private UIObject _emoticonRightButton;
+        private GuildBbsSnapshot _currentSnapshot = new();
 
         private enum InputTarget
         {
@@ -167,6 +168,7 @@ namespace HaCreator.MapSimulator.UI
         internal void SetSnapshotProvider(Func<GuildBbsSnapshot> snapshotProvider)
         {
             _snapshotProvider = snapshotProvider;
+            _currentSnapshot = RefreshSnapshot();
         }
 
         internal void SetActionHandlers(
@@ -250,14 +252,14 @@ namespace HaCreator.MapSimulator.UI
             ConfigureButton(_emoticonLeftButton, () => MoveCashEmoticonPage(-1));
             ConfigureButton(_emoticonRightButton, () => MoveCashEmoticonPage(1));
 
-            UpdateButtonStates(GetSnapshot());
+            UpdateButtonStates(_currentSnapshot ?? RefreshSnapshot());
         }
 
         public override void Update(GameTime gameTime)
         {
             base.Update(gameTime);
 
-            GuildBbsSnapshot snapshot = GetSnapshot();
+            GuildBbsSnapshot snapshot = RefreshSnapshot();
             UpdateButtonStates(snapshot);
             UpdateDynamicButtonLayout(snapshot);
 
@@ -309,7 +311,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            GuildBbsSnapshot snapshot = GetSnapshot();
+            GuildBbsSnapshot snapshot = _currentSnapshot ?? RefreshSnapshot();
             sprite.DrawString(_font, "Guild BBS", new Vector2(Position.X + 54, Position.Y + 7), Color.White, 0f, Vector2.Zero, 0.52f, SpriteEffects.None, 0f);
             sprite.DrawString(_font, snapshot.GuildName, new Vector2(Position.X + 58, Position.Y + 22), new Color(59, 58, 54), 0f, Vector2.Zero, 0.45f, SpriteEffects.None, 0f);
             DrawString(
@@ -347,18 +349,20 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private GuildBbsSnapshot GetSnapshot()
+        private GuildBbsSnapshot RefreshSnapshot()
         {
-            return _snapshotProvider?.Invoke() ?? new GuildBbsSnapshot();
+            _currentSnapshot = _snapshotProvider?.Invoke() ?? new GuildBbsSnapshot();
+            return _currentSnapshot;
         }
 
         private void HandleBeginWrite()
         {
             string message = _writeHandler?.Invoke();
             ShowFeedback(message);
-            if (GetSnapshot().IsWriteMode)
+            GuildBbsSnapshot snapshot = RefreshSnapshot();
+            if (snapshot.IsWriteMode)
             {
-                ActivateInput(InputTarget.ComposeTitle, GetSnapshot(), clearExisting: false);
+                ActivateInput(InputTarget.ComposeTitle, snapshot, clearExisting: false);
             }
         }
 
@@ -366,9 +370,10 @@ namespace HaCreator.MapSimulator.UI
         {
             string message = _editHandler?.Invoke();
             ShowFeedback(message);
-            if (GetSnapshot().IsWriteMode)
+            GuildBbsSnapshot snapshot = RefreshSnapshot();
+            if (snapshot.IsWriteMode)
             {
-                ActivateInput(InputTarget.ComposeTitle, GetSnapshot(), clearExisting: false);
+                ActivateInput(InputTarget.ComposeTitle, snapshot, clearExisting: false);
             }
         }
 
@@ -376,7 +381,7 @@ namespace HaCreator.MapSimulator.UI
         {
             string message = _submitHandler?.Invoke();
             ShowFeedback(message);
-            if (!GetSnapshot().IsWriteMode)
+            if (!RefreshSnapshot().IsWriteMode)
             {
                 DeactivateInput(clearText: true);
             }
@@ -392,7 +397,7 @@ namespace HaCreator.MapSimulator.UI
         {
             string message = _replyHandler?.Invoke();
             ShowFeedback(message);
-            if (string.IsNullOrEmpty(GetSnapshot().ReplyDraft?.Body))
+            if (string.IsNullOrEmpty(RefreshSnapshot().ReplyDraft?.Body))
             {
                 DeactivateInput(clearText: true);
             }
@@ -898,7 +903,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void MoveCashEmoticonPage(int delta)
         {
-            GuildBbsSnapshot snapshot = GetSnapshot();
+            GuildBbsSnapshot snapshot = _currentSnapshot ?? RefreshSnapshot();
             string message = snapshot.IsWriteMode
                 ? _moveComposeCashPageHandler?.Invoke(delta)
                 : _moveReplyCashPageHandler?.Invoke(delta);

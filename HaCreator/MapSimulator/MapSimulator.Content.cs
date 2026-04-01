@@ -1097,6 +1097,7 @@ namespace HaCreator.MapSimulator
             _visibleMapObjects = null;
             _visiblePortals = null;
             _visibleReactors = null;
+            _visibleTooltips = null;
             _reactorVisibilityBuffer = null;
             _useSpatialPartitioning = false;
 

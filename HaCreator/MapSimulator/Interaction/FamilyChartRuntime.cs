@@ -31,6 +31,8 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly Dictionary<int, FamilyMemberState> _members = new();
         private readonly Queue<FamilyRecruitSeed> _juniorSeeds = new();
         private readonly FamilyChartTextResources _textResources = FamilyChartTextResources.CreateDefault();
+        private readonly List<FamilyTrackedMemberSnapshot> _trackedMembersBuffer = new();
+        private int _trackedMembersCount;
         private readonly List<string> _precepts = new()
         {
             "Travel as one family and always answer a summon.",
@@ -171,16 +173,33 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal IReadOnlyList<FamilyTrackedMemberSnapshot> BuildTrackedMembersSnapshot()
         {
-            return _members.Values
-                .Select(member => new FamilyTrackedMemberSnapshot
-                {
-                    Name = member.Name,
-                    LocationSummary = member.LocationSummary,
-                    IsOnline = member.IsOnline,
-                    SimulatedPosition = member.SimulatedPosition,
-                    IsLocalPlayer = member.Id == LocalPlayerId
-                })
-                .ToArray();
+            _trackedMembersCount = 0;
+            foreach (FamilyMemberState member in _members.Values)
+            {
+                FamilyTrackedMemberSnapshot snapshot = GetOrCreateTrackedMemberSnapshot(_trackedMembersCount++);
+                snapshot.Name = member.Name;
+                snapshot.LocationSummary = member.LocationSummary;
+                snapshot.IsOnline = member.IsOnline;
+                snapshot.SimulatedPosition = member.SimulatedPosition;
+                snapshot.IsLocalPlayer = member.Id == LocalPlayerId;
+            }
+
+            if (_trackedMembersBuffer.Count > _trackedMembersCount)
+            {
+                _trackedMembersBuffer.RemoveRange(_trackedMembersCount, _trackedMembersBuffer.Count - _trackedMembersCount);
+            }
+
+            return _trackedMembersBuffer;
+        }
+
+        private FamilyTrackedMemberSnapshot GetOrCreateTrackedMemberSnapshot(int index)
+        {
+            while (_trackedMembersBuffer.Count <= index)
+            {
+                _trackedMembersBuffer.Add(new FamilyTrackedMemberSnapshot());
+            }
+
+            return _trackedMembersBuffer[index];
         }
 
         internal string MoveFocus(int delta)
@@ -1134,11 +1153,11 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal sealed class FamilyTrackedMemberSnapshot
     {
-        public string Name { get; init; } = string.Empty;
-        public string LocationSummary { get; init; } = string.Empty;
-        public bool IsOnline { get; init; }
-        public Vector2 SimulatedPosition { get; init; }
-        public bool IsLocalPlayer { get; init; }
+        public string Name { get; set; } = string.Empty;
+        public string LocationSummary { get; set; } = string.Empty;
+        public bool IsOnline { get; set; }
+        public Vector2 SimulatedPosition { get; set; }
+        public bool IsLocalPlayer { get; set; }
     }
 
     internal sealed class FamilyChartTextResources

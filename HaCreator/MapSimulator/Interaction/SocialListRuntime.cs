@@ -17,6 +17,12 @@ namespace HaCreator.MapSimulator.Interaction
     internal sealed partial class SocialListRuntime
     {
         private const int PageSize = 8;
+        private static readonly SocialListTab[] TrackedTabs =
+        {
+            SocialListTab.Friend,
+            SocialListTab.Party,
+            SocialListTab.Guild
+        };
 
         private readonly Dictionary<SocialListTab, List<SocialEntryState>> _entriesByTab = new();
         private readonly Dictionary<SocialListTab, int> _selectedIndexByTab = new();
@@ -28,6 +34,13 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly Dictionary<SocialListTab, bool> _packetOwnedRosterByTab = new();
         private readonly Dictionary<SocialListTab, string> _lastPacketSyncSummaryByTab = new();
         private readonly Dictionary<SocialListTab, string> _lastPendingRequestByTab = new();
+        private readonly List<SocialTrackedEntrySnapshot> _trackedEntriesBuffer = new();
+        private readonly List<SocialEntryState> _filteredFriendEntriesBuffer = new();
+        private readonly SocialListSnapshot _snapshotBuffer = new();
+        private readonly List<SocialListEntrySnapshot> _snapshotEntriesBuffer = new(PageSize);
+        private readonly List<string> _snapshotSummaryLinesBuffer = new(3);
+        private readonly List<string> _enabledActionKeysBuffer = new(12);
+        private int _trackedEntriesCount;
         private string _playerName = "Player";
         private string _locationSummary = "Maple Island";
         private string _guildName = "Maple GM";
@@ -87,41 +100,58 @@ namespace HaCreator.MapSimulator.Interaction
             int firstVisibleIndex = GetFirstVisibleIndex(_currentTab, tabEntries.Count);
             int totalPages = Math.Max(1, (int)Math.Ceiling(tabEntries.Count / (float)PageSize));
             int page = Math.Clamp((firstVisibleIndex / PageSize) + 1, 1, totalPages);
-
-            IReadOnlyList<SocialEntryState> pageEntries = tabEntries
-                .Skip(firstVisibleIndex)
-                .Take(PageSize)
-                .ToArray();
             int pageSelectedIndex = selectedIndex >= firstVisibleIndex && selectedIndex < (firstVisibleIndex + PageSize)
                 ? selectedIndex - firstVisibleIndex
                 : -1;
             SocialEntryState selectedEntry = selectedIndex >= 0 && selectedIndex < tabEntries.Count ? tabEntries[selectedIndex] : null;
 
-            return new SocialListSnapshot
+            int visibleEntryCount = Math.Min(PageSize, Math.Max(0, tabEntries.Count - firstVisibleIndex));
+            for (int i = 0; i < visibleEntryCount; i++)
             {
-                CurrentTab = _currentTab,
-                Entries = pageEntries.Select(CreateEntrySnapshot).ToArray(),
-                SelectedVisibleIndex = pageSelectedIndex,
-                Page = page,
-                TotalPages = totalPages,
-                TotalEntries = tabEntries.Count,
-                FirstVisibleIndex = firstVisibleIndex,
-                MaxFirstVisibleIndex = Math.Max(0, tabEntries.Count - PageSize),
-                VisibleCapacity = PageSize,
-                HeaderTitle = GetHeaderTitle(),
-                SummaryLines = BuildSummaryLines(selectedEntry),
-                EnabledActionKeys = GetEnabledActions(selectedEntry).ToArray(),
-                FriendOnlineOnly = _friendOnlineOnly,
-                CanPageBackward = firstVisibleIndex > 0,
-                CanPageForward = firstVisibleIndex < Math.Max(0, tabEntries.Count - PageSize)
-            };
+                SocialEntryState entry = tabEntries[firstVisibleIndex + i];
+                SocialListEntrySnapshot snapshotEntry = GetOrCreateSnapshotEntry(i);
+                snapshotEntry.Name = entry.Name;
+                snapshotEntry.PrimaryText = entry.PrimaryText;
+                snapshotEntry.SecondaryText = entry.SecondaryText;
+                snapshotEntry.LocationSummary = entry.LocationSummary;
+                snapshotEntry.Channel = entry.Channel;
+                snapshotEntry.IsOnline = entry.IsOnline;
+                snapshotEntry.IsLeader = entry.IsLeader;
+                snapshotEntry.IsLocalPlayer = entry.IsLocalPlayer;
+            }
+
+            if (_snapshotEntriesBuffer.Count > visibleEntryCount)
+            {
+                _snapshotEntriesBuffer.RemoveRange(visibleEntryCount, _snapshotEntriesBuffer.Count - visibleEntryCount);
+            }
+
+            BuildSummaryLines(selectedEntry, _snapshotSummaryLinesBuffer, tabEntries.Count);
+            PopulateEnabledActions(selectedEntry, _enabledActionKeysBuffer);
+
+            _snapshotBuffer.CurrentTab = _currentTab;
+            _snapshotBuffer.Entries = _snapshotEntriesBuffer;
+            _snapshotBuffer.SelectedVisibleIndex = pageSelectedIndex;
+            _snapshotBuffer.Page = page;
+            _snapshotBuffer.TotalPages = totalPages;
+            _snapshotBuffer.TotalEntries = tabEntries.Count;
+            _snapshotBuffer.FirstVisibleIndex = firstVisibleIndex;
+            _snapshotBuffer.MaxFirstVisibleIndex = Math.Max(0, tabEntries.Count - PageSize);
+            _snapshotBuffer.VisibleCapacity = PageSize;
+            _snapshotBuffer.HeaderTitle = GetHeaderTitle();
+            _snapshotBuffer.SummaryLines = _snapshotSummaryLinesBuffer;
+            _snapshotBuffer.EnabledActionKeys = _enabledActionKeysBuffer;
+            _snapshotBuffer.FriendOnlineOnly = _friendOnlineOnly;
+            _snapshotBuffer.CanPageBackward = firstVisibleIndex > 0;
+            _snapshotBuffer.CanPageForward = firstVisibleIndex < Math.Max(0, tabEntries.Count - PageSize);
+            return _snapshotBuffer;
         }
 
         internal IReadOnlyList<SocialTrackedEntrySnapshot> BuildTrackedEntriesSnapshot()
         {
-            List<SocialTrackedEntrySnapshot> entries = new();
-            foreach (SocialListTab tab in new[] { SocialListTab.Friend, SocialListTab.Party, SocialListTab.Guild })
+            _trackedEntriesCount = 0;
+            for (int tabIndex = 0; tabIndex < TrackedTabs.Length; tabIndex++)
             {
+                SocialListTab tab = TrackedTabs[tabIndex];
                 if (!_entriesByTab.TryGetValue(tab, out List<SocialEntryState> tabEntries) || tabEntries == null)
                 {
                     continue;
@@ -135,20 +165,58 @@ namespace HaCreator.MapSimulator.Interaction
                         continue;
                     }
 
-                    entries.Add(new SocialTrackedEntrySnapshot
-                    {
-                        Tab = tab,
-                        Name = entry.Name,
-                        LocationSummary = entry.LocationSummary,
-                        Channel = entry.Channel,
-                        IsOnline = entry.IsOnline,
-                        IsLeader = entry.IsLeader,
-                        IsLocalPlayer = entry.IsLocalPlayer
-                    });
+                    SocialTrackedEntrySnapshot snapshot = GetOrCreateTrackedEntrySnapshot(_trackedEntriesCount++);
+                    snapshot.Tab = tab;
+                    snapshot.Name = entry.Name;
+                    snapshot.LocationSummary = entry.LocationSummary;
+                    snapshot.Channel = entry.Channel;
+                    snapshot.IsOnline = entry.IsOnline;
+                    snapshot.IsLeader = entry.IsLeader;
+                    snapshot.IsLocalPlayer = entry.IsLocalPlayer;
                 }
             }
 
-            return entries;
+            if (_trackedEntriesBuffer.Count > _trackedEntriesCount)
+            {
+                _trackedEntriesBuffer.RemoveRange(_trackedEntriesCount, _trackedEntriesBuffer.Count - _trackedEntriesCount);
+            }
+
+            return _trackedEntriesBuffer;
+        }
+
+        private SocialTrackedEntrySnapshot GetOrCreateTrackedEntrySnapshot(int index)
+        {
+            while (_trackedEntriesBuffer.Count <= index)
+            {
+                _trackedEntriesBuffer.Add(new SocialTrackedEntrySnapshot());
+            }
+
+            return _trackedEntriesBuffer[index];
+        }
+
+        internal bool IsTrackedPartyMember(string entryName)
+        {
+            if (string.IsNullOrWhiteSpace(entryName)
+                || !_entriesByTab.TryGetValue(SocialListTab.Party, out List<SocialEntryState> entries)
+                || entries == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < entries.Count; i++)
+            {
+                SocialEntryState entry = entries[i];
+                if (entry == null
+                    || entry.IsLocalPlayer
+                    || !string.Equals(entry.Name, entryName, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                return true;
+            }
+
+            return false;
         }
 
         internal bool IsBlacklisted(string entryName)
@@ -486,7 +554,17 @@ namespace HaCreator.MapSimulator.Interaction
             List<SocialEntryState> entries = _entriesByTab[tab];
             if (tab == SocialListTab.Friend && _friendOnlineOnly)
             {
-                return entries.Where(entry => entry.IsOnline).ToArray();
+                _filteredFriendEntriesBuffer.Clear();
+                for (int i = 0; i < entries.Count; i++)
+                {
+                    SocialEntryState entry = entries[i];
+                    if (entry.IsOnline)
+                    {
+                        _filteredFriendEntriesBuffer.Add(entry);
+                    }
+                }
+
+                return _filteredFriendEntriesBuffer;
             }
 
             return entries;
@@ -542,19 +620,14 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
-        private SocialListEntrySnapshot CreateEntrySnapshot(SocialEntryState entry)
+        private SocialListEntrySnapshot GetOrCreateSnapshotEntry(int index)
         {
-            return new SocialListEntrySnapshot
+            while (_snapshotEntriesBuffer.Count <= index)
             {
-                Name = entry.Name,
-                PrimaryText = entry.PrimaryText,
-                SecondaryText = entry.SecondaryText,
-                LocationSummary = entry.LocationSummary,
-                Channel = entry.Channel,
-                IsOnline = entry.IsOnline,
-                IsLeader = entry.IsLeader,
-                IsLocalPlayer = entry.IsLocalPlayer
-            };
+                _snapshotEntriesBuffer.Add(new SocialListEntrySnapshot());
+            }
+
+            return _snapshotEntriesBuffer[index];
         }
 
         private string GetHeaderTitle()
@@ -570,136 +643,156 @@ namespace HaCreator.MapSimulator.Interaction
             };
         }
 
-        private IReadOnlyList<string> BuildSummaryLines(SocialEntryState selectedEntry)
+        private void BuildSummaryLines(SocialEntryState selectedEntry, List<string> destination, int visibleEntryCount)
         {
+            destination.Clear();
             if (selectedEntry == null)
             {
-                return _currentTab switch
+                switch (_currentTab)
                 {
-                    SocialListTab.Friend => new[] { "Friend tab mirrors the client's list shell.", BuildOwnershipSummary(SocialListTab.Friend), $"{GetFilteredEntries(SocialListTab.Friend).Count} visible friend entries." },
-                    SocialListTab.Party => new[] { "Party tab owns leader, member, and location summaries.", BuildOwnershipSummary(SocialListTab.Party), $"{GetFilteredEntries(SocialListTab.Party).Count} visible party entries." },
-                    SocialListTab.Guild => new[] { $"Guild: {_guildName}", BuildOwnershipSummary(SocialListTab.Guild), $"{GetFilteredEntries(SocialListTab.Guild).Count} guild members listed." },
-                    SocialListTab.Alliance => new[] { $"Alliance: {_allianceName}", BuildOwnershipSummary(SocialListTab.Alliance), $"{GetFilteredEntries(SocialListTab.Alliance).Count} alliance entries listed." },
-                    SocialListTab.Blacklist => new[] { "Blacklist entries stay isolated from the friend roster.", BuildOwnershipSummary(SocialListTab.Blacklist), $"{GetFilteredEntries(SocialListTab.Blacklist).Count} blocked entries." },
-                    _ => Array.Empty<string>()
-                };
+                    case SocialListTab.Friend:
+                        destination.Add("Friend tab mirrors the client's list shell.");
+                        destination.Add(BuildOwnershipSummary(SocialListTab.Friend));
+                        destination.Add($"{visibleEntryCount} visible friend entries.");
+                        return;
+                    case SocialListTab.Party:
+                        destination.Add("Party tab owns leader, member, and location summaries.");
+                        destination.Add(BuildOwnershipSummary(SocialListTab.Party));
+                        destination.Add($"{visibleEntryCount} visible party entries.");
+                        return;
+                    case SocialListTab.Guild:
+                        destination.Add($"Guild: {_guildName}");
+                        destination.Add(BuildOwnershipSummary(SocialListTab.Guild));
+                        destination.Add($"{visibleEntryCount} guild members listed.");
+                        return;
+                    case SocialListTab.Alliance:
+                        destination.Add($"Alliance: {_allianceName}");
+                        destination.Add(BuildOwnershipSummary(SocialListTab.Alliance));
+                        destination.Add($"{visibleEntryCount} alliance entries listed.");
+                        return;
+                    case SocialListTab.Blacklist:
+                        destination.Add("Blacklist entries stay isolated from the friend roster.");
+                        destination.Add(BuildOwnershipSummary(SocialListTab.Blacklist));
+                        destination.Add($"{visibleEntryCount} blocked entries.");
+                        return;
+                    default:
+                        return;
+                }
             }
 
-            return new[]
-            {
-                selectedEntry.IsLocalPlayer ? $"{selectedEntry.Name} (You)" : selectedEntry.Name,
-                $"{selectedEntry.PrimaryText}  {selectedEntry.SecondaryText}".Trim(),
-                $"{selectedEntry.LocationSummary}  CH {selectedEntry.Channel}  {GetOwnershipBadge(_currentTab)}".Trim()
-            };
+            destination.Add(selectedEntry.IsLocalPlayer ? $"{selectedEntry.Name} (You)" : selectedEntry.Name);
+            destination.Add($"{selectedEntry.PrimaryText}  {selectedEntry.SecondaryText}".Trim());
+            destination.Add($"{selectedEntry.LocationSummary}  CH {selectedEntry.Channel}  {GetOwnershipBadge(_currentTab)}".Trim());
         }
 
-        private IEnumerable<string> GetEnabledActions(SocialEntryState selectedEntry)
+        private void PopulateEnabledActions(SocialEntryState selectedEntry, List<string> destination)
         {
+            destination.Clear();
             switch (_currentTab)
             {
                 case SocialListTab.Friend:
-                    yield return "Friend.AddFriend";
+                    destination.Add("Friend.AddFriend");
                     if (selectedEntry != null)
                     {
-                        yield return "Friend.Chat";
-                        yield return "Friend.Whisper";
-                        yield return "Friend.GroupWhisper";
-                        yield return "Friend.Message";
-                        yield return "Friend.Mod";
-                        yield return _entriesByTab[SocialListTab.Blacklist].Any(entry => string.Equals(entry.Name, selectedEntry.Name, StringComparison.OrdinalIgnoreCase))
+                        destination.Add("Friend.Chat");
+                        destination.Add("Friend.Whisper");
+                        destination.Add("Friend.GroupWhisper");
+                        destination.Add("Friend.Message");
+                        destination.Add("Friend.Mod");
+                        destination.Add(_entriesByTab[SocialListTab.Blacklist].Any(entry => string.Equals(entry.Name, selectedEntry.Name, StringComparison.OrdinalIgnoreCase))
                             ? "Friend.UnBlock"
-                            : "Friend.Block";
+                            : "Friend.Block");
                         if (!selectedEntry.IsLocalPlayer)
                         {
-                            yield return "Friend.AddGroup";
-                            yield return "Friend.Mate";
-                            yield return "Friend.Party";
-                            yield return "Friend.Delete";
+                            destination.Add("Friend.AddGroup");
+                            destination.Add("Friend.Mate");
+                            destination.Add("Friend.Party");
+                            destination.Add("Friend.Delete");
                         }
                     }
                     break;
                 case SocialListTab.Party:
-                    yield return "Party.Create";
-                    yield return "Party.Invite";
-                    yield return "Party.Chat";
+                    destination.Add("Party.Create");
+                    destination.Add("Party.Invite");
+                    destination.Add("Party.Chat");
                     if (selectedEntry != null)
                     {
-                        yield return "Party.Whisper";
-                        yield return "Party.ChangeBoss";
+                        destination.Add("Party.Whisper");
+                        destination.Add("Party.ChangeBoss");
                         if (!selectedEntry.IsLocalPlayer)
                         {
-                            yield return "Party.Kick";
+                            destination.Add("Party.Kick");
                         }
                         else
                         {
-                            yield return "Party.Withdraw";
+                            destination.Add("Party.Withdraw");
                         }
                     }
-                    yield return "Party.Search";
+                    destination.Add("Party.Search");
                     break;
                 case SocialListTab.Guild:
-                    yield return "Guild.Search";
+                    destination.Add("Guild.Search");
                     if (!_hasGuildMembership)
                     {
                         break;
                     }
 
-                    yield return "Guild.Board";
-                    yield return "Guild.Invite";
+                    destination.Add("Guild.Board");
+                    destination.Add("Guild.Invite");
                     if (selectedEntry != null)
                     {
-                        yield return "Guild.GradeUp";
-                        yield return "Guild.GradeDown";
-                        yield return "Guild.Where";
-                        yield return "Guild.Whisper";
-                        yield return "Guild.Info";
-                        yield return "Guild.Skill";
+                        destination.Add("Guild.GradeUp");
+                        destination.Add("Guild.GradeDown");
+                        destination.Add("Guild.Where");
+                        destination.Add("Guild.Whisper");
+                        destination.Add("Guild.Info");
+                        destination.Add("Guild.Skill");
                         if (CanManageGuild())
                         {
-                            yield return "Guild.Manage";
-                            yield return "Guild.Change";
+                            destination.Add("Guild.Manage");
+                            destination.Add("Guild.Change");
                         }
                         if (!selectedEntry.IsLocalPlayer)
                         {
-                            yield return "Guild.PartyInvite";
-                            yield return "Guild.Kick";
+                            destination.Add("Guild.PartyInvite");
+                            destination.Add("Guild.Kick");
                         }
                         else
                         {
-                            yield return "Guild.Withdraw";
+                            destination.Add("Guild.Withdraw");
                         }
                     }
                     break;
                 case SocialListTab.Alliance:
-                    yield return "Alliance.Invite";
+                    destination.Add("Alliance.Invite");
                     if (selectedEntry != null)
                     {
-                        yield return "Alliance.Chat";
-                        yield return "Alliance.Whisper";
-                        yield return "Alliance.Info";
+                        destination.Add("Alliance.Chat");
+                        destination.Add("Alliance.Whisper");
+                        destination.Add("Alliance.Info");
                         if (CanManageAlliance())
                         {
-                            yield return "Alliance.Change";
-                            yield return "Alliance.Notice";
+                            destination.Add("Alliance.Change");
+                            destination.Add("Alliance.Notice");
                         }
-                        yield return "Alliance.GradeUp";
-                        yield return "Alliance.GradeDown";
+                        destination.Add("Alliance.GradeUp");
+                        destination.Add("Alliance.GradeDown");
                         if (!selectedEntry.IsLocalPlayer)
                         {
-                            yield return "Alliance.PartyInvite";
-                            yield return "Alliance.Kick";
+                            destination.Add("Alliance.PartyInvite");
+                            destination.Add("Alliance.Kick");
                         }
                         else
                         {
-                            yield return "Alliance.Withdraw";
+                            destination.Add("Alliance.Withdraw");
                         }
                     }
                     break;
                 case SocialListTab.Blacklist:
-                    yield return "Blacklist.Add";
+                    destination.Add("Blacklist.Add");
                     if (selectedEntry != null)
                     {
-                        yield return "Blacklist.Delete";
+                        destination.Add("Blacklist.Delete");
                     }
                     break;
             }
@@ -1268,43 +1361,43 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal sealed class SocialListSnapshot
     {
-        public SocialListTab CurrentTab { get; init; }
-        public IReadOnlyList<SocialListEntrySnapshot> Entries { get; init; } = Array.Empty<SocialListEntrySnapshot>();
-        public int SelectedVisibleIndex { get; init; } = -1;
-        public int Page { get; init; } = 1;
-        public int TotalPages { get; init; } = 1;
-        public int TotalEntries { get; init; }
-        public string HeaderTitle { get; init; } = string.Empty;
-        public IReadOnlyList<string> SummaryLines { get; init; } = Array.Empty<string>();
-        public IReadOnlyCollection<string> EnabledActionKeys { get; init; } = Array.Empty<string>();
-        public bool FriendOnlineOnly { get; init; }
-        public bool CanPageBackward { get; init; }
-        public bool CanPageForward { get; init; }
-        public int FirstVisibleIndex { get; init; }
-        public int MaxFirstVisibleIndex { get; init; }
-        public int VisibleCapacity { get; init; }
+        public SocialListTab CurrentTab { get; set; }
+        public IReadOnlyList<SocialListEntrySnapshot> Entries { get; set; } = Array.Empty<SocialListEntrySnapshot>();
+        public int SelectedVisibleIndex { get; set; } = -1;
+        public int Page { get; set; } = 1;
+        public int TotalPages { get; set; } = 1;
+        public int TotalEntries { get; set; }
+        public string HeaderTitle { get; set; } = string.Empty;
+        public IReadOnlyList<string> SummaryLines { get; set; } = Array.Empty<string>();
+        public IReadOnlyCollection<string> EnabledActionKeys { get; set; } = Array.Empty<string>();
+        public bool FriendOnlineOnly { get; set; }
+        public bool CanPageBackward { get; set; }
+        public bool CanPageForward { get; set; }
+        public int FirstVisibleIndex { get; set; }
+        public int MaxFirstVisibleIndex { get; set; }
+        public int VisibleCapacity { get; set; }
     }
 
     internal sealed class SocialListEntrySnapshot
     {
-        public string Name { get; init; } = string.Empty;
-        public string PrimaryText { get; init; } = string.Empty;
-        public string SecondaryText { get; init; } = string.Empty;
-        public string LocationSummary { get; init; } = string.Empty;
-        public int Channel { get; init; }
-        public bool IsOnline { get; init; }
-        public bool IsLeader { get; init; }
-        public bool IsLocalPlayer { get; init; }
+        public string Name { get; set; } = string.Empty;
+        public string PrimaryText { get; set; } = string.Empty;
+        public string SecondaryText { get; set; } = string.Empty;
+        public string LocationSummary { get; set; } = string.Empty;
+        public int Channel { get; set; }
+        public bool IsOnline { get; set; }
+        public bool IsLeader { get; set; }
+        public bool IsLocalPlayer { get; set; }
     }
 
     internal sealed class SocialTrackedEntrySnapshot
     {
-        public SocialListTab Tab { get; init; }
-        public string Name { get; init; } = string.Empty;
-        public string LocationSummary { get; init; } = string.Empty;
-        public int Channel { get; init; }
-        public bool IsOnline { get; init; }
-        public bool IsLeader { get; init; }
-        public bool IsLocalPlayer { get; init; }
+        public SocialListTab Tab { get; set; }
+        public string Name { get; set; } = string.Empty;
+        public string LocationSummary { get; set; } = string.Empty;
+        public int Channel { get; set; }
+        public bool IsOnline { get; set; }
+        public bool IsLeader { get; set; }
+        public bool IsLocalPlayer { get; set; }
     }
 }

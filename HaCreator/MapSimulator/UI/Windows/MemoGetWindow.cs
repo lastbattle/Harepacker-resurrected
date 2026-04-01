@@ -26,6 +26,7 @@ namespace HaCreator.MapSimulator.UI
         private Action _closeHandler;
         private UIObject _okButton;
         private UIObject _claimButton;
+        private MemoMailboxAttachmentSnapshot _currentSnapshot = new();
 
         public MemoGetWindow(
             IDXObject frame,
@@ -54,6 +55,7 @@ namespace HaCreator.MapSimulator.UI
         internal void SetSnapshotProvider(Func<MemoMailboxAttachmentSnapshot> provider)
         {
             _snapshotProvider = provider;
+            _currentSnapshot = RefreshSnapshot();
         }
 
         internal void SetActions(Func<string> claimHandler, Action closeHandler)
@@ -80,7 +82,7 @@ namespace HaCreator.MapSimulator.UI
         {
             base.Update(gameTime);
 
-            MemoMailboxAttachmentSnapshot snapshot = _snapshotProvider?.Invoke() ?? new MemoMailboxAttachmentSnapshot();
+            MemoMailboxAttachmentSnapshot snapshot = RefreshSnapshot();
             if (_claimButton != null)
             {
                 _claimButton.ButtonVisible = snapshot.CanClaim;
@@ -109,7 +111,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            MemoMailboxAttachmentSnapshot snapshot = _snapshotProvider?.Invoke() ?? new MemoMailboxAttachmentSnapshot();
+            MemoMailboxAttachmentSnapshot snapshot = _currentSnapshot ?? RefreshSnapshot();
             Rectangle bounds = GetContentBounds();
 
             sprite.DrawString(_font, "MEMO PACKAGE", new Vector2(Position.X + 26, Position.Y + 8), Color.White, 0f, Vector2.Zero, 0.48f, SpriteEffects.None, 0f);
@@ -176,6 +178,12 @@ namespace HaCreator.MapSimulator.UI
         {
             Hide();
             _closeHandler?.Invoke();
+        }
+
+        private MemoMailboxAttachmentSnapshot RefreshSnapshot()
+        {
+            _currentSnapshot = _snapshotProvider?.Invoke() ?? new MemoMailboxAttachmentSnapshot();
+            return _currentSnapshot;
         }
 
         private Rectangle GetContentBounds()

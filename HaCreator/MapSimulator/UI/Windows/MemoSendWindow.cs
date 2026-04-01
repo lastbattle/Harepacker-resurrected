@@ -22,6 +22,7 @@ namespace HaCreator.MapSimulator.UI
         private Action _cancelHandler;
         private UIObject _okButton;
         private UIObject _cancelButton;
+        private MemoMailboxDraftSnapshot _currentSnapshot = new();
 
         public MemoSendWindow(
             IDXObject frame,
@@ -42,6 +43,7 @@ namespace HaCreator.MapSimulator.UI
         internal void SetSnapshotProvider(Func<MemoMailboxDraftSnapshot> provider)
         {
             _snapshotProvider = provider;
+            _currentSnapshot = RefreshSnapshot();
         }
 
         internal void SetActions(Func<string> sendHandler, Action cancelHandler)
@@ -84,7 +86,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            MemoMailboxDraftSnapshot snapshot = _snapshotProvider?.Invoke() ?? new MemoMailboxDraftSnapshot();
+            MemoMailboxDraftSnapshot snapshot = _currentSnapshot ?? RefreshSnapshot();
             Rectangle bounds = GetContentBounds();
             Color titleColor = Color.White;
             Color labelColor = new(96, 105, 119);
@@ -160,6 +162,12 @@ namespace HaCreator.MapSimulator.UI
         {
             Hide();
             _cancelHandler?.Invoke();
+        }
+
+        private MemoMailboxDraftSnapshot RefreshSnapshot()
+        {
+            _currentSnapshot = _snapshotProvider?.Invoke() ?? new MemoMailboxDraftSnapshot();
+            return _currentSnapshot;
         }
 
         private Rectangle GetContentBounds()

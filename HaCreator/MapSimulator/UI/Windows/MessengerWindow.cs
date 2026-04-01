@@ -84,6 +84,7 @@ namespace HaCreator.MapSimulator.UI
         private UIObject _claimButton;
         private UIObject _maximizeButton;
         private UIObject _minimizeButton;
+        private MessengerSnapshot _currentSnapshot = new();
         private int _historyIndex = -1;
         private string _historyDraft = string.Empty;
 
@@ -167,6 +168,7 @@ namespace HaCreator.MapSimulator.UI
         internal void SetSnapshotProvider(Func<MessengerSnapshot> provider)
         {
             _snapshotProvider = provider;
+            _currentSnapshot = RefreshSnapshot();
         }
 
         internal void SetActionHandlers(
@@ -207,7 +209,7 @@ namespace HaCreator.MapSimulator.UI
             ConfigureButton(_maximizeButton, () => CycleState(false));
             ConfigureButton(_minimizeButton, () => CycleState(true));
 
-            UpdateButtonStates(GetSnapshot());
+            UpdateButtonStates(_currentSnapshot ?? RefreshSnapshot());
         }
 
         public override void SetFont(SpriteFont font)
@@ -219,7 +221,7 @@ namespace HaCreator.MapSimulator.UI
         {
             base.Update(gameTime);
 
-            MessengerSnapshot snapshot = GetSnapshot();
+            MessengerSnapshot snapshot = RefreshSnapshot();
             ApplyWindowState(snapshot.WindowState);
             UpdateButtonStates(snapshot);
 
@@ -279,7 +281,7 @@ namespace HaCreator.MapSimulator.UI
                         if (slot >= 0)
                         {
                             _slotSelectionHandler?.Invoke(slot);
-                            MessengerSnapshot updatedSnapshot = GetSnapshot();
+                            MessengerSnapshot updatedSnapshot = RefreshSnapshot();
                             if (!IsCollapsed
                                 && updatedSnapshot.SelectedSlot == slot
                                 && updatedSnapshot.CanWhisper
@@ -314,7 +316,7 @@ namespace HaCreator.MapSimulator.UI
             RenderParameters renderParameters,
             int TickCount)
         {
-            MessengerSnapshot snapshot = GetSnapshot();
+            MessengerSnapshot snapshot = _currentSnapshot ?? RefreshSnapshot();
             ApplyWindowState(snapshot.WindowState);
 
             IDXObject overlay = _windowState switch
@@ -387,7 +389,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            MessengerSnapshot snapshot = GetSnapshot();
+            MessengerSnapshot snapshot = _currentSnapshot ?? RefreshSnapshot();
             if (!_inputActive)
             {
                 ActivateInput(whisperMode: false, snapshot, clearText: false);
@@ -417,7 +419,7 @@ namespace HaCreator.MapSimulator.UI
         private void CycleState(bool forward)
         {
             ShowFeedback(_stateCycleHandler?.Invoke(forward));
-            ApplyWindowState(GetSnapshot().WindowState);
+            ApplyWindowState(RefreshSnapshot().WindowState);
         }
 
         private void ApplyWindowState(MessengerWindowState state)
@@ -441,9 +443,10 @@ namespace HaCreator.MapSimulator.UI
             };
         }
 
-        private MessengerSnapshot GetSnapshot()
+        private MessengerSnapshot RefreshSnapshot()
         {
-            return _snapshotProvider?.Invoke() ?? new MessengerSnapshot();
+            _currentSnapshot = _snapshotProvider?.Invoke() ?? new MessengerSnapshot();
+            return _currentSnapshot;
         }
 
         private bool IsExpanded => _windowState == MessengerWindowState.Max;

@@ -48,6 +48,7 @@ namespace HaCreator.MapSimulator.UI
         private UIObject _similarLevelButton;
         private SpriteFont _font;
         private MouseState _previousMouseState;
+        private SocialSearchSnapshot _currentSnapshot = new();
 
         private readonly struct HeaderLayer
         {
@@ -92,7 +93,7 @@ namespace HaCreator.MapSimulator.UI
         internal void SetSnapshotProvider(Func<SocialSearchSnapshot> snapshotProvider)
         {
             _snapshotProvider = snapshotProvider;
-            UpdateButtonStates(GetSnapshot());
+            UpdateButtonStates(RefreshSnapshot());
         }
 
         internal void SetHandlers(
@@ -147,7 +148,7 @@ namespace HaCreator.MapSimulator.UI
         {
             base.Update(gameTime);
 
-            SocialSearchSnapshot snapshot = GetSnapshot();
+            SocialSearchSnapshot snapshot = RefreshSnapshot();
             UpdateButtonStates(snapshot);
 
             MouseState mouseState = Mouse.GetState();
@@ -182,7 +183,7 @@ namespace HaCreator.MapSimulator.UI
             DrawLayer(sprite, _overlay, _overlayOffset, drawReflectionInfo, skeletonMeshRenderer, gameTime);
             DrawLayer(sprite, _contentOverlay, _contentOverlayOffset, drawReflectionInfo, skeletonMeshRenderer, gameTime);
 
-            SocialSearchSnapshot snapshot = GetSnapshot();
+            SocialSearchSnapshot snapshot = _currentSnapshot ?? RefreshSnapshot();
             DrawTabStrip(sprite, snapshot);
 
             if (_contentLayers.TryGetValue(snapshot.CurrentTab, out HeaderLayer contentLayer))
@@ -210,9 +211,10 @@ namespace HaCreator.MapSimulator.UI
             button.ButtonClickReleased += _ => action?.Invoke();
         }
 
-        private SocialSearchSnapshot GetSnapshot()
+        private SocialSearchSnapshot RefreshSnapshot()
         {
-            return _snapshotProvider?.Invoke() ?? new SocialSearchSnapshot();
+            _currentSnapshot = _snapshotProvider?.Invoke() ?? new SocialSearchSnapshot();
+            return _currentSnapshot;
         }
 
         private void UpdateButtonStates(SocialSearchSnapshot snapshot)

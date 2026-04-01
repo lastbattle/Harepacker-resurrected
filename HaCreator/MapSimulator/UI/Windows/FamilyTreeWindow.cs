@@ -51,6 +51,7 @@ namespace HaCreator.MapSimulator.UI
         private UIObject _rightButton;
         private SpriteFont _font;
         private MouseState _previousMouseState;
+        private FamilyTreeSnapshot _currentSnapshot = new();
 
         public FamilyTreeWindow(
             IDXObject frame,
@@ -77,7 +78,8 @@ namespace HaCreator.MapSimulator.UI
         internal void SetSnapshotProvider(Func<FamilyTreeSnapshot> snapshotProvider)
         {
             _snapshotProvider = snapshotProvider;
-            UpdateButtonStates(GetSnapshot());
+            _currentSnapshot = GetSnapshot();
+            UpdateButtonStates(_currentSnapshot);
         }
 
         internal void SetActionHandlers(
@@ -125,7 +127,7 @@ namespace HaCreator.MapSimulator.UI
         public override void Update(GameTime gameTime)
         {
             base.Update(gameTime);
-            FamilyTreeSnapshot snapshot = GetSnapshot();
+            FamilyTreeSnapshot snapshot = RefreshSnapshot();
             UpdateButtonStates(snapshot);
 
             MouseState mouseState = Mouse.GetState();
@@ -156,7 +158,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            FamilyTreeSnapshot snapshot = GetSnapshot();
+            FamilyTreeSnapshot snapshot = _currentSnapshot ?? RefreshSnapshot();
             DrawHeader(sprite, snapshot);
             DrawNodes(sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, snapshot);
             DrawFooter(sprite, snapshot);
@@ -176,6 +178,12 @@ namespace HaCreator.MapSimulator.UI
         private FamilyTreeSnapshot GetSnapshot()
         {
             return _snapshotProvider?.Invoke() ?? new FamilyTreeSnapshot();
+        }
+
+        private FamilyTreeSnapshot RefreshSnapshot()
+        {
+            _currentSnapshot = GetSnapshot();
+            return _currentSnapshot;
         }
 
         private void UpdateButtonStates(FamilyTreeSnapshot snapshot)

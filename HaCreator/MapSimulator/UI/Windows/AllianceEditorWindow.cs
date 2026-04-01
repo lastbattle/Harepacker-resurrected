@@ -40,6 +40,7 @@ namespace HaCreator.MapSimulator.UI
         private Keys _lastHeldKey = Keys.None;
         private int _keyHoldStartTime;
         private int _lastKeyRepeatTime;
+        private AllianceEditorSnapshot _currentSnapshot = new();
 
         public AllianceEditorWindow(
             IDXObject frame,
@@ -80,7 +81,7 @@ namespace HaCreator.MapSimulator.UI
 
         public override string WindowName => MapSimulatorWindowNames.AllianceEditor;
 
-        public override bool CapturesKeyboardInput => GetSnapshot().IsEditing;
+        public override bool CapturesKeyboardInput => _currentSnapshot?.IsEditing == true;
 
         public override void SetFont(SpriteFont font)
         {
@@ -90,8 +91,9 @@ namespace HaCreator.MapSimulator.UI
         internal void SetSnapshotProvider(Func<AllianceEditorSnapshot> snapshotProvider)
         {
             _snapshotProvider = snapshotProvider;
-            SyncInputBuffer(GetSnapshot());
-            UpdateButtonStates(GetSnapshot());
+            AllianceEditorSnapshot snapshot = RefreshSnapshot();
+            SyncInputBuffer(snapshot);
+            UpdateButtonStates(snapshot);
         }
 
         internal void SetHandlers(
@@ -116,7 +118,7 @@ namespace HaCreator.MapSimulator.UI
         {
             base.Update(gameTime);
 
-            AllianceEditorSnapshot snapshot = GetSnapshot();
+            AllianceEditorSnapshot snapshot = RefreshSnapshot();
             SyncInputBuffer(snapshot);
             UpdateButtonStates(snapshot);
 
@@ -152,15 +154,16 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            AllianceEditorSnapshot snapshot = GetSnapshot();
+            AllianceEditorSnapshot snapshot = _currentSnapshot ?? RefreshSnapshot();
             DrawRankTitles(sprite, snapshot);
             DrawNoticeEditor(sprite, snapshot, TickCount);
             DrawSummary(sprite, snapshot);
         }
 
-        private AllianceEditorSnapshot GetSnapshot()
+        private AllianceEditorSnapshot RefreshSnapshot()
         {
-            return _snapshotProvider?.Invoke() ?? new AllianceEditorSnapshot();
+            _currentSnapshot = _snapshotProvider?.Invoke() ?? new AllianceEditorSnapshot();
+            return _currentSnapshot;
         }
 
         private void UpdateButtonStates(AllianceEditorSnapshot snapshot)

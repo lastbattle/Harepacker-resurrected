@@ -36,6 +36,7 @@ namespace HaCreator.MapSimulator.UI
         private UIObject _okButton;
         private SpriteFont _font;
         private MouseState _previousMouseState;
+        private FamilyChartSnapshot _currentSnapshot = new();
 
         public FamilyChartWindow(
             IDXObject frame,
@@ -62,7 +63,8 @@ namespace HaCreator.MapSimulator.UI
         internal void SetSnapshotProvider(Func<FamilyChartSnapshot> snapshotProvider)
         {
             _snapshotProvider = snapshotProvider;
-            UpdateButtonStates(GetSnapshot());
+            _currentSnapshot = GetSnapshot();
+            UpdateButtonStates(_currentSnapshot);
         }
 
         internal void SetActionHandlers(
@@ -123,7 +125,8 @@ namespace HaCreator.MapSimulator.UI
         public override void Update(GameTime gameTime)
         {
             base.Update(gameTime);
-            UpdateButtonStates(GetSnapshot());
+            FamilyChartSnapshot snapshot = RefreshSnapshot();
+            UpdateButtonStates(snapshot);
 
             MouseState mouseState = Mouse.GetState();
             bool leftReleased = mouseState.LeftButton == ButtonState.Released
@@ -156,7 +159,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            FamilyChartSnapshot snapshot = GetSnapshot();
+            FamilyChartSnapshot snapshot = _currentSnapshot ?? RefreshSnapshot();
 
             DrawCenteredText(sprite, snapshot.TitleText, 7, 34, 209, new Color(80, 58, 31), 0.50f);
             DrawRightAlignedText(sprite, $"{Math.Max(0, snapshot.JuniorCount)}/2", 47, 78, 31, new Color(70, 70, 70), 0.42f);
@@ -232,6 +235,12 @@ namespace HaCreator.MapSimulator.UI
         private FamilyChartSnapshot GetSnapshot()
         {
             return _snapshotProvider?.Invoke() ?? new FamilyChartSnapshot();
+        }
+
+        private FamilyChartSnapshot RefreshSnapshot()
+        {
+            _currentSnapshot = GetSnapshot();
+            return _currentSnapshot;
         }
 
         private void UpdateButtonStates(FamilyChartSnapshot snapshot)
