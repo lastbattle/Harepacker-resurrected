@@ -59,6 +59,13 @@ It does three things that the old notes did not do well:
 - `CUserPool::Update` at `0x94c370`
 - `CUIWeddingInvitation::OnCreate` at `0x791dc0`
 - `CUIWeddingInvitation::Draw` at `0x791f00`
+- `CGuildRankDlg::OnCreate` at `0x56a710`
+- `CGuildRankDlg::DrawRanking` at `0x56b380`
+- `CSetGuildMarkDlg::OnCreate` at `0x56d0b0`
+- `CSetGuildMarkDlg::OnButtonClicked` at `0x56a360`
+- `CSetGuildMarkDlg::Update` at `0x56abc0`
+- `CCreateGuildAgreeDlg::OnCreate` at `0x56bab0`
+- `CCreateGuildAgreeDlg::Update` at `0x56bd60`
 
 ## Client Function Index By Backlog Area
 
@@ -102,6 +109,19 @@ These are the first functions to inspect before changing simulator behavior.
 
 Notes:
 IDA shows a real client-owned surface here, not a grab bag of leftovers. `CPet::Update` covers pet movement, ladder-aware hanging, random actions, auto-pickup, and auto-speaking timers; `CEmployee::Update` confirms that hired-merchant or shop-style employee actors have their own frame-advance and position-sync runtime rather than existing only as room metadata; `CUser::SetActivePet` confirms ordered multi-pet activation on the avatar; `CUser::SetActivePortableChair` shows chair visuals are layered avatar state rather than only a sit action; `CMessageBoxPool::OnPacket` and `OnMessageBoxEnterField` confirm that item-backed field message boxes are their own packet-owned social overlay owner rather than just chat text; `CMemoListDlg` confirms a dedicated memo or note inbox rather than treating all player communication as chat; `CMapleTVMan` shows MapleTV has a real message lifecycle and packet-driven manager instead of being only a draw shell; the additional `OnPacket` entry points on `CMapleTVMan`, `CParcelDlg`, `CTrunkDlg`, `CUIMessenger`, `CEntrustedShopDlg`, and `CPersonalShopDlg` show that several social/storage/shop surfaces are also packet-owned state machines rather than only draw shells plus local button handlers; `CUIWeddingInvitation::{OnCreate,Draw}` shows that the wedding pipeline also has a dedicated invitation-stage owner outside the already-tracked proposal, wish-list, and in-field ceremony flows; and the draw owners for MiniRoom, trunk, MapleTV, messenger, friend or guild or alliance lists, guild BBS, family chart, and personal shop all confirm dedicated UI or gameplay systems that are currently outside the existing backlog set.
+
+### 2. Additional guild-management social owners discovered by IDA function scan
+
+- `CGuildRankDlg::OnCreate` at `0x56a710`
+- `CGuildRankDlg::DrawRanking` at `0x56b380`
+- `CSetGuildMarkDlg::OnCreate` at `0x56d0b0`
+- `CSetGuildMarkDlg::OnButtonClicked` at `0x56a360`
+- `CSetGuildMarkDlg::Update` at `0x56abc0`
+- `CCreateGuildAgreeDlg::OnCreate` at `0x56bab0`
+- `CCreateGuildAgreeDlg::Update` at `0x56bd60`
+
+Notes:
+The function scan surfaced another client-owned social family that is still absent from the backlog text: guild ranking, guild-mark creation, and guild-creation agreement dialogs. These are not just extra buttons hanging off `CUIUserList` or `CUIGuildBBS`; the client keeps them in dedicated dialog owners with their own create, update, ranking-draw, animation, and button-routing seams.
 
 ## Current State Summary
 
@@ -169,6 +189,15 @@ The latest follow-up decompile exposed another client-owned social surface that 
 | Status | Area | Gap | Why it matters | Primary seam |
 |--------|------|-----|----------------|--------------|
 | Partial | `CUserPool` relationship-overlay parity | A direct decompile of `CUserPool::Update` at `0x94c370` shows that the client keeps distinct update-time owners for `m_lCouple`, `m_lFriend`, `m_lNewYearCard`, `m_lMarriage`, and `m_lCoupleChair`, and that those tables drive separate effect setters: `CUser::SetCoupleItemEffect`, `CUser::SetFriendShipItemEffect`, `CUser::SetNewYearCardEffect`, `CUser::SetWeddingRingEffect`, and `CUser::SetCoupleChairEffect`. The same owner also applies per-relationship proximity gates, tighter near-range thresholds for some entries, couple-chair item metadata checks through `CItemInfo::GetCoupleChairItem`, facing or status checks for pair-chair admission, and explicit suppression when either user is morphed or ghosted. The current backlog mentions some of these outcomes piecemeal through remote item-effect rows and portable-chair rendering, but it never tracks the client owner that actually decides when these relationship overlays are admitted, refreshed, or suppressed, and it does not call out the New Year card path at all. | Social overlay parity can look more complete than it really is if couple, friendship, wedding-ring, New Year card, and couple-chair visuals are treated only as generic item effects or chair layers. Tracking the `CUserPool::Update` owner explicitly keeps future parity work anchored to the real client relationship tables, admission thresholds, and morph/ghost suppression rules instead of hiding them inside unrelated remote-user or chair-polish rows. | shared social relationship-update layer (`CUserPool::Update`, `CUser::SetCoupleItemEffect`, `CUser::SetFriendShipItemEffect`, `CUser::SetNewYearCardEffect`, `CUser::SetWeddingRingEffect`, `CUser::SetCoupleChairEffect`) |
+
+### 5. Additional guild-ranking and emblem owners discovered by IDA function scan
+
+The latest IDA function scan surfaced a separate guild-management dialog family that is still not represented anywhere else in the backlog set.
+These owners sit beside the already tracked guild list/BBS surfaces and should be tracked explicitly so guild parity does not silently stop at roster browsing and board posting.
+
+| Status | Area | Gap | Why it matters | Primary seam |
+|--------|------|-----|----------------|--------------|
+| Missing | Guild ranking, emblem creation, and guild-agreement dialog parity | IDA shows a dedicated guild-management dialog family that is currently absent from the backlog text: `CGuildRankDlg::OnCreate` at `0x56a710` plus `DrawRanking` at `0x56b380` confirm a standalone guild-ranking owner; `CSetGuildMarkDlg::OnCreate` at `0x56d0b0`, `OnButtonClicked` at `0x56a360`, and `Update` at `0x56abc0` confirm a separate emblem/mark editor with its own button-routing and animated update path; and `CCreateGuildAgreeDlg::OnCreate` at `0x56bab0` plus `Update` at `0x56bd60` confirm a distinct agreement/confirmation dialog in the guild-creation flow. The current backlog tracks guild list, guild search/manage, guild BBS, and alliance/family surfaces, but none of those rows name these dedicated owners or their UI/runtime responsibilities. | Guild parity is broader than roster tabs and board posting. If these owners stay untracked, future work can overfit guild behavior to `CUIUserList` or `CUIGuildBBS` while still missing the client-owned ranking dialog, emblem authoring flow, and creation-agreement dialog that sit on the same social progression path. Tracking them explicitly keeps guild-management work anchored to the real owner family before those responsibilities get buried inside generic guild UI rows. | guild-management dialog layer (`CGuildRankDlg::OnCreate`, `CGuildRankDlg::DrawRanking`, `CSetGuildMarkDlg::OnCreate`, `CSetGuildMarkDlg::OnButtonClicked`, `CSetGuildMarkDlg::Update`, `CCreateGuildAgreeDlg::OnCreate`, `CCreateGuildAgreeDlg::Update`) |
 
 ## Priority Order
 
