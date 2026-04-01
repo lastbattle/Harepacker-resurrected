@@ -90,11 +90,19 @@ It does three things that the old notes did not do well:
 - `CField::OnFieldObstacleOnOff` at `0x535a80`
 - `CField::OnFieldObstacleOnOffStatus` at `0x535b00`
 - `CField::OnFieldEffect` at `0x53b790`
+- `CField::OnBlowWeather` at `0x5468f0`
+- `CField::OnAdminResult` at `0x53bc20`
+- `CField::OnQuiz` at `0x537a90`
 - `CField::OnWarnMessage` at `0x538160`
 - `CField::OnPlayJukeBox` at `0x537940`
 - `CField::OnWhisper` at `0x5448a0`
 - `CField::OnSummonItemInavailable` at `0x52f7b0`
+- `CField::OnStalkResult` at `0x539910`
 - `CField::OnDestroyClock` at `0x52a7c0`
+- `CQuickslotKeyMappedMan::OnInit` at `0x6c6130`
+- `CField::OnFootHoldInfo` at `0x53a810`
+- `CField::OnRequestFootHoldInfo` at `0x52ddd0`
+- `CRPSGameDlg::OnPacket` at `0x6d9e00`
 - `CField::OnZakumTimer` at `0x530cc0`
 - `CField::OnHontailTimer` at `0x530e70`
 - `CField::OnChaosZakumTimer` at `0x531020`
@@ -166,6 +174,20 @@ This packet cluster is a distinct client owner that the current backlog did not 
 Notes:
 This is another packet-owned surface that the current backlog set does not describe explicitly. IDA shows `CField::OnPacket` and `CUserLocal::OnPacket` owning a broad feedback layer that sits between ordinary gameplay and the existing UI rows: group, whisper, and couple message routing feed status-bar chat and whisper-candidate state; field-effect packets drive screen effects, field sounds, BGM changes, boss HP tags, reward-roulette visuals, and object-state changes; obstacle, warning, and forced-fade packets update map presentation directly; and dedicated boss-timer plus transfer-ignored handlers show that several visible notice/timer flows are owned by packets rather than generic field-rule polling.
 
+### 4. Packet-authored field utility and microgame parity discovered by direct `CField::OnPacket` scan
+
+- `CField::OnBlowWeather` at `0x5468f0`
+- `CField::OnAdminResult` at `0x53bc20`
+- `CField::OnQuiz` at `0x537a90`
+- `CField::OnStalkResult` at `0x539910`
+- `CQuickslotKeyMappedMan::OnInit` at `0x6c6130`
+- `CField::OnFootHoldInfo` at `0x53a810`
+- `CField::OnRequestFootHoldInfo` at `0x52ddd0`
+- `CRPSGameDlg::OnPacket` at `0x6d9e00`
+
+Notes:
+The same `CField::OnPacket` decompile exposes another client-owned surface that is still absent from the backlog set. These handlers are not well-described by the existing scripted-field or feedback rows: they cover packet-authored weather/broadcast effects, GM or admin-result dialogs, OX-style quiz state, stalk/follow-result notices, a dedicated quickslot-keymap init path, foothold-info request/reply exchange, and the separate Rock-Paper-Scissors dialog owner. That is a distinct packet bucket between generic field messaging and the broader progression/utility window backlog.
+
 ## Current State Summary
 
 MapSimulator is no longer "missing player simulation".
@@ -216,6 +238,12 @@ The main baseline updates worth keeping visible are:
 |--------|------|-----|----------------|--------------|
 | Partial | Field chat, effect, warning, and timer packet parity | The simulator now has a dedicated packet-owned field-feedback runtime wired to the `CField::OnPacket` / `CUserLocal::OnPacket` seam for `OnGroupMessage` (`150`), `OnWhisper` (`151`), `OnCoupleMessage` (`152`), `OnFieldEffect` (`154`), the obstacle on/off and reset packets (`155`, `156`, `159`), `OnWarnMessage` (`157`), `OnPlayJukeBox` (`158`), transfer or summon-item failure notices (`160`, `161`, `164`), `OnDestroyClock` plus the Zakum/Horntail/Chaos Zakum/Hontale timer packets (`163`, `170`-`173`), and `CUserLocal::OnFieldFadeOutForce` (`174`). This pass also tightened several client-owned behaviors inside that seam: group chat now respects the simulator blacklist for the same non-party families the client filters, incoming whispers from blacklisted senders are suppressed unless they are flagged as admin, blocked-friend whisper suppression now also consults the packet/social friend roster instead of only the simulator blacklist, the alternate whisper result branch (`138`) now routes through the same result handling as subtype `10`, subtype-`9` whisper find success can now consume the packet's extra transfer coordinates and queue a live map-change follow-through through the existing map-transfer seam, field-effect object-state pushes now clear through the existing dynamic-tag seam instead of only being summarized, and the `OnFieldEffect` summon, screen-effect, and reward-roulette branches now route into WZ-backed visual hooks instead of remaining summary-only. WZ evidence now drives those hooks through `Effect/Summon.img/<id>` with `MapEff.img/NpcSummon` fallback for summon effects, a more client-shaped `MapEff.img/<descriptor>`-first screen-effect resolution order before broader effect-image fallback, a dedicated `BasicEff.img/MainNotice/userReward/Appear` surface for reward-roulette feedback, and `Sound/Summon.img/<id>` summon audio playback when the sound exists. Client evidence also corrected the boss-timer handling in this build: the Zakum/Horntail/Chaos Zakum/Hontale packets are chat-log owned rather than a dedicated timerboard, so the simulator now mirrors them as packet-authored status-bar or chat feedback and drops the incorrect top-screen countdown overlay while still honoring `OnDestroyClock` teardown. This pass now also replaces the earlier scam-warning heuristic with a WZ-backed swindle-warning path: incoming whispers and party chat load warning groups, keywords, and randomized warning text from `Etc/Swindle`, preserve the client-shaped highest-group-first match order recovered from `CCurseProcess::GetSwindleWarning`, and still honor the same warning-strip ownership plus ten-second cooldown already modeled in this seam. Client evidence now also narrowed the warning matcher itself: the runtime stops pre-normalizing WZ keywords into simulator-owned lowercase tokens, filters incoming chat more like `CCurseProcess::FilterChar`, and matches warnings through a case-insensitive filtered substring pass shaped after `CCurseProcess::SearchSubstring` instead of the earlier broad non-alnum rewrite. Manual packet exercise already includes helper commands for couple chat or notices, whisper availability and find responses, optional whisper-find chase coordinates, jukebox packets, and explicit destroy-clock playback, and `UnitTest_MapSimulator` now has focused runtime coverage for the WZ-backed swindle-warning selection and `Etc/Swindle` extraction path plus summon-sound callback dispatch in addition to the earlier visual callback dispatch and corrected chat-only boss-timer status handling, blacklist suppression, blocked-friend whisper suppression, whisper chase transfer queuing, the extra whisper result branch, object-state clear cases, and the new client-shaped swindle filter or case-match behavior. Remaining gap: the swindle-warning path now follows the client’s WZ tables, highest-group ordering, and a closer `FilterChar`/`SearchSubstring`-shaped matcher, but it still does not reproduce the client’s exact `s_FilterChars` table or byte-level DBCS compare semantics; whisper chase follow-through is still limited to subtype-`9` success packets that actually carry transfer coordinates and currently queues the simulator's map-change seam rather than the client's fuller `SendTransferFieldRequest` lifecycle; screen-effect descriptor resolution and reward-roulette art are WZ-backed but still not pixel-identical to the client's exact layer-loading path; obstacle presentation still reuses the existing tag-driven object seam rather than the client dynamic-object visuals; and the summon-effect fallback path still needs finer client-side asset discrimination when an effect id does not map cleanly onto `Summon.img`. | Visible packet-owned feedback is a distinct client-owned surface between gameplay, the status bar, map-state tags, local fade overlays, field music, and boss timers. Tracking it as its own seam keeps future parity work anchored to the dispatcher handlers that actually own chat feedback, warning dialogs, forced fades, obstacle toggles, jukebox swaps, transfer failures, and special-event timers instead of burying those effects inside unrelated rows. | packet-owned field feedback layer (`CField::OnPacket`, `CField::OnGroupMessage`, `CField::OnWhisper`, `CField::OnCoupleMessage`, `CField::OnFieldEffect`, `CField::OnFieldObstacleOnOff`, `CField::OnFieldObstacleOnOffStatus`, `CField::OnFieldObstacleAllReset`, `CField::OnWarnMessage`, `CField::OnPlayJukeBox`, `CField::OnTransferFieldReqIgnored`, `CField::OnTransferChannelReqIgnored`, `CField::OnSummonItemInavailable`, `CField::OnDestroyClock`, `CField::OnZakumTimer`, `CField::OnHontailTimer`, `CField::OnChaosZakumTimer`, `CField::OnHontaleTimer`, `CUserLocal::OnFieldFadeOutForce`) |
 
+### 4. Packet-authored field utility and microgame parity
+
+| Status | Area | Gap | Why it matters | Primary seam |
+|--------|------|-----|----------------|--------------|
+| Missing | Field utility, quickslot-init, foothold-info, and RPS packet parity | A direct re-check of `CField::OnPacket` shows a still-untracked client-owned packet bucket outside the existing scripted-field and field-feedback rows: `OnBlowWeather` (`158`) for packet-authored weather/broadcast overlays, `OnAdminResult` (`160`) for GM/admin result dialogs, `OnQuiz` (`161`) for quiz-state ownership, `OnStalkResult` (`172`) for stalk/follow-result feedback, `CQuickslotKeyMappedMan::OnInit` (`175`) for packet-owned quickslot keymap hydration, `OnFootHoldInfo` (`176`) plus `OnRequestFootHoldInfo` (`177`) for foothold-info exchange, and `CRPSGameDlg::OnPacket` (`371`) for the Rock-Paper-Scissors dialog owner. A codebase search in `HaCreator/MapSimulator` did not surface any dedicated runtime or packet bridge named for those handlers, so this surface is still effectively absent from the simulator plan rather than merely undocumented polish. | If these handlers stay collapsed into a generic “misc packet” assumption, parity work will miss several visible client-owned flows that are neither ordinary UI windows nor general field notices: packet weather and admin-result prompts, quiz/minigame ownership, stalk-result feedback, quickslot-init sync, foothold-data round trips, and the separate RPS dialog all have their own dispatcher slots in the field owner and should not disappear behind unrelated rows. | packet-owned field utility layer (`CField::OnPacket`, `CField::OnBlowWeather`, `CField::OnAdminResult`, `CField::OnQuiz`, `CField::OnStalkResult`, `CQuickslotKeyMappedMan::OnInit`, `CField::OnFootHoldInfo`, `CField::OnRequestFootHoldInfo`, `CRPSGameDlg::OnPacket`) |
+
 ## Priority Order
 
 If the goal is visible parity first, the next work should be sequenced like this:
@@ -234,6 +262,8 @@ If the goal is visible parity first, the next work should be sequenced like this
    Add the packet-owned bridge for field help messages, quest timers, quest-clear resets, and object-state flips before layering more one-off script behavior onto NPC or reactor seams.
 7. Packet-feedback pass:
    Add the packet-owned field messaging, warn-dialog, forced-fade, obstacle, field-effect, and boss-timer surface before more status-bar or field-overlay polish is tracked as isolated UI work.
+8. Field-utility packet pass:
+   Add the packet-owned weather/admin-result/quiz/stalk-result, quickslot-init, foothold-info, and RPS dialog surface before those handlers get misfiled under unrelated UI or field rows.
 
 ## Working Rule For Future Updates
 
