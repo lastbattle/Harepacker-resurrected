@@ -351,7 +351,9 @@ namespace HaCreator.MapSimulator.Loaders
             // Get skill name and description from String.wz
             string skillName = $"Skill {skillId}";
             string description = "";
+            string formattedDescription = string.Empty;
             Dictionary<int, string> levelDescriptions = null;
+            Dictionary<int, string> formattedLevelDescriptions = null;
 
             if (stringImage != null)
             {
@@ -369,10 +371,12 @@ namespace HaCreator.MapSimulator.Loaders
                     if (string.IsNullOrWhiteSpace(description) && stringEntry["pdesc"] is WzStringProperty passiveDescProp)
                         description = passiveDescProp.Value;
 
-                    levelDescriptions = BuildLevelDescriptions(skillEntry, stringEntry, Math.Max(1, maxLevel));
+                    levelDescriptions = BuildLevelDescriptions(skillEntry, stringEntry, Math.Max(1, maxLevel), preserveFormatting: false);
+                    formattedLevelDescriptions = BuildLevelDescriptions(skillEntry, stringEntry, Math.Max(1, maxLevel), preserveFormatting: true);
                 }
             }
 
+            formattedDescription = NormalizeSkillText(description, preserveFormatting: true);
             description = NormalizeSkillText(description);
             int requiredCharacterLevel = ResolveRequiredCharacterLevel(skillEntry);
             ResolveRequiredSkill(skillEntry, out int requiredSkillId, out int requiredSkillLevel);
@@ -385,6 +389,7 @@ namespace HaCreator.MapSimulator.Loaders
                 IconMouseOverTexture = mouseOverIconTexture,
                 SkillName = skillName,
                 Description = description,
+                FormattedDescription = formattedDescription,
                 CurrentLevel = 0,
                 MaxLevel = Math.Max(1, maxLevel),
                 RequiredCharacterLevel = requiredCharacterLevel,
@@ -407,6 +412,12 @@ namespace HaCreator.MapSimulator.Loaders
             {
                 foreach (var entry in levelDescriptions)
                     displayData.LevelDescriptions[entry.Key] = entry.Value;
+            }
+
+            if (formattedLevelDescriptions != null)
+            {
+                foreach (var entry in formattedLevelDescriptions)
+                    displayData.FormattedLevelDescriptions[entry.Key] = entry.Value;
             }
 
             return displayData;
@@ -481,7 +492,11 @@ namespace HaCreator.MapSimulator.Loaders
             }
         }
 
-        private static Dictionary<int, string> BuildLevelDescriptions(WzSubProperty skillEntry, WzSubProperty stringEntry, int maxLevel)
+        private static Dictionary<int, string> BuildLevelDescriptions(
+            WzSubProperty skillEntry,
+            WzSubProperty stringEntry,
+            int maxLevel,
+            bool preserveFormatting)
         {
             if (skillEntry == null || stringEntry == null || maxLevel <= 0)
                 return null;
@@ -503,7 +518,7 @@ namespace HaCreator.MapSimulator.Loaders
                 if (string.IsNullOrWhiteSpace(resolved) || ContainsUnresolvedSkillToken(resolved))
                     resolved = fallbackStats;
 
-                resolved = NormalizeSkillText(resolved);
+                resolved = NormalizeSkillText(resolved, preserveFormatting);
                 if (!string.IsNullOrWhiteSpace(resolved))
                     result[level] = resolved;
             }
@@ -736,7 +751,12 @@ namespace HaCreator.MapSimulator.Loaders
 
         private static bool ContainsUnresolvedSkillToken(string text)
         {
-            return !string.IsNullOrWhiteSpace(text) && Regex.IsMatch(text, "#[A-Za-z0-9_]+");
+            if (string.IsNullOrWhiteSpace(text))
+                return false;
+
+            string normalized = text.Replace("##", string.Empty);
+            normalized = Regex.Replace(normalized, "#[A-Za-z][^#]*#", string.Empty);
+            return Regex.IsMatch(normalized, "#[A-Za-z0-9_]+");
         }
 
         private static void AppendStatLine(StringBuilder builder, string label, string value)
@@ -827,7 +847,7 @@ namespace HaCreator.MapSimulator.Loaders
                 : null;
         }
 
-        private static string NormalizeSkillText(string text)
+        private static string NormalizeSkillText(string text, bool preserveFormatting = false)
         {
             if (string.IsNullOrWhiteSpace(text))
                 return string.Empty;
@@ -840,7 +860,8 @@ namespace HaCreator.MapSimulator.Loaders
                 .Replace('\r', '\n')
                 .Replace('\u00A0', ' ');
 
-            normalized = Regex.Replace(normalized, "#([a-zA-Z])([^#]+)#", "$2");
+            if (!preserveFormatting)
+                normalized = Regex.Replace(normalized, "#([a-zA-Z])([^#]+)#", "$2");
             normalized = normalized.Replace("##", "#");
             normalized = Regex.Replace(normalized, "[ \t]+\n", "\n");
             normalized = Regex.Replace(normalized, "\n{3,}", "\n\n");

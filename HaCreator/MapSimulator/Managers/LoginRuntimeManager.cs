@@ -68,7 +68,7 @@ namespace HaCreator.MapSimulator.Managers
                 [LoginPacketType.SelectWorldResult] = HandleSelectWorldResult,
                 [LoginPacketType.SelectCharacterResult] = HandleSelectCharacterResult,
                 [LoginPacketType.ViewAllCharResult] = HandleViewAllCharResult,
-                [LoginPacketType.SelectCharacterByVacResult] = HandleViewAllCharResult,
+                [LoginPacketType.SelectCharacterByVacResult] = HandleSelectCharacterByVacResult,
                 [LoginPacketType.CheckDuplicatedIdResult] = HandleCheckDuplicatedIdResult,
                 [LoginPacketType.CreateNewCharacterResult] = HandleCreateNewCharacterResult,
                 [LoginPacketType.DeleteCharacterResult] = HandleDeleteCharacterResult,
@@ -328,8 +328,10 @@ namespace HaCreator.MapSimulator.Managers
                 "ondeletecharacterresult" => Assign(LoginPacketType.DeleteCharacterResult, out packetType),
                 "enablespw" => Assign(LoginPacketType.EnableSpwResult, out packetType),
                 "onenablespwresult" => Assign(LoginPacketType.EnableSpwResult, out packetType),
-                "viewallchar" or "viewallcharacters" or "vac" => Assign(LoginPacketType.ViewAllCharResult, out packetType),
+                "viewallchar" or "viewallcharacters" => Assign(LoginPacketType.ViewAllCharResult, out packetType),
                 "onviewallcharresult" => Assign(LoginPacketType.ViewAllCharResult, out packetType),
+                "vac" or "selectcharacterbyvac" or "selectcharbyvac" => Assign(LoginPacketType.SelectCharacterByVacResult, out packetType),
+                "onselectcharacterbyvacresult" => Assign(LoginPacketType.SelectCharacterByVacResult, out packetType),
                 "recommendworld" => Assign(LoginPacketType.RecommendWorldMessage, out packetType),
                 "onrecommendworldmessage" => Assign(LoginPacketType.RecommendWorldMessage, out packetType),
                 "latestworld" or "latestconnectedworld" => Assign(LoginPacketType.LatestConnectedWorld, out packetType),
@@ -408,6 +410,13 @@ namespace HaCreator.MapSimulator.Managers
             CharacterSelectReady = true;
             ScheduleStepChange(LoginStep.ViewAllCharacters, currentTickCount, DefaultStepChangeDelayMs, "ViewAllCharResult");
             LastEventSummary = "Received view-all-character data and scheduled the expanded roster step.";
+        }
+
+        private void HandleSelectCharacterByVacResult(int currentTickCount)
+        {
+            FieldEntryRequested = true;
+            ScheduleStepChange(LoginStep.EnteringField, currentTickCount, 0, "SelectCharacterByVacResult");
+            Update(currentTickCount);
         }
 
         private void HandleCheckDuplicatedIdResult(int currentTickCount)

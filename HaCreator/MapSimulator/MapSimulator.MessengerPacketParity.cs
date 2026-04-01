@@ -95,17 +95,17 @@ namespace HaCreator.MapSimulator
         {
             if (args.Length < 3)
             {
-                return ChatCommandHandler.CommandResult.Error("Usage: /messenger packetraw <invite|accept|reject|leave|room|whisper|member> <hex bytes>");
+                return ChatCommandHandler.CommandResult.Error("Usage: /messenger packetraw <invite|accept|reject|leave|room|whisper|member|blocked|avatar|enter|inviteresult|migrated|selfenterresult> <hex bytes>");
             }
 
             if (!TryParseMessengerPacketType(args[1], out MessengerPacketType packetType))
             {
-                return ChatCommandHandler.CommandResult.Error("Usage: /messenger packetraw <invite|accept|reject|leave|room|whisper|member> <hex bytes>");
+                return ChatCommandHandler.CommandResult.Error("Usage: /messenger packetraw <invite|accept|reject|leave|room|whisper|member|blocked|avatar|enter|inviteresult|migrated|selfenterresult> <hex bytes>");
             }
 
             if (!TryDecodeHexBytes(string.Join(string.Empty, args.Skip(2)), out byte[] payload))
             {
-                return ChatCommandHandler.CommandResult.Error("Usage: /messenger packetraw <invite|accept|reject|leave|room|whisper|member> <hex bytes>");
+                return ChatCommandHandler.CommandResult.Error("Usage: /messenger packetraw <invite|accept|reject|leave|room|whisper|member|blocked|avatar|enter|inviteresult|migrated|selfenterresult> <hex bytes>");
             }
 
             return ChatCommandHandler.CommandResult.Ok(_messengerRuntime.ApplyPacketPayload(packetType, payload));
@@ -193,6 +193,26 @@ namespace HaCreator.MapSimulator
                 case "presence":
                     packetType = MessengerPacketType.MemberInfo;
                     return true;
+                case "blocked":
+                    packetType = MessengerPacketType.Blocked;
+                    return true;
+                case "avatar":
+                    packetType = MessengerPacketType.Avatar;
+                    return true;
+                case "enter":
+                    packetType = MessengerPacketType.Enter;
+                    return true;
+                case "inviteresult":
+                case "result":
+                    packetType = MessengerPacketType.InviteResult;
+                    return true;
+                case "migrated":
+                    packetType = MessengerPacketType.Migrated;
+                    return true;
+                case "selfenterresult":
+                case "selfenter":
+                    packetType = MessengerPacketType.SelfEnterResult;
+                    return true;
                 default:
                     return false;
             }
@@ -200,7 +220,7 @@ namespace HaCreator.MapSimulator
 
         private static string GetMessengerPacketUsage()
         {
-            return "Usage: /messenger packet <seed|clear|remove <name>|upsert <name>|<online|offline>|<channel>|<level>|<job>|<location>|<status>|invite <name>|accept [name]|reject [name]|leave <name>|room <name> <message>|whisper <name> <message>|member <payloadhex=..|payloadb64=..>|<invite|accept|reject|leave|room|whisper|member> <payloadhex=..|payloadb64=..>>";
+            return "Usage: /messenger packet <seed|clear|remove <name>|upsert <name>|<online|offline>|<channel>|<level>|<job>|<location>|<status>|invite <name>|accept [name]|reject [name]|leave <name>|room <name> <message>|whisper <name> <message>|member <payloadhex=..|payloadb64=..>|<invite|accept|reject|leave|room|whisper|member|blocked|avatar|enter|inviteresult|migrated|selfenterresult> <payloadhex=..|payloadb64=..>>";
         }
     }
 }

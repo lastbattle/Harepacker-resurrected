@@ -84,6 +84,10 @@ namespace HaCreator.MapSimulator.Managers
             public bool IsTimeLimited { get; set; }
             public string PotentialTierText { get; set; }
             public List<string> PotentialLines { get; set; } = new();
+            public bool HasGrowthInfo { get; set; }
+            public int GrowthLevel { get; set; }
+            public int GrowthMaxLevel { get; set; }
+            public int GrowthExpPercent { get; set; }
             public int AttackSpeed { get; set; } = 6;
             public string WeaponType { get; set; }
         }
@@ -407,6 +411,10 @@ namespace HaCreator.MapSimulator.Managers
                 IsTimeLimited = tooltipPart.IsTimeLimited,
                 PotentialTierText = tooltipPart.PotentialTierText,
                 PotentialLines = tooltipPart.PotentialLines != null ? new List<string>(tooltipPart.PotentialLines) : new List<string>(),
+                HasGrowthInfo = tooltipPart.HasGrowthInfo,
+                GrowthLevel = tooltipPart.GrowthLevel,
+                GrowthMaxLevel = tooltipPart.GrowthMaxLevel,
+                GrowthExpPercent = tooltipPart.GrowthExpPercent,
                 AttackSpeed = tooltipPart is WeaponPart weapon ? weapon.AttackSpeed : 6,
                 WeaponType = tooltipPart is WeaponPart weaponPart ? weaponPart.WeaponType : null
             };
@@ -459,6 +467,10 @@ namespace HaCreator.MapSimulator.Managers
             tooltipPart.IsTimeLimited = persisted.IsTimeLimited;
             tooltipPart.PotentialTierText = persisted.PotentialTierText;
             tooltipPart.PotentialLines = persisted.PotentialLines != null ? new List<string>(persisted.PotentialLines) : new List<string>();
+            tooltipPart.HasGrowthInfo = persisted.HasGrowthInfo;
+            tooltipPart.GrowthLevel = persisted.GrowthLevel;
+            tooltipPart.GrowthMaxLevel = persisted.GrowthMaxLevel;
+            tooltipPart.GrowthExpPercent = persisted.GrowthExpPercent;
 
             if (tooltipPart is WeaponPart weaponPart)
             {

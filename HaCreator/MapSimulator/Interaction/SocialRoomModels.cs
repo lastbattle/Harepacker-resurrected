@@ -240,6 +240,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const byte TradingRoomPutItemPacketType = 15;
         private const byte TradingRoomPutMoneyPacketType = 16;
         private const byte TradingRoomTradePacketType = 17;
+        private const byte TradingRoomItemCrcPacketType = 20;
         private const byte TradingRoomExceedLimitPacketType = 21;
         private const byte PersonalShopBuyResultPacketType = 24;
         private const byte PersonalShopBasePacketType = 25;
@@ -261,6 +262,9 @@ namespace HaCreator.MapSimulator.Interaction
         private const byte OmokTimeOverPacketType = 63;
         private const byte OmokPutStonePacketType = 64;
         private const byte OmokPutStoneErrorPacketType = 65;
+        private const ushort EmployeeEnterFieldOpcode = 319;
+        private const ushort EmployeeLeaveFieldOpcode = 320;
+        private const ushort EmployeeMiniRoomBalloonOpcode = 321;
 
         public sealed class SocialRoomRemoteInventoryEntry
         {
@@ -309,6 +313,8 @@ namespace HaCreator.MapSimulator.Interaction
         }
 
         private readonly record struct PacketOwnedTradeItem(byte SlotType, int ItemId, int Quantity, InventoryType InventoryType);
+        private readonly record struct OmokMoveHistoryEntry(int X, int Y, int StoneValue, int SeatIndex);
+        private readonly record struct TradeVerificationEntry(int ItemId, uint Checksum);
 
         private readonly List<SocialRoomOccupant> _occupants;
         private readonly List<SocialRoomItemEntry> _items;
@@ -322,6 +328,9 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly List<SocialRoomItemEntry> _defaultItems;
         private readonly List<SocialRoomOccupant> _defaultOccupants;
         private readonly List<SocialRoomRemoteInventoryEntry> _defaultRemoteInventoryEntries;
+        private readonly List<OmokMoveHistoryEntry> _miniRoomOmokMoveHistory;
+        private readonly List<TradeVerificationEntry> _tradeLocalVerificationEntries;
+        private readonly List<TradeVerificationEntry> _tradeRemoteVerificationEntries;
         private readonly SocialRoomRuntimeSnapshot _defaultSnapshot;
         private readonly int[] _miniRoomOmokBoard;
         private int _miniRoomModeIndex;
@@ -341,6 +350,9 @@ namespace HaCreator.MapSimulator.Interaction
         private bool _tradeRemoteLocked;
         private bool _tradeLocalAccepted;
         private bool _tradeRemoteAccepted;
+        private bool _tradeVerificationPending;
+        private bool _tradeLocalVerificationReady;
+        private bool _tradeRemoteVerificationReady;
         private DateTime? _entrustedPermitExpiresAtUtc;
         private int _employeeTemplateId;
         private bool _employeeUseOwnerAnchor = true;
@@ -351,6 +363,7 @@ namespace HaCreator.MapSimulator.Interaction
         private bool _employeeHasWorldPosition;
         private bool? _employeeFlip;
         private bool _employeeHasPacketData;
+        private bool _employeePacketActorHidden;
         private int _employeePacketEmployerId;
         private int _employeePacketFootholdId;
         private string _employeePacketNameTag = string.Empty;
@@ -403,6 +416,9 @@ namespace HaCreator.MapSimulator.Interaction
             _defaultOccupants = occupants?.Select(occupant => new SocialRoomOccupant(occupant.Name, occupant.Role, occupant.Detail, occupant.IsReady, occupant.AvatarBuild)).ToList()
                 ?? new List<SocialRoomOccupant>();
             _defaultRemoteInventoryEntries = new List<SocialRoomRemoteInventoryEntry>();
+            _miniRoomOmokMoveHistory = new List<OmokMoveHistoryEntry>();
+            _tradeLocalVerificationEntries = new List<TradeVerificationEntry>();
+            _tradeRemoteVerificationEntries = new List<TradeVerificationEntry>();
             _miniRoomOmokBoard = new int[MiniRoomOmokBoardSize * MiniRoomOmokBoardSize];
             _miniRoomOmokCurrentTurnIndex = 0;
             _miniRoomOmokWinnerIndex = -1;
@@ -503,12 +519,38 @@ namespace HaCreator.MapSimulator.Interaction
                 MiniRoomOmokGuestStoneValue = _miniRoomOmokGuestStoneValue,
                 MiniRoomOmokTieRequested = _miniRoomOmokTieRequested,
                 MiniRoomOmokBoard = _miniRoomOmokBoard.ToList(),
+                MiniRoomOmokMoveHistory = _miniRoomOmokMoveHistory
+                    .Select(move => new SocialRoomOmokMoveSnapshot
+                    {
+                        X = move.X,
+                        Y = move.Y,
+                        StoneValue = move.StoneValue,
+                        SeatIndex = move.SeatIndex
+                    })
+                    .ToList(),
                 TradeLocalOfferMeso = _tradeLocalOfferMeso,
                 TradeRemoteOfferMeso = _tradeRemoteOfferMeso,
                 TradeLocalLocked = _tradeLocalLocked,
                 TradeRemoteLocked = _tradeRemoteLocked,
                 TradeLocalAccepted = _tradeLocalAccepted,
                 TradeRemoteAccepted = _tradeRemoteAccepted,
+                TradeVerificationPending = _tradeVerificationPending,
+                TradeLocalVerificationReady = _tradeLocalVerificationReady,
+                TradeRemoteVerificationReady = _tradeRemoteVerificationReady,
+                TradeLocalVerificationEntries = _tradeLocalVerificationEntries
+                    .Select(entry => new SocialRoomTradeVerificationEntrySnapshot
+                    {
+                        ItemId = entry.ItemId,
+                        Checksum = entry.Checksum
+                    })
+                    .ToList(),
+                TradeRemoteVerificationEntries = _tradeRemoteVerificationEntries
+                    .Select(entry => new SocialRoomTradeVerificationEntrySnapshot
+                    {
+                        ItemId = entry.ItemId,
+                        Checksum = entry.Checksum
+                    })
+                    .ToList(),
                 EntrustedPermitExpiresAtUtc = _entrustedPermitExpiresAtUtc,
                 EmployeeTemplateId = _employeeTemplateId,
                 EmployeeUseOwnerAnchor = _employeeUseOwnerAnchor,
@@ -519,6 +561,7 @@ namespace HaCreator.MapSimulator.Interaction
                 EmployeeHasWorldPosition = _employeeHasWorldPosition,
                 EmployeeFlip = _employeeFlip,
                 EmployeeHasPacketData = _employeeHasPacketData,
+                EmployeePacketActorHidden = _employeePacketActorHidden,
                 EmployeePacketEmployerId = _employeePacketEmployerId,
                 EmployeePacketFootholdId = _employeePacketFootholdId,
                 EmployeePacketNameTag = _employeePacketNameTag,
@@ -612,6 +655,9 @@ namespace HaCreator.MapSimulator.Interaction
                 _tradeRemoteLocked = source?.TradeRemoteLocked ?? _defaultSnapshot.TradeRemoteLocked;
                 _tradeLocalAccepted = source?.TradeLocalAccepted ?? _defaultSnapshot.TradeLocalAccepted;
                 _tradeRemoteAccepted = source?.TradeRemoteAccepted ?? _defaultSnapshot.TradeRemoteAccepted;
+                _tradeVerificationPending = source?.TradeVerificationPending ?? _defaultSnapshot.TradeVerificationPending;
+                _tradeLocalVerificationReady = source?.TradeLocalVerificationReady ?? _defaultSnapshot.TradeLocalVerificationReady;
+                _tradeRemoteVerificationReady = source?.TradeRemoteVerificationReady ?? _defaultSnapshot.TradeRemoteVerificationReady;
                 _entrustedPermitExpiresAtUtc = source?.EntrustedPermitExpiresAtUtc ?? _defaultSnapshot.EntrustedPermitExpiresAtUtc;
                 _employeeTemplateId = Math.Max(0, source?.EmployeeTemplateId ?? _defaultSnapshot.EmployeeTemplateId);
                 _employeeUseOwnerAnchor = source?.EmployeeUseOwnerAnchor ?? _defaultSnapshot.EmployeeUseOwnerAnchor;
@@ -622,6 +668,7 @@ namespace HaCreator.MapSimulator.Interaction
                 _employeeHasWorldPosition = source?.EmployeeHasWorldPosition ?? _defaultSnapshot.EmployeeHasWorldPosition;
                 _employeeFlip = source?.EmployeeFlip ?? _defaultSnapshot.EmployeeFlip;
                 _employeeHasPacketData = source?.EmployeeHasPacketData ?? _defaultSnapshot.EmployeeHasPacketData;
+                _employeePacketActorHidden = source?.EmployeePacketActorHidden ?? _defaultSnapshot.EmployeePacketActorHidden;
                 _employeePacketEmployerId = source?.EmployeePacketEmployerId ?? _defaultSnapshot.EmployeePacketEmployerId;
                 _employeePacketFootholdId = source?.EmployeePacketFootholdId ?? _defaultSnapshot.EmployeePacketFootholdId;
                 _employeePacketNameTag = source?.EmployeePacketNameTag ?? _defaultSnapshot.EmployeePacketNameTag ?? string.Empty;
@@ -687,6 +734,42 @@ namespace HaCreator.MapSimulator.Interaction
                     ?? new int[_miniRoomOmokBoard.Length];
                 Array.Copy(boardSource, _miniRoomOmokBoard, _miniRoomOmokBoard.Length);
 
+                _miniRoomOmokMoveHistory.Clear();
+                IEnumerable<SocialRoomOmokMoveSnapshot> moveHistory = source?.MiniRoomOmokMoveHistory?.Count > 0
+                    ? source.MiniRoomOmokMoveHistory
+                    : _defaultSnapshot.MiniRoomOmokMoveHistory;
+                foreach (SocialRoomOmokMoveSnapshot move in moveHistory ?? Enumerable.Empty<SocialRoomOmokMoveSnapshot>())
+                {
+                    if (!IsValidOmokCoordinate(move?.X ?? -1, move?.Y ?? -1))
+                    {
+                        continue;
+                    }
+
+                    _miniRoomOmokMoveHistory.Add(new OmokMoveHistoryEntry(
+                        move.X,
+                        move.Y,
+                        NormalizeOmokStoneValue(move.StoneValue, fallback: ResolveOmokStoneValueForSeat(move.SeatIndex)),
+                        Math.Clamp(move.SeatIndex, 0, 1)));
+                }
+
+                _tradeLocalVerificationEntries.Clear();
+                foreach (SocialRoomTradeVerificationEntrySnapshot entry in source?.TradeLocalVerificationEntries ?? Enumerable.Empty<SocialRoomTradeVerificationEntrySnapshot>())
+                {
+                    if (entry?.ItemId > 0)
+                    {
+                        _tradeLocalVerificationEntries.Add(new TradeVerificationEntry(entry.ItemId, entry.Checksum));
+                    }
+                }
+
+                _tradeRemoteVerificationEntries.Clear();
+                foreach (SocialRoomTradeVerificationEntrySnapshot entry in source?.TradeRemoteVerificationEntries ?? Enumerable.Empty<SocialRoomTradeVerificationEntrySnapshot>())
+                {
+                    if (entry?.ItemId > 0)
+                    {
+                        _tradeRemoteVerificationEntries.Add(new TradeVerificationEntry(entry.ItemId, entry.Checksum));
+                    }
+                }
+
                 _remoteInventoryEntries.Clear();
                 IEnumerable<SocialRoomRemoteInventoryEntrySnapshot> remoteEntries = source?.RemoteInventoryEntries?.Count > 0
                     ? source.RemoteInventoryEntries
@@ -722,7 +805,7 @@ namespace HaCreator.MapSimulator.Interaction
                 SocialRoomKind.MiniRoom => $"{RoomTitle}: state={RoomState}, mode={ModeName}, wager={_miniRoomWagerAmount:N0}, occupants={_occupants.Count}/{Capacity}, omokTurn={ResolveOmokTurnName()}, winner={ResolveOmokWinnerName()}",
                 SocialRoomKind.PersonalShop => $"{RoomTitle}: state={RoomState}, listed={_items.Count}, savedVisitors={_savedVisitors.Count}, blacklist={_blockedVisitors.Count}, ledger={MesoAmount:N0}, employee={DescribeEmployeeState()}, packet={_lastPacketOwnerSummary}",
                 SocialRoomKind.EntrustedShop => $"{RoomTitle}: state={RoomState}, listed={_items.Count}, ledger={MesoAmount:N0}, permit={FormatPermitStatus(DateTime.UtcNow)}, employee={DescribeEmployeeState()}, packet={_lastPacketOwnerSummary}",
-                SocialRoomKind.TradingRoom => $"{RoomTitle}: state={RoomState}, localMeso={MesoAmount:N0}, remoteMeso={_tradeRemoteOfferMeso:N0}, remoteWallet={_remoteInventoryMeso:N0}, remoteItems={_remoteInventoryEntries.Sum(entry => entry.Quantity)}, lock={FormatTradePartyState(_tradeLocalLocked, _tradeRemoteLocked)}, accept={FormatTradePartyState(_tradeLocalAccepted, _tradeRemoteAccepted)}, escrowRows={_inventoryEscrow.Count}",
+                SocialRoomKind.TradingRoom => $"{RoomTitle}: state={RoomState}, localMeso={MesoAmount:N0}, remoteMeso={_tradeRemoteOfferMeso:N0}, remoteWallet={_remoteInventoryMeso:N0}, remoteItems={_remoteInventoryEntries.Sum(entry => entry.Quantity)}, lock={FormatTradePartyState(_tradeLocalLocked, _tradeRemoteLocked)}, accept={FormatTradePartyState(_tradeLocalAccepted, _tradeRemoteAccepted)}, crc={DescribeTradeVerificationStatus()}, escrowRows={_inventoryEscrow.Count}",
                 _ => RoomState
             };
         }
@@ -750,6 +833,12 @@ namespace HaCreator.MapSimulator.Interaction
         public SocialRoomFieldActorSnapshot GetFieldActorSnapshot(DateTime utcNow)
         {
             RefreshTimedState(utcNow);
+
+            if (_employeePacketActorHidden
+                && (Kind == SocialRoomKind.PersonalShop || Kind == SocialRoomKind.EntrustedShop))
+            {
+                return null;
+            }
 
             if (Kind == SocialRoomKind.PersonalShop)
             {
@@ -960,6 +1049,11 @@ namespace HaCreator.MapSimulator.Interaction
         public bool TryDispatchPacketBytes(byte[] packetBytes, int tickCount, out string message)
         {
             message = null;
+            if (TryExtractEmployeePoolPacket(packetBytes, out ushort employeeOpcode, out byte[] employeePayload))
+            {
+                return TryDispatchEmployeePoolPacket(employeeOpcode, employeePayload, tickCount, out message);
+            }
+
             byte[] payload = NormalizePacketPayload(packetBytes);
             if (payload.Length == 0)
             {
@@ -985,6 +1079,32 @@ namespace HaCreator.MapSimulator.Interaction
                 message = $"Social-room packet ended unexpectedly: {BitConverter.ToString(payload)}";
                 return false;
             }
+        }
+
+        private bool TryDispatchEmployeePoolPacket(ushort opcode, byte[] payload, int tickCount, out string message)
+        {
+            bool handled;
+            string detail;
+            switch (opcode)
+            {
+                case EmployeeEnterFieldOpcode:
+                    handled = TryApplyEmployeeEnterFieldPacket(payload, out detail);
+                    break;
+                case EmployeeLeaveFieldOpcode:
+                    handled = TryApplyEmployeeLeaveFieldPacket(payload, out detail);
+                    break;
+                case EmployeeMiniRoomBalloonOpcode:
+                    handled = TryApplyEmployeeMiniRoomBalloonPacket(payload, out detail);
+                    break;
+                default:
+                    detail = $"Employee-pool opcode {opcode} is not modeled for this room.";
+                    handled = false;
+                    break;
+            }
+
+            TrackPacketOwnerSummary("CEmployeePool::OnPacket", opcode, tickCount, handled, detail);
+            message = detail;
+            return handled;
         }
 
         public bool TryDispatchSyntheticDialogPacket(byte packetType, byte[] payload, int tickCount, out string message)
@@ -1041,6 +1161,7 @@ namespace HaCreator.MapSimulator.Interaction
                 }
 
                 _employeeHasPacketData = true;
+                _employeePacketActorHidden = false;
                 _employeeTemplateId = Math.Max(0, packetTemplateId);
                 _employeeUseOwnerAnchor = false;
                 _employeeHasWorldPosition = true;
@@ -1059,6 +1180,95 @@ namespace HaCreator.MapSimulator.Interaction
             catch (EndOfStreamException)
             {
                 message = $"Employee field packet ended unexpectedly: {BitConverter.ToString(packetBytes)}";
+                return false;
+            }
+        }
+
+        private bool TryApplyEmployeeLeaveFieldPacket(byte[] packetBytes, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.PersonalShop && Kind != SocialRoomKind.EntrustedShop)
+            {
+                message = "Employee leave-field packets only apply to personal-shop and entrusted-shop rooms.";
+                return false;
+            }
+
+            if (packetBytes == null || packetBytes.Length == 0)
+            {
+                message = "Employee leave-field packet payload is empty.";
+                return false;
+            }
+
+            try
+            {
+                PacketReader reader = new(packetBytes);
+                _employeePacketEmployerId = reader.ReadInt();
+                _employeePacketActorHidden = true;
+                string displayName = string.IsNullOrWhiteSpace(_employeePacketNameTag) ? OwnerName : _employeePacketNameTag;
+                StatusMessage = $"Employee leave-field packet removed {displayName} (employer={_employeePacketEmployerId}) from the field seam.";
+                PersistState();
+                message = StatusMessage;
+                return true;
+            }
+            catch (EndOfStreamException)
+            {
+                message = $"Employee leave-field packet ended unexpectedly: {BitConverter.ToString(packetBytes)}";
+                return false;
+            }
+        }
+
+        private bool TryApplyEmployeeMiniRoomBalloonPacket(byte[] packetBytes, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.PersonalShop && Kind != SocialRoomKind.EntrustedShop)
+            {
+                message = "Employee mini-room balloon packets only apply to personal-shop and entrusted-shop rooms.";
+                return false;
+            }
+
+            if (packetBytes == null || packetBytes.Length == 0)
+            {
+                message = "Employee mini-room balloon packet payload is empty.";
+                return false;
+            }
+
+            try
+            {
+                PacketReader reader = new(packetBytes);
+                _employeePacketEmployerId = reader.ReadInt();
+                _employeePacketMiniRoomType = reader.ReadByte();
+                _employeePacketActorHidden = false;
+
+                if (_employeePacketMiniRoomType != 0)
+                {
+                    _employeePacketMiniRoomSerial = reader.ReadInt();
+                    _employeePacketBalloonTitle = NormalizePacketText(reader.ReadMapleString());
+                    _employeePacketBalloonByte0 = reader.ReadByte();
+                    _employeePacketBalloonByte1 = reader.ReadByte();
+                    _employeePacketBalloonByte2 = reader.ReadByte();
+                }
+                else
+                {
+                    _employeePacketMiniRoomSerial = 0;
+                    _employeePacketBalloonTitle = string.Empty;
+                    _employeePacketBalloonByte0 = 0;
+                    _employeePacketBalloonByte1 = 0;
+                    _employeePacketBalloonByte2 = 0;
+                }
+
+                _employeeHasPacketData = true;
+                string displayBalloon = string.IsNullOrWhiteSpace(_employeePacketBalloonTitle)
+                    ? "cleared"
+                    : _employeePacketBalloonTitle;
+                StatusMessage =
+                    $"Applied employee mini-room balloon packet: employer={_employeePacketEmployerId}, type={_employeePacketMiniRoomType}, balloon={displayBalloon}.";
+                PersistState();
+                message = StatusMessage;
+                return true;
+            }
+            catch (EndOfStreamException)
+            {
+                message = $"Employee mini-room balloon packet ended unexpectedly: {BitConverter.ToString(packetBytes)}";
                 return false;
             }
         }
@@ -1313,6 +1523,8 @@ namespace HaCreator.MapSimulator.Interaction
                     ApplyTradingRoomTradePacket();
                     message = StatusMessage;
                     return true;
+                case TradingRoomItemCrcPacketType:
+                    return TryApplyTradingRoomCrcPacket(reader, out message);
                 case TradingRoomExceedLimitPacketType:
                     ApplyTradingRoomExceedLimitPacket();
                     message = StatusMessage;
@@ -1346,19 +1558,21 @@ namespace HaCreator.MapSimulator.Interaction
 
         private void ApplyTradingRoomTradePacket()
         {
-            bool localAlreadyLocked = _tradeLocalLocked;
             _tradeRemoteLocked = true;
-            if (localAlreadyLocked)
+            _tradeRemoteAccepted = false;
+            _tradeVerificationPending = _tradeLocalLocked;
+            if (_tradeVerificationPending)
             {
-                _tradeLocalAccepted = true;
-                _tradeRemoteAccepted = true;
-                RoomState = "Awaiting settlement";
-                StatusMessage = "Trading-room packet requested CRC settlement for a fully locked trade.";
+                _tradeLocalAccepted = false;
+                _tradeLocalVerificationEntries.Clear();
+                _tradeLocalVerificationEntries.AddRange(BuildTradeVerificationEntries(isLocalParty: true));
+                _tradeLocalVerificationReady = _tradeLocalVerificationEntries.Count > 0;
+                RoomState = "CRC verification";
+                StatusMessage = $"Trading-room packet requested CRC verification. Prepared {_tradeLocalVerificationEntries.Count} local item checksum entr{(_tradeLocalVerificationEntries.Count == 1 ? "y" : "ies")} for subtype {TradingRoomItemCrcPacketType}.";
             }
             else
             {
                 _tradeLocalAccepted = false;
-                _tradeRemoteAccepted = false;
                 RoomState = "Negotiating";
                 StatusMessage = $"{ResolveRemoteTraderName()} locked the trade and requested CRC verification.";
             }
@@ -1367,11 +1581,60 @@ namespace HaCreator.MapSimulator.Interaction
             PersistState();
         }
 
+        private bool TryApplyTradingRoomCrcPacket(PacketReader reader, out string message)
+        {
+            message = null;
+            int count = reader.ReadByte();
+            if (count < 0)
+            {
+                message = "Trading-room CRC packet contained an invalid row count.";
+                return false;
+            }
+
+            List<TradeVerificationEntry> entries = new List<TradeVerificationEntry>(count);
+            for (int i = 0; i < count; i++)
+            {
+                int itemId = reader.ReadInt();
+                uint checksum = unchecked((uint)reader.ReadInt());
+                if (itemId <= 0)
+                {
+                    message = $"Trading-room CRC packet row {i} contained an invalid item id.";
+                    return false;
+                }
+
+                entries.Add(new TradeVerificationEntry(itemId, checksum));
+            }
+
+            _tradeRemoteVerificationEntries.Clear();
+            _tradeRemoteVerificationEntries.AddRange(entries);
+            _tradeRemoteVerificationReady = entries.Count > 0;
+            if (_tradeLocalLocked && _tradeRemoteLocked && _tradeLocalVerificationEntries.Count == 0)
+            {
+                _tradeLocalVerificationEntries.AddRange(BuildTradeVerificationEntries(isLocalParty: true));
+                _tradeLocalVerificationReady = _tradeLocalVerificationEntries.Count > 0;
+            }
+
+            _tradeVerificationPending = _tradeLocalVerificationEntries.Count == 0 || _tradeRemoteVerificationEntries.Count == 0;
+            RoomState = _tradeVerificationPending ? "CRC verification" : "Locked";
+            RefreshTradeOccupantsAndRows();
+            StatusMessage = entries.Count > 0
+                ? $"Trading-room CRC packet synced {entries.Count} remote checksum entr{(entries.Count == 1 ? "y" : "ies")}."
+                : "Trading-room CRC packet cleared the remote checksum list.";
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
         private void ApplyTradingRoomExceedLimitPacket()
         {
             _tradeLocalLocked = false;
             _tradeLocalAccepted = false;
             _tradeRemoteAccepted = false;
+            _tradeVerificationPending = false;
+            _tradeLocalVerificationReady = false;
+            _tradeRemoteVerificationReady = false;
+            _tradeLocalVerificationEntries.Clear();
+            _tradeRemoteVerificationEntries.Clear();
             PersistState();
             RoomState = "Negotiating";
             RefreshTradeOccupantsAndRows();
@@ -1457,7 +1720,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             item = default;
             error = null;
-            if (payload.Length < 5)
+            if (payload.Length < 1)
             {
                 error = "Trading-room item payload is too short to contain a GW_ItemSlotBase body.";
                 return false;
@@ -1470,9 +1733,9 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            if (!TryFindPacketOwnedItemId(payload.Slice(1), out int itemId, out int itemIdOffset))
+            if (!TryDecodePacketOwnedItemBody(payload.Slice(1), slotType, out int itemId, out int quantity))
             {
-                error = "Trading-room item payload did not contain a recognizable MapleStory item id.";
+                error = "Trading-room item payload did not contain a recognizable MapleStory item row.";
                 return false;
             }
 
@@ -1483,11 +1746,39 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            int quantity = slotType == 1
-                ? 1
-                : ResolvePacketOwnedTradeQuantity(payload.Slice(1), itemIdOffset);
             item = new PacketOwnedTradeItem(slotType, itemId, quantity, inventoryType);
             return true;
+        }
+
+        private static bool TryDecodePacketOwnedItemBody(ReadOnlySpan<byte> payload, byte slotType, out int itemId, out int quantity)
+        {
+            itemId = 0;
+            quantity = 1;
+            if (payload.Length < sizeof(long) + sizeof(int))
+            {
+                return false;
+            }
+
+            int preferredItemIdOffset = sizeof(long);
+            int candidateItemId = BinaryPrimitives.ReadInt32LittleEndian(payload.Slice(preferredItemIdOffset, sizeof(int)));
+            if (candidateItemId > 0 && InventoryItemMetadataResolver.ResolveInventoryType(candidateItemId) != InventoryType.NONE)
+            {
+                itemId = candidateItemId;
+                quantity = slotType == 2 && payload.Length >= preferredItemIdOffset + sizeof(int) + sizeof(short)
+                    ? Math.Max((short)1, BinaryPrimitives.ReadInt16LittleEndian(payload.Slice(preferredItemIdOffset + sizeof(int), sizeof(short))))
+                    : 1;
+                return true;
+            }
+
+            if (!TryFindPacketOwnedItemId(payload, out itemId, out int itemIdOffset))
+            {
+                return false;
+            }
+
+            quantity = slotType == 2
+                ? ResolvePacketOwnedTradeQuantity(payload, itemIdOffset)
+                : 1;
+            return itemId > 0;
         }
 
         private static bool TryFindPacketOwnedItemId(ReadOnlySpan<byte> payload, out int itemId, out int itemIdOffset)
@@ -1518,7 +1809,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static IEnumerable<int> EnumerateLikelyPacketItemIdOffsets(int payloadLength)
         {
-            int[] preferredOffsets = { 8, 0, 4, 12, 16, 20, 24, 28, 32 };
+            int[] preferredOffsets = { 8, 4, 12, 0, 16, 20, 24, 28, 32 };
             foreach (int offset in preferredOffsets)
             {
                 if (offset + sizeof(int) <= payloadLength)
@@ -1541,10 +1832,9 @@ namespace HaCreator.MapSimulator.Interaction
             int[] candidateOffsets =
             {
                 itemIdOffset + sizeof(int),
+                itemIdOffset + sizeof(int) + 1,
                 itemIdOffset + sizeof(int) + sizeof(short),
                 itemIdOffset - sizeof(short),
-                itemIdOffset + 8,
-                0
             };
 
             foreach (int offset in candidateOffsets)
@@ -1554,15 +1844,6 @@ namespace HaCreator.MapSimulator.Interaction
                     continue;
                 }
 
-                short quantity = BinaryPrimitives.ReadInt16LittleEndian(payload.Slice(offset, sizeof(short)));
-                if (quantity > 0 && quantity <= short.MaxValue)
-                {
-                    return quantity;
-                }
-            }
-
-            for (int offset = 0; offset + sizeof(short) <= payload.Length && offset <= 24; offset++)
-            {
                 short quantity = BinaryPrimitives.ReadInt16LittleEndian(payload.Slice(offset, sizeof(short)));
                 if (quantity > 0 && quantity <= short.MaxValue)
                 {
@@ -1601,7 +1882,7 @@ namespace HaCreator.MapSimulator.Interaction
             return false;
         }
 
-        private void TrackPacketOwnerSummary(string ownerName, byte packetType, int tickCount, bool handled, string detail)
+        private void TrackPacketOwnerSummary(string ownerName, int packetType, int tickCount, bool handled, string detail)
         {
             string result = handled ? "handled" : "rejected";
             string suffix = string.IsNullOrWhiteSpace(detail) ? string.Empty : $" | {detail}";
@@ -1798,6 +2079,7 @@ namespace HaCreator.MapSimulator.Interaction
             _miniRoomOmokLastMoveX = x;
             _miniRoomOmokLastMoveY = y;
             _miniRoomOmokTieRequested = false;
+            _miniRoomOmokMoveHistory.Add(new OmokMoveHistoryEntry(x, y, stoneValue, seatIndex));
             AddMiniRoomSpeakerMessage(ResolveMiniRoomSeatName(seatIndex), $"placed a {ResolveOmokStoneName(stoneValue)} stone at {x},{y}.", seatIndex == 0);
 
             if (HasFiveInRow(x, y, stoneValue))
@@ -1823,30 +2105,27 @@ namespace HaCreator.MapSimulator.Interaction
         private void ApplyOmokRetreatPacket(int removedStoneCount, int nextTurnSeat)
         {
             int remainingToRemove = Math.Max(0, removedStoneCount);
-            if (remainingToRemove > 0)
+            int removedByHistory = 0;
+            while (remainingToRemove > 0 && TryPopOmokMoveHistory(out OmokMoveHistoryEntry move))
             {
-                for (int y = MiniRoomOmokBoardSize - 1; y >= 0 && remainingToRemove > 0; y--)
-                {
-                    for (int x = MiniRoomOmokBoardSize - 1; x >= 0 && remainingToRemove > 0; x--)
-                    {
-                        int boardIndex = GetOmokBoardIndex(x, y);
-                        if (_miniRoomOmokBoard[boardIndex] == 0)
-                        {
-                            continue;
-                        }
+                int boardIndex = GetOmokBoardIndex(move.X, move.Y);
+                _miniRoomOmokBoard[boardIndex] = 0;
+                remainingToRemove--;
+                removedByHistory++;
+            }
 
-                        _miniRoomOmokBoard[boardIndex] = 0;
-                        remainingToRemove--;
-                    }
-                }
+            while (remainingToRemove > 0 && TryRemoveNewestOmokStoneFromBoardFallback())
+            {
+                remainingToRemove--;
             }
 
             _miniRoomOmokCurrentTurnIndex = Math.Clamp(nextTurnSeat, 0, 1);
             _miniRoomOmokWinnerIndex = -1;
             _miniRoomOmokTieRequested = false;
+            UpdateLastOmokMoveFromHistory();
             RoomState = "Omok in progress";
             StatusMessage = removedStoneCount > 0
-                ? $"Omok retreat packet removed {removedStoneCount} recent stone(s)."
+                ? $"Omok retreat packet removed {removedStoneCount} recent stone(s){(removedByHistory > 0 ? " from preserved stone history" : string.Empty)}."
                 : "Omok retreat packet resolved without removing stones.";
             SyncMiniRoomOmokPresentation();
             PersistState();
@@ -2029,6 +2308,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             int normalizedTraderIndex = Math.Clamp(traderIndex, 0, 1);
             int normalizedMeso = Math.Max(0, offeredMeso);
+            ClearTradeHandshake();
             if (normalizedTraderIndex == 0)
             {
                 _tradeLocalOfferMeso = normalizedMeso;
@@ -2307,6 +2587,7 @@ namespace HaCreator.MapSimulator.Interaction
             _miniRoomOmokLastMoveX = x;
             _miniRoomOmokLastMoveY = y;
             _miniRoomOmokTieRequested = false;
+            _miniRoomOmokMoveHistory.Add(new OmokMoveHistoryEntry(x, y, stoneValue, playerIndex));
 
             string playerName = ResolveMiniRoomSeatName(playerIndex);
             string stoneName = ResolveOmokStoneName(stoneValue);
@@ -3187,6 +3468,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             _tradeLocalAccepted = false;
             _tradeRemoteAccepted = false;
+            _tradeVerificationPending = _tradeLocalLocked && _tradeRemoteLocked && (_tradeLocalVerificationEntries.Count > 0 || _tradeRemoteVerificationEntries.Count > 0);
             RoomState = _tradeLocalLocked && _tradeRemoteLocked ? "Locked" : "Negotiating";
             RefreshTradeOccupantsAndRows();
             string actor = remoteParty ? ResolveRemoteTraderName() : OwnerName;
@@ -3214,6 +3496,12 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
+            if (_tradeVerificationPending)
+            {
+                message = "The trade is still waiting on CRC verification payloads.";
+                return false;
+            }
+
             if (remoteParty)
             {
                 _tradeRemoteAccepted = !_tradeRemoteAccepted;
@@ -3223,6 +3511,7 @@ namespace HaCreator.MapSimulator.Interaction
                 _tradeLocalAccepted = !_tradeLocalAccepted;
             }
 
+            _tradeVerificationPending = false;
             RoomState = _tradeLocalAccepted && _tradeRemoteAccepted ? "Awaiting settlement" : "Locked";
             RefreshTradeOccupantsAndRows();
             string actor = remoteParty ? ResolveRemoteTraderName() : OwnerName;
@@ -3255,6 +3544,11 @@ namespace HaCreator.MapSimulator.Interaction
             _tradeRemoteLocked = false;
             _tradeLocalAccepted = false;
             _tradeRemoteAccepted = false;
+            _tradeVerificationPending = false;
+            _tradeLocalVerificationReady = false;
+            _tradeRemoteVerificationReady = false;
+            _tradeLocalVerificationEntries.Clear();
+            _tradeRemoteVerificationEntries.Clear();
             RoomState = "Negotiating";
             StatusMessage = restoredRows > 0
                 ? $"Trade offer reset and {restoredRows} escrowed item entr{(restoredRows == 1 ? "y was" : "ies were")} returned to inventory."
@@ -3296,6 +3590,12 @@ namespace HaCreator.MapSimulator.Interaction
             if (!_tradeLocalAccepted || !_tradeRemoteAccepted)
             {
                 message = "Both traders must accept the locked trade before settlement.";
+                return false;
+            }
+
+            if (_tradeVerificationPending)
+            {
+                message = "The trade is still waiting on CRC verification payloads.";
                 return false;
             }
 
@@ -3346,6 +3646,11 @@ namespace HaCreator.MapSimulator.Interaction
             _tradeRemoteLocked = true;
             _tradeLocalAccepted = true;
             _tradeRemoteAccepted = true;
+            _tradeVerificationPending = false;
+            _tradeLocalVerificationReady = false;
+            _tradeRemoteVerificationReady = false;
+            _tradeLocalVerificationEntries.Clear();
+            _tradeRemoteVerificationEntries.Clear();
             MesoAmount = 0;
             RoomState = "Trade settled";
             RefreshTradeOccupantsAndRows();
@@ -3483,6 +3788,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _employeeTemplateId = normalizedTemplateId;
+            _employeePacketActorHidden = false;
             if (_employeeAnchorOffsetX == 0 && _employeeAnchorOffsetY == 0)
             {
                 _employeeAnchorOffsetX = Kind == SocialRoomKind.EntrustedShop ? 72 : 56;
@@ -3507,6 +3813,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             _employeeUseOwnerAnchor = true;
             _employeeHasWorldPosition = false;
+            _employeePacketActorHidden = false;
             _employeeAnchorOffsetX = offsetX;
             _employeeAnchorOffsetY = offsetY;
             StatusMessage = $"Employee anchor offset set to ({offsetX}, {offsetY}) relative to the owner.";
@@ -3526,6 +3833,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             _employeeUseOwnerAnchor = false;
             _employeeHasWorldPosition = true;
+            _employeePacketActorHidden = false;
             _employeeWorldX = worldX;
             _employeeWorldY = worldY;
             StatusMessage = $"Employee world placement set to ({worldX}, {worldY}).";
@@ -3544,6 +3852,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _employeeFlip = flip;
+            _employeePacketActorHidden = false;
             StatusMessage = flip.HasValue
                 ? $"Employee facing locked to {(flip.Value ? "left" : "right")}."
                 : "Employee facing returned to action-driven random selection.";
@@ -3566,6 +3875,7 @@ namespace HaCreator.MapSimulator.Interaction
             _employeeWorldX = 0;
             _employeeWorldY = 0;
             _employeeFlip = null;
+            _employeePacketActorHidden = false;
             StatusMessage = "Employee placement reset to the owner-anchored default.";
             PersistState();
         }
@@ -3860,6 +4170,11 @@ namespace HaCreator.MapSimulator.Interaction
             string placement = _employeeHasWorldPosition && !_employeeUseOwnerAnchor
                 ? $"world({_employeeWorldX},{_employeeWorldY})"
                 : $"owner({_employeeAnchorOffsetX},{_employeeAnchorOffsetY})";
+            if (_employeePacketActorHidden)
+            {
+                return $"{templateText}@hidden, pkt(employer={_employeePacketEmployerId})";
+            }
+
             if (!_employeeHasPacketData)
             {
                 return $"{templateText}@{placement}";
@@ -3938,6 +4253,11 @@ namespace HaCreator.MapSimulator.Interaction
             _tradeRemoteLocked = false;
             _tradeLocalAccepted = false;
             _tradeRemoteAccepted = false;
+            _tradeVerificationPending = false;
+            _tradeLocalVerificationReady = false;
+            _tradeRemoteVerificationReady = false;
+            _tradeLocalVerificationEntries.Clear();
+            _tradeRemoteVerificationEntries.Clear();
             RefreshTradeOccupantsAndRows();
         }
 
@@ -3972,9 +4292,14 @@ namespace HaCreator.MapSimulator.Interaction
             string stage = accepted
                 ? "Accepted"
                 : locked
-                    ? "Locked"
+                    ? _tradeVerificationPending
+                        ? "Verifying"
+                        : "Locked"
                     : "Reviewing";
-            return $"{stage} | {itemCount} item entr{(itemCount == 1 ? "y" : "ies")} | {meso:N0} mesos";
+            string verification = isLocal
+                ? DescribeTradeVerificationSide(_tradeLocalVerificationEntries, _tradeLocalVerificationReady)
+                : DescribeTradeVerificationSide(_tradeRemoteVerificationEntries, _tradeRemoteVerificationReady);
+            return $"{stage} | {itemCount} item entr{(itemCount == 1 ? "y" : "ies")} | {meso:N0} mesos | {verification}";
         }
 
         private string ResolveRemoteTraderName()
@@ -4045,10 +4370,118 @@ namespace HaCreator.MapSimulator.Interaction
         private void ResetOmokBoard()
         {
             Array.Clear(_miniRoomOmokBoard, 0, _miniRoomOmokBoard.Length);
+            _miniRoomOmokMoveHistory.Clear();
             _miniRoomOmokLastMoveX = -1;
             _miniRoomOmokLastMoveY = -1;
             _miniRoomOmokWinnerIndex = -1;
             _miniRoomOmokTieRequested = false;
+        }
+
+        private static bool IsValidOmokCoordinate(int x, int y)
+        {
+            return x >= 0 && x < MiniRoomOmokBoardSize && y >= 0 && y < MiniRoomOmokBoardSize;
+        }
+
+        private bool TryPopOmokMoveHistory(out OmokMoveHistoryEntry move)
+        {
+            if (_miniRoomOmokMoveHistory.Count > 0)
+            {
+                move = _miniRoomOmokMoveHistory[^1];
+                _miniRoomOmokMoveHistory.RemoveAt(_miniRoomOmokMoveHistory.Count - 1);
+                return true;
+            }
+
+            move = default;
+            return false;
+        }
+
+        private bool TryRemoveNewestOmokStoneFromBoardFallback()
+        {
+            for (int y = MiniRoomOmokBoardSize - 1; y >= 0; y--)
+            {
+                for (int x = MiniRoomOmokBoardSize - 1; x >= 0; x--)
+                {
+                    int boardIndex = GetOmokBoardIndex(x, y);
+                    if (_miniRoomOmokBoard[boardIndex] == 0)
+                    {
+                        continue;
+                    }
+
+                    _miniRoomOmokBoard[boardIndex] = 0;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private void UpdateLastOmokMoveFromHistory()
+        {
+            if (_miniRoomOmokMoveHistory.Count == 0)
+            {
+                _miniRoomOmokLastMoveX = -1;
+                _miniRoomOmokLastMoveY = -1;
+                return;
+            }
+
+            OmokMoveHistoryEntry lastMove = _miniRoomOmokMoveHistory[^1];
+            _miniRoomOmokLastMoveX = lastMove.X;
+            _miniRoomOmokLastMoveY = lastMove.Y;
+        }
+
+        private List<TradeVerificationEntry> BuildTradeVerificationEntries(bool isLocalParty)
+        {
+            string ownerName = isLocalParty ? OwnerName : ResolveRemoteTraderName();
+            List<TradeVerificationEntry> entries = new();
+            foreach (SocialRoomItemEntry item in _items.Where(entry => string.Equals(entry.OwnerName, ownerName, StringComparison.OrdinalIgnoreCase)))
+            {
+                int itemId = item.ItemId;
+                if (itemId <= 0)
+                {
+                    continue;
+                }
+
+                Span<byte> hashInput = stackalloc byte[sizeof(int) * 2];
+                BinaryPrimitives.WriteInt32LittleEndian(hashInput, itemId);
+                BinaryPrimitives.WriteInt32LittleEndian(hashInput[sizeof(int)..], Math.Max(1, item.Quantity));
+                entries.Add(new TradeVerificationEntry(itemId, ComputeTradeVerificationChecksum(hashInput)));
+            }
+
+            return entries;
+        }
+
+        private static uint ComputeTradeVerificationChecksum(ReadOnlySpan<byte> payload)
+        {
+            const uint offsetBasis = 2166136261;
+            const uint prime = 16777619;
+            uint hash = offsetBasis;
+            foreach (byte value in payload)
+            {
+                hash ^= value;
+                hash *= prime;
+            }
+
+            return hash;
+        }
+
+        private string DescribeTradeVerificationStatus()
+        {
+            if (_tradeLocalVerificationEntries.Count == 0 && _tradeRemoteVerificationEntries.Count == 0 && !_tradeVerificationPending)
+            {
+                return "idle";
+            }
+
+            return $"pending={_tradeVerificationPending.ToString().ToLowerInvariant()}, local={_tradeLocalVerificationEntries.Count}, remote={_tradeRemoteVerificationEntries.Count}";
+        }
+
+        private static string DescribeTradeVerificationSide(IReadOnlyCollection<TradeVerificationEntry> entries, bool ready)
+        {
+            if (entries == null || entries.Count == 0)
+            {
+                return ready ? "CRC ready" : "CRC idle";
+            }
+
+            return ready ? $"CRC {entries.Count} ready" : $"CRC {entries.Count} pending";
         }
 
         private void SetOmokSeatStoneValues(int blackSeatIndex)
@@ -4198,12 +4631,36 @@ namespace HaCreator.MapSimulator.Interaction
             return (byte[])packetBytes.Clone();
         }
 
+        private static bool TryExtractEmployeePoolPacket(byte[] packetBytes, out ushort opcode, out byte[] payload)
+        {
+            opcode = 0;
+            payload = Array.Empty<byte>();
+            if (packetBytes == null || packetBytes.Length <= sizeof(ushort))
+            {
+                return false;
+            }
+
+            opcode = BitConverter.ToUInt16(packetBytes, 0);
+            if (opcode != EmployeeEnterFieldOpcode
+                && opcode != EmployeeLeaveFieldOpcode
+                && opcode != EmployeeMiniRoomBalloonOpcode)
+            {
+                opcode = 0;
+                return false;
+            }
+
+            payload = new byte[packetBytes.Length - sizeof(ushort)];
+            Buffer.BlockCopy(packetBytes, sizeof(ushort), payload, 0, payload.Length);
+            return true;
+        }
+
         private static bool IsKnownPacketType(byte packetType)
         {
             return packetType is
                 TradingRoomPutItemPacketType or
                 TradingRoomPutMoneyPacketType or
                 TradingRoomTradePacketType or
+                TradingRoomItemCrcPacketType or
                 TradingRoomExceedLimitPacketType or
                 PersonalShopBuyResultPacketType or
                 PersonalShopBasePacketType or

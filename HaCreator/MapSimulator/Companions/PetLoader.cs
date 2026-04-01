@@ -46,6 +46,7 @@ namespace HaCreator.MapSimulator.Companions
     {
         public string[] Triggers { get; init; } = Array.Empty<string>();
         public int SuccessProbability { get; init; }
+        public int ClosenessDelta { get; init; }
         public int LevelMin { get; init; }
         public int LevelMax { get; init; }
         public PetReactionDefinition SuccessReaction { get; init; }
@@ -308,6 +309,7 @@ namespace HaCreator.MapSimulator.Companions
                 {
                     Triggers = triggers,
                     SuccessProbability = Math.Clamp(GetIntValue(interactEntry["prob"]) ?? 100, 0, 100),
+                    ClosenessDelta = Math.Max(0, GetIntValue(interactEntry["inc"]) ?? 0),
                     LevelMin = GetIntValue(interactEntry["l0"]) ?? 0,
                     LevelMax = GetIntValue(interactEntry["l1"]) ?? 250,
                     SuccessReaction = LoadReaction(interactEntry["success"], dialogStrings),
@@ -445,20 +447,66 @@ namespace HaCreator.MapSimulator.Companions
             IReadOnlyDictionary<string, string> dialogStrings,
             string key)
         {
-            if (dialogStrings == null ||
-                string.IsNullOrWhiteSpace(key) ||
-                !dialogStrings.TryGetValue(key, out string value) ||
-                string.IsNullOrWhiteSpace(value))
+            if (dialogStrings == null || string.IsNullOrWhiteSpace(key))
             {
                 return Array.Empty<string>();
             }
 
+            var lines = new List<string>();
+            if (dialogStrings.TryGetValue(key, out string value) && !string.IsNullOrWhiteSpace(value))
+            {
+                lines.AddRange(SplitFeedbackLines(value));
+            }
+
+            foreach ((string siblingKey, string siblingValue) in dialogStrings
+                         .Where(static pair => !string.IsNullOrWhiteSpace(pair.Key))
+                         .OrderBy(pair => GetFeedbackKeySortOrder(pair.Key, key))
+                         .ThenBy(pair => pair.Key, StringComparer.OrdinalIgnoreCase))
+            {
+                if (!IsNumberedFeedbackKey(siblingKey, key) || string.IsNullOrWhiteSpace(siblingValue))
+                {
+                    continue;
+                }
+
+                lines.AddRange(SplitFeedbackLines(siblingValue));
+            }
+
+            return lines
+                .Distinct(StringComparer.Ordinal)
+                .ToArray();
+        }
+
+        private static IEnumerable<string> SplitFeedbackLines(string value)
+        {
             return value
                 .Split(new[] { '\n' }, StringSplitOptions.RemoveEmptyEntries)
                 .Select(line => line.Trim())
-                .Where(line => !string.IsNullOrWhiteSpace(line))
-                .Distinct(StringComparer.Ordinal)
-                .ToArray();
+                .Where(line => !string.IsNullOrWhiteSpace(line));
+        }
+
+        private static bool IsNumberedFeedbackKey(string candidateKey, string prefix)
+        {
+            if (string.IsNullOrWhiteSpace(candidateKey) ||
+                string.IsNullOrWhiteSpace(prefix) ||
+                !candidateKey.StartsWith(prefix, StringComparison.OrdinalIgnoreCase) ||
+                candidateKey.Length <= prefix.Length)
+            {
+                return false;
+            }
+
+            return candidateKey.AsSpan(prefix.Length).ToString().All(char.IsDigit);
+        }
+
+        private static int GetFeedbackKeySortOrder(string candidateKey, string prefix)
+        {
+            if (!IsNumberedFeedbackKey(candidateKey, prefix))
+            {
+                return int.MaxValue;
+            }
+
+            return int.TryParse(candidateKey.Substring(prefix.Length), out int order)
+                ? order
+                : int.MaxValue;
         }
 
         private static bool TryResolveFoodFeedbackTier(string commandKey, out int variant)

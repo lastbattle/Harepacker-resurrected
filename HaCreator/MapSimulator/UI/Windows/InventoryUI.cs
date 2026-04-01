@@ -676,6 +676,31 @@ namespace HaCreator.MapSimulator.UI
                 : Array.Empty<InventorySlotData>();
         }
 
+        public IReadOnlyDictionary<int, int> GetItems(InventoryType type)
+        {
+            if (!_inventoryData.TryGetValue(type, out List<InventorySlotData> slots))
+            {
+                return new ReadOnlyDictionary<int, int>(new Dictionary<int, int>());
+            }
+
+            Dictionary<int, int> counts = new();
+            for (int i = 0; i < slots.Count; i++)
+            {
+                InventorySlotData slot = slots[i];
+                if (slot == null || slot.ItemId <= 0)
+                {
+                    continue;
+                }
+
+                int quantity = Math.Max(1, slot.Quantity);
+                counts[slot.ItemId] = counts.TryGetValue(slot.ItemId, out int existing)
+                    ? existing + quantity
+                    : quantity;
+            }
+
+            return new ReadOnlyDictionary<int, int>(counts);
+        }
+
         public bool TryRemoveSlotAt(InventoryType type, int slotIndex, out InventorySlotData removedSlot)
         {
             removedSlot = null;
@@ -689,6 +714,80 @@ namespace HaCreator.MapSimulator.UI
             removedSlot = slots[slotIndex]?.Clone();
             slots.RemoveAt(slotIndex);
             return removedSlot != null;
+        }
+
+        public bool TrySetPendingRequestState(InventoryType type, int slotIndex, int requestId, bool isPending)
+        {
+            if (requestId <= 0
+                || !_inventoryData.TryGetValue(type, out List<InventorySlotData> slots)
+                || slotIndex < 0
+                || slotIndex >= slots.Count
+                || slots[slotIndex] == null)
+            {
+                return false;
+            }
+
+            InventorySlotData slot = slots[slotIndex];
+            slot.PendingRequestId = isPending ? requestId : 0;
+            slot.IsDisabled = isPending;
+            return true;
+        }
+
+        public bool TryClearPendingRequestState(int requestId)
+        {
+            if (requestId <= 0)
+            {
+                return false;
+            }
+
+            foreach (KeyValuePair<InventoryType, List<InventorySlotData>> inventoryEntry in _inventoryData)
+            {
+                List<InventorySlotData> slots = inventoryEntry.Value;
+                for (int i = 0; i < slots.Count; i++)
+                {
+                    InventorySlotData slot = slots[i];
+                    if (slot?.PendingRequestId != requestId)
+                    {
+                        continue;
+                    }
+
+                    slot.PendingRequestId = 0;
+                    slot.IsDisabled = false;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        public bool TryRemovePendingRequestSlot(int requestId, out InventorySlotData removedSlot)
+        {
+            removedSlot = null;
+            if (requestId <= 0)
+            {
+                return false;
+            }
+
+            foreach (KeyValuePair<InventoryType, List<InventorySlotData>> inventoryEntry in _inventoryData)
+            {
+                List<InventorySlotData> slots = inventoryEntry.Value;
+                for (int i = 0; i < slots.Count; i++)
+                {
+                    InventorySlotData slot = slots[i];
+                    if (slot?.PendingRequestId != requestId)
+                    {
+                        continue;
+                    }
+
+                    slot.PendingRequestId = 0;
+                    slot.IsDisabled = false;
+                    removedSlot = slot.Clone();
+                    slots.RemoveAt(i);
+                    return removedSlot != null;
+                }
+            }
+
+            return false;
         }
 
         public void SortSlots(InventoryType type)
@@ -824,6 +923,51 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return remaining == 0;
+        }
+
+        public bool TryConsumeItemAtSlot(InventoryType type, int slotIndex, int itemId, int quantity)
+        {
+            if (quantity <= 0)
+            {
+                return true;
+            }
+
+            string restrictionMessage = _itemConsumptionGuard?.Invoke(type, itemId, quantity);
+            if (!string.IsNullOrWhiteSpace(restrictionMessage))
+            {
+                ItemConsumptionBlocked?.Invoke(restrictionMessage);
+                return false;
+            }
+
+            if (!_inventoryData.TryGetValue(type, out List<InventorySlotData> slots)
+                || slotIndex < 0
+                || slotIndex >= slots.Count)
+            {
+                return false;
+            }
+
+            InventorySlotData slot = slots[slotIndex];
+            if (slot == null
+                || slot.IsDisabled
+                || slot.ItemId != itemId)
+            {
+                return false;
+            }
+
+            int stackQuantity = Math.Max(1, slot.Quantity);
+            if (stackQuantity < quantity)
+            {
+                return false;
+            }
+
+            if (stackQuantity == quantity)
+            {
+                slots.RemoveAt(slotIndex);
+                return true;
+            }
+
+            slot.Quantity = stackQuantity - quantity;
+            return true;
         }
 
         public Texture2D GetItemTexture(InventoryType type, int itemId)
@@ -1896,11 +2040,15 @@ namespace HaCreator.MapSimulator.UI
             AppendStatRow(rows, null, ResolvePropertyLabel("12"), part.BonusHands, new Color(176, 255, 176), true);
             AppendStatRow(rows, null, ResolvePropertyLabel("13"), part.BonusSpeed, new Color(176, 255, 176), true);
             AppendStatRow(rows, null, ResolvePropertyLabel("14"), part.BonusJump, new Color(176, 255, 176), true);
+            AppendEnhancementStarRow(rows, part.EnhancementStarCount);
+            AppendSellPriceRow(rows, part.SellPrice);
             AppendUpgradeSlotRow(rows, part);
             if (part is WeaponPart weapon)
             {
                 AppendAttackSpeedRow(rows, weapon.AttackSpeed);
             }
+
+            AppendGrowthRows(rows, part);
 
             return rows;
         }
@@ -1977,6 +2125,66 @@ namespace HaCreator.MapSimulator.UI
                 BuildTooltipValueTextures(valueText, true, false)));
         }
 
+        private void AppendGrowthRows(List<TooltipLabeledValueRow> rows, CharacterPart part)
+        {
+            if (!part?.HasGrowthInfo ?? true)
+            {
+                return;
+            }
+
+            int currentLevel = Math.Max(1, part.GrowthLevel);
+            int maxLevel = Math.Max(currentLevel, part.GrowthMaxLevel);
+            bool growthEnabled = currentLevel < maxLevel;
+            rows.Add(new TooltipLabeledValueRow(
+                ResolveGrowthLabel(growthEnabled, "itemLEV"),
+                "Item Level:",
+                currentLevel.ToString(CultureInfo.InvariantCulture),
+                growthEnabled ? new Color(181, 224, 255) : new Color(192, 192, 192),
+                BuildTooltipValueTextures(currentLevel.ToString(CultureInfo.InvariantCulture), growthEnabled, true)));
+
+            string expValue = growthEnabled
+                ? $"{Math.Clamp(part.GrowthExpPercent, 0, 99)}%"
+                : "MAX";
+            rows.Add(new TooltipLabeledValueRow(
+                ResolveGrowthLabel(growthEnabled, "itemEXP"),
+                "Item EXP:",
+                expValue,
+                growthEnabled ? new Color(181, 224, 255) : new Color(192, 192, 192),
+                BuildTooltipValueTextures(expValue, growthEnabled, true)));
+        }
+
+        private void AppendEnhancementStarRow(List<TooltipLabeledValueRow> rows, int enhancementStarCount)
+        {
+            if (enhancementStarCount <= 0)
+            {
+                return;
+            }
+
+            string valueText = enhancementStarCount.ToString(CultureInfo.InvariantCulture);
+            rows.Add(new TooltipLabeledValueRow(
+                _equipTooltipAssets?.StarLabel,
+                "Stars:",
+                valueText,
+                new Color(255, 232, 176),
+                BuildTooltipValueTextures(valueText, true, false)));
+        }
+
+        private void AppendSellPriceRow(List<TooltipLabeledValueRow> rows, int sellPrice)
+        {
+            if (sellPrice <= 0)
+            {
+                return;
+            }
+
+            string valueText = sellPrice.ToString(CultureInfo.InvariantCulture);
+            rows.Add(new TooltipLabeledValueRow(
+                _equipTooltipAssets?.MesosLabel,
+                "Mesos:",
+                valueText,
+                new Color(255, 244, 186),
+                BuildTooltipValueTextures(valueText, true, false)));
+        }
+
         private void AppendAttackSpeedRow(List<TooltipLabeledValueRow> rows, int attackSpeed)
         {
             if (attackSpeed < 0)
@@ -2025,6 +2233,12 @@ namespace HaCreator.MapSimulator.UI
             }
 
             var textures = new List<Texture2D>(valueText.Length);
+            if (string.Equals(valueText, "MAX", StringComparison.OrdinalIgnoreCase))
+            {
+                Texture2D maxTexture = TryResolveTooltipAsset(source, "max");
+                return maxTexture == null ? null : new[] { maxTexture };
+            }
+
             for (int i = 0; i < valueText.Length; i++)
             {
                 char character = valueText[i];
@@ -2325,6 +2539,14 @@ namespace HaCreator.MapSimulator.UI
             return TryResolveTooltipAsset(_equipTooltipAssets?.PropertyLabels, key);
         }
 
+        private Texture2D ResolveGrowthLabel(bool enabled, string key)
+        {
+            IReadOnlyDictionary<string, Texture2D> source = enabled
+                ? _equipTooltipAssets?.GrowthEnabledLabels
+                : _equipTooltipAssets?.GrowthDisabledLabels;
+            return TryResolveTooltipAsset(source, key);
+        }
+
         private Texture2D ResolveSpeedTexture(int attackSpeed)
         {
             return TryResolveTooltipAsset(_equipTooltipAssets?.SpeedLabels, Math.Clamp(attackSpeed, 0, 6).ToString(CultureInfo.InvariantCulture));
@@ -2554,6 +2776,7 @@ namespace HaCreator.MapSimulator.UI
         public string ItemTypeName { get; set; }
         public string Description { get; set; }
         public CharacterPart TooltipPart { get; set; }
+        public int PendingRequestId { get; set; }
 
         public InventorySlotData Clone()
         {
@@ -2571,7 +2794,8 @@ namespace HaCreator.MapSimulator.UI
                 ItemName = ItemName,
                 ItemTypeName = ItemTypeName,
                 Description = Description,
-                TooltipPart = TooltipPart?.Clone()
+                TooltipPart = TooltipPart?.Clone(),
+                PendingRequestId = PendingRequestId
             };
         }
     }

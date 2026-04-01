@@ -9,6 +9,7 @@ using Spine;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 using System.Text;
 
 namespace HaCreator.MapSimulator.UI
@@ -69,6 +70,7 @@ namespace HaCreator.MapSimulator.UI
         private const int CLIENT_TOOLTIP_RIGHT_PADDING = 20;
         private static readonly Color TOOLTIP_BACKGROUND_COLOR = new Color(28, 28, 28, 228);
         private static readonly Color TOOLTIP_BORDER_COLOR = new Color(112, 112, 112, 235);
+        private static readonly Color TOOLTIP_INLINE_HIGHLIGHT_COLOR = new Color(255, 214, 140);
 
         // Job book icon position
         private const int BOOK_ICON_X = 15;
@@ -475,7 +477,7 @@ namespace HaCreator.MapSimulator.UI
             RenderParameters renderParameters,
             int TickCount)
         {
-            DrawHoveredSkillTooltip(sprite, renderParameters.RenderWidth, renderParameters.RenderHeight, TickCount);
+            DrawHoveredSkillTooltip(sprite, renderParameters.RenderWidth, renderParameters.RenderHeight);
         }
 
         /// <summary>
@@ -622,7 +624,7 @@ namespace HaCreator.MapSimulator.UI
         #endregion
 
         #region Tooltip
-        private void DrawHoveredSkillTooltip(SpriteBatch sprite, int renderWidth, int renderHeight, int currentTime)
+        private void DrawHoveredSkillTooltip(SpriteBatch sprite, int renderWidth, int renderHeight)
         {
             if (_font == null || _isDragging || _hoveredSkillIndex < 0)
                 return;
@@ -638,35 +640,31 @@ namespace HaCreator.MapSimulator.UI
             int previewLevel = currentLevel > 0 ? currentLevel : 1;
             int nextLevel = Math.Min(skill.MaxLevel, previewLevel + (currentLevel > 0 ? 1 : 0));
             string title = SanitizeTooltipText(skill.SkillName);
-            string description = SanitizeTooltipText(skill.Description);
-            string cooldownLine = GetCooldownTooltipText(skill, currentTime);
+            string description = SanitizeTooltipText(skill.FormattedDescriptionOrDefault);
             string currentLevelHeader = currentLevel > 0 ? $"Current Level: {currentLevel}" : string.Empty;
-            string currentLevelDescription = currentLevel > 0 ? SanitizeTooltipText(skill.GetLevelDescription(currentLevel)) : string.Empty;
+            string currentLevelDescription = currentLevel > 0 ? SanitizeTooltipText(skill.GetFormattedLevelDescription(currentLevel)) : string.Empty;
             bool showNextLevel = nextLevel > 0 && nextLevel <= skill.MaxLevel && nextLevel != currentLevel;
             string nextLevelHeader = showNextLevel ? $"Next Level: {nextLevel}" : string.Empty;
-            string nextLevelDescription = showNextLevel ? SanitizeTooltipText(skill.GetLevelDescription(nextLevel)) : string.Empty;
+            string nextLevelDescription = showNextLevel ? SanitizeTooltipText(skill.GetFormattedLevelDescription(nextLevel)) : string.Empty;
 
             int tooltipWidth = ResolveHoveredTooltipWidth();
             float titleWidth = tooltipWidth - CLIENT_TOOLTIP_TITLE_X - CLIENT_TOOLTIP_RIGHT_PADDING;
             float sectionWidth = tooltipWidth - CLIENT_TOOLTIP_TEXT_X - CLIENT_TOOLTIP_RIGHT_PADDING;
             string[] wrappedTitle = WrapTooltipText(title, titleWidth);
-            string[] wrappedDescription = WrapTooltipText(description, sectionWidth);
-            string[] wrappedCooldown = WrapTooltipText(cooldownLine, sectionWidth);
+            TooltipLine[] wrappedDescription = WrapTooltipText(description, sectionWidth, Color.White);
             string[] wrappedCurrentHeader = WrapTooltipText(currentLevelHeader, sectionWidth);
-            string[] wrappedCurrentDescription = WrapTooltipText(currentLevelDescription, sectionWidth);
+            TooltipLine[] wrappedCurrentDescription = WrapTooltipText(currentLevelDescription, sectionWidth, new Color(180, 255, 210));
             string[] wrappedNextHeader = WrapTooltipText(nextLevelHeader, sectionWidth);
-            string[] wrappedNextDescription = WrapTooltipText(nextLevelDescription, sectionWidth);
+            TooltipLine[] wrappedNextDescription = WrapTooltipText(nextLevelDescription, sectionWidth, new Color(255, 238, 196));
 
             float titleHeight = MeasureLinesHeight(wrappedTitle);
             float descriptionHeight = MeasureLinesHeight(wrappedDescription);
-            float cooldownHeight = MeasureLinesHeight(wrappedCooldown);
             float currentHeaderHeight = MeasureLinesHeight(wrappedCurrentHeader);
             float currentDescriptionHeight = MeasureLinesHeight(wrappedCurrentDescription);
             float nextHeaderHeight = MeasureLinesHeight(wrappedNextHeader);
             float nextDescriptionHeight = MeasureLinesHeight(wrappedNextDescription);
             float sectionHeight = CalculateTooltipSectionHeight(
                 descriptionHeight,
-                cooldownHeight,
                 currentHeaderHeight,
                 currentDescriptionHeight,
                 nextHeaderHeight,
@@ -704,28 +702,21 @@ namespace HaCreator.MapSimulator.UI
             float sectionY = clientContentY;
             if (descriptionHeight > 0f)
             {
-                DrawTooltipLines(sprite, wrappedDescription, textX, sectionY, Color.White);
+                DrawTooltipLines(sprite, wrappedDescription, textX, sectionY);
                 sectionY += descriptionHeight;
-            }
-
-            if (cooldownHeight > 0f)
-            {
-                sectionY += TOOLTIP_SECTION_GAP;
-                DrawTooltipLines(sprite, wrappedCooldown, textX, sectionY, new Color(255, 238, 155));
-                sectionY += cooldownHeight;
             }
 
             if (currentHeaderHeight > 0f)
             {
                 sectionY += TOOLTIP_SECTION_GAP;
-                DrawTooltipLines(sprite, wrappedCurrentHeader, textX, sectionY, new Color(140, 200, 255));
+                DrawTooltipLines(sprite, wrappedCurrentHeader, textX, sectionY, new Color(255, 204, 120));
                 sectionY += currentHeaderHeight;
             }
 
             if (currentDescriptionHeight > 0f)
             {
                 sectionY += 2f;
-                DrawTooltipLines(sprite, wrappedCurrentDescription, textX, sectionY, new Color(180, 255, 210));
+                DrawTooltipLines(sprite, wrappedCurrentDescription, textX, sectionY);
                 sectionY += currentDescriptionHeight;
             }
 
@@ -739,7 +730,7 @@ namespace HaCreator.MapSimulator.UI
             if (nextDescriptionHeight > 0f)
             {
                 sectionY += 2f;
-                DrawTooltipLines(sprite, wrappedNextDescription, textX, sectionY, new Color(255, 238, 196));
+                DrawTooltipLines(sprite, wrappedNextDescription, textX, sectionY);
             }
         }
 
@@ -755,30 +746,13 @@ namespace HaCreator.MapSimulator.UI
             if (remainingMs <= 0)
                 return false;
 
-            SkillDisplayData skill = skillsByTab.TryGetValue(_currentTab, out var skills)
-                ? skills.FirstOrDefault(entry => entry.SkillId == skillId)
-                : null;
-            int durationMs = Math.Max(remainingMs, skill?.Cooldown ?? 0);
+            int durationMs = Math.Max(remainingMs, _skillManager.GetCooldownDuration(skillId, currentTime));
             if (durationMs <= 0)
                 return false;
 
             remainingProgress = Math.Clamp(remainingMs / (float)durationMs, 0f, 1f);
             remainingText = Math.Max(1, (int)Math.Ceiling(remainingMs / 1000f)).ToString();
             return true;
-        }
-
-        private string GetCooldownTooltipText(SkillDisplayData skill, int currentTime)
-        {
-            if (skill == null)
-                return string.Empty;
-
-            if (_skillManager == null || !_skillManager.IsOnCooldown(skill.SkillId, currentTime))
-                return "Cooldown: Ready";
-
-            int remainingMs = Math.Max(0, _skillManager.GetCooldownRemaining(skill.SkillId, currentTime));
-            return remainingMs > 0
-                ? $"Cooldown: {Math.Max(1, (int)Math.Ceiling(remainingMs / 1000f))} sec"
-                : "Cooldown: Ready";
         }
 
         private void DrawCooldownOverlay(SpriteBatch sprite, Rectangle iconRect, float remainingProgress)
@@ -796,7 +770,6 @@ namespace HaCreator.MapSimulator.UI
 
         private static float CalculateTooltipSectionHeight(
             float descriptionHeight,
-            float cooldownHeight,
             float currentHeaderHeight,
             float currentDescriptionHeight,
             float nextHeaderHeight,
@@ -805,8 +778,6 @@ namespace HaCreator.MapSimulator.UI
             float height = 0f;
             if (descriptionHeight > 0f)
                 height += descriptionHeight;
-            if (cooldownHeight > 0f)
-                height += (height > 0f ? TOOLTIP_SECTION_GAP : 0f) + cooldownHeight;
             if (currentHeaderHeight > 0f)
                 height += (height > 0f ? TOOLTIP_SECTION_GAP : 0f) + currentHeaderHeight;
             if (currentDescriptionHeight > 0f)
@@ -1016,6 +987,28 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private void DrawTooltipLines(SpriteBatch sprite, TooltipLine[] lines, int x, float y)
+        {
+            for (int i = 0; i < lines.Length; i++)
+            {
+                float drawX = x;
+                TooltipLine line = lines[i];
+                if (line?.Runs == null)
+                    continue;
+
+                for (int runIndex = 0; runIndex < line.Runs.Count; runIndex++)
+                {
+                    TooltipTextRun run = line.Runs[runIndex];
+                    if (string.IsNullOrEmpty(run.Text))
+                        continue;
+
+                    Vector2 position = new Vector2(drawX, y + (i * _font.LineSpacing));
+                    DrawTooltipText(sprite, run.Text, position, run.Color);
+                    drawX += _font.MeasureString(run.Text).X;
+                }
+            }
+        }
+
         private void DrawTooltipText(SpriteBatch sprite, string text, Vector2 position, Color color, float scale = 1f)
         {
             if (string.IsNullOrWhiteSpace(text) || _font == null)
@@ -1026,6 +1019,14 @@ namespace HaCreator.MapSimulator.UI
         }
 
         private float MeasureLinesHeight(string[] lines)
+        {
+            if (_font == null || lines == null || lines.Length == 0)
+                return 0f;
+
+            return lines.Length * _font.LineSpacing;
+        }
+
+        private float MeasureLinesHeight(TooltipLine[] lines)
         {
             if (_font == null || lines == null || lines.Length == 0)
                 return 0f;
@@ -1078,6 +1079,166 @@ namespace HaCreator.MapSimulator.UI
                 lines.RemoveAt(lines.Count - 1);
 
             return lines.ToArray();
+        }
+
+        private TooltipLine[] WrapTooltipText(string text, float maxWidth, Color baseColor)
+        {
+            if (_font == null || string.IsNullOrWhiteSpace(text))
+                return Array.Empty<TooltipLine>();
+
+            List<TooltipToken> tokens = TokenizeTooltipText(text, baseColor);
+            List<TooltipLine> lines = new List<TooltipLine>();
+            TooltipLine currentLine = new TooltipLine();
+            float currentWidth = 0f;
+
+            foreach (TooltipToken token in tokens)
+            {
+                if (token.IsNewLine)
+                {
+                    lines.Add(currentLine);
+                    currentLine = new TooltipLine();
+                    currentWidth = 0f;
+                    continue;
+                }
+
+                if (token.IsWhitespace)
+                {
+                    if (currentLine.Runs.Count == 0)
+                        continue;
+
+                    float whitespaceWidth = MeasureTooltipRunWidth(token.Text);
+                    if (currentWidth + whitespaceWidth > maxWidth)
+                    {
+                        lines.Add(currentLine);
+                        currentLine = new TooltipLine();
+                        currentWidth = 0f;
+                        continue;
+                    }
+
+                    currentLine.Append(token.Text, token.Color);
+                    currentWidth += whitespaceWidth;
+                    continue;
+                }
+
+                float tokenWidth = MeasureTooltipRunWidth(token.Text);
+                if (currentLine.Runs.Count > 0 && currentWidth + tokenWidth > maxWidth)
+                {
+                    lines.Add(currentLine);
+                    currentLine = new TooltipLine();
+                    currentWidth = 0f;
+                }
+
+                currentLine.Append(token.Text, token.Color);
+                currentWidth += tokenWidth;
+            }
+
+            if (currentLine.Runs.Count > 0 || lines.Count == 0)
+                lines.Add(currentLine);
+
+            while (lines.Count > 0 && lines[^1].IsEmpty)
+                lines.RemoveAt(lines.Count - 1);
+
+            return lines.ToArray();
+        }
+
+        private float MeasureTooltipRunWidth(string text)
+        {
+            if (_font == null || string.IsNullOrEmpty(text))
+                return 0f;
+
+            return _font.MeasureString(text).X;
+        }
+
+        private List<TooltipToken> TokenizeTooltipText(string text, Color baseColor)
+        {
+            List<TooltipToken> tokens = new List<TooltipToken>();
+            foreach ((string segmentText, Color segmentColor) in ParseTooltipSegments(text, baseColor))
+            {
+                int index = 0;
+                while (index < segmentText.Length)
+                {
+                    char ch = segmentText[index];
+                    if (ch == '\n')
+                    {
+                        tokens.Add(TooltipToken.NewLine());
+                        index++;
+                        continue;
+                    }
+
+                    int start = index;
+                    bool whitespace = char.IsWhiteSpace(ch);
+                    while (index < segmentText.Length &&
+                           segmentText[index] != '\n' &&
+                           char.IsWhiteSpace(segmentText[index]) == whitespace)
+                    {
+                        index++;
+                    }
+
+                    string tokenText = segmentText[start..index];
+                    if (whitespace)
+                        tokenText = Regex.Replace(tokenText, "\\s+", " ");
+
+                    if (tokenText.Length > 0)
+                        tokens.Add(new TooltipToken(tokenText, segmentColor, isWhitespace: whitespace, isNewLine: false));
+                }
+            }
+
+            return tokens;
+        }
+
+        private IEnumerable<(string Text, Color Color)> ParseTooltipSegments(string text, Color baseColor)
+        {
+            if (string.IsNullOrEmpty(text))
+                yield break;
+
+            StringBuilder builder = new StringBuilder();
+            int index = 0;
+            while (index < text.Length)
+            {
+                if (text[index] == '#' && index + 1 < text.Length)
+                {
+                    if (text[index + 1] == '#')
+                    {
+                        builder.Append('#');
+                        index += 2;
+                        continue;
+                    }
+
+                    int closingIndex = text.IndexOf('#', index + 2);
+                    if (closingIndex > index + 2)
+                    {
+                        if (builder.Length > 0)
+                        {
+                            yield return (builder.ToString(), baseColor);
+                            builder.Clear();
+                        }
+
+                        char marker = char.ToLowerInvariant(text[index + 1]);
+                        string segment = text.Substring(index + 2, closingIndex - index - 2);
+                        yield return (segment, ResolveTooltipMarkerColor(marker, baseColor));
+                        index = closingIndex + 1;
+                        continue;
+                    }
+                }
+
+                builder.Append(text[index]);
+                index++;
+            }
+
+            if (builder.Length > 0)
+                yield return (builder.ToString(), baseColor);
+        }
+
+        private Color ResolveTooltipMarkerColor(char marker, Color baseColor)
+        {
+            return marker switch
+            {
+                'c' => TOOLTIP_INLINE_HIGHLIGHT_COLOR,
+                'b' => new Color(130, 190, 255),
+                'g' => new Color(160, 255, 160),
+                'r' => new Color(255, 150, 150),
+                _ => baseColor
+            };
         }
 
         private static string SanitizeTooltipText(string text)
@@ -1560,6 +1721,7 @@ namespace HaCreator.MapSimulator.UI
         public Texture2D IconMouseOverTexture { get; set; }
         public string SkillName { get; set; }
         public string Description { get; set; }
+        public string FormattedDescription { get; set; }
         public int CurrentLevel { get; set; }
         public int BonusLevel { get; set; }
         public int MaxLevel { get; set; }
@@ -1567,6 +1729,7 @@ namespace HaCreator.MapSimulator.UI
         public int RequiredSkillId { get; set; }
         public int RequiredSkillLevel { get; set; }
         public Dictionary<int, string> LevelDescriptions { get; } = new Dictionary<int, string>();
+        public Dictionary<int, string> FormattedLevelDescriptions { get; } = new Dictionary<int, string>();
         public Dictionary<int, int> RequiredGuildLevels { get; } = new Dictionary<int, int>();
         public Dictionary<int, int> GuildActivationCosts { get; } = new Dictionary<int, int>();
         public Dictionary<int, int> GuildRenewalCosts { get; } = new Dictionary<int, int>();
@@ -1610,6 +1773,29 @@ namespace HaCreator.MapSimulator.UI
             return string.Empty;
         }
 
+        public string FormattedDescriptionOrDefault =>
+            !string.IsNullOrWhiteSpace(FormattedDescription)
+                ? FormattedDescription
+                : Description;
+
+        public string GetFormattedLevelDescription(int level)
+        {
+            if (FormattedLevelDescriptions.Count == 0)
+                return GetLevelDescription(level);
+
+            int resolvedLevel = Math.Clamp(level, 1, Math.Max(1, MaxLevel));
+            if (FormattedLevelDescriptions.TryGetValue(resolvedLevel, out string description))
+                return description ?? string.Empty;
+
+            if (FormattedLevelDescriptions.TryGetValue(1, out description))
+                return description ?? string.Empty;
+
+            foreach (var entry in FormattedLevelDescriptions)
+                return entry.Value ?? string.Empty;
+
+            return GetLevelDescription(level);
+        }
+
         public int GetGuildActivationCost(int level)
         {
             return GetGuildLevelValue(GuildActivationCosts, level);
@@ -1641,6 +1827,60 @@ namespace HaCreator.MapSimulator.UI
                 return Math.Max(0, pair.Value);
 
             return 0;
+        }
+    }
+
+    internal sealed class TooltipLine
+    {
+        public List<TooltipTextRun> Runs { get; } = new List<TooltipTextRun>();
+        public bool IsEmpty => Runs.Count == 0 || Runs.All(run => string.IsNullOrEmpty(run.Text));
+
+        public void Append(string text, Color color)
+        {
+            if (string.IsNullOrEmpty(text))
+                return;
+
+            if (Runs.Count > 0 && Runs[^1].Color == color)
+            {
+                TooltipTextRun previous = Runs[^1];
+                Runs[^1] = new TooltipTextRun(previous.Text + text, color);
+                return;
+            }
+
+            Runs.Add(new TooltipTextRun(text, color));
+        }
+    }
+
+    internal readonly struct TooltipTextRun
+    {
+        public TooltipTextRun(string text, Color color)
+        {
+            Text = text;
+            Color = color;
+        }
+
+        public string Text { get; }
+        public Color Color { get; }
+    }
+
+    internal readonly struct TooltipToken
+    {
+        public TooltipToken(string text, Color color, bool isWhitespace, bool isNewLine)
+        {
+            Text = text;
+            Color = color;
+            IsWhitespace = isWhitespace;
+            IsNewLine = isNewLine;
+        }
+
+        public string Text { get; }
+        public Color Color { get; }
+        public bool IsWhitespace { get; }
+        public bool IsNewLine { get; }
+
+        public static TooltipToken NewLine()
+        {
+            return new TooltipToken(string.Empty, Color.White, isWhitespace: false, isNewLine: true);
         }
     }
 }

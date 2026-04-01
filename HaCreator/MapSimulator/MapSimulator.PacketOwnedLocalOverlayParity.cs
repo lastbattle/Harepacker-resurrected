@@ -47,6 +47,7 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedBalloonFadeOutMs = 220;
         private const int PacketOwnedBalloonCornerThreshold = 28;
         private const int PacketOwnedBalloonLongArrowThreshold = 18;
+        private const int PacketOwnedBalloonMaxOverlapPasses = 8;
         private const int PacketOwnedBalloonBodyExtraWidth = PacketOwnedBalloonHorizontalPadding * 2;
         private const int PacketOwnedBalloonClientArrowYOffset = 9;
         private const float PacketOwnedBalloonClientArrowAnchorRatio = 0.7f;
@@ -256,38 +257,112 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            Vector2 arrowPosition = layout.ArrowKind switch
-            {
-                PacketOwnedBalloonArrowKind.BottomLeft or PacketOwnedBalloonArrowKind.BottomLeftLong
-                    => new Vector2(layout.BodyBounds.X - arrow.Origin.X, layout.BodyBounds.Bottom - 1 - arrow.Origin.Y),
-                PacketOwnedBalloonArrowKind.BottomRight or PacketOwnedBalloonArrowKind.BottomRightLong
-                    => new Vector2(layout.BodyBounds.Right - arrow.Origin.X, layout.BodyBounds.Bottom - 1 - arrow.Origin.Y),
-                PacketOwnedBalloonArrowKind.TopLeft or PacketOwnedBalloonArrowKind.TopLeftLong
-                    => new Vector2(layout.BodyBounds.X - arrow.Origin.X, layout.BodyBounds.Y - arrow.Origin.Y),
-                PacketOwnedBalloonArrowKind.TopRight or PacketOwnedBalloonArrowKind.TopRightLong
-                    => new Vector2(layout.BodyBounds.Right - arrow.Origin.X, layout.BodyBounds.Y - arrow.Origin.Y),
-                PacketOwnedBalloonArrowKind.BottomCenter or PacketOwnedBalloonArrowKind.BottomCenterLong
-                    => ResolvePacketOwnedBalloonBottomCenterArrowPosition(layout.CanvasBounds, arrowTexture, arrow, topMounted: false),
-                PacketOwnedBalloonArrowKind.TopCenter or PacketOwnedBalloonArrowKind.TopCenterLong
-                    => ResolvePacketOwnedBalloonBottomCenterArrowPosition(layout.CanvasBounds, arrowTexture, arrow, topMounted: true),
-                _ => ResolvePacketOwnedBalloonBottomCenterArrowPosition(layout.CanvasBounds, arrowTexture, arrow, topMounted: false)
-            };
+            Vector2 arrowPosition = ResolvePacketOwnedBalloonArrowPosition(layout.BodyBounds, layout.ArrowKind, arrowTexture, arrow);
             _spriteBatch.Draw(arrowTexture, arrowPosition, tint);
         }
 
-        private Vector2 ResolvePacketOwnedBalloonBottomCenterArrowPosition(
-            Rectangle canvasBounds,
+        private Vector2 ResolvePacketOwnedBalloonArrowPosition(
+            Rectangle bodyBounds,
+            PacketOwnedBalloonArrowKind arrowKind,
+            Texture2D arrowTexture,
+            LocalOverlayBalloonArrowSprite arrow)
+        {
+            return arrowKind switch
+            {
+                PacketOwnedBalloonArrowKind.BottomLeft or PacketOwnedBalloonArrowKind.BottomLeftLong
+                    => new Vector2(bodyBounds.X - arrow.Origin.X, bodyBounds.Bottom - 1 - arrow.Origin.Y),
+                PacketOwnedBalloonArrowKind.BottomRight or PacketOwnedBalloonArrowKind.BottomRightLong
+                    => new Vector2(bodyBounds.Right - arrow.Origin.X, bodyBounds.Bottom - 1 - arrow.Origin.Y),
+                PacketOwnedBalloonArrowKind.TopLeft or PacketOwnedBalloonArrowKind.TopLeftLong
+                    => new Vector2(bodyBounds.X - arrow.Origin.X, bodyBounds.Y - arrow.Origin.Y),
+                PacketOwnedBalloonArrowKind.TopRight or PacketOwnedBalloonArrowKind.TopRightLong
+                    => new Vector2(bodyBounds.Right - arrow.Origin.X, bodyBounds.Y - arrow.Origin.Y),
+                PacketOwnedBalloonArrowKind.BottomCenter or PacketOwnedBalloonArrowKind.BottomCenterLong
+                    => ResolvePacketOwnedBalloonCenterArrowPosition(bodyBounds, arrowTexture, arrow, topMounted: false),
+                PacketOwnedBalloonArrowKind.TopCenter or PacketOwnedBalloonArrowKind.TopCenterLong
+                    => ResolvePacketOwnedBalloonCenterArrowPosition(bodyBounds, arrowTexture, arrow, topMounted: true),
+                _ => ResolvePacketOwnedBalloonCenterArrowPosition(bodyBounds, arrowTexture, arrow, topMounted: false)
+            };
+        }
+
+        private Vector2 ResolvePacketOwnedBalloonCenterArrowPosition(
+            Rectangle bodyBounds,
             Texture2D arrowTexture,
             LocalOverlayBalloonArrowSprite arrow,
             bool topMounted)
         {
-            int anchorOffsetX = (int)Math.Floor((canvasBounds.Width * PacketOwnedBalloonClientArrowAnchorRatio) - arrowTexture.Width);
-            float drawX = canvasBounds.X + Math.Clamp(anchorOffsetX, 0, Math.Max(0, canvasBounds.Width - arrowTexture.Width));
+            int anchorOffsetX = (int)Math.Floor((bodyBounds.Width * PacketOwnedBalloonClientArrowAnchorRatio) - arrowTexture.Width);
+            float drawX = bodyBounds.X + Math.Clamp(anchorOffsetX, 0, Math.Max(0, bodyBounds.Width - arrowTexture.Width));
             float drawY = topMounted
-                ? canvasBounds.Y
-                : canvasBounds.Bottom - arrowTexture.Height;
+                ? bodyBounds.Y - (arrowTexture.Height - PacketOwnedBalloonClientArrowYOffset)
+                : bodyBounds.Bottom - PacketOwnedBalloonClientArrowYOffset;
 
             return new Vector2(drawX - arrow.Origin.X, drawY - arrow.Origin.Y);
+        }
+
+        private Rectangle ResolvePacketOwnedBalloonArrowBounds(
+            Rectangle bodyBounds,
+            PacketOwnedBalloonArrowKind arrowKind,
+            LocalOverlayBalloonArrowSprite arrow)
+        {
+            Texture2D arrowTexture = arrow?.Texture;
+            if (arrowTexture == null)
+            {
+                return Rectangle.Empty;
+            }
+
+            Vector2 arrowPosition = ResolvePacketOwnedBalloonArrowPosition(bodyBounds, arrowKind, arrowTexture, arrow);
+            return new Rectangle(
+                (int)Math.Floor(arrowPosition.X),
+                (int)Math.Floor(arrowPosition.Y),
+                arrowTexture.Width,
+                arrowTexture.Height);
+        }
+
+        private static Rectangle UnionPacketOwnedBalloonBounds(Rectangle bodyBounds, Rectangle arrowBounds)
+        {
+            return arrowBounds == Rectangle.Empty
+                ? bodyBounds
+                : Rectangle.Union(bodyBounds, arrowBounds);
+        }
+
+        private Point ResolvePacketOwnedBalloonCanvasShift(Rectangle canvasBounds)
+        {
+            int minX = PacketOwnedBalloonScreenMargin;
+            int maxX = Math.Max(minX, Width - PacketOwnedBalloonScreenMargin);
+            int minY = PacketOwnedBalloonScreenMargin;
+            int maxY = Math.Max(minY, Height - PacketOwnedBalloonScreenMargin);
+
+            int shiftX = 0;
+            if (canvasBounds.Left < minX)
+            {
+                shiftX = minX - canvasBounds.Left;
+            }
+            else if (canvasBounds.Right > maxX)
+            {
+                shiftX = maxX - canvasBounds.Right;
+            }
+
+            int shiftY = 0;
+            if (canvasBounds.Top < minY)
+            {
+                shiftY = minY - canvasBounds.Top;
+            }
+            else if (canvasBounds.Bottom > maxY)
+            {
+                shiftY = maxY - canvasBounds.Bottom;
+            }
+
+            return shiftX == 0 && shiftY == 0
+                ? Point.Zero
+                : new Point(shiftX, shiftY);
+        }
+
+        private static Rectangle OffsetPacketOwnedBalloonBounds(Rectangle bounds, Point offset)
+        {
+            return offset == Point.Zero
+                ? bounds
+                : new Rectangle(bounds.X + offset.X, bounds.Y + offset.Y, bounds.Width, bounds.Height);
         }
 
         private bool TryResolvePacketOwnedBalloonAnchorScreenPoint(LocalOverlayBalloonMessage message, int currentTickCount, int mapCenterX, int mapCenterY, out Point anchor)
@@ -352,7 +427,7 @@ namespace HaCreator.MapSimulator
                 char character = glyphs[index].Character;
                 if (character == '\n')
                 {
-                    wrappedLines.Add(BuildPacketOwnedBalloonWrappedLine(glyphs, lineStart, index));
+                    wrappedLines.Add(BuildPacketOwnedBalloonWrappedLine(glyphs, lineStart, index, preserveEmptyLine: true));
                     lineStart = index + 1;
                     currentWidth = 0;
                     lastBreakIndex = -1;
@@ -366,12 +441,12 @@ namespace HaCreator.MapSimulator
                 {
                     if (lastBreakIndex >= lineStart)
                     {
-                        wrappedLines.Add(BuildPacketOwnedBalloonWrappedLine(glyphs, lineStart, lastBreakIndex));
+                        wrappedLines.Add(BuildPacketOwnedBalloonWrappedLine(glyphs, lineStart, lastBreakIndex, preserveEmptyLine: false));
                         index = SkipPacketOwnedBalloonLineLeadingSpaces(glyphs, lastBreakIndex);
                     }
                     else
                     {
-                        wrappedLines.Add(BuildPacketOwnedBalloonWrappedLine(glyphs, lineStart, index));
+                        wrappedLines.Add(BuildPacketOwnedBalloonWrappedLine(glyphs, lineStart, index, preserveEmptyLine: false));
                     }
 
                     lineStart = index;
@@ -391,7 +466,7 @@ namespace HaCreator.MapSimulator
 
             if (lineStart < glyphs.Length || glyphs.Length > 0 && glyphs[^1].Character == '\n')
             {
-                wrappedLines.Add(BuildPacketOwnedBalloonWrappedLine(glyphs, lineStart, glyphs.Length));
+                wrappedLines.Add(BuildPacketOwnedBalloonWrappedLine(glyphs, lineStart, glyphs.Length, preserveEmptyLine: glyphs.Length > 0 && glyphs[^1].Character == '\n'));
             }
 
             return wrappedLines.Count == 0 ? Array.Empty<PacketOwnedBalloonWrappedLine>() : wrappedLines.ToArray();
@@ -511,11 +586,17 @@ namespace HaCreator.MapSimulator
             return index;
         }
 
-        private PacketOwnedBalloonWrappedLine BuildPacketOwnedBalloonWrappedLine(PacketOwnedBalloonGlyph[] glyphs, int start, int endExclusive)
+        private PacketOwnedBalloonWrappedLine BuildPacketOwnedBalloonWrappedLine(
+            PacketOwnedBalloonGlyph[] glyphs,
+            int start,
+            int endExclusive,
+            bool preserveEmptyLine)
         {
             if (glyphs == null || start >= endExclusive)
             {
-                return PacketOwnedBalloonWrappedLine.Empty;
+                return preserveEmptyLine
+                    ? PacketOwnedBalloonWrappedLine.Blank
+                    : PacketOwnedBalloonWrappedLine.Empty;
             }
 
             while (start < endExclusive && (glyphs[start].Character == ' ' || glyphs[start].Character == '\t'))
@@ -530,7 +611,9 @@ namespace HaCreator.MapSimulator
 
             if (start >= endExclusive)
             {
-                return PacketOwnedBalloonWrappedLine.Empty;
+                return preserveEmptyLine
+                    ? PacketOwnedBalloonWrappedLine.Blank
+                    : PacketOwnedBalloonWrappedLine.Empty;
             }
 
             var runs = new List<PacketOwnedBalloonTextRun>();
@@ -563,7 +646,7 @@ namespace HaCreator.MapSimulator
 
             return runs.Count == 0
                 ? PacketOwnedBalloonWrappedLine.Empty
-                : new PacketOwnedBalloonWrappedLine(runs.ToArray(), lineWidth);
+                : new PacketOwnedBalloonWrappedLine(runs.ToArray(), lineWidth, false);
         }
 
         private int MeasurePacketOwnedBalloonGlyph(char character)
@@ -624,26 +707,51 @@ namespace HaCreator.MapSimulator
                 Math.Max(PacketOwnedBalloonScreenMargin, Width - bodyWidth - PacketOwnedBalloonScreenMargin));
             PacketOwnedBalloonArrowKind arrowKind = SelectPacketOwnedBalloonArrowKind(anchor, canvasX, bodyWidth, placeAbove);
             LocalOverlayBalloonArrowSprite arrowSprite = ResolvePacketOwnedBalloonArrowSprite(arrowKind);
-            int arrowHeight = arrowSprite?.Texture?.Height ?? 14;
-            int canvasHeight = bodyHeight + Math.Max(0, arrowHeight - PacketOwnedBalloonClientArrowYOffset);
             int desiredCanvasY = placeAbove
-                ? anchor.Y - canvasHeight
+                ? anchor.Y - (bodyHeight + Math.Max(0, (arrowSprite?.Texture?.Height ?? 14) - PacketOwnedBalloonClientArrowYOffset))
                 : anchor.Y;
-            Rectangle canvasBounds = new(
-                canvasX,
-                Math.Clamp(
-                    desiredCanvasY,
-                    PacketOwnedBalloonScreenMargin,
-                    Math.Max(PacketOwnedBalloonScreenMargin, Height - canvasHeight - PacketOwnedBalloonScreenMargin)),
-                bodyWidth,
-                canvasHeight);
-            int bodyY = placeAbove
-                ? canvasBounds.Y
-                : canvasBounds.Bottom - bodyHeight;
-            Rectangle bodyBounds = new(canvasBounds.X, bodyY, bodyWidth, bodyHeight);
+            Rectangle bodyBounds = new(canvasX, desiredCanvasY, bodyWidth, bodyHeight);
+            if (!placeAbove)
+            {
+                bodyBounds.Y = desiredCanvasY + Math.Max(0, (arrowSprite?.Texture?.Height ?? 14) - PacketOwnedBalloonClientArrowYOffset);
+            }
+
+            Rectangle arrowBounds = ResolvePacketOwnedBalloonArrowBounds(bodyBounds, arrowKind, arrowSprite);
+            Rectangle canvasBounds = UnionPacketOwnedBalloonBounds(bodyBounds, arrowBounds);
+            Point screenShift = ResolvePacketOwnedBalloonCanvasShift(canvasBounds);
+            bodyBounds = OffsetPacketOwnedBalloonBounds(bodyBounds, screenShift);
+            arrowBounds = OffsetPacketOwnedBalloonBounds(arrowBounds, screenShift);
+            canvasBounds = UnionPacketOwnedBalloonBounds(bodyBounds, arrowBounds);
 
             if (occupiedBounds != null)
             {
+                ResolvePacketOwnedBalloonOverlap(occupiedBounds, placeAbove, ref bodyBounds, ref arrowBounds, ref canvasBounds);
+            }
+
+            Rectangle contentBounds = new(
+                bodyBounds.X + PacketOwnedBalloonHorizontalPadding,
+                bodyBounds.Y + PacketOwnedBalloonVerticalPadding,
+                contentAreaWidth,
+                Math.Max(0, bodyHeight - (PacketOwnedBalloonVerticalPadding * 2)));
+            layout = new PacketOwnedBalloonLayout(message, anchor, canvasBounds, bodyBounds, contentBounds, lines, lineHeight, arrowKind, arrowSprite, arrowBounds);
+            return true;
+        }
+
+        private void ResolvePacketOwnedBalloonOverlap(
+            List<Rectangle> occupiedBounds,
+            bool placeAbove,
+            ref Rectangle bodyBounds,
+            ref Rectangle arrowBounds,
+            ref Rectangle canvasBounds)
+        {
+            if (occupiedBounds == null || occupiedBounds.Count == 0)
+            {
+                return;
+            }
+
+            for (int pass = 0; pass < PacketOwnedBalloonMaxOverlapPasses; pass++)
+            {
+                bool shifted = false;
                 for (int i = 0; i < occupiedBounds.Count; i++)
                 {
                     if (!canvasBounds.Intersects(occupiedBounds[i]))
@@ -652,27 +760,26 @@ namespace HaCreator.MapSimulator
                     }
 
                     int adjustedCanvasY = placeAbove
-                        ? occupiedBounds[i].Y - canvasHeight - PacketOwnedBalloonScreenMargin
+                        ? occupiedBounds[i].Y - canvasBounds.Height - PacketOwnedBalloonScreenMargin
                         : occupiedBounds[i].Bottom + PacketOwnedBalloonScreenMargin;
-                    canvasBounds.Y = Math.Clamp(
-                        adjustedCanvasY,
-                        PacketOwnedBalloonScreenMargin,
-                        Math.Max(PacketOwnedBalloonScreenMargin, Height - canvasHeight - PacketOwnedBalloonScreenMargin));
-                    bodyBounds.Y = placeAbove
-                        ? canvasBounds.Y
-                        : canvasBounds.Bottom - bodyHeight;
+                    Point overlapShift = new(0, adjustedCanvasY - canvasBounds.Y);
+                    bodyBounds = OffsetPacketOwnedBalloonBounds(bodyBounds, overlapShift);
+                    arrowBounds = OffsetPacketOwnedBalloonBounds(arrowBounds, overlapShift);
+                    canvasBounds = UnionPacketOwnedBalloonBounds(bodyBounds, arrowBounds);
+
+                    Point reclampShift = ResolvePacketOwnedBalloonCanvasShift(canvasBounds);
+                    bodyBounds = OffsetPacketOwnedBalloonBounds(bodyBounds, reclampShift);
+                    arrowBounds = OffsetPacketOwnedBalloonBounds(arrowBounds, reclampShift);
+                    canvasBounds = UnionPacketOwnedBalloonBounds(bodyBounds, arrowBounds);
+                    shifted = true;
+                    break;
+                }
+
+                if (!shifted)
+                {
+                    return;
                 }
             }
-
-            bodyBounds.X = canvasBounds.X;
-            bodyBounds.Width = canvasBounds.Width;
-            Rectangle contentBounds = new(
-                bodyBounds.X + PacketOwnedBalloonHorizontalPadding,
-                bodyBounds.Y + PacketOwnedBalloonVerticalPadding,
-                contentAreaWidth,
-                Math.Max(0, bodyHeight - (PacketOwnedBalloonVerticalPadding * 2)));
-            layout = new PacketOwnedBalloonLayout(message, anchor, canvasBounds, bodyBounds, contentBounds, lines, lineHeight, arrowKind, arrowSprite);
-            return true;
         }
 
         private void DrawPacketOwnedBalloonLayout(in PacketOwnedBalloonLayout layout, int currentTickCount)
@@ -1956,7 +2063,8 @@ namespace HaCreator.MapSimulator
             PacketOwnedBalloonWrappedLine[] Lines,
             int LineHeight,
             PacketOwnedBalloonArrowKind ArrowKind,
-            LocalOverlayBalloonArrowSprite ArrowSprite);
+            LocalOverlayBalloonArrowSprite ArrowSprite,
+            Rectangle ArrowBounds);
 
         private readonly record struct PacketOwnedBalloonTextStyle(Color Color, bool Emphasis);
 
@@ -1964,9 +2072,10 @@ namespace HaCreator.MapSimulator
 
         private readonly record struct PacketOwnedBalloonTextRun(string Text, PacketOwnedBalloonTextStyle Style);
 
-        private readonly record struct PacketOwnedBalloonWrappedLine(PacketOwnedBalloonTextRun[] Runs, int Width)
+        private readonly record struct PacketOwnedBalloonWrappedLine(PacketOwnedBalloonTextRun[] Runs, int Width, bool PreservesLineHeight)
         {
-            public static readonly PacketOwnedBalloonWrappedLine Empty = new(Array.Empty<PacketOwnedBalloonTextRun>(), 0);
+            public static readonly PacketOwnedBalloonWrappedLine Empty = new(Array.Empty<PacketOwnedBalloonTextRun>(), 0, false);
+            public static readonly PacketOwnedBalloonWrappedLine Blank = new(Array.Empty<PacketOwnedBalloonTextRun>(), 0, true);
         }
     }
 }

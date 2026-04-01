@@ -28,6 +28,33 @@ namespace HaCreator.MapSimulator.UI
         public CharacterPart RequestedPart { get; init; }
     }
 
+    public sealed class EquipmentChangeSubmission
+    {
+        public static EquipmentChangeSubmission Accept(int requestId, int requestedAtTick)
+        {
+            return new EquipmentChangeSubmission
+            {
+                Accepted = true,
+                RequestId = requestId,
+                RequestedAtTick = requestedAtTick
+            };
+        }
+
+        public static EquipmentChangeSubmission Reject(string rejectReason)
+        {
+            return new EquipmentChangeSubmission
+            {
+                Accepted = false,
+                RejectReason = rejectReason ?? string.Empty
+            };
+        }
+
+        public bool Accepted { get; init; }
+        public string RejectReason { get; init; } = string.Empty;
+        public int RequestId { get; init; }
+        public int RequestedAtTick { get; init; }
+    }
+
     public sealed class EquipmentChangeResult
     {
         public static EquipmentChangeResult Accept(
@@ -42,6 +69,17 @@ namespace HaCreator.MapSimulator.UI
             };
         }
 
+        public static EquipmentChangeResult Pending(int requestId, int requestedAtTick)
+        {
+            return new EquipmentChangeResult
+            {
+                Accepted = true,
+                IsPending = true,
+                RequestId = requestId,
+                RequestedAtTick = requestedAtTick
+            };
+        }
+
         public static EquipmentChangeResult Reject(string rejectReason)
         {
             return new EquipmentChangeResult
@@ -52,6 +90,7 @@ namespace HaCreator.MapSimulator.UI
         }
 
         public bool Accepted { get; init; }
+        public bool IsPending { get; init; }
         public string RejectReason { get; init; } = string.Empty;
         public IReadOnlyList<CharacterPart> DisplacedParts { get; init; } = Array.Empty<CharacterPart>();
         public CharacterPart ReturnedPart { get; init; }
@@ -64,6 +103,7 @@ namespace HaCreator.MapSimulator.UI
             return new EquipmentChangeResult
             {
                 Accepted = Accepted,
+                IsPending = IsPending,
                 RejectReason = RejectReason,
                 DisplacedParts = DisplacedParts,
                 ReturnedPart = ReturnedPart,

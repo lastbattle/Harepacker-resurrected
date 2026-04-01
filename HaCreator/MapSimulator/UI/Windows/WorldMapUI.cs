@@ -1462,19 +1462,47 @@ namespace HaCreator.MapSimulator.UI
                 height = _font.LineSpacing + 10;
             }
 
-            width = Math.Max(64, Math.Min(viewportWidth, width));
-            height = Math.Max(4, Math.Min(viewportHeight, height));
+            Rectangle ownerBounds = GetOwnerBounds();
+            int availableWidth = ownerBounds.Width > 0 ? ownerBounds.Width : viewportWidth;
+            int availableHeight = ownerBounds.Height > 0 ? ownerBounds.Height : viewportHeight;
+
+            width = Math.Max(64, Math.Min(Math.Min(viewportWidth, availableWidth), width));
+            height = Math.Max(4, Math.Min(Math.Min(viewportHeight, availableHeight), height));
             Point origin = ResolveCandidateWindowOrigin();
 
-            int x = Math.Clamp(origin.X, 0, Math.Max(0, viewportWidth - width));
+            int minX = Math.Max(0, ownerBounds.X);
+            int maxX = Math.Min(viewportWidth, ownerBounds.Right) - width;
+            if (maxX < minX)
+            {
+                minX = 0;
+                maxX = Math.Max(0, viewportWidth - width);
+            }
+
+            int x = Math.Clamp(origin.X, minX, Math.Max(minX, maxX));
             int y = origin.Y;
-            if (y + height > viewportHeight)
+            int ownerBottom = ownerBounds.Height > 0 ? Math.Min(viewportHeight, ownerBounds.Bottom) : viewportHeight;
+            if (y + height > ownerBottom)
             {
                 y = origin.Y - height - (_font.LineSpacing + 2);
             }
 
-            y = Math.Clamp(y, 0, Math.Max(0, viewportHeight - height));
+            int minY = Math.Max(0, ownerBounds.Y);
+            int maxY = ownerBounds.Height > 0
+                ? Math.Min(viewportHeight, ownerBounds.Bottom) - height
+                : viewportHeight - height;
+            y = Math.Clamp(y, minY, Math.Max(minY, maxY));
             return new Rectangle(x, y, width, height);
+        }
+
+        private Rectangle GetOwnerBounds()
+        {
+            IDXObject frame = CurrentFrame;
+            if (frame == null)
+            {
+                return Rectangle.Empty;
+            }
+
+            return new Rectangle(Position.X, Position.Y, Math.Max(0, frame.Width), Math.Max(0, frame.Height));
         }
 
         private void DrawSearchInput(SpriteBatch sprite, int tickCount)

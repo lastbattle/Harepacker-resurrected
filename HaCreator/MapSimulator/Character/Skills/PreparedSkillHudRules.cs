@@ -36,6 +36,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 3121004 => new PreparedSkillHudProfile(true, "KeyDownBar", 2000),
                 3221001 => new PreparedSkillHudProfile(true, "KeyDownBar", 900),
                 4341003 => new PreparedSkillHudProfile(true, "KeyDownBar", 1200),
+                5311002 => new PreparedSkillHudProfile(true, "KeyDownBar", 1080),
                 5201002 => new PreparedSkillHudProfile(true, "KeyDownBar", 1000),
                 13111002 => new PreparedSkillHudProfile(true, "KeyDownBar", 1000),
                 22121000 => new PreparedSkillHudProfile(true, "KeyDownBar3", 500, PreparedSkillHudSurface.World, showText: false),

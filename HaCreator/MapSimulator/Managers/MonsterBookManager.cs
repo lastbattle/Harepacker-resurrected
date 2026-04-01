@@ -163,7 +163,7 @@ namespace HaCreator.MapSimulator.Managers
                 Title = "Monster Book",
                 Subtitle = build == null
                     ? "Monster card ownership is unavailable because there is no active character build."
-                    : "Card ownership is persisted per character and built from the WZ-backed monster-card catalog, with chapter tabs derived from the client's 0238xxxx card buckets, client-shaped right-tab detail panes, local registered-card state, and pickup-backed Monster Card ownership.",
+                    : "Card ownership is persisted per character and built from the WZ-backed monster-card catalog, with chapter tabs derived from the client's 0238xxxx card buckets, client-shaped right-tab detail panes, local registered-card state, pickup-backed Monster Card ownership, and WZ-backed reward/habitat naming.",
                 StatusText = "The Monster Book owner now routes the overview tab, the nine chapter tabs, the four right-tab detail panes, local search, and register or release context actions through the dedicated Monster Book runtime. Ownership now follows picked-up Monster Card drops sourced from the WZ-backed card catalog, while packet-authored save flow and deeper client search semantics still remain outside this simulator runtime.",
                 TotalCardTypes = cards.Count,
                 OwnedCardTypes = ownedCardTypes,
@@ -363,7 +363,7 @@ namespace HaCreator.MapSimulator.Managers
                         EpisodeText = episodeText,
                         RewardLines = rewardLines,
                         HabitatLines = habitatLines,
-                        SearchText = BuildSearchText(mobName, mobId, rewardLines, habitatLines, episodeText)
+                        SearchText = BuildSearchText(cardItemId, mobName, mobId, rewardLines, habitatLines, episodeText)
                     });
                 }
             }
@@ -656,7 +656,7 @@ namespace HaCreator.MapSimulator.Managers
             {
                 return stringEntry.RewardItemIds
                     .Take(4)
-                    .Select(itemId => $"Reward item #{itemId}")
+                    .Select(ResolveRewardLine)
                     .Append($"Card target mob: {mobId}")
                     .ToArray();
             }
@@ -675,7 +675,7 @@ namespace HaCreator.MapSimulator.Managers
             {
                 return stringEntry.MapIds
                     .Take(4)
-                    .Select(mapId => $"Map #{mapId}")
+                    .Select(ResolveHabitatLine)
                     .ToArray();
             }
 
@@ -686,12 +686,14 @@ namespace HaCreator.MapSimulator.Managers
             return new[] { categoryText, typeText, attackText, elementText };
         }
 
-        private static string BuildSearchText(string mobName, int mobId, IReadOnlyList<string> rewardLines, IReadOnlyList<string> habitatLines, string episodeText)
+        private static string BuildSearchText(int cardItemId, string mobName, int mobId, IReadOnlyList<string> rewardLines, IReadOnlyList<string> habitatLines, string episodeText)
         {
             IEnumerable<string> parts = new[]
             {
                 mobName,
                 mobId.ToString(CultureInfo.InvariantCulture),
+                ResolveItemName(cardItemId),
+                cardItemId > 0 ? cardItemId.ToString(CultureInfo.InvariantCulture) : string.Empty,
                 episodeText
             }
             .Concat(rewardLines ?? Array.Empty<string>())
@@ -699,5 +701,62 @@ namespace HaCreator.MapSimulator.Managers
 
             return string.Join(" ", parts.Where(part => !string.IsNullOrWhiteSpace(part)));
         }
+
+        private static string ResolveRewardLine(int itemId)
+        {
+            string itemName = ResolveItemName(itemId);
+            return string.IsNullOrWhiteSpace(itemName)
+                ? $"Reward item #{itemId}"
+                : $"{itemName} ({itemId})";
+        }
+
+        private static string ResolveHabitatLine(int mapId)
+        {
+            string mapName = ResolveMapName(mapId);
+            return string.IsNullOrWhiteSpace(mapName)
+                ? $"Map #{mapId}"
+                : mapName;
+        }
+
+        private static string ResolveItemName(int itemId)
+        {
+            if (itemId <= 0)
+            {
+                return string.Empty;
+            }
+
+            return global::HaCreator.Program.InfoManager.ItemNameCache.TryGetValue(itemId, out Tuple<string, string, string> itemInfo)
+                ? itemInfo?.Item2 ?? string.Empty
+                : string.Empty;
+        }
+
+        private static string ResolveMapName(int mapId)
+        {
+            if (mapId <= 0)
+            {
+                return string.Empty;
+            }
+
+            string key = mapId.ToString("D9", CultureInfo.InvariantCulture);
+            if (!global::HaCreator.Program.InfoManager.MapsNameCache.TryGetValue(key, out Tuple<string, string, string> mapInfo) || mapInfo == null)
+            {
+                return string.Empty;
+            }
+
+            string streetName = mapInfo.Item1?.Trim();
+            string mapName = mapInfo.Item2?.Trim();
+            if (string.IsNullOrWhiteSpace(streetName))
+            {
+                return mapName ?? string.Empty;
+            }
+
+            if (string.IsNullOrWhiteSpace(mapName) || string.Equals(streetName, mapName, StringComparison.OrdinalIgnoreCase))
+            {
+                return streetName;
+            }
+
+            return $"{streetName} - {mapName}";
+        }
+
     }
 }

@@ -38,6 +38,7 @@ namespace HaCreator.MapSimulator.UI
 
     public static class PickupNoticeTextFormatter
     {
+        // IDs recovered from CWvsContext::OnDropPickUpMessage in the v95 client.
         public static PickupNoticeSuccessMessages FormatMesoPickup(
             int amount,
             bool pickedByPet = false,

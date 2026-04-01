@@ -520,7 +520,7 @@ namespace HaCreator.MapSimulator.UI
                 return Color.White;
             }
 
-            Color mappedColor = MapSimulatorChat.ResolveRenderedClientChatLogColor(line.ChatLogType);
+            Color mappedColor = MapSimulatorChat.ResolveRenderedClientChatLogColor(line.ChatLogType, line.ChannelId);
             return mappedColor != Color.White || line.ChatLogType == 0
                 ? mappedColor
                 : line.Color;

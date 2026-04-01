@@ -410,6 +410,10 @@ namespace HaCreator.MapSimulator.Character
         public bool IsTimeLimited { get; set; }
         public string PotentialTierText { get; set; }
         public List<string> PotentialLines { get; set; } = new();
+        public bool HasGrowthInfo { get; set; }
+        public int GrowthLevel { get; set; }
+        public int GrowthMaxLevel { get; set; }
+        public int GrowthExpPercent { get; set; }
 
         // Icon for UI
         public IDXObject Icon { get; set; }
@@ -466,6 +470,10 @@ namespace HaCreator.MapSimulator.Character
                 IsTimeLimited = IsTimeLimited,
                 PotentialTierText = PotentialTierText,
                 PotentialLines = PotentialLines != null ? new List<string>(PotentialLines) : new List<string>(),
+                HasGrowthInfo = HasGrowthInfo,
+                GrowthLevel = GrowthLevel,
+                GrowthMaxLevel = GrowthMaxLevel,
+                GrowthExpPercent = GrowthExpPercent,
                 Icon = Icon,
                 IconRaw = IconRaw
             };
@@ -767,6 +775,10 @@ namespace HaCreator.MapSimulator.Character
                 IsTimeLimited = IsTimeLimited,
                 PotentialTierText = PotentialTierText,
                 PotentialLines = PotentialLines != null ? new List<string>(PotentialLines) : new List<string>(),
+                HasGrowthInfo = HasGrowthInfo,
+                GrowthLevel = GrowthLevel,
+                GrowthMaxLevel = GrowthMaxLevel,
+                GrowthExpPercent = GrowthExpPercent,
                 Icon = Icon,
                 IconRaw = IconRaw,
                 AttackSpeed = AttackSpeed,
@@ -806,6 +818,32 @@ namespace HaCreator.MapSimulator.Character
         public List<PortableChairLayer> CoupleMidpointLayers { get; set; } = new();
     }
 
+    public sealed class ItemEffectAnimationSet
+    {
+        public int ItemId { get; set; }
+        public List<PortableChairLayer> OwnerLayers { get; set; } = new();
+        public List<PortableChairLayer> SharedLayers { get; set; } = new();
+
+        public int TotalDurationMs =>
+            Math.Max(GetMaximumDuration(OwnerLayers), GetMaximumDuration(SharedLayers));
+
+        private static int GetMaximumDuration(IEnumerable<PortableChairLayer> layers)
+        {
+            if (layers == null)
+            {
+                return 0;
+            }
+
+            int duration = 0;
+            foreach (PortableChairLayer layer in layers)
+            {
+                duration = Math.Max(duration, layer?.Animation?.TotalDuration ?? 0);
+            }
+
+            return duration;
+        }
+    }
+
     #endregion
 
     #region Character Build
@@ -831,6 +869,13 @@ namespace HaCreator.MapSimulator.Character
             Thief,
             Pirate
         }
+
+        public const int AutoAssignClassBeginner = 0;
+        public const int AutoAssignClassWarrior = 1;
+        public const int AutoAssignClassMagician = 2;
+        public const int AutoAssignClassBowman = 3;
+        public const int AutoAssignClassThief = 4;
+        public const int AutoAssignClassPirate = 5;
 
         public const int MaxPrimaryStat = 999;
         public const int MaxHpMpStat = 30000;
@@ -918,6 +963,7 @@ namespace HaCreator.MapSimulator.Character
             HasPendantSlotExtension || Equipment.ContainsKey(EquipSlot.Pendant2) || HiddenEquipment.ContainsKey(EquipSlot.Pendant2);
         public bool IsPocketSlotAvailable =>
             HasPocketSlot || TraitCharm >= 30 || Equipment.ContainsKey(EquipSlot.Pocket) || HiddenEquipment.ContainsKey(EquipSlot.Pocket);
+        public int AutoAssignClass => ResolveAutoAssignClass(Job);
 
         public int ExpPercent
         {
@@ -1303,16 +1349,37 @@ namespace HaCreator.MapSimulator.Character
             return rollInclusive(range.min, range.max);
         }
 
-        private JobArchetype ResolveJobArchetype()
+        public static int ResolveAutoAssignClass(int jobId)
         {
-            int jobBranch = Math.Abs(Job) / 100;
+            int absoluteJobId = Math.Abs(jobId);
+            int jobBranch = absoluteJobId / 100;
             return jobBranch switch
             {
-                1 or 11 or 21 or 31 => JobArchetype.Warrior,
-                2 or 12 or 22 or 32 => JobArchetype.Magician,
-                3 or 13 or 23 or 33 => JobArchetype.Bowman,
-                4 or 14 or 24 => JobArchetype.Thief,
-                5 or 15 or 35 => JobArchetype.Pirate,
+                1 or 11 or 21 or 31 => AutoAssignClassWarrior,
+                2 or 12 or 22 or 32 => AutoAssignClassMagician,
+                3 or 13 or 23 or 33 => AutoAssignClassBowman,
+                4 or 14 or 24 => AutoAssignClassThief,
+                5 or 15 or 35 => AutoAssignClassPirate,
+                // Hero branches use job-root starters before their first advancement.
+                20 when absoluteJobId == 2000 => AutoAssignClassWarrior,
+                20 when absoluteJobId == 2001 => AutoAssignClassMagician,
+                20 when absoluteJobId == 2002 => AutoAssignClassBowman,
+                20 when absoluteJobId == 2003 => AutoAssignClassThief,
+                // Resistance uses a shared Citizen beginner plus the Demon beginner root.
+                30 when absoluteJobId == 3001 => AutoAssignClassWarrior,
+                _ => AutoAssignClassBeginner
+            };
+        }
+
+        private JobArchetype ResolveJobArchetype()
+        {
+            return ResolveAutoAssignClass(Job) switch
+            {
+                AutoAssignClassWarrior => JobArchetype.Warrior,
+                AutoAssignClassMagician => JobArchetype.Magician,
+                AutoAssignClassBowman => JobArchetype.Bowman,
+                AutoAssignClassThief => JobArchetype.Thief,
+                AutoAssignClassPirate => JobArchetype.Pirate,
                 _ => JobArchetype.Beginner
             };
         }
@@ -1376,6 +1443,7 @@ namespace HaCreator.MapSimulator.Character
         {
             WeaponPart weapon = GetWeapon();
             int weaponCode = GetWeaponCode(weapon?.ItemId ?? 0);
+            int thiefSecondaryStat = GetThiefSecondaryDamageStat();
 
             return weaponCode switch
             {
@@ -1383,8 +1451,8 @@ namespace HaCreator.MapSimulator.Character
                 31 => new AttackFormulaProfile(false, 4.4f, TotalSTR, TotalDEX, 0.9f),
                 32 => new AttackFormulaProfile(false, 4.8f, TotalSTR, TotalDEX, 0.9f),
                 33 => ResolveDaggerFormulaProfile(),
-                34 => new AttackFormulaProfile(false, 3.6f, TotalLUK, TotalDEX, 0.9f),
-                36 => new AttackFormulaProfile(false, 3.6f, TotalLUK, TotalDEX, 0.9f),
+                34 => new AttackFormulaProfile(false, 3.6f, TotalLUK, thiefSecondaryStat, 0.9f),
+                36 => new AttackFormulaProfile(false, 3.6f, TotalLUK, thiefSecondaryStat, 0.9f),
                 37 => new AttackFormulaProfile(true, 1.0f, TotalINT, TotalLUK, 1.0f),
                 38 => new AttackFormulaProfile(true, 1.0f, TotalINT, TotalLUK, 1.0f),
                 40 => new AttackFormulaProfile(false, 4.6f, TotalSTR, TotalDEX, 0.9f),
@@ -1394,7 +1462,7 @@ namespace HaCreator.MapSimulator.Character
                 44 => new AttackFormulaProfile(false, 5.0f, TotalSTR, TotalDEX, 0.9f),
                 45 => new AttackFormulaProfile(false, 3.4f, TotalDEX, TotalSTR, 0.9f),
                 46 => new AttackFormulaProfile(false, 3.6f, TotalDEX, TotalSTR, 0.9f),
-                47 => new AttackFormulaProfile(false, 3.6f, TotalLUK, TotalDEX, 0.9f),
+                47 => new AttackFormulaProfile(false, 3.6f, TotalLUK, thiefSecondaryStat, 0.9f),
                 48 => new AttackFormulaProfile(false, 4.8f, TotalSTR, TotalDEX, 0.9f),
                 49 => new AttackFormulaProfile(false, 3.6f, TotalDEX, TotalSTR, 0.9f),
                 52 => new AttackFormulaProfile(false, 3.6f, TotalDEX, TotalSTR, 0.9f),
@@ -1402,7 +1470,7 @@ namespace HaCreator.MapSimulator.Character
                 _ when UsesMagicFormulaByJob() => new AttackFormulaProfile(true, 1.0f, TotalINT, TotalLUK, 1.0f),
                 _ when UsesDexDrivenPirateWeapon() => new AttackFormulaProfile(false, 3.6f, TotalDEX, TotalSTR, 0.9f),
                 _ when ResolveJobArchetype() == JobArchetype.Bowman => new AttackFormulaProfile(false, 3.4f, TotalDEX, TotalSTR, 0.9f),
-                _ when ResolveJobArchetype() == JobArchetype.Thief => new AttackFormulaProfile(false, 3.6f, TotalLUK, TotalDEX, 0.9f),
+                _ when ResolveJobArchetype() == JobArchetype.Thief => new AttackFormulaProfile(false, 3.6f, TotalLUK, thiefSecondaryStat, 0.9f),
                 _ => new AttackFormulaProfile(false, 4.0f, TotalSTR, TotalDEX, 0.9f)
             };
         }
@@ -1410,8 +1478,15 @@ namespace HaCreator.MapSimulator.Character
         private AttackFormulaProfile ResolveDaggerFormulaProfile()
         {
             return ResolveJobArchetype() == JobArchetype.Thief
-                ? new AttackFormulaProfile(false, 3.6f, TotalLUK, TotalDEX, 0.9f)
+                ? new AttackFormulaProfile(false, 3.6f, TotalLUK, GetThiefSecondaryDamageStat(), 0.9f)
                 : new AttackFormulaProfile(false, 4.0f, TotalSTR, TotalDEX, 0.9f);
+        }
+
+        private int GetThiefSecondaryDamageStat()
+        {
+            // Thief-family weapon formulas use the live STR+DEX secondary term rather than
+            // dropping the STR contribution from claw, dagger, katara, or cane users.
+            return TotalSTR + TotalDEX;
         }
 
         private bool UsesMagicFormulaByJob()
@@ -1467,8 +1542,8 @@ namespace HaCreator.MapSimulator.Character
                 WeaponSticker = WeaponSticker,
                 ActivePortableChair = ActivePortableChair,
                 RemotePetItemIds = RemotePetItemIds != null ? new List<int>(RemotePetItemIds) : Array.Empty<int>(),
-                Equipment = new Dictionary<EquipSlot, CharacterPart>(Equipment),
-                HiddenEquipment = new Dictionary<EquipSlot, CharacterPart>(HiddenEquipment),
+                Equipment = CloneEquipmentLayer(Equipment),
+                HiddenEquipment = CloneEquipmentLayer(HiddenEquipment),
                 Level = Level,
                 MaxHP = MaxHP,
                 MaxMP = MaxMP,
@@ -1512,6 +1587,23 @@ namespace HaCreator.MapSimulator.Character
                 SkillStatBonusProvider = SkillStatBonusProvider,
                 SkillMasteryProvider = SkillMasteryProvider
             };
+        }
+
+        private static Dictionary<EquipSlot, CharacterPart> CloneEquipmentLayer(
+            IReadOnlyDictionary<EquipSlot, CharacterPart> source)
+        {
+            Dictionary<EquipSlot, CharacterPart> clone = new();
+            if (source == null)
+            {
+                return clone;
+            }
+
+            foreach (KeyValuePair<EquipSlot, CharacterPart> entry in source)
+            {
+                clone[entry.Key] = entry.Value?.Clone();
+            }
+
+            return clone;
         }
     }
 

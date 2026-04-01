@@ -1,6 +1,7 @@
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Managers;
+using HaCreator.MapSimulator.Pools;
 using HaCreator.MapSimulator.UI;
 using HaSharedLibrary.Wz;
 using MapleLib.WzLib;
@@ -27,9 +28,25 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedApspFollowUpResponseCode = 6;
         private const int PacketOwnedApspMinEventType = 11;
         private const int PacketOwnedApspMaxEventType = 13;
+        private const string PacketOwnedApspPromptPrimaryLabel = "OK";
+        private const string PacketOwnedApspPromptSecondaryLabel = "Cancel";
+        private const string PacketOwnedApspPromptExactBody =
+            "Congratulations! You have reached Lv.30/50/70 during the event period and have been selected as a winner of an AP/SP reset item!\r\n"
+            + "Click the 'OK' button and the AP/SP reset item will be sent to your character's cash locker.\r\n"
+            + "If you wish to receive it on another character, click'Cancel' and re-login with the character of your choice.";
+
+        private sealed class PacketOwnedBattleshipDurabilityOverrideState
+        {
+            public CharacterPart MountPart { get; init; }
+            public int? OriginalDurability { get; init; }
+            public int? OriginalMaxDurability { get; init; }
+        }
 
         private readonly Dictionary<int, HashSet<int>> _packetQuestGuideTargetsByMobId = new();
+        private readonly LocalFollowCharacterRuntime _localFollowRuntime = new();
+        private readonly TutorRuntime _packetOwnedTutorRuntime = new();
         private readonly LocalUtilityPacketInboxManager _localUtilityPacketInbox = new();
+        private PacketOwnedBattleshipDurabilityOverrideState _packetOwnedBattleshipDurabilityOverride;
         private int _packetQuestGuideQuestId;
         private bool _packetOwnedUtilityRequestSent;
         private int _packetOwnedUtilityRequestTick = int.MinValue;
@@ -40,6 +57,13 @@ namespace HaCreator.MapSimulator
         private readonly List<int> _lastQuestDemandQueryVisibleItemIds = new();
         private int _lastQuestDemandQueryHiddenItemCount;
         private int _lastClassCompetitionOpenTick = int.MinValue;
+        private int _lastClassCompetitionAuthRequestTick = int.MinValue;
+        private int _lastClassCompetitionAuthIssuedTick = int.MinValue;
+        private int _lastClassCompetitionNavigateTick = int.MinValue;
+        private bool _lastClassCompetitionAuthPending = true;
+        private bool _lastClassCompetitionLoggedIn;
+        private string _lastClassCompetitionAuthKey = string.Empty;
+        private string _lastClassCompetitionUrl = string.Empty;
         private int _lastPacketOwnedOpenUiType = -1;
         private int _lastPacketOwnedOpenUiOption = -1;
         private int _lastPacketOwnedCommoditySerialNumber;
@@ -57,6 +81,8 @@ namespace HaCreator.MapSimulator
         private bool _packetOwnedApspPromptActive;
         private int _packetOwnedApspPromptContextToken;
         private int _packetOwnedApspPromptEventType;
+        private int _packetOwnedApspReceiveContextToken;
+        private int _packetOwnedApspSendContextToken;
         private int _lastPacketOwnedApspFollowUpContextToken;
         private int _lastPacketOwnedApspFollowUpResponseCode;
         private string _lastPacketOwnedEventSoundDescriptor;
@@ -367,7 +393,9 @@ namespace HaCreator.MapSimulator
 
         private string ApplyClassCompetitionPageLaunch()
         {
+            StampPacketOwnedUtilityRequestState();
             _lastClassCompetitionOpenTick = Environment.TickCount;
+            RefreshClassCompetitionRuntimeState(forceAuthRequest: true);
 
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ClassCompetition) is not UIWindowBase window)
             {
@@ -377,7 +405,9 @@ namespace HaCreator.MapSimulator
             }
 
             ShowWindow(MapSimulatorWindowNames.ClassCompetition, window, trackDirectionModeOwner: true);
-            return "Opened packet-authored Class Competition page.";
+            return _lastClassCompetitionAuthPending
+                ? "Opened packet-authored Class Competition page and seeded a local auth request."
+                : "Opened packet-authored Class Competition page.";
         }
 
         private void ClearPacketQuestGuideTargets(bool refreshWorldMap = true)
@@ -484,8 +514,39 @@ namespace HaCreator.MapSimulator
         private IReadOnlyList<QuestDeliveryWindow.DeliveryEntry> BuildQuestDeliveryEntries(int requestedQuestId, int itemId, IReadOnlyList<int> disallowedQuestIds)
         {
             var entries = new List<QuestDeliveryWindow.DeliveryEntry>();
+            var appendedQuestIds = new HashSet<int>();
             var candidateQuestIds = new HashSet<int>();
             var blockedQuestIds = new HashSet<int>(disallowedQuestIds?.Where(id => id > 0) ?? Array.Empty<int>());
+            IReadOnlyList<QuestDeliveryEntrySnapshot> deliverySnapshot = _questRuntime.BuildQuestDeliverySnapshot(
+                requestedQuestId,
+                itemId,
+                disallowedQuestIds,
+                _playerManager?.Player?.Build);
+
+            for (int i = 0; i < deliverySnapshot.Count; i++)
+            {
+                QuestDeliveryEntrySnapshot snapshot = deliverySnapshot[i];
+                if (snapshot == null || !appendedQuestIds.Add(snapshot.QuestId))
+                {
+                    continue;
+                }
+
+                entries.Add(new QuestDeliveryWindow.DeliveryEntry
+                {
+                    QuestId = snapshot.QuestId,
+                    DisplayQuestId = snapshot.DisplayQuestId,
+                    TargetNpcId = snapshot.TargetNpcId,
+                    Title = snapshot.Title,
+                    NpcName = snapshot.NpcName,
+                    StatusText = snapshot.StatusText,
+                    DetailText = snapshot.DetailText,
+                    DeliveryCashItemName = snapshot.DeliveryCashItemName,
+                    CompletionPhase = snapshot.CompletionPhase,
+                    CanConfirm = snapshot.CanConfirm,
+                    IsBlocked = snapshot.IsBlocked,
+                    IsSeriesRepresentative = snapshot.IsSeriesRepresentative
+                });
+            }
 
             if (requestedQuestId > 0)
             {
@@ -502,6 +563,11 @@ namespace HaCreator.MapSimulator
 
             foreach (int questId in candidateQuestIds)
             {
+                if (appendedQuestIds.Contains(questId))
+                {
+                    continue;
+                }
+
                 QuestWindowDetailState state = GetQuestWindowDetailStateWithPacketState(questId);
                 bool blockedByPacket = blockedQuestIds.Contains(questId);
                 bool matchingItem = state?.TargetItemId == itemId && itemId > 0;
@@ -534,21 +600,25 @@ namespace HaCreator.MapSimulator
                 entries.Add(new QuestDeliveryWindow.DeliveryEntry
                 {
                     QuestId = questId,
+                    DisplayQuestId = questId,
                     TargetNpcId = state?.TargetNpcId ?? 0,
                     Title = state?.Title ?? $"Quest #{questId}",
                     NpcName = npcName,
                     StatusText = statusText,
                     DetailText = detailText,
+                    DeliveryCashItemName = state?.DeliveryCashItemName ?? string.Empty,
                     CompletionPhase = completionPhase,
                     CanConfirm = canConfirm,
-                    IsBlocked = blockedByPacket
+                    IsBlocked = blockedByPacket,
+                    IsSeriesRepresentative = false
                 });
             }
 
             return entries
                 .OrderByDescending(entry => entry.QuestId == requestedQuestId)
                 .ThenByDescending(entry => entry.CanConfirm)
-                .ThenByDescending(entry => entry.CompletionPhase)
+                .ThenBy(entry => entry.CompletionPhase)
+                .ThenBy(entry => entry.DisplayQuestId > 0 ? entry.DisplayQuestId : entry.QuestId)
                 .ThenBy(entry => entry.QuestId)
                 .ToArray();
         }
@@ -617,8 +687,26 @@ namespace HaCreator.MapSimulator
 
         private IReadOnlyList<string> BuildClassCompetitionPageLines()
         {
+            RefreshClassCompetitionRuntimeState();
             var lines = new List<string>();
             var build = _playerManager?.Player?.Build;
+            lines.Add("Packet-authored web owner mirroring CUserLocal::OnOpenClassCompetitionPage and CClassCompetition.");
+            lines.Add("Constructor shape: CWebWnd, 312x389 owner bounds, close/OK dismissal only, and a loading layer while auth is pending.");
+
+            string authState = _lastClassCompetitionAuthIssuedTick == int.MinValue
+                ? "No class-competition auth key has been seeded yet."
+                : _lastClassCompetitionAuthPending
+                    ? $"Auth key seeded at {_lastClassCompetitionAuthIssuedTick}, loading page is still pending."
+                    : _lastClassCompetitionLoggedIn
+                        ? $"Auth key seeded at {_lastClassCompetitionAuthIssuedTick}, navigation completed at {_lastClassCompetitionNavigateTick}."
+                        : $"Auth key seeded at {_lastClassCompetitionAuthIssuedTick}, navigation has not completed yet.";
+            lines.Add(authState);
+
+            if (!string.IsNullOrWhiteSpace(_lastClassCompetitionUrl))
+            {
+                lines.Add($"Local web seed: {_lastClassCompetitionUrl}");
+            }
+
             if (build != null)
             {
                 lines.Add($"{build.Name}  Lv.{Math.Max(1, build.Level)}  {build.JobName}");
@@ -631,9 +719,7 @@ namespace HaCreator.MapSimulator
                 lines.Add("No active player build is bound to the simulator.");
             }
 
-            lines.Add("This page is opened only from the packet-owned local-user branch.");
-            lines.Add("The client constructor takes no packet payload, so this simulator page binds runtime status instead of a menu stub.");
-            lines.Add("No server-fed class ladder payload is present, so standings stay seeded from the active local build only.");
+            lines.Add("This owner still has no live server-fed ladder payload, so standings remain seeded from the active local build instead of a remote page response.");
 
             if (_lastClassCompetitionOpenTick != int.MinValue)
             {
@@ -645,13 +731,74 @@ namespace HaCreator.MapSimulator
 
         private string BuildClassCompetitionFooter()
         {
-            if (_packetOwnedUtilityRequestTick == int.MinValue)
+            RefreshClassCompetitionRuntimeState();
+            if (_packetOwnedUtilityRequestTick == int.MinValue && _lastClassCompetitionAuthRequestTick == int.MinValue)
             {
                 return "Utility request timing idle.";
             }
 
-            int ageMs = Math.Max(0, unchecked(currTickCount - _packetOwnedUtilityRequestTick));
-            return $"Shared request stamp: {_packetOwnedUtilityRequestTick} ({ageMs}ms ago)";
+            string requestStamp = _packetOwnedUtilityRequestTick == int.MinValue
+                ? "Shared request stamp: idle"
+                : $"Shared request stamp: {_packetOwnedUtilityRequestTick} ({Math.Max(0, unchecked(currTickCount - _packetOwnedUtilityRequestTick))}ms ago)";
+            string authStamp = _lastClassCompetitionAuthRequestTick == int.MinValue
+                ? "auth request idle"
+                : $"auth request: {_lastClassCompetitionAuthRequestTick} ({Math.Max(0, unchecked(currTickCount - _lastClassCompetitionAuthRequestTick))}ms ago)";
+            return $"{requestStamp}, {authStamp}";
+        }
+
+        private void RefreshClassCompetitionRuntimeState(bool forceAuthRequest = false)
+        {
+            if (_lastClassCompetitionOpenTick == int.MinValue && !forceAuthRequest)
+            {
+                return;
+            }
+
+            int now = Environment.TickCount;
+            bool authExpired = _lastClassCompetitionAuthIssuedTick == int.MinValue
+                || Math.Max(0, unchecked(now - _lastClassCompetitionAuthIssuedTick)) >= 300000;
+            bool shouldRequestAuth = forceAuthRequest
+                || _lastClassCompetitionAuthRequestTick == int.MinValue
+                || Math.Max(0, unchecked(now - _lastClassCompetitionAuthRequestTick)) >= 180000
+                || authExpired;
+
+            if (shouldRequestAuth)
+            {
+                _lastClassCompetitionAuthRequestTick = now;
+                _lastClassCompetitionAuthIssuedTick = now;
+                _lastClassCompetitionAuthPending = true;
+                _lastClassCompetitionLoggedIn = false;
+                _lastClassCompetitionAuthKey = BuildClassCompetitionAuthKey(now);
+                _lastClassCompetitionUrl = BuildClassCompetitionUrl(_lastClassCompetitionAuthKey);
+            }
+
+            if (_lastClassCompetitionAuthPending
+                && _lastClassCompetitionOpenTick != int.MinValue
+                && Math.Max(0, unchecked(now - _lastClassCompetitionOpenTick)) >= 250)
+            {
+                _lastClassCompetitionAuthPending = false;
+            }
+
+            if (!_lastClassCompetitionAuthPending
+                && !_lastClassCompetitionLoggedIn
+                && !string.IsNullOrWhiteSpace(_lastClassCompetitionUrl))
+            {
+                _lastClassCompetitionLoggedIn = true;
+                _lastClassCompetitionNavigateTick = now;
+            }
+        }
+
+        private string BuildClassCompetitionAuthKey(int issuedAtTick)
+        {
+            int buildId = _playerManager?.Player?.Build?.Id ?? 0;
+            int mapId = _mapBoard?.MapInfo?.id ?? 0;
+            return $"msim-{buildId:x8}-{mapId:x8}-{issuedAtTick:x8}";
+        }
+
+        private string BuildClassCompetitionUrl(string authKey)
+        {
+            int worldId = Math.Max(0, _simulatorWorldId) + 1;
+            int characterId = _playerManager?.Player?.Build?.Id ?? 0;
+            return $"classcompetition://world/{worldId}/character/{characterId}?auth={authKey}";
         }
 
         private void EnsureLocalUtilityPacketInboxState(bool shouldRun)
@@ -739,6 +886,12 @@ namespace HaCreator.MapSimulator
                 case LocalUtilityPacketInboxManager.OpenUiWithOptionClientPacketType:
                     return TryApplyPacketOwnedOpenUiWithOptionPayload(payload, out message);
 
+                case LocalUtilityPacketInboxManager.HireTutorClientPacketType:
+                    return TryApplyPacketOwnedTutorHirePayload(payload, out message);
+
+                case LocalUtilityPacketInboxManager.TutorMsgClientPacketType:
+                    return TryApplyPacketOwnedTutorMessagePayload(payload, out message);
+
                 case LocalUtilityPacketInboxManager.GoToCommoditySnPacketType:
                 case LocalUtilityPacketInboxManager.GoToCommoditySnClientPacketType:
                     return TryApplyPacketOwnedCommodityPayload(payload, out message);
@@ -777,6 +930,10 @@ namespace HaCreator.MapSimulator
                 case LocalUtilityPacketInboxManager.AskApspEventPacketType:
                 case LocalUtilityPacketInboxManager.AskApspEventClientPacketType:
                     return TryApplyPacketOwnedAskApspEventPayload(payload, out message);
+
+                case LocalUtilityPacketInboxManager.FollowCharacterPacketType:
+                case LocalUtilityPacketInboxManager.FollowCharacterClientPacketType:
+                    return TryApplyPacketOwnedFollowCharacterPayload(payload, out message);
 
                 case LocalUtilityPacketInboxManager.FollowCharacterFailedPacketType:
                 case LocalUtilityPacketInboxManager.FollowCharacterFailedClientPacketType:
@@ -891,11 +1048,13 @@ namespace HaCreator.MapSimulator
                     : _lastPacketOwnedApspFollowUpContextToken > 0
                         ? $"AP/SP event: last follow-up {PacketOwnedApspFollowUpOpcode} ({_lastPacketOwnedApspFollowUpContextToken}, {_lastPacketOwnedApspFollowUpResponseCode}). {TruncatePacketOwnedUtilityText(_lastPacketOwnedAskApspMessage)}"
                         : $"AP/SP event: {TruncatePacketOwnedUtilityText(_lastPacketOwnedAskApspMessage)}";
+            string tutorStatus = DescribePacketOwnedTutorStatus(currentTickCount);
+            string localFollowStatus = TruncatePacketOwnedUtilityText(_localFollowRuntime.DescribeStatus(ResolvePacketOwnedRemoteCharacterName), 220);
             string followStatus = string.IsNullOrWhiteSpace(_lastPacketOwnedFollowFailureMessage)
-                ? "Follow failure: none."
+                ? localFollowStatus
                 : _lastPacketOwnedFollowFailureReason.HasValue
-                    ? $"Follow failure: reason {_lastPacketOwnedFollowFailureReason.Value}, driver {_lastPacketOwnedFollowFailureDriverId}, cleared={_lastPacketOwnedFollowFailureClearedPending}. {TruncatePacketOwnedUtilityText(_lastPacketOwnedFollowFailureMessage)}"
-                    : $"Follow failure: {TruncatePacketOwnedUtilityText(_lastPacketOwnedFollowFailureMessage)}";
+                    ? $"{localFollowStatus} Follow failure: reason {_lastPacketOwnedFollowFailureReason.Value}, driver {_lastPacketOwnedFollowFailureDriverId}, cleared={_lastPacketOwnedFollowFailureClearedPending}. {TruncatePacketOwnedUtilityText(_lastPacketOwnedFollowFailureMessage)}"
+                    : $"{localFollowStatus} Follow failure: {TruncatePacketOwnedUtilityText(_lastPacketOwnedFollowFailureMessage)}";
             string soundStatus = string.IsNullOrWhiteSpace(_lastPacketOwnedEventSoundDescriptor) && string.IsNullOrWhiteSpace(_lastPacketOwnedMinigameSoundDescriptor)
                 ? "Sound cues: none."
                 : $"Sound cues: event={(_lastPacketOwnedEventSoundDescriptor ?? "none")}, minigame={(_lastPacketOwnedMinigameSoundDescriptor ?? "none")}.";
@@ -918,6 +1077,7 @@ namespace HaCreator.MapSimulator
                 buffzoneStatus,
                 skillGuideStatus,
                 apspStatus,
+                tutorStatus,
                 followStatus,
                 soundStatus,
                 radioStatus,
@@ -1252,6 +1412,11 @@ namespace HaCreator.MapSimulator
             }
         }
 
+        private void UpdatePacketOwnedTutorRuntime(int currentTickCount)
+        {
+            _packetOwnedTutorRuntime.Update(currentTickCount);
+        }
+
         private bool IsPacketOwnedRadioPlaying()
         {
             return _packetOwnedRadioAudio != null && _lastPacketOwnedRadioStartTick != int.MinValue;
@@ -1456,6 +1621,7 @@ namespace HaCreator.MapSimulator
         private string ApplyPacketOwnedSkillCooltime(int skillId, int remainingSeconds)
         {
             StampPacketOwnedUtilityRequestState();
+            ResetPacketOwnedBattleshipCooldownOverrideIfStale();
             int normalizedSkillId = NormalizePacketOwnedCooldownSkillId(skillId, out bool isVehicleSentinel);
             if (normalizedSkillId <= 0)
             {
@@ -1498,24 +1664,29 @@ namespace HaCreator.MapSimulator
 
         private void ApplyPacketOwnedBattleshipCooldownSideEffects(int remainingUnits)
         {
-            if (_playerManager?.Player?.Build?.Equipment == null
-                || !_playerManager.Player.Build.Equipment.TryGetValue(EquipSlot.TamingMob, out CharacterPart mountPart)
-                || mountPart?.Slot != EquipSlot.TamingMob
-                || mountPart.ItemId != PacketOwnedBattleshipMountItemId)
+            CharacterPart mountPart = ResolveActivePacketOwnedBattleshipMountPart();
+            if (mountPart == null)
             {
+                if (remainingUnits <= 0)
+                {
+                    RestorePacketOwnedBattleshipCooldownOverride();
+                }
+
                 return;
             }
 
             int skillLevel = Math.Max(0, _playerManager.Skills?.GetSkillLevel(PacketOwnedBattleshipSkillId) ?? 0);
             int characterLevel = Math.Max(0, _playerManager.Player.Build.Level);
-            int maxDurability = ResolvePacketOwnedBattleshipMaxDurability(skillLevel, characterLevel);
-            if (maxDurability > 0)
-            {
-                mountPart.MaxDurability = maxDurability;
-            }
-
             if (remainingUnits > 0)
             {
+                EnsurePacketOwnedBattleshipCooldownOverrideCaptured(mountPart);
+
+                int maxDurability = ResolvePacketOwnedBattleshipMaxDurability(skillLevel, characterLevel);
+                if (maxDurability > 0)
+                {
+                    mountPart.MaxDurability = maxDurability;
+                }
+
                 int boundedMaxDurability = Math.Max(0, mountPart.MaxDurability ?? maxDurability);
                 mountPart.Durability = boundedMaxDurability > 0
                     ? Math.Clamp(remainingUnits, 0, boundedMaxDurability)
@@ -1523,13 +1694,74 @@ namespace HaCreator.MapSimulator
             }
             else
             {
-                mountPart.Durability = mountPart.MaxDurability;
+                RestorePacketOwnedBattleshipCooldownOverride();
             }
 
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.RepairDurability) is RepairDurabilityWindow repairWindow)
             {
                 int npcTemplateId = repairWindow.NpcTemplateId;
                 RefreshRepairDurabilityWindow(npcTemplateId, mountPart.ItemId);
+            }
+        }
+
+        private CharacterPart ResolveActivePacketOwnedBattleshipMountPart()
+        {
+            if (_playerManager?.Player?.Build?.Equipment == null
+                || !_playerManager.Player.Build.Equipment.TryGetValue(EquipSlot.TamingMob, out CharacterPart mountPart)
+                || mountPart?.Slot != EquipSlot.TamingMob
+                || mountPart.ItemId != PacketOwnedBattleshipMountItemId)
+            {
+                return null;
+            }
+
+            return mountPart;
+        }
+
+        private void EnsurePacketOwnedBattleshipCooldownOverrideCaptured(CharacterPart mountPart)
+        {
+            if (mountPart?.Slot != EquipSlot.TamingMob)
+            {
+                return;
+            }
+
+            if (ReferenceEquals(_packetOwnedBattleshipDurabilityOverride?.MountPart, mountPart))
+            {
+                return;
+            }
+
+            _packetOwnedBattleshipDurabilityOverride = new PacketOwnedBattleshipDurabilityOverrideState
+            {
+                MountPart = mountPart,
+                OriginalDurability = mountPart.Durability,
+                OriginalMaxDurability = mountPart.MaxDurability
+            };
+        }
+
+        private void RestorePacketOwnedBattleshipCooldownOverride()
+        {
+            if (_packetOwnedBattleshipDurabilityOverride?.MountPart == null)
+            {
+                _packetOwnedBattleshipDurabilityOverride = null;
+                return;
+            }
+
+            _packetOwnedBattleshipDurabilityOverride.MountPart.Durability = _packetOwnedBattleshipDurabilityOverride.OriginalDurability;
+            _packetOwnedBattleshipDurabilityOverride.MountPart.MaxDurability = _packetOwnedBattleshipDurabilityOverride.OriginalMaxDurability;
+            _packetOwnedBattleshipDurabilityOverride = null;
+        }
+
+        private void ResetPacketOwnedBattleshipCooldownOverrideIfStale()
+        {
+            if (_packetOwnedBattleshipDurabilityOverride?.MountPart == null)
+            {
+                _packetOwnedBattleshipDurabilityOverride = null;
+                return;
+            }
+
+            CharacterPart activeMountPart = ResolveActivePacketOwnedBattleshipMountPart();
+            if (!ReferenceEquals(activeMountPart, _packetOwnedBattleshipDurabilityOverride.MountPart))
+            {
+                RestorePacketOwnedBattleshipCooldownOverride();
             }
         }
 
@@ -1568,6 +1800,59 @@ namespace HaCreator.MapSimulator
             return _lastPacketOwnedAskApspMessage;
         }
 
+        private string ApplyPacketOwnedTutorHire(bool enabled)
+        {
+            StampPacketOwnedUtilityRequestState();
+
+            if (!enabled)
+            {
+                _packetOwnedTutorRuntime.ApplyRemoval("packet-owned tutor branch requested removal.");
+                ShowUtilityFeedbackMessage(_packetOwnedTutorRuntime.StatusMessage);
+                return _packetOwnedTutorRuntime.StatusMessage;
+            }
+
+            int skillId = ResolvePacketOwnedTutorSkillId();
+            _packetOwnedTutorRuntime.ApplyHire(skillId, currTickCount);
+            string message = $"Activated packet-owned {DescribePacketOwnedTutorVariant(skillId)} tutor ownership.";
+            ShowUtilityFeedbackMessage(message);
+            return message;
+        }
+
+        private string ApplyPacketOwnedTutorIndexedMessage(int messageIndex, int durationMs)
+        {
+            StampPacketOwnedUtilityRequestState();
+            if (!_packetOwnedTutorRuntime.IsActive)
+            {
+                const string inactiveMessage = "Ignored packet-owned tutor indexed message because no tutor actor is active.";
+                ShowUtilityFeedbackMessage(inactiveMessage);
+                return inactiveMessage;
+            }
+
+            _packetOwnedTutorRuntime.ApplyIndexedMessage(messageIndex, durationMs);
+            string message = $"Applied packet-owned tutor cue #{Math.Max(0, messageIndex)} ({Math.Max(0, durationMs)}).";
+            ShowUtilityFeedbackMessage(message);
+            return message;
+        }
+
+        private string ApplyPacketOwnedTutorTextMessage(string text, int width, int durationMs)
+        {
+            StampPacketOwnedUtilityRequestState();
+            if (!_packetOwnedTutorRuntime.IsActive)
+            {
+                const string inactiveMessage = "Ignored packet-owned tutor text message because no tutor actor is active.";
+                ShowUtilityFeedbackMessage(inactiveMessage);
+                return inactiveMessage;
+            }
+
+            _packetOwnedTutorRuntime.ApplyTextMessage(text, width, durationMs, currTickCount);
+            if (!string.IsNullOrWhiteSpace(_packetOwnedTutorRuntime.ActiveMessageText))
+            {
+                ShowUtilityFeedbackMessage($"Tutor: {_packetOwnedTutorRuntime.ActiveMessageText}");
+            }
+
+            return $"Applied packet-owned tutor text message ({_packetOwnedTutorRuntime.ActiveMessageWidth}px, {_packetOwnedTutorRuntime.ActiveMessageDurationMs} ms).";
+        }
+
         private string ApplyPacketOwnedSkillGuideLaunch()
         {
             string skillWindowMessage = ApplyPacketOwnedOpenUi(3, 1);
@@ -1590,8 +1875,10 @@ namespace HaCreator.MapSimulator
             }
 
             aranSkillGuideWindow.SetPage(guideGrade);
-            aranSkillGuideWindow.Show();
-            uiWindowManager.BringToFront(aranSkillGuideWindow);
+            ShowWindow(
+                MapSimulatorWindowNames.AranSkillGuide,
+                aranSkillGuideWindow,
+                trackDirectionModeOwner: ShouldTrackInheritedDirectionModeOwner());
             _lastPacketOwnedSkillGuideMessage = $"{skillWindowMessage} Opened the packet-owned current skill guide at Aran grade {guideGrade}.";
             ShowUtilityFeedbackMessage(_lastPacketOwnedSkillGuideMessage);
             return _lastPacketOwnedSkillGuideMessage;
@@ -1629,7 +1916,7 @@ namespace HaCreator.MapSimulator
         private bool TryApplyPacketOwnedAskApspEvent(int contextToken, int eventType, out string message)
         {
             StampPacketOwnedUtilityRequestState();
-            int expectedContextToken = ResolvePacketOwnedApspContextToken();
+            int expectedContextToken = ResolvePacketOwnedApspReceiveContextToken();
             if (contextToken != expectedContextToken)
             {
                 _packetOwnedApspPromptActive = false;
@@ -1658,7 +1945,9 @@ namespace HaCreator.MapSimulator
                 "AP/SP Helper",
                 BuildPacketOwnedApspPromptBody(contextToken, eventType),
                 LoginUtilityDialogButtonLayout.YesNo,
-                LoginUtilityDialogAction.ConfirmApspEvent);
+                LoginUtilityDialogAction.ConfirmApspEvent,
+                primaryLabel: PacketOwnedApspPromptPrimaryLabel,
+                secondaryLabel: PacketOwnedApspPromptSecondaryLabel);
             message = _lastPacketOwnedAskApspMessage;
             return true;
         }
@@ -1671,7 +1960,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            _lastPacketOwnedApspFollowUpContextToken = _packetOwnedApspPromptContextToken;
+            _lastPacketOwnedApspFollowUpContextToken = ResolvePacketOwnedApspFollowUpContextToken(_packetOwnedApspPromptContextToken);
             _lastPacketOwnedApspFollowUpResponseCode = PacketOwnedApspFollowUpResponseCode;
             _lastPacketOwnedAskApspMessage =
                 $"Accepted packet-owned AP/SP helper event {_packetOwnedApspPromptEventType}; simulated outpacket {PacketOwnedApspFollowUpOpcode} ({_lastPacketOwnedApspFollowUpContextToken}, {PacketOwnedApspFollowUpResponseCode}).";
@@ -1695,9 +1984,28 @@ namespace HaCreator.MapSimulator
             ShowUtilityFeedbackMessage(_lastPacketOwnedAskApspMessage);
         }
 
-        private int ResolvePacketOwnedApspContextToken()
+        private int ResolvePacketOwnedApspReceiveContextToken()
         {
-            return Math.Max(1, _playerManager?.Player?.Build?.Id ?? 0);
+            SyncPacketOwnedApspContextTokens();
+            return _packetOwnedApspReceiveContextToken;
+        }
+
+        private int ResolvePacketOwnedApspFollowUpContextToken(int promptContextToken)
+        {
+            SyncPacketOwnedApspContextTokens();
+            return ResolvePacketOwnedApspFollowUpContextToken(promptContextToken, _packetOwnedApspSendContextToken);
+        }
+
+        private void SyncPacketOwnedApspContextTokens()
+        {
+            int resolvedCharacterId = Math.Max(1, _playerManager?.Player?.Build?.Id ?? 0);
+            _packetOwnedApspReceiveContextToken = resolvedCharacterId;
+            _packetOwnedApspSendContextToken = resolvedCharacterId;
+        }
+
+        private static int ResolvePacketOwnedApspFollowUpContextToken(int promptContextToken, int sendContextToken)
+        {
+            return sendContextToken > 0 ? sendContextToken : promptContextToken;
         }
 
         private static int ResolvePacketOwnedAranGuideGrade(int jobId)
@@ -1713,9 +2021,109 @@ namespace HaCreator.MapSimulator
             };
         }
 
+        private int ResolvePacketOwnedTutorSkillId()
+        {
+            int jobId = _playerManager?.Player?.Build?.Job ?? 0;
+            int jobFamily = jobId / 1000;
+            return jobFamily switch
+            {
+                1 => TutorRuntime.CygnusTutorSkillId,
+                2 => TutorRuntime.AranTutorSkillId,
+                _ => _packetOwnedTutorRuntime.ActiveSkillId > 0
+                    ? _packetOwnedTutorRuntime.ActiveSkillId
+                    : TutorRuntime.AranTutorSkillId
+            };
+        }
+
+        private string DescribePacketOwnedTutorStatus(int currentTickCount)
+        {
+            if (!_packetOwnedTutorRuntime.IsActive)
+            {
+                return "Tutor: idle.";
+            }
+
+            string variant = DescribePacketOwnedTutorVariant(_packetOwnedTutorRuntime.ActiveSkillId);
+            if (_packetOwnedTutorRuntime.HasVisibleMessage(currentTickCount))
+            {
+                int remainingMs = Math.Max(0, unchecked(_packetOwnedTutorRuntime.ActiveMessageExpiresAt - currentTickCount));
+                return $"Tutor: {variant}, {TruncatePacketOwnedUtilityText(_packetOwnedTutorRuntime.ActiveMessageText, 96)} ({remainingMs} ms left).";
+            }
+
+            return $"Tutor: {variant}, waiting for message.";
+        }
+
+        private static string DescribePacketOwnedTutorVariant(int skillId)
+        {
+            return skillId switch
+            {
+                TutorRuntime.CygnusTutorSkillId => "Cygnus",
+                TutorRuntime.AranTutorSkillId => "Aran",
+                _ => $"skill {skillId}"
+            };
+        }
+
         private static string BuildPacketOwnedApspPromptBody(int contextToken, int eventType)
         {
-            return $"Client helper prompt StringPool 0x{PacketOwnedApspPromptStringPoolId:X} opened for AP/SP event {eventType} on local context {contextToken}. Press Yes to simulate the client follow-up outpacket {PacketOwnedApspFollowUpOpcode} with response {PacketOwnedApspFollowUpResponseCode}.";
+            return PacketOwnedApspPromptExactBody;
+        }
+
+        private static string BuildPacketOwnedFollowPromptBody(string requesterName, int requesterId)
+        {
+            string displayName = string.IsNullOrWhiteSpace(requesterName)
+                ? requesterId > 0 ? $"Character {requesterId}" : "Unknown character"
+                : requesterName.Trim();
+            return $"{displayName} asked to follow the local player. Press Yes to accept the request on the existing local follow seam or No to decline it.";
+        }
+
+        private void AcceptPacketOwnedFollowCharacterPrompt()
+        {
+            if (_localFollowRuntime.IncomingRequesterId <= 0)
+            {
+                HideLoginUtilityDialog();
+                return;
+            }
+
+            if (!TryResolvePacketOwnedRemoteCharacterSnapshot(_localFollowRuntime.IncomingRequesterId, out LocalFollowUserSnapshot requester))
+            {
+                ShowUtilityFeedbackMessage("Incoming follow request could not be accepted because the requester is no longer available.");
+                HideLoginUtilityDialog();
+                return;
+            }
+
+            if (!_localFollowRuntime.TryAcceptIncomingRequest(requester, out string message))
+            {
+                ShowUtilityFeedbackMessage(message);
+                HideLoginUtilityDialog();
+                return;
+            }
+
+            int localCharacterId = _playerManager?.Player?.Build?.Id ?? 0;
+            if (localCharacterId <= 0)
+            {
+                ShowUtilityFeedbackMessage("Incoming follow request could not be accepted because the local player is not fully initialized.");
+                HideLoginUtilityDialog();
+                return;
+            }
+
+            _remoteUserPool?.TryApplyFollowCharacter(
+                requester.CharacterId,
+                localCharacterId,
+                transferField: false,
+                transferPosition: null,
+                localCharacterId,
+                _playerManager?.Player?.Position ?? Vector2.Zero,
+                out _);
+            HideLoginUtilityDialog();
+            ShowUtilityFeedbackMessage(message);
+        }
+
+        private void DeclinePacketOwnedFollowCharacterPrompt()
+        {
+            string message = TryResolvePacketOwnedRemoteCharacterSnapshot(_localFollowRuntime.IncomingRequesterId, out LocalFollowUserSnapshot requester)
+                ? _localFollowRuntime.DeclineIncomingRequest(requester)
+                : _localFollowRuntime.DeclineIncomingRequest(LocalFollowUserSnapshot.Missing(_localFollowRuntime.IncomingRequesterId));
+            HideLoginUtilityDialog();
+            ShowUtilityFeedbackMessage(message);
         }
 
         private string ApplyPacketOwnedFollowCharacterFailed(string message)
@@ -1727,8 +2135,53 @@ namespace HaCreator.MapSimulator
             _lastPacketOwnedFollowFailureReason = null;
             _lastPacketOwnedFollowFailureDriverId = 0;
             _lastPacketOwnedFollowFailureClearedPending = false;
+            _localFollowRuntime.ApplyFollowFailureText(_lastPacketOwnedFollowFailureMessage);
             _chat?.AddClientChatMessage($"[Error] {_lastPacketOwnedFollowFailureMessage}", Environment.TickCount, 15);
             return _lastPacketOwnedFollowFailureMessage;
+        }
+
+        private string ApplyPacketOwnedLocalFollowCharacter(RemoteUserFollowCharacterPacket packet)
+        {
+            int localCharacterId = _playerManager?.Player?.Build?.Id ?? 0;
+            if (localCharacterId <= 0)
+            {
+                return "Packet-owned follow-character payload could not be applied because the local player is not fully initialized.";
+            }
+
+            int previousDriverId = _localFollowRuntime.AttachedDriverId;
+            if (packet.DriverId > 0)
+            {
+                TryResolvePacketOwnedRemoteCharacterSnapshot(packet.DriverId, out LocalFollowUserSnapshot driver);
+                if (previousDriverId > 0 && previousDriverId != packet.DriverId)
+                {
+                    _remoteUserPool?.TryClearLocalPassengerFromDriver(previousDriverId, localCharacterId, out _);
+                }
+
+                string message = _localFollowRuntime.ApplyServerAttach(
+                    driver.Exists
+                        ? driver
+                        : LocalFollowUserSnapshot.Missing(packet.DriverId, ResolvePacketOwnedRemoteCharacterName(packet.DriverId)),
+                    currTickCount);
+                _remoteUserPool?.TryAssignLocalPassengerToDriver(packet.DriverId, localCharacterId, out _);
+                return message;
+            }
+
+            TryResolvePacketOwnedRemoteCharacterSnapshot(previousDriverId, out LocalFollowUserSnapshot previousDriver);
+            LocalFollowApplyResult detachResult = _localFollowRuntime.ApplyServerDetach(
+                previousDriver.Exists
+                    ? previousDriver
+                    : LocalFollowUserSnapshot.Missing(previousDriverId, ResolvePacketOwnedRemoteCharacterName(previousDriverId)),
+                packet.TransferField,
+                packet.TransferX.HasValue && packet.TransferY.HasValue
+                    ? new Vector2(packet.TransferX.Value, packet.TransferY.Value)
+                    : null);
+            ApplyLocalFollowPlayerResult(detachResult);
+            if (previousDriverId > 0)
+            {
+                _remoteUserPool?.TryClearLocalPassengerFromDriver(previousDriverId, localCharacterId, out _);
+            }
+
+            return _localFollowRuntime.LastStatusMessage;
         }
 
         private string ApplyPacketOwnedFollowCharacterFailed(FollowCharacterFailureInfo info)
@@ -1740,6 +2193,7 @@ namespace HaCreator.MapSimulator
             _lastPacketOwnedFollowFailureMessage = string.IsNullOrWhiteSpace(info.Message)
                 ? "Packet-owned follow-character request failed."
                 : info.Message.Trim();
+            _localFollowRuntime.ApplyFollowFailure(info);
 
             if (info.ClearsPendingRequest)
             {
@@ -1761,6 +2215,25 @@ namespace HaCreator.MapSimulator
             }
 
             message = ApplyPacketOwnedFollowCharacterFailed(info);
+            return true;
+        }
+
+        private bool TryApplyPacketOwnedFollowCharacterPayload(byte[] payload, out string message)
+        {
+            int localCharacterId = _playerManager?.Player?.Build?.Id ?? 0;
+            if (localCharacterId <= 0)
+            {
+                message = "Packet-owned follow-character payload could not be applied because the local player is not fully initialized.";
+                return false;
+            }
+
+            if (!RemoteUserPacketCodec.TryParseFollowCharacter(payload, out RemoteUserFollowCharacterPacket packet, out string error, localCharacterId))
+            {
+                message = error;
+                return false;
+            }
+
+            message = ApplyPacketOwnedLocalFollowCharacter(packet);
             return true;
         }
 
@@ -2148,6 +2621,56 @@ namespace HaCreator.MapSimulator
         private bool TryApplyPacketOwnedNoticePayload(byte[] payload, out string message)
         {
             return TryApplyPacketOwnedStringPayload(payload, ApplyPacketOwnedNoticeMessage, "Notice payload is missing.", out message);
+        }
+
+        private bool TryApplyPacketOwnedTutorHirePayload(byte[] payload, out string message)
+        {
+            message = "Hire-tutor payload is missing.";
+            if (payload == null || payload.Length == 0)
+            {
+                return false;
+            }
+
+            message = ApplyPacketOwnedTutorHire(payload[0] != 0);
+            return true;
+        }
+
+        private bool TryApplyPacketOwnedTutorMessagePayload(byte[] payload, out string message)
+        {
+            message = "Tutor message payload is missing.";
+            if (payload == null || payload.Length < 1)
+            {
+                return false;
+            }
+
+            try
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream);
+                bool indexedPayload = reader.ReadByte() != 0;
+                if (indexedPayload)
+                {
+                    if (reader.BaseStream.Length - reader.BaseStream.Position < sizeof(int) * 2)
+                    {
+                        message = "Tutor indexed payload must contain two Int32 values.";
+                        return false;
+                    }
+
+                    message = ApplyPacketOwnedTutorIndexedMessage(reader.ReadInt32(), reader.ReadInt32());
+                    return true;
+                }
+
+                string text = ReadPacketOwnedMapleString(reader);
+                int width = reader.ReadInt32();
+                int durationMs = reader.ReadInt32();
+                message = ApplyPacketOwnedTutorTextMessage(text, width, durationMs);
+                return true;
+            }
+            catch (Exception ex) when (ex is EndOfStreamException or IOException)
+            {
+                message = $"Tutor message payload could not be decoded: {ex.Message}";
+                return false;
+            }
         }
 
         private bool TryApplyPacketOwnedChatPayload(byte[] payload, out string message)
@@ -2624,6 +3147,9 @@ namespace HaCreator.MapSimulator
 
                     return ChatCommandHandler.CommandResult.Ok(ApplyPacketOwnedAskApspEvent(args.Length >= 2 ? string.Join(" ", args.Skip(1)) : null));
 
+                case "follow":
+                    return HandlePacketOwnedFollowCommand(args.Skip(1).ToArray());
+
                 case "followfail":
                     if (args.Length >= 2
                         && int.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int followReasonCode))
@@ -2650,7 +3176,7 @@ namespace HaCreator.MapSimulator
 
                 default:
                     return ChatCommandHandler.CommandResult.Error(
-                        "Usage: /localutility [status|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel|type19|whisper:name|whisperout:name] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv]|classcompetition|skillguide|antimacro [status|launch <normal|admin> [first|retry]|notice <noticeType> [antiMacroType]|result <mode> [antiMacroType] [userName]|clear]|apsp [text]|apsp <contextToken> <11|12|13>|followfail [reasonCode [driverId]|text]|packet <openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|skillguide|antimacro|apspevent|followfail|243|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>]");
+                        "Usage: /localutility [status|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel|type19|whisper:name|whisperout:name] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv]|classcompetition|skillguide|antimacro [status|launch <normal|admin> [first|retry]|notice <noticeType> [antiMacroType]|result <mode> [antiMacroType] [userName]|clear]|apsp [text]|apsp <contextToken> <11|12|13>|follow <status|request <driverId|name> [auto|manual] [keyinput]|ask <requesterId|name>|accept|decline|attach <driverId|name>|detach [transferX transferY]|passengerdetach [requesterId|name] [transferX transferY]>|followfail [reasonCode [driverId]|text]|packet <openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|follow|followfail|193|243|250|251|252|255|256|262|263|264|265|266|267|270|273|274|275|276|1011|1012> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>]");
             }
         }
 
@@ -2739,11 +3265,22 @@ namespace HaCreator.MapSimulator
                     message = ApplyPacketOwnedSkillGuideLaunch();
                     applied = true;
                     break;
+                case "hiretutor":
+                case "tutorhire":
+                    applied = TryApplyPacketOwnedTutorHirePayload(payload, out message);
+                    break;
+                case "tutormsg":
+                    applied = TryApplyPacketOwnedTutorMessagePayload(payload, out message);
+                    break;
                 case "antimacro":
                     applied = TryApplyPacketOwnedAntiMacroPayload(payload, out message);
                     break;
                 case "apspevent":
                     applied = TryApplyPacketOwnedAskApspEventPayload(payload, out message);
+                    break;
+                case "follow":
+                case "followcharacter":
+                    applied = TryApplyPacketOwnedFollowCharacterPayload(payload, out message);
                     break;
                 case "followfail":
                     applied = TryApplyPacketOwnedFollowCharacterFailedPayload(payload, out message);
@@ -2751,13 +3288,298 @@ namespace HaCreator.MapSimulator
                 default:
                     return ChatCommandHandler.CommandResult.Error(
                         rawHex
-                        ? "Usage: /localutility packetraw <openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|skillguide|antimacro|apspevent|followfail|skillcooltime|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011> <hex>"
-                        : "Usage: /localutility packet <openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|skillguide|antimacro|apspevent|followfail|skillcooltime|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011> [payloadhex=..|payloadb64=..]");
+                        ? "Usage: /localutility packetraw <openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|follow|followfail|skillcooltime|193|243|246|247|250|251|252|255|256|262|263|264|265|266|267|270|273|274|275|276|1011|1012> <hex>"
+                        : "Usage: /localutility packet <openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|follow|followfail|skillcooltime|193|243|246|247|250|251|252|255|256|262|263|264|265|266|267|270|273|274|275|276|1011|1012> [payloadhex=..|payloadb64=..]");
             }
 
             return applied
                 ? ChatCommandHandler.CommandResult.Ok(message)
                 : ChatCommandHandler.CommandResult.Error(message);
+        }
+
+        private ChatCommandHandler.CommandResult HandlePacketOwnedFollowCommand(string[] args)
+        {
+            if (args == null || args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
+            {
+                return ChatCommandHandler.CommandResult.Info(_localFollowRuntime.DescribeStatus(ResolvePacketOwnedRemoteCharacterName));
+            }
+
+            switch (args[0].ToLowerInvariant())
+            {
+                case "request":
+                    if (args.Length < 2 || !TryResolvePacketOwnedRemoteCharacterToken(args[1], out int requestedDriverId, out _))
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /localutility follow request <driverId|name> [auto|manual] [keyinput]");
+                    }
+
+                    bool autoRequest = args.Skip(2).Any(token => string.Equals(token, "auto", StringComparison.OrdinalIgnoreCase));
+                    bool keyInput = args.Skip(2).Any(token => string.Equals(token, "keyinput", StringComparison.OrdinalIgnoreCase) || string.Equals(token, "key", StringComparison.OrdinalIgnoreCase));
+                    if (!TryResolvePacketOwnedLocalFollowSnapshot(out LocalFollowUserSnapshot localUser)
+                        || !TryResolvePacketOwnedRemoteCharacterSnapshot(requestedDriverId, out LocalFollowUserSnapshot requestedDriver))
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Follow request could not be issued because the local player or target driver is unavailable.");
+                    }
+
+                    StampPacketOwnedUtilityRequestState();
+                    return _localFollowRuntime.TrySendOutgoingRequest(localUser, requestedDriver, currTickCount, autoRequest, keyInput, out string requestMessage)
+                        ? ChatCommandHandler.CommandResult.Ok(requestMessage)
+                        : ChatCommandHandler.CommandResult.Error(requestMessage);
+
+                case "ask":
+                    if (args.Length < 2 || !TryResolvePacketOwnedRemoteCharacterToken(args[1], out int requesterId, out _)
+                        || !TryResolvePacketOwnedRemoteCharacterSnapshot(requesterId, out LocalFollowUserSnapshot requester))
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /localutility follow ask <requesterId|name>");
+                    }
+
+                    StampPacketOwnedUtilityRequestState();
+                    if (!_localFollowRuntime.TryQueueIncomingRequest(requester, out string askMessage))
+                    {
+                        return ChatCommandHandler.CommandResult.Error(askMessage);
+                    }
+
+                    ShowLoginUtilityDialog(
+                        "Follow Request",
+                        BuildPacketOwnedFollowPromptBody(requester.Name, requester.CharacterId),
+                        LoginUtilityDialogButtonLayout.YesNo,
+                        LoginUtilityDialogAction.ConfirmFollowCharacterRequest);
+                    return ChatCommandHandler.CommandResult.Ok(askMessage);
+
+                case "accept":
+                    AcceptPacketOwnedFollowCharacterPrompt();
+                    return ChatCommandHandler.CommandResult.Ok(_localFollowRuntime.DescribeStatus(ResolvePacketOwnedRemoteCharacterName));
+
+                case "decline":
+                    DeclinePacketOwnedFollowCharacterPrompt();
+                    return ChatCommandHandler.CommandResult.Ok(_localFollowRuntime.DescribeStatus(ResolvePacketOwnedRemoteCharacterName));
+
+                case "attach":
+                    if (args.Length < 2 || !TryResolvePacketOwnedRemoteCharacterToken(args[1], out int attachDriverId, out _)
+                        || !TryResolvePacketOwnedRemoteCharacterSnapshot(attachDriverId, out LocalFollowUserSnapshot attachDriver))
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /localutility follow attach <driverId|name>");
+                    }
+
+                    int localAttachCharacterId = _playerManager?.Player?.Build?.Id ?? 0;
+                    if (localAttachCharacterId <= 0)
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Local follow attach requires an initialized local player.");
+                    }
+
+                    StampPacketOwnedUtilityRequestState();
+                    int previousAttachedDriverId = _localFollowRuntime.AttachedDriverId;
+                    string attachMessage = _localFollowRuntime.ApplyServerAttach(attachDriver, currTickCount);
+                    if (previousAttachedDriverId > 0 && previousAttachedDriverId != attachDriverId)
+                    {
+                        _remoteUserPool?.TryClearLocalPassengerFromDriver(previousAttachedDriverId, localAttachCharacterId, out _);
+                    }
+
+                    _remoteUserPool?.TryAssignLocalPassengerToDriver(attachDriverId, localAttachCharacterId, out _);
+                    return ChatCommandHandler.CommandResult.Ok(attachMessage);
+
+                case "detach":
+                {
+                    if (_localFollowRuntime.AttachedDriverId <= 0)
+                    {
+                        return ChatCommandHandler.CommandResult.Error("No local follow driver is currently attached.");
+                    }
+
+                    Vector2? detachTransferPosition = null;
+                    bool detachTransferField = false;
+                    if (args.Length >= 3
+                        && float.TryParse(args[1], NumberStyles.Float, CultureInfo.InvariantCulture, out float transferX)
+                        && float.TryParse(args[2], NumberStyles.Float, CultureInfo.InvariantCulture, out float transferY))
+                    {
+                        detachTransferField = true;
+                        detachTransferPosition = new Vector2(transferX, transferY);
+                    }
+                    else if (args.Length != 1)
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /localutility follow detach [transferX transferY]");
+                    }
+
+                    TryResolvePacketOwnedRemoteCharacterSnapshot(_localFollowRuntime.AttachedDriverId, out LocalFollowUserSnapshot previousDriver);
+                    int localDetachCharacterId = _playerManager?.Player?.Build?.Id ?? 0;
+                    StampPacketOwnedUtilityRequestState();
+                    LocalFollowApplyResult detachResult = _localFollowRuntime.ApplyServerDetach(previousDriver, detachTransferField, detachTransferPosition);
+                    ApplyLocalFollowPlayerResult(detachResult);
+                    if (localDetachCharacterId > 0 && previousDriver.CharacterId > 0)
+                    {
+                        _remoteUserPool?.TryClearLocalPassengerFromDriver(previousDriver.CharacterId, localDetachCharacterId, out _);
+                    }
+
+                    return ChatCommandHandler.CommandResult.Ok(_localFollowRuntime.LastStatusMessage);
+                }
+
+                case "passengerdetach":
+                {
+                    int passengerId = _localFollowRuntime.AttachedPassengerId;
+                    int coordinateStartIndex = 1;
+                    if (args.Length >= 2 && TryResolvePacketOwnedRemoteCharacterToken(args[1], out int explicitPassengerId, out _))
+                    {
+                        passengerId = explicitPassengerId;
+                        coordinateStartIndex = 2;
+                    }
+
+                    if (passengerId <= 0)
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /localutility follow passengerdetach [requesterId|name] [transferX transferY]");
+                    }
+
+                    Vector2? passengerTransferPosition = null;
+                    bool passengerTransferField = false;
+                    if (args.Length >= coordinateStartIndex + 2
+                        && float.TryParse(args[coordinateStartIndex], NumberStyles.Float, CultureInfo.InvariantCulture, out float passengerTransferX)
+                        && float.TryParse(args[coordinateStartIndex + 1], NumberStyles.Float, CultureInfo.InvariantCulture, out float passengerTransferY))
+                    {
+                        passengerTransferField = true;
+                        passengerTransferPosition = new Vector2(passengerTransferX, passengerTransferY);
+                    }
+                    else if (args.Length != coordinateStartIndex)
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /localutility follow passengerdetach [requesterId|name] [transferX transferY]");
+                    }
+
+                    int localCharacterId = _playerManager?.Player?.Build?.Id ?? 0;
+                    if (localCharacterId <= 0)
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Passenger detach requires an initialized local player.");
+                    }
+
+                    TryResolvePacketOwnedRemoteCharacterSnapshot(passengerId, out LocalFollowUserSnapshot passenger);
+                    _remoteUserPool?.TryApplyFollowCharacter(
+                        passengerId,
+                        0,
+                        passengerTransferField,
+                        passengerTransferPosition,
+                        localCharacterId,
+                        _playerManager?.Player?.Position ?? Vector2.Zero,
+                        out _);
+                    StampPacketOwnedUtilityRequestState();
+                    return ChatCommandHandler.CommandResult.Ok(_localFollowRuntime.ClearAttachedPassenger(passenger, passengerTransferField, passengerTransferPosition));
+                }
+
+                default:
+                    return ChatCommandHandler.CommandResult.Error("Usage: /localutility follow <status|request <driverId|name> [auto|manual] [keyinput]|ask <requesterId|name>|accept|decline|attach <driverId|name>|detach [transferX transferY]|passengerdetach [requesterId|name] [transferX transferY]>");
+            }
+        }
+
+        private bool TryResolvePacketOwnedLocalFollowSnapshot(out LocalFollowUserSnapshot snapshot)
+        {
+            snapshot = LocalFollowUserSnapshot.Missing(_playerManager?.Player?.Build?.Id ?? 0, _playerManager?.Player?.Build?.Name);
+            PlayerCharacter player = _playerManager?.Player;
+            if (player?.Physics == null)
+            {
+                return false;
+            }
+
+            bool isMounted = player.Build?.HasMonsterRiding == true
+                || player.Build?.Equipment?.TryGetValue(EquipSlot.TamingMob, out CharacterPart mountPart) == true && mountPart != null;
+            bool isImmovable = player.State == PlayerState.Sitting
+                || player.IsMovementLockedBySkillTransform
+                || player.GmFlyMode
+                || player.Physics.IsOnLadderOrRope
+                || player.Physics.IsUserFlying()
+                || player.Physics.IsInSwimArea;
+            bool isGhost = string.Equals(player.CurrentActionName, CharacterPart.GetActionString(CharacterAction.Ghost), StringComparison.OrdinalIgnoreCase);
+            snapshot = new LocalFollowUserSnapshot(
+                player.Build?.Id ?? 0,
+                player.Build?.Name,
+                Exists: true,
+                IsAlive: player.IsAlive,
+                IsImmovable: isImmovable,
+                IsMounted: isMounted,
+                HasMorphTemplate: player.HasActiveMorphTransform,
+                IsGhostAction: isGhost,
+                Position: player.Position,
+                FacingRight: player.FacingRight);
+            return true;
+        }
+
+        private bool TryResolvePacketOwnedRemoteCharacterToken(string token, out int characterId, out string resolvedName)
+        {
+            characterId = 0;
+            resolvedName = null;
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            if (int.TryParse(token, NumberStyles.Integer, CultureInfo.InvariantCulture, out characterId))
+            {
+                resolvedName = ResolvePacketOwnedRemoteCharacterName(characterId);
+                return characterId > 0;
+            }
+
+            if (_remoteUserPool != null && _remoteUserPool.TryGetActorByName(token.Trim(), out var actor))
+            {
+                characterId = actor.CharacterId;
+                resolvedName = actor.Name;
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool TryResolvePacketOwnedRemoteCharacterSnapshot(int characterId, out LocalFollowUserSnapshot snapshot)
+        {
+            snapshot = LocalFollowUserSnapshot.Missing(characterId, ResolvePacketOwnedRemoteCharacterName(characterId));
+            if (characterId <= 0 || _remoteUserPool == null || !_remoteUserPool.TryGetActor(characterId, out var actor))
+            {
+                return false;
+            }
+
+            bool isMounted = actor.Build?.HasMonsterRiding == true
+                || actor.Build?.Equipment?.TryGetValue(EquipSlot.TamingMob, out CharacterPart mountPart) == true && mountPart != null;
+            bool isGhost = string.Equals(actor.ActionName, CharacterPart.GetActionString(CharacterAction.Ghost), StringComparison.OrdinalIgnoreCase);
+            snapshot = new LocalFollowUserSnapshot(
+                actor.CharacterId,
+                actor.Name,
+                Exists: true,
+                IsAlive: true,
+                IsImmovable: false,
+                IsMounted: isMounted,
+                HasMorphTemplate: false,
+                IsGhostAction: isGhost,
+                Position: actor.Position,
+                FacingRight: actor.FacingRight);
+            return true;
+        }
+
+        private void ApplyLocalFollowPlayerResult(LocalFollowApplyResult result)
+        {
+            PlayerCharacter player = _playerManager?.Player;
+            if (player == null)
+            {
+                return;
+            }
+
+            if (result.PlayerPositionChanged)
+            {
+                player.SetPosition(result.PlayerPosition.X, result.PlayerPosition.Y);
+            }
+
+            if (result.PlayerFacingRightChanged)
+            {
+                player.FacingRight = result.PlayerFacingRight;
+                player.Physics.FacingRight = result.PlayerFacingRight;
+            }
+        }
+
+        private void SyncPacketOwnedLocalFollowCharacter()
+        {
+            if (_localFollowRuntime.AttachedDriverId <= 0
+                || _playerManager?.Player == null
+                || !TryResolvePacketOwnedRemoteCharacterSnapshot(_localFollowRuntime.AttachedDriverId, out LocalFollowUserSnapshot driver))
+            {
+                return;
+            }
+
+            ApplyLocalFollowPlayerResult(new LocalFollowApplyResult(
+                PlayerPositionChanged: true,
+                PlayerPosition: driver.Position,
+                PlayerFacingRightChanged: true,
+                PlayerFacingRight: driver.FacingRight));
         }
 
         private string ResolvePacketOwnedRemoteCharacterName(int characterId)

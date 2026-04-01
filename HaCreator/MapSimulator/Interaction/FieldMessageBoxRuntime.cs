@@ -26,13 +26,21 @@ namespace HaCreator.MapSimulator.Interaction
         private const int MinBoardWidth = 92;
         private const int MaxBodyLineCount = 4;
         private const int CreateFailedStringPoolId = 0x1EA;
+        private const int ClientMessageBoxPropertyStringPoolId = 0x660;
         private const string ClientMessageBoxPropertyName = "messageBox";
         private const string ChalkboardSamplePropertyName = "sample";
+        private const string InfoPropertyName = "info";
         private const string UiPropertyName = "ui";
         private const string UiTopPropertyName = "t";
         private const string UiCenterPropertyName = "c";
         private const string UiBottomPropertyName = "s";
         private const string CreateFailedFallbackText = "The client refused to create the field message-box.";
+        private static readonly string[] DefaultClientVisualCandidatePaths = { ClientMessageBoxPropertyName };
+        private static readonly string[] ChalkboardClientVisualCandidatePaths =
+        {
+            ClientMessageBoxPropertyName,
+            $"{InfoPropertyName}/{ChalkboardSamplePropertyName}"
+        };
 
         private readonly Dictionary<int, FieldMessageBoxEntry> _entries = new();
         private readonly List<LeavingMessageBoxEntry> _leavingEntries = new();
@@ -137,7 +145,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string ApplyCreateFailed()
         {
-            _statusMessage = $"{CreateFailedFallbackText} [client notice StringPool 0x{CreateFailedStringPoolId:X}]";
+            _statusMessage = $"{ResolveCreateFailedNoticeText()} [client notice StringPool 0x{CreateFailedStringPoolId:X}]";
             return _statusMessage;
         }
 
@@ -426,7 +434,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return null;
             }
 
-            WzSubProperty infoProperty = itemProperty["info"] as WzSubProperty;
+            WzSubProperty infoProperty = itemProperty[InfoPropertyName] as WzSubProperty;
             Texture2D iconTexture = LoadCanvasTexture(infoProperty?["iconRaw"] as WzCanvasProperty)
                                     ?? LoadCanvasTexture(infoProperty?["icon"] as WzCanvasProperty);
 
@@ -449,17 +457,13 @@ namespace HaCreator.MapSimulator.Interaction
         {
             visual = null;
 
-            if (TryLoadNamedVisual(itemProperty, ClientMessageBoxPropertyName, ClientMessageBoxPropertyName, out visual) ||
-                TryLoadNamedVisual(infoProperty, ClientMessageBoxPropertyName, ClientMessageBoxPropertyName, out visual))
+            foreach (string candidatePath in GetPreferredVisualPropertyPaths(itemId))
             {
-                visual = visual with { IconTexture = iconTexture ?? visual.IconTexture };
-                return true;
-            }
+                if (!TryLoadVisualAtPath(itemProperty, candidatePath, out visual))
+                {
+                    continue;
+                }
 
-            if (IsKnownChalkboardItem(itemId) &&
-                (TryLoadNamedVisual(infoProperty, ChalkboardSamplePropertyName, ClientMessageBoxPropertyName, out visual) ||
-                 TryLoadNamedVisual(itemProperty, ChalkboardSamplePropertyName, ClientMessageBoxPropertyName, out visual)))
-            {
                 visual = visual with { IconTexture = iconTexture ?? visual.IconTexture };
                 return true;
             }
@@ -468,24 +472,6 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 visual = visual with { IconTexture = iconTexture ?? visual.IconTexture };
                 return true;
-            }
-
-            foreach (WzImageProperty child in itemProperty.WzProperties)
-            {
-                if (child is not WzImageProperty property)
-                {
-                    continue;
-                }
-
-                WzImageProperty linked = property.GetLinkedWzImageProperty();
-                if (linked is WzCanvasProperty canvas && string.Equals(property.Name, ChalkboardSamplePropertyName, StringComparison.OrdinalIgnoreCase))
-                {
-                    if (TryLoadVisualFromCanvas(canvas, ClientMessageBoxPropertyName, out visual))
-                    {
-                        visual = visual with { IconTexture = iconTexture ?? visual.IconTexture };
-                        return true;
-                    }
-                }
             }
 
             return false;
@@ -595,6 +581,58 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return 3;
+        }
+
+        internal static IReadOnlyList<string> GetPreferredVisualPropertyPaths(int itemId)
+        {
+            return IsKnownChalkboardItem(itemId)
+                ? ChalkboardClientVisualCandidatePaths
+                : DefaultClientVisualCandidatePaths;
+        }
+
+        internal static string ResolveCreateFailedNoticeText()
+        {
+            return CreateFailedFallbackText;
+        }
+
+        private bool TryLoadVisualAtPath(WzSubProperty rootProperty, string propertyPath, out MessageBoxVisual visual)
+        {
+            visual = null;
+            if (rootProperty == null || string.IsNullOrWhiteSpace(propertyPath))
+            {
+                return false;
+            }
+
+            string[] pathSegments = propertyPath.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            if (pathSegments.Length == 0)
+            {
+                return false;
+            }
+
+            WzImageProperty current = rootProperty;
+            foreach (string segment in pathSegments)
+            {
+                if (current is not WzSubProperty currentSubProperty || currentSubProperty[segment] is not WzImageProperty childProperty)
+                {
+                    return false;
+                }
+
+                current = childProperty;
+            }
+
+            string layoutKey = pathSegments[^1];
+            WzImageProperty linked = current.GetLinkedWzImageProperty();
+            if (linked is WzCanvasProperty canvas && TryLoadVisualFromCanvas(canvas, layoutKey, out visual))
+            {
+                return true;
+            }
+
+            if (linked is WzSubProperty subProperty && TryLoadVisualFromProperty(subProperty, layoutKey, out visual))
+            {
+                return true;
+            }
+
+            return false;
         }
 
         private bool TryLoadNamedVisual(WzSubProperty parent, string propertyName, string layoutKey, out MessageBoxVisual visual)

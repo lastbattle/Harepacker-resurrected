@@ -1928,6 +1928,7 @@ namespace HaCreator.MapSimulator.UI
                 for (int i = 0; i < count; i++)
                 {
                     int candidateIndex = start + i;
+                    string numberText = $"{i + 1}.";
                     Rectangle rowBounds = new(candidateBounds.X + 2, candidateBounds.Y + 2 + (i * rowHeight), candidateBounds.Width - 4, rowHeight);
                     bool selected = candidateIndex == _candidateListState.Selection;
                     if (selected)
@@ -1935,7 +1936,7 @@ namespace HaCreator.MapSimulator.UI
                         sprite.Draw(_textPixelTexture, rowBounds, new Color(89, 108, 147, 220));
                     }
 
-                    sprite.DrawString(_font, $"{candidateIndex + 1}.", new Vector2(rowBounds.X + 4, rowBounds.Y), selected ? Color.White : new Color(222, 222, 222));
+                    sprite.DrawString(_font, numberText, new Vector2(rowBounds.X + 4, rowBounds.Y), selected ? Color.White : new Color(222, 222, 222));
                     sprite.DrawString(
                         _font,
                         _candidateListState.Candidates[candidateIndex] ?? string.Empty,
@@ -1951,7 +1952,8 @@ namespace HaCreator.MapSimulator.UI
                 {
                     int candidateIndex = start + i;
                     int cellX = candidateBounds.X + 3 + (i * cellWidth);
-                    int numberWidth = (int)Math.Ceiling(_font.MeasureString($"{candidateIndex + 1}.").X);
+                    string numberText = $"{i + 1}.";
+                    int numberWidth = (int)Math.Ceiling(_font.MeasureString(numberText).X);
                     Rectangle cellBounds = new(cellX - 1, candidateBounds.Y + 1, cellWidth, Math.Max(1, candidateBounds.Height - 2));
                     bool selected = candidateIndex == _candidateListState.Selection;
                     if (selected)
@@ -1959,7 +1961,7 @@ namespace HaCreator.MapSimulator.UI
                         sprite.Draw(_textPixelTexture, cellBounds, new Color(89, 108, 147, 220));
                     }
 
-                    sprite.DrawString(_font, $"{candidateIndex + 1}.", new Vector2(cellX, textY), selected ? Color.White : new Color(222, 222, 222));
+                    sprite.DrawString(_font, numberText, new Vector2(cellX, textY), selected ? Color.White : new Color(222, 222, 222));
                     sprite.DrawString(
                         _font,
                         _candidateListState.Candidates[candidateIndex] ?? string.Empty,
@@ -1986,10 +1988,11 @@ namespace HaCreator.MapSimulator.UI
             if (_candidateListState.Vertical)
             {
                 int widestEntryWidth = 0;
-                for (int i = 0; i < _candidateListState.Candidates.Count; i++)
+                for (int i = 0; i < count; i++)
                 {
+                    int candidateIndex = start + i;
                     string numberText = $"{i + 1}.";
-                    string candidateText = _candidateListState.Candidates[i] ?? string.Empty;
+                    string candidateText = _candidateListState.Candidates[candidateIndex] ?? string.Empty;
                     int entryWidth = (int)Math.Ceiling(_font.MeasureString(numberText).X + _font.MeasureString(candidateText).X) + 2;
                     widestEntryWidth = Math.Max(widestEntryWidth, entryWidth);
                 }
@@ -2005,7 +2008,7 @@ namespace HaCreator.MapSimulator.UI
             }
             else
             {
-                width = (2 * GetCandidatePageSize() * (_font.LineSpacing + 4)) + 4;
+                width = GetHorizontalCandidateWindowWidth();
                 height = _font.LineSpacing + 10;
             }
 
@@ -2110,14 +2113,40 @@ namespace HaCreator.MapSimulator.UI
 
         private int GetHorizontalCandidateCellWidth()
         {
-            return Math.Max(2 * (_font.LineSpacing + 4), 28);
+            if (_font == null || !_candidateListState.HasCandidates)
+            {
+                return 28;
+            }
+
+            int start = Math.Clamp(_candidateListState.PageStart, 0, _candidateListState.Candidates.Count);
+            int count = Math.Min(GetVisibleCandidateCount(), _candidateListState.Candidates.Count - start);
+            int widestCell = 0;
+            for (int i = 0; i < count; i++)
+            {
+                int candidateIndex = start + i;
+                string numberText = $"{i + 1}.";
+                string candidateText = _candidateListState.Candidates[candidateIndex] ?? string.Empty;
+                int cellWidth = (int)Math.Ceiling(_font.MeasureString(numberText).X + _font.MeasureString(candidateText).X) + 10;
+                widestCell = Math.Max(widestCell, cellWidth);
+            }
+
+            return Math.Max(2 * (_font.LineSpacing + 4), widestCell);
+        }
+
+        private int GetHorizontalCandidateWindowWidth()
+        {
+            int pageSize = GetCandidatePageSize();
+            if (pageSize <= 0)
+            {
+                return 64;
+            }
+
+            return (GetHorizontalCandidateCellWidth() * pageSize) + 4;
         }
 
         private int GetCandidateNumberWidth()
         {
-            int widestIndex = Math.Min(
-                _candidateListState.Candidates.Count,
-                Math.Clamp(_candidateListState.PageStart, 0, _candidateListState.Candidates.Count) + Math.Max(1, GetVisibleCandidateCount()));
+            int widestIndex = Math.Max(1, GetVisibleCandidateCount());
             return (int)Math.Ceiling(_font.MeasureString($"{widestIndex}.").X);
         }
 

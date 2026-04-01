@@ -160,8 +160,10 @@ namespace HaCreator.MapSimulator.Interaction
             public int ExpReward { get; set; }
             public int MesoReward { get; set; }
             public int FameReward { get; set; }
+            public int BuffItemId { get; set; }
             public int PetSkillRewardMask { get; set; }
             public int? NextQuestId { get; set; }
+            public List<int> BuffItemMapIds { get; } = new();
             public List<QuestStateMutation> QuestMutations { get; } = new();
             public List<QuestTraitReward> TraitRewards { get; } = new();
             public List<QuestRewardItem> RewardItems { get; } = new();
@@ -250,6 +252,9 @@ namespace HaCreator.MapSimulator.Interaction
         private Action<int> _addSkillPoints;
         private Func<IReadOnlyCollection<int>, int?, bool> _hasCompatibleActivePetProvider;
         private Func<IReadOnlyCollection<int>, int?, int, bool> _grantPetSkillProvider;
+        private Func<int, bool> _applyQuestBuffItem;
+        private Func<int> _currentMapIdProvider;
+        private Func<int, string> _mapNameProvider;
         private bool _definitionsLoaded;
         private const long QuestAlarmRecentUpdateWindowMs = 8000;
         private const int QuestDeliveryAcceptCashItemId = 5660000;
@@ -305,6 +310,16 @@ namespace HaCreator.MapSimulator.Interaction
         {
             _hasCompatibleActivePetProvider = hasCompatibleActivePetProvider;
             _grantPetSkillProvider = grantPetSkillProvider;
+        }
+
+        public void ConfigureQuestActionRuntime(
+            Func<int, bool> applyQuestBuffItem,
+            Func<int> currentMapIdProvider,
+            Func<int, string> mapNameProvider)
+        {
+            _applyQuestBuffItem = applyQuestBuffItem;
+            _currentMapIdProvider = currentMapIdProvider;
+            _mapNameProvider = mapNameProvider;
         }
 
         public void RecordMobKill(MobInstance mobInstance)
@@ -388,6 +403,7 @@ namespace HaCreator.MapSimulator.Interaction
             if (_definitions.ContainsKey(questId))
             {
                 _recentlyViewedQuestId = questId;
+                _questAlarmUpdateTicks.Remove(questId);
             }
         }
 
@@ -1945,6 +1961,10 @@ namespace HaCreator.MapSimulator.Interaction
                 AppendRequirementSummary(definition, details, build);
             }
 
+            AppendActionDetailLines(
+                state == QuestStateType.Not_Started ? definition.StartActions : definition.EndActions,
+                details);
+
             if (issues != null && issues.Count > 0)
             {
                 details.Add("Outstanding requirements:");
@@ -2378,6 +2398,17 @@ namespace HaCreator.MapSimulator.Interaction
                 lines.Add(new QuestLogLineSnapshot { Label = "Fame", ValueText = $"+{definition.EndActions.FameReward}", IsComplete = true });
             }
 
+            if (definition.EndActions.BuffItemId > 0)
+            {
+                lines.Add(new QuestLogLineSnapshot
+                {
+                    Label = "Buff",
+                    Text = GetBuffItemRewardText(definition.EndActions),
+                    IsComplete = true,
+                    ItemId = definition.EndActions.BuffItemId
+                });
+            }
+
             for (int i = 0; i < definition.EndActions.TraitRewards.Count; i++)
             {
                 QuestTraitReward reward = definition.EndActions.TraitRewards[i];
@@ -2433,6 +2464,22 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     Label = "SP",
                     Text = GetSpRewardText(definition.EndActions.SpRewards[i]),
+                    IsComplete = true
+                });
+            }
+
+            for (int i = 0; i < definition.EndActions.Messages.Count; i++)
+            {
+                string message = definition.EndActions.Messages[i];
+                if (string.IsNullOrWhiteSpace(message))
+                {
+                    continue;
+                }
+
+                lines.Add(new QuestLogLineSnapshot
+                {
+                    Label = "Info",
+                    Text = message,
                     IsComplete = true
                 });
             }
@@ -2994,6 +3041,77 @@ namespace HaCreator.MapSimulator.Interaction
             return string.Join(" ", parts);
         }
 
+        private void ApplyBuffItemReward(QuestActionBundle actions, ICollection<string> messages)
+        {
+            if (actions?.BuffItemId <= 0)
+            {
+                return;
+            }
+
+            bool applied = _applyQuestBuffItem?.Invoke(actions.BuffItemId) == true;
+            messages.Add(applied
+                ? $"Buff reward: {GetBuffItemRewardText(actions)}"
+                : $"Buff reward: {GetItemName(actions.BuffItemId)} (buff runtime unavailable)");
+        }
+
+        private void AppendActionDetailLines(QuestActionBundle actions, ICollection<string> details)
+        {
+            if (actions == null)
+            {
+                return;
+            }
+
+            if (actions.BuffItemId > 0)
+            {
+                details.Add($"Buff: {GetBuffItemRewardText(actions)}");
+            }
+
+            for (int i = 0; i < actions.Messages.Count; i++)
+            {
+                if (!string.IsNullOrWhiteSpace(actions.Messages[i]))
+                {
+                    details.Add(actions.Messages[i]);
+                }
+            }
+        }
+
+        private string GetBuffItemRewardText(QuestActionBundle actions)
+        {
+            if (actions?.BuffItemId <= 0)
+            {
+                return "Buff reward";
+            }
+
+            string baseText = GetItemName(actions.BuffItemId);
+            if (actions.BuffItemMapIds.Count == 0)
+            {
+                return baseText;
+            }
+
+            int currentMapId = _currentMapIdProvider?.Invoke() ?? 0;
+            string mapList = FormatMapIdList(actions.BuffItemMapIds);
+            return currentMapId > 0 && actions.BuffItemMapIds.Contains(currentMapId)
+                ? $"{baseText} [active here; maps: {mapList}]"
+                : $"{baseText} [maps: {mapList}]";
+        }
+
+        private string FormatMapIdList(IReadOnlyList<int> mapIds)
+        {
+            if (mapIds == null || mapIds.Count == 0)
+            {
+                return "unknown";
+            }
+
+            return string.Join(", ", mapIds
+                .Where(static mapId => mapId > 0)
+                .Distinct()
+                .Select(mapId =>
+                {
+                    string resolvedName = _mapNameProvider?.Invoke(mapId);
+                    return string.IsNullOrWhiteSpace(resolvedName) ? mapId.ToString(CultureInfo.InvariantCulture) : resolvedName;
+                }));
+        }
+
         private static string GetPetSkillRewardText(int skillMask)
         {
             if (skillMask <= 0)
@@ -3208,6 +3326,8 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 messages.Add(itemMessage);
             }
+
+            ApplyBuffItemReward(actions, messages);
 
             if (build != null && actions.ExpReward != 0)
             {
@@ -4081,6 +4201,9 @@ namespace HaCreator.MapSimulator.Interaction
                     case "pop":
                         actions.FameReward = ParseInt(child).GetValueOrDefault();
                         break;
+                    case "buffItemID":
+                        actions.BuffItemId = ParsePositiveInt(child).GetValueOrDefault();
+                        break;
                     case "nextQuest":
                         actions.NextQuestId = ParseInt(child);
                         break;
@@ -4164,9 +4287,19 @@ namespace HaCreator.MapSimulator.Interaction
                         break;
                     case "info":
                     case "message":
-                        if (child is WzStringProperty stringProp && !string.IsNullOrWhiteSpace(stringProp.Value))
+                        AppendQuestActionMessages(actions.Messages, child);
+                        break;
+                    case "map":
+                        if (child.WzProperties != null)
                         {
-                            actions.Messages.Add(stringProp.Value.Trim());
+                            for (int j = 0; j < child.WzProperties.Count; j++)
+                            {
+                                int mapId = ParsePositiveInt(child.WzProperties[j]).GetValueOrDefault();
+                                if (mapId > 0 && !actions.BuffItemMapIds.Contains(mapId))
+                                {
+                                    actions.BuffItemMapIds.Add(mapId);
+                                }
+                            }
                         }
                         break;
                 }
@@ -4245,6 +4378,45 @@ namespace HaCreator.MapSimulator.Interaction
                 Trait = trait,
                 Amount = amount
             });
+        }
+
+        internal static void AppendQuestActionMessages(ICollection<string> messages, WzImageProperty property)
+        {
+            if (messages == null || property == null)
+            {
+                return;
+            }
+
+            if (property is WzStringProperty stringProperty)
+            {
+                string trimmed = stringProperty.Value?.Trim();
+                if (IsMeaningfulQuestActionText(trimmed))
+                {
+                    messages.Add(trimmed);
+                }
+
+                return;
+            }
+
+            if (property.WzProperties == null || property.WzProperties.Count == 0)
+            {
+                return;
+            }
+
+            for (int i = 0; i < property.WzProperties.Count; i++)
+            {
+                AppendQuestActionMessages(messages, property.WzProperties[i]);
+            }
+        }
+
+        internal static bool IsMeaningfulQuestActionText(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return false;
+            }
+
+            return text.Any(static ch => ch != '0');
         }
 
         private static QuestRewardSelectionType ResolveRewardSelectionType(int prop)
@@ -4545,10 +4717,14 @@ namespace HaCreator.MapSimulator.Interaction
             for (int i = 0; i < inlineSelections.Length; i++)
             {
                 NpcInlineSelection selection = inlineSelections[i];
-                IReadOnlyList<NpcInteractionPage> selectionPages = ParseStopSelectionPages(pageStopProperty, selection.SelectionId, i);
-                if (selectionPages.Count == 0 &&
-                    nextPages.Count > 0 &&
-                    ShouldContinueToNextPages(pageStopProperty, selection.SelectionId, i, inlineSelections.Length))
+                bool continueToNextPages = nextPages.Count > 0 &&
+                    ShouldContinueToNextPages(pageStopProperty, selection.SelectionId, i, inlineSelections.Length);
+                IReadOnlyList<NpcInteractionPage> selectionPages = ParseStopSelectionPages(
+                    pageStopProperty,
+                    selection.SelectionId,
+                    i,
+                    allowPositionFallback: !continueToNextPages);
+                if (selectionPages.Count == 0 && continueToNextPages)
                 {
                     selectionPages = nextPages;
                 }
@@ -4595,27 +4771,45 @@ namespace HaCreator.MapSimulator.Interaction
         private static IReadOnlyList<NpcInteractionPage> ParseStopSelectionPages(
             WzImageProperty stopProperty,
             int selectionId,
-            int selectionIndex)
+            int selectionIndex,
+            bool allowPositionFallback)
         {
             if (stopProperty == null)
             {
                 return Array.Empty<NpcInteractionPage>();
             }
 
-            WzImageProperty selectionProperty = stopProperty[selectionId.ToString()];
-            if (selectionProperty != null)
+            IReadOnlyList<NpcInteractionPage> selectionPages = ParseStopSelectionPages(stopProperty, selectionId.ToString());
+            if (selectionPages.Count > 0)
             {
-                return ParseBranchPages(selectionProperty);
+                return selectionPages;
+            }
+
+            if (!allowPositionFallback)
+            {
+                return Array.Empty<NpcInteractionPage>();
             }
 
             int oneBasedIndex = selectionIndex + 1;
-            selectionProperty = stopProperty[oneBasedIndex.ToString()];
-            if (selectionProperty != null)
+            selectionPages = ParseStopSelectionPages(stopProperty, oneBasedIndex.ToString());
+            if (selectionPages.Count > 0)
             {
-                return ParseBranchPages(selectionProperty);
+                return selectionPages;
             }
 
-            selectionProperty = stopProperty[selectionIndex.ToString()];
+            return ParseStopSelectionPages(stopProperty, selectionIndex.ToString());
+        }
+
+        private static IReadOnlyList<NpcInteractionPage> ParseStopSelectionPages(
+            WzImageProperty stopProperty,
+            string branchName)
+        {
+            if (stopProperty == null || string.IsNullOrWhiteSpace(branchName))
+            {
+                return Array.Empty<NpcInteractionPage>();
+            }
+
+            WzImageProperty selectionProperty = stopProperty[branchName];
             return selectionProperty != null ? ParseBranchPages(selectionProperty) : Array.Empty<NpcInteractionPage>();
         }
 
@@ -5660,6 +5854,11 @@ namespace HaCreator.MapSimulator.Interaction
                 rewards.Add($"Fame {definition.EndActions.FameReward:+#;-#;0}");
             }
 
+            if (definition.EndActions.BuffItemId > 0)
+            {
+                rewards.Add($"Buff {GetBuffItemRewardText(definition.EndActions)}");
+            }
+
             for (int i = 0; i < definition.EndActions.TraitRewards.Count; i++)
             {
                 QuestTraitReward reward = definition.EndActions.TraitRewards[i];
@@ -5688,6 +5887,14 @@ namespace HaCreator.MapSimulator.Interaction
             for (int i = 0; i < definition.EndActions.SpRewards.Count; i++)
             {
                 rewards.Add($"SP {GetSpRewardText(definition.EndActions.SpRewards[i])}");
+            }
+
+            for (int i = 0; i < definition.EndActions.Messages.Count; i++)
+            {
+                if (!string.IsNullOrWhiteSpace(definition.EndActions.Messages[i]))
+                {
+                    rewards.Add(definition.EndActions.Messages[i]);
+                }
             }
 
             return rewards.Count == 0

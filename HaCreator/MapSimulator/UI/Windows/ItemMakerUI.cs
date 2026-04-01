@@ -79,6 +79,12 @@ namespace HaCreator.MapSimulator.UI
             ToyMaker
         }
 
+        private enum ItemMakerDetailSection
+        {
+            Recipe,
+            Gem
+        }
+
         private readonly struct BackgroundLayer
         {
             public BackgroundLayer(IDXObject drawable, Point offset)
@@ -440,6 +446,8 @@ namespace HaCreator.MapSimulator.UI
                 DrawItemIcon(sprite, resultIcon, (int)detailOrigin.X, (int)detailOrigin.Y - 2, 34);
             }
 
+            string targetSectionLabel = selectedRecipe.UsesRandomReward ? "Target Pool" : "Target Item";
+            sprite.DrawString(_font, targetSectionLabel, detailOrigin, new Color(255, 223, 153));
             sprite.DrawString(_font, hiddenRecipeUnlocked ? selectedRecipe.Title : "Hidden recipe", detailOrigin + new Vector2(40, 0), Color.White);
             sprite.DrawString(
                 _font,
@@ -484,102 +492,113 @@ namespace HaCreator.MapSimulator.UI
                 y += 18;
             }
 
-            sprite.DrawString(_font, "Materials", new Vector2(detailOrigin.X, y), new Color(255, 223, 153));
-            y += 18;
-            foreach (ItemMakerMaterial material in selectedRecipe.Materials)
+            ItemMakerMaterial[] recipeMaterials = selectedRecipe.Materials
+                .Where(static material => ResolveDetailSection(material) == ItemMakerDetailSection.Recipe)
+                .ToArray();
+            ItemMakerMaterial[] gemMaterials = selectedRecipe.Materials
+                .Where(static material => ResolveDetailSection(material) == ItemMakerDetailSection.Gem)
+                .ToArray();
+
+            if (recipeMaterials.Length > 0)
             {
-                int owned = _inventory?.GetItemCount(material.InventoryType, material.ItemId) ?? 0;
-                Color color = owned >= material.Quantity ? new Color(194, 233, 193) : new Color(240, 155, 155);
-                DrawItemIcon(sprite, ResolveItemIcon(material.ItemId, material.InventoryType), (int)detailOrigin.X, (int)y - 2, 16);
-                sprite.DrawString(
-                    _font,
-                    $"{GetItemName(material.ItemId)} {Math.Min(owned, material.Quantity)}/{material.Quantity}",
-                    new Vector2(detailOrigin.X + 20, y),
-                    color);
-                y += 17;
+                y = DrawSectionHeader(sprite, "Recipe", detailOrigin, y);
+                foreach (ItemMakerMaterial material in recipeMaterials)
+                {
+                    y = DrawMaterialRequirementRow(sprite, detailOrigin, y, material);
+                }
+            }
+
+            if (gemMaterials.Length > 0)
+            {
+                y = DrawSectionHeader(sprite, "Gem", detailOrigin, y);
+                foreach (ItemMakerMaterial material in gemMaterials)
+                {
+                    y = DrawMaterialRequirementRow(sprite, detailOrigin, y, material);
+                }
             }
 
             if (selectedRecipe.CatalystItemId > 0)
             {
-                int owned = _inventory?.GetItemCount(ResolveInventoryType(selectedRecipe.CatalystItemId), selectedRecipe.CatalystItemId) ?? 0;
-                Color color = owned > 0 ? new Color(194, 233, 193) : new Color(240, 155, 155);
-                DrawItemIcon(sprite, ResolveItemIcon(selectedRecipe.CatalystItemId, ResolveInventoryType(selectedRecipe.CatalystItemId)), (int)detailOrigin.X, (int)y - 2, 16);
-                sprite.DrawString(
-                    _font,
-                    $"Catalyst: {GetItemName(selectedRecipe.CatalystItemId)} {Math.Min(owned, 1)}/1",
-                    new Vector2(detailOrigin.X + 20, y),
-                    color);
-                y += 17;
+                y = DrawSectionHeader(sprite, "Catalyst", detailOrigin, y);
+                InventoryType catalystType = ResolveInventoryType(selectedRecipe.CatalystItemId);
+                y = DrawOwnedRequirementRow(
+                    sprite,
+                    detailOrigin,
+                    y,
+                    catalystType,
+                    selectedRecipe.CatalystItemId,
+                    1,
+                    "Catalyst");
             }
 
             if (selectedRecipe.RequiredItemId > 0)
             {
-                int owned = _inventory?.GetItemCount(ResolveInventoryType(selectedRecipe.RequiredItemId), selectedRecipe.RequiredItemId) ?? 0;
-                Color color = owned > 0 ? new Color(194, 233, 193) : new Color(240, 155, 155);
-                DrawItemIcon(sprite, ResolveItemIcon(selectedRecipe.RequiredItemId, ResolveInventoryType(selectedRecipe.RequiredItemId)), (int)detailOrigin.X, (int)y - 2, 16);
-                sprite.DrawString(
-                    _font,
-                    $"Req Item: {GetItemName(selectedRecipe.RequiredItemId)} {Math.Min(owned, 1)}/1",
-                    new Vector2(detailOrigin.X + 20, y),
-                    color);
-                y += 17;
+                y = DrawSectionHeader(sprite, "Unlock Item", detailOrigin, y);
+                InventoryType requiredItemType = ResolveInventoryType(selectedRecipe.RequiredItemId);
+                y = DrawOwnedRequirementRow(
+                    sprite,
+                    detailOrigin,
+                    y,
+                    requiredItemType,
+                    selectedRecipe.RequiredItemId,
+                    1,
+                    "Req Item");
             }
 
             if (selectedRecipe.RequiredEquipItemId > 0)
             {
+                y = DrawSectionHeader(sprite, "Required Equip", detailOrigin, y);
                 bool hasEquip = _hasRequiredEquip?.Invoke(selectedRecipe.RequiredEquipItemId) == true;
-                sprite.DrawString(
-                    _font,
+                y = DrawTextRequirementRow(
+                    sprite,
+                    detailOrigin,
+                    y,
                     $"Req Equip: {GetItemName(selectedRecipe.RequiredEquipItemId)}",
-                    new Vector2(detailOrigin.X, y),
-                    hasEquip ? new Color(194, 233, 193) : new Color(240, 155, 155));
-                y += 17;
+                    hasEquip);
             }
 
             for (int i = 0; i < selectedRecipe.RequiredQuestStates.Length; i++)
             {
+                if (i == 0)
+                {
+                    y = DrawSectionHeader(sprite, "Required Quest", detailOrigin, y);
+                }
+
                 ItemMakerQuestRequirement requirement = selectedRecipe.RequiredQuestStates[i];
                 bool satisfied = _matchesQuestRequirement?.Invoke(requirement.QuestId, requirement.RequiredStateValue) == true;
-                sprite.DrawString(
-                    _font,
+                y = DrawTextRequirementRow(
+                    sprite,
+                    detailOrigin,
+                    y,
                     $"Req Quest: {GetQuestRequirementText(requirement)}",
-                    new Vector2(detailOrigin.X, y),
-                    satisfied ? new Color(194, 233, 193) : new Color(240, 155, 155));
-                y += 17;
+                    satisfied);
             }
 
             if (selectedRecipe.MesoCost > 0)
             {
+                y = DrawSectionHeader(sprite, "Meso", detailOrigin, y);
                 long mesoCount = _inventory?.GetMesoCount() ?? 0L;
-                Color color = mesoCount >= selectedRecipe.MesoCost ? new Color(194, 233, 193) : new Color(240, 155, 155);
-                sprite.DrawString(
-                    _font,
+                y = DrawTextRequirementRow(
+                    sprite,
+                    detailOrigin,
+                    y,
                     $"Cost: {selectedRecipe.MesoCost:N0} meso",
-                    new Vector2(detailOrigin.X, y),
-                    color);
-                y += 17;
+                    mesoCount >= selectedRecipe.MesoCost);
             }
 
-            y += 4;
+            y = DrawSectionHeader(sprite, selectedRecipe.UsesRandomReward ? "Random Reward Pool" : "Result", detailOrigin, y);
             string resultText = selectedRecipe.UsesRandomReward
-                ? $"Random result pool x{selectedRecipe.OutputQuantity}"
-                : $"Result: {GetItemName(selectedRecipe.OutputItemId)} x{selectedRecipe.OutputQuantity}";
+                ? $"Pool size {selectedRecipe.RandomRewards.Length}"
+                : $"{GetItemName(selectedRecipe.OutputItemId)} x{selectedRecipe.OutputQuantity}";
             sprite.DrawString(_font, resultText, new Vector2(detailOrigin.X, y), new Color(189, 219, 255));
             y += 18;
 
             if (selectedRecipe.UsesRandomReward)
             {
-                int previewCount = Math.Min(3, selectedRecipe.RandomRewards.Length);
+                int previewCount = Math.Min(4, selectedRecipe.RandomRewards.Length);
                 for (int i = 0; i < previewCount; i++)
                 {
-                    ItemMakerReward reward = selectedRecipe.RandomRewards[i];
-                    DrawItemIcon(sprite, ResolveItemIcon(reward.ItemId, ResolveInventoryType(reward.ItemId)), (int)detailOrigin.X, (int)y - 2, 16);
-                    sprite.DrawString(
-                        _font,
-                        $"- {GetItemName(reward.ItemId)} x{reward.Quantity}",
-                        new Vector2(detailOrigin.X + 20, y),
-                        new Color(205, 214, 232));
-                    y += 17;
+                    y = DrawRewardPreviewRow(sprite, detailOrigin, y, selectedRecipe.RandomRewards[i]);
                 }
             }
 
@@ -632,6 +651,66 @@ namespace HaCreator.MapSimulator.UI
             }
 
             sprite.Draw(icon, new Rectangle(x, y, size, size), Color.White);
+        }
+
+        private float DrawSectionHeader(SpriteBatch sprite, string label, Vector2 detailOrigin, float y)
+        {
+            sprite.DrawString(_font, label, new Vector2(detailOrigin.X, y), new Color(255, 223, 153));
+            return y + 18;
+        }
+
+        private float DrawMaterialRequirementRow(SpriteBatch sprite, Vector2 detailOrigin, float y, ItemMakerMaterial material)
+        {
+            int owned = _inventory?.GetItemCount(material.InventoryType, material.ItemId) ?? 0;
+            bool satisfied = owned >= material.Quantity;
+            DrawItemIcon(sprite, ResolveItemIcon(material.ItemId, material.InventoryType), (int)detailOrigin.X, (int)y - 2, 16);
+            sprite.DrawString(
+                _font,
+                $"{GetItemName(material.ItemId)} {Math.Min(owned, material.Quantity)}/{material.Quantity}",
+                new Vector2(detailOrigin.X + 20, y),
+                satisfied ? new Color(194, 233, 193) : new Color(240, 155, 155));
+            return y + 17;
+        }
+
+        private float DrawOwnedRequirementRow(
+            SpriteBatch sprite,
+            Vector2 detailOrigin,
+            float y,
+            InventoryType inventoryType,
+            int itemId,
+            int requiredQuantity,
+            string label)
+        {
+            int owned = _inventory?.GetItemCount(inventoryType, itemId) ?? 0;
+            bool satisfied = owned >= requiredQuantity;
+            DrawItemIcon(sprite, ResolveItemIcon(itemId, inventoryType), (int)detailOrigin.X, (int)y - 2, 16);
+            sprite.DrawString(
+                _font,
+                $"{label}: {GetItemName(itemId)} {Math.Min(owned, requiredQuantity)}/{requiredQuantity}",
+                new Vector2(detailOrigin.X + 20, y),
+                satisfied ? new Color(194, 233, 193) : new Color(240, 155, 155));
+            return y + 17;
+        }
+
+        private float DrawTextRequirementRow(SpriteBatch sprite, Vector2 detailOrigin, float y, string text, bool satisfied)
+        {
+            sprite.DrawString(
+                _font,
+                text,
+                new Vector2(detailOrigin.X, y),
+                satisfied ? new Color(194, 233, 193) : new Color(240, 155, 155));
+            return y + 17;
+        }
+
+        private float DrawRewardPreviewRow(SpriteBatch sprite, Vector2 detailOrigin, float y, ItemMakerReward reward)
+        {
+            DrawItemIcon(sprite, ResolveItemIcon(reward.ItemId, ResolveInventoryType(reward.ItemId)), (int)detailOrigin.X, (int)y - 2, 16);
+            sprite.DrawString(
+                _font,
+                $"- {GetItemName(reward.ItemId)} x{reward.Quantity}",
+                new Vector2(detailOrigin.X + 20, y),
+                new Color(205, 214, 232));
+            return y + 17;
         }
 
         private Texture2D ResolveItemIcon(int itemId, InventoryType inventoryType)
@@ -1214,6 +1293,19 @@ namespace HaCreator.MapSimulator.UI
             return usesRandomReward
                 ? "Client ItemMake random maker branch."
                 : $"Client ItemMake recipe for {GetItemName(itemId)}.";
+        }
+
+        private static ItemMakerDetailSection ResolveDetailSection(ItemMakerMaterial material)
+        {
+            if (material == null)
+            {
+                return ItemMakerDetailSection.Recipe;
+            }
+
+            int fourDigitCategory = material.ItemId / 10000;
+            return material.InventoryType == InventoryType.ETC && fourDigitCategory is 402 or 425 or 426
+                ? ItemMakerDetailSection.Gem
+                : ItemMakerDetailSection.Recipe;
         }
 
         private static string ResolveLaunchSearchTerm(string npcFunctionText)

@@ -35,6 +35,12 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
 
+            if (TryGetBlacklistedCharacterError(trimmed, out error))
+            {
+                normalized = null;
+                return false;
+            }
+
             Encoding activeEncoding = GetStrictEncoding(encoding);
             try
             {
@@ -337,6 +343,12 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
 
+            if (TryGetBlacklistedCharacterError(candidate, out error))
+            {
+                normalized = null;
+                return false;
+            }
+
             Encoding activeEncoding = GetStrictEncoding(encoding);
             try
             {
@@ -367,6 +379,50 @@ namespace HaCreator.MapSimulator.UI
                 sourceEncoding.CodePage,
                 EncoderFallback.ExceptionFallback,
                 DecoderFallback.ExceptionFallback);
+        }
+
+        private static bool TryGetBlacklistedCharacterError(string text, out string error)
+        {
+            string value = text ?? string.Empty;
+            foreach (Rune rune in value.EnumerateRunes())
+            {
+                if (IsAllowedMacroNameRune(rune))
+                {
+                    continue;
+                }
+
+                error = "This character is not allowed in macro names.";
+                return true;
+            }
+
+            error = string.Empty;
+            return false;
+        }
+
+        private static bool IsAllowedMacroNameRune(Rune rune)
+        {
+            if (rune.Value == '-' || rune.Value == '_')
+            {
+                return true;
+            }
+
+            UnicodeCategory category = Rune.GetUnicodeCategory(rune);
+            return category switch
+            {
+                UnicodeCategory.UppercaseLetter => true,
+                UnicodeCategory.LowercaseLetter => true,
+                UnicodeCategory.TitlecaseLetter => true,
+                UnicodeCategory.ModifierLetter => true,
+                UnicodeCategory.OtherLetter => true,
+                UnicodeCategory.DecimalDigitNumber => true,
+                UnicodeCategory.LetterNumber => true,
+                UnicodeCategory.OtherNumber => true,
+                UnicodeCategory.SpaceSeparator => true,
+                UnicodeCategory.NonSpacingMark => true,
+                UnicodeCategory.SpacingCombiningMark => true,
+                UnicodeCategory.EnclosingMark => true,
+                _ => false
+            };
         }
 
         private static string RemoveControlCharacters(string text)

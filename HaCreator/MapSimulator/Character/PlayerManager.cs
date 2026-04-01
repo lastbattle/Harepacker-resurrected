@@ -83,10 +83,12 @@ namespace HaCreator.MapSimulator.Character
         private int _pendingRepeatSkillModeEndRequestTime = int.MinValue;
         private readonly HashSet<int> _activeAffectedAreaAvatarEffectIds = new();
         private readonly Dictionary<int, SkillData> _affectedAreaAvatarEffectSkillCache = new();
+        private int _lastForcedHorizontalDirection;
 
         // Sound callbacks
         private Action _onJumpSound;
         private Func<string> _jumpRestrictionMessageProvider;
+        private Func<string> _jumpDownRestrictionMessageProvider;
         private Action<string> _onJumpRestricted;
         private Func<float, float> _moveSpeedCapResolver;
 
@@ -223,13 +225,17 @@ namespace HaCreator.MapSimulator.Character
             }
         }
 
-        public void SetJumpRestrictionHandler(Func<string> getRestrictionMessage, Action<string> onJumpRestricted)
+        public void SetJumpRestrictionHandler(
+            Func<string> getRestrictionMessage,
+            Func<string> getJumpDownRestrictionMessage,
+            Action<string> onJumpRestricted)
         {
             _jumpRestrictionMessageProvider = getRestrictionMessage;
+            _jumpDownRestrictionMessageProvider = getJumpDownRestrictionMessage;
             _onJumpRestricted = onJumpRestricted;
             if (Player != null)
             {
-                Player.SetJumpRestrictionHandler(getRestrictionMessage, onJumpRestricted);
+                Player.SetJumpRestrictionHandler(getRestrictionMessage, getJumpDownRestrictionMessage, onJumpRestricted);
             }
         }
 
@@ -363,7 +369,6 @@ namespace HaCreator.MapSimulator.Character
             {
                 Skills = new SkillManager(SkillLoader, Player);
                 _pendingRepeatSkillModeEndSkillId = 0;
-                _pendingRepeatSkillModeEndSkillId = 0;
                 _pendingRepeatSkillModeEndReturnSkillId = 0;
                 _pendingRepeatSkillModeEndRequestTime = int.MinValue;
                 Skills.SetMobPool(_mobPool);
@@ -401,7 +406,7 @@ namespace HaCreator.MapSimulator.Character
             Player.SetPortableChairTamingMobLoader(tamingMobLoader);
             Player.SetSkillMorphLoader(Loader.LoadMorph);
             Player.SetJumpSoundCallback(_onJumpSound);
-            Player.SetJumpRestrictionHandler(_jumpRestrictionMessageProvider, _onJumpRestricted);
+            Player.SetJumpRestrictionHandler(_jumpRestrictionMessageProvider, _jumpDownRestrictionMessageProvider, _onJumpRestricted);
             Player.SetMoveSpeedCapResolver(_moveSpeedCapResolver);
             Player.Physics.IsFlyingMap = _isFlyingMap;
             Player.Physics.RequiresFlyingSkillForMap = _requiresFlyingSkillForMap;
@@ -529,7 +534,7 @@ namespace HaCreator.MapSimulator.Character
                 : null;
             Player.SetPortableChairTamingMobLoader(portableChairTamingMobLoader);
             Player.SetJumpSoundCallback(_onJumpSound);
-            Player.SetJumpRestrictionHandler(_jumpRestrictionMessageProvider, _onJumpRestricted);
+            Player.SetJumpRestrictionHandler(_jumpRestrictionMessageProvider, _jumpDownRestrictionMessageProvider, _onJumpRestricted);
             Player.SetMoveSpeedCapResolver(_moveSpeedCapResolver);
             Player.Physics.IsFlyingMap = _isFlyingMap;
             Player.Physics.RequiresFlyingSkillForMap = _requiresFlyingSkillForMap;
@@ -720,6 +725,11 @@ namespace HaCreator.MapSimulator.Character
                 // Handle pickup input separately
                 bool pickupHeld = !_currentMobStatusState.MovementLocked && Input.IsHeld(InputAction.Pickup);
                 bool pickupPressed = !_currentMobStatusState.MovementLocked && Input.IsPressed(InputAction.Pickup);
+                if (_currentMobStatusState.PickupBlocked)
+                {
+                    pickupHeld = false;
+                    pickupPressed = false;
+                }
 
                 if (_dropPool != null && ShouldAttemptPickup(pickupHeld, pickupPressed, currentTime, _lastPickupAttemptTime))
                 {
@@ -1106,14 +1116,14 @@ namespace HaCreator.MapSimulator.Character
             overlaySecondaryAnimation ??= ReferenceEquals(animation, overlayAnimation) ? null : animation;
         }
 
-        internal bool TryApplyMobSkillStatus(int skillId, MobSkillRuntimeData runtimeData, int currentTime, float sourceX = 0f)
+        internal bool TryApplyMobSkillStatus(int skillId, MobSkillRuntimeData runtimeData, int currentTime, float sourceX = 0f, int elementAttribute = 0)
         {
             if (Player == null)
             {
                 return false;
             }
 
-            return _mobStatusController?.TryApplyMobSkill(skillId, runtimeData, currentTime, sourceX) == true;
+            return _mobStatusController?.TryApplyMobSkill(skillId, runtimeData, currentTime, sourceX, elementAttribute) == true;
         }
 
         internal int ClearMobStatuses(IEnumerable<PlayerMobStatusEffect> effects)
@@ -1150,7 +1160,13 @@ namespace HaCreator.MapSimulator.Character
                 return;
             }
 
-            if (currentTime < _pendingRepeatSkillModeEndRequestTime + TankSiegeModeEndFallbackDelayMs)
+            int fallbackDelayMs = Skills.GetPendingRepeatSkillModeEndFallbackDelayMs(skillId, returnSkillId);
+            if (fallbackDelayMs <= 0)
+            {
+                fallbackDelayMs = TankSiegeModeEndFallbackDelayMs;
+            }
+
+            if (currentTime < _pendingRepeatSkillModeEndRequestTime + fallbackDelayMs)
             {
                 return;
             }
@@ -1167,6 +1183,13 @@ namespace HaCreator.MapSimulator.Character
         private void UpdateMobStatusState(int currentTime)
         {
             _currentMobStatusState = _mobStatusController?.Update(currentTime) ?? PlayerMobStatusFrameState.Default;
+
+            if (_currentMobStatusState.ForcedHorizontalDirection != 0 && _lastForcedHorizontalDirection == 0)
+            {
+                Player?.PrepareForForcedHorizontalControl();
+            }
+
+            _lastForcedHorizontalDirection = _currentMobStatusState.ForcedHorizontalDirection;
 
             Player?.ApplyMobRecoveryModifiers(
                 _currentMobStatusState.HpRecoveryReversed,

@@ -41,7 +41,7 @@ namespace HaCreator.MapSimulator.UI
         public new bool IsVisible
         {
             get => _isVisible;
-            set => _isVisible = value;
+            set => SetVisibility(value, invokeBeforeShow: true);
         }
 
         /// <summary>
@@ -251,8 +251,7 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public virtual void Show()
         {
-            BeforeShow?.Invoke(this);
-            _isVisible = true;
+            SetVisibility(true, invokeBeforeShow: true);
         }
 
         /// <summary>
@@ -260,7 +259,7 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public virtual void Hide()
         {
-            _isVisible = false;
+            SetVisibility(false, invokeBeforeShow: false);
         }
 
         /// <summary>
@@ -269,6 +268,21 @@ namespace HaCreator.MapSimulator.UI
         public void ResetDragState()
         {
             _mouseOffsetOnDragStart = null;
+        }
+
+        private void SetVisibility(bool visible, bool invokeBeforeShow)
+        {
+            if (_isVisible == visible)
+            {
+                return;
+            }
+
+            if (visible && invokeBeforeShow)
+            {
+                BeforeShow?.Invoke(this);
+            }
+
+            _isVisible = visible;
         }
         #endregion
 

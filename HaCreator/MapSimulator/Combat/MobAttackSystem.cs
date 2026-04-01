@@ -110,6 +110,7 @@ namespace HaCreator.MapSimulator.Combat
         private readonly List<MobItem> _mobIterationBuffer = new List<MobItem>();
         private readonly Dictionary<List<IDXObject>, int> _frameCycleDurationCache = new Dictionary<List<IDXObject>, int>();
         private Func<float, float, float?> _groundResolver;
+        private Func<float, float, float, IReadOnlyList<float>> _groundColumnResolver;
         private Func<IReadOnlyList<PuppetInfo>> _puppetAccessor;
         private Func<int, MobItem> _mobAccessor;
         private Func<IReadOnlyList<MobItem>> _mobListAccessor;
@@ -120,6 +121,11 @@ namespace HaCreator.MapSimulator.Combat
         public void SetGroundResolver(Func<float, float, float?> groundResolver)
         {
             _groundResolver = groundResolver;
+        }
+
+        public void SetGroundColumnResolver(Func<float, float, float, IReadOnlyList<float>> groundColumnResolver)
+        {
+            _groundColumnResolver = groundColumnResolver;
         }
 
         public void SetPuppetTargeting(
@@ -959,15 +965,55 @@ namespace HaCreator.MapSimulator.Combat
                 List<Vector2> selectedSlots = SelectGroundTargetSlots(slotPositions, attackCount, attack.StartOffset, _random);
                 for (int i = 0; i < selectedSlots.Count; i++)
                 {
-                    targets.Add(selectedSlots[i]);
+                    AppendGroundAttackTargets(targets, mobItem, attack, selectedSlots[i]);
                 }
                 return targets;
             }
 
             float fallbackX = playerX ?? GetRangeCenterX(mobItem, attack);
             float fallbackY = playerY ?? GetRangeBottomY(mobItem, attack);
-            targets.Add(ResolveGroundPoint(fallbackX, fallbackY));
+            AppendGroundAttackTargets(targets, mobItem, attack, new Vector2(fallbackX, fallbackY));
             return targets;
+        }
+
+        private void AppendGroundAttackTargets(List<Vector2> targets, MobItem mobItem, MobAttackEntry attack, Vector2 slotPosition)
+        {
+            if (targets == null || mobItem == null || attack == null)
+            {
+                return;
+            }
+
+            if (attack.AttackType == 4)
+            {
+                targets.Add(new Vector2(slotPosition.X, mobItem.CurrentY));
+                return;
+            }
+
+            if (attack.AttackType == 3 && attack.HasRangeBounds)
+            {
+                float minY = mobItem.CurrentY + attack.RangeTop;
+                float maxY = mobItem.CurrentY + attack.RangeBottom;
+                if (minY > maxY)
+                {
+                    (minY, maxY) = (maxY, minY);
+                }
+
+                IReadOnlyList<float> columnYs = _groundColumnResolver?.Invoke(slotPosition.X, minY, maxY);
+                if (columnYs != null)
+                {
+                    for (int i = 0; i < columnYs.Count; i++)
+                    {
+                        targets.Add(new Vector2(slotPosition.X, columnYs[i]));
+                    }
+
+                    if (columnYs.Count > 0)
+                    {
+                        return;
+                    }
+                }
+            }
+
+            targets.Add(ResolveGroundPoint(slotPosition.X, slotPosition.Y));
         }
 
         internal static List<Vector2> SelectGroundTargetSlots(
@@ -1418,7 +1464,7 @@ namespace HaCreator.MapSimulator.Combat
                 return 0f;
             }
 
-            return flip ? effectNode.OffsetX : -effectNode.OffsetX;
+            return flip ? -effectNode.OffsetX : effectNode.OffsetX;
         }
 
         private static int ResolveSequenceDuration(List<IDXObject> frames)
@@ -1574,7 +1620,6 @@ namespace HaCreator.MapSimulator.Combat
         {
             int laneCount = ResolveProjectileLaneCount(attack);
             var assignments = new List<ProjectileLaneAssignment>(laneCount);
-            var usedLaneTargets = new HashSet<long>();
             float preferredLaneX = targetX
                 ?? targetInfo?.TargetX
                 ?? spawn.X;
@@ -1586,7 +1631,6 @@ namespace HaCreator.MapSimulator.Combat
                     LanePoint = new Vector2(targetInfo.TargetX, targetInfo.TargetY),
                     TargetInfo = targetInfo.Clone()
                 });
-                usedLaneTargets.Add(GetLaneTargetKey(targetInfo));
             }
 
             List<Vector2> lanePositions = BuildProjectileLanePositions(
@@ -1609,25 +1653,10 @@ namespace HaCreator.MapSimulator.Combat
                         attack,
                         lanePosition,
                         targetInfo,
-                        usedLaneTargets,
                         currentTime,
                         out laneTargetInfo,
                         out resolvedLaneTarget))
                 {
-                    usedLaneTargets.Add(GetLaneTargetKey(laneTargetInfo));
-                }
-                else if (!TryResolveProjectileLaneTarget(
-                             mobItem,
-                             attack,
-                             lanePosition,
-                             targetInfo,
-                             null,
-                             currentTime,
-                             out laneTargetInfo,
-                             out resolvedLaneTarget))
-                {
-                    laneTargetInfo = null;
-                    resolvedLaneTarget = lanePosition;
                 }
 
                 laneCandidates.Add(new ProjectileLaneCandidate
@@ -1788,7 +1817,6 @@ namespace HaCreator.MapSimulator.Combat
             MobAttackEntry attack,
             Vector2 lanePosition,
             MobTargetInfo primaryTargetInfo,
-            HashSet<long> usedLaneTargets,
             int currentTime,
             out MobTargetInfo resolvedTargetInfo,
             out Vector2 resolvedTargetPoint)
@@ -1808,7 +1836,6 @@ namespace HaCreator.MapSimulator.Combat
                 attack,
                 lanePosition,
                 laneSearch,
-                usedLaneTargets,
                 sourceFacesRight,
                 ref bestScore,
                 ref resolvedTargetInfo,
@@ -1818,7 +1845,6 @@ namespace HaCreator.MapSimulator.Combat
                 primaryTargetInfo,
                 lanePosition,
                 laneSearch,
-                usedLaneTargets,
                 sourceFacesRight,
                 ref bestScore,
                 ref resolvedTargetInfo,
@@ -1828,7 +1854,6 @@ namespace HaCreator.MapSimulator.Combat
                 primaryTargetInfo,
                 lanePosition,
                 laneSearch,
-                usedLaneTargets,
                 currentTime,
                 sourceFacesRight,
                 ref bestScore,
@@ -1842,7 +1867,6 @@ namespace HaCreator.MapSimulator.Combat
             MobAttackEntry attack,
             Vector2 lanePosition,
             Rectangle laneSearch,
-            HashSet<long> usedLaneTargets,
             bool sourceFacesRight,
             ref float bestScore,
             ref MobTargetInfo resolvedTargetInfo,
@@ -1864,11 +1888,6 @@ namespace HaCreator.MapSimulator.Combat
                 TargetType = MobTargetType.Player,
                 IsValid = true
             };
-            long targetKey = GetLaneTargetKey(playerTarget);
-            if (usedLaneTargets != null && usedLaneTargets.Contains(targetKey))
-            {
-                return;
-            }
 
             Vector2 candidatePoint = ResolveProjectileDestinationPoint(playerHitbox, lanePosition.Y, sourceFacesRight);
             float candidateScore = ScoreLaneTarget(lanePosition, candidatePoint);
@@ -1889,7 +1908,6 @@ namespace HaCreator.MapSimulator.Combat
             MobTargetInfo primaryTargetInfo,
             Vector2 lanePosition,
             Rectangle laneSearch,
-            HashSet<long> usedLaneTargets,
             bool sourceFacesRight,
             ref float bestScore,
             ref MobTargetInfo resolvedTargetInfo,
@@ -1923,11 +1941,6 @@ namespace HaCreator.MapSimulator.Combat
                     TargetType = MobTargetType.Summoned,
                     IsValid = true
                 };
-                long candidateKey = GetLaneTargetKey(candidateTargetInfo);
-                if (usedLaneTargets != null && usedLaneTargets.Contains(candidateKey))
-                {
-                    continue;
-                }
 
                 Vector2 candidatePoint = ResolveProjectileDestinationPoint(puppetHitbox, lanePosition.Y, sourceFacesRight);
                 float candidateScore = ScoreLaneTarget(lanePosition, candidatePoint);
@@ -1949,7 +1962,6 @@ namespace HaCreator.MapSimulator.Combat
             MobTargetInfo primaryTargetInfo,
             Vector2 lanePosition,
             Rectangle laneSearch,
-            HashSet<long> usedLaneTargets,
             int currentTime,
             bool sourceFacesRight,
             ref float bestScore,
@@ -1988,11 +2000,6 @@ namespace HaCreator.MapSimulator.Combat
                     TargetType = MobTargetType.Mob,
                     IsValid = true
                 };
-                long candidateKey = GetLaneTargetKey(candidateTargetInfo);
-                if (usedLaneTargets != null && usedLaneTargets.Contains(candidateKey))
-                {
-                    continue;
-                }
 
                 Vector2 candidatePoint = ResolveProjectileDestinationPoint(mobHitbox, lanePosition.Y, sourceFacesRight);
                 float candidateScore = ScoreLaneTarget(lanePosition, candidatePoint);
@@ -2072,16 +2079,6 @@ namespace HaCreator.MapSimulator.Combat
 
             direction.Normalize();
             return spawn + (direction * rangeRadius);
-        }
-
-        private static long GetLaneTargetKey(MobTargetInfo targetInfo)
-        {
-            if (targetInfo == null)
-            {
-                return long.MinValue;
-            }
-
-            return ((long)targetInfo.TargetType << 32) | (uint)Math.Max(0, targetInfo.TargetId);
         }
 
         private static float ScoreLaneTarget(Vector2 lanePosition, Vector2 candidatePoint)

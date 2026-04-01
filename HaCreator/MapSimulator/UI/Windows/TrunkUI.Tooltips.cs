@@ -596,11 +596,15 @@ namespace HaCreator.MapSimulator.UI
             AppendStatRow(rows, null, ResolvePropertyLabel("12"), part.BonusHands, new Color(176, 255, 176), true);
             AppendStatRow(rows, null, ResolvePropertyLabel("13"), part.BonusSpeed, new Color(176, 255, 176), true);
             AppendStatRow(rows, null, ResolvePropertyLabel("14"), part.BonusJump, new Color(176, 255, 176), true);
+            AppendEnhancementStarRow(rows, part.EnhancementStarCount);
+            AppendSellPriceRow(rows, part.SellPrice);
             AppendUpgradeSlotRow(rows, part);
             if (part is WeaponPart weapon)
             {
                 AppendAttackSpeedRow(rows, weapon.AttackSpeed);
             }
+
+            AppendGrowthRows(rows, part);
 
             return rows;
         }
@@ -666,6 +670,66 @@ namespace HaCreator.MapSimulator.UI
                 BuildTooltipValueTextures(valueText, true, false)));
         }
 
+        private void AppendGrowthRows(List<TooltipLabeledValueRow> rows, CharacterPart part)
+        {
+            if (!part?.HasGrowthInfo ?? true)
+            {
+                return;
+            }
+
+            int currentLevel = Math.Max(1, part.GrowthLevel);
+            int maxLevel = Math.Max(currentLevel, part.GrowthMaxLevel);
+            bool growthEnabled = currentLevel < maxLevel;
+            rows.Add(new TooltipLabeledValueRow(
+                ResolveGrowthLabel(growthEnabled, "itemLEV"),
+                "Item Level:",
+                currentLevel.ToString(CultureInfo.InvariantCulture),
+                growthEnabled ? new Color(181, 224, 255) : new Color(192, 192, 192),
+                BuildTooltipValueTextures(currentLevel.ToString(CultureInfo.InvariantCulture), growthEnabled, true)));
+
+            string expValue = growthEnabled
+                ? $"{Math.Clamp(part.GrowthExpPercent, 0, 99)}%"
+                : "MAX";
+            rows.Add(new TooltipLabeledValueRow(
+                ResolveGrowthLabel(growthEnabled, "itemEXP"),
+                "Item EXP:",
+                expValue,
+                growthEnabled ? new Color(181, 224, 255) : new Color(192, 192, 192),
+                BuildTooltipValueTextures(expValue, growthEnabled, true)));
+        }
+
+        private void AppendEnhancementStarRow(List<TooltipLabeledValueRow> rows, int enhancementStarCount)
+        {
+            if (enhancementStarCount <= 0)
+            {
+                return;
+            }
+
+            string valueText = enhancementStarCount.ToString(CultureInfo.InvariantCulture);
+            rows.Add(new TooltipLabeledValueRow(
+                _equipTooltipAssets?.StarLabel,
+                "Stars:",
+                valueText,
+                new Color(255, 232, 176),
+                BuildTooltipValueTextures(valueText, true, false)));
+        }
+
+        private void AppendSellPriceRow(List<TooltipLabeledValueRow> rows, int sellPrice)
+        {
+            if (sellPrice <= 0)
+            {
+                return;
+            }
+
+            string valueText = sellPrice.ToString(CultureInfo.InvariantCulture);
+            rows.Add(new TooltipLabeledValueRow(
+                _equipTooltipAssets?.MesosLabel,
+                "Mesos:",
+                valueText,
+                new Color(255, 244, 186),
+                BuildTooltipValueTextures(valueText, true, false)));
+        }
+
         private void AppendAttackSpeedRow(List<TooltipLabeledValueRow> rows, int attackSpeed)
         {
             if (attackSpeed < 0)
@@ -714,6 +778,12 @@ namespace HaCreator.MapSimulator.UI
             }
 
             List<Texture2D> textures = new(valueText.Length);
+            if (string.Equals(valueText, "MAX", StringComparison.OrdinalIgnoreCase))
+            {
+                Texture2D maxTexture = TryResolveTooltipAsset(source, "max");
+                return maxTexture == null ? null : new[] { maxTexture };
+            }
+
             for (int i = 0; i < valueText.Length; i++)
             {
                 char character = valueText[i];
@@ -982,6 +1052,14 @@ namespace HaCreator.MapSimulator.UI
         private Texture2D ResolvePropertyLabel(string key)
         {
             return TryResolveTooltipAsset(_equipTooltipAssets?.PropertyLabels, key);
+        }
+
+        private Texture2D ResolveGrowthLabel(bool enabled, string key)
+        {
+            IReadOnlyDictionary<string, Texture2D> source = enabled
+                ? _equipTooltipAssets?.GrowthEnabledLabels
+                : _equipTooltipAssets?.GrowthDisabledLabels;
+            return TryResolveTooltipAsset(source, key);
         }
 
         private Texture2D ResolveSpeedTexture(int attackSpeed)

@@ -32,6 +32,7 @@ namespace HaCreator.MapSimulator.Managers
         public int LastFieldHazardDamage { get; private set; }
         public string LastFieldHazardMessage { get; private set; } = string.Empty;
         public string LastFieldHazardFollowUpDetail { get; private set; } = string.Empty;
+        public string LastFieldHazardTransportDetail { get; private set; } = string.Empty;
         public FieldHazardFollowUpKind LastFieldHazardFollowUpKind { get; private set; }
         public int LastFieldHazardFollowUpUpdatedAt { get; private set; } = int.MinValue;
         public int LastFieldHazardNoticeStartedAt { get; private set; } = int.MinValue;
@@ -151,10 +152,20 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
+        public void SetFieldHazardTransportDetail(string detail, int currentTickCount)
+        {
+            LastFieldHazardTransportDetail = detail ?? string.Empty;
+            if (!string.IsNullOrWhiteSpace(LastFieldHazardTransportDetail))
+            {
+                LastFieldHazardNoticeExpiresAt = Math.Max(LastFieldHazardNoticeExpiresAt, currentTickCount + 1400);
+            }
+        }
+
         public void ClearFieldHazardNotice()
         {
             LastFieldHazardMessage = string.Empty;
             LastFieldHazardFollowUpDetail = string.Empty;
+            LastFieldHazardTransportDetail = string.Empty;
             LastFieldHazardFollowUpKind = FieldHazardFollowUpKind.None;
             LastFieldHazardFollowUpUpdatedAt = int.MinValue;
             LastFieldHazardNoticeStartedAt = int.MinValue;
@@ -213,13 +224,16 @@ namespace HaCreator.MapSimulator.Managers
             int remainingMs = Math.Max(0, LastFieldHazardNoticeExpiresAt - currentTickCount);
             return string.Format(
                 CultureInfo.InvariantCulture,
-                "Field hazard notice active. damage={0} remaining={1}ms message=\"{2}\"{3}",
+                "Field hazard notice active. damage={0} remaining={1}ms message=\"{2}\"{3}{4}",
                 LastFieldHazardDamage,
                 remainingMs,
                 LastFieldHazardMessage,
                 string.IsNullOrWhiteSpace(LastFieldHazardFollowUpDetail)
                     ? string.Empty
-                    : $" followUp[{LastFieldHazardFollowUpKind}]=\"{LastFieldHazardFollowUpDetail}\"");
+                    : $" followUp[{LastFieldHazardFollowUpKind}]=\"{LastFieldHazardFollowUpDetail}\"",
+                string.IsNullOrWhiteSpace(LastFieldHazardTransportDetail)
+                    ? string.Empty
+                    : $" transport=\"{LastFieldHazardTransportDetail}\"");
         }
     }
 }

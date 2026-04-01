@@ -283,7 +283,9 @@ namespace HaCreator.MapSimulator.Loaders
                 SpeedLabels = LoadCanvasTextureMap(equipTooltipProperty["Speed"] as WzSubProperty, device),
                 GrowthEnabledLabels = LoadCanvasTextureMap(equipTooltipProperty["GrowthEnabled"] as WzSubProperty, device),
                 GrowthDisabledLabels = LoadCanvasTextureMap(equipTooltipProperty["GrowthDisabled"] as WzSubProperty, device),
-                CashLabel = LoadCanvasTexture(equipTooltipProperty, "cash", device)
+                CashLabel = LoadCanvasTexture(equipTooltipProperty, "cash", device),
+                MesosLabel = LoadCanvasTexture(equipTooltipProperty, "mesos", device),
+                StarLabel = LoadCanvasTexture(equipTooltipProperty["Star"] as WzSubProperty, "Star", device)
             });
         }
         #endregion

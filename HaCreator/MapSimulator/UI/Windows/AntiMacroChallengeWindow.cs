@@ -32,20 +32,10 @@ namespace HaCreator.MapSimulator.UI
         private KeyboardState _previousKeyboardState;
         private string _inputText = string.Empty;
         private string _statusText = string.Empty;
+        private string _compositionText = string.Empty;
+        private ImeCandidateListState _candidateListState = ImeCandidateListState.Empty;
         private bool _isFirstChallenge = true;
         private int _expiresAt = int.MinValue;
-
-        private static readonly Keys[] AcceptedKeys =
-        {
-            Keys.A, Keys.B, Keys.C, Keys.D, Keys.E, Keys.F, Keys.G, Keys.H, Keys.I, Keys.J, Keys.K, Keys.L, Keys.M,
-            Keys.N, Keys.O, Keys.P, Keys.Q, Keys.R, Keys.S, Keys.T, Keys.U, Keys.V, Keys.W, Keys.X, Keys.Y, Keys.Z,
-            Keys.D0, Keys.D1, Keys.D2, Keys.D3, Keys.D4, Keys.D5, Keys.D6, Keys.D7, Keys.D8, Keys.D9,
-            Keys.NumPad0, Keys.NumPad1, Keys.NumPad2, Keys.NumPad3, Keys.NumPad4,
-            Keys.NumPad5, Keys.NumPad6, Keys.NumPad7, Keys.NumPad8, Keys.NumPad9,
-            Keys.Space, Keys.OemPeriod, Keys.OemComma, Keys.OemMinus, Keys.OemPlus,
-            Keys.OemQuestion, Keys.OemSemicolon, Keys.OemQuotes, Keys.OemOpenBrackets,
-            Keys.OemCloseBrackets, Keys.OemPipe, Keys.OemTilde
-        };
 
         public AntiMacroChallengeWindow(string windowName, bool adminVariant, GraphicsDevice graphicsDevice)
             : base(new DXObject(0, 0, CreateFrameTexture(graphicsDevice), 0))
@@ -70,6 +60,12 @@ namespace HaCreator.MapSimulator.UI
         public override void SetFont(SpriteFont font)
         {
             _font = font;
+        }
+
+        public override void Hide()
+        {
+            base.Hide();
+            ClearCompositionText();
         }
 
         public void Configure(Texture2D challengeTexture, int expiresAt, bool isFirstChallenge, string statusText)
@@ -108,31 +104,16 @@ namespace HaCreator.MapSimulator.UI
             }
 
             KeyboardState keyboardState = Keyboard.GetState();
-            bool shift = keyboardState.IsKeyDown(Keys.LeftShift) || keyboardState.IsKeyDown(Keys.RightShift);
 
             if (Pressed(keyboardState, Keys.Back) && _inputText.Length > 0)
             {
+                ClearCompositionText();
                 _inputText = _inputText[..^1];
             }
 
             if (Pressed(keyboardState, Keys.Enter) && !string.IsNullOrWhiteSpace(_inputText))
             {
                 SubmitRequested?.Invoke(_inputText);
-            }
-
-            for (int i = 0; i < AcceptedKeys.Length && _inputText.Length < InputMaxLength; i++)
-            {
-                Keys key = AcceptedKeys[i];
-                if (!Pressed(keyboardState, key))
-                {
-                    continue;
-                }
-
-                char? c = KeyboardTextInputHelper.KeyToChar(key, shift);
-                if (c.HasValue)
-                {
-                    _inputText += c.Value;
-                }
             }
 
             _previousKeyboardState = keyboardState;
@@ -177,7 +158,7 @@ namespace HaCreator.MapSimulator.UI
             string title = _adminVariant ? "Admin Anti-Macro" : "Anti-Macro";
             string modeText = _isFirstChallenge ? "Initial challenge" : "Retry challenge";
             string timerText = $"Time left: {GetRemainingSeconds(tickCount)}s";
-            string inputText = string.IsNullOrEmpty(_inputText) ? "Type answer and press Enter" : _inputText;
+            string inputText = BuildVisibleInputText();
 
             DrawShadowedText(sprite, title, new Vector2(bounds.X + TextMarginX, bounds.Y + TextTopY), Color.White);
             DrawShadowedText(sprite, timerText, new Vector2(bounds.Right - TextMarginX - _font.MeasureString(timerText).X, bounds.Y + TextTopY), new Color(255, 236, 163));
@@ -189,6 +170,7 @@ namespace HaCreator.MapSimulator.UI
 
             DrawShadowedText(sprite, "Answer", new Vector2(bounds.X + TextMarginX, bounds.Y + 193), new Color(220, 220, 220));
             sprite.DrawString(_font, inputText, new Vector2(inputBounds.X + 8, inputBounds.Y + 4), string.IsNullOrEmpty(_inputText) ? new Color(130, 130, 130) : Color.Black);
+            DrawImeCandidateWindow(sprite, inputBounds);
         }
 
         private void DrawFallbackMessage(SpriteBatch sprite, string message, Rectangle bounds, Color color)
@@ -230,6 +212,78 @@ namespace HaCreator.MapSimulator.UI
             return keyboardState.IsKeyDown(key) && !_previousKeyboardState.IsKeyDown(key);
         }
 
+        public override void HandleCommittedText(string text)
+        {
+            if (!CapturesKeyboardInput || string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            ClearCompositionText();
+            foreach (char character in text)
+            {
+                if (_inputText.Length >= InputMaxLength)
+                {
+                    break;
+                }
+
+                if (!char.IsControl(character))
+                {
+                    _inputText += character;
+                }
+            }
+        }
+
+        public override void HandleCompositionText(string text)
+        {
+            HandleCompositionState(new ImeCompositionState(text ?? string.Empty, Array.Empty<int>(), -1));
+        }
+
+        public override void HandleCompositionState(ImeCompositionState state)
+        {
+            if (!CapturesKeyboardInput)
+            {
+                ClearCompositionText();
+                return;
+            }
+
+            string sanitized = state?.Text ?? string.Empty;
+            if (string.IsNullOrEmpty(sanitized))
+            {
+                ClearCompositionText();
+                return;
+            }
+
+            int availableLength = Math.Max(0, InputMaxLength - _inputText.Length);
+            if (availableLength <= 0)
+            {
+                ClearCompositionText();
+                return;
+            }
+
+            _compositionText = sanitized.Length > availableLength
+                ? sanitized[..availableLength]
+                : sanitized;
+        }
+
+        public override void ClearCompositionText()
+        {
+            _compositionText = string.Empty;
+            ClearImeCandidateList();
+        }
+
+        public override void HandleImeCandidateList(ImeCandidateListState state)
+        {
+            _candidateListState = CapturesKeyboardInput && state != null && state.HasCandidates
+                ? state
+                : ImeCandidateListState.Empty;
+        }
+
+        public override void ClearImeCandidateList()
+        {
+            _candidateListState = ImeCandidateListState.Empty;
+        }
+
         private static Rectangle FitTexture(Rectangle bounds, int width, int height)
         {
             if (width <= 0 || height <= 0)
@@ -268,6 +322,97 @@ namespace HaCreator.MapSimulator.UI
 
             int remainingMs = Math.Max(0, _expiresAt - tickCount);
             return (remainingMs + 999) / 1000;
+        }
+
+        private string BuildVisibleInputText()
+        {
+            if (string.IsNullOrEmpty(_inputText))
+            {
+                return string.IsNullOrEmpty(_compositionText)
+                    ? "Type answer and press Enter"
+                    : _compositionText;
+            }
+
+            return $"{_inputText}{_compositionText}";
+        }
+
+        private void DrawImeCandidateWindow(SpriteBatch sprite, Rectangle inputBounds)
+        {
+            if (_font == null || !_candidateListState.HasCandidates)
+            {
+                return;
+            }
+
+            Rectangle bounds = GetImeCandidateWindowBounds(sprite.GraphicsDevice.Viewport, inputBounds);
+            if (bounds.Width <= 0 || bounds.Height <= 0)
+            {
+                return;
+            }
+
+            DrawBox(sprite, bounds, new Color(33, 33, 41, 235), new Color(214, 214, 214, 220));
+            int start = Math.Clamp(_candidateListState.PageStart, 0, _candidateListState.Candidates.Count);
+            int count = Math.Min(GetVisibleCandidateCount(), _candidateListState.Candidates.Count - start);
+            int rowHeight = Math.Max(_font.LineSpacing + 1, 16);
+            int numberWidth = (int)Math.Ceiling(_font.MeasureString($"{Math.Max(1, count)}.").X);
+            for (int i = 0; i < count; i++)
+            {
+                int candidateIndex = start + i;
+                string numberText = $"{i + 1}.";
+                Rectangle rowBounds = new(bounds.X + 2, bounds.Y + 2 + (i * rowHeight), bounds.Width - 4, rowHeight);
+                bool selected = candidateIndex == _candidateListState.Selection;
+                if (selected)
+                {
+                    sprite.Draw(_pixelTexture, rowBounds, new Color(89, 108, 147, 220));
+                }
+
+                sprite.DrawString(_font, numberText, new Vector2(rowBounds.X + 4, rowBounds.Y), selected ? Color.White : new Color(222, 222, 222));
+                sprite.DrawString(
+                    _font,
+                    _candidateListState.Candidates[candidateIndex] ?? string.Empty,
+                    new Vector2(rowBounds.X + 8 + numberWidth, rowBounds.Y),
+                    selected ? Color.White : new Color(240, 235, 200));
+            }
+        }
+
+        private Rectangle GetImeCandidateWindowBounds(Viewport viewport, Rectangle inputBounds)
+        {
+            int visibleCount = GetVisibleCandidateCount();
+            if (visibleCount <= 0 || _font == null)
+            {
+                return Rectangle.Empty;
+            }
+
+            int widestEntryWidth = 0;
+            for (int i = 0; i < visibleCount; i++)
+            {
+                int candidateIndex = Math.Clamp(_candidateListState.PageStart + i, 0, _candidateListState.Candidates.Count - 1);
+                string candidateText = _candidateListState.Candidates[candidateIndex] ?? string.Empty;
+                int entryWidth = (int)Math.Ceiling(_font.MeasureString($"{i + 1}.").X + _font.MeasureString(candidateText).X) + 16;
+                widestEntryWidth = Math.Max(widestEntryWidth, entryWidth);
+            }
+
+            int width = Math.Max(96, widestEntryWidth + 14);
+            int height = (visibleCount * Math.Max(_font.LineSpacing + 1, 16)) + 4;
+            int x = Math.Clamp(inputBounds.X, 0, Math.Max(0, viewport.Width - width));
+            int y = inputBounds.Bottom + 2;
+            if (y + height > viewport.Height)
+            {
+                y = Math.Max(0, inputBounds.Y - height - 2);
+            }
+
+            return new Rectangle(x, y, width, height);
+        }
+
+        private int GetVisibleCandidateCount()
+        {
+            if (!_candidateListState.HasCandidates)
+            {
+                return 0;
+            }
+
+            int start = Math.Clamp(_candidateListState.PageStart, 0, _candidateListState.Candidates.Count);
+            int pageSize = _candidateListState.PageSize > 0 ? _candidateListState.PageSize : _candidateListState.Candidates.Count;
+            return Math.Max(0, Math.Min(pageSize, _candidateListState.Candidates.Count - start));
         }
 
         private static Texture2D CreateFrameTexture(GraphicsDevice graphicsDevice)

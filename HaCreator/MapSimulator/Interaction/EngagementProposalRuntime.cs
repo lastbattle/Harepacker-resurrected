@@ -41,6 +41,7 @@ namespace HaCreator.MapSimulator.Interaction
         private bool _isOpen;
         private bool _lastPrimaryActionSent;
         private EngagementProposalDialogMode _mode;
+        private EngagementProposalAcceptedSnapshot _acceptedProposal;
 
         internal void UpdateLocalContext(CharacterBuild build)
         {
@@ -51,12 +52,13 @@ namespace HaCreator.MapSimulator.Interaction
         }
 
         internal string OpenOutgoingRequest(
+            string proposerName,
             string partnerName,
             int ringItemId = DefaultRingItemId,
             string requestMessage = null)
         {
             _mode = EngagementProposalDialogMode.OutgoingRequest;
-            _proposerName = NormalizeName(_localCharacterName, DefaultPlayerName);
+            _proposerName = NormalizeName(proposerName, _localCharacterName);
             _partnerName = NormalizeName(partnerName, DefaultPartnerName);
             _ringItemId = ringItemId > 0 ? ringItemId : DefaultRingItemId;
             _sealItemId = DefaultSealItemId;
@@ -114,9 +116,20 @@ namespace HaCreator.MapSimulator.Interaction
             _lastResponsePacketType = response.PacketType;
             _lastResponsePayload = (byte[])response.Payload.Clone();
             _isOpen = false;
+            _acceptedProposal = _mode == EngagementProposalDialogMode.IncomingProposal
+                ? new EngagementProposalAcceptedSnapshot
+                {
+                    ProposerName = _proposerName,
+                    PartnerName = _partnerName,
+                    RingItemId = _ringItemId,
+                    RingItemName = _ringItemName,
+                    SealItemId = _sealItemId,
+                    SealItemName = _sealItemName
+                }
+                : null;
             _statusMessage = _mode == EngagementProposalDialogMode.OutgoingRequest
                 ? $"Closed the requester-side engagement dialog through SetRet. Sent client packet {AcceptPacketType} with payload 01."
-                : $"Triggered the proposal dialog SetRet branch for {_proposerName} -> {_partnerName}. Sent client packet {AcceptPacketType} with payload 01.";
+                : $"Triggered the proposal dialog SetRet branch for {_proposerName} -> {_partnerName}. Sent client packet {AcceptPacketType} with payload 01 and primed the wedding handoff state.";
             message = _statusMessage;
             return true;
         }
@@ -150,6 +163,7 @@ namespace HaCreator.MapSimulator.Interaction
             _lastRequestPayload = Array.Empty<byte>();
             _lastResponsePacketType = -1;
             _lastResponsePayload = Array.Empty<byte>();
+            _acceptedProposal = null;
             _statusMessage = "Cleared engagement proposal state.";
             return _statusMessage;
         }
@@ -183,7 +197,8 @@ namespace HaCreator.MapSimulator.Interaction
                 LastRequestPacketType = _lastRequestPacketType,
                 LastRequestPayload = Array.AsReadOnly((byte[])_lastRequestPayload.Clone()),
                 LastResponsePacketType = _lastResponsePacketType,
-                LastResponsePayload = Array.AsReadOnly((byte[])_lastResponsePayload.Clone())
+                LastResponsePayload = Array.AsReadOnly((byte[])_lastResponsePayload.Clone()),
+                AcceptedProposal = _acceptedProposal
             };
         }
 
@@ -197,7 +212,10 @@ namespace HaCreator.MapSimulator.Interaction
             string packetState = snapshot.LastResponsePacketType >= 0
                 ? $" Last response packet {snapshot.LastResponsePacketType} [{FormatPayload(snapshot.LastResponsePayload)}]."
                 : string.Empty;
-            return $"Engagement proposal {state} ({snapshot.Mode}): {snapshot.ProposerName} -> {snapshot.PartnerName}. {snapshot.StatusMessage}{requestState}{packetState}";
+            string handoffState = snapshot.AcceptedProposal == null
+                ? string.Empty
+                : $" Wedding handoff: {snapshot.AcceptedProposal.ProposerName} + {snapshot.AcceptedProposal.PartnerName} via {snapshot.AcceptedProposal.RingItemName} ({snapshot.AcceptedProposal.RingItemId}) and {snapshot.AcceptedProposal.SealItemName} ({snapshot.AcceptedProposal.SealItemId}).";
+            return $"Engagement proposal {state} ({snapshot.Mode}): {snapshot.ProposerName} -> {snapshot.PartnerName}. {snapshot.StatusMessage}{requestState}{packetState}{handoffState}";
         }
 
         private void ResolveItemMetadata()
@@ -342,5 +360,16 @@ namespace HaCreator.MapSimulator.Interaction
         public string StatusMessage { get; init; } = string.Empty;
         public IReadOnlyList<byte> LastRequestPayload { get; init; } = Array.Empty<byte>();
         public IReadOnlyList<byte> LastResponsePayload { get; init; } = Array.Empty<byte>();
+        public EngagementProposalAcceptedSnapshot AcceptedProposal { get; init; }
+    }
+
+    internal sealed class EngagementProposalAcceptedSnapshot
+    {
+        public int RingItemId { get; init; }
+        public int SealItemId { get; init; }
+        public string ProposerName { get; init; } = string.Empty;
+        public string PartnerName { get; init; } = string.Empty;
+        public string RingItemName { get; init; } = string.Empty;
+        public string SealItemName { get; init; } = string.Empty;
     }
 }

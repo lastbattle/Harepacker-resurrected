@@ -64,6 +64,31 @@ namespace HaCreator.MapSimulator
                 ?? _playerManager?.Pets?.FieldUsageRestrictionMessage;
         }
 
+        private bool TryShowFieldRestrictedWindow(string windowName)
+        {
+            string restrictionMessage = GetFieldWindowRestrictionMessage(windowName);
+            if (string.IsNullOrWhiteSpace(restrictionMessage))
+            {
+                return true;
+            }
+
+            PushFieldRuleMessage(restrictionMessage, Environment.TickCount, showOverlay: false);
+            return false;
+        }
+
+        private string GetFieldWindowRestrictionMessage(string windowName)
+        {
+            long fieldLimit = _mapBoard?.MapInfo?.fieldLimit ?? 0;
+            return windowName switch
+            {
+                MapSimulatorWindowNames.MemoMailbox or MapSimulatorWindowNames.QuestDelivery =>
+                    FieldInteractionRestrictionEvaluator.GetParcelOpenRestrictionMessage(fieldLimit),
+                MapSimulatorWindowNames.QuestAlarm =>
+                    FieldInteractionRestrictionEvaluator.GetQuestAlertRestrictionMessage(fieldLimit),
+                _ => null
+            };
+        }
+
         private void ApplyFieldRuntimeInteractionRestrictions()
         {
             PetController pets = _playerManager?.Pets;

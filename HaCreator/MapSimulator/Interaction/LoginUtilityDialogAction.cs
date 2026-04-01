@@ -17,5 +17,6 @@ namespace HaCreator.MapSimulator
         WebsiteHandoffDecision = 12,
         WebsiteHandoff = 13,
         ConfirmApspEvent = 14,
+        ConfirmFollowCharacterRequest = 15,
     }
 }

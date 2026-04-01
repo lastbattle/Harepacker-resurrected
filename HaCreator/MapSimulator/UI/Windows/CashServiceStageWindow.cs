@@ -88,6 +88,7 @@ namespace HaCreator.MapSimulator.UI
         private int _pendingCommoditySerialNumber;
         private int _lastOpenTick = int.MinValue;
         private int _wishlistCount;
+        private int _chargeParam;
         private long _nexonCash;
         private long _maplePoint;
         private long _prepaidCash;
@@ -164,6 +165,44 @@ namespace HaCreator.MapSimulator.UI
             _storageRuntime = storageRuntime;
         }
 
+        public void BeginStageSession(CharacterBuild build, long mesoBalance, int tickCount, int pendingCommoditySerialNumber = 0)
+        {
+            _build = build;
+            _chargeParam = 0;
+            _wishlistCount = 0;
+            _nexonCash = 0;
+            _maplePoint = 0;
+            _prepaidCash = 0;
+            _noticeState = "No packet-authored notice.";
+            _packetRoutes.Clear();
+            _packetRouteOrder.Clear();
+            _lastPacketType = 0;
+            _lastPacketTick = int.MinValue;
+            _lastOpenTick = tickCount;
+
+            if (_stageKind == CashServiceStageKind.CashShop)
+            {
+                SelectCashShopBackdrop();
+                _searchState = "Item-search owner idle.";
+                _navigationState = "Category 1 / page 0 / subcategory 0 owned by CCashShop.";
+                _statusMessage = "CCashShop::Init parity active: field UI cleared, wishlist and cash mirrors reset, preview art selected, and character/locker/inventory/tab/list/best/status/item-search owners created.";
+                PrepareCommodityMigration(pendingCommoditySerialNumber, tickCount);
+                if (!_hasPendingMigration)
+                {
+                    _navigationState = "Category 1 / page 0 / subcategory 0 owned by CCashShop.";
+                }
+            }
+            else
+            {
+                _pendingCommoditySerialNumber = 0;
+                _hasPendingMigration = false;
+                _searchState = "Search disabled; search condition cleared.";
+                _navigationState = "Category 1 / page 0 owned by CITC.";
+                _statusMessage = "CITC::Init parity active: field UI cleared, category/search/sort state reset, NPT exception items loaded, and character/sale/purchase/inventory/tab/subtab/list/status owners created.";
+                _noticeState = $"NPT exception items loaded with {mesoBalance.ToString("N0", CultureInfo.InvariantCulture)} mesos still tracked on the simulator side.";
+            }
+        }
+
         public void PrepareStageOpen(int tickCount)
         {
             _lastOpenTick = tickCount;
@@ -179,8 +218,20 @@ namespace HaCreator.MapSimulator.UI
             _hasPendingMigration = _pendingCommoditySerialNumber > 0;
             _lastOpenTick = tickCount;
             _navigationState = _pendingCommoditySerialNumber > 0
-                ? $"Pending GoToCommoditySN migration for SN {_pendingCommoditySerialNumber}."
+                ? $"Pending CCSWnd_Best::GoToCommoditySN migration for SN {_pendingCommoditySerialNumber}."
                 : "Commodity migration cleared.";
+        }
+
+        public bool TryFocusCommoditySerialNumber(int commoditySerialNumber)
+        {
+            if (_stageKind != CashServiceStageKind.CashShop || commoditySerialNumber <= 0)
+            {
+                return false;
+            }
+
+            PrepareCommodityMigration(commoditySerialNumber, Environment.TickCount);
+            _statusMessage = $"CCashShop::Init resumed the staged catalog at commodity SN {_pendingCommoditySerialNumber}.";
+            return true;
         }
 
         public void SetStatusMessage(string statusMessage)
@@ -396,7 +447,9 @@ namespace HaCreator.MapSimulator.UI
             return new[]
             {
                 _searchState,
-                "Sort column and search mode remain stage-owned."
+                _stageKind == CashServiceStageKind.CashShop
+                    ? "Search mode remains owned by CCashShop."
+                    : "Sort column 0 / sort type 1 remain owned by CITC."
             };
         }
 
@@ -439,9 +492,15 @@ namespace HaCreator.MapSimulator.UI
 
         private IReadOnlyList<string> BuildStatusPane()
         {
+            string balanceLine = $"NX {_nexonCash.ToString("N0", CultureInfo.InvariantCulture)}  MP {_maplePoint.ToString("N0", CultureInfo.InvariantCulture)}  Prepaid {_prepaidCash.ToString("N0", CultureInfo.InvariantCulture)}";
+            if (_chargeParam != 0)
+            {
+                balanceLine += $"  Charge {_chargeParam.ToString(CultureInfo.InvariantCulture)}";
+            }
+
             return new[]
             {
-                $"NX {_nexonCash.ToString("N0", CultureInfo.InvariantCulture)}  MP {_maplePoint.ToString("N0", CultureInfo.InvariantCulture)}  Prepaid {_prepaidCash.ToString("N0", CultureInfo.InvariantCulture)}",
+                balanceLine,
                 _statusMessage
             };
         }
@@ -478,7 +537,10 @@ namespace HaCreator.MapSimulator.UI
             switch (packetType)
             {
                 case 382:
-                    detail = "Charge parameter result reached the Cash Shop stage owner.";
+                    _chargeParam = TryReadInt32(payload, out int chargeParam) ? chargeParam : 0;
+                    detail = _chargeParam > 0
+                        ? $"Charge parameter result reached CCashShop with charge param {_chargeParam.ToString(CultureInfo.InvariantCulture)}."
+                        : "Charge parameter result reached the Cash Shop stage owner.";
                     break;
                 case 383:
                     TryReadCashBalances(payload, out _nexonCash, out _maplePoint, out _prepaidCash);
@@ -486,6 +548,7 @@ namespace HaCreator.MapSimulator.UI
                     break;
                 case 384:
                     _hasPendingMigration = false;
+                    _navigationState = "CCSWnd_List and CCSWnd_Best own the active commodity view.";
                     detail = _pendingCommoditySerialNumber > 0
                         ? $"Cash item result resumed around commodity SN {_pendingCommoditySerialNumber}."
                         : "Cash item result reached the dedicated stage owner.";
@@ -533,7 +596,7 @@ namespace HaCreator.MapSimulator.UI
         {
             string detail = packetType switch
             {
-                410 => "ITC charge parameter result reached the dedicated stage owner.",
+                410 => ApplyItcChargeParam(payload),
                 411 => BuildItcBalanceMessage(payload),
                 412 => "Normal-item result remained inside the ITC stage owner.",
                 _ => $"Unsupported ITC packet {packetType}."
@@ -548,6 +611,14 @@ namespace HaCreator.MapSimulator.UI
         {
             TryReadCashBalances(payload, out _nexonCash, out _maplePoint, out long _);
             return $"ITC balance query refreshed NX {_nexonCash:N0} and MP {_maplePoint:N0}.";
+        }
+
+        private string ApplyItcChargeParam(byte[] payload)
+        {
+            _chargeParam = TryReadInt32(payload, out int chargeParam) ? chargeParam : 0;
+            return _chargeParam > 0
+                ? $"ITC charge parameter result reached CITC with charge param {_chargeParam.ToString(CultureInfo.InvariantCulture)}."
+                : "ITC charge parameter result reached the dedicated stage owner.";
         }
 
         private void RecordPacketRoute(int packetType, string label, string detail, int tickCount)
@@ -656,6 +727,18 @@ namespace HaCreator.MapSimulator.UI
             {
                 prepaid = reader.ReadInt32();
             }
+        }
+
+        private static bool TryReadInt32(byte[] payload, out int value)
+        {
+            value = 0;
+            if (payload == null || payload.Length < sizeof(int))
+            {
+                return false;
+            }
+
+            value = BitConverter.ToInt32(payload, 0);
+            return true;
         }
 
         private static bool TryReadUtf8Text(byte[] payload, out string text)

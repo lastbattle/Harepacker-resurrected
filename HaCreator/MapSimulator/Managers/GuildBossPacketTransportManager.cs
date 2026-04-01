@@ -95,6 +95,17 @@ namespace HaCreator.MapSimulator.Managers
         public int SentCount { get; private set; }
         public string LastStatus { get; private set; } = "Guild boss transport inactive.";
 
+        public string DescribeStatus()
+        {
+            string lifecycle = IsRunning
+                ? $"listening on 127.0.0.1:{Port}"
+                : "inactive";
+            string clients = HasConnectedClients
+                ? $"{ConnectedClientCount} client(s) connected"
+                : "no connected clients";
+            return $"Guild boss transport {lifecycle}; {clients}; received={ReceivedCount}; sent={SentCount}. {LastStatus}";
+        }
+
         public void Start(int port = DefaultPort)
         {
             lock (_listenerLock)

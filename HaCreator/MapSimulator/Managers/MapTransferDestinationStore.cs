@@ -2,6 +2,7 @@ using HaCreator.MapSimulator.Character;
 using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 
 namespace HaCreator.MapSimulator.Managers
@@ -249,6 +250,28 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return slotIndex >= 0 && SetSlot(build, slotIndex, destination, maxCapacity, book);
+        }
+
+        public void ReplaceBook(
+            CharacterBuild build,
+            IEnumerable<MapTransferDestinationRecord> destinations,
+            int maxCapacity,
+            MapTransferDestinationBook book)
+        {
+            if (maxCapacity <= 0)
+            {
+                return;
+            }
+
+            string key = ResolveCharacterKey(build);
+            List<MapTransferDestinationRecord> bucket = GetOrCreateBucket(key, book);
+            bucket.Clear();
+            bucket.AddRange(NormalizeDestinations(destinations)
+                .Where(destination => destination.SlotIndex >= 0 && destination.SlotIndex < maxCapacity)
+                .OrderBy(destination => destination.SlotIndex));
+
+            RemoveEmptyCharacterBucket(key);
+            SaveToDisk();
         }
 
         private List<MapTransferDestinationRecord> GetOrCreateBucket(string key, MapTransferDestinationBook book)

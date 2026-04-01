@@ -2,6 +2,8 @@ namespace HaCreator.MapSimulator.Character.Skills;
 
 internal static class ClientShootAttackFamilyResolver
 {
+    public const int QueuedFinalAttackShootRange0 = 65;
+
     public static bool UsesClientShootAttackLane(int skillId)
     {
         return skillId switch
@@ -27,5 +29,12 @@ internal static class ClientShootAttackFamilyResolver
                 or 35111004 or 35111015 or 35121005 or 35121012 or 35121013 => true,
             _ => false
         };
+    }
+
+    public static int ResolveQueuedFinalAttackShootRange0(SkillData skill)
+    {
+        return skill?.AttackType == SkillAttackType.Ranged && skill.Projectile == null
+            ? QueuedFinalAttackShootRange0
+            : 0;
     }
 }

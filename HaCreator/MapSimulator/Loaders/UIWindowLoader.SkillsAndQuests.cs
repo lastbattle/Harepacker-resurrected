@@ -346,13 +346,15 @@ namespace HaCreator.MapSimulator.Loaders
                 Texture2D defaultBookIcon = SkillDataLoader.LoadJobIcon(0, device);
                 if (defaultBookIcon != null)
                 {
-                    skillWindow.SetJobInfo(0, defaultBookIcon, SkillDataLoader.GetJobName(0));
+                    skillWindow.SetDisplayedSkillRootId(0, 0);
+                    skillWindow.SetJobInfo(0, defaultBookIcon, SkillDataLoader.GetJobName(0));
                 }
 
                 foreach (int pathJobId in pathJobIds)
                 {
                     int tabIndex = GetSkillTabFromJobId(pathJobId);
-                    System.Diagnostics.Debug.WriteLine($"[UIWindowLoader] Loading skills for display job {pathJobId} into tab {tabIndex} (requested job {jobId})");
+                    System.Diagnostics.Debug.WriteLine($"[UIWindowLoader] Loading skills for display job {pathJobId} into tab {tabIndex} (requested job {jobId})");
+                    skillWindow.SetDisplayedSkillRootId(tabIndex, pathJobId);
 
                     var skillMap = new Dictionary<int, SkillDisplayData>();
                     foreach (int bookJobId in GetSkillBookAliasesForJob(pathJobId))
@@ -1175,7 +1177,27 @@ namespace HaCreator.MapSimulator.Loaders
                 window.SetBottomPanel(new DXObject(0, 0, panelTexture, 0), ResolveCanvasOffset(questInfoProperty, "backgrnd3", new Point(10, 27)));
             }
 
-            window.SetSectionTextures(
+            Texture2D summaryPanelTexture = LoadCanvasTexture(questInfoProperty, "summary", device);
+
+            if (summaryPanelTexture != null)
+
+            {
+
+                window.SetSummaryPanel(new DXObject(0, 0, summaryPanelTexture, 0), ResolveCanvasOffset(questInfoProperty, "summary", new Point(10, 252)));
+
+            }
+
+            Texture2D detailTipTexture = LoadCanvasTexture(questInfoProperty, "tip", device);
+
+            if (detailTipTexture != null)
+
+            {
+
+                window.SetDetailTip(new DXObject(0, 0, detailTipTexture, 0), ResolveCanvasOffset(questInfoProperty, "tip", new Point(24, 89)));
+
+            }
+
+            window.SetSectionTextures(
                 LoadCanvasTexture(questInfoProperty["summary_icon"] as WzSubProperty, "summary", device),
                 LoadCanvasTexture(questInfoProperty["summary_icon"] as WzSubProperty, "basic", device),
                 LoadCanvasTexture(questInfoProperty["summary_icon"] as WzSubProperty, "reward", device),
@@ -1416,7 +1438,89 @@ namespace HaCreator.MapSimulator.Loaders
             delays = loadedDelays.ToArray();
         }
 
-        private static UIObject CreateQuestDetailActionButton(
+        private static void LoadWorldMapQuestOverlayAnimation(
+
+            WzSubProperty animationSource,
+
+            GraphicsDevice device,
+
+            out Texture2D[] frames,
+
+            out Point[] origins,
+
+            out int[] delays)
+
+        {
+
+            if (animationSource?.WzProperties == null || animationSource.WzProperties.Count == 0)
+
+            {
+
+                frames = Array.Empty<Texture2D>();
+
+                origins = Array.Empty<Point>();
+
+                delays = Array.Empty<int>();
+
+                return;
+
+            }
+
+
+
+            List<Texture2D> loadedFrames = new();
+
+            List<Point> loadedOrigins = new();
+
+            List<int> loadedDelays = new();
+
+            for (int i = 0; i < animationSource.WzProperties.Count; i++)
+
+            {
+
+                if (animationSource.WzProperties[i] is not WzCanvasProperty canvas)
+
+                {
+
+                    continue;
+
+                }
+
+
+
+                Texture2D frame = canvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device);
+
+                if (frame == null)
+
+                {
+
+                    continue;
+
+                }
+
+
+
+                loadedFrames.Add(frame);
+
+                loadedOrigins.Add(ResolveCanvasOffset(canvas, Point.Zero));
+
+                loadedDelays.Add(Math.Max(1, canvas[WzCanvasProperty.AnimationDelayPropertyName]?.GetInt() ?? 120));
+
+            }
+
+
+
+            frames = loadedFrames.ToArray();
+
+            origins = loadedOrigins.ToArray();
+
+            delays = loadedDelays.ToArray();
+
+        }
+
+
+
+        private static UIObject CreateQuestDetailActionButton(
             WzSubProperty buttonProperty,
             WzBinaryProperty clickSound,
             WzBinaryProperty overSound,
@@ -1760,7 +1864,9 @@ namespace HaCreator.MapSimulator.Loaders
                     SpeedLabels = LoadCanvasTextureMap(equipTooltipProperty["Speed"] as WzSubProperty, device),
                     GrowthEnabledLabels = LoadCanvasTextureMap(equipTooltipProperty["GrowthEnabled"] as WzSubProperty, device),
                     GrowthDisabledLabels = LoadCanvasTextureMap(equipTooltipProperty["GrowthDisabled"] as WzSubProperty, device),
-                    CashLabel = LoadCanvasTexture(equipTooltipProperty, "cash", device)
+                    CashLabel = LoadCanvasTexture(equipTooltipProperty, "cash", device),
+                    MesosLabel = LoadCanvasTexture(equipTooltipProperty, "mesos", device),
+                    StarLabel = LoadCanvasTexture(equipTooltipProperty["Star"] as WzSubProperty, "Star", device)
                 });
             }
 
@@ -1826,6 +1932,18 @@ namespace HaCreator.MapSimulator.Loaders
 
             WzSubProperty resultMobProperty = worldMapSearchProperty?["resultMob"] as WzSubProperty;
 
+            LoadWorldMapQuestOverlayAnimation(
+
+                uiWindow2Image?["QuestGuide"]?["QuestMark"] as WzSubProperty,
+
+                device,
+
+                out Texture2D[] overlayMarkerTextures,
+
+                out Point[] overlayMarkerOrigins,
+
+                out int[] overlayMarkerDelays);
+
             Dictionary<WorldMapUI.SearchResultKind, WorldMapUI.SearchResultVisualStyle> resultStyles = new Dictionary<WorldMapUI.SearchResultKind, WorldMapUI.SearchResultVisualStyle>
 
             {
@@ -1871,7 +1989,13 @@ namespace HaCreator.MapSimulator.Loaders
                 sidePanelOffset,
                 searchNoticeTexture,
                 searchNoticeOffset,
-                selectionTexture,
+                selectionTexture,
+
+                overlayMarkerTextures,
+
+                overlayMarkerOrigins,
+
+                overlayMarkerDelays,
                 LoadButton(worldMapProperty, "BtAll", clickSound, overSound, device),
                 LoadButton(worldMapProperty, "BtAnother", clickSound, overSound, device),
                 LoadButton(worldMapProperty, "BtSearch", clickSound, overSound, device),
@@ -2361,7 +2485,31 @@ namespace HaCreator.MapSimulator.Loaders
             return new UIObject(normal, disabled, pressed, mouseOver);
         }
 
-        private static UIObject CreateCanvasButton(WzCanvasProperty normalCanvas, WzCanvasProperty pressedCanvas, GraphicsDevice device)
+        private static UIObject CreateTextureButton(
+            Texture2D normalTexture,
+            Texture2D disabledTexture,
+            Texture2D pressedTexture,
+            Texture2D mouseOverTexture)
+
+        {
+
+            if (normalTexture == null)
+
+            {
+
+                return null;
+
+            }
+
+            BaseDXDrawableItem normal = new BaseDXDrawableItem(new DXObject(0, 0, normalTexture, 0), false);
+            BaseDXDrawableItem disabled = new BaseDXDrawableItem(new DXObject(0, 0, disabledTexture ?? normalTexture, 0), false);
+            BaseDXDrawableItem pressed = new BaseDXDrawableItem(new DXObject(0, 0, pressedTexture ?? normalTexture, 0), false);
+            BaseDXDrawableItem mouseOver = new BaseDXDrawableItem(new DXObject(0, 0, mouseOverTexture ?? pressedTexture ?? normalTexture, 0), false);
+            return new UIObject(normal, disabled, pressed, mouseOver);
+
+        }
+
+        private static UIObject CreateCanvasButton(WzCanvasProperty normalCanvas, WzCanvasProperty pressedCanvas, GraphicsDevice device)
         {
             if (normalCanvas == null)
             {

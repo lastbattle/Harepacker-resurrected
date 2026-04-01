@@ -114,6 +114,7 @@ namespace HaCreator.MapSimulator.UI
             public float WorldX { get; init; }
             public float WorldY { get; init; }
             public bool ShowDirectionOverlay { get; init; } = true;
+            public HelperMarkerType? PreferredMarkerType { get; init; }
             public string TooltipText { get; init; }
         }
 
@@ -661,8 +662,23 @@ namespace HaCreator.MapSimulator.UI
             return _npcMarker ?? _questStartNpcMarker ?? _questEndNpcMarker;
         }
 
-        private BaseDXDrawableItem ResolveEmployeeMarker()
+        private BaseDXDrawableItem ResolveEmployeeMarker(EmployeeMarker employee)
         {
+            if (employee?.PreferredMarkerType is HelperMarkerType preferredMarkerType)
+            {
+                if (_helperMarkers.TryGetValue(preferredMarkerType, out BaseDXDrawableItem helperMarker) && helperMarker != null)
+                {
+                    return helperMarker;
+                }
+
+                if (preferredMarkerType == HelperMarkerType.UserTrader
+                    && _helperMarkers.TryGetValue(HelperMarkerType.AnotherTrader, out helperMarker)
+                    && helperMarker != null)
+                {
+                    return helperMarker;
+                }
+            }
+
             return ResolveAnyNpcMarker();
         }
 
@@ -715,13 +731,16 @@ namespace HaCreator.MapSimulator.UI
             RenderParameters renderParameters,
             int tickCount)
         {
-            BaseDXDrawableItem marker = ResolveEmployeeMarker();
-            if (_bIsCollapsedState || marker == null || _employeeMarkers.Count == 0)
+            if (_bIsCollapsedState || _employeeMarkers.Count == 0)
                 return;
 
             foreach (EmployeeMarker employee in _employeeMarkers)
             {
                 if (employee == null)
+                    continue;
+
+                BaseDXDrawableItem marker = ResolveEmployeeMarker(employee);
+                if (marker == null)
                     continue;
 
                 Point minimapPoint = WorldToMinimap((int)employee.WorldX, (int)employee.WorldY);
@@ -934,8 +953,7 @@ namespace HaCreator.MapSimulator.UI
 
         private bool TrySetHoveredEmployeeTooltip(MouseState mouseState)
         {
-            BaseDXDrawableItem marker = ResolveEmployeeMarker();
-            if (marker == null || _employeeMarkers.Count == 0)
+            if (_employeeMarkers.Count == 0)
             {
                 return false;
             }
@@ -943,6 +961,12 @@ namespace HaCreator.MapSimulator.UI
             foreach (EmployeeMarker employee in _employeeMarkers)
             {
                 if (employee == null || string.IsNullOrWhiteSpace(employee.TooltipText))
+                {
+                    continue;
+                }
+
+                BaseDXDrawableItem marker = ResolveEmployeeMarker(employee);
+                if (marker == null)
                 {
                     continue;
                 }

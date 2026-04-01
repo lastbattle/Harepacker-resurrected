@@ -8,17 +8,53 @@ namespace HaCreator.MapSimulator
 {
     public partial class MapSimulator
     {
+        private const int EquipmentChangeResponseDelayMs = 50;
         private int _nextEquipmentChangeRequestId = 1;
+        private readonly Dictionary<int, PendingEquipmentChangeEnvelope> _pendingEquipmentChangeRequests = new();
 
-        private EquipmentChangeResult HandleEquipmentChangeRequest(EquipmentChangeRequest request)
+        private sealed class PendingEquipmentChangeEnvelope
+        {
+            public EquipmentChangeRequest Request { get; init; }
+            public int ReadyAtTick { get; init; }
+        }
+
+        private EquipmentChangeSubmission SubmitEquipmentChangeRequest(EquipmentChangeRequest request)
         {
             if (request == null)
             {
-                return EquipmentChangeResult.Reject("Equipment change request is missing.");
+                return EquipmentChangeSubmission.Reject("Equipment change request is missing.");
             }
 
             request.RequestId = _nextEquipmentChangeRequestId++;
             request.RequestedAtTick = currTickCount;
+            _pendingEquipmentChangeRequests[request.RequestId] = new PendingEquipmentChangeEnvelope
+            {
+                Request = request,
+                ReadyAtTick = currTickCount + EquipmentChangeResponseDelayMs
+            };
+
+            return EquipmentChangeSubmission.Accept(request.RequestId, request.RequestedAtTick);
+        }
+
+        private EquipmentChangeResult TryResolveEquipmentChangeRequest(int requestId)
+        {
+            if (requestId <= 0 || !_pendingEquipmentChangeRequests.TryGetValue(requestId, out PendingEquipmentChangeEnvelope pendingEnvelope))
+            {
+                return null;
+            }
+
+            if (unchecked(currTickCount - pendingEnvelope.ReadyAtTick) < 0)
+            {
+                return null;
+            }
+
+            _pendingEquipmentChangeRequests.Remove(requestId);
+
+            EquipmentChangeRequest request = pendingEnvelope.Request;
+            if (request == null)
+            {
+                return EquipmentChangeResult.Reject("Equipment change request is missing.");
+            }
 
             CharacterBuild build = _playerManager?.Player?.Build;
             if (build == null)

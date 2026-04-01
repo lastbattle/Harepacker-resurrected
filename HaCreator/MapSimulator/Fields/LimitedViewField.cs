@@ -36,6 +36,11 @@ namespace HaCreator.MapSimulator.Fields
         private Color _fogColor = new Color(0, 0, 0, 230); // Semi-transparent black
         private bool _followPlayer = true;          // Follow player position
         private float _centerX, _centerY;           // Fixed center if not following
+        private bool _clientOwnedImmediateMode;
+        private float _clientOwnedMaskWidth;
+        private float _clientOwnedMaskHeight;
+        private float _clientOwnedMaskOriginX;
+        private float _clientOwnedMaskOriginY;
         #endregion
 
         #region Runtime State
@@ -174,6 +179,7 @@ namespace HaCreator.MapSimulator.Fields
             _enabled = false;
             _mode = ViewMode.None;
             _currentAlpha = 0f;
+            _clientOwnedImmediateMode = false;
         }
         #endregion
 
@@ -216,6 +222,24 @@ namespace HaCreator.MapSimulator.Fields
             _pulseAmplitude = amplitude;
             _pulseFrequency = frequency;
         }
+
+        public void ConfigureClientOwnedMask(float width, float height, float originX, float originY, bool immediateMode = true)
+        {
+            _clientOwnedMaskWidth = Math.Max(1f, width);
+            _clientOwnedMaskHeight = Math.Max(1f, height);
+            _clientOwnedMaskOriginX = Math.Clamp(originX, 0f, _clientOwnedMaskWidth);
+            _clientOwnedMaskOriginY = Math.Clamp(originY, 0f, _clientOwnedMaskHeight);
+            _clientOwnedImmediateMode = immediateMode;
+        }
+
+        public void ClearClientOwnedMask()
+        {
+            _clientOwnedMaskWidth = 0f;
+            _clientOwnedMaskHeight = 0f;
+            _clientOwnedMaskOriginX = 0f;
+            _clientOwnedMaskOriginY = 0f;
+            _clientOwnedImmediateMode = false;
+        }
         #endregion
 
         #region Update
@@ -231,6 +255,20 @@ namespace HaCreator.MapSimulator.Fields
             {
                 _centerX = playerX;
                 _centerY = playerY;
+            }
+
+            if (_clientOwnedImmediateMode)
+            {
+                _currentRadius = _targetRadius;
+                _currentAlpha = _targetAlpha;
+
+                if (_targetAlpha <= 0f)
+                {
+                    _enabled = false;
+                    _mode = ViewMode.None;
+                }
+
+                return;
             }
 
             // Transition radius
@@ -272,8 +310,9 @@ namespace HaCreator.MapSimulator.Fields
 
             // The fog of war is always centered on the SCREEN (where the player would be)
             // Not on map coordinates - the viewport center IS the player position
-            int screenCenterX = _screenWidth / 2;
-            int screenCenterY = _screenHeight / 2;
+            Vector2 maskCenter = GetScreenMaskCenter();
+            int screenCenterX = (int)MathF.Round(maskCenter.X);
+            int screenCenterY = (int)MathF.Round(maskCenter.Y);
 
             // Apply pulse effect
             float effectiveRadius = _currentRadius;
@@ -449,6 +488,20 @@ namespace HaCreator.MapSimulator.Fields
             // Flashlight mode is complex (would need shaders for proper cone effect)
             // For now, just use the same approach as circle mode
             DrawCircularFog(spriteBatch, centerX, centerY, radius, fogColor);
+        }
+
+        private Vector2 GetScreenMaskCenter()
+        {
+            float screenCenterX = _screenWidth * 0.5f;
+            float screenCenterY = _screenHeight * 0.5f;
+            if (_clientOwnedMaskWidth <= 0f || _clientOwnedMaskHeight <= 0f)
+            {
+                return new Vector2(screenCenterX, screenCenterY);
+            }
+
+            float offsetX = (_clientOwnedMaskWidth * 0.5f) - _clientOwnedMaskOriginX;
+            float offsetY = (_clientOwnedMaskHeight * 0.5f) - _clientOwnedMaskOriginY;
+            return new Vector2(screenCenterX + offsetX, screenCenterY + offsetY);
         }
         #endregion
 

@@ -46,7 +46,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D _bottomTexture;
         private readonly IDXObject _minimizedFrame;
         private readonly Dictionary<int, IDXObject> _maximizedFrames = new();
-        private readonly HashSet<int> _trackedQuestIds = new();
+        private readonly List<int> _trackedQuestIds = new();
         private readonly HashSet<int> _hiddenAutoQuestIds = new();
         private readonly List<RowLayout> _rowLayouts = new();
         private readonly Dictionary<int, Texture2D> _itemIconCache = new();
@@ -194,13 +194,18 @@ namespace HaCreator.MapSimulator.UI
             }
 
             EnsurePersistedStateLoaded();
-            if (!_trackedQuestIds.Contains(questId) && _trackedQuestIds.Count >= MaxVisibleEntries)
+            bool alreadyTracked = _trackedQuestIds.Contains(questId);
+            if (!alreadyTracked && _trackedQuestIds.Count >= MaxVisibleEntries)
             {
                 StatusMessageRequested?.Invoke(RegistrationLimitMessage);
                 return;
             }
 
-            _trackedQuestIds.Add(questId);
+            if (!alreadyTracked)
+            {
+                _trackedQuestIds.Add(questId);
+            }
+
             _hiddenAutoQuestIds.Remove(questId);
             _selectedQuestId = questId;
             EnsureSelectionVisible(GetFilteredSnapshot());
@@ -477,24 +482,23 @@ namespace HaCreator.MapSimulator.UI
 
             HashSet<int> activeQuestIds = snapshot.Entries.Select(entry => entry.QuestId).ToHashSet();
             bool stateChanged = false;
-            stateChanged |= _trackedQuestIds.RemoveWhere(questId => !activeQuestIds.Contains(questId)) > 0;
+            stateChanged |= _trackedQuestIds.RemoveAll(questId => !activeQuestIds.Contains(questId)) > 0;
             stateChanged |= _hiddenAutoQuestIds.RemoveWhere(questId => !activeQuestIds.Contains(questId)) > 0;
             List<QuestAlarmEntrySnapshot> orderedEntries = snapshot.Entries.ToList();
+            Dictionary<int, QuestAlarmEntrySnapshot> entryByQuestId = orderedEntries.ToDictionary(entry => entry.QuestId);
 
-            int[] trackedQuestIdsInOrder = orderedEntries
-                .Where(entry => _trackedQuestIds.Contains(entry.QuestId))
-                .Select(entry => entry.QuestId)
+            int[] trackedQuestIdsInOrder = _trackedQuestIds
+                .Where(entryByQuestId.ContainsKey)
                 .Take(MaxVisibleEntries)
                 .ToArray();
             if (_trackedQuestIds.Count > trackedQuestIdsInOrder.Length)
             {
                 HashSet<int> trackedQuestIdSet = trackedQuestIdsInOrder.ToHashSet();
-                stateChanged |= _trackedQuestIds.RemoveWhere(questId => !trackedQuestIdSet.Contains(questId)) > 0;
+                stateChanged |= _trackedQuestIds.RemoveAll(questId => !trackedQuestIdSet.Contains(questId)) > 0;
             }
 
-            List<QuestAlarmEntrySnapshot> entries = orderedEntries
-                .Where(entry => _trackedQuestIds.Contains(entry.QuestId))
-                .Take(MaxVisibleEntries)
+            List<QuestAlarmEntrySnapshot> entries = trackedQuestIdsInOrder
+                .Select(questId => entryByQuestId[questId])
                 .ToList();
             if (_autoTrackEnabled && entries.Count < MaxVisibleEntries)
             {
@@ -884,13 +888,13 @@ namespace HaCreator.MapSimulator.UI
 
             foreach (QuestAlarmEntrySnapshot entry in fullSnapshot.Entries ?? Array.Empty<QuestAlarmEntrySnapshot>())
             {
-                _trackedQuestIds.Remove(entry.QuestId);
                 if (_autoTrackEnabled)
                 {
                     _hiddenAutoQuestIds.Add(entry.QuestId);
                 }
             }
 
+            _trackedQuestIds.Clear();
             _selectedQuestId = -1;
             _scrollOffset = 0;
             UpdateButtonStates();
@@ -1239,7 +1243,10 @@ namespace HaCreator.MapSimulator.UI
                 _trackedQuestIds.Clear();
                 foreach (int questId in state.TrackedQuestIds)
                 {
-                    _trackedQuestIds.Add(questId);
+                    if (questId > 0 && !_trackedQuestIds.Contains(questId))
+                    {
+                        _trackedQuestIds.Add(questId);
+                    }
                 }
 
                 _hiddenAutoQuestIds.Clear();

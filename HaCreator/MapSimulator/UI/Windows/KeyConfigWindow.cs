@@ -172,7 +172,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            if (input.TryGetPressedBindingGamepadButton(out Buttons gamepadButton))
+            if (input.TryGetPressedBindingGamepadButton(_selectedAction.Value, out Buttons gamepadButton))
             {
                 KeyBinding currentBinding = GetBinding(_selectedAction.Value);
                 SetBinding(

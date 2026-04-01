@@ -327,6 +327,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 skill.SpecialNormalAttackInState = GetInt(infoNode, "specialNormalAttack") == 1;
                 skill.RedirectsDamageToMp = GetInt(infoNode, "switchDamtoMP") == 1;
                 skill.HasInvincibleMetadata = GetInt(infoNode, "invincible") == 1;
+                skill.UsesEnergyChargeRuntime = GetInt(infoNode, "energyCharge") == 1;
+                skill.FullChargeEffectName = GetString(infoNode, "fullChargeEffect");
                 skill.ReflectsIncomingDamage = GetInt(infoNode, "PADReflect") == 1
                                                || GetInt(infoNode, "MADReflect") == 1;
             }
@@ -375,9 +377,39 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return;
             }
 
-            if (ActionImpliesMovement(skill.PrepareActionName))
+            if (EnumerateMovementActionCandidates(skill).Any(ActionImpliesMovement))
             {
                 skill.IsMovement = true;
+            }
+        }
+
+        private static IEnumerable<string> EnumerateMovementActionCandidates(SkillData skill)
+        {
+            if (skill == null)
+            {
+                yield break;
+            }
+
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (!string.IsNullOrWhiteSpace(skill.PrepareActionName) && seen.Add(skill.PrepareActionName))
+            {
+                yield return skill.PrepareActionName;
+            }
+
+            if (skill.ActionNames != null)
+            {
+                foreach (string actionName in skill.ActionNames)
+                {
+                    if (!string.IsNullOrWhiteSpace(actionName) && seen.Add(actionName))
+                    {
+                        yield return actionName;
+                    }
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(skill.ActionName) && seen.Add(skill.ActionName))
+            {
+                yield return skill.ActionName;
             }
         }
 
@@ -809,7 +841,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     foreach (string weaponTypeKey in ResolveAfterImageWeaponTypeKeys(weapon))
                     {
                         MeleeAfterImageCatalog chargeCatalog = GetOrLoadCharacterChargeAfterImageCatalog(weaponTypeKey, chargeElement);
-                        if (TryResolveMeleeAfterImageCatalogAction(chargeCatalog, actionName, out afterImageAction))
+                        if (TryResolveMeleeAfterImageCatalogAction(chargeCatalog, skill?.SkillId ?? 0, actionName, out afterImageAction))
                         {
                             return true;
                         }
@@ -821,7 +853,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 foreach (string weaponTypeKey in ResolveAfterImageWeaponTypeKeys(weapon))
                 {
                     MeleeAfterImageCatalog skillCatalog = skill?.GetAfterImageCatalogForCharacterLevel(weaponTypeKey, characterLevel);
-                    if (TryResolveMeleeAfterImageCatalogAction(skillCatalog, actionName, out afterImageAction))
+                    if (TryResolveMeleeAfterImageCatalogAction(skillCatalog, skill?.SkillId ?? 0, actionName, out afterImageAction))
                     {
                         return true;
                     }
@@ -829,7 +861,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     MeleeAfterImageCatalog weaponCatalog = GetOrLoadCharacterAfterImageCatalog(
                         weaponTypeKey,
                         GetWeaponAfterImageMasteryIndex(masteryPercent));
-                    if (TryResolveMeleeAfterImageCatalogAction(weaponCatalog, actionName, out afterImageAction))
+                    if (TryResolveMeleeAfterImageCatalogAction(weaponCatalog, skill?.SkillId ?? 0, actionName, out afterImageAction))
                     {
                         return true;
                     }
@@ -853,14 +885,16 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         public MeleeAfterImageAction ApplyClientMeleeRangeOverride(
             MeleeAfterImageAction action,
+            int skillId,
             int? rawActionCode,
             bool facingRight)
         {
-            return ClientMeleeAfterimageRangeResolver.ApplyRangeOverride(action, rawActionCode, facingRight);
+            return ClientMeleeAfterimageRangeResolver.ApplyRangeOverride(action, skillId, rawActionCode, facingRight);
         }
 
         private static bool TryResolveMeleeAfterImageCatalogAction(
             MeleeAfterImageCatalog catalog,
+            int skillId,
             string actionName,
             out MeleeAfterImageAction action)
         {
@@ -870,7 +904,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
-            foreach (string candidate in EnumerateMeleeAfterImageActionCandidates(actionName))
+            foreach (string candidate in EnumerateMeleeAfterImageActionCandidates(skillId, actionName))
             {
                 if (catalog.TryGetAction(candidate, out action))
                 {
@@ -881,7 +915,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             return false;
         }
 
-        private static IEnumerable<string> EnumerateMeleeAfterImageActionCandidates(string actionName)
+        private static IEnumerable<string> EnumerateMeleeAfterImageActionCandidates(int skillId, string actionName)
         {
             var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (string candidate in CharacterPart.GetActionLookupStrings(actionName))
@@ -898,6 +932,25 @@ namespace HaCreator.MapSimulator.Character.Skills
                         yield return alias;
                     }
                 }
+
+                foreach (string alias in EnumerateClientMeleeAfterImageSkillAliases(skillId, candidate))
+                {
+                    if (yielded.Add(alias))
+                    {
+                        yield return alias;
+                    }
+                }
+            }
+        }
+
+        private static IEnumerable<string> EnumerateClientMeleeAfterImageSkillAliases(int skillId, string actionName)
+        {
+            if (skillId == 1221009
+                && string.Equals(actionName, "blast", StringComparison.OrdinalIgnoreCase))
+            {
+                // WZ: Skill/122.img/1221009/action/0 = blast, but afterimage/* publishes stabO2.
+                // Client: CUserRemote::OnMeleeAttack forces raw action 17 before GetMeleeAttackRange.
+                yield return "stabO2";
             }
         }
 
@@ -1805,6 +1858,22 @@ namespace HaCreator.MapSimulator.Character.Skills
               skill.SummonProjectileAnimations = LoadSummonIndexedAnimations(summonNode["ball"], "ball");
               skill.SummonTargetHitAnimations = LoadSummonIndexedAnimations(summonNode["mob"], "mob");
 
+              AppendSummonIndexedAnimations(
+                  skill.SummonProjectileAnimations,
+                  LoadSummonIndexedAnimations(attackBranch["info"]?["ball"], $"{attackBranchName}/info/ball"));
+              AppendSummonIndexedAnimations(
+                  skill.SummonTargetHitAnimations,
+                  LoadSummonIndexedAnimations(attackBranch["info"]?["mob"], $"{attackBranchName}/info/mob"));
+              if (removalBranch != null)
+              {
+                  AppendSummonIndexedAnimations(
+                      skill.SummonProjectileAnimations,
+                      LoadSummonIndexedAnimations(removalBranch["info"]?["ball"], $"{removalBranchName}/info/ball"));
+                  AppendSummonIndexedAnimations(
+                      skill.SummonTargetHitAnimations,
+                      LoadSummonIndexedAnimations(removalBranch["info"]?["mob"], $"{removalBranchName}/info/mob"));
+              }
+
               WzImageProperty hitNode = summonNode["hit"] ?? (summonNode.Parent as WzImageProperty)?["hit"];
               SkillAnimation hitAnimation = LoadSummonHitAnimation(hitNode);
               if (hitAnimation?.Frames.Count > 0)
@@ -2033,6 +2102,30 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return animations;
+        }
+
+        private static void AppendSummonIndexedAnimations(List<SkillAnimation> destination, IEnumerable<SkillAnimation> source)
+        {
+            if (destination == null || source == null)
+            {
+                return;
+            }
+
+            foreach (SkillAnimation animation in source)
+            {
+                if (animation?.Frames.Count <= 0)
+                {
+                    continue;
+                }
+
+                bool alreadyLoaded = destination.Any(existing =>
+                    existing != null
+                    && string.Equals(existing.Name, animation.Name, StringComparison.OrdinalIgnoreCase));
+                if (!alreadyLoaded)
+                {
+                    destination.Add(animation);
+                }
+            }
         }
 
         private static void PopulateSummonSupportMetadata(SkillData skill, WzImageProperty supportBranch)

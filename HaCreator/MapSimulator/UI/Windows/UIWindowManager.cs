@@ -198,6 +198,11 @@ namespace HaCreator.MapSimulator.UI
         internal void RegisterSoftKeyboardWindow(SoftKeyboardUI softKeyboardWindow)
         {
             SoftKeyboardWindow = softKeyboardWindow;
+            if (softKeyboardWindow != null)
+            {
+                softKeyboardWindow.BeforeShow = HandleBeforeShowWindow;
+            }
+
             if (_windowFont != null)
             {
                 softKeyboardWindow?.SetFont(_windowFont);
@@ -416,6 +421,11 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
 
+            if (EquipWindow is EquipUIBigBang equipWindowBigBang && InventoryWindow is InventoryUI inventoryWindow)
+            {
+                equipWindowBigBang.ProcessPendingEquipmentChange(inventoryWindow);
+            }
+
             SoftKeyboardWindow?.SyncHost(GetActiveSoftKeyboardHost());
             if (SoftKeyboardWindow?.IsVisible == true)
             {
@@ -468,6 +478,11 @@ namespace HaCreator.MapSimulator.UI
             bool leftJustPressed = mouseState.LeftButton == ButtonState.Pressed && _previousMouseState.LeftButton == ButtonState.Released;
             bool leftJustReleased = mouseState.LeftButton == ButtonState.Released && _previousMouseState.LeftButton == ButtonState.Pressed;
             bool rightJustPressed = mouseState.RightButton == ButtonState.Pressed && _previousMouseState.RightButton == ButtonState.Released;
+
+            if (leftJustPressed || rightJustPressed)
+            {
+                DismissStatusBarPopupOwners(mouseState.X, mouseState.Y);
+            }
 
             if (SoftKeyboardWindow?.IsVisible == true)
             {
@@ -586,6 +601,19 @@ namespace HaCreator.MapSimulator.UI
             return false;
         }
         #endregion
+
+        private void DismissStatusBarPopupOwners(int mouseX, int mouseY)
+        {
+            foreach (UIWindowBase window in windows)
+            {
+                if (window is StatusBarPopupMenuWindow popupWindow
+                    && popupWindow.IsVisible
+                    && !popupWindow.ContainsPoint(mouseX, mouseY))
+                {
+                    popupWindow.Hide();
+                }
+            }
+        }
 
         private bool HandleSkillDrag(MouseState mouseState, bool leftJustPressed, bool leftJustReleased)
         {
@@ -734,6 +762,12 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
+            if (equipWindow.HasPendingEquipmentChange)
+            {
+                equipWindow.TryLockPendingInventorySource(inventoryWindow);
+                return true;
+            }
+
             if (!inventoryWindow.TryRemoveSlotAt(inventoryWindow.DraggedInventoryType, inventoryWindow.DraggedSlotIndex, out _))
             {
                 return false;
@@ -876,12 +910,15 @@ namespace HaCreator.MapSimulator.UI
 
             if (equipWindow.HasDraggedCharacterItem)
             {
-                if (!equipWindow.TryCommitDraggedCharacterRemoval(out InventorySlotData slotData) || slotData == null)
+                if (!equipWindow.TryCommitDraggedCharacterRemoval(out InventorySlotData slotData))
                 {
                     return false;
                 }
 
-                inventoryWindow.AddItem(inventoryType, slotData);
+                if (slotData != null)
+                {
+                    inventoryWindow.AddItem(inventoryType, slotData);
+                }
                 return true;
             }
 

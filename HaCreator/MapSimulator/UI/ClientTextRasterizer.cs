@@ -7,31 +7,59 @@ using SDText = System.Drawing.Text;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.IO;
+using System.Linq;
+using System.Runtime.InteropServices;
+using SWF = System.Windows.Forms;
 
 namespace HaCreator.MapSimulator.UI
 {
     internal sealed class ClientTextRasterizer
     {
+        private const int RasterPadding = 2;
+        private const byte KoreanGdiCharset = 129;
+        private const string ClientTextFontPathEnvironmentVariable = "MAPSIM_CLIENT_TEXT_FONT_PATH";
+        private const string ClientTextFontFaceEnvironmentVariable = "MAPSIM_CLIENT_TEXT_FONT_FACE";
+        private static readonly string[] DefaultFontFamilyCandidates =
+        {
+            "DotumChe",
+            "Dotum",
+            "돋움체",
+            "돋움",
+            "GulimChe",
+            "Gulim",
+            "굴림체",
+            "굴림",
+            "Tahoma",
+            SD.SystemFonts.MessageBoxFont?.FontFamily?.Name,
+            SD.FontFamily.GenericSansSerif.Name
+        };
+        private const SWF.TextFormatFlags ClientTextFormatFlags =
+            SWF.TextFormatFlags.NoPadding |
+            SWF.TextFormatFlags.NoPrefix |
+            SWF.TextFormatFlags.PreserveGraphicsClipping |
+            SWF.TextFormatFlags.PreserveGraphicsTranslateTransform |
+            SWF.TextFormatFlags.SingleLine;
+
         private readonly GraphicsDevice _graphicsDevice;
         private readonly string _fontFamily;
         private readonly float _basePointSize;
         private readonly SD.FontStyle _fontStyle;
-        private readonly Dictionary<string, Texture2D> _textureCache = new Dictionary<string, Texture2D>(StringComparer.Ordinal);
+        private readonly Dictionary<string, RasterTextTexture> _textureCache = new Dictionary<string, RasterTextTexture>(StringComparer.Ordinal);
         private readonly Dictionary<string, Vector2> _measureCache = new Dictionary<string, Vector2>(StringComparer.Ordinal);
         private readonly Dictionary<int, SD.Font> _fontCache = new Dictionary<int, SD.Font>();
         private readonly SD.Bitmap _measureBitmap = new SD.Bitmap(1, 1, SDImaging.PixelFormat.Format32bppArgb);
         private readonly SD.Graphics _measureGraphics;
-        private readonly SD.StringFormat _stringFormat = SD.StringFormat.GenericTypographic;
 
-        public ClientTextRasterizer(GraphicsDevice graphicsDevice, string fontFamily = "Segoe UI", float basePointSize = 13f, SD.FontStyle fontStyle = SD.FontStyle.Regular)
+        public ClientTextRasterizer(GraphicsDevice graphicsDevice, string fontFamily = null, float basePointSize = 13f, SD.FontStyle fontStyle = SD.FontStyle.Regular)
         {
             _graphicsDevice = graphicsDevice ?? throw new ArgumentNullException(nameof(graphicsDevice));
-            _fontFamily = string.IsNullOrWhiteSpace(fontFamily) ? "Segoe UI" : fontFamily;
-            _basePointSize = basePointSize <= 0f ? 13f : basePointSize;
+            _fontFamily = ResolveFontFamily(fontFamily);
+            _basePointSize = basePointSize <= 0f ? 12f : basePointSize;
             _fontStyle = fontStyle;
 
             _measureGraphics = SD.Graphics.FromImage(_measureBitmap);
-            _measureGraphics.TextRenderingHint = SDText.TextRenderingHint.AntiAliasGridFit;
+            _measureGraphics.TextRenderingHint = SDText.TextRenderingHint.SingleBitPerPixelGridFit;
             _measureGraphics.PageUnit = SD.GraphicsUnit.Pixel;
         }
 
@@ -49,16 +77,8 @@ namespace HaCreator.MapSimulator.UI
                 return cachedSize;
             }
 
-            using SD.Font font = CreateScaledFont(scale);
-            SD.SizeF size = _measureGraphics.MeasureString(normalizedText, font, SD.PointF.Empty, _stringFormat);
-            if (size.Width <= 0f || size.Height <= 0f)
-            {
-                size = _measureGraphics.MeasureString(normalizedText, font);
-            }
-
-            Vector2 measuredSize = new Vector2(
-                (float)Math.Ceiling(size.Width),
-                (float)Math.Ceiling(size.Height));
+            RasterTextTexture rasterText = GetOrCreateRasterText(normalizedText, scale);
+            Vector2 measuredSize = rasterText.Measurement;
             _measureCache[cacheKey] = measuredSize;
             return measuredSize;
         }
@@ -70,40 +90,54 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            Texture2D texture = GetOrCreateTexture(text, scale);
-            if (texture == null)
+            RasterTextTexture rasterText = GetOrCreateRasterText(text, scale);
+            if (rasterText.Texture == null)
             {
                 return;
             }
 
-            spriteBatch.Draw(texture, position, color);
+            spriteBatch.Draw(
+                rasterText.Texture,
+                new Vector2(position.X + rasterText.OffsetX, position.Y + rasterText.OffsetY),
+                color);
         }
 
-        private Texture2D GetOrCreateTexture(string text, float scale)
+        private RasterTextTexture GetOrCreateRasterText(string text, float scale)
         {
             string cacheKey = BuildCacheKey(text, scale);
-            if (_textureCache.TryGetValue(cacheKey, out Texture2D cachedTexture)
-                && cachedTexture != null
-                && !cachedTexture.IsDisposed)
+            if (_textureCache.TryGetValue(cacheKey, out RasterTextTexture cachedTexture)
+                && cachedTexture.Texture != null
+                && !cachedTexture.Texture.IsDisposed)
             {
                 return cachedTexture;
             }
 
-            Vector2 measuredSize = MeasureString(text, scale);
-            int width = Math.Max(1, (int)Math.Ceiling(measuredSize.X));
-            int height = Math.Max(1, (int)Math.Ceiling(measuredSize.Y));
+            using SD.Font font = CreateScaledFont(scale);
+            SD.Size measuredSize = SWF.TextRenderer.MeasureText(
+                _measureGraphics,
+                text,
+                font,
+                new SD.Size(int.MaxValue, int.MaxValue),
+                ClientTextFormatFlags);
+            int width = Math.Max(1, measuredSize.Width + (RasterPadding * 2));
+            int height = Math.Max(1, measuredSize.Height + (RasterPadding * 2));
 
             using SD.Bitmap bitmap = new SD.Bitmap(width, height, SDImaging.PixelFormat.Format32bppArgb);
             using SD.Graphics graphics = SD.Graphics.FromImage(bitmap);
-            using SD.Font font = CreateScaledFont(scale);
-            using SD.SolidBrush brush = new SD.SolidBrush(SD.Color.White);
 
             graphics.Clear(SD.Color.Transparent);
-            graphics.TextRenderingHint = SDText.TextRenderingHint.AntiAliasGridFit;
+            graphics.TextRenderingHint = SDText.TextRenderingHint.SingleBitPerPixelGridFit;
             graphics.PageUnit = SD.GraphicsUnit.Pixel;
-            graphics.DrawString(text, font, brush, 0f, 0f, _stringFormat);
+            SWF.TextRenderer.DrawText(
+                graphics,
+                text,
+                font,
+                new SD.Rectangle(RasterPadding, RasterPadding, width - (RasterPadding * 2), height - (RasterPadding * 2)),
+                SD.Color.White,
+                SD.Color.Transparent,
+                ClientTextFormatFlags);
 
-            Texture2D texture = bitmap.ToTexture2D(_graphicsDevice);
+            RasterTextTexture texture = CreateRasterTextTexture(bitmap, measuredSize);
             _textureCache[cacheKey] = texture;
             return texture;
         }
@@ -117,9 +151,151 @@ namespace HaCreator.MapSimulator.UI
             }
 
             float pointSize = Math.Max(1f, _basePointSize * Math.Max(0.1f, scale));
-            SD.Font font = new SD.Font(_fontFamily, pointSize, _fontStyle, SD.GraphicsUnit.Point);
+            SD.Font font;
+            try
+            {
+                font = new SD.Font(_fontFamily, pointSize, _fontStyle, SD.GraphicsUnit.Pixel, KoreanGdiCharset);
+            }
+            catch (ArgumentException)
+            {
+                font = new SD.Font(_fontFamily, pointSize, _fontStyle, SD.GraphicsUnit.Pixel);
+            }
+
             _fontCache[fontSizeKey] = font;
             return (SD.Font)font.Clone();
+        }
+
+        private RasterTextTexture CreateRasterTextTexture(SD.Bitmap bitmap, SD.Size measuredSize)
+        {
+            if (!TryFindOpaqueBounds(bitmap, out SD.Rectangle bounds))
+            {
+                return new RasterTextTexture(
+                    bitmap.ToTexture2D(_graphicsDevice),
+                    0,
+                    0,
+                    new Vector2(Math.Max(1, measuredSize.Width), Math.Max(1, measuredSize.Height)));
+            }
+
+            using SD.Bitmap croppedBitmap = bitmap.Clone(bounds, bitmap.PixelFormat);
+            Texture2D texture = croppedBitmap.ToTexture2D(_graphicsDevice);
+            Vector2 measurement = new Vector2(
+                Math.Max(1, bounds.Right - RasterPadding),
+                Math.Max(1, bounds.Bottom - RasterPadding));
+
+            return new RasterTextTexture(
+                texture,
+                bounds.X - RasterPadding,
+                bounds.Y - RasterPadding,
+                measurement);
+        }
+
+        private static bool TryFindOpaqueBounds(SD.Bitmap bitmap, out SD.Rectangle bounds)
+        {
+            int left = bitmap.Width;
+            int top = bitmap.Height;
+            int right = -1;
+            int bottom = -1;
+
+            for (int y = 0; y < bitmap.Height; y++)
+            {
+                for (int x = 0; x < bitmap.Width; x++)
+                {
+                    if (bitmap.GetPixel(x, y).A == 0)
+                    {
+                        continue;
+                    }
+
+                    if (x < left)
+                    {
+                        left = x;
+                    }
+
+                    if (x > right)
+                    {
+                        right = x;
+                    }
+
+                    if (y < top)
+                    {
+                        top = y;
+                    }
+
+                    if (y > bottom)
+                    {
+                        bottom = y;
+                    }
+                }
+            }
+
+            if (right < left || bottom < top)
+            {
+                bounds = SD.Rectangle.Empty;
+                return false;
+            }
+
+            bounds = SD.Rectangle.FromLTRB(left, top, right + 1, bottom + 1);
+            return true;
+        }
+
+        private static string ResolveFontFamily(string requestedFamily)
+        {
+            if (TryResolveConfiguredFontFamily(out string configuredFamily))
+            {
+                return configuredFamily;
+            }
+
+            if (!string.IsNullOrWhiteSpace(requestedFamily))
+            {
+                string installedRequestedFamily = ResolveInstalledFontFamilyName(requestedFamily);
+                if (!string.IsNullOrWhiteSpace(installedRequestedFamily))
+                {
+                    return installedRequestedFamily;
+                }
+            }
+
+            return ResolveInstalledFontFamilyName(DefaultFontFamilyCandidates);
+        }
+
+        private static bool TryResolveConfiguredFontFamily(out string fontFamilyName)
+        {
+            fontFamilyName = null;
+
+            string configuredFontPath = Environment.GetEnvironmentVariable(ClientTextFontPathEnvironmentVariable);
+            if (string.IsNullOrWhiteSpace(configuredFontPath))
+            {
+                return false;
+            }
+
+            string resolvedFontPath = Path.GetFullPath(configuredFontPath.Trim());
+            if (!File.Exists(resolvedFontPath))
+            {
+                return false;
+            }
+
+            string configuredFontFace = Environment.GetEnvironmentVariable(ClientTextFontFaceEnvironmentVariable);
+            return PrivateFontRegistry.TryRegister(resolvedFontPath, configuredFontFace, out fontFamilyName);
+        }
+
+        private static string ResolveInstalledFontFamilyName(params string[] candidates)
+        {
+            if (candidates == null || candidates.Length == 0)
+            {
+                return SD.FontFamily.GenericSansSerif.Name;
+            }
+
+            HashSet<string> installedFamilies = new HashSet<string>(
+                SD.FontFamily.Families.Select(static family => family.Name),
+                StringComparer.OrdinalIgnoreCase);
+
+            foreach (string candidate in candidates)
+            {
+                if (!string.IsNullOrWhiteSpace(candidate) && installedFamilies.Contains(candidate))
+                {
+                    return candidate;
+                }
+            }
+
+            return SD.FontFamily.GenericSansSerif.Name;
         }
 
         private static int QuantizeScale(float scale)
@@ -130,6 +306,107 @@ namespace HaCreator.MapSimulator.UI
         private static string BuildCacheKey(string text, float scale)
         {
             return QuantizeScale(scale).ToString(CultureInfo.InvariantCulture) + "|" + text;
+        }
+
+        private readonly struct RasterTextTexture
+        {
+            public RasterTextTexture(Texture2D texture, int offsetX, int offsetY, Vector2 measurement)
+            {
+                Texture = texture;
+                OffsetX = offsetX;
+                OffsetY = offsetY;
+                Measurement = measurement;
+            }
+
+            public Texture2D Texture { get; }
+            public int OffsetX { get; }
+            public int OffsetY { get; }
+            public Vector2 Measurement { get; }
+        }
+
+        private static class PrivateFontRegistry
+        {
+            private static readonly object Sync = new object();
+            private static readonly Dictionary<string, RegisteredPrivateFont> RegisteredFonts = new(StringComparer.OrdinalIgnoreCase);
+
+            public static bool TryRegister(string fontPath, string preferredFamilyName, out string resolvedFamilyName)
+            {
+                lock (Sync)
+                {
+                    if (RegisteredFonts.TryGetValue(fontPath, out RegisteredPrivateFont cachedFont))
+                    {
+                        resolvedFamilyName = cachedFont.ResolveFamilyName(preferredFamilyName);
+                        return !string.IsNullOrWhiteSpace(resolvedFamilyName);
+                    }
+
+                    try
+                    {
+                        byte[] fontBytes = File.ReadAllBytes(fontPath);
+                        if (fontBytes.Length == 0)
+                        {
+                            resolvedFamilyName = null;
+                            return false;
+                        }
+
+                        IntPtr fontData = Marshal.AllocCoTaskMem(fontBytes.Length);
+                        Marshal.Copy(fontBytes, 0, fontData, fontBytes.Length);
+
+                        var privateFonts = new SDText.PrivateFontCollection();
+                        privateFonts.AddMemoryFont(fontData, fontBytes.Length);
+
+                        uint fontsAdded = 0;
+                        IntPtr gdiHandle = AddFontMemResourceEx(fontData, (uint)fontBytes.Length, IntPtr.Zero, ref fontsAdded);
+                        RegisteredPrivateFont registeredFont = new RegisteredPrivateFont(fontData, privateFonts, gdiHandle);
+                        RegisteredFonts[fontPath] = registeredFont;
+
+                        resolvedFamilyName = registeredFont.ResolveFamilyName(preferredFamilyName);
+                        return !string.IsNullOrWhiteSpace(resolvedFamilyName);
+                    }
+                    catch
+                    {
+                        resolvedFamilyName = null;
+                        return false;
+                    }
+                }
+            }
+
+            [DllImport("gdi32.dll", CharSet = CharSet.Auto)]
+            private static extern IntPtr AddFontMemResourceEx(IntPtr pbFont, uint cbFont, IntPtr pdv, ref uint pcFonts);
+        }
+
+        private sealed class RegisteredPrivateFont
+        {
+            public RegisteredPrivateFont(IntPtr fontData, SDText.PrivateFontCollection collection, IntPtr gdiHandle)
+            {
+                FontData = fontData;
+                Collection = collection;
+                GdiHandle = gdiHandle;
+            }
+
+            public IntPtr FontData { get; }
+            public SDText.PrivateFontCollection Collection { get; }
+            public IntPtr GdiHandle { get; }
+
+            public string ResolveFamilyName(string preferredFamilyName)
+            {
+                SD.FontFamily[] families = Collection?.Families;
+                if (families == null || families.Length == 0)
+                {
+                    return null;
+                }
+
+                if (!string.IsNullOrWhiteSpace(preferredFamilyName))
+                {
+                    SD.FontFamily preferredFamily = families.FirstOrDefault(
+                        family => string.Equals(family.Name, preferredFamilyName, StringComparison.OrdinalIgnoreCase));
+                    if (preferredFamily != null)
+                    {
+                        return preferredFamily.Name;
+                    }
+                }
+
+                return families[0].Name;
+            }
         }
     }
 }

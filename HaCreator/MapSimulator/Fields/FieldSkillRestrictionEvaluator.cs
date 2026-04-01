@@ -2,6 +2,7 @@ using HaCreator.MapSimulator.Character.Skills;
 using MapleLib.WzLib.WzStructure.Data;
 using MapleLib.WzLib.WzStructure;
 using System;
+using MapleLib.WzLib;
 
 namespace HaCreator.MapSimulator.Fields
 {
@@ -14,10 +15,30 @@ namespace HaCreator.MapSimulator.Fields
 
         public static bool CanUseSkill(MapInfo mapInfo, SkillData skill)
         {
-            return GetRestrictionMessage(mapInfo, skill) == null;
+            return CanUseSkill(mapInfo, skill, 0);
+        }
+
+        public static bool CanUseSkill(MapInfo mapInfo, SkillData skill, int currentJobId)
+        {
+            return CanUseSkill(mapInfo, skill, currentJobId, mobMassacreDisableSkill: false);
+        }
+
+        public static bool CanUseSkill(MapInfo mapInfo, SkillData skill, int currentJobId, bool mobMassacreDisableSkill)
+        {
+            return GetRestrictionMessage(mapInfo, skill, currentJobId, mobMassacreDisableSkill) == null;
         }
 
         public static string GetRestrictionMessage(MapInfo mapInfo, SkillData skill)
+        {
+            return GetRestrictionMessage(mapInfo, skill, 0);
+        }
+
+        public static string GetRestrictionMessage(MapInfo mapInfo, SkillData skill, int currentJobId)
+        {
+            return GetRestrictionMessage(mapInfo, skill, currentJobId, mobMassacreDisableSkill: false);
+        }
+
+        public static string GetRestrictionMessage(MapInfo mapInfo, SkillData skill, int currentJobId, bool mobMassacreDisableSkill)
         {
             if (skill == null)
                 return "Skill data is unavailable.";
@@ -28,7 +49,12 @@ namespace HaCreator.MapSimulator.Fields
                 return fieldLimitRestrictionMessage;
             }
 
-            return GetClientOwnedFieldRestrictionMessage(mapInfo, skill);
+            if (mobMassacreDisableSkill)
+            {
+                return "Skills cannot be used while the Mu Lung Dojo massacre field disables skill usage.";
+            }
+
+            return GetClientOwnedFieldRestrictionMessage(mapInfo, skill, currentJobId);
         }
 
         public static bool CanUseSkill(long fieldLimit, SkillData skill)
@@ -88,11 +114,17 @@ namespace HaCreator.MapSimulator.Fields
             return null;
         }
 
-        private static string GetClientOwnedFieldRestrictionMessage(MapInfo mapInfo, SkillData skill)
+        private static string GetClientOwnedFieldRestrictionMessage(MapInfo mapInfo, SkillData skill, int currentJobId)
         {
             if (mapInfo == null || skill == null)
             {
                 return null;
+            }
+
+            string noSkillRestrictionMessage = GetNoSkillRestrictionMessage(mapInfo, skill, currentJobId);
+            if (!string.IsNullOrWhiteSpace(noSkillRestrictionMessage))
+            {
+                return noSkillRestrictionMessage;
             }
 
             return mapInfo.fieldType switch
@@ -101,6 +133,119 @@ namespace HaCreator.MapSimulator.Fields
                 FieldType.FIELDTYPE_SNOWBALL => "Skills cannot be used while the Snowball minigame owns basic attacks.",
                 _ => null
             };
+        }
+
+        private static string GetNoSkillRestrictionMessage(MapInfo mapInfo, SkillData skill, int currentJobId)
+        {
+            WzImageProperty noSkillProperty = FindAdditionalFieldProperty(mapInfo, "noSkill");
+            if (noSkillProperty == null)
+            {
+                return null;
+            }
+
+            if (MatchesListedSkill(noSkillProperty["skill"], skill.SkillId))
+            {
+                return "This skill is forbidden in this field.";
+            }
+
+            int resolvedJobClass = ResolveSkillRestrictionJobClass(currentJobId, skill);
+            if (resolvedJobClass > 0 && MatchesListedSkillClass(noSkillProperty["class"], resolvedJobClass))
+            {
+                return "This field forbids skills for your job branch.";
+            }
+
+            return null;
+        }
+
+        private static WzImageProperty FindAdditionalFieldProperty(MapInfo mapInfo, string propertyName)
+        {
+            if (mapInfo?.additionalNonInfoProps != null)
+            {
+                for (int i = 0; i < mapInfo.additionalNonInfoProps.Count; i++)
+                {
+                    WzImageProperty property = mapInfo.additionalNonInfoProps[i];
+                    if (string.Equals(property?.Name, propertyName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return property;
+                    }
+                }
+            }
+
+            return mapInfo?.Image?[propertyName] as WzImageProperty;
+        }
+
+        private static bool MatchesListedSkill(WzImageProperty property, int skillId)
+        {
+            return skillId > 0 && ContainsIntValue(property, skillId);
+        }
+
+        private static bool MatchesListedSkillClass(WzImageProperty property, int jobClass)
+        {
+            return jobClass > 0 && ContainsIntValue(property, jobClass);
+        }
+
+        private static bool ContainsIntValue(WzImageProperty property, int expectedValue)
+        {
+            if (property?.WzProperties == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < property.WzProperties.Count; i++)
+            {
+                if (TryReadInt(property.WzProperties[i], out int value) && value == expectedValue)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryReadInt(WzImageProperty property, out int value)
+        {
+            value = 0;
+            if (property == null)
+            {
+                return false;
+            }
+
+            try
+            {
+                value = property.GetInt();
+                return true;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static int ResolveSkillRestrictionJobClass(int currentJobId, SkillData skill)
+        {
+            int resolvedJobId = Math.Abs(currentJobId);
+            if (resolvedJobId <= 0)
+            {
+                resolvedJobId = Math.Abs(skill?.Job ?? 0);
+            }
+
+            if (resolvedJobId <= 0 && skill?.SkillId > 0)
+            {
+                resolvedJobId = Math.Abs(skill.SkillId / 10000);
+            }
+
+            if (resolvedJobId <= 0)
+            {
+                return 0;
+            }
+
+            int jobClass = resolvedJobId % 1000 / 100;
+            if (jobClass == 0 && resolvedJobId < 1000)
+            {
+                jobClass = resolvedJobId / 100;
+            }
+
+            return jobClass;
         }
 
         private static bool IsMysticDoorSkill(SkillData skill)
@@ -117,62 +262,12 @@ namespace HaCreator.MapSimulator.Fields
 
         private static bool UsesTamingMobRestrictedSkill(SkillData skill)
         {
-            if (skill == null)
-            {
-                return false;
-            }
-
-            if (UsesVehicleOwnershipOrMountSkill(skill))
-            {
-                return true;
-            }
-
-            if (!IsMechanicSkill(skill.SkillId))
-            {
-                return false;
-            }
-
-            if (skill.ClientInfoType == 13)
-            {
-                return true;
-            }
-
-            string combinedText = $"{skill.Name} {skill.Description}";
-            if (ContainsAny(combinedText, "mount/unmount", "summon and mount", "prototype mech"))
-            {
-                return true;
-            }
-
-            return IsMechanicVehicleActionName(skill.ActionName)
-                   || IsMechanicVehicleActionName(skill.PrepareActionName)
-                   || IsMechanicVehicleActionName(skill.KeydownActionName)
-                   || IsMechanicVehicleActionName(skill.KeydownEndActionName);
+            return ClientOwnedVehicleSkillClassifier.UsesVehicleOwnershipOrMountSkill(skill);
         }
 
         private static bool UsesVehicleOwnershipOrMountSkill(SkillData skill)
         {
-            if (skill == null)
-            {
-                return false;
-            }
-
-            if (skill.UsesTamingMobMount)
-            {
-                return true;
-            }
-
-            if (skill.ClientInfoType != 13)
-            {
-                return false;
-            }
-
-            if (skill.SkillId == 5221006 || skill.SkillId == 33001001)
-            {
-                return true;
-            }
-
-            string combinedText = $"{skill.Name} {skill.Description}";
-            return ContainsAny(combinedText, "mount/unmount", "summon and mount", "monster rider", "jaguar rider");
+            return ClientOwnedVehicleSkillClassifier.UsesVehicleOwnershipOrMountSkill(skill);
         }
 
         private static bool IsMechanicSkill(int skillId)
@@ -183,19 +278,9 @@ namespace HaCreator.MapSimulator.Fields
 
         private static bool IsMechanicVehicleActionName(string actionName)
         {
-            if (string.IsNullOrWhiteSpace(actionName))
-            {
-                return false;
-            }
-
-            return actionName.StartsWith("tank_", StringComparison.OrdinalIgnoreCase)
-                   || actionName.StartsWith("siege_", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "ride2", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "getoff2", StringComparison.OrdinalIgnoreCase)
+            return ClientOwnedVehicleSkillClassifier.IsMechanicVehicleActionName(actionName, includeTransformStates: true)
                    || string.Equals(actionName, "ladder2", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "rope2", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "herbalism_mechanic", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "mining_mechanic", StringComparison.OrdinalIgnoreCase);
+                   || string.Equals(actionName, "rope2", StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool ContainsAny(string value, params string[] fragments)

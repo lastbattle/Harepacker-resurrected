@@ -569,9 +569,7 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            SkillData skill = _skillLoader?.LoadSkill(skillId);
-            int level = _skillManager.GetSkillLevel(skillId);
-            int totalMs = Math.Max(0, skill?.GetLevel(level)?.Cooldown ?? 0);
+            int totalMs = Math.Max(0, _skillManager.GetCooldownDuration(skillId, currentTime));
             if (totalMs <= 0)
             {
                 return false;

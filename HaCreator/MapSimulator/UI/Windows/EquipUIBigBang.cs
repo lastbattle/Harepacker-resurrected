@@ -49,6 +49,7 @@ namespace HaCreator.MapSimulator.UI
         private const int COMPANION_PANE_ATTACH_X = 10;
         private const int COMPANION_PANE_ATTACH_Y = 18;
         private const int COMPANION_EMPTY_TEXT_PADDING = 14;
+        private const int COMPANION_INVENTORY_REQUEST_DELAY_MS = 120;
 
         // Tab indices
         private const int TAB_CHARACTER = 0;
@@ -109,6 +110,33 @@ namespace HaCreator.MapSimulator.UI
             public Func<CharacterBuild, bool> IsActive { get; init; }
         }
 
+        private sealed class PendingEquipmentChange
+        {
+            public EquipmentChangeRequestKind Kind { get; init; }
+            public int RequestId { get; init; }
+            public int RequestedAtTick { get; init; }
+            public InventoryType SourceInventoryType { get; init; }
+            public int SourceInventoryIndex { get; init; } = -1;
+            public int ItemId { get; init; }
+            public string ItemName { get; init; } = string.Empty;
+            public bool SourceInventoryLocked { get; set; }
+        }
+
+        private sealed class PendingCompanionInventoryChange
+        {
+            public int RequestId { get; init; }
+            public int RequestedAtTick { get; init; }
+            public InventoryType SourceInventoryType { get; init; }
+            public int SourceInventoryIndex { get; init; } = -1;
+            public InventorySlotData SourceInventorySlot { get; init; }
+            public CompanionDragKind TargetKind { get; init; }
+            public int TargetPetRuntimeId { get; init; }
+            public DragonEquipSlot? TargetDragonSlot { get; init; }
+            public MechanicEquipSlot? TargetMechanicSlot { get; init; }
+            public AndroidEquipSlot? TargetAndroidSlot { get; init; }
+            public bool SourceInventoryLocked { get; set; }
+        }
+
         public sealed class EquipTooltipAssets
         {
             public IReadOnlyDictionary<string, Texture2D> CanLabels { get; init; }
@@ -120,6 +148,8 @@ namespace HaCreator.MapSimulator.UI
             public IReadOnlyDictionary<string, Texture2D> GrowthEnabledLabels { get; init; }
             public IReadOnlyDictionary<string, Texture2D> GrowthDisabledLabels { get; init; }
             public Texture2D CashLabel { get; init; }
+            public Texture2D MesosLabel { get; init; }
+            public Texture2D StarLabel { get; init; }
         }
 
         private enum CompanionDragKind
@@ -231,6 +261,9 @@ namespace HaCreator.MapSimulator.UI
         private DragonEquipSlot? _draggedDragonSlot;
         private MechanicEquipSlot? _draggedMechanicSlot;
         private AndroidEquipSlot? _draggedAndroidSlot;
+        private PendingEquipmentChange _pendingEquipmentChange;
+        private PendingCompanionInventoryChange _pendingCompanionInventoryChange;
+        private int _nextCompanionInventoryRequestId = 1;
         #endregion
 
         #region Properties
@@ -239,6 +272,8 @@ namespace HaCreator.MapSimulator.UI
         public Func<int, string> EquipmentEquipGuard { get; set; }
         public Action<string> EquipmentEquipBlocked { get; set; }
         public Func<EquipmentChangeRequest, EquipmentChangeResult> EquipmentChangeRequested { get; set; }
+        public Func<EquipmentChangeRequest, EquipmentChangeSubmission> EquipmentChangeSubmitted { get; set; }
+        public Func<int, EquipmentChangeResult> EquipmentChangeResultRequested { get; set; }
         public override CharacterBuild CharacterBuild
         {
             get => _characterBuild;
@@ -249,6 +284,7 @@ namespace HaCreator.MapSimulator.UI
         public bool HasDraggedCompanionItem => _draggedCompanionKind != CompanionDragKind.None && _draggedCompanionSlotData != null;
         public InventorySlotData DraggedCharacterSlotData => HasDraggedCharacterItem ? CreateInventorySlot(_draggedPart) : null;
         public InventorySlotData DraggedCompanionSlotData => _draggedCompanionSlotData?.Clone();
+        public bool HasPendingEquipmentChange => _pendingEquipmentChange != null || _pendingCompanionInventoryChange != null;
 
         public int CurrentTab
         {
@@ -675,6 +711,155 @@ namespace HaCreator.MapSimulator.UI
             _hoveredAndroidSlot = GetHoveredAndroidSlot(mouseState.X, mouseState.Y);
         }
 
+        public void ProcessPendingEquipmentChange(InventoryUI inventoryWindow)
+        {
+            ProcessPendingCompanionInventoryChange(inventoryWindow);
+
+            if (_pendingEquipmentChange == null || EquipmentChangeResultRequested == null)
+            {
+                return;
+            }
+
+            EquipmentChangeResult result = EquipmentChangeResultRequested.Invoke(_pendingEquipmentChange.RequestId);
+            if (result == null || result.IsPending)
+            {
+                return;
+            }
+
+            PendingEquipmentChange pendingChange = _pendingEquipmentChange;
+            _pendingEquipmentChange = null;
+
+            if (!result.Accepted)
+            {
+                if (pendingChange.SourceInventoryLocked && inventoryWindow != null)
+                {
+                    inventoryWindow.TryClearPendingRequestState(pendingChange.RequestId);
+                }
+
+                NotifyEquipmentEquipBlocked(result.RejectReason);
+                return;
+            }
+
+            switch (pendingChange.Kind)
+            {
+                case EquipmentChangeRequestKind.InventoryToCharacter:
+                    if (inventoryWindow != null)
+                    {
+                        inventoryWindow.TryRemovePendingRequestSlot(pendingChange.RequestId, out _);
+                        IReadOnlyList<InventorySlotData> displacedSlots = CreateInventorySlots(result.DisplacedParts);
+                        if (displacedSlots != null)
+                        {
+                            for (int i = 0; i < displacedSlots.Count; i++)
+                            {
+                                InventorySlotData displacedSlot = displacedSlots[i];
+                                if (displacedSlot != null)
+                                {
+                                    inventoryWindow.AddItem(InventoryType.EQUIP, displacedSlot);
+                                }
+                            }
+                        }
+                    }
+                    break;
+
+                case EquipmentChangeRequestKind.CharacterToInventory:
+                    if (inventoryWindow != null)
+                    {
+                        if (pendingChange.SourceInventoryLocked)
+                        {
+                            inventoryWindow.TryClearPendingRequestState(pendingChange.RequestId);
+                        }
+
+                        InventorySlotData returnedSlot = CreateInventorySlot(result.ReturnedPart);
+                        if (returnedSlot != null)
+                        {
+                            inventoryWindow.AddItem(InventoryType.EQUIP, returnedSlot);
+                        }
+                    }
+                    break;
+            }
+        }
+
+        public bool TryLockPendingInventorySource(InventoryUI inventoryWindow)
+        {
+            if (inventoryWindow == null)
+            {
+                return false;
+            }
+
+            if (_pendingEquipmentChange != null
+                && _pendingEquipmentChange.Kind == EquipmentChangeRequestKind.InventoryToCharacter
+                && !_pendingEquipmentChange.SourceInventoryLocked)
+            {
+                bool characterLocked = inventoryWindow.TrySetPendingRequestState(
+                    _pendingEquipmentChange.SourceInventoryType,
+                    _pendingEquipmentChange.SourceInventoryIndex,
+                    _pendingEquipmentChange.RequestId,
+                    isPending: true);
+
+                _pendingEquipmentChange.SourceInventoryLocked = characterLocked;
+                return characterLocked;
+            }
+
+            if (_pendingCompanionInventoryChange != null
+                && !_pendingCompanionInventoryChange.SourceInventoryLocked)
+            {
+                bool companionLocked = inventoryWindow.TrySetPendingRequestState(
+                    _pendingCompanionInventoryChange.SourceInventoryType,
+                    _pendingCompanionInventoryChange.SourceInventoryIndex,
+                    _pendingCompanionInventoryChange.RequestId,
+                    isPending: true);
+
+                _pendingCompanionInventoryChange.SourceInventoryLocked = companionLocked;
+                return companionLocked;
+            }
+
+            return false;
+        }
+
+        private void ProcessPendingCompanionInventoryChange(InventoryUI inventoryWindow)
+        {
+            if (_pendingCompanionInventoryChange == null)
+            {
+                return;
+            }
+
+            int elapsed = unchecked(Environment.TickCount - _pendingCompanionInventoryChange.RequestedAtTick);
+            if (elapsed < COMPANION_INVENTORY_REQUEST_DELAY_MS)
+            {
+                return;
+            }
+
+            PendingCompanionInventoryChange pendingChange = _pendingCompanionInventoryChange;
+            _pendingCompanionInventoryChange = null;
+
+            if (!TryCommitPendingCompanionInventoryChange(pendingChange, out IReadOnlyList<InventorySlotData> displacedSlots, out string rejectReason))
+            {
+                if (pendingChange.SourceInventoryLocked && inventoryWindow != null)
+                {
+                    inventoryWindow.TryClearPendingRequestState(pendingChange.RequestId);
+                }
+
+                NotifyEquipmentEquipBlocked(rejectReason);
+                return;
+            }
+
+            if (inventoryWindow != null)
+            {
+                inventoryWindow.TryRemovePendingRequestSlot(pendingChange.RequestId, out _);
+                if (displacedSlots != null)
+                {
+                    for (int i = 0; i < displacedSlots.Count; i++)
+                    {
+                        InventorySlotData displacedSlot = displacedSlots[i];
+                        if (displacedSlot != null)
+                        {
+                            inventoryWindow.AddItem(InventoryType.EQUIP, displacedSlot);
+                        }
+                    }
+                }
+            }
+        }
+
         public bool HandlesEquipmentInteractionPoint(int mouseX, int mouseY)
         {
             return _currentTab switch
@@ -686,6 +871,137 @@ namespace HaCreator.MapSimulator.UI
                 TAB_ANDROID => GetAndroidSlotAtPosition(mouseX, mouseY).HasValue,
                 _ => false
             };
+        }
+
+        private bool HasAnyPendingEquipmentChange()
+        {
+            return _pendingEquipmentChange != null || _pendingCompanionInventoryChange != null;
+        }
+
+        private int GetNextCompanionInventoryRequestId()
+        {
+            int requestId = _nextCompanionInventoryRequestId++;
+            if (requestId <= 0)
+            {
+                _nextCompanionInventoryRequestId = 2;
+                requestId = 1;
+            }
+
+            return requestId;
+        }
+
+        private bool QueuePendingCompanionInventoryChange(
+            CompanionDragKind targetKind,
+            InventoryType sourceInventoryType,
+            int sourceInventoryIndex,
+            InventorySlotData draggedSlotData,
+            int targetPetRuntimeId = 0,
+            DragonEquipSlot? targetDragonSlot = null,
+            MechanicEquipSlot? targetMechanicSlot = null,
+            AndroidEquipSlot? targetAndroidSlot = null)
+        {
+            if (draggedSlotData == null)
+            {
+                return false;
+            }
+
+            _pendingCompanionInventoryChange = new PendingCompanionInventoryChange
+            {
+                RequestId = GetNextCompanionInventoryRequestId(),
+                RequestedAtTick = Environment.TickCount,
+                SourceInventoryType = sourceInventoryType,
+                SourceInventoryIndex = sourceInventoryIndex,
+                SourceInventorySlot = draggedSlotData.Clone(),
+                TargetKind = targetKind,
+                TargetPetRuntimeId = targetPetRuntimeId,
+                TargetDragonSlot = targetDragonSlot,
+                TargetMechanicSlot = targetMechanicSlot,
+                TargetAndroidSlot = targetAndroidSlot
+            };
+            return true;
+        }
+
+        private bool TryCommitPendingCompanionInventoryChange(
+            PendingCompanionInventoryChange pendingChange,
+            out IReadOnlyList<InventorySlotData> displacedSlots,
+            out string rejectReason)
+        {
+            displacedSlots = Array.Empty<InventorySlotData>();
+            rejectReason = null;
+            if (pendingChange?.SourceInventorySlot == null)
+            {
+                rejectReason = "The companion equipment request is missing its source inventory item.";
+                return false;
+            }
+
+            switch (pendingChange.TargetKind)
+            {
+                case CompanionDragKind.Pet:
+                {
+                    PetRuntime targetPet = ResolvePetByRuntimeId(pendingChange.TargetPetRuntimeId);
+                    if (targetPet == null || _petEquipmentController == null)
+                    {
+                        rejectReason = "Summon a pet before equipping pet accessories.";
+                        return false;
+                    }
+
+                    if (!_petEquipmentController.TryEquipItem(targetPet, pendingChange.SourceInventorySlot.ItemId, out IReadOnlyList<CompanionEquipItem> displacedItems, out rejectReason))
+                    {
+                        return false;
+                    }
+
+                    displacedSlots = CreateInventorySlots(displacedItems);
+                    return true;
+                }
+
+                case CompanionDragKind.Dragon:
+                    if (!pendingChange.TargetDragonSlot.HasValue || _dragonEquipmentController == null)
+                    {
+                        rejectReason = "Drop this item on the matching dragon slot.";
+                        return false;
+                    }
+
+                    if (!_dragonEquipmentController.TryEquipItem(pendingChange.TargetDragonSlot.Value, pendingChange.SourceInventorySlot.ItemId, out IReadOnlyList<CompanionEquipItem> dragonDisplacedItems, out rejectReason))
+                    {
+                        return false;
+                    }
+
+                    displacedSlots = CreateInventorySlots(dragonDisplacedItems);
+                    return true;
+
+                case CompanionDragKind.Mechanic:
+                    if (!pendingChange.TargetMechanicSlot.HasValue || _mechanicEquipmentController == null)
+                    {
+                        rejectReason = "Drop this item on the matching machine slot.";
+                        return false;
+                    }
+
+                    if (!_mechanicEquipmentController.TryEquipItem(pendingChange.TargetMechanicSlot.Value, pendingChange.SourceInventorySlot.ItemId, out IReadOnlyList<CompanionEquipItem> mechanicDisplacedItems, out rejectReason))
+                    {
+                        return false;
+                    }
+
+                    displacedSlots = CreateInventorySlots(mechanicDisplacedItems);
+                    return true;
+
+                case CompanionDragKind.Android:
+                    if (!pendingChange.TargetAndroidSlot.HasValue || _androidEquipmentController == null)
+                    {
+                        rejectReason = "Android equipment is unavailable.";
+                        return false;
+                    }
+
+                    if (!_androidEquipmentController.TryEquipItem(pendingChange.TargetAndroidSlot.Value, pendingChange.SourceInventorySlot.ItemId, out IReadOnlyList<CompanionEquipItem> androidDisplacedItems, out rejectReason))
+                    {
+                        return false;
+                    }
+
+                    displacedSlots = CreateInventorySlots(androidDisplacedItems);
+                    return true;
+            }
+
+            rejectReason = "Unsupported companion equipment request.";
+            return false;
         }
 
         public bool TryHandleInventoryDrop(
@@ -708,6 +1024,12 @@ namespace HaCreator.MapSimulator.UI
             {
                 case TAB_PET:
                 {
+                    if (HasAnyPendingEquipmentChange())
+                    {
+                        NotifyEquipmentEquipBlocked("An equipment change is already pending.");
+                        return false;
+                    }
+
                     int? targetIndex = GetHoveredPetIndex(mouseX, mouseY);
                     if (!targetIndex.HasValue || _petEquipmentController == null)
                     {
@@ -715,78 +1037,93 @@ namespace HaCreator.MapSimulator.UI
                     }
 
                     PetRuntime targetPet = ResolvePetByIndex(targetIndex.Value);
-                    if (!_petEquipmentController.TryEquipItem(targetPet, draggedSlotData.ItemId, out IReadOnlyList<CompanionEquipItem> displacedItems, out string rejectReason))
+                    if (!_petEquipmentController.TryValidateEquipItem(targetPet, draggedSlotData.ItemId, out _, out string rejectReason))
                     {
-                        if (!string.IsNullOrWhiteSpace(rejectReason))
-                        {
-                            EquipmentEquipBlocked?.Invoke(rejectReason);
-                        }
-
+                        NotifyEquipmentEquipBlocked(rejectReason);
                         return false;
                     }
 
-                    displacedSlots = CreateInventorySlots(displacedItems);
-                    return true;
+                    return QueuePendingCompanionInventoryChange(
+                        CompanionDragKind.Pet,
+                        sourceInventoryType,
+                        sourceInventoryIndex,
+                        draggedSlotData,
+                        targetPetRuntimeId: targetPet?.RuntimeId ?? 0);
                 }
                 case TAB_DRAGON:
                 {
+                    if (HasAnyPendingEquipmentChange())
+                    {
+                        NotifyEquipmentEquipBlocked("An equipment change is already pending.");
+                        return false;
+                    }
+
                     DragonEquipSlot? targetSlot = GetDragonSlotAtPosition(mouseX, mouseY);
-                    IReadOnlyList<CompanionEquipItem> displacedItems = Array.Empty<CompanionEquipItem>();
                     string rejectReason = null;
                     if (!targetSlot.HasValue
                         || _dragonEquipmentController == null
-                        || !_dragonEquipmentController.TryEquipItem(targetSlot.Value, draggedSlotData.ItemId, out displacedItems, out rejectReason))
+                        || !_dragonEquipmentController.TryValidateEquipItem(targetSlot.Value, draggedSlotData.ItemId, out _, out rejectReason))
                     {
-                        if (!string.IsNullOrWhiteSpace(rejectReason))
-                        {
-                            EquipmentEquipBlocked?.Invoke(rejectReason);
-                        }
-
+                        NotifyEquipmentEquipBlocked(rejectReason);
                         return false;
                     }
 
-                    displacedSlots = CreateInventorySlots(displacedItems);
-                    return true;
+                    return QueuePendingCompanionInventoryChange(
+                        CompanionDragKind.Dragon,
+                        sourceInventoryType,
+                        sourceInventoryIndex,
+                        draggedSlotData,
+                        targetDragonSlot: targetSlot);
                 }
                 case TAB_MECHANIC:
                 {
+                    if (HasAnyPendingEquipmentChange())
+                    {
+                        NotifyEquipmentEquipBlocked("An equipment change is already pending.");
+                        return false;
+                    }
+
                     MechanicEquipSlot? targetSlot = GetMechanicSlotAtPosition(mouseX, mouseY);
-                    IReadOnlyList<CompanionEquipItem> displacedItems = Array.Empty<CompanionEquipItem>();
                     string rejectReason = null;
                     if (!targetSlot.HasValue
                         || _mechanicEquipmentController == null
-                        || !_mechanicEquipmentController.TryEquipItem(targetSlot.Value, draggedSlotData.ItemId, out displacedItems, out rejectReason))
+                        || !_mechanicEquipmentController.TryValidateEquipItem(targetSlot.Value, draggedSlotData.ItemId, out _, out rejectReason))
                     {
-                        if (!string.IsNullOrWhiteSpace(rejectReason))
-                        {
-                            EquipmentEquipBlocked?.Invoke(rejectReason);
-                        }
-
+                        NotifyEquipmentEquipBlocked(rejectReason);
                         return false;
                     }
 
-                    displacedSlots = CreateInventorySlots(displacedItems);
-                    return true;
+                    return QueuePendingCompanionInventoryChange(
+                        CompanionDragKind.Mechanic,
+                        sourceInventoryType,
+                        sourceInventoryIndex,
+                        draggedSlotData,
+                        targetMechanicSlot: targetSlot);
                 }
                 case TAB_ANDROID:
                 {
-                    AndroidEquipSlot? targetSlot = GetAndroidSlotAtPosition(mouseX, mouseY);
-                    IReadOnlyList<CompanionEquipItem> displacedItems = Array.Empty<CompanionEquipItem>();
-                    string rejectReason = null;
-                    if (!targetSlot.HasValue
-                        || _androidEquipmentController == null
-                        || !_androidEquipmentController.TryEquipItem(targetSlot.Value, draggedSlotData.ItemId, out displacedItems, out rejectReason))
+                    if (HasAnyPendingEquipmentChange())
                     {
-                        if (!string.IsNullOrWhiteSpace(rejectReason))
-                        {
-                            EquipmentEquipBlocked?.Invoke(rejectReason);
-                        }
-
+                        NotifyEquipmentEquipBlocked("An equipment change is already pending.");
                         return false;
                     }
 
-                    displacedSlots = CreateInventorySlots(displacedItems);
-                    return true;
+                    AndroidEquipSlot? targetSlot = GetAndroidSlotAtPosition(mouseX, mouseY);
+                    string rejectReason = null;
+                    if (!targetSlot.HasValue
+                        || _androidEquipmentController == null
+                        || !_androidEquipmentController.TryValidateEquipItem(targetSlot.Value, draggedSlotData.ItemId, out _, out rejectReason))
+                    {
+                        NotifyEquipmentEquipBlocked(rejectReason);
+                        return false;
+                    }
+
+                    return QueuePendingCompanionInventoryChange(
+                        CompanionDragKind.Android,
+                        sourceInventoryType,
+                        sourceInventoryIndex,
+                        draggedSlotData,
+                        targetAndroidSlot: targetSlot);
                 }
                 case TAB_CHARACTER:
                     return TryHandleCharacterInventoryDrop(
@@ -810,6 +1147,11 @@ namespace HaCreator.MapSimulator.UI
             out IReadOnlyList<InventorySlotData> displacedSlots)
         {
             displacedSlots = Array.Empty<InventorySlotData>();
+            if (HasAnyPendingEquipmentChange())
+            {
+                NotifyEquipmentEquipBlocked("An equipment change is already pending.");
+                return false;
+            }
 
             EquipSlot? targetUiSlot = GetSlotAtPosition(mouseX, mouseY);
             if (!targetUiSlot.HasValue)
@@ -874,6 +1216,12 @@ namespace HaCreator.MapSimulator.UI
                 resolvedTargetSlot);
             if (changeResult != null)
             {
+                if (changeResult.IsPending)
+                {
+                    displacedSlots = Array.Empty<InventorySlotData>();
+                    return true;
+                }
+
                 if (!changeResult.Accepted)
                 {
                     NotifyEquipmentEquipBlocked(changeResult.RejectReason);
@@ -895,6 +1243,12 @@ namespace HaCreator.MapSimulator.UI
             _lastMousePosition = new Point(mouseX, mouseY);
             if (TryBeginDraggedCompanion(mouseX, mouseY))
             {
+                return;
+            }
+
+            if (HasAnyPendingEquipmentChange())
+            {
+                NotifyEquipmentEquipBlocked("An equipment change is already pending.");
                 return;
             }
 
@@ -995,9 +1349,20 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
+            if (HasAnyPendingEquipmentChange())
+            {
+                NotifyEquipmentEquipBlocked("An equipment change is already pending.");
+                return false;
+            }
+
             EquipmentChangeResult changeResult = TryRequestCharacterToInventoryChange();
             if (changeResult != null)
             {
+                if (changeResult.IsPending)
+                {
+                    return true;
+                }
+
                 if (!changeResult.Accepted)
                 {
                     NotifyEquipmentEquipBlocked(changeResult.RejectReason);
@@ -2576,11 +2941,15 @@ namespace HaCreator.MapSimulator.UI
             AppendStatRow(rows, null, ResolvePropertyLabel("12"), part.BonusHands, new Color(176, 255, 176), includePlusPrefix: true);
             AppendStatRow(rows, null, ResolvePropertyLabel("13"), part.BonusSpeed, new Color(176, 255, 176), includePlusPrefix: true);
             AppendStatRow(rows, null, ResolvePropertyLabel("14"), part.BonusJump, new Color(176, 255, 176), includePlusPrefix: true);
+            AppendEnhancementStarRow(rows, part.EnhancementStarCount);
+            AppendSellPriceRow(rows, part.SellPrice);
             AppendUpgradeSlotRow(rows, part);
             if (part is WeaponPart weapon)
             {
                 AppendAttackSpeedRow(rows, weapon.AttackSpeed);
             }
+
+            AppendGrowthRows(rows, part);
 
             return rows;
         }
@@ -2649,6 +3018,66 @@ namespace HaCreator.MapSimulator.UI
                 "Upgrades Available:",
                 valueText,
                 new Color(255, 232, 176),
+                BuildTooltipValueTextures(valueText, enabled: true, preferGrowthDigits: false)));
+        }
+
+        private void AppendGrowthRows(List<TooltipLabeledValueRow> rows, CharacterPart part)
+        {
+            if (!part?.HasGrowthInfo ?? true)
+            {
+                return;
+            }
+
+            int currentLevel = Math.Max(1, part.GrowthLevel);
+            int maxLevel = Math.Max(currentLevel, part.GrowthMaxLevel);
+            bool growthEnabled = currentLevel < maxLevel;
+            rows.Add(new TooltipLabeledValueRow(
+                ResolveGrowthLabel(growthEnabled, "itemLEV"),
+                "Item Level:",
+                currentLevel.ToString(CultureInfo.InvariantCulture),
+                growthEnabled ? new Color(181, 224, 255) : new Color(192, 192, 192),
+                BuildTooltipValueTextures(currentLevel.ToString(CultureInfo.InvariantCulture), growthEnabled, preferGrowthDigits: true)));
+
+            string expValue = growthEnabled
+                ? $"{Math.Clamp(part.GrowthExpPercent, 0, 99)}%"
+                : "MAX";
+            rows.Add(new TooltipLabeledValueRow(
+                ResolveGrowthLabel(growthEnabled, "itemEXP"),
+                "Item EXP:",
+                expValue,
+                growthEnabled ? new Color(181, 224, 255) : new Color(192, 192, 192),
+                BuildTooltipValueTextures(expValue, growthEnabled, preferGrowthDigits: true)));
+        }
+
+        private void AppendEnhancementStarRow(List<TooltipLabeledValueRow> rows, int enhancementStarCount)
+        {
+            if (enhancementStarCount <= 0)
+            {
+                return;
+            }
+
+            string valueText = enhancementStarCount.ToString(CultureInfo.InvariantCulture);
+            rows.Add(new TooltipLabeledValueRow(
+                _equipTooltipAssets?.StarLabel,
+                "Stars:",
+                valueText,
+                new Color(255, 232, 176),
+                BuildTooltipValueTextures(valueText, enabled: true, preferGrowthDigits: false)));
+        }
+
+        private void AppendSellPriceRow(List<TooltipLabeledValueRow> rows, int sellPrice)
+        {
+            if (sellPrice <= 0)
+            {
+                return;
+            }
+
+            string valueText = sellPrice.ToString(CultureInfo.InvariantCulture);
+            rows.Add(new TooltipLabeledValueRow(
+                _equipTooltipAssets?.MesosLabel,
+                "Mesos:",
+                valueText,
+                new Color(255, 244, 186),
                 BuildTooltipValueTextures(valueText, enabled: true, preferGrowthDigits: false)));
         }
 
@@ -3128,6 +3557,26 @@ namespace HaCreator.MapSimulator.UI
             return pets != null && petIndex >= 0 && petIndex < pets.Count ? pets[petIndex] : null;
         }
 
+        private PetRuntime ResolvePetByRuntimeId(int runtimeId)
+        {
+            IReadOnlyList<PetRuntime> pets = _petController?.ActivePets;
+            if (pets == null || runtimeId <= 0)
+            {
+                return null;
+            }
+
+            for (int i = 0; i < pets.Count; i++)
+            {
+                PetRuntime pet = pets[i];
+                if (pet != null && pet.RuntimeId == runtimeId)
+                {
+                    return pet;
+                }
+            }
+
+            return null;
+        }
+
         private PetRuntime ResolveDraggedPet()
         {
             IReadOnlyList<PetRuntime> pets = _petController?.ActivePets;
@@ -3289,6 +3738,12 @@ namespace HaCreator.MapSimulator.UI
 
         private bool TryDropDraggedEquipment(int mouseX, int mouseY)
         {
+            if (HasAnyPendingEquipmentChange())
+            {
+                NotifyEquipmentEquipBlocked("An equipment change is already pending.");
+                return false;
+            }
+
             EquipSlot? targetUiSlot = GetSlotAtPosition(mouseX, mouseY);
             if (!targetUiSlot.HasValue || _draggedPart == null)
                 return false;
@@ -3324,6 +3779,11 @@ namespace HaCreator.MapSimulator.UI
             EquipmentChangeResult changeResult = TryRequestCharacterToCharacterChange(resolvedTargetSlot);
             if (changeResult != null)
             {
+                if (changeResult.IsPending)
+                {
+                    return true;
+                }
+
                 if (!changeResult.Accepted)
                 {
                     NotifyEquipmentEquipBlocked(changeResult.RejectReason);
@@ -3358,12 +3818,12 @@ namespace HaCreator.MapSimulator.UI
             CharacterPart incomingPart,
             CharacterEquipSlot resolvedTargetSlot)
         {
-            if (EquipmentChangeRequested == null || draggedSlotData == null || incomingPart == null)
+            if (draggedSlotData == null || incomingPart == null)
             {
                 return null;
             }
 
-            return EquipmentChangeRequested.Invoke(new EquipmentChangeRequest
+            EquipmentChangeRequest request = new EquipmentChangeRequest
             {
                 Kind = EquipmentChangeRequestKind.InventoryToCharacter,
                 SourceInventoryType = sourceInventoryType,
@@ -3374,17 +3834,24 @@ namespace HaCreator.MapSimulator.UI
                 Summary = $"Equip {draggedSlotData.ItemId} into {resolvedTargetSlot}.",
                 SourceInventorySlot = draggedSlotData.Clone(),
                 RequestedPart = incomingPart.Clone()
-            });
+            };
+
+            return TrySubmitEquipmentChangeRequest(
+                request,
+                sourceInventoryType,
+                sourceInventoryIndex,
+                draggedSlotData.ItemId,
+                draggedSlotData.ItemName ?? incomingPart.Name ?? string.Empty);
         }
 
         private EquipmentChangeResult TryRequestCharacterToCharacterChange(CharacterEquipSlot resolvedTargetSlot)
         {
-            if (EquipmentChangeRequested == null || _draggedPart == null)
+            if (_draggedPart == null)
             {
                 return null;
             }
 
-            return EquipmentChangeRequested.Invoke(new EquipmentChangeRequest
+            EquipmentChangeRequest request = new EquipmentChangeRequest
             {
                 Kind = EquipmentChangeRequestKind.CharacterToCharacter,
                 SourceEquipSlot = _draggedPart.Slot,
@@ -3393,17 +3860,24 @@ namespace HaCreator.MapSimulator.UI
                 ItemName = _draggedPart.Name ?? string.Empty,
                 Summary = $"Move equipped item {_draggedPart.ItemId} from {_draggedPart.Slot} to {resolvedTargetSlot}.",
                 RequestedPart = _draggedPart.Clone()
-            });
+            };
+
+            return TrySubmitEquipmentChangeRequest(
+                request,
+                InventoryType.NONE,
+                -1,
+                _draggedPart.ItemId,
+                _draggedPart.Name ?? string.Empty);
         }
 
         private EquipmentChangeResult TryRequestCharacterToInventoryChange()
         {
-            if (EquipmentChangeRequested == null || _draggedPart == null)
+            if (_draggedPart == null)
             {
                 return null;
             }
 
-            return EquipmentChangeRequested.Invoke(new EquipmentChangeRequest
+            EquipmentChangeRequest request = new EquipmentChangeRequest
             {
                 Kind = EquipmentChangeRequestKind.CharacterToInventory,
                 SourceEquipSlot = _draggedPart.Slot,
@@ -3411,7 +3885,51 @@ namespace HaCreator.MapSimulator.UI
                 ItemName = _draggedPart.Name ?? string.Empty,
                 Summary = $"Unequip {_draggedPart.ItemId} from {_draggedPart.Slot}.",
                 RequestedPart = _draggedPart.Clone()
-            });
+            };
+
+            return TrySubmitEquipmentChangeRequest(
+                request,
+                InventoryType.NONE,
+                -1,
+                _draggedPart.ItemId,
+                _draggedPart.Name ?? string.Empty);
+        }
+
+        private EquipmentChangeResult TrySubmitEquipmentChangeRequest(
+            EquipmentChangeRequest request,
+            InventoryType sourceInventoryType,
+            int sourceInventoryIndex,
+            int itemId,
+            string itemName)
+        {
+            if (EquipmentChangeSubmitted != null && EquipmentChangeResultRequested != null)
+            {
+                EquipmentChangeSubmission submission = EquipmentChangeSubmitted.Invoke(request);
+                if (submission == null)
+                {
+                    return null;
+                }
+
+                if (!submission.Accepted)
+                {
+                    return EquipmentChangeResult.Reject(submission.RejectReason);
+                }
+
+                _pendingEquipmentChange = new PendingEquipmentChange
+                {
+                    Kind = request.Kind,
+                    RequestId = submission.RequestId,
+                    RequestedAtTick = submission.RequestedAtTick,
+                    SourceInventoryType = sourceInventoryType,
+                    SourceInventoryIndex = sourceInventoryIndex,
+                    ItemId = itemId,
+                    ItemName = itemName ?? string.Empty
+                };
+
+                return EquipmentChangeResult.Pending(submission.RequestId, submission.RequestedAtTick);
+            }
+
+            return EquipmentChangeRequested?.Invoke(request);
         }
 
         private void NotifyEquipmentEquipBlocked(string message)
@@ -4025,6 +4543,14 @@ namespace HaCreator.MapSimulator.UI
             return TryResolveTooltipAsset(_equipTooltipAssets?.SpeedLabels, Math.Clamp(attackSpeed, 0, 6).ToString(CultureInfo.InvariantCulture));
         }
 
+        private Texture2D ResolveGrowthLabel(bool enabled, string key)
+        {
+            IReadOnlyDictionary<string, Texture2D> source = enabled
+                ? _equipTooltipAssets?.GrowthEnabledLabels
+                : _equipTooltipAssets?.GrowthDisabledLabels;
+            return TryResolveTooltipAsset(source, key);
+        }
+
         private IReadOnlyList<Texture2D> BuildTooltipValueTextures(string valueText, bool enabled, bool preferGrowthDigits)
         {
             if (string.IsNullOrWhiteSpace(valueText) || _equipTooltipAssets == null)
@@ -4041,6 +4567,12 @@ namespace HaCreator.MapSimulator.UI
             }
 
             var textures = new List<Texture2D>(valueText.Length);
+            if (string.Equals(valueText, "MAX", StringComparison.OrdinalIgnoreCase))
+            {
+                Texture2D maxTexture = TryResolveTooltipAsset(source, "max");
+                return maxTexture == null ? null : new[] { maxTexture };
+            }
+
             for (int i = 0; i < valueText.Length; i++)
             {
                 char character = valueText[i];

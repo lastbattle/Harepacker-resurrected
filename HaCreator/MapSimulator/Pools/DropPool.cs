@@ -389,6 +389,7 @@ namespace HaCreator.MapSimulator.Pools
         private Func<DropItem, DropPickupFailureReason> _petPickupAvailabilityEvaluator;
         private Action<DropItem, int, string> _onRemotePlayerPickedUp;
         private Action<DropItem, int, string> _onRemotePetPickedUp;
+        private Action<DropItem, int, string> _onRemoteOtherPickedUp;
 
         // Ground level lookup function
         private Func<float, float, float> _getGroundY;
@@ -415,6 +416,7 @@ namespace HaCreator.MapSimulator.Pools
         public void SetGroundLevelLookup(Func<float, float, float> getGroundY) => _getGroundY = getGroundY;
         public void SetOnRemotePlayerPickedUp(Action<DropItem, int, string> callback) => _onRemotePlayerPickedUp = callback;
         public void SetOnRemotePetPickedUp(Action<DropItem, int, string> callback) => _onRemotePetPickedUp = callback;
+        public void SetOnRemoteOtherPickedUp(Action<DropItem, int, string> callback) => _onRemoteOtherPickedUp = callback;
 
         // Pet pickup events
         private Action<DropItem, int> _onPetPickedUp;          // (drop, petId)
@@ -711,6 +713,11 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             if (actorKind == DropPickupActorKind.Mob)
+            {
+                return CompletePickup(drop, actorId, pickedByPet: false, currentTime, actorKind, notifyLocalPickup: false, actorName);
+            }
+
+            if (actorKind == DropPickupActorKind.Other)
             {
                 return CompletePickup(drop, actorId, pickedByPet: false, currentTime, actorKind, notifyLocalPickup: false, actorName);
             }
@@ -1707,6 +1714,9 @@ namespace HaCreator.MapSimulator.Pools
                     break;
                 case DropPickupActorKind.Mob:
                     _onMobPickedUp?.Invoke(drop, pickerId);
+                    break;
+                case DropPickupActorKind.Other:
+                    _onRemoteOtherPickedUp?.Invoke(drop, pickerId, actorName);
                     break;
             }
 

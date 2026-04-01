@@ -445,7 +445,9 @@ namespace HaCreator.MapSimulator
             }
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShop) is AdminShopDialogUI cashShopWindowReload)
             {
-                cashShopWindowReload.SetInventory(uiWindowManager.InventoryWindow as IInventoryRuntime);
+                cashShopWindowReload.SetInventory(uiWindowManager.InventoryWindow as IInventoryRuntime);
+                cashShopWindowReload.SetCashBalances(_loginAccountCashShopNxCredit);
+                cashShopWindowReload.TryConsumeCashBalance = TryConsumeLoginAccountCashShopNxCredit;
             }
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.Mts) is AdminShopDialogUI mtsWindowReload)
             {
@@ -685,8 +687,8 @@ namespace HaCreator.MapSimulator
                 if (characterInfoWindow is UserInfoUI userInfoWindow)
                 {
                     userInfoWindow.SetPetController(_playerManager.Pets);
-                    userInfoWindow.SetCollectionSnapshotProvider(GetActiveItemMakerProgression);
-                    userInfoWindow.SetMonsterBookSnapshotProvider(GetActiveMonsterBookSnapshot);
+                    userInfoWindow.SetCollectionSnapshotProvider(ResolveCharacterInfoItemMakerProgressionSnapshot);
+                    userInfoWindow.SetMonsterBookSnapshotProvider(ResolveCharacterInfoMonsterBookSnapshot);
                     userInfoWindow.SetRankDeltaProvider(ResolveCharacterInfoRankDeltaSnapshot);
 
                     WireCharacterInfoWindowActionRoutes(userInfoWindow);
@@ -719,7 +721,8 @@ namespace HaCreator.MapSimulator
                 if (uiWindowManager.EquipWindow is EquipUIBigBang equipBigBang)
                 {
                     equipBigBang.SetCharacterLoader(_playerManager.Loader);
-                    equipBigBang.EquipmentChangeRequested = HandleEquipmentChangeRequest;
+                    equipBigBang.EquipmentChangeSubmitted = SubmitEquipmentChangeRequest;
+                    equipBigBang.EquipmentChangeResultRequested = TryResolveEquipmentChangeRequest;
                     equipBigBang.SetPetController(_playerManager.Pets);
                     equipBigBang.SetPetEquipmentController(_playerManager.CompanionEquipment?.Pet);
                     equipBigBang.SetDragonEquipmentController(_playerManager.CompanionEquipment?.Dragon);
@@ -782,7 +785,9 @@ namespace HaCreator.MapSimulator
 
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShop) is AdminShopDialogUI cashShopWindowRebuild)
             {
-                cashShopWindowRebuild.SetInventory(uiWindowManager.InventoryWindow as IInventoryRuntime);
+                cashShopWindowRebuild.SetInventory(uiWindowManager.InventoryWindow as IInventoryRuntime);
+                cashShopWindowRebuild.SetCashBalances(_loginAccountCashShopNxCredit);
+                cashShopWindowRebuild.TryConsumeCashBalance = TryConsumeLoginAccountCashShopNxCredit;
             }
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.Mts) is AdminShopDialogUI mtsWindowRebuild)
             {
@@ -876,7 +881,8 @@ namespace HaCreator.MapSimulator
             // Prepare player manager for map change (preserves character, caches, skill levels)
             _playerManager?.PrepareForMapChange();
             _passengerSync.Clear();
-            _escortFollow.Clear();
+            _escortFollow.Clear();
+            _localFollowRuntime.Clear();
             _fieldRuleRuntime = null;
             _lastFieldRestrictionMessageTime = int.MinValue;
             _lastFieldRestrictionMessage = null;
@@ -1305,8 +1311,8 @@ namespace HaCreator.MapSimulator
                 if (characterInfoWindow is UserInfoUI userInfoWindow)
                 {
                     userInfoWindow.SetPetController(_playerManager.Pets);
-                    userInfoWindow.SetCollectionSnapshotProvider(GetActiveItemMakerProgression);
-                    userInfoWindow.SetMonsterBookSnapshotProvider(GetActiveMonsterBookSnapshot);
+                    userInfoWindow.SetCollectionSnapshotProvider(ResolveCharacterInfoItemMakerProgressionSnapshot);
+                    userInfoWindow.SetMonsterBookSnapshotProvider(ResolveCharacterInfoMonsterBookSnapshot);
                     userInfoWindow.SetRankDeltaProvider(ResolveCharacterInfoRankDeltaSnapshot);
 
                     WireCharacterInfoWindowActionRoutes(userInfoWindow);
@@ -1324,7 +1330,8 @@ namespace HaCreator.MapSimulator
                 if (uiWindowManager.EquipWindow is EquipUIBigBang equipBigBang)
                 {
                     equipBigBang.SetCharacterLoader(_playerManager.Loader);
-                    equipBigBang.EquipmentChangeRequested = HandleEquipmentChangeRequest;
+                    equipBigBang.EquipmentChangeSubmitted = SubmitEquipmentChangeRequest;
+                    equipBigBang.EquipmentChangeResultRequested = TryResolveEquipmentChangeRequest;
                     equipBigBang.SetPetController(_playerManager.Pets);
                     equipBigBang.SetPetEquipmentController(_playerManager.CompanionEquipment?.Pet);
                     equipBigBang.SetDragonEquipmentController(_playerManager.CompanionEquipment?.Dragon);
@@ -1367,7 +1374,9 @@ namespace HaCreator.MapSimulator
 
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShop) is AdminShopDialogUI cashShopWindow)
             {
-                cashShopWindow.SetInventory(uiWindowManager.InventoryWindow as IInventoryRuntime);
+                cashShopWindow.SetInventory(uiWindowManager.InventoryWindow as IInventoryRuntime);
+                cashShopWindow.SetCashBalances(_loginAccountCashShopNxCredit);
+                cashShopWindow.TryConsumeCashBalance = TryConsumeLoginAccountCashShopNxCredit;
             }
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.Mts) is AdminShopDialogUI mtsWindow)
             {

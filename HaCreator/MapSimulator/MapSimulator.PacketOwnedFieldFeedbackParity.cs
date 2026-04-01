@@ -22,6 +22,7 @@ namespace HaCreator.MapSimulator
         private readonly PacketFieldFeedbackRuntime _packetFieldFeedbackRuntime = new();
         private readonly Dictionary<string, List<IDXObject>> _packetFieldFeedbackAnimationCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly List<PacketOwnedUiAnimation> _packetFieldFeedbackUiAnimations = new();
+        private IReadOnlyList<PacketFieldSwindleWarningEntry> _packetFieldSwindleWarnings;
         private static readonly string[] PacketOwnedScreenEffectImageNames =
         {
             "BasicEff.img",
@@ -86,7 +87,8 @@ namespace HaCreator.MapSimulator
                 ResolveChannelName = ResolvePacketFieldFeedbackChannelName,
                 IsBlacklistedName = name => _socialListRuntime.IsBlacklisted(name),
                 IsBlockedFriendName = name => _socialListRuntime.IsBlockedFriend(name),
-                QueueMapTransfer = TryQueuePacketOwnedWhisperFindTransfer
+                QueueMapTransfer = TryQueuePacketOwnedWhisperFindTransfer,
+                ResolveSwindleWarnings = GetPacketOwnedSwindleWarningEntries
             };
         }
 
@@ -425,6 +427,98 @@ namespace HaCreator.MapSimulator
             }
 
             return current as WzImageProperty;
+        }
+
+        private IReadOnlyList<PacketFieldSwindleWarningEntry> GetPacketOwnedSwindleWarningEntries()
+        {
+            if (_packetFieldSwindleWarnings != null)
+            {
+                return _packetFieldSwindleWarnings;
+            }
+
+            WzImage swindleImage = Program.FindImage("Etc", "Swindle");
+            if (swindleImage == null)
+            {
+                return _packetFieldSwindleWarnings = Array.Empty<PacketFieldSwindleWarningEntry>();
+            }
+
+            if (!swindleImage.Parsed)
+            {
+                swindleImage.ParseImage();
+            }
+
+            _packetFieldSwindleWarnings = BuildPacketOwnedSwindleWarningEntries(swindleImage);
+            return _packetFieldSwindleWarnings;
+        }
+
+        internal static IReadOnlyList<PacketFieldSwindleWarningEntry> BuildPacketOwnedSwindleWarningEntries(WzImage swindleImage)
+        {
+            if (swindleImage == null)
+            {
+                return Array.Empty<PacketFieldSwindleWarningEntry>();
+            }
+
+            List<PacketFieldSwindleWarningEntry> entries = new();
+            foreach (WzImageProperty groupProperty in swindleImage.WzProperties)
+            {
+                if (!int.TryParse(groupProperty.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int groupId))
+                {
+                    continue;
+                }
+
+                List<string> keywords = LoadPacketOwnedSwindleStringList(groupProperty["word"]);
+                List<string> warnings = LoadPacketOwnedSwindleStringList(groupProperty["warn"]);
+                if (keywords.Count == 0 || warnings.Count == 0)
+                {
+                    continue;
+                }
+
+                entries.Add(new PacketFieldSwindleWarningEntry(groupId, keywords, warnings));
+            }
+
+            return entries
+                .OrderByDescending(static entry => entry.GroupId)
+                .ToArray();
+        }
+
+        private static List<string> LoadPacketOwnedSwindleStringList(WzImageProperty parentProperty)
+        {
+            List<string> values = new();
+            if (parentProperty == null)
+            {
+                return values;
+            }
+
+            foreach (WzImageProperty child in parentProperty.WzProperties)
+            {
+                string rawValue = child switch
+                {
+                    WzStringProperty stringProperty => stringProperty.Value,
+                    WzNullProperty => null,
+                    _ => child.GetString()
+                };
+
+                string normalized = NormalizePacketOwnedSwindleString(rawValue);
+                if (!string.IsNullOrWhiteSpace(normalized))
+                {
+                    values.Add(normalized);
+                }
+            }
+
+            return values;
+        }
+
+        private static string NormalizePacketOwnedSwindleString(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return string.Empty;
+            }
+
+            return value
+                .Replace('\r', ' ')
+                .Replace('\n', ' ')
+                .Trim();
         }
 
         private ChatCommandHandler.CommandResult HandlePacketOwnedFieldFeedbackCommand(string[] args)

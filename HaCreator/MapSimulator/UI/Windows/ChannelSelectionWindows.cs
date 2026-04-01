@@ -136,7 +136,7 @@ namespace HaCreator.MapSimulator.UI
         {
             _frameOverlayTexture = frameOverlayTexture;
             _frameOverlayOffset = frameOverlayOffset;
-            _highlightTexture = highlightTexture ?? throw new ArgumentNullException(nameof(highlightTexture));
+            _highlightTexture = highlightTexture;
             _viewChoiceButton = viewChoiceButton;
             _viewAllButton = viewAllButton;
 
@@ -259,21 +259,24 @@ namespace HaCreator.MapSimulator.UI
                 sprite.Draw(_frameOverlayTexture, new Vector2(Position.X + _frameOverlayOffset.X, Position.Y + _frameOverlayOffset.Y), Color.White);
             }
 
-            foreach (WorldButtonEntry entry in _worldButtons)
+            if (_highlightTexture != null)
             {
-                if (!entry.Button.ButtonVisible)
+                foreach (WorldButtonEntry entry in _worldButtons)
                 {
-                    continue;
+                    if (!entry.Button.ButtonVisible)
+                    {
+                        continue;
+                    }
+
+                    Rectangle rect = new Rectangle(
+                        Position.X + entry.Button.X - 6,
+                        Position.Y + entry.Button.Y - 4,
+                        entry.Button.CanvasSnapshotWidth + 12,
+                        entry.Button.CanvasSnapshotHeight + 8);
+
+                    Color fillColor = GetWorldFillColor(entry.WorldId);
+                    sprite.Draw(_highlightTexture, rect, fillColor);
                 }
-
-                Rectangle rect = new Rectangle(
-                    Position.X + entry.Button.X - 6,
-                    Position.Y + entry.Button.Y - 4,
-                    entry.Button.CanvasSnapshotWidth + 12,
-                    entry.Button.CanvasSnapshotHeight + 8);
-
-                Color fillColor = GetWorldFillColor(entry.WorldId);
-                sprite.Draw(_highlightTexture, rect, fillColor);
             }
 
             if (_font == null)

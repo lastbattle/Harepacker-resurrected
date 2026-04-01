@@ -43,6 +43,18 @@ namespace HaCreator.MapSimulator.Pools
         Item            // Activated by item use
     }
 
+    [Flags]
+    internal enum ReactorActivationTypeMask
+    {
+        None = 0,
+        Touch = 1 << 0,
+        Hit = 1 << 1,
+        Skill = 1 << 2,
+        Quest = 1 << 3,
+        Time = 1 << 4,
+        Item = 1 << 5
+    }
+
     /// <summary>
     /// Reactor spawn point for respawning
     /// </summary>
@@ -82,6 +94,7 @@ namespace HaCreator.MapSimulator.Pools
         public ReactorType ReactorType { get; set; } = ReactorType.UNKNOWN;
         public int ActivatingPlayerId { get; set; }
         public bool CanRespawn { get; set; } = true;
+        internal ReactorActivationTypeMask SupportedActivationTypes { get; set; } = ReactorActivationTypeMask.None;
         public int? RequiredItemId { get; set; }
         public int? RequiredQuestId { get; set; }
         public QuestStateType? RequiredQuestState { get; set; }
@@ -93,6 +106,7 @@ namespace HaCreator.MapSimulator.Pools
     {
         public ReactorType ReactorType { get; init; } = ReactorType.UNKNOWN;
         public ReactorActivationType ActivationType { get; init; } = ReactorActivationType.Touch;
+        public ReactorActivationTypeMask SupportedActivationTypes { get; init; } = ReactorActivationTypeMask.Touch;
         public int? RequiredItemId { get; init; }
         public int? RequiredQuestId { get; init; }
         public QuestStateType? RequiredQuestState { get; init; }
@@ -196,6 +210,7 @@ namespace HaCreator.MapSimulator.Pools
                     Alpha = 1f,
                     ReactorType = interactionMetadata.ReactorType,
                     ActivationType = interactionMetadata.ActivationType,
+                    SupportedActivationTypes = interactionMetadata.SupportedActivationTypes,
                     CanRespawn = true,
                     RequiredItemId = interactionMetadata.RequiredItemId,
                     RequiredQuestId = interactionMetadata.RequiredQuestId,
@@ -374,7 +389,7 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
 
                 // Only touch-type reactors
-                if (data.ActivationType != ReactorActivationType.Touch)
+                if (!CanActivateWith(reactor, data, ReactorActivationType.Touch))
                     continue;
 
                 if (!MeetsQuestRequirement(data))
@@ -432,8 +447,10 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
 
                 // Check if this reactor is skill-activated or hit-activated
-                if (data.ActivationType != ReactorActivationType.Skill &&
-                    data.ActivationType != ReactorActivationType.Hit)
+                bool canSkillActivate = data.State == ReactorState.Idle
+                    && CanActivateWith(reactor, data, ReactorActivationType.Skill, skillId);
+                bool canHitActivate = SupportsActivationType(data, ReactorActivationType.Hit);
+                if (!canSkillActivate && !canHitActivate)
                     continue;
 
                 if (!MeetsQuestRequirement(data))
@@ -478,8 +495,10 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
-                if (data.ActivationType != ReactorActivationType.Skill
-                    && data.ActivationType != ReactorActivationType.Hit)
+                bool canSkillActivate = data.State == ReactorState.Idle
+                    && CanActivateWith(reactor, data, ReactorActivationType.Skill, skillId);
+                bool canHitActivate = SupportsActivationType(data, ReactorActivationType.Hit);
+                if (!canSkillActivate && !canHitActivate)
                 {
                     continue;
                 }
@@ -520,23 +539,23 @@ namespace HaCreator.MapSimulator.Pools
                 if (data == null)
                     continue;
 
-                switch (data.ActivationType)
+                bool triggered = false;
+                if (data.State == ReactorState.Idle
+                    && CanActivateWith(reactor, data, ReactorActivationType.Skill, skillId))
                 {
-                    case ReactorActivationType.Hit:
-                        if (HitReactor(index, playerId, currentTick, damage))
-                        {
-                            triggeredReactors.Add(reactor);
-                        }
-                        break;
-                    case ReactorActivationType.Skill:
-                        if (data.State == ReactorState.Idle)
-                        {
-                            if (ActivateReactor(index, playerId, currentTick, ReactorActivationType.Skill, skillId))
-                            {
-                                triggeredReactors.Add(reactor);
-                            }
-                        }
-                        break;
+                    triggered = ActivateReactor(index, playerId, currentTick, ReactorActivationType.Skill, skillId);
+                }
+
+                if (!triggered
+                    && SupportsActivationType(data, ReactorActivationType.Hit)
+                    && HitReactor(index, playerId, currentTick, damage))
+                {
+                    triggered = true;
+                }
+
+                if (triggered)
+                {
+                    triggeredReactors.Add(reactor);
                 }
             }
 
@@ -561,23 +580,23 @@ namespace HaCreator.MapSimulator.Pools
                 if (data == null)
                     continue;
 
-                switch (data.ActivationType)
+                bool triggered = false;
+                if (data.State == ReactorState.Idle
+                    && CanActivateWith(reactor, data, ReactorActivationType.Skill, skillId))
                 {
-                    case ReactorActivationType.Hit:
-                        if (HitReactor(index, playerId, currentTick, damage))
-                        {
-                            triggeredReactors.Add(reactor);
-                        }
-                        break;
-                    case ReactorActivationType.Skill:
-                        if (data.State == ReactorState.Idle)
-                        {
-                            if (ActivateReactor(index, playerId, currentTick, ReactorActivationType.Skill, skillId))
-                            {
-                                triggeredReactors.Add(reactor);
-                            }
-                        }
-                        break;
+                    triggered = ActivateReactor(index, playerId, currentTick, ReactorActivationType.Skill, skillId);
+                }
+
+                if (!triggered
+                    && SupportsActivationType(data, ReactorActivationType.Hit)
+                    && HitReactor(index, playerId, currentTick, damage))
+                {
+                    triggered = true;
+                }
+
+                if (triggered)
+                {
+                    triggeredReactors.Add(reactor);
                 }
             }
 
@@ -600,7 +619,7 @@ namespace HaCreator.MapSimulator.Pools
                 ReactorRuntimeData data = GetReactorData(i);
                 if (data == null
                     || data.State != ReactorState.Idle
-                    || data.ActivationType != ReactorActivationType.Item
+                    || !CanActivateWith(reactor, data, ReactorActivationType.Item, itemId)
                     || !MatchesRequiredItem(data, itemId)
                     || !MeetsQuestRequirement(data))
                 {
@@ -643,7 +662,7 @@ namespace HaCreator.MapSimulator.Pools
                 ReactorRuntimeData data = GetReactorData(i);
                 if (data == null
                     || data.State != ReactorState.Idle
-                    || data.ActivationType != ReactorActivationType.Item
+                    || !CanActivateWith(reactor, data, ReactorActivationType.Item, itemId)
                     || !MatchesRequiredItem(data, itemId)
                     || !MeetsQuestRequirement(data))
                 {
@@ -730,6 +749,7 @@ namespace HaCreator.MapSimulator.Pools
                 data.VisualState = nextVisualState;
             }
 
+            data.ActivationType = activationType;
             data.State = ReactorState.Activated;
             data.StateStartTime = currentTick;
             data.StateFrame = 0;
@@ -781,6 +801,7 @@ namespace HaCreator.MapSimulator.Pools
                         new ReactorTransitionRequest(ReactorActivationType.Hit, data.ReactorType),
                         out int nextVisualState))
                     {
+                        data.ActivationType = ReactorActivationType.Hit;
                         data.VisualState = nextVisualState;
                         data.State = ReactorState.Activated;
                         data.StateStartTime = currentTick;
@@ -865,7 +886,7 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
 
                 bool matchesQuest = MeetsQuestRequirement(data);
-                if (data.ActivationType == ReactorActivationType.Quest)
+                if (SupportsActivationType(data, ReactorActivationType.Quest))
                 {
                     if (matchesQuest)
                     {
@@ -920,10 +941,17 @@ namespace HaCreator.MapSimulator.Pools
                                 _ => HasHitAnimation(reactorInfo?.LinkedWzImage) ? ReactorActivationType.Hit : ReactorActivationType.Touch
                             };
 
+            ReactorActivationTypeMask supportedActivationTypes = ResolveSupportedActivationTypes(
+                reactorInfo?.LinkedWzImage,
+                activationType,
+                requiredItemId,
+                requiredQuestId);
+
             return new ReactorInteractionMetadata
             {
                 ReactorType = reactorType,
                 ActivationType = activationType,
+                SupportedActivationTypes = supportedActivationTypes,
                 RequiredItemId = requiredItemId,
                 RequiredQuestId = requiredQuestId,
                 RequiredQuestState = requiredQuestState,
@@ -1058,6 +1086,9 @@ namespace HaCreator.MapSimulator.Pools
                     if (spawnPoint.ActivationTypeOverride != ReactorActivationType.None)
                     {
                         data.ActivationType = spawnPoint.ActivationTypeOverride;
+                        data.SupportedActivationTypes = AddSupportedActivationType(
+                            data.SupportedActivationTypes,
+                            spawnPoint.ActivationTypeOverride);
                     }
 
                     data.State = ReactorState.Idle;
@@ -1127,6 +1158,8 @@ namespace HaCreator.MapSimulator.Pools
                     RequiredHits = 1,
                     Alpha = 1f,
                     ActivationType = activationTypeOverride == ReactorActivationType.None ? ReactorActivationType.Touch : activationTypeOverride,
+                    SupportedActivationTypes = ToActivationMask(
+                        activationTypeOverride == ReactorActivationType.None ? ReactorActivationType.Touch : activationTypeOverride),
                     CanRespawn = canRespawn
                 };
                 _reactorData[spawnPoint.SpawnId] = data;
@@ -1400,10 +1433,43 @@ namespace HaCreator.MapSimulator.Pools
             ReactorInteractionMetadata interactionMetadata = ResolveInteractionMetadata(reactorInstance);
             data.ReactorType = interactionMetadata.ReactorType;
             data.ActivationType = interactionMetadata.ActivationType;
+            data.SupportedActivationTypes = interactionMetadata.SupportedActivationTypes;
             data.RequiredItemId = interactionMetadata.RequiredItemId;
             data.RequiredQuestId = interactionMetadata.RequiredQuestId;
             data.RequiredQuestState = interactionMetadata.RequiredQuestState;
             data.ScriptName = interactionMetadata.ScriptName;
+        }
+
+        private static bool SupportsActivationType(ReactorRuntimeData data, ReactorActivationType activationType)
+        {
+            if (data == null || activationType == ReactorActivationType.None)
+            {
+                return false;
+            }
+
+            ReactorActivationTypeMask supportedTypes = data.SupportedActivationTypes == ReactorActivationTypeMask.None
+                ? ToActivationMask(data.ActivationType)
+                : data.SupportedActivationTypes;
+            return (supportedTypes & ToActivationMask(activationType)) != 0;
+        }
+
+        private static bool CanActivateWith(
+            ReactorItem reactor,
+            ReactorRuntimeData data,
+            ReactorActivationType activationType,
+            int activationValue = 0)
+        {
+            if (reactor == null
+                || data == null
+                || data.State != ReactorState.Idle
+                || !SupportsActivationType(data, activationType))
+            {
+                return false;
+            }
+
+            return reactor.CanActivateFromState(
+                data.VisualState,
+                new ReactorTransitionRequest(activationType, data.ReactorType, activationValue));
         }
 
         private int GetReactorCount()
@@ -1427,6 +1493,35 @@ namespace HaCreator.MapSimulator.Pools
             return data != null
                 && data.ActivationType != ReactorActivationType.Hit
                 && data.ActivationType != ReactorActivationType.None;
+        }
+
+        private static ReactorActivationTypeMask ResolveSupportedActivationTypes(
+            WzImage linkedReactorImage,
+            ReactorActivationType primaryActivationType,
+            int? requiredItemId,
+            int? requiredQuestId)
+        {
+            ReactorActivationTypeMask supportedTypes = ToActivationMask(primaryActivationType);
+            HashSet<int> authoredEventTypes = GetStateEventTypes(linkedReactorImage);
+
+            foreach (int eventType in authoredEventTypes)
+            {
+                supportedTypes |= EventTypeToActivationMask(eventType);
+            }
+
+            if (requiredItemId.HasValue)
+            {
+                supportedTypes |= ReactorActivationTypeMask.Item;
+            }
+
+            if (requiredQuestId.HasValue && authoredEventTypes.Contains(100))
+            {
+                supportedTypes |= ReactorActivationTypeMask.Quest;
+            }
+
+            return supportedTypes == ReactorActivationTypeMask.None
+                ? ReactorActivationTypeMask.Touch
+                : supportedTypes;
         }
 
         private bool TryApplyTimedStateTransition(int index, ReactorItem reactor, ReactorRuntimeData data, int currentTick)
@@ -1500,6 +1595,70 @@ namespace HaCreator.MapSimulator.Pools
 
             nextVisualState = candidates[0];
             return true;
+        }
+
+        private static ReactorActivationTypeMask AddSupportedActivationType(
+            ReactorActivationTypeMask supportedTypes,
+            ReactorActivationType activationType)
+        {
+            return supportedTypes | ToActivationMask(activationType);
+        }
+
+        private static ReactorActivationTypeMask ToActivationMask(ReactorActivationType activationType)
+        {
+            return activationType switch
+            {
+                ReactorActivationType.Touch => ReactorActivationTypeMask.Touch,
+                ReactorActivationType.Hit => ReactorActivationTypeMask.Hit,
+                ReactorActivationType.Skill => ReactorActivationTypeMask.Skill,
+                ReactorActivationType.Quest => ReactorActivationTypeMask.Quest,
+                ReactorActivationType.Time => ReactorActivationTypeMask.Time,
+                ReactorActivationType.Item => ReactorActivationTypeMask.Item,
+                _ => ReactorActivationTypeMask.None
+            };
+        }
+
+        private static ReactorActivationTypeMask EventTypeToActivationMask(int eventType)
+        {
+            return eventType switch
+            {
+                0 or 6 => ReactorActivationTypeMask.Touch,
+                100 => ReactorActivationTypeMask.Quest,
+                1 or 2 or 8 => ReactorActivationTypeMask.Hit,
+                5 => ReactorActivationTypeMask.Skill,
+                7 or 101 => ReactorActivationTypeMask.Time,
+                9 => ReactorActivationTypeMask.Item,
+                _ => ReactorActivationTypeMask.None
+            };
+        }
+
+        private static HashSet<int> GetStateEventTypes(WzImage linkedReactorImage)
+        {
+            var eventTypes = new HashSet<int>();
+            if (linkedReactorImage?.WzProperties == null)
+            {
+                return eventTypes;
+            }
+
+            foreach (WzImageProperty property in linkedReactorImage.WzProperties)
+            {
+                if (!int.TryParse(property?.Name, out _))
+                    continue;
+
+                if (WzInfoTools.GetRealProperty(property?["event"]) is not WzSubProperty eventProperty)
+                    continue;
+
+                foreach (WzSubProperty eventNode in eventProperty.WzProperties.OfType<WzSubProperty>())
+                {
+                    int? eventType = TryGetOptionalInt(WzInfoTools.GetRealProperty(eventNode["type"]));
+                    if (eventType.HasValue)
+                    {
+                        eventTypes.Add(eventType.Value);
+                    }
+                }
+            }
+
+            return eventTypes;
         }
 
         private void PublishScriptState(ReactorItem reactor, ReactorRuntimeData data, bool isEnabled, int currentTick)

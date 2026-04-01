@@ -182,6 +182,20 @@ namespace HaCreator.MapSimulator.Character
             Buttons.LeftThumbstickRight,
         };
 
+        private static readonly Buttons[] UtilityConfigGamepadButtons =
+        {
+            Buttons.A,
+            Buttons.B,
+            Buttons.X,
+            Buttons.Y,
+            Buttons.LeftShoulder,
+            Buttons.RightShoulder,
+            Buttons.LeftTrigger,
+            Buttons.RightTrigger,
+            Buttons.Back,
+            Buttons.Start,
+        };
+
         #region Key Bindings
 
         private readonly Dictionary<InputAction, KeyBinding> _bindings = new();
@@ -193,6 +207,8 @@ namespace HaCreator.MapSimulator.Character
         private PlayerIndex _gamepadIndex = PlayerIndex.One;
         private int _nextInputOwnershipToken = 1;
         private bool _ctrlComboSuppressed;
+        private float _leftStickDeadZone = 0.20f;
+        private float _triggerActivationThreshold = 0.20f;
 
         // Default key bindings (matching MapleStory)
         private static readonly (InputAction action, Keys primary, Keys secondary, Buttons gamepad)[] DefaultBindings = new[]
@@ -326,6 +342,26 @@ namespace HaCreator.MapSimulator.Character
         public PlayerIndex GetGamepadIndex()
         {
             return _gamepadIndex;
+        }
+
+        public float GetLeftStickDeadZone()
+        {
+            return _leftStickDeadZone;
+        }
+
+        public void SetLeftStickDeadZone(float deadZone)
+        {
+            _leftStickDeadZone = Math.Clamp(deadZone, 0.05f, 0.95f);
+        }
+
+        public float GetTriggerActivationThreshold()
+        {
+            return _triggerActivationThreshold;
+        }
+
+        public void SetTriggerActivationThreshold(float threshold)
+        {
+            _triggerActivationThreshold = Math.Clamp(threshold, 0.05f, 0.95f);
         }
 
         #endregion
@@ -523,7 +559,7 @@ namespace HaCreator.MapSimulator.Character
             // Check gamepad
             if (_currentGamepad.IsConnected && binding.GamepadButton != 0)
             {
-                return _currentGamepad.IsButtonDown(binding.GamepadButton);
+                return IsConfiguredButtonDown(_currentGamepad, binding.GamepadButton);
             }
 
             return false;
@@ -624,8 +660,23 @@ namespace HaCreator.MapSimulator.Character
         private bool DidButtonTransition(Buttons button, bool released)
         {
             return released
-                ? !_currentGamepad.IsButtonDown(button) && _previousGamepad.IsButtonDown(button)
-                : _currentGamepad.IsButtonDown(button) && !_previousGamepad.IsButtonDown(button);
+                ? !IsConfiguredButtonDown(_currentGamepad, button) && IsConfiguredButtonDown(_previousGamepad, button)
+                : IsConfiguredButtonDown(_currentGamepad, button) && !IsConfiguredButtonDown(_previousGamepad, button);
+        }
+
+        private bool IsConfiguredButtonDown(GamePadState state, Buttons button)
+        {
+            return button switch
+            {
+                0 => false,
+                Buttons.LeftTrigger => state.Triggers.Left >= _triggerActivationThreshold,
+                Buttons.RightTrigger => state.Triggers.Right >= _triggerActivationThreshold,
+                Buttons.LeftThumbstickLeft => state.ThumbSticks.Left.X <= -_leftStickDeadZone,
+                Buttons.LeftThumbstickRight => state.ThumbSticks.Left.X >= _leftStickDeadZone,
+                Buttons.LeftThumbstickUp => state.ThumbSticks.Left.Y >= _leftStickDeadZone,
+                Buttons.LeftThumbstickDown => state.ThumbSticks.Left.Y <= -_leftStickDeadZone,
+                _ => state.IsButtonDown(button),
+            };
         }
 
         private static int ComposeInputToken(Keys? key, Buttons? gamepadButton, bool requiresCtrl)
@@ -681,8 +732,10 @@ namespace HaCreator.MapSimulator.Character
             if (_currentGamepad.IsConnected)
             {
                 float stickX = _currentGamepad.ThumbSticks.Left.X;
-                if (Math.Abs(stickX) > 0.2f) // Deadzone
+                if (Math.Abs(stickX) >= _leftStickDeadZone)
+                {
                     axis = stickX;
+                }
             }
 
             return Math.Clamp(axis, -1f, 1f);
@@ -704,8 +757,10 @@ namespace HaCreator.MapSimulator.Character
             if (_currentGamepad.IsConnected)
             {
                 float stickY = _currentGamepad.ThumbSticks.Left.Y;
-                if (Math.Abs(stickY) > 0.2f) // Deadzone
+                if (Math.Abs(stickY) >= _leftStickDeadZone)
+                {
                     axis = -stickY; // Invert Y
+                }
             }
 
             return Math.Clamp(axis, -1f, 1f);
@@ -816,7 +871,7 @@ namespace HaCreator.MapSimulator.Character
 
             foreach (Buttons candidate in AssignableGamepadButtons)
             {
-                if (_currentGamepad.IsButtonDown(candidate) && !_previousGamepad.IsButtonDown(candidate))
+                if (IsConfiguredButtonDown(_currentGamepad, candidate) && !IsConfiguredButtonDown(_previousGamepad, candidate))
                 {
                     button = candidate;
                     return true;
@@ -825,6 +880,37 @@ namespace HaCreator.MapSimulator.Character
 
             button = 0;
             return false;
+        }
+
+        public bool TryGetPressedBindingGamepadButton(InputAction action, out Buttons button)
+        {
+            if (!_currentGamepad.IsConnected)
+            {
+                button = 0;
+                return false;
+            }
+
+            foreach (Buttons candidate in GetConfigurableGamepadButtons(action))
+            {
+                if (IsConfiguredButtonDown(_currentGamepad, candidate) && !IsConfiguredButtonDown(_previousGamepad, candidate))
+                {
+                    button = candidate;
+                    return true;
+                }
+            }
+
+            button = 0;
+            return false;
+        }
+
+        public static IReadOnlyList<Buttons> GetConfigurableGamepadButtons(InputAction action)
+        {
+            return action switch
+            {
+                InputAction.MoveLeft or InputAction.MoveRight or InputAction.MoveUp or InputAction.MoveDown
+                    => AssignableGamepadButtons,
+                _ => UtilityConfigGamepadButtons,
+            };
         }
 
         #endregion

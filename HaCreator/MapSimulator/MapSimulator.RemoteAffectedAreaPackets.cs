@@ -141,7 +141,12 @@ namespace HaCreator.MapSimulator
 
             if (runtimeData != null)
             {
-                _playerManager?.TryApplyMobSkillStatus(area.SkillId, runtimeData, currentTime, area.WorldBounds.Center.X);
+                _playerManager?.TryApplyMobSkillStatus(
+                    area.SkillId,
+                    runtimeData,
+                    currentTime,
+                    area.WorldBounds.Center.X,
+                    area.ElementAttribute);
             }
 
             _fieldEffects?.TriggerDamageMist(0.35f, Math.Max(250, intervalMs), currentTime);

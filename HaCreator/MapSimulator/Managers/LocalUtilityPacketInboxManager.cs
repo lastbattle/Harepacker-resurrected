@@ -45,12 +45,16 @@ namespace HaCreator.MapSimulator.Managers
         public const int FollowCharacterFailedPacketType = 1009;
         public const int RadioSchedulePacketType = 1010;
         public const int AntiMacroResultPacketType = 1011;
+        public const int FollowCharacterPacketType = 1012;
+        public const int FollowCharacterClientPacketType = 193;
         public const int OpenSkillGuideClientPacketType = 262;
         public const int PlayEventSoundClientPacketType = 246;
         public const int PlayMinigameSoundClientPacketType = 247;
         public const int OpenClassCompetitionPagePacketType = 250;
         public const int OpenUiClientPacketType = 251;
         public const int OpenUiWithOptionClientPacketType = 252;
+        public const int HireTutorClientPacketType = 255;
+        public const int TutorMsgClientPacketType = 256;
         public const int NotifyHpDecByFieldPacketType = 243;
         public const int NoticeMsgClientPacketType = 263;
         public const int ChatMsgClientPacketType = 264;
@@ -261,6 +265,8 @@ namespace HaCreator.MapSimulator.Managers
                     || packetType == OpenUiClientPacketType
                     || packetType == OpenUiWithOptionPacketType
                     || packetType == OpenUiWithOptionClientPacketType
+                    || packetType == HireTutorClientPacketType
+                    || packetType == TutorMsgClientPacketType
                     || packetType == GoToCommoditySnPacketType
                     || packetType == GoToCommoditySnClientPacketType
                     || packetType == NoticeMsgPacketType
@@ -277,6 +283,8 @@ namespace HaCreator.MapSimulator.Managers
                     || packetType == AskApspEventClientPacketType
                     || packetType == FollowCharacterFailedPacketType
                     || packetType == FollowCharacterFailedClientPacketType
+                    || packetType == FollowCharacterPacketType
+                    || packetType == FollowCharacterClientPacketType
                     || packetType == RadioSchedulePacketType
                     || packetType == RadioScheduleClientPacketType
                     || packetType == AntiMacroResultPacketType
@@ -358,6 +366,13 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
+            if (token.Equals("follow", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("followcharacter", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = FollowCharacterPacketType;
+                return true;
+            }
+
             if (token.Equals("radio", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("radioschedule", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("onradioschedule", StringComparison.OrdinalIgnoreCase))
@@ -378,6 +393,21 @@ namespace HaCreator.MapSimulator.Managers
                 || token.Equals("openskillguide", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = OpenSkillGuideClientPacketType;
+                return true;
+            }
+
+            if (token.Equals("hiretutor", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("tutorhire", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onhiretutor", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = HireTutorClientPacketType;
+                return true;
+            }
+
+            if (token.Equals("tutormsg", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("ontutormsg", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = TutorMsgClientPacketType;
                 return true;
             }
 
@@ -526,12 +556,16 @@ namespace HaCreator.MapSimulator.Managers
                 FollowCharacterFailedPacketType => "FollowCharacterFailed(1009)",
                 RadioSchedulePacketType => "RadioSchedule(1010)",
                 AntiMacroResultPacketType => "AntiMacroResult(1011)",
+                FollowCharacterPacketType => "FollowCharacter(1012)",
+                FollowCharacterClientPacketType => "FollowCharacter(193)",
                 PlayEventSoundClientPacketType => "PlayEventSound(246)",
                 PlayMinigameSoundClientPacketType => "PlayMinigameSound(247)",
                 NotifyHpDecByFieldPacketType => "NotifyHPDecByField(243)",
                 OpenClassCompetitionPagePacketType => "OpenClassCompetitionPage(250)",
                 OpenUiClientPacketType => "OpenUI(251)",
                 OpenUiWithOptionClientPacketType => "OpenUIWithOption(252)",
+                HireTutorClientPacketType => "HireTutor(255)",
+                TutorMsgClientPacketType => "TutorMsg(256)",
                 NoticeMsgClientPacketType => "NoticeMsg(263)",
                 ChatMsgClientPacketType => "ChatMsg(264)",
                 BuffzoneEffectClientPacketType => "BuffzoneEffect(265)",

@@ -3,6 +3,12 @@ using System.Collections.Generic;
 
 namespace HaCreator.MapSimulator.Interaction
 {
+    internal enum ParcelComposeMode
+    {
+        Send,
+        QuickSend
+    }
+
     internal sealed class MemoMailboxDraftSnapshot
     {
         public string Recipient { get; init; } = string.Empty;
@@ -14,6 +20,10 @@ namespace HaCreator.MapSimulator.Interaction
         public bool IsMesoAttachment { get; init; }
         public bool CanSend { get; init; }
         public bool CanQuickSend { get; init; }
+        public ParcelComposeMode ActiveMode { get; init; }
+        public bool ShowTaxInfo { get; init; }
+        public string ModeSummary { get; init; } = string.Empty;
+        public string TaxSummary { get; init; } = string.Empty;
     }
 
     internal sealed class MemoMailboxAttachmentSnapshot

@@ -559,7 +559,10 @@ namespace HaCreator.MapSimulator.UI
             return CharacterBuild.Equipment
                 .Where(entry => entry.Value != null &&
                                 entry.Key != EquipSlot.None &&
-                                ItemUpgradeUI.CanUpgrade(entry.Key, entry.Value))
+                                ItemUpgradeUI.CanUpgrade(entry.Key, entry.Value) &&
+                                (!_modifierItemId.HasValue ||
+                                 _itemUpgradeBackend == null ||
+                                 _itemUpgradeBackend.TryGetModifierPreview(entry.Key, _modifierItemId.Value, out _)))
                 .OrderBy(entry => entry.Key)
                 .ToArray();
         }
@@ -585,9 +588,16 @@ namespace HaCreator.MapSimulator.UI
 
         private (int baseRate, int modifiedRate) ResolveDisplayedRates()
         {
-            return _modifierItemId == 5610001
-                ? (60, 90)
-                : (10, 30);
+            IReadOnlyList<KeyValuePair<EquipSlot, CharacterPart>> candidates = GetCandidates();
+            if (candidates.Count > 0 &&
+                _modifierItemId.HasValue &&
+                _itemUpgradeBackend != null &&
+                _itemUpgradeBackend.TryGetModifierPreview(candidates[_selectedIndex].Key, _modifierItemId.Value, out ItemUpgradeUI.ModifierPreview preview))
+            {
+                return ((int)Math.Round(preview.BaseSuccessRate * 100f), (int)Math.Round(preview.ModifiedSuccessRate * 100f));
+            }
+
+            return _modifierItemId == 5610001 ? (60, 90) : (10, 30);
         }
 
         private Color ResolveStatusColor()

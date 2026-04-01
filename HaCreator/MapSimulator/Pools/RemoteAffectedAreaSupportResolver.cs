@@ -124,7 +124,13 @@ namespace HaCreator.MapSimulator.Pools
                    || levelData.DEX > 0
                    || levelData.INT > 0
                    || levelData.LUK > 0
-                   || levelData.AllStat > 0;
+                   || levelData.AllStat > 0
+                   || levelData.DamageReductionRate > 0
+                   || levelData.AbnormalStatusResistance > 0
+                   || levelData.ElementalResistance > 0
+                   || levelData.ExperienceRate > 0
+                   || levelData.DropRate > 0
+                   || levelData.MesoRate > 0;
         }
 
         public static SkillLevelData CreateProjectedSupportBuffLevelData(SkillLevelData levelData)
@@ -160,7 +166,13 @@ namespace HaCreator.MapSimulator.Pools
                 IndieMaxMP = levelData.IndieMaxMP,
                 MaxHPPercent = levelData.MaxHPPercent,
                 MaxMPPercent = levelData.MaxMPPercent,
-                AllStat = levelData.AllStat
+                AllStat = levelData.AllStat,
+                DamageReductionRate = levelData.DamageReductionRate,
+                AbnormalStatusResistance = levelData.AbnormalStatusResistance,
+                ElementalResistance = levelData.ElementalResistance,
+                ExperienceRate = levelData.ExperienceRate,
+                DropRate = levelData.DropRate,
+                MesoRate = levelData.MesoRate
             };
         }
 
@@ -298,6 +310,9 @@ namespace HaCreator.MapSimulator.Pools
                    || levelData.DamageReductionRate > 0
                    || levelData.CriticalRate > 0
                    || levelData.AllStat > 0
+                   || levelData.ExperienceRate > 0
+                   || levelData.DropRate > 0
+                   || levelData.MesoRate > 0
                    || levelData.AbnormalStatusResistance > 0
                    || levelData.ElementalResistance > 0;
         }

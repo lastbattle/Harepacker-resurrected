@@ -1,5 +1,9 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
+using System.Linq;
+using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Managers;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -64,6 +68,339 @@ namespace HaCreator.MapSimulator.UI
         public int TotalOwnedCopies { get; init; }
         public IReadOnlyList<MonsterBookGradeSnapshot> Grades { get; init; } = Array.Empty<MonsterBookGradeSnapshot>();
         public IReadOnlyList<MonsterBookPageSnapshot> Pages { get; init; } = Array.Empty<MonsterBookPageSnapshot>();
+    }
+
+    public enum CollectionBookEntryTone
+    {
+        Normal,
+        Accent,
+        Success,
+        Warning,
+        Muted
+    }
+
+    public sealed class CollectionBookEntrySnapshot
+    {
+        public string Label { get; init; } = string.Empty;
+        public string Value { get; init; } = string.Empty;
+        public string Detail { get; init; } = string.Empty;
+        public CollectionBookEntryTone Tone { get; init; }
+    }
+
+    public sealed class CollectionBookPageSnapshot
+    {
+        public int PageIndex { get; init; }
+        public string Title { get; init; } = string.Empty;
+        public string Subtitle { get; init; } = string.Empty;
+        public string Footer { get; init; } = string.Empty;
+        public IReadOnlyList<CollectionBookEntrySnapshot> Entries { get; init; } = Array.Empty<CollectionBookEntrySnapshot>();
+    }
+
+    public sealed class CollectionBookSnapshot
+    {
+        public string Title { get; init; } = "Collection Book";
+        public string Subtitle { get; init; } = string.Empty;
+        public string StatusText { get; init; } = string.Empty;
+        public IReadOnlyList<CollectionBookPageSnapshot> Pages { get; init; } = Array.Empty<CollectionBookPageSnapshot>();
+    }
+
+    internal static class CollectionBookSnapshotFactory
+    {
+        private const int EntriesPerPage = 6;
+
+        public static CollectionBookSnapshot Create(CharacterBuild build, ItemMakerProgressionSnapshot progression, MonsterBookSnapshot monsterBook)
+        {
+            progression ??= ItemMakerProgressionSnapshot.Default;
+            monsterBook ??= new MonsterBookSnapshot();
+
+            List<CollectionBookPageSnapshot> pages = new()
+            {
+                CreateOverviewPage(build, progression, monsterBook),
+                CreateCraftingPage(progression),
+                CreateTraitsPage(build),
+            };
+
+            pages.AddRange(CreateEquipmentPages(build));
+            pages.AddRange(CreateRecipePages(progression));
+
+            for (int i = 0; i < pages.Count; i++)
+            {
+                pages[i] = new CollectionBookPageSnapshot
+                {
+                    PageIndex = i,
+                    Title = pages[i].Title,
+                    Subtitle = pages[i].Subtitle,
+                    Footer = pages[i].Footer,
+                    Entries = pages[i].Entries
+                };
+            }
+
+            return new CollectionBookSnapshot
+            {
+                Title = "Collection Book",
+                Subtitle = "The dedicated Book owner now composes the collect ledger from the live character build, maker progression, traits, equipment state, and discovered recipe history.",
+                StatusText = $"Local collection data composed across {pages.Count} page(s). Packet-authored collection payloads and the real server close workflow still remain outside this simulator owner.",
+                Pages = pages
+            };
+        }
+
+        private static CollectionBookPageSnapshot CreateOverviewPage(CharacterBuild build, ItemMakerProgressionSnapshot progression, MonsterBookSnapshot monsterBook)
+        {
+            int totalRecipes = progression.DiscoveredRecipeIds.Count + progression.UnlockedHiddenRecipeIds.Count;
+            return new CollectionBookPageSnapshot
+            {
+                Title = "Overview",
+                Subtitle = "Live collection summary",
+                Footer = "Mirrors the collect ledger using simulator runtime data.",
+                Entries = new[]
+                {
+                    CreateEntry("Character", BuildCharacterHeadline(build), BuildCharacterDetail(build), CollectionBookEntryTone.Accent),
+                    CreateEntry("Monster Book", $"{monsterBook.OwnedCardTypes}/{monsterBook.TotalCardTypes}", $"{monsterBook.CompletedCardTypes} complete, {monsterBook.TotalOwnedCopies} copies", monsterBook.OwnedCardTypes > 0 ? CollectionBookEntryTone.Success : CollectionBookEntryTone.Muted),
+                    CreateEntry("Crafting", progression.SuccessfulCrafts.ToString(CultureInfo.InvariantCulture), $"Trait Craft {Math.Max(0, build?.TraitCraft ?? progression.TraitCraft)}", progression.SuccessfulCrafts > 0 ? CollectionBookEntryTone.Success : CollectionBookEntryTone.Muted),
+                    CreateEntry("Recipes", totalRecipes.ToString(CultureInfo.InvariantCulture), $"{progression.DiscoveredRecipeIds.Count} discovered, {progression.UnlockedHiddenRecipeIds.Count} hidden", totalRecipes > 0 ? CollectionBookEntryTone.Accent : CollectionBookEntryTone.Muted),
+                    CreateEntry("Medal", ResolveEquippedItemName(build, EquipSlot.Medal), string.Empty, HasEquippedItem(build, EquipSlot.Medal) ? CollectionBookEntryTone.Success : CollectionBookEntryTone.Muted),
+                    CreateEntry("Pocket", BuildPocketSummary(build), string.Empty, build?.IsPocketSlotAvailable == true ? CollectionBookEntryTone.Success : CollectionBookEntryTone.Warning),
+                }
+            };
+        }
+
+        private static CollectionBookPageSnapshot CreateCraftingPage(ItemMakerProgressionSnapshot progression)
+        {
+            return new CollectionBookPageSnapshot
+            {
+                Title = "Crafting",
+                Subtitle = "Item maker progression",
+                Footer = "Levels use the local progression store backing the collect page.",
+                Entries = new[]
+                {
+                    CreateFamilyEntry(progression, ItemMakerRecipeFamily.Generic),
+                    CreateFamilyEntry(progression, ItemMakerRecipeFamily.Gloves),
+                    CreateFamilyEntry(progression, ItemMakerRecipeFamily.Shoes),
+                    CreateFamilyEntry(progression, ItemMakerRecipeFamily.Toys),
+                    CreateEntry("Successful Crafts", progression.SuccessfulCrafts.ToString(CultureInfo.InvariantCulture), "Local maker history", progression.SuccessfulCrafts > 0 ? CollectionBookEntryTone.Success : CollectionBookEntryTone.Muted),
+                    CreateEntry("Recipe Ledger", $"{progression.DiscoveredRecipeIds.Count} + {progression.UnlockedHiddenRecipeIds.Count}", "Discovered plus hidden recipe pages", (progression.DiscoveredRecipeIds.Count + progression.UnlockedHiddenRecipeIds.Count) > 0 ? CollectionBookEntryTone.Accent : CollectionBookEntryTone.Muted),
+                }
+            };
+        }
+
+        private static CollectionBookPageSnapshot CreateTraitsPage(CharacterBuild build)
+        {
+            build ??= new CharacterBuild();
+            return new CollectionBookPageSnapshot
+            {
+                Title = "Traits",
+                Subtitle = "Personality progression",
+                Footer = build.IsPocketSlotAvailable ? "Charm has unlocked the pocket slot." : "Charm 30 is still required for the pocket slot.",
+                Entries = new[]
+                {
+                    CreateEntry("Charisma", build.TraitCharisma.ToString(CultureInfo.InvariantCulture), string.Empty, ResolveTraitTone(build.TraitCharisma)),
+                    CreateEntry("Insight", build.TraitInsight.ToString(CultureInfo.InvariantCulture), string.Empty, ResolveTraitTone(build.TraitInsight)),
+                    CreateEntry("Will", build.TraitWill.ToString(CultureInfo.InvariantCulture), string.Empty, ResolveTraitTone(build.TraitWill)),
+                    CreateEntry("Craft", build.TraitCraft.ToString(CultureInfo.InvariantCulture), string.Empty, ResolveTraitTone(build.TraitCraft)),
+                    CreateEntry("Sense", build.TraitSense.ToString(CultureInfo.InvariantCulture), string.Empty, ResolveTraitTone(build.TraitSense)),
+                    CreateEntry("Charm", build.TraitCharm.ToString(CultureInfo.InvariantCulture), BuildPocketSummary(build), ResolveTraitTone(build.TraitCharm)),
+                }
+            };
+        }
+
+        private static IEnumerable<CollectionBookPageSnapshot> CreateEquipmentPages(CharacterBuild build)
+        {
+            (string Label, EquipSlot Slot, string Detail)[] rows =
+            {
+                ("Weapon", EquipSlot.Weapon, "Primary equipped weapon"),
+                ("Outfit", EquipSlot.Longcoat, BuildOutfitSummary(build)),
+                ("Cap", EquipSlot.Cap, string.Empty),
+                ("Cape", EquipSlot.Cape, string.Empty),
+                ("Shield", EquipSlot.Shield, string.Empty),
+                ("Glove", EquipSlot.Glove, string.Empty),
+                ("Shoes", EquipSlot.Shoes, string.Empty),
+                ("Pendant", EquipSlot.Pendant, string.Empty),
+                ("Badge", EquipSlot.Badge, string.Empty),
+                ("Mount", EquipSlot.TamingMob, string.Empty),
+                ("Saddle", EquipSlot.Saddle, string.Empty),
+                ("Pocket", EquipSlot.Pocket, BuildPocketSummary(build)),
+            };
+
+            foreach ((IEnumerable<(string Label, EquipSlot Slot, string Detail)> chunk, int pageIndex) in rows.Chunk(EntriesPerPage).Select((chunk, index) => (chunk.AsEnumerable(), index)))
+            {
+                yield return new CollectionBookPageSnapshot
+                {
+                    Title = pageIndex == 0 ? "Equipment" : "Equipment II",
+                    Subtitle = "Ledger rows from the active build",
+                    Footer = "Rows prefer visible equipment and then hidden-equipment fallbacks.",
+                    Entries = chunk.Select(entry => CreateEntry(entry.Label, ResolveEquipmentValue(build, entry.Slot, entry.Detail), entry.Detail, HasEquippedItem(build, entry.Slot) ? CollectionBookEntryTone.Normal : CollectionBookEntryTone.Muted)).ToArray()
+                };
+            }
+        }
+
+        private static IEnumerable<CollectionBookPageSnapshot> CreateRecipePages(ItemMakerProgressionSnapshot progression)
+        {
+            List<CollectionBookEntrySnapshot> recipeEntries = new();
+            recipeEntries.AddRange(progression.DiscoveredRecipeIds.OrderBy(id => id).Select(id => CreateEntry("Recipe", ResolveItemName(id), $"Output #{id}", CollectionBookEntryTone.Normal)));
+            recipeEntries.AddRange(progression.UnlockedHiddenRecipeIds.OrderBy(id => id).Select(id => CreateEntry("Hidden", ResolveItemName(id), $"Output #{id}", CollectionBookEntryTone.Accent)));
+
+            if (recipeEntries.Count == 0)
+            {
+                yield return new CollectionBookPageSnapshot
+                {
+                    Title = "Recipes",
+                    Subtitle = "Discovered recipe pages",
+                    Footer = "No recipe entries are recorded in the local progression store yet.",
+                    Entries = new[]
+                    {
+                        CreateEntry("Catalog", "Empty", "Discover or unlock maker recipes to populate later pages.", CollectionBookEntryTone.Muted)
+                    }
+                };
+                yield break;
+            }
+
+            foreach ((CollectionBookEntrySnapshot[] chunk, int pageIndex) in recipeEntries.Chunk(EntriesPerPage).Select((chunk, index) => (chunk, index)))
+            {
+                yield return new CollectionBookPageSnapshot
+                {
+                    Title = pageIndex == 0 ? "Recipes" : $"Recipes {pageIndex + 1}",
+                    Subtitle = "Discovered and hidden outputs",
+                    Footer = "Names resolve through the local ItemName cache when available.",
+                    Entries = chunk
+                };
+            }
+        }
+
+        private static CollectionBookEntrySnapshot CreateFamilyEntry(ItemMakerProgressionSnapshot progression, ItemMakerRecipeFamily family)
+        {
+            int level = progression.GetLevel(family);
+            int progress = progression.GetProgress(family);
+            int target = progression.GetProgressTarget(family);
+            string detail = target > 0 ? $"{progress}/{target} crafts toward next level" : "Final level reached";
+            return CreateEntry(
+                progression.GetFamilyLabel(family),
+                $"Lv {level}",
+                detail,
+                level > 1 || progress > 0 ? CollectionBookEntryTone.Success : CollectionBookEntryTone.Muted);
+        }
+
+        private static CollectionBookEntrySnapshot CreateEntry(string label, string value, string detail, CollectionBookEntryTone tone)
+        {
+            return new CollectionBookEntrySnapshot
+            {
+                Label = label ?? string.Empty,
+                Value = value ?? string.Empty,
+                Detail = detail ?? string.Empty,
+                Tone = tone
+            };
+        }
+
+        private static string BuildCharacterHeadline(CharacterBuild build)
+        {
+            if (build == null)
+            {
+                return "No active character";
+            }
+
+            string name = string.IsNullOrWhiteSpace(build.Name) ? "Simulator Character" : build.Name.Trim();
+            string job = string.IsNullOrWhiteSpace(build.JobName) ? "Unknown Job" : build.JobName.Trim();
+            return $"{name} · Lv {Math.Max(1, build.Level)} {job}";
+        }
+
+        private static string BuildCharacterDetail(CharacterBuild build)
+        {
+            if (build == null)
+            {
+                return "Collection data is unavailable until a character build is active.";
+            }
+
+            return $"Fame {build.Fame}, World Rank {FormatRank(build.WorldRank)}, Job Rank {FormatRank(build.JobRank)}";
+        }
+
+        private static string BuildPocketSummary(CharacterBuild build)
+        {
+            string pocketItem = ResolveEquippedItemName(build, EquipSlot.Pocket);
+            if (!string.Equals(pocketItem, "-", StringComparison.Ordinal))
+            {
+                return pocketItem;
+            }
+
+            int charm = Math.Max(0, build?.TraitCharm ?? 0);
+            return build?.IsPocketSlotAvailable == true ? $"Unlocked (Charm {charm})" : $"Locked ({charm}/30 Charm)";
+        }
+
+        private static string BuildOutfitSummary(CharacterBuild build)
+        {
+            string longcoat = ResolveEquippedItemName(build, EquipSlot.Longcoat);
+            if (!string.Equals(longcoat, "-", StringComparison.Ordinal))
+            {
+                return longcoat;
+            }
+
+            string coat = ResolveEquippedItemName(build, EquipSlot.Coat);
+            string pants = ResolveEquippedItemName(build, EquipSlot.Pants);
+            if (string.Equals(coat, "-", StringComparison.Ordinal) && string.Equals(pants, "-", StringComparison.Ordinal))
+            {
+                return "-";
+            }
+
+            return $"{coat} / {pants}";
+        }
+
+        private static string ResolveEquipmentValue(CharacterBuild build, EquipSlot slot, string detail)
+        {
+            if (slot == EquipSlot.Longcoat)
+            {
+                return BuildOutfitSummary(build);
+            }
+
+            string value = ResolveEquippedItemName(build, slot);
+            if (slot == EquipSlot.Pocket && string.Equals(value, "-", StringComparison.Ordinal))
+            {
+                return BuildPocketSummary(build);
+            }
+
+            return string.IsNullOrWhiteSpace(value) ? detail : value;
+        }
+
+        private static string ResolveEquippedItemName(CharacterBuild build, EquipSlot slot)
+        {
+            if (build?.Equipment != null && build.Equipment.TryGetValue(slot, out CharacterPart part) && !string.IsNullOrWhiteSpace(part?.Name))
+            {
+                return part.Name;
+            }
+
+            if (build?.HiddenEquipment != null && build.HiddenEquipment.TryGetValue(slot, out CharacterPart hiddenPart) && !string.IsNullOrWhiteSpace(hiddenPart?.Name))
+            {
+                return hiddenPart.Name;
+            }
+
+            return "-";
+        }
+
+        private static bool HasEquippedItem(CharacterBuild build, EquipSlot slot)
+        {
+            return !string.Equals(ResolveEquippedItemName(build, slot), "-", StringComparison.Ordinal);
+        }
+
+        private static string ResolveItemName(int itemId)
+        {
+            return global::HaCreator.Program.InfoManager?.ItemNameCache != null
+                   && global::HaCreator.Program.InfoManager.ItemNameCache.TryGetValue(itemId, out Tuple<string, string, string> itemInfo)
+                   && !string.IsNullOrWhiteSpace(itemInfo.Item2)
+                ? itemInfo.Item2
+                : $"Item #{itemId}";
+        }
+
+        private static CollectionBookEntryTone ResolveTraitTone(int value)
+        {
+            return value switch
+            {
+                >= 30 => CollectionBookEntryTone.Success,
+                > 0 => CollectionBookEntryTone.Accent,
+                _ => CollectionBookEntryTone.Muted
+            };
+        }
+
+        private static string FormatRank(int rank)
+        {
+            return rank > 0 ? $"#{rank.ToString("N0", CultureInfo.InvariantCulture)}" : "-";
+        }
     }
 
     internal sealed class RankingEntrySnapshot

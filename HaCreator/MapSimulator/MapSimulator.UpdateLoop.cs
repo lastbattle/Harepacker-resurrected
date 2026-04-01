@@ -186,6 +186,8 @@ namespace HaCreator.MapSimulator
             DrainLocalOverlayPacketInbox();
             EnsureLocalUtilityPacketInboxState(shouldRun: true);
             DrainLocalUtilityPacketInbox();
+            UpdatePacketOwnedTutorRuntime(currTickCount);
+            UpdatePacketOwnedRadioSchedule(currTickCount);
 
             if (isWindowActive)
             {
@@ -678,7 +680,8 @@ namespace HaCreator.MapSimulator
             if (_playerManager != null)
             {
                 _playerManager.IsPlayerControlEnabled = _gameState.IsPlayerInputEnabled;
-                _playerManager.Update(currTickCount, deltaSeconds, _chat.IsActive || uiCapturesKeyboard, isWindowActive);
+                _playerManager.Update(currTickCount, deltaSeconds, _chat.IsActive || uiCapturesKeyboard, isWindowActive);
+                SyncPacketOwnedLocalFollowCharacter();
 
                 if (_gameState.IsPlayerInputEnabled && _playerManager.IsPlayerActive)
                 {

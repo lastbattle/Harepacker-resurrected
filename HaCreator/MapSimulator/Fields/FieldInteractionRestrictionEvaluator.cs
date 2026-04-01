@@ -47,6 +47,55 @@ namespace HaCreator.MapSimulator.Fields
                 : null;
         }
 
+        public static string GetParcelOpenRestrictionMessage(long fieldLimit)
+        {
+            return FieldLimitType.Parcel_Open_Limit.Check(fieldLimit)
+                ? "Parcel-owned delivery and mailbox windows cannot be opened in this map."
+                : null;
+        }
+
+        public static string GetQuestAlertRestrictionMessage(long fieldLimit)
+        {
+            return FieldLimitType.No_Quest_Alert.Check(fieldLimit)
+                ? "Quest alert windows are disabled in this map."
+                : null;
+        }
+
+        public static string GetAndroidRestrictionMessage(long fieldLimit)
+        {
+            return FieldLimitType.No_Android.Check(fieldLimit)
+                ? "Android companion features are disabled in this map."
+                : null;
+        }
+
+        public static string GetPartyBossRestrictionMessage(long fieldLimit)
+        {
+            return FieldLimitType.Unable_To_Change_Party_Boss.Check(fieldLimit)
+                ? "Party leader changes are disabled in this map."
+                : null;
+        }
+
+        public static string GetDropRestrictionMessage(long fieldLimit)
+        {
+            return FieldLimitType.Drop_Limit.Check(fieldLimit)
+                ? "Field drop interactions are restricted in this map."
+                : null;
+        }
+
+        public static string GetJumpDownRestrictionMessage(long fieldLimit)
+        {
+            return FieldLimitType.Unable_To_Fall_Down.Check(fieldLimit)
+                ? "Dropping down through footholds is disabled in this map."
+                : null;
+        }
+
+        public static string GetFallingDamageRestrictionMessage(long fieldLimit)
+        {
+            return FieldLimitType.No_Damage_On_Falling.Check(fieldLimit)
+                ? "Falling damage is disabled in this map."
+                : null;
+        }
+
         public static bool ShouldAutoExpandMinimap(long fieldLimit)
         {
             return FieldLimitType.Auto_Expand_Minimap.Check(fieldLimit);
@@ -208,6 +257,19 @@ namespace HaCreator.MapSimulator.Fields
             return messages;
         }
 
+        public static IReadOnlyList<string> GetFieldEntryInteractionRestrictionMessages(long fieldLimit)
+        {
+            List<string> messages = new();
+            AddFieldEntryMessage(messages, GetParcelOpenRestrictionMessage(fieldLimit));
+            AddFieldEntryMessage(messages, GetQuestAlertRestrictionMessage(fieldLimit));
+            AddFieldEntryMessage(messages, GetAndroidRestrictionMessage(fieldLimit));
+            AddFieldEntryMessage(messages, GetPartyBossRestrictionMessage(fieldLimit));
+            AddFieldEntryMessage(messages, GetDropRestrictionMessage(fieldLimit));
+            AddFieldEntryMessage(messages, GetJumpDownRestrictionMessage(fieldLimit));
+            AddFieldEntryMessage(messages, GetFallingDamageRestrictionMessage(fieldLimit));
+            return messages;
+        }
+
         public static bool CanRegisterMapTransferDestination(int mapId)
         {
             return GetMapTransferRegistrationRestrictionMessage(mapId) == null;
@@ -236,6 +298,14 @@ namespace HaCreator.MapSimulator.Fields
             return FieldLimitType.Unable_To_Jump.Check(fieldLimit)
                 ? "Jumping is disabled in this map."
                 : null;
+        }
+
+        private static void AddFieldEntryMessage(ICollection<string> messages, string message)
+        {
+            if (!string.IsNullOrWhiteSpace(message))
+            {
+                messages.Add(message);
+            }
         }
 
         private static bool IsPortalScrollItem(InventoryType inventoryType, int itemId)

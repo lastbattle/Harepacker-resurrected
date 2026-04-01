@@ -16,14 +16,17 @@ namespace HaCreator.MapSimulator.UI
         internal sealed class DeliveryEntry
         {
             public int QuestId { get; init; }
+            public int DisplayQuestId { get; init; }
             public int TargetNpcId { get; init; }
             public string Title { get; init; } = string.Empty;
             public string NpcName { get; init; } = string.Empty;
             public string StatusText { get; init; } = string.Empty;
             public string DetailText { get; init; } = string.Empty;
+            public string DeliveryCashItemName { get; init; } = string.Empty;
             public bool CompletionPhase { get; init; }
             public bool CanConfirm { get; init; }
             public bool IsBlocked { get; init; }
+            public bool IsSeriesRepresentative { get; init; }
         }
 
         private const int VisibleRowCount = 4;
@@ -252,8 +255,11 @@ namespace HaCreator.MapSimulator.UI
                     : entry.CompletionPhase
                         ? new Color(52, 101, 61)
                         : new Color(76, 95, 132);
+                string titleText = entry.IsSeriesRepresentative && entry.DisplayQuestId > 0 && entry.DisplayQuestId != entry.QuestId
+                    ? $"#{entry.DisplayQuestId} -> {entry.Title}"
+                    : entry.Title;
 
-                DrawLine(sprite, Truncate(entry.Title, 22), new Vector2(rowBounds.X + 5, rowBounds.Y + 1), titleColor, 0.36f);
+                DrawLine(sprite, Truncate(titleText, 22), new Vector2(rowBounds.X + 5, rowBounds.Y + 1), titleColor, 0.36f);
                 DrawLine(sprite, Truncate(entry.StatusText, 24), new Vector2(rowBounds.X + 5, rowBounds.Y + 8), statusColor, 0.31f);
             }
 
@@ -270,6 +276,12 @@ namespace HaCreator.MapSimulator.UI
             string detail = entry == null
                 ? "The client keeps this owner alive only when a usable item-backed delivery target survives the packet and unique-modeless gating."
                 : entry.DetailText;
+            string seriesText = entry?.IsSeriesRepresentative == true && entry.DisplayQuestId > 0 && entry.DisplayQuestId != entry.QuestId
+                ? $"Showing series representative quest #{entry.DisplayQuestId} for actual quest #{entry.QuestId}."
+                : $"Quest #{entry?.QuestId ?? _questId}";
+            string deliveryItemText = !string.IsNullOrWhiteSpace(entry?.DeliveryCashItemName)
+                ? entry.DeliveryCashItemName
+                : _itemName;
 
             float left = Position.X + DetailLeft;
             float y = Position.Y + DetailTop;
@@ -277,6 +289,10 @@ namespace HaCreator.MapSimulator.UI
             y += 18f;
             DrawLine(sprite, status, new Vector2(left, y), entry?.IsBlocked == true ? new Color(161, 79, 67) : new Color(84, 92, 104), 0.34f);
             y += 16f;
+            DrawLine(sprite, Truncate(seriesText, 42), new Vector2(left, y), new Color(120, 108, 97), 0.31f);
+            y += 14f;
+            DrawLine(sprite, Truncate($"Delivery item: {deliveryItemText}", 42), new Vector2(left, y), new Color(120, 108, 97), 0.31f);
+            y += 14f;
 
             foreach (string line in WrapText(detail, Math.Max(120f, (CurrentFrame?.Width ?? 312) - 36f), 0.34f).Take(4))
             {

@@ -73,6 +73,7 @@ namespace HaCreator.MapSimulator.Managers
         public string RemoteHost { get; private set; } = IPAddress.Loopback.ToString();
         public int RemotePort { get; private set; }
         public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
+        public bool HasAttachedClient => _activePair != null;
         public bool HasConnectedSession => _activePair?.InitCompleted == true;
         public int ReceivedCount { get; private set; }
         public string LastStatus { get; private set; } = "Login official-session bridge inactive.";
@@ -104,6 +105,18 @@ namespace HaCreator.MapSimulator.Managers
 
         public bool TryStartFromDiscovery(int listenPort, int remotePort, string processSelector, int? localPort, out string status)
         {
+            return TryRefreshFromDiscovery(listenPort, remotePort, processSelector, localPort, out status);
+        }
+
+        public bool TryRefreshFromDiscovery(int listenPort, int remotePort, string processSelector, int? localPort, out string status)
+        {
+            if (HasAttachedClient)
+            {
+                status = $"Login official-session bridge is already attached to {RemoteHost}:{RemotePort}; keeping the current live Maple session.";
+                LastStatus = status;
+                return true;
+            }
+
             int? owningProcessId = null;
             string owningProcessName = null;
             if (!TryResolveProcessSelector(processSelector, out owningProcessId, out owningProcessName, out string selectorError))
@@ -125,6 +138,19 @@ namespace HaCreator.MapSimulator.Managers
             {
                 LastStatus = status;
                 return false;
+            }
+
+            if (MatchesDiscoveredTargetConfiguration(
+                    IsRunning,
+                    ListenPort,
+                    RemoteHost,
+                    RemotePort,
+                    listenPort <= 0 ? DefaultListenPort : listenPort,
+                    candidate.RemoteEndpoint))
+            {
+                status = $"Login official-session bridge remains armed for {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}.";
+                LastStatus = status;
+                return true;
             }
 
             Start(listenPort, candidate.RemoteEndpoint.Address.ToString(), candidate.RemoteEndpoint.Port);
@@ -461,6 +487,27 @@ namespace HaCreator.MapSimulator.Managers
             return (candidates ?? Array.Empty<CoconutOfficialSessionBridgeManager.SessionDiscoveryCandidate>())
                 .Where(candidate => candidate.LocalEndpoint.Port == localPort.Value)
                 .ToArray();
+        }
+
+        internal static bool MatchesDiscoveredTargetConfiguration(
+            bool isRunning,
+            int currentListenPort,
+            string currentRemoteHost,
+            int currentRemotePort,
+            int expectedListenPort,
+            IPEndPoint discoveredRemoteEndpoint)
+        {
+            if (!isRunning || discoveredRemoteEndpoint == null)
+            {
+                return false;
+            }
+
+            return currentListenPort == expectedListenPort
+                && currentRemotePort == discoveredRemoteEndpoint.Port
+                && string.Equals(
+                    currentRemoteHost,
+                    discoveredRemoteEndpoint.Address.ToString(),
+                    StringComparison.OrdinalIgnoreCase);
         }
 
         private static string DescribeDiscoveryScope(int? owningProcessId, string owningProcessName, int remotePort, int? localPort)

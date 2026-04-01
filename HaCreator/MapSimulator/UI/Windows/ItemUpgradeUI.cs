@@ -11,6 +11,7 @@ using Spine;
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using System.Text.RegularExpressions;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -87,6 +88,12 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Dictionary<int, IReadOnlyCollection<int>> ConsumableRequirementCache = new Dictionary<int, IReadOnlyCollection<int>>();
         private static readonly Dictionary<int, string> ConsumableOwnerPathCache = new Dictionary<int, string>();
         private static readonly Dictionary<int, EnhancementConsumableDefinition> DynamicConsumableDefinitionCache = new Dictionary<int, EnhancementConsumableDefinition>();
+        private static readonly Dictionary<int, VegaModifierProfile> VegaModifierProfileCache = new Dictionary<int, VegaModifierProfile>();
+        private static readonly Dictionary<int, VegaCompatibleScrollProfile> VegaCompatibleScrollProfileCache = new Dictionary<int, VegaCompatibleScrollProfile>();
+        private static readonly Dictionary<int, IReadOnlyCollection<EquipSlot>> ScrollTargetSlotCache = new Dictionary<int, IReadOnlyCollection<EquipSlot>>();
+        private static readonly Regex PercentRateRegex = new Regex(@"Success\s*rate\s*:\s*(\d+)\s*%", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex VegaModifierRegex = new Regex(@"enables\s+a\s+(\d+)\s*%\s+success\s+rate\s+on\s+a\s+(\d+)\s*%\s+scroll", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex ScrollTargetRegex = new Regex(@"Scroll\s+for\s+(.+?)\s+for\s", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly IReadOnlyDictionary<int, EnhancementConsumableDefinition> ConsumableDefinitions =
             new Dictionary<int, EnhancementConsumableDefinition>
             {
@@ -915,6 +922,14 @@ namespace HaCreator.MapSimulator.UI
                 return 0f;
             }
 
+            if (modifier != null &&
+                TryResolveVegaModifierProfile(modifier.ItemId, out VegaModifierProfile modifierProfile) &&
+                TryResolveVegaCompatibleScrollProfile(consumable.ItemId, out VegaCompatibleScrollProfile scrollProfile) &&
+                AreRatesEquivalent(scrollProfile.BaseSuccessRate, modifierProfile.RequiredBaseSuccessRate))
+            {
+                return modifierProfile.ModifiedSuccessRate;
+            }
+
             if (!consumable.Definition.UsesTieredSuccessRate)
             {
                 return modifier != null
@@ -1322,6 +1337,12 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
+            if (TryResolveVegaModifierProfile(modifier.ItemId, out VegaModifierProfile modifierProfile))
+            {
+                return TryResolveVegaCompatibleScrollProfile(consumable.ItemId, out VegaCompatibleScrollProfile scrollProfile)
+                    && AreRatesEquivalent(scrollProfile.BaseSuccessRate, modifierProfile.RequiredBaseSuccessRate);
+            }
+
             return modifier.Definition.ModifierBehavior switch
             {
                 ModifierBehavior.VegaTenPercent => consumable.Definition.UsesTieredSuccessRate && consumable.Definition.IsAdvancedFamily,
@@ -1332,6 +1353,43 @@ namespace HaCreator.MapSimulator.UI
 
         private EnhancementConsumable ResolveConsumableForModifier(UpgradeState state, CharacterPart selectedPart, EnhancementConsumableDefinition modifierDefinition)
         {
+            if (_inventory != null)
+            {
+                EnhancementConsumable modifier = new EnhancementConsumable(modifierDefinition);
+                foreach (InventoryType inventoryType in new[] { InventoryType.USE, InventoryType.CASH })
+                {
+                    foreach (KeyValuePair<int, int> entry in _inventory.GetItems(inventoryType))
+                    {
+                        if (entry.Value <= 0 ||
+                            !TryGetConsumableDefinition(entry.Key, out EnhancementConsumableDefinition candidateDefinition) ||
+                            candidateDefinition.EffectType != ConsumableEffectType.Enhancement)
+                        {
+                            continue;
+                        }
+
+                        EnhancementConsumable candidate = new EnhancementConsumable(candidateDefinition);
+                        if (!IsModifierCompatible(modifier, candidate) ||
+                            !IsConsumableCompatibleWithItem(candidateDefinition, selectedPart?.ItemId ?? 0) ||
+                            !TryGetConsumableCompatibilityBlockReason(candidate, selectedPart, out _))
+                        {
+                            continue;
+                        }
+
+                        if (state.RemainingSlots <= 0 || state.RemainingSlots < candidate.SuccessCountGain)
+                        {
+                            continue;
+                        }
+
+                        return candidate;
+                    }
+                }
+            }
+
+            if (TryResolveVegaModifierProfile(modifierDefinition.ItemId, out _))
+            {
+                return null;
+            }
+
             return modifierDefinition.ModifierBehavior switch
             {
                 ModifierBehavior.VegaTenPercent => GetFirstAvailableConsumable(state, selectedPart, AdvancedEnhancementScrollId, AlternateAdvancedEnhancementScrollId, AlternateAdvancedEnhancementScrollId2),
@@ -1352,8 +1410,12 @@ namespace HaCreator.MapSimulator.UI
 
             string requiredScroll = definition.ModifierBehavior switch
             {
-                ModifierBehavior.VegaTenPercent => "Advanced Equip Enhancement Scroll",
-                ModifierBehavior.VegaSixtyPercent => "Equip Enhancement Scroll",
+                ModifierBehavior.VegaTenPercent when TryResolveVegaModifierProfile(definition.ItemId, out VegaModifierProfile tenProfile)
+                    => $"a Vega-enabled {(int)Math.Round(tenProfile.RequiredBaseSuccessRate * 100f)}% scroll",
+                ModifierBehavior.VegaSixtyPercent when TryResolveVegaModifierProfile(definition.ItemId, out VegaModifierProfile sixtyProfile)
+                    => $"a Vega-enabled {(int)Math.Round(sixtyProfile.RequiredBaseSuccessRate * 100f)}% scroll",
+                ModifierBehavior.VegaTenPercent => "a Vega-enabled 10% scroll",
+                ModifierBehavior.VegaSixtyPercent => "a Vega-enabled 60% scroll",
                 _ => "a compatible enhancement scroll"
             };
 
@@ -1408,6 +1470,13 @@ namespace HaCreator.MapSimulator.UI
                    !string.IsNullOrWhiteSpace(itemInfo?.Item2)
                 ? itemInfo.Item2
                 : $"Item #{itemId}";
+        }
+
+        private static string ResolveCachedItemDescription(int itemId)
+        {
+            return InventoryItemMetadataResolver.TryResolveItemDescription(itemId, out string description)
+                ? description
+                : string.Empty;
         }
 
         private void DestroySelectedItem(EquipSlot slot, CharacterPart selectedPart, UpgradeState state, string consumableName)
@@ -1776,7 +1845,11 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
-            if (IsConsumableCompatibleWithItem(consumable.Definition, selectedPart.ItemId))
+            bool matchesRequiredItem = IsConsumableCompatibleWithItem(consumable.Definition, selectedPart.ItemId);
+            bool matchesTargetSlot = !TryGetScrollTargetSlots(consumable.Definition.ItemId, out IReadOnlyCollection<EquipSlot> targetSlots) ||
+                                     targetSlots.Count == 0 ||
+                                     targetSlots.Contains(selectedPart.Slot);
+            if (matchesRequiredItem && matchesTargetSlot)
             {
                 return true;
             }
@@ -1784,6 +1857,14 @@ namespace HaCreator.MapSimulator.UI
             reason = consumable.Definition.ItemId == MapleMiracleCubeId
                 ? $"{consumable.Name} only applies to Maple 8th Anniversary Crimson equipment."
                 : $"{consumable.Name} does not apply to {ResolveItemName(selectedPart)}.";
+            if (!matchesTargetSlot &&
+                TryGetScrollTargetSlots(consumable.Definition.ItemId, out targetSlots) &&
+                targetSlots.Count > 0)
+            {
+                string targetText = string.Join(", ", targetSlots.Select(ResolveSlotLabel).Distinct());
+                reason = $"{consumable.Name} only applies to {targetText} equipment.";
+            }
+
             return false;
         }
 
@@ -2052,7 +2133,35 @@ namespace HaCreator.MapSimulator.UI
                 return TryCreateWzHammerDefinition(itemId, InventoryType.CASH, HammerBehavior.Vicious, out definition);
             }
 
+            if (TryCreateStringBackedEnhancementDefinition(itemId, out definition))
+            {
+                return true;
+            }
+
             return false;
+        }
+
+        private static bool TryCreateStringBackedEnhancementDefinition(int itemId, out EnhancementConsumableDefinition definition)
+        {
+            definition = default;
+            if (InventoryItemMetadataResolver.ResolveInventoryType(itemId) != InventoryType.USE ||
+                !TryResolveVegaCompatibleScrollProfile(itemId, out VegaCompatibleScrollProfile profile))
+            {
+                return false;
+            }
+
+            definition = new EnhancementConsumableDefinition(
+                itemId,
+                ResolveCachedItemNameOrFallback(itemId),
+                1,
+                false,
+                false,
+                profile.BaseSuccessRate,
+                InventoryType.USE,
+                ConsumableEffectType.Enhancement,
+                PotentialTier.Rare,
+                0f);
+            return true;
         }
 
         private static bool TryCreateWzConsumeDefinition(int itemId, ConsumableEffectType effectType, out EnhancementConsumableDefinition definition)
@@ -2363,6 +2472,196 @@ namespace HaCreator.MapSimulator.UI
             public int ConsumableCount { get; }
             public float BaseSuccessRate { get; }
             public float ModifiedSuccessRate { get; }
+        }
+
+        private static bool TryResolveVegaModifierProfile(int itemId, out VegaModifierProfile profile)
+        {
+            if (VegaModifierProfileCache.TryGetValue(itemId, out profile))
+            {
+                return profile.IsValid;
+            }
+
+            profile = default;
+            Match match = VegaModifierRegex.Match(ResolveCachedItemDescription(itemId) ?? string.Empty);
+            if (match.Success &&
+                int.TryParse(match.Groups[1].Value, out int modifiedPercent) &&
+                int.TryParse(match.Groups[2].Value, out int requiredPercent))
+            {
+                profile = new VegaModifierProfile(requiredPercent / 100f, modifiedPercent / 100f);
+            }
+
+            VegaModifierProfileCache[itemId] = profile;
+            return profile.IsValid;
+        }
+
+        private static bool TryResolveVegaCompatibleScrollProfile(int itemId, out VegaCompatibleScrollProfile profile)
+        {
+            if (VegaCompatibleScrollProfileCache.TryGetValue(itemId, out profile))
+            {
+                return profile.IsValid;
+            }
+
+            profile = default;
+            string description = ResolveCachedItemDescription(itemId);
+            if (!string.IsNullOrWhiteSpace(description) &&
+                description.IndexOf("Vega's Spell", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                Match match = PercentRateRegex.Match(description);
+                if (match.Success && int.TryParse(match.Groups[1].Value, out int basePercent))
+                {
+                    profile = new VegaCompatibleScrollProfile(basePercent / 100f);
+                }
+            }
+
+            VegaCompatibleScrollProfileCache[itemId] = profile;
+            return profile.IsValid;
+        }
+
+        private static bool TryGetScrollTargetSlots(int itemId, out IReadOnlyCollection<EquipSlot> slots)
+        {
+            if (ScrollTargetSlotCache.TryGetValue(itemId, out slots))
+            {
+                return slots.Count > 0;
+            }
+
+            var resolvedSlots = new HashSet<EquipSlot>();
+            string name = ResolveCachedItemNameOrFallback(itemId);
+            Match nameMatch = ScrollTargetRegex.Match(name ?? string.Empty);
+            if (nameMatch.Success)
+            {
+                AddTargetSlotsFromText(nameMatch.Groups[1].Value, resolvedSlots);
+            }
+            else
+            {
+                AddTargetSlotsFromText(ResolveCachedItemDescription(itemId), resolvedSlots);
+            }
+
+            slots = resolvedSlots.Count > 0
+                ? resolvedSlots.ToArray()
+                : Array.Empty<EquipSlot>();
+            ScrollTargetSlotCache[itemId] = slots;
+            return slots.Count > 0;
+        }
+
+        private static void AddTargetSlotsFromText(string text, ISet<EquipSlot> targetSlots)
+        {
+            if (targetSlots == null || string.IsNullOrWhiteSpace(text))
+            {
+                return;
+            }
+
+            string normalized = text.Trim();
+            if (normalized.IndexOf("face accessory", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                targetSlots.Add(EquipSlot.FaceAccessory);
+            }
+
+            if (normalized.IndexOf("eye accessory", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                targetSlots.Add(EquipSlot.EyeAccessory);
+            }
+
+            if (normalized.IndexOf("earring", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                targetSlots.Add(EquipSlot.Earrings);
+            }
+
+            if (normalized.IndexOf("glove", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                targetSlots.Add(EquipSlot.Glove);
+            }
+
+            if (normalized.IndexOf("shoe", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                targetSlots.Add(EquipSlot.Shoes);
+            }
+
+            if (normalized.IndexOf("cape", StringComparison.OrdinalIgnoreCase) >= 0 || normalized.IndexOf("mantle", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                targetSlots.Add(EquipSlot.Cape);
+            }
+
+            if (normalized.IndexOf("shield", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                targetSlots.Add(EquipSlot.Shield);
+            }
+
+            if (normalized.IndexOf("ring", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                targetSlots.Add(EquipSlot.Ring1);
+                targetSlots.Add(EquipSlot.Ring2);
+                targetSlots.Add(EquipSlot.Ring3);
+                targetSlots.Add(EquipSlot.Ring4);
+            }
+
+            if (normalized.IndexOf("pendant", StringComparison.OrdinalIgnoreCase) >= 0 || normalized.IndexOf("necklace", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                targetSlots.Add(EquipSlot.Pendant);
+            }
+
+            if (normalized.IndexOf("belt", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                targetSlots.Add(EquipSlot.Belt);
+            }
+
+            if (normalized.IndexOf("overall", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                targetSlots.Add(EquipSlot.Longcoat);
+            }
+
+            if (normalized.IndexOf("top", StringComparison.OrdinalIgnoreCase) >= 0 || normalized.IndexOf("coat", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                targetSlots.Add(EquipSlot.Coat);
+            }
+
+            if (normalized.IndexOf("bottom", StringComparison.OrdinalIgnoreCase) >= 0 || normalized.IndexOf("pants", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                targetSlots.Add(EquipSlot.Pants);
+            }
+
+            if (normalized.IndexOf("helmet", StringComparison.OrdinalIgnoreCase) >= 0 || normalized.IndexOf("cap", StringComparison.OrdinalIgnoreCase) >= 0 || normalized.IndexOf("hat", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                targetSlots.Add(EquipSlot.Cap);
+            }
+
+            string[] weaponKeywords =
+            {
+                "sword", "axe", "blunt", "dagger", "spear", "pole arm", "bow",
+                "crossbow", "staff", "wand", "claw", "knuckle", "gun"
+            };
+            if (weaponKeywords.Any(keyword => normalized.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0))
+            {
+                targetSlots.Add(EquipSlot.Weapon);
+            }
+        }
+
+        private static bool AreRatesEquivalent(float left, float right)
+        {
+            return Math.Abs(left - right) < 0.0001f;
+        }
+
+        private readonly struct VegaModifierProfile
+        {
+            public VegaModifierProfile(float requiredBaseSuccessRate, float modifiedSuccessRate)
+            {
+                RequiredBaseSuccessRate = requiredBaseSuccessRate;
+                ModifiedSuccessRate = modifiedSuccessRate;
+            }
+
+            public float RequiredBaseSuccessRate { get; }
+            public float ModifiedSuccessRate { get; }
+            public bool IsValid => RequiredBaseSuccessRate > 0f && ModifiedSuccessRate > 0f;
+        }
+
+        private readonly struct VegaCompatibleScrollProfile
+        {
+            public VegaCompatibleScrollProfile(float baseSuccessRate)
+            {
+                BaseSuccessRate = baseSuccessRate;
+            }
+
+            public float BaseSuccessRate { get; }
+            public bool IsValid => BaseSuccessRate > 0f;
         }
     }
 }

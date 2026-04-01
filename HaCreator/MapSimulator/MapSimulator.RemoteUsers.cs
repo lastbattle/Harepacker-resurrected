@@ -16,12 +16,33 @@ namespace HaCreator.MapSimulator
 {
     public partial class MapSimulator
     {
+        private void RememberRemoteTownPortalOwnerFieldObservation(uint ownerCharacterId, Vector2 position)
+        {
+            if (_temporaryPortalField == null || _mapBoard?.MapInfo == null || ownerCharacterId == 0)
+            {
+                return;
+            }
+
+            if (!TryResolveMysticDoorReturnTargetForMap(_mapBoard.MapInfo.id, out int returnMapId, out float returnX, out float returnY)
+                || returnMapId == _mapBoard.MapInfo.id)
+            {
+                return;
+            }
+
+            _temporaryPortalField.RememberRemoteTownPortalOwnerFieldObservation(
+                ownerCharacterId,
+                _mapBoard.MapInfo.id,
+                position.X,
+                position.Y,
+                new TemporaryPortalField.RemoteTownPortalResolvedDestination(returnMapId, returnX, returnY));
+        }
+
         private void RegisterRemoteUserChatCommand()
         {
             _chat.CommandHandler.RegisterCommand(
                 "remoteuser",
                 "Create or mutate shared remote user actors",
-                "/remoteuser <status|clear|clone|avatar|move|action|chair|mount|helper|team|follow|prepare|preparedclear|visible|inspect|remove|packet|packetraw> ...",
+                "/remoteuser <status|clear|clone|avatar|move|action|chair|mount|effect|helper|team|follow|prepare|preparedclear|visible|inspect|remove|packet|packetraw> ...",
                 args => HandleRemoteUserCommand(args, currTickCount));
         }
 
@@ -29,7 +50,7 @@ namespace HaCreator.MapSimulator
         {
             if (args == null || args.Length == 0)
             {
-                return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser <status|clear|clone|avatar|move|action|chair|mount|helper|team|follow|prepare|preparedclear|visible|inspect|remove|packet|packetraw> ...");
+                return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser <status|clear|clone|avatar|move|action|chair|mount|effect|helper|team|follow|prepare|preparedclear|visible|inspect|remove|packet|packetraw> ...");
             }
 
             return args[0].ToLowerInvariant() switch
@@ -42,6 +63,7 @@ namespace HaCreator.MapSimulator
                 "action" => HandleRemoteUserActionCommand(args),
                 "chair" => HandleRemoteUserChairCommand(args),
                 "mount" => HandleRemoteUserMountCommand(args),
+                "effect" => HandleRemoteUserEffectCommand(args, currentTime),
                 "helper" => HandleRemoteUserHelperCommand(args),
                 "team" => HandleRemoteUserTeamCommand(args, currentTime),
                 "follow" => HandleRemoteUserFollowCommand(args),
@@ -52,7 +74,7 @@ namespace HaCreator.MapSimulator
                 "remove" => HandleRemoteUserRemoveCommand(args),
                 "packet" => HandleRemoteUserPacketCommand(args, currentTime),
                 "packetraw" => HandleRemoteUserPacketRawCommand(args, currentTime),
-                _ => ChatCommandHandler.CommandResult.Error("Usage: /remoteuser <status|clear|clone|avatar|move|action|chair|mount|helper|team|follow|prepare|preparedclear|visible|inspect|remove|packet|packetraw> ...")
+                _ => ChatCommandHandler.CommandResult.Error("Usage: /remoteuser <status|clear|clone|avatar|move|action|chair|mount|effect|helper|team|follow|prepare|preparedclear|visible|inspect|remove|packet|packetraw> ...")
             };
         }
 
@@ -212,6 +234,39 @@ namespace HaCreator.MapSimulator
                 ? ChatCommandHandler.CommandResult.Ok(itemId.HasValue
                     ? $"Remote user {characterId} mount set to {itemId.Value}."
                     : $"Remote user {characterId} mount cleared.")
+                : ChatCommandHandler.CommandResult.Error(message);
+        }
+
+        private ChatCommandHandler.CommandResult HandleRemoteUserEffectCommand(string[] args, int currentTime)
+        {
+            if (args.Length < 3 || !int.TryParse(args[1], out int characterId))
+            {
+                return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser effect <characterId> <itemId|clear> [pairCharacterId]");
+            }
+
+            int? itemId = string.Equals(args[2], "clear", StringComparison.OrdinalIgnoreCase)
+                ? null
+                : int.TryParse(args[2], out int parsedItemId) ? parsedItemId : null;
+            if (!string.Equals(args[2], "clear", StringComparison.OrdinalIgnoreCase) && !itemId.HasValue)
+            {
+                return ChatCommandHandler.CommandResult.Error($"Invalid effect item ID: {args[2]}");
+            }
+
+            int? pairCharacterId = null;
+            if (args.Length >= 4)
+            {
+                if (!int.TryParse(args[3], out int parsedPairCharacterId))
+                {
+                    return ChatCommandHandler.CommandResult.Error($"Invalid pair character ID: {args[3]}");
+                }
+
+                pairCharacterId = parsedPairCharacterId > 0 ? parsedPairCharacterId : null;
+            }
+
+            return _remoteUserPool.TrySetItemEffect(characterId, itemId, pairCharacterId, currentTime, out string message)
+                ? ChatCommandHandler.CommandResult.Ok(itemId.HasValue
+                    ? $"Remote user {characterId} effect item set to {itemId.Value}."
+                    : $"Remote user {characterId} effect item cleared.")
                 : ChatCommandHandler.CommandResult.Error(message);
         }
 
@@ -515,7 +570,7 @@ namespace HaCreator.MapSimulator
         {
             if (args.Length < 3 || !TryParseRemoteUserPacketType(args[1], out int packetType))
             {
-                return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser packet <179|180|181|182|183|184|210|211|212|213|214|enter|leave|move|state|helper|team|follow|chair|mount|prepare|preparedclear|melee> [followCharacterId] <payloadhex=..|payloadb64=..>");
+                return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser packet <179|180|181|182|183|184|210|211|212|213|214|215|enter|leave|move|state|helper|team|follow|chair|mount|prepare|preparedclear|melee|effect> [followCharacterId] <payloadhex=..|payloadb64=..>");
             }
 
             int? followCharacterId = null;
@@ -545,7 +600,7 @@ namespace HaCreator.MapSimulator
         {
             if (args.Length < 3 || !TryParseRemoteUserPacketType(args[1], out int packetType))
             {
-                return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser packetraw <179|180|181|182|183|184|210|211|212|213|214|enter|leave|move|state|helper|team|follow|chair|mount|prepare|preparedclear|melee> [followCharacterId] <hex>");
+                return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser packetraw <179|180|181|182|183|184|210|211|212|213|214|215|enter|leave|move|state|helper|team|follow|chair|mount|prepare|preparedclear|melee|effect> [followCharacterId] <hex>");
             }
 
             int? followCharacterId = null;
@@ -610,6 +665,11 @@ namespace HaCreator.MapSimulator
                     result = created
                         ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {enterPacket.Name} ({enterPacket.CharacterId})."
                         : enterMessage;
+                    if (created)
+                    {
+                        RememberRemoteTownPortalOwnerFieldObservation((uint)enterPacket.CharacterId, new Vector2(enterPacket.X, enterPacket.Y));
+                    }
+
                     return created;
 
                 case RemoteUserPacketType.UserLeaveField:
@@ -641,6 +701,13 @@ namespace HaCreator.MapSimulator
                     result = moved
                         ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {movePacket.CharacterId}."
                         : moveMessage;
+                    if (moved)
+                    {
+                        RememberRemoteTownPortalOwnerFieldObservation(
+                            (uint)movePacket.CharacterId,
+                            new Vector2(movePacket.Snapshot.PassivePosition.X, movePacket.Snapshot.PassivePosition.Y));
+                    }
+
                     return moved;
 
                 case RemoteUserPacketType.UserMoveAction:
@@ -712,6 +779,11 @@ namespace HaCreator.MapSimulator
                     result = followApplied
                         ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {followPacket.CharacterId}."
                         : followMessage;
+                    if (followApplied && _remoteUserPool.TryGetActor(followPacket.CharacterId, out RemoteUserActor followActor))
+                    {
+                        RememberRemoteTownPortalOwnerFieldObservation((uint)followPacket.CharacterId, followActor.Position);
+                    }
+
                     return followApplied;
 
                 case RemoteUserPacketType.UserPortableChair:
@@ -806,6 +878,24 @@ namespace HaCreator.MapSimulator
                         : meleeMessage;
                     return meleeApplied;
 
+                case RemoteUserPacketType.UserItemEffect:
+                    if (!RemoteUserPacketCodec.TryParseItemEffect(payload, out RemoteUserItemEffectPacket itemEffectPacket, out string itemEffectError))
+                    {
+                        result = itemEffectError;
+                        return false;
+                    }
+
+                    bool itemEffectApplied = _remoteUserPool.TrySetItemEffect(
+                        itemEffectPacket.CharacterId,
+                        itemEffectPacket.ItemId,
+                        itemEffectPacket.PairCharacterId,
+                        currentTime,
+                        out string itemEffectMessage);
+                    result = itemEffectApplied
+                        ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {itemEffectPacket.CharacterId}."
+                        : itemEffectMessage;
+                    return itemEffectApplied;
+
                 default:
                     result = $"Unsupported remote user packet type {packetType}.";
                     return false;
@@ -872,6 +962,7 @@ namespace HaCreator.MapSimulator
                 "prepare" => (int)RemoteUserPacketType.UserPreparedSkill,
                 "preparedclear" => (int)RemoteUserPacketType.UserPreparedSkillClear,
                 "melee" or "attack" or "meleeattack" => (int)RemoteUserPacketType.UserMeleeAttack,
+                "effect" or "itemeffect" or "ringeffect" => (int)RemoteUserPacketType.UserItemEffect,
                 _ => 0
             };
 
@@ -894,6 +985,7 @@ namespace HaCreator.MapSimulator
                 (int)RemoteUserPacketType.UserPreparedSkill => "remote user remote prepared-skill packet",
                 (int)RemoteUserPacketType.UserPreparedSkillClear => "remote user remote prepared-skill clear packet",
                 (int)RemoteUserPacketType.UserMeleeAttack => "remote user remote melee-attack packet",
+                (int)RemoteUserPacketType.UserItemEffect => "remote user remote item-effect packet",
                 _ => $"remote user packet {packetType}"
             };
         }

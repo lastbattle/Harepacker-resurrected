@@ -377,6 +377,8 @@ namespace HaCreator.MapSimulator.Character.Skills
     /// </summary>
     public class SkillData
     {
+        public const int MirrorImageSkillId = 4331002;
+
         public int SkillId { get; set; }
         public string Name { get; set; }
         public string Description { get; set; }
@@ -415,6 +417,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool ReflectsIncomingDamage { get; set; }
         public bool RedirectsDamageToMp { get; set; }
         public bool HasInvincibleMetadata { get; set; }
+        public bool UsesEnergyChargeRuntime { get; set; }
+        public string FullChargeEffectName { get; set; }
 
         // Level data
         public Dictionary<int, SkillLevelData> Levels { get; set; } = new();
@@ -544,6 +548,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             && AffectedSkillEffect.IndexOf("bodyAttack", StringComparison.OrdinalIgnoreCase) >= 0;
 
         public bool HasShadowPartnerActionAnimations => ShadowPartnerActionAnimations != null && ShadowPartnerActionAnimations.Count > 0;
+
+        public bool UsesMirrorHelperActor => SkillId == MirrorImageSkillId;
 
         public bool LinksDummySkill(int skillId)
         {

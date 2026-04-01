@@ -21,7 +21,8 @@ namespace HaCreator.MapSimulator.Pools
         UserMount = 211,
         UserPreparedSkill = 212,
         UserPreparedSkillClear = 213,
-        UserMeleeAttack = 214
+        UserMeleeAttack = 214,
+        UserItemEffect = 215
     }
 
     public readonly record struct RemoteUserEnterFieldPacket(
@@ -74,6 +75,8 @@ namespace HaCreator.MapSimulator.Pools
         bool? FacingRight,
         string ActionName,
         int? ActionCode);
+
+    public readonly record struct RemoteUserItemEffectPacket(int CharacterId, int? ItemId, int? PairCharacterId);
 
     public readonly record struct RemoteUserHelperPacket(int CharacterId, MinimapUI.HelperMarkerType? MarkerType, bool ShowDirectionOverlay);
 
@@ -411,6 +414,19 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             packet = new RemoteUserMountPacket(characterId, itemId);
+            return true;
+        }
+
+        public static bool TryParseItemEffect(ReadOnlySpan<byte> payload, out RemoteUserItemEffectPacket packet, out string error)
+        {
+            packet = default;
+            error = null;
+            if (!TryParseOptionalItemPacket(payload, "item-effect", out int characterId, out int? itemId, out error, out int? pairCharacterId))
+            {
+                return false;
+            }
+
+            packet = new RemoteUserItemEffectPacket(characterId, itemId, pairCharacterId);
             return true;
         }
 

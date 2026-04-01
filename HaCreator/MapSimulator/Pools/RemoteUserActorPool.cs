@@ -320,6 +320,68 @@ namespace HaCreator.MapSimulator.Pools
             return true;
         }
 
+        public bool TryAssignLocalPassengerToDriver(int driverId, int localPassengerId, out string message)
+        {
+            message = null;
+            if (driverId <= 0)
+            {
+                message = "Remote driver ID must be positive.";
+                return false;
+            }
+
+            if (localPassengerId <= 0)
+            {
+                message = "Local passenger ID must be positive.";
+                return false;
+            }
+
+            if (!_actorsById.TryGetValue(driverId, out _))
+            {
+                message = $"Remote driver {driverId} does not exist.";
+                return false;
+            }
+
+            foreach (RemoteUserActor actor in _actorsById.Values)
+            {
+                if (actor.FollowPassengerId == localPassengerId)
+                {
+                    actor.FollowPassengerId = 0;
+                }
+            }
+
+            AssignDriverPassengerLink(driverId, localPassengerId);
+            return true;
+        }
+
+        public bool TryClearLocalPassengerFromDriver(int driverId, int localPassengerId, out string message)
+        {
+            message = null;
+            if (driverId <= 0)
+            {
+                message = "Remote driver ID must be positive.";
+                return false;
+            }
+
+            if (localPassengerId <= 0)
+            {
+                message = "Local passenger ID must be positive.";
+                return false;
+            }
+
+            if (!_actorsById.TryGetValue(driverId, out RemoteUserActor driverActor))
+            {
+                message = $"Remote driver {driverId} does not exist.";
+                return false;
+            }
+
+            if (driverActor.FollowPassengerId == localPassengerId)
+            {
+                driverActor.FollowPassengerId = 0;
+            }
+
+            return true;
+        }
+
         public bool TrySetAction(int characterId, string actionName, bool? facingRight, out string message)
         {
             message = null;
@@ -365,29 +427,27 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             SkillData skill = null;
-            string resolvedActionName = actionName;
-            if (string.IsNullOrWhiteSpace(resolvedActionName)
-                && skillId > 0
-                && _skillLoader != null)
+            if (skillId > 0 && _skillLoader != null)
             {
                 skill = _skillLoader.LoadSkill(skillId);
-                resolvedActionName = skill?.ActionName;
             }
+
+            int chargeElement = AfterImageChargeSkillResolver.TryGetChargeElement(chargeSkillId, out int resolvedChargeElement)
+                ? resolvedChargeElement
+                : 0;
+            string resolvedActionName = ResolveRemoteMeleeActionName(
+                actor,
+                skill,
+                actionName,
+                actionCode,
+                masteryPercent,
+                chargeElement);
 
             if (!string.IsNullOrWhiteSpace(resolvedActionName))
             {
                 actor.BeginMeleeAfterImageFade(currentTime);
                 actor.ActionName = NormalizeActionName(resolvedActionName, actor.Build.ActivePortableChair != null);
             }
-            else if (actionCode.HasValue && CharacterPart.TryGetActionStringFromCode(actionCode.Value, out string resolvedCodeActionName))
-            {
-                actor.BeginMeleeAfterImageFade(currentTime);
-                actor.ActionName = NormalizeActionName(resolvedCodeActionName, actor.Build.ActivePortableChair != null);
-            }
-
-            int chargeElement = AfterImageChargeSkillResolver.TryGetChargeElement(chargeSkillId, out int resolvedChargeElement)
-                ? resolvedChargeElement
-                : 0;
             RegisterMeleeAfterImage(actor, skillId, actor.ActionName, currentTime, masteryPercent, chargeElement, actionCode);
             return true;
         }
@@ -545,6 +605,44 @@ namespace HaCreator.MapSimulator.Pools
             return true;
         }
 
+        public bool TrySetItemEffect(int characterId, int? itemId, int? pairCharacterId, int currentTime, out string message)
+        {
+            message = null;
+            if (_loader == null)
+            {
+                message = "Character loader is not available.";
+                return false;
+            }
+
+            if (!_actorsById.TryGetValue(characterId, out RemoteUserActor actor))
+            {
+                message = $"Remote character {characterId} does not exist.";
+                return false;
+            }
+
+            if (!itemId.HasValue || itemId.Value <= 0)
+            {
+                actor.ItemEffect = null;
+                return true;
+            }
+
+            ItemEffectAnimationSet effect = _loader.LoadItemEffectAnimationSet(itemId.Value);
+            if (effect == null)
+            {
+                message = $"Item effect {itemId.Value} could not be loaded from Effect/ItemEff.img.";
+                return false;
+            }
+
+            actor.ItemEffect = new RemoteItemEffectState
+            {
+                ItemId = itemId.Value,
+                PairCharacterId = pairCharacterId,
+                Effect = effect,
+                StartTime = currentTime
+            };
+            return true;
+        }
+
         public bool TrySetPreparedSkill(
             int characterId,
             int skillId,
@@ -646,6 +744,13 @@ namespace HaCreator.MapSimulator.Pools
                     }
                 }
 
+                if (actor.ItemEffect?.Effect != null
+                    && actor.ItemEffect.Effect.TotalDurationMs > 0
+                    && currentTime - actor.ItemEffect.StartTime >= actor.ItemEffect.Effect.TotalDurationMs)
+                {
+                    actor.ItemEffect = null;
+                }
+
                 actor.UpdateMeleeAfterImage(currentTime);
             }
         }
@@ -657,30 +762,37 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
+            player.ClearPortableChairExternalOwnerPair();
             PortableChair chair = player.Build?.ActivePortableChair;
             bool requestsExternalPair = chair?.IsCoupleChair == true;
             player.SetPortableChairPairRequestActive(requestsExternalPair);
-            if (!requestsExternalPair)
+            int localCharacterId = player.Build?.Id ?? 0;
+            if (requestsExternalPair)
             {
-                return;
+                RemoteUserActor pairActor = FindPortableChairPairActor(
+                    chair,
+                    ownerCharacterId: localCharacterId,
+                    ownerFacingRight: player.FacingRight,
+                    ownerX: player.X,
+                    ownerY: player.Y,
+                    skipCharacterId: localCharacterId,
+                    preferVisibleOnly: true);
+                if (pairActor != null)
+                {
+                    player.SetPortableChairExternalPair(pairActor.Position, pairActor.FacingRight);
+                }
+                else
+                {
+                    player.ClearPortableChairExternalPair();
+                }
             }
 
-            int localCharacterId = player.Build?.Id ?? 0;
-            RemoteUserActor pairActor = FindPortableChairPairActor(
-                chair,
-                ownerCharacterId: localCharacterId,
-                ownerFacingRight: player.FacingRight,
-                ownerX: player.X,
-                ownerY: player.Y,
-                skipCharacterId: localCharacterId,
-                preferVisibleOnly: true);
-            if (pairActor != null)
+            if (TryResolvePortableChairOwnerForLocalPlayer(player, out RemoteUserActor ownerActor))
             {
-                player.SetPortableChairExternalPair(pairActor.Position, pairActor.FacingRight);
-            }
-            else
-            {
-                player.ClearPortableChairExternalPair();
+                player.SetPortableChairExternalOwnerPair(
+                    ownerActor.Build.ActivePortableChair,
+                    ownerActor.Position,
+                    ownerActor.FacingRight);
             }
         }
 
@@ -1009,6 +1121,7 @@ namespace HaCreator.MapSimulator.Pools
             StatusBarUI statusBarUi = null)
         {
             var renderedCouplePairs = new HashSet<(int LeftId, int RightId)>();
+            var renderedItemEffectPairs = new HashSet<(int ItemId, int LeftId, int RightId)>();
             foreach (RemoteUserActor actor in _actorsById.Values
                 .Where(static value => value.IsVisibleInWorld)
                 .OrderBy(static value => value.Position.Y)
@@ -1061,6 +1174,19 @@ namespace HaCreator.MapSimulator.Pools
                 }
 
                 frame.Draw(spriteBatch, skeletonMeshRenderer, screenX, screenY, actor.FacingRight, Color.White);
+                DrawItemEffect(
+                    spriteBatch,
+                    skeletonMeshRenderer,
+                    actor,
+                    localPlayer,
+                    mapShiftX,
+                    mapShiftY,
+                    centerX,
+                    centerY,
+                    screenX,
+                    screenY,
+                    tickCount,
+                    renderedItemEffectPairs);
                 DrawPortableChairCoupleSharedLayers(
                     spriteBatch,
                     skeletonMeshRenderer,
@@ -1218,6 +1344,144 @@ namespace HaCreator.MapSimulator.Pools
                 drawFrontLayers);
         }
 
+        private void DrawItemEffect(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            RemoteUserActor actor,
+            PlayerCharacter localPlayer,
+            int mapShiftX,
+            int mapShiftY,
+            int centerX,
+            int centerY,
+            int screenX,
+            int screenY,
+            int currentTime,
+            ISet<(int ItemId, int LeftId, int RightId)> renderedPairs)
+        {
+            RemoteItemEffectState itemEffect = actor?.ItemEffect;
+            if (itemEffect?.Effect == null)
+            {
+                return;
+            }
+
+            int elapsedTime = Math.Max(0, currentTime - itemEffect.StartTime);
+            DrawItemEffectLayers(spriteBatch, skeletonMeshRenderer, itemEffect.Effect.OwnerLayers, screenX, screenY, actor.FacingRight, elapsedTime);
+
+            if (itemEffect.Effect.SharedLayers == null || itemEffect.Effect.SharedLayers.Count == 0)
+            {
+                return;
+            }
+
+            if (!TryResolveItemEffectPair(
+                    actor,
+                    itemEffect,
+                    localPlayer,
+                    out int partnerCharacterId,
+                    out Vector2 partnerPosition,
+                    out bool partnerFacingRight))
+            {
+                return;
+            }
+
+            int leftId = Math.Min(actor.CharacterId, partnerCharacterId);
+            int rightId = Math.Max(actor.CharacterId, partnerCharacterId);
+            if (!renderedPairs.Add((itemEffect.ItemId, leftId, rightId)))
+            {
+                return;
+            }
+
+            int midpointScreenX = (int)Math.Round((actor.Position.X + partnerPosition.X) * 0.5f) - mapShiftX + centerX;
+            int midpointScreenY = (int)Math.Round((actor.Position.Y + partnerPosition.Y) * 0.5f) - mapShiftY + centerY
+                + PlayerCharacter.PortableChairCoupleMidpointScreenYOffset;
+            DrawItemEffectLayers(
+                spriteBatch,
+                skeletonMeshRenderer,
+                itemEffect.Effect.SharedLayers,
+                midpointScreenX,
+                midpointScreenY,
+                partnerFacingRight,
+                elapsedTime);
+        }
+
+        private static void DrawItemEffectLayers(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            IEnumerable<PortableChairLayer> layers,
+            int screenX,
+            int screenY,
+            bool facingRight,
+            int elapsedTime)
+        {
+            if (layers == null)
+            {
+                return;
+            }
+
+            foreach (PortableChairLayer layer in layers)
+            {
+                CharacterFrame frame = PlayerCharacter.GetPortableChairLayerFrameAtTime(layer, elapsedTime);
+                PlayerCharacter.DrawPortableChairLayerFrame(spriteBatch, skeletonMeshRenderer, frame, screenX, screenY, facingRight);
+            }
+        }
+
+        private bool TryResolveItemEffectPair(
+            RemoteUserActor ownerActor,
+            RemoteItemEffectState itemEffect,
+            PlayerCharacter localPlayer,
+            out int partnerCharacterId,
+            out Vector2 partnerPosition,
+            out bool partnerFacingRight)
+        {
+            partnerCharacterId = 0;
+            partnerPosition = Vector2.Zero;
+            partnerFacingRight = ownerActor?.FacingRight ?? true;
+            if (ownerActor == null || itemEffect == null)
+            {
+                return false;
+            }
+
+            int localCharacterId = localPlayer?.Build?.Id ?? 0;
+            if (itemEffect.PairCharacterId.HasValue
+                && localCharacterId > 0
+                && itemEffect.PairCharacterId.Value == localCharacterId
+                && localPlayer?.IsAlive == true)
+            {
+                partnerCharacterId = localCharacterId;
+                partnerPosition = localPlayer.Position;
+                partnerFacingRight = localPlayer.FacingRight;
+                return true;
+            }
+
+            if (itemEffect.PairCharacterId.HasValue
+                && itemEffect.PairCharacterId.Value > 0
+                && itemEffect.PairCharacterId.Value != ownerActor.CharacterId
+                && _actorsById.TryGetValue(itemEffect.PairCharacterId.Value, out RemoteUserActor explicitPartner)
+                && explicitPartner.IsVisibleInWorld)
+            {
+                partnerCharacterId = explicitPartner.CharacterId;
+                partnerPosition = explicitPartner.Position;
+                partnerFacingRight = explicitPartner.FacingRight;
+                return true;
+            }
+
+            RemoteUserActor fallbackPartner = _actorsById.Values
+                .Where(candidate => candidate.IsVisibleInWorld
+                    && candidate.CharacterId != ownerActor.CharacterId
+                    && candidate.ItemEffect?.ItemId == itemEffect.ItemId)
+                .OrderBy(candidate => itemEffect.PairCharacterId.HasValue && candidate.ItemEffect?.PairCharacterId == ownerActor.CharacterId ? 0 : 1)
+                .ThenBy(candidate => Vector2.DistanceSquared(candidate.Position, ownerActor.Position))
+                .FirstOrDefault();
+            if (fallbackPartner == null)
+            {
+                return false;
+            }
+
+            partnerCharacterId = fallbackPartner.CharacterId;
+            partnerPosition = fallbackPartner.Position;
+            partnerFacingRight = fallbackPartner.FacingRight;
+            return true;
+        }
+
         public string DescribeStatus()
         {
             if (_actorsById.Count == 0)
@@ -1319,8 +1583,16 @@ namespace HaCreator.MapSimulator.Pools
             if (actor == null
                 || chair?.IsCoupleChair != true
                 || localPlayer?.Build == null
-                || !localPlayer.IsAlive
-                || localPlayer.Build.ActivePortableChair == null)
+                || !localPlayer.IsAlive)
+            {
+                return false;
+            }
+
+            int localCharacterId = localPlayer.Build.Id;
+            bool pairExplicitlyTargetsLocalPlayer = actor.PreferredPortableChairPairCharacterId is int preferredPairId
+                && preferredPairId > 0
+                && preferredPairId == localCharacterId;
+            if (!pairExplicitlyTargetsLocalPlayer && localPlayer.Build.ActivePortableChair == null)
             {
                 return false;
             }
@@ -1340,6 +1612,52 @@ namespace HaCreator.MapSimulator.Pools
             partnerPosition = localPlayer.Position;
             partnerFacingRight = localPlayer.FacingRight;
             return true;
+        }
+
+        private bool TryResolvePortableChairOwnerForLocalPlayer(PlayerCharacter localPlayer, out RemoteUserActor ownerActor)
+        {
+            ownerActor = null;
+            if (localPlayer?.Build == null || !localPlayer.IsAlive)
+            {
+                return false;
+            }
+
+            int localCharacterId = localPlayer.Build.Id;
+            if (localCharacterId <= 0)
+            {
+                return false;
+            }
+
+            float bestScore = float.MaxValue;
+            foreach (RemoteUserActor actor in _actorsById.Values)
+            {
+                PortableChair chair = actor?.Build?.ActivePortableChair;
+                if (chair?.IsCoupleChair != true
+                    || !actor.IsVisibleInWorld
+                    || actor.PreferredPortableChairPairCharacterId != localCharacterId
+                    || !PlayerCharacter.IsPortableChairActualPairActive(
+                        chair,
+                        actor.FacingRight,
+                        actor.Position.X,
+                        actor.Position.Y,
+                        localPlayer.FacingRight,
+                        localPlayer.X,
+                        localPlayer.Y))
+                {
+                    continue;
+                }
+
+                Point expectedOffset = PlayerCharacter.ResolvePortableChairPairOffset(chair, actor.FacingRight);
+                Vector2 expectedLocalPosition = actor.Position + new Vector2(expectedOffset.X, expectedOffset.Y);
+                float score = Vector2.DistanceSquared(localPlayer.Position, expectedLocalPosition);
+                if (score < bestScore)
+                {
+                    bestScore = score;
+                    ownerActor = actor;
+                }
+            }
+
+            return ownerActor != null;
         }
 
         private RemoteUserActor FindPortableChairPairActor(
@@ -1626,7 +1944,7 @@ namespace HaCreator.MapSimulator.Pools
                     chargeElement,
                     out MeleeAfterImageAction afterImageAction))
             {
-                afterImageAction = _skillLoader.ApplyClientMeleeRangeOverride(null, rawActionCode, actor.FacingRight);
+                afterImageAction = _skillLoader.ApplyClientMeleeRangeOverride(null, skillId, rawActionCode, actor.FacingRight);
                 if (afterImageAction != null)
                 {
                     actor.ApplyMeleeAfterImage(
@@ -1648,7 +1966,7 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
-            afterImageAction = _skillLoader.ApplyClientMeleeRangeOverride(afterImageAction, rawActionCode, actor.FacingRight);
+            afterImageAction = _skillLoader.ApplyClientMeleeRangeOverride(afterImageAction, skillId, rawActionCode, actor.FacingRight);
 
             actor.ApplyMeleeAfterImage(
                 skillId,
@@ -1658,6 +1976,44 @@ namespace HaCreator.MapSimulator.Pools
                 actor.FacingRight,
                 GetActionDuration(actor.Assembler, actionName),
                 GetAfterImageFadeDuration(actor.Assembler, actionName));
+        }
+
+        private string ResolveRemoteMeleeActionName(
+            RemoteUserActor actor,
+            SkillData skill,
+            string actionName,
+            int? rawActionCode,
+            int masteryPercent,
+            int chargeElement)
+        {
+            if (actor?.Build == null)
+            {
+                return actionName;
+            }
+
+            WeaponPart weapon = actor.Build.GetWeapon();
+            foreach (string candidate in EnumerateRemoteActionResolutionCandidates(actor, skill, actionName, rawActionCode))
+            {
+                if (_skillLoader != null
+                    && _skillLoader.TryResolveMeleeAfterImageAction(
+                        skill,
+                        weapon,
+                        candidate,
+                        actor.Build.Level,
+                        masteryPercent,
+                        chargeElement,
+                        out _))
+                {
+                    return candidate;
+                }
+
+                if (actor.Assembler?.GetAnimation(candidate)?.Length > 0)
+                {
+                    return candidate;
+                }
+            }
+
+            return actionName;
         }
 
         private static IEnumerable<string> EnumerateRemoteAfterImageActionNames(
@@ -1670,6 +2026,49 @@ namespace HaCreator.MapSimulator.Pools
             if (!string.IsNullOrWhiteSpace(actionName) && yielded.Add(actionName.Trim()))
             {
                 yield return actionName.Trim();
+            }
+
+            if (skill?.ActionNames != null)
+            {
+                foreach (string skillActionName in skill.ActionNames)
+                {
+                    if (!string.IsNullOrWhiteSpace(skillActionName) && yielded.Add(skillActionName.Trim()))
+                    {
+                        yield return skillActionName.Trim();
+                    }
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(skill?.ActionName) && yielded.Add(skill.ActionName.Trim()))
+            {
+                yield return skill.ActionName.Trim();
+            }
+
+            if (!string.IsNullOrWhiteSpace(actor?.ActionName) && yielded.Add(actor.ActionName.Trim()))
+            {
+                yield return actor.ActionName.Trim();
+            }
+        }
+
+        private static IEnumerable<string> EnumerateRemoteActionResolutionCandidates(
+            RemoteUserActor actor,
+            SkillData skill,
+            string actionName,
+            int? rawActionCode)
+        {
+            var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            if (!string.IsNullOrWhiteSpace(actionName) && yielded.Add(actionName.Trim()))
+            {
+                yield return actionName.Trim();
+            }
+
+            if (rawActionCode.HasValue
+                && CharacterPart.TryGetActionStringFromCode(rawActionCode.Value, out string resolvedCodeActionName)
+                && !string.IsNullOrWhiteSpace(resolvedCodeActionName)
+                && yielded.Add(resolvedCodeActionName))
+            {
+                yield return resolvedCodeActionName;
             }
 
             if (skill?.ActionNames != null)
@@ -1923,6 +2322,7 @@ namespace HaCreator.MapSimulator.Pools
         public CharacterPart PortableChairPreviousMount { get; set; }
         public bool PortableChairAppliedMount { get; set; }
         public int? PreferredPortableChairPairCharacterId { get; set; }
+        public RemoteItemEffectState ItemEffect { get; set; }
         public PlayerMovementSyncSnapshot MovementSnapshot { get; set; }
         public byte LastMoveActionRaw { get; set; }
         public int CurrentFootholdId { get; set; }
@@ -2030,9 +2430,12 @@ namespace HaCreator.MapSimulator.Pools
             string teamText = BattlefieldTeamId?.ToString() ?? "none";
             string preparedText = PreparedSkill != null ? PreparedSkill.SkillId.ToString() : "none";
             string chairPairText = PreferredPortableChairPairCharacterId?.ToString() ?? "none";
+            string itemEffectText = ItemEffect != null
+                ? $"{ItemEffect.ItemId}:{ItemEffect.PairCharacterId?.ToString() ?? "none"}"
+                : "none";
             string followDriverText = FollowDriverId > 0 ? FollowDriverId.ToString() : "none";
             string followPassengerText = FollowPassengerId > 0 ? FollowPassengerId.ToString() : "none";
-            return $"{CharacterId}:{Name}@({Position.X:0},{Position.Y:0}) action={ActionName} source={SourceTag} helper={helperText} team={teamText} prep={preparedText} chairPair={chairPairText} followDriver={followDriverText} followPassenger={followPassengerText}";
+            return $"{CharacterId}:{Name}@({Position.X:0},{Position.Y:0}) action={ActionName} source={SourceTag} helper={helperText} team={teamText} prep={preparedText} chairPair={chairPairText} itemEffect={itemEffectText} followDriver={followDriverText} followPassenger={followPassengerText}";
         }
     }
 
@@ -2064,6 +2467,14 @@ namespace HaCreator.MapSimulator.Pools
         public int MaxHoldDurationMs { get; init; }
         public PreparedSkillHudTextVariant TextVariant { get; init; }
         public bool ShowText { get; init; } = true;
+    }
+
+    public sealed class RemoteItemEffectState
+    {
+        public int ItemId { get; init; }
+        public int? PairCharacterId { get; init; }
+        public ItemEffectAnimationSet Effect { get; init; }
+        public int StartTime { get; init; }
     }
 
     internal readonly struct RemoteDragonHudMetadata

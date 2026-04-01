@@ -26,7 +26,7 @@ namespace HaCreator.MapSimulator.Character
 
     internal readonly struct PlayerMobStatusFrameState
     {
-        public static readonly PlayerMobStatusFrameState Default = new(1f, 0f, false, false, false, false, 0, false, 100, 100, 100);
+        public static readonly PlayerMobStatusFrameState Default = new(1f, 0f, false, false, false, false, 0, false, false, 100, 100, 100);
 
         public PlayerMobStatusFrameState(
             float moveSpeedMultiplier,
@@ -37,6 +37,7 @@ namespace HaCreator.MapSimulator.Character
             bool inputReversed,
             int forcedHorizontalDirection,
             bool hpRecoveryReversed,
+            bool pickupBlocked,
             int maxHpPercentCap,
             int maxMpPercentCap,
             int hpRecoveryDamagePercent)
@@ -49,6 +50,7 @@ namespace HaCreator.MapSimulator.Character
             InputReversed = inputReversed;
             ForcedHorizontalDirection = forcedHorizontalDirection;
             HpRecoveryReversed = hpRecoveryReversed;
+            PickupBlocked = pickupBlocked;
             MaxHpPercentCap = maxHpPercentCap;
             MaxMpPercentCap = maxMpPercentCap;
             HpRecoveryDamagePercent = hpRecoveryDamagePercent;
@@ -62,6 +64,7 @@ namespace HaCreator.MapSimulator.Character
         public bool InputReversed { get; }
         public int ForcedHorizontalDirection { get; }
         public bool HpRecoveryReversed { get; }
+        public bool PickupBlocked { get; }
         public int MaxHpPercentCap { get; }
         public int MaxMpPercentCap { get; }
         public int HpRecoveryDamagePercent { get; }
@@ -142,6 +145,7 @@ namespace HaCreator.MapSimulator.Character
             bool jumpBlocked = movementLocked || seduced || HasStatus(PlayerMobStatusEffect.Weakness);
             bool polymorphed = HasStatus(PlayerMobStatusEffect.Polymorph);
             bool skillCastBlocked = movementLocked || seduced || banished || polymorphed || HasStatus(PlayerMobStatusEffect.Seal);
+            bool pickupBlocked = movementLocked || seduced;
             float moveSpeedMultiplier = ResolveMoveSpeedMultiplier();
             float additionalMissChance = ResolveAdditionalMissChance();
             bool inputReversed = HasStatus(PlayerMobStatusEffect.ReverseInput);
@@ -159,6 +163,7 @@ namespace HaCreator.MapSimulator.Character
                 inputReversed,
                 forcedHorizontalDirection,
                 hpRecoveryReversed,
+                pickupBlocked,
                 maxVitalPercentCap,
                 maxVitalPercentCap,
                 hpRecoveryDamagePercent);
@@ -203,6 +208,11 @@ namespace HaCreator.MapSimulator.Character
 
         public bool TryApplyMobSkill(int skillId, MobSkillRuntimeData runtimeData, int currentTime, float sourceX = 0f)
         {
+            return TryApplyMobSkill(skillId, runtimeData, currentTime, sourceX, elementAttribute: 0);
+        }
+
+        public bool TryApplyMobSkill(int skillId, MobSkillRuntimeData runtimeData, int currentTime, float sourceX, int elementAttribute)
+        {
             if (_player == null || runtimeData == null)
             {
                 return false;
@@ -210,6 +220,16 @@ namespace HaCreator.MapSimulator.Character
 
             int propPercent = runtimeData.PropPercent > 0 ? runtimeData.PropPercent : 100;
             if (propPercent < 100 && Random.Shared.Next(100) >= Math.Clamp(propPercent, 0, 100))
+            {
+                return false;
+            }
+
+            if (ShouldResistMobSkillStatus(
+                    skillId,
+                    _skills?.GetActiveAbnormalStatusResistancePercent(currentTime) ?? 0,
+                    _skills?.GetActiveElementalResistancePercent(currentTime) ?? 0,
+                    elementAttribute,
+                    Random.Shared.Next(100)))
             {
                 return false;
             }
@@ -276,6 +296,37 @@ namespace HaCreator.MapSimulator.Character
                 default:
                     return false;
             }
+        }
+
+        internal static bool ShouldResistMobSkillStatus(
+            int skillId,
+            int abnormalStatusResistancePercent,
+            int elementalResistancePercent,
+            int elementAttribute,
+            int rollPercent)
+        {
+            if (!IsResistibleMobSkillStatus(skillId))
+            {
+                return false;
+            }
+
+            int resistancePercent = Math.Max(0, abnormalStatusResistancePercent);
+            if (elementAttribute > 0)
+            {
+                resistancePercent += Math.Max(0, elementalResistancePercent);
+            }
+
+            resistancePercent = Math.Clamp(resistancePercent, 0, 100);
+            return resistancePercent > 0 && Math.Clamp(rollPercent, 0, 99) < resistancePercent;
+        }
+
+        private static bool IsResistibleMobSkillStatus(int skillId)
+        {
+            return skillId switch
+            {
+                120 or 121 or 122 or 123 or 124 or 125 or 126 or 128 or 129 or 131 or 132 or 133 or 136 or 137 => true,
+                _ => false
+            };
         }
 
         private bool HasStatus(PlayerMobStatusEffect effect)

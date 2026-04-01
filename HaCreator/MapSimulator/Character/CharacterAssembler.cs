@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using HaCreator.MapSimulator.Character.Skills;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
@@ -806,27 +807,7 @@ namespace HaCreator.MapSimulator.Character
 
         private static bool IsMechanicVehicleAction(CharacterPart tamingMobPart, string actionName)
         {
-            if (string.IsNullOrWhiteSpace(actionName))
-            {
-                return false;
-            }
-
-            return actionName.StartsWith("tank_", StringComparison.OrdinalIgnoreCase)
-                   || actionName.StartsWith("siege_", StringComparison.OrdinalIgnoreCase)
-                   || actionName.StartsWith("flamethrower", StringComparison.OrdinalIgnoreCase)
-                   || actionName.StartsWith("rbooster", StringComparison.OrdinalIgnoreCase)
-                   || actionName.StartsWith("gatlingshot", StringComparison.OrdinalIgnoreCase)
-                   || actionName.StartsWith("drillrush", StringComparison.OrdinalIgnoreCase)
-                   || actionName.StartsWith("earthslug", StringComparison.OrdinalIgnoreCase)
-                   || actionName.StartsWith("rpunch", StringComparison.OrdinalIgnoreCase)
-                   || actionName.StartsWith("mbooster", StringComparison.OrdinalIgnoreCase)
-                   || actionName.StartsWith("msummon", StringComparison.OrdinalIgnoreCase)
-                   || actionName.StartsWith("mRush", StringComparison.OrdinalIgnoreCase)
-                   || actionName.StartsWith("alert3", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "ride2", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "getoff2", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "herbalism_mechanic", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "mining_mechanic", StringComparison.OrdinalIgnoreCase)
+            return ClientOwnedVehicleSkillClassifier.IsMechanicVehicleActionName(actionName, includeTransformStates: true)
                    || IsMechanicMountOnlyAction(tamingMobPart, actionName);
         }
 

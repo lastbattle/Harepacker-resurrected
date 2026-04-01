@@ -63,6 +63,7 @@ namespace HaCreator.MapSimulator.Fields
             _ambientWeather != WeatherType.None ||
             _allowedItems.Count > 0 ||
             FieldInteractionRestrictionEvaluator.GetFieldEntryItemRestrictionMessages(_fieldLimit).Count > 0 ||
+            FieldInteractionRestrictionEvaluator.GetFieldEntryInteractionRestrictionMessages(_fieldLimit).Count > 0 ||
             FieldInteractionRestrictionEvaluator.GetJumpRestrictionMessage(_fieldLimit) != null ||
             FieldInteractionRestrictionEvaluator.GetTeleportItemRestrictionMessage(_fieldLimit) != null ||
             FieldInteractionRestrictionEvaluator.GetTransferRestrictionMessage(_fieldLimit) != null ||
@@ -279,6 +280,12 @@ namespace HaCreator.MapSimulator.Fields
             for (int i = 0; i < itemRestrictionNotices.Count; i++)
             {
                 messages.Add(itemRestrictionNotices[i]);
+            }
+
+            IReadOnlyList<string> interactionRestrictionNotices = FieldInteractionRestrictionEvaluator.GetFieldEntryInteractionRestrictionMessages(_fieldLimit);
+            for (int i = 0; i < interactionRestrictionNotices.Count; i++)
+            {
+                messages.Add(interactionRestrictionNotices[i]);
             }
 
             if (_moveLimit is > 0)

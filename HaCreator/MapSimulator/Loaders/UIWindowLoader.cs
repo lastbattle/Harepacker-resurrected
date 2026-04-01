@@ -1808,7 +1808,7 @@ namespace HaCreator.MapSimulator.Loaders
 
             RegisterLoginTitleWindow(manager, loginImage, soundUIImage, device, screenWidth, screenHeight);
 
-            RegisterChannelSelectionWindows(manager, uiWindow1Image, uiWindow2Image, soundUIImage, device, screenWidth, screenHeight);
+            RegisterChannelSelectionWindows(manager, loginImage, uiWindow1Image, uiWindow2Image, soundUIImage, device, screenWidth, screenHeight);
 
             RegisterLoginRecommendWorldWindow(manager, loginImage, soundUIImage, device, screenWidth, screenHeight);
 
@@ -2282,7 +2282,7 @@ namespace HaCreator.MapSimulator.Loaders
 
 
 
-            RegisterChannelSelectionWindows(manager, uiWindow1Image, uiWindow2Image, soundUIImage, device, screenWidth, screenHeight);
+            RegisterChannelSelectionWindows(manager, null, uiWindow1Image, uiWindow2Image, soundUIImage, device, screenWidth, screenHeight);
 
 
 
@@ -2364,7 +2364,7 @@ namespace HaCreator.MapSimulator.Loaders
 
                 new Point(x + (cascade * 8), y + (cascade * 8)));
 
-            RegisterClassCompetitionWindow(manager, basicImage, soundUIImage, device,
+            RegisterClassCompetitionWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
 
                 new Point(x + (cascade * 5), y + (cascade * 2)));
             RegisterKeyConfigWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
@@ -2654,6 +2654,8 @@ namespace HaCreator.MapSimulator.Loaders
 
             UIWindowManager manager,
 
+            WzImage loginImage,
+
             WzImage uiWindow1Image,
 
             WzImage uiWindow2Image,
@@ -2678,11 +2680,13 @@ namespace HaCreator.MapSimulator.Loaders
 
 
 
+            WzSubProperty loginWorldSelectProperty = loginImage?["WorldSelect"] as WzSubProperty;
+
             WzSubProperty channelProperty = uiWindow2Image?["Channel"] as WzSubProperty
 
                 ?? uiWindow1Image?["Channel"] as WzSubProperty;
 
-            if (channelProperty == null)
+            if (loginWorldSelectProperty == null && channelProperty == null)
 
             {
 
@@ -2700,7 +2704,9 @@ namespace HaCreator.MapSimulator.Loaders
 
             Dictionary<int, Texture2D> worldBadges = new Dictionary<int, Texture2D>();
 
-            WzSubProperty worldBadgeProperty = channelProperty["world"] as WzSubProperty;
+            WzSubProperty worldBadgeProperty = loginWorldSelectProperty?["world"] as WzSubProperty
+
+                ?? channelProperty?["world"] as WzSubProperty;
 
             foreach (WzImageProperty property in worldBadgeProperty?.WzProperties ?? Enumerable.Empty<WzImageProperty>())
 
@@ -2740,15 +2746,20 @@ namespace HaCreator.MapSimulator.Loaders
 
 
 
-            WorldSelectWindow worldSelectWindow = CreateWorldSelectWindow(device, worldBadges);
+            Texture2D worldSelectFrameTexture = LoadCanvasTexture(loginWorldSelectProperty?["scroll"]?["0"] as WzSubProperty, "0_bak", device);
+            int worldSelectFrameWidth = worldSelectFrameTexture?.Width ?? 564;
+            int worldSelectFrameHeight = worldSelectFrameTexture?.Height ?? 177;
+            WorldSelectWindow worldSelectWindow = CreateWorldSelectWindow(loginWorldSelectProperty, clickSound, overSound, device, worldBadges);
 
-            worldSelectWindow.Position = new Point(Math.Max(24, (screenWidth / 2) - 282), Math.Max(24, (screenHeight / 2) - 88));
+            worldSelectWindow.Position = new Point(
+                Math.Max(24, (screenWidth / 2) - (worldSelectFrameWidth / 2)),
+                Math.Max(24, (screenHeight / 2) - (worldSelectFrameHeight / 2)));
 
             manager.RegisterCustomWindow(worldSelectWindow);
 
 
 
-            ChannelSelectWindow channelSelectWindow = CreateChannelSelectWindow(channelProperty, clickSound, overSound, device, worldBadges);
+            ChannelSelectWindow channelSelectWindow = CreateChannelSelectWindow(loginWorldSelectProperty, channelProperty, clickSound, overSound, device, worldBadges);
 
             if (channelSelectWindow != null)
 
@@ -2762,7 +2773,7 @@ namespace HaCreator.MapSimulator.Loaders
 
 
 
-            ChannelShiftWindow channelShiftWindow = CreateChannelShiftWindow(channelProperty, device, worldBadges);
+            ChannelShiftWindow channelShiftWindow = CreateChannelShiftWindow(loginWorldSelectProperty, channelProperty, device, worldBadges);
 
             if (channelShiftWindow != null)
 
@@ -2970,27 +2981,30 @@ namespace HaCreator.MapSimulator.Loaders
 
 
 
-        private static WorldSelectWindow CreateWorldSelectWindow(GraphicsDevice device, Dictionary<int, Texture2D> worldBadges)
+        private static WorldSelectWindow CreateWorldSelectWindow(
+            WzSubProperty loginWorldSelectProperty,
+            WzBinaryProperty clickSound,
+            WzBinaryProperty overSound,
+            GraphicsDevice device,
+            Dictionary<int, Texture2D> worldBadges)
 
         {
 
-            Texture2D frameTexture = CreatePlaceholderWindowTexture(device, 564, 177, "World Select");
-
-            Texture2D highlightTexture = CreateSolidTexture(device, Color.White);
+            WzSubProperty worldScrollProperty = loginWorldSelectProperty?["scroll"]?["0"] as WzSubProperty;
+            Texture2D frameTexture = LoadCanvasTexture(worldScrollProperty, "0_bak", device)
+                ?? CreatePlaceholderWindowTexture(device, 564, 177, "World Select");
+            Texture2D overlayTexture = LoadCanvasTexture(worldScrollProperty, "0", device);
+            Point overlayOffset = ResolveCanvasOffset(worldScrollProperty, "0", Point.Zero);
+            WzSubProperty worldButtonProperty = loginWorldSelectProperty?["BtWorld"] as WzSubProperty;
 
             List<(int worldId, UIObject button, Texture2D icon)> worldButtons = new List<(int, UIObject, Texture2D)>();
-
-
-
-            int column = 0;
-
-            int row = 0;
 
             foreach (KeyValuePair<int, Texture2D> badge in worldBadges.OrderBy(pair => pair.Key))
 
             {
 
-                UIObject button = CreateTextureButton(badge.Value, badge.Value);
+                UIObject button = LoadButton(worldButtonProperty, badge.Key.ToString(CultureInfo.InvariantCulture), clickSound, overSound, device)
+                    ?? CreateTextureButton(badge.Value, badge.Value);
 
                 if (button == null)
 
@@ -2999,28 +3013,7 @@ namespace HaCreator.MapSimulator.Loaders
                     continue;
 
                 }
-
-
-
-                button.X = 24 + (column * 132);
-
-                button.Y = 32 + (row * 22);
-
                 worldButtons.Add((badge.Key, button, badge.Value));
-
-
-
-                row++;
-
-                if (row == 6)
-
-                {
-
-                    row = 0;
-
-                    column++;
-
-                }
 
             }
 
@@ -3028,16 +3021,20 @@ namespace HaCreator.MapSimulator.Loaders
 
             return new WorldSelectWindow(
                 new DXObject(0, 0, frameTexture, 0),
+                overlayTexture,
+                overlayOffset,
                 null,
-                Point.Zero,
-                highlightTexture,
-                worldButtons);
+                worldButtons,
+                LoadButton(loginWorldSelectProperty, "BtViewChoice", clickSound, overSound, device),
+                LoadButton(loginWorldSelectProperty, "BtViewAll", clickSound, overSound, device));
 
         }
 
 
 
         private static ChannelSelectWindow CreateChannelSelectWindow(
+
+            WzSubProperty loginWorldSelectProperty,
 
             WzSubProperty channelProperty,
 
@@ -3051,7 +3048,10 @@ namespace HaCreator.MapSimulator.Loaders
 
         {
 
-            Texture2D frameTexture = LoadCanvasTexture(channelProperty, "backgrnd", device);
+            WzSubProperty loginChannelProperty = loginWorldSelectProperty?["channel"] as WzSubProperty;
+
+            Texture2D frameTexture = LoadCanvasTexture(loginWorldSelectProperty, "chBackgrn", device)
+                ?? LoadCanvasTexture(channelProperty, "backgrnd", device);
 
             if (frameTexture == null)
 
@@ -3063,27 +3063,42 @@ namespace HaCreator.MapSimulator.Loaders
 
 
 
-            Texture2D overlayTexture2 = LoadCanvasTexture(channelProperty, "backgrnd2", device);
+            Texture2D overlayTexture2 = LoadCanvasTexture(loginWorldSelectProperty, "chBackgrn_Bak", device)
+                ?? LoadCanvasTexture(channelProperty, "backgrnd2", device);
 
-            Texture2D overlayTexture3 = LoadCanvasTexture(channelProperty, "backgrnd3", device);
+            Texture2D overlayTexture3 = LoadCanvasTexture(loginWorldSelectProperty?["scroll"]?["1"] as WzSubProperty, "0", device)
+                ?? LoadCanvasTexture(channelProperty, "backgrnd3", device);
 
-            Point overlayOffset2 = GetCanvasOffset(channelProperty["backgrnd2"] as WzCanvasProperty);
+            Point overlayOffset2 = ResolveCanvasOffset(loginWorldSelectProperty?["chBackgrn_Bak"] as WzCanvasProperty, Point.Zero);
 
-            Point overlayOffset3 = GetCanvasOffset(channelProperty["backgrnd3"] as WzCanvasProperty);
+            Point overlayOffset3 = ResolveCanvasOffset(loginWorldSelectProperty?["scroll"]?["1"]?["0"] as WzCanvasProperty, Point.Zero);
+
+            if (overlayOffset2 == Point.Zero)
+            {
+                overlayOffset2 = GetCanvasOffset(channelProperty?["backgrnd2"] as WzCanvasProperty);
+            }
+
+            if (overlayOffset3 == Point.Zero)
+            {
+                overlayOffset3 = GetCanvasOffset(channelProperty?["backgrnd3"] as WzCanvasProperty);
+            }
 
 
 
-            UIObject changeButton = LoadButton(channelProperty, "BtChange", clickSound, overSound, device);
+            UIObject changeButton = LoadButton(loginWorldSelectProperty, "BtGoworld", clickSound, overSound, device)
+                ?? LoadButton(channelProperty, "BtChange", clickSound, overSound, device);
 
-            UIObject cancelButton = LoadButton(channelProperty, "BtCancel", clickSound, overSound, device);
+            UIObject cancelButton = loginWorldSelectProperty != null
+                ? null
+                : LoadButton(channelProperty, "BtCancel", clickSound, overSound, device);
 
             if (changeButton != null)
 
             {
 
-                changeButton.X = 278;
+                changeButton.X = loginWorldSelectProperty != null ? 230 : 278;
 
-                changeButton.Y = 20;
+                changeButton.Y = loginWorldSelectProperty != null ? 43 : 20;
 
             }
 
@@ -3101,19 +3116,45 @@ namespace HaCreator.MapSimulator.Loaders
 
 
 
-            Texture2D channelNormalTexture = LoadCanvasTexture(channelProperty, "channel0", device);
-
-            Texture2D channelSelectedTexture = LoadCanvasTexture(channelProperty, "channel1", device) ?? channelNormalTexture;
-
-            WzSubProperty channelIconProperty = channelProperty["ch"] as WzSubProperty;
-
             List<(int channelIndex, UIObject button, Texture2D icon)> channelButtons = new List<(int, UIObject, Texture2D)>();
 
             for (int channelIndex = 0; channelIndex < 20; channelIndex++)
 
             {
 
-                UIObject button = CreateTextureButton(channelNormalTexture, channelSelectedTexture);
+                UIObject button;
+
+                Texture2D icon;
+
+                if (loginChannelProperty?[channelIndex.ToString(CultureInfo.InvariantCulture)] is WzSubProperty loginChannelEntry)
+
+                {
+
+                    Texture2D normalTexture = LoadCanvasTexture(loginChannelEntry, "normal", device);
+
+                    Texture2D disabledTexture = LoadCanvasTexture(loginChannelEntry, "disabled", device) ?? normalTexture;
+
+                    button = CreateTextureButton(normalTexture, disabledTexture, normalTexture, normalTexture);
+
+                    icon = null;
+
+                }
+
+                else
+
+                {
+
+                    Texture2D channelNormalTexture = LoadCanvasTexture(channelProperty, "channel0", device);
+
+                    Texture2D channelSelectedTexture = LoadCanvasTexture(channelProperty, "channel1", device) ?? channelNormalTexture;
+
+                    WzSubProperty channelIconProperty = channelProperty?["ch"] as WzSubProperty;
+
+                    button = CreateTextureButton(channelNormalTexture, channelSelectedTexture);
+
+                    icon = LoadCanvasTexture(channelIconProperty, channelIndex.ToString(CultureInfo.InvariantCulture), device);
+
+                }
 
                 if (button == null)
 
@@ -3133,7 +3174,7 @@ namespace HaCreator.MapSimulator.Loaders
 
                 button.Y = 93 + (row * 29);
 
-                channelButtons.Add((channelIndex, button, LoadCanvasTexture(channelIconProperty, channelIndex.ToString(), device)));
+                channelButtons.Add((channelIndex, button, icon));
 
             }
 
@@ -3167,6 +3208,8 @@ namespace HaCreator.MapSimulator.Loaders
 
         private static ChannelShiftWindow CreateChannelShiftWindow(
 
+            WzSubProperty loginWorldSelectProperty,
+
             WzSubProperty channelProperty,
 
             GraphicsDevice device,
@@ -3175,7 +3218,10 @@ namespace HaCreator.MapSimulator.Loaders
 
         {
 
-            Texture2D frameTexture = LoadCanvasTexture(channelProperty, "backgrnd", device);
+            WzSubProperty loginChannelProperty = loginWorldSelectProperty?["channel"] as WzSubProperty;
+
+            Texture2D frameTexture = LoadCanvasTexture(loginWorldSelectProperty, "chBackgrn", device)
+                ?? LoadCanvasTexture(channelProperty, "backgrnd", device);
 
             if (frameTexture == null)
 
@@ -3189,13 +3235,15 @@ namespace HaCreator.MapSimulator.Loaders
 
             Dictionary<int, Texture2D> channelIcons = new Dictionary<int, Texture2D>();
 
-            WzSubProperty channelIconProperty = channelProperty["ch"] as WzSubProperty;
+            WzSubProperty channelIconProperty = channelProperty?["ch"] as WzSubProperty;
 
             for (int channelIndex = 0; channelIndex < 20; channelIndex++)
 
             {
 
-                Texture2D channelTexture = LoadCanvasTexture(channelIconProperty, channelIndex.ToString(), device);
+                Texture2D channelTexture = loginChannelProperty?[channelIndex.ToString(CultureInfo.InvariantCulture)] is WzSubProperty loginChannelEntry
+                    ? LoadCanvasTexture(loginChannelEntry, "normal", device)
+                    : LoadCanvasTexture(channelIconProperty, channelIndex.ToString(CultureInfo.InvariantCulture), device);
 
                 if (channelTexture != null)
 
@@ -3213,15 +3261,22 @@ namespace HaCreator.MapSimulator.Loaders
 
                 new DXObject(0, 0, frameTexture, 0),
 
-                LoadCanvasTexture(channelProperty, "backgrnd2", device),
+                LoadCanvasTexture(loginWorldSelectProperty, "chBackgrn_Bak", device)
+                    ?? LoadCanvasTexture(channelProperty, "backgrnd2", device),
 
-                GetCanvasOffset(channelProperty["backgrnd2"] as WzCanvasProperty),
+                ResolveCanvasOffset(loginWorldSelectProperty?["chBackgrn_Bak"] as WzCanvasProperty, Point.Zero) != Point.Zero
+                    ? ResolveCanvasOffset(loginWorldSelectProperty?["chBackgrn_Bak"] as WzCanvasProperty, Point.Zero)
+                    : GetCanvasOffset(channelProperty?["backgrnd2"] as WzCanvasProperty),
 
-                LoadCanvasTexture(channelProperty, "backgrnd3", device),
+                LoadCanvasTexture(loginWorldSelectProperty?["scroll"]?["1"] as WzSubProperty, "0", device)
+                    ?? LoadCanvasTexture(channelProperty, "backgrnd3", device),
 
-                GetCanvasOffset(channelProperty["backgrnd3"] as WzCanvasProperty),
+                ResolveCanvasOffset(loginWorldSelectProperty?["scroll"]?["1"]?["0"] as WzCanvasProperty, Point.Zero) != Point.Zero
+                    ? ResolveCanvasOffset(loginWorldSelectProperty?["scroll"]?["1"]?["0"] as WzCanvasProperty, Point.Zero)
+                    : GetCanvasOffset(channelProperty?["backgrnd3"] as WzCanvasProperty),
 
-                LoadCanvasTexture(channelProperty, "channel1", device),
+                LoadCanvasTexture(loginWorldSelectProperty?["channel"]?["chSelect"] as WzSubProperty, "0", device)
+                    ?? LoadCanvasTexture(channelProperty, "channel1", device),
 
                 worldBadges,
 
@@ -3643,6 +3698,8 @@ namespace HaCreator.MapSimulator.Loaders
 
             UIWindowManager manager,
 
+            WzImage uiWindow2Image,
+
             WzImage basicImage,
 
             WzImage soundUIImage,
@@ -3657,7 +3714,7 @@ namespace HaCreator.MapSimulator.Loaders
                 return;
             }
 
-            UIWindowBase classCompetitionWindow = CreateClassCompetitionWindow(basicImage, soundUIImage, device, position);
+            UIWindowBase classCompetitionWindow = CreateClassCompetitionWindow(uiWindow2Image, basicImage, soundUIImage, device, position);
             if (classCompetitionWindow != null)
             {
                 manager.RegisterCustomWindow(classCompetitionWindow);
@@ -5343,6 +5400,7 @@ namespace HaCreator.MapSimulator.Loaders
 
 
         private static UIWindowBase CreateClassCompetitionWindow(
+            WzImage uiWindow2Image,
             WzImage basicImage,
 
             WzImage soundUIImage,
@@ -5353,7 +5411,7 @@ namespace HaCreator.MapSimulator.Loaders
 
         {
 
-            Texture2D frameTexture = CreatePlaceholderWindowTexture(device, 292, 164, "Class Competition");
+            Texture2D frameTexture = CreatePlaceholderWindowTexture(device, 312, 389, "Class Competition");
 
             UtilityPanelWindow window = new UtilityPanelWindow(
 
@@ -5382,6 +5440,13 @@ namespace HaCreator.MapSimulator.Loaders
             WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
 
             WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
+            UIObject okButton = LoadButton(uiWindow2Image?["UtilDlgEx"] as WzSubProperty, "BtOK", btClickSound, btOverSound, device);
+            if (okButton != null)
+            {
+                okButton.X = 124;
+                okButton.Y = 355;
+                window.RegisterButton(okButton, window.Hide);
+            }
 
             WzSubProperty closeButtonProperty = basicImage?["BtClose"] as WzSubProperty;
 
@@ -9204,6 +9269,7 @@ namespace HaCreator.MapSimulator.Loaders
             WzSubProperty tabShopDisabledProperty = tabShopProperty?["disabled"] as WzSubProperty;
 
             WzSubProperty fadeYesNoProperty = uiWindow2Image?["FadeYesNo"] as WzSubProperty;
+            WzSubProperty utilDlgExProperty = uiWindow2Image?["UtilDlgEx"] as WzSubProperty;
 
             WzSubProperty basicYesProperty = basicImage?["BtYes"] as WzSubProperty;
 
@@ -9325,6 +9391,9 @@ namespace HaCreator.MapSimulator.Loaders
 
             }
 
+            UIObject modalPreviousButton = LoadButton(utilDlgExProperty, "BtPrev", btClickSound, btOverSound, device);
+            UIObject modalNextButton = LoadButton(utilDlgExProperty, "BtNext", btClickSound, btOverSound, device);
+
 
 
             AdminShopDialogUI window = new AdminShopDialogUI(
@@ -9360,6 +9429,10 @@ namespace HaCreator.MapSimulator.Loaders
                 modalConfirmButton,
 
                 modalCancelButton,
+
+                modalPreviousButton,
+
+                modalNextButton,
 
                 device)
 
@@ -10108,6 +10181,26 @@ namespace HaCreator.MapSimulator.Loaders
             {
 
                 inventory.AddItem(InventoryType.CASH, 5534000, null, 1); // Urete's Time Lab
+
+            }
+
+
+
+            if (inventory.GetItemCount(InventoryType.USE, 2040759) <= 0)
+
+            {
+
+                inventory.AddItem(InventoryType.USE, 2040759, null, 1); // Vega-enabled 60% scroll family
+
+            }
+
+
+
+            if (inventory.GetItemCount(InventoryType.USE, 2040760) <= 0)
+
+            {
+
+                inventory.AddItem(InventoryType.USE, 2040760, null, 1); // Vega-enabled 10% scroll family
 
             }
 

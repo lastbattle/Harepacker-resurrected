@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.Pools;
@@ -53,6 +54,7 @@ namespace HaCreator.MapSimulator.Character
         private readonly Dictionary<int, CharacterPart> _equipCache = new();
         private readonly Dictionary<int, CharacterPart> _morphCache = new();
         private readonly Dictionary<int, PortableChair> _portableChairCache = new();
+        private readonly Dictionary<int, ItemEffectAnimationSet> _itemEffectCache = new();
         private readonly Dictionary<CharacterGender, StarterAvatarRandomizationCatalog> _starterAvatarCatalogCache = new();
 
         // Standard actions to load
@@ -482,6 +484,68 @@ namespace HaCreator.MapSimulator.Character
             return chair;
         }
 
+        public ItemEffectAnimationSet LoadItemEffectAnimationSet(int itemId)
+        {
+            if (itemId <= 0)
+            {
+                return null;
+            }
+
+            if (_itemEffectCache.TryGetValue(itemId, out ItemEffectAnimationSet cached))
+            {
+                return cached;
+            }
+
+            WzImage itemEffectImage = Program.FindImage("Effect", "ItemEff.img");
+            if (itemEffectImage == null)
+            {
+                return null;
+            }
+
+            itemEffectImage.ParseImage();
+            WzSubProperty itemEffectProperty = itemEffectImage[itemId.ToString()] as WzSubProperty;
+            if (itemEffectProperty == null)
+            {
+                return null;
+            }
+
+            var effectSet = new ItemEffectAnimationSet
+            {
+                ItemId = itemId
+            };
+
+            foreach (WzImageProperty child in itemEffectProperty.WzProperties)
+            {
+                if (child is not WzSubProperty layerProperty)
+                {
+                    continue;
+                }
+
+                PortableChairLayer layer = LoadPortableChairLayer(layerProperty, $"itemEff/{child.Name}", loop: false);
+                if (layer == null || IsPlaceholderPortableChairLayer(layer))
+                {
+                    continue;
+                }
+
+                if (string.Equals(child.Name, "1", StringComparison.OrdinalIgnoreCase))
+                {
+                    effectSet.SharedLayers.Add(layer);
+                }
+                else
+                {
+                    effectSet.OwnerLayers.Add(layer);
+                }
+            }
+
+            if (effectSet.OwnerLayers.Count == 0 && effectSet.SharedLayers.Count == 0)
+            {
+                return null;
+            }
+
+            _itemEffectCache[itemId] = effectSet;
+            return effectSet;
+        }
+
         private void LoadPortableChairLayers(WzSubProperty chairProperty, ICollection<PortableChairLayer> layers)
         {
             if (chairProperty == null || layers == null)
@@ -531,7 +595,7 @@ namespace HaCreator.MapSimulator.Character
                     continue;
                 }
 
-                PortableChairLayer layer = LoadPortableChairLayer(layerProperty, $"itemEff/{child.Name}");
+                PortableChairLayer layer = LoadPortableChairLayer(layerProperty, $"itemEff/{child.Name}", loop: true);
                 if (layer == null || IsPlaceholderPortableChairLayer(layer))
                 {
                     continue;
@@ -574,16 +638,16 @@ namespace HaCreator.MapSimulator.Character
 
         private PortableChairLayer LoadPortableChairLayer(WzSubProperty layerProperty)
         {
-            return LoadPortableChairLayer(layerProperty, layerProperty?.Name);
+            return LoadPortableChairLayer(layerProperty, layerProperty?.Name, loop: true);
         }
 
-        private PortableChairLayer LoadPortableChairLayer(WzSubProperty layerProperty, string layerName)
+        private PortableChairLayer LoadPortableChairLayer(WzSubProperty layerProperty, string layerName, bool loop)
         {
             var animation = new CharacterAnimation
             {
                 Action = CharacterAction.Custom,
                 ActionName = layerName ?? layerProperty?.Name,
-                Loop = true
+                Loop = loop
             };
 
             var orderedFrames = new List<(int Index, CharacterFrame Frame)>();
@@ -1394,6 +1458,7 @@ namespace HaCreator.MapSimulator.Character
             part.Durability = part.MaxDurability;
             part.SellPrice = GetIntValue(info["price"]) ?? 0;
             part.IsEpic = GetIntValue(info["epic"]) == 1;
+            ApplyGrowthInfo(info, part);
             if (info["dateExpire"] is WzStringProperty expirationProperty)
             {
                 DateTime? expirationDate = expirationProperty.GetDateTime();
@@ -1427,6 +1492,34 @@ namespace HaCreator.MapSimulator.Character
             {
                 part.IconRaw = LoadTexture(canvasRaw);
             }
+        }
+
+        private static void ApplyGrowthInfo(WzImageProperty info, CharacterPart part)
+        {
+            if (info?["level"] is not WzSubProperty levelProperty
+                || levelProperty["info"] is not WzSubProperty levelInfoProperty)
+            {
+                return;
+            }
+
+            int growthMaxLevel = 0;
+            foreach (WzImageProperty child in levelInfoProperty.WzProperties)
+            {
+                if (int.TryParse(child?.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedLevel))
+                {
+                    growthMaxLevel = Math.Max(growthMaxLevel, parsedLevel);
+                }
+            }
+
+            if (growthMaxLevel <= 0)
+            {
+                return;
+            }
+
+            part.HasGrowthInfo = true;
+            part.GrowthLevel = 1;
+            part.GrowthMaxLevel = growthMaxLevel;
+            part.GrowthExpPercent = 0;
         }
 
         private string GetEquipmentFolder(int itemId)

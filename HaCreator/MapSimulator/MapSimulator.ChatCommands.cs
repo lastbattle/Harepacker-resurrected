@@ -748,9 +748,11 @@ namespace HaCreator.MapSimulator
 
                     return TryConfigureSelectCharacterResultPacketPayload(args, out error, out summary);
 
-                case LoginPacketType.ViewAllCharResult:
-
                 case LoginPacketType.SelectCharacterByVacResult:
+
+                    return TryConfigureSelectCharacterByVacResultPacketPayload(args, out error, out summary);
+
+                case LoginPacketType.ViewAllCharResult:
 
                     return TryConfigureViewAllCharPacketPayload(args, out error, out summary);
 
@@ -2670,7 +2672,7 @@ namespace HaCreator.MapSimulator
 
                 "Inspect or drive the dedicated engagement proposal dialog seam",
 
-                "/engage [open <proposerName> <partnerName> [ringItemId] [sealItemId] [message...]|incoming <proposerName> [ringItemId] [sealItemId] [message...]|accept|dismiss|clear|status]",
+                "/engage [open <partnerName> [ringItemId] [message...]|open <proposerName> <partnerName> [ringItemId] [message...]|incoming <proposerName> [ringItemId] [sealItemId] [message...]|accept|dismiss|clear|status]",
 
                 args =>
 
@@ -2689,18 +2691,25 @@ namespace HaCreator.MapSimulator
                     switch (args[0].ToLowerInvariant())
                     {
                         case "open":
-                            if (args.Length < 3)
+                            if (args.Length < 2)
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /engage open <proposerName> <partnerName> [ringItemId] [sealItemId] [message...]");
+                                return ChatCommandHandler.CommandResult.Error("Usage: /engage open <partnerName> [ringItemId] [message...]");
                             }
 
+                            string localProposalOwner = _playerManager?.Player?.Build?.Name;
+                            bool hasExplicitProposer = args.Length >= 3
+                                && !TryParseOptionalPositiveInt(args, 2, out _);
+                            string outgoingProposerName = hasExplicitProposer ? args[1] : localProposalOwner;
+                            string outgoingPartnerName = hasExplicitProposer ? args[2] : args[1];
+                            int ringItemArgumentIndex = hasExplicitProposer ? 3 : 2;
+                            int messageArgumentIndex = hasExplicitProposer ? 4 : 3;
+
                             return ChatCommandHandler.CommandResult.Ok(
-                                OpenEngagementProposal(
-                                    args[1],
-                                    args[2],
-                                    TryParseOptionalPositiveInt(args, 3, out int openRingItemId) ? openRingItemId : EngagementProposalRuntime.DefaultRingItemId,
-                                    TryParseOptionalPositiveInt(args, 4, out int openSealItemId) ? openSealItemId : EngagementProposalRuntime.DefaultSealItemId,
-                                    args.Length > 5 ? string.Join(" ", args, 5, args.Length - 5) : null));
+                                OpenOutgoingEngagementProposal(
+                                    outgoingProposerName,
+                                    outgoingPartnerName,
+                                    TryParseOptionalPositiveInt(args, ringItemArgumentIndex, out int openRingItemId) ? openRingItemId : EngagementProposalRuntime.DefaultRingItemId,
+                                    args.Length > messageArgumentIndex ? string.Join(" ", args, messageArgumentIndex, args.Length - messageArgumentIndex) : null));
 
                         case "incoming":
                             if (args.Length < 2)
@@ -2732,7 +2741,7 @@ namespace HaCreator.MapSimulator
                             return ChatCommandHandler.CommandResult.Ok(ClearEngagementProposal());
 
                         default:
-                            return ChatCommandHandler.CommandResult.Error("Usage: /engage [open <proposerName> <partnerName> [ringItemId] [sealItemId] [message...]|incoming <proposerName> [ringItemId] [sealItemId] [message...]|accept|dismiss|clear|status]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /engage [open <partnerName> [ringItemId] [message...]|open <proposerName> <partnerName> [ringItemId] [message...]|incoming <proposerName> [ringItemId] [sealItemId] [message...]|accept|dismiss|clear|status]");
                     }
                 });
 
@@ -2744,7 +2753,7 @@ namespace HaCreator.MapSimulator
 
                 "Inspect or update guild boss healer and pulley state",
 
-                "/guildboss [status|transport [status|start [port]|stop]|healer <y>|pulley <state>|packet <344|345> <value>|packetraw <hex>]",
+                "/guildboss [status|transport [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|healer <y>|pulley <state>|packet <344|345> <value>|packetraw <hex>]",
 
                 args =>
 
@@ -2768,7 +2777,7 @@ namespace HaCreator.MapSimulator
 
                         return ChatCommandHandler.CommandResult.Info(
 
-                            $"{guildBoss.DescribeStatus()}{Environment.NewLine}{_guildBossTransport.LastStatus}{Environment.NewLine}{_guildBossOfficialSessionBridge.LastStatus}");
+                            $"{guildBoss.DescribeStatus()}{Environment.NewLine}{_guildBossTransport.DescribeStatus()}{Environment.NewLine}{_guildBossOfficialSessionBridge.DescribeStatus()}");
 
                     }
 
@@ -2784,7 +2793,7 @@ namespace HaCreator.MapSimulator
 
                             return ChatCommandHandler.CommandResult.Info(
 
-                                $"{guildBoss.DescribeStatus()}{Environment.NewLine}{_guildBossTransport.LastStatus}{Environment.NewLine}{_guildBossOfficialSessionBridge.LastStatus}");
+                                $"{guildBoss.DescribeStatus()}{Environment.NewLine}{_guildBossTransport.DescribeStatus()}{Environment.NewLine}{_guildBossOfficialSessionBridge.DescribeStatus()}");
 
                         }
 
@@ -2842,7 +2851,7 @@ namespace HaCreator.MapSimulator
 
                             return ChatCommandHandler.CommandResult.Info(
 
-                                $"{guildBoss.DescribeStatus()}{Environment.NewLine}{_guildBossOfficialSessionBridge.LastStatus}");
+                                $"{guildBoss.DescribeStatus()}{Environment.NewLine}{_guildBossOfficialSessionBridge.DescribeStatus()}");
 
                         }
 

@@ -112,7 +112,6 @@ namespace HaCreator.MapSimulator.UI
             public string Name { get; init; } = string.Empty;
             public string LocationSummary { get; init; } = string.Empty;
             public int Channel { get; init; } = 1;
-            public string CollectionStatusOverride { get; init; }
         }
 
         public readonly struct UserInfoActionContext
@@ -190,8 +189,8 @@ namespace HaCreator.MapSimulator.UI
         private UIObject _popupUpButton;
         private UIObject _popupDownButton;
         private PersonalityTooltipVisual _personalityTooltipVisual;
-        private Func<ItemMakerProgressionSnapshot> _collectionSnapshotProvider;
-        private Func<MonsterBookSnapshot> _monsterBookSnapshotProvider;
+        private Func<CharacterBuild, ItemMakerProgressionSnapshot> _collectionSnapshotProvider;
+        private Func<CharacterBuild, MonsterBookSnapshot> _monsterBookSnapshotProvider;
         private Func<RankDeltaSnapshot> _rankDeltaProvider;
         private AuxiliaryPopupKind _activePopup;
         private int _selectedPetTabIndex;
@@ -477,12 +476,12 @@ namespace HaCreator.MapSimulator.UI
             UpdateButtonStates();
         }
 
-        public void SetCollectionSnapshotProvider(Func<ItemMakerProgressionSnapshot> snapshotProvider)
+        public void SetCollectionSnapshotProvider(Func<CharacterBuild, ItemMakerProgressionSnapshot> snapshotProvider)
         {
             _collectionSnapshotProvider = snapshotProvider;
         }
 
-        public void SetMonsterBookSnapshotProvider(Func<MonsterBookSnapshot> snapshotProvider)
+        public void SetMonsterBookSnapshotProvider(Func<CharacterBuild, MonsterBookSnapshot> snapshotProvider)
         {
             _monsterBookSnapshotProvider = snapshotProvider;
         }
@@ -1758,7 +1757,7 @@ namespace HaCreator.MapSimulator.UI
 
         private MonsterBookSnapshot GetMonsterBookSnapshot()
         {
-            return _monsterBookSnapshotProvider?.Invoke() ?? new MonsterBookSnapshot();
+            return _monsterBookSnapshotProvider?.Invoke(_inspectionTarget?.Build ?? _characterBuild) ?? new MonsterBookSnapshot();
         }
 
         private string BuildCollectFamilySummary(ItemMakerProgressionSnapshot snapshot, ItemMakerRecipeFamily family)
@@ -1795,11 +1794,6 @@ namespace HaCreator.MapSimulator.UI
 
         private string BuildCollectStatusText(ItemMakerProgressionSnapshot progression, MonsterBookSnapshot snapshot)
         {
-            if (IsRemoteInspectionActive() && !string.IsNullOrWhiteSpace(_inspectionTarget?.CollectionStatusOverride))
-            {
-                return _inspectionTarget.CollectionStatusOverride;
-            }
-
             string bookText = snapshot.TotalCardTypes > 0
                 ? $"Monster Book {snapshot.OwnedCardTypes}/{snapshot.TotalCardTypes}"
                 : "Monster Book local only";
@@ -1814,7 +1808,7 @@ namespace HaCreator.MapSimulator.UI
             string medalName = GetEquippedItemName(EquipSlot.Medal);
             return string.Equals(medalName, "-", StringComparison.Ordinal)
                 ? IsRemoteInspectionActive()
-                    ? "Medal: remote medal payload unavailable"
+                    ? "Medal: none equipped on inspected build"
                     : "Medal: none equipped locally"
                 : $"Medal: {medalName}";
         }
@@ -1829,9 +1823,11 @@ namespace HaCreator.MapSimulator.UI
 
             int charm = Math.Max(0, _characterBuild?.TraitCharm ?? 0);
             return _characterBuild?.IsPocketSlotAvailable == true
-                ? $"Pocket unlocked at Charm {charm}"
+                ? IsRemoteInspectionActive()
+                    ? $"Pocket unlocked on inspected build (Charm {charm})"
+                    : $"Pocket unlocked at Charm {charm}"
                 : IsRemoteInspectionActive()
-                    ? $"Pocket state ({charm}/30 Charm) from inspected build"
+                    ? $"Pocket locked on inspected build ({charm}/30 Charm)"
                     : $"Pocket locked ({charm}/30 Charm)";
         }
 
@@ -2104,12 +2100,7 @@ namespace HaCreator.MapSimulator.UI
 
         private ItemMakerProgressionSnapshot GetCollectionSnapshot()
         {
-            if (IsRemoteInspectionActive())
-            {
-                return ItemMakerProgressionSnapshot.Default;
-            }
-
-            return _collectionSnapshotProvider?.Invoke() ?? ItemMakerProgressionSnapshot.Default;
+            return _collectionSnapshotProvider?.Invoke(_inspectionTarget?.Build ?? _characterBuild) ?? ItemMakerProgressionSnapshot.Default;
         }
 
         private RankDeltaSnapshot GetRankDeltaSnapshot()

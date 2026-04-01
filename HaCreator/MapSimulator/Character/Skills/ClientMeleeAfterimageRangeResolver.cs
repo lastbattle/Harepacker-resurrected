@@ -4,30 +4,44 @@ namespace HaCreator.MapSimulator.Character.Skills
 {
     public static class ClientMeleeAfterimageRangeResolver
     {
+        private const int BlastSkillId = 1221009;
+        private const int BlastRangeRawActionCode = 17;
         private const int RedirectedRawActionCode = 57;
         private const int RedirectTargetRawActionCode = 41;
         private const int HardcodedRangeRawActionCode = 74;
 
         // Confirmed in CActionMan::GetMeleeAttackRange:
-        // action 57 redirects to 41, and action 74 uses a hardcoded rectangle.
+        // skill 1221009 forces raw action 17 before lookup, action 57 redirects to 41,
+        // and action 74 uses a hardcoded rectangle.
         private static readonly Rectangle HardcodedRange = new(-88, -62, 70, 56);
 
-        public static int NormalizeRawActionCodeForRange(int rawActionCode)
+        public static int? ResolveRawActionCodeForRange(int skillId, int? rawActionCode)
         {
-            return rawActionCode == RedirectedRawActionCode
+            if (skillId == BlastSkillId)
+            {
+                return BlastRangeRawActionCode;
+            }
+
+            if (!rawActionCode.HasValue)
+            {
+                return null;
+            }
+
+            return rawActionCode.Value == RedirectedRawActionCode
                 ? RedirectTargetRawActionCode
-                : rawActionCode;
+                : rawActionCode.Value;
         }
 
-        public static bool TryResolveRangeOverride(int? rawActionCode, bool facingRight, out Rectangle range)
+        public static bool TryResolveRangeOverride(int skillId, int? rawActionCode, bool facingRight, out Rectangle range)
         {
             range = Rectangle.Empty;
-            if (!rawActionCode.HasValue)
+            int? resolvedRawActionCode = ResolveRawActionCodeForRange(skillId, rawActionCode);
+            if (!resolvedRawActionCode.HasValue)
             {
                 return false;
             }
 
-            switch (NormalizeRawActionCodeForRange(rawActionCode.Value))
+            switch (resolvedRawActionCode.Value)
             {
                 case HardcodedRangeRawActionCode:
                     range = facingRight
@@ -46,10 +60,11 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         public static MeleeAfterImageAction ApplyRangeOverride(
             MeleeAfterImageAction action,
+            int skillId,
             int? rawActionCode,
             bool facingRight)
         {
-            if (!TryResolveRangeOverride(rawActionCode, facingRight, out Rectangle overrideRange))
+            if (!TryResolveRangeOverride(skillId, rawActionCode, facingRight, out Rectangle overrideRange))
             {
                 return action;
             }

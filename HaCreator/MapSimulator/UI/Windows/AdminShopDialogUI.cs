@@ -23,6 +23,26 @@ namespace HaCreator.MapSimulator.UI
 
     public sealed class AdminShopDialogUI : UIWindowBase
     {
+        public sealed class WishlistPriceRange
+        {
+            public int Index { get; init; }
+            public long MinimumPrice { get; init; }
+            public long MaximumPrice { get; init; }
+            public string Label { get; init; } = string.Empty;
+        }
+
+        public sealed class WishlistSearchResult
+        {
+            public string EntryKey { get; init; } = string.Empty;
+            public string Title { get; init; } = string.Empty;
+            public string Seller { get; init; } = string.Empty;
+            public string PriceLabel { get; init; } = string.Empty;
+            public string Detail { get; init; } = string.Empty;
+            public string CategoryLabel { get; init; } = string.Empty;
+            public bool AlreadyWishlisted { get; init; }
+            public int Score { get; init; }
+        }
+
         private enum AdminShopPane
         {
             Npc,
@@ -76,7 +96,8 @@ namespace HaCreator.MapSimulator.UI
         private enum AdminShopModalMode
         {
             None,
-            WishlistOwnerConfirm
+            WishlistOwnerConfirm,
+            RequestQuantity
         }
 
         private sealed class AdminShopEntry
@@ -105,6 +126,7 @@ namespace HaCreator.MapSimulator.UI
             public bool WasPurchased { get; set; }
             public int CommoditySerialNumber { get; set; }
             public bool CommodityOnSale { get; set; }
+            public int MaxRequestCount { get; init; } = 1;
         }
 
         private sealed class AdminShopPaneState
@@ -230,6 +252,8 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D _modalTexture;
         private readonly UIObject _modalConfirmButton;
         private readonly UIObject _modalCancelButton;
+        private readonly UIObject _modalPreviousButton;
+        private readonly UIObject _modalNextButton;
         private readonly GraphicsDevice _device;
         private readonly Dictionary<int, Texture2D> _itemIconCache = new();
         private readonly Dictionary<AdminShopServiceMode, HashSet<string>> _wishlistedEntryKeys = new()
@@ -248,6 +272,13 @@ namespace HaCreator.MapSimulator.UI
             [AdminShopServiceMode.Mts] = new Dictionary<string, AdminShopEntrySessionState>(StringComparer.Ordinal)
         };
         private readonly Dictionary<string, AdminShopBrowseSurfaceState> _browseSurfaceStates = new(StringComparer.Ordinal);
+        private readonly IReadOnlyList<WishlistPriceRange> _wishlistPriceRanges = new[]
+        {
+            new WishlistPriceRange { Index = 0, MinimumPrice = 0, MaximumPrice = 1000, Label = "0 - 999 mesos" },
+            new WishlistPriceRange { Index = 1, MinimumPrice = 1000, MaximumPrice = 3000, Label = "1,000 - 2,999 mesos" },
+            new WishlistPriceRange { Index = 2, MinimumPrice = 3000, MaximumPrice = 5000, Label = "3,000 - 4,999 mesos" },
+            new WishlistPriceRange { Index = 3, MinimumPrice = 5000, MaximumPrice = 50000, Label = "5,000 - 50,000 mesos" }
+        };
 
         private IInventoryRuntime _inventory;
         private IStorageRuntime _storageRuntime;
@@ -258,20 +289,28 @@ namespace HaCreator.MapSimulator.UI
         private AdminShopBrowseMode _activeBrowseMode = AdminShopBrowseMode.All;
         private string _footerMessage = string.Empty;
         private string _modalMessage = string.Empty;
-        private AdminShopEntry _pendingWishlistEntry;
+        private AdminShopEntry _pendingModalEntry;
         private AdminShopEntry _pendingRequestEntry;
+        private int _pendingRequestQuantity = 1;
         private string _lastClickedEntryKey = string.Empty;
         private int _previousScrollWheelValue;
         private MouseState _previousMouseState;
         private KeyboardState _previousKeyboardState;
         private AdminShopPane? _draggingScrollPane;
         private int _scrollThumbDragOffsetY;
-        private bool _wishlistModalVisible;
+        private bool _modalVisible;
         private AdminShopModalMode _modalMode;
+        private int _modalQuantity = 1;
+        private int _modalQuantityMin = 1;
+        private int _modalQuantityMax = 1;
         private AdminShopPane? _lastClickedPane;
         private int _lastRowClickTick;
         private int _requestResolveTick;
+        private long _nexonCash;
+        private long _maplePoint;
+        private long _prepaidCash;
         public Action<AdminShopDialogUI> WishlistWindowRequested { get; set; }
+        public Func<long, bool> TryConsumeCashBalance { get; set; }
 
         public AdminShopDialogUI(
             IDXObject frame,
@@ -290,6 +329,8 @@ namespace HaCreator.MapSimulator.UI
             Texture2D modalTexture,
             UIObject modalConfirmButton,
             UIObject modalCancelButton,
+            UIObject modalPreviousButton,
+            UIObject modalNextButton,
             GraphicsDevice device)
             : base(frame)
         {
@@ -312,6 +353,8 @@ namespace HaCreator.MapSimulator.UI
             _modalTexture = modalTexture;
             _modalConfirmButton = modalConfirmButton;
             _modalCancelButton = modalCancelButton;
+            _modalPreviousButton = modalPreviousButton;
+            _modalNextButton = modalNextButton;
 
             if (_buyButton != null)
             {
@@ -353,6 +396,22 @@ namespace HaCreator.MapSimulator.UI
                 _modalCancelButton.ButtonClickReleased += OnModalCancelClicked;
             }
 
+            if (_modalPreviousButton != null)
+            {
+                AddButton(_modalPreviousButton);
+                _modalButtons.Add(_modalPreviousButton);
+                _modalPreviousButton.SetVisible(false);
+                _modalPreviousButton.ButtonClickReleased += OnModalPreviousClicked;
+            }
+
+            if (_modalNextButton != null)
+            {
+                AddButton(_modalNextButton);
+                _modalButtons.Add(_modalNextButton);
+                _modalNextButton.SetVisible(false);
+                _modalNextButton.ButtonClickReleased += OnModalNextClicked;
+            }
+
             InitializeRowButtons(device);
             InitializeTabVisuals();
             ResetMode(defaultMode);
@@ -361,6 +420,14 @@ namespace HaCreator.MapSimulator.UI
         public override string WindowName => _windowName;
 
         public long Money { get; set; }
+
+        public void SetCashBalances(long nexonCash, long maplePoint = 0, long prepaidCash = 0)
+        {
+            _nexonCash = Math.Max(0L, nexonCash);
+            _maplePoint = Math.Max(0L, maplePoint);
+            _prepaidCash = Math.Max(0L, prepaidCash);
+            UpdateActionButtonStates();
+        }
 
         public void SetInventory(IInventoryRuntime inventory)
         {
@@ -394,12 +461,36 @@ namespace HaCreator.MapSimulator.UI
             return 0;
         }
 
+        public int GetWishlistSuggestedPriceRangeIndex()
+        {
+            AdminShopEntry entry = GetSelectedEntry();
+            if (entry == null)
+            {
+                return 0;
+            }
+
+            for (int i = 0; i < _wishlistPriceRanges.Count; i++)
+            {
+                if (MatchesWishlistPriceRange(entry, i))
+                {
+                    return i;
+                }
+            }
+
+            return 0;
+        }
+
         public string GetWishlistServiceName()
         {
             return _currentMode == AdminShopServiceMode.CashShop ? "Cash Shop" : "MTS";
         }
 
-        public bool TrySubmitWishlistSearch(string query, int categoryIndex, out string message)
+        public IReadOnlyList<WishlistPriceRange> GetWishlistPriceRanges()
+        {
+            return _wishlistPriceRanges;
+        }
+
+        public IReadOnlyList<WishlistSearchResult> SearchWishlistEntries(string query, int categoryIndex, int priceRangeIndex, out string message)
         {
             message = "Enter an item name before searching the wish list.";
             string trimmedQuery = query?.Trim();
@@ -407,27 +498,15 @@ namespace HaCreator.MapSimulator.UI
             {
                 _footerMessage = message;
                 UpdateActionButtonStates();
-                return false;
+                return Array.Empty<WishlistSearchResult>();
             }
 
-            AdminShopCategory requestedCategory = categoryIndex >= 0 && categoryIndex < _categoryTabs.Length
-                ? GetFullCategory(categoryIndex)
-                : AdminShopCategory.All;
-            List<AdminShopEntry> candidates = _paneStates[AdminShopPane.Npc]
+            AdminShopCategory requestedCategory = ResolveWishlistCategory(categoryIndex);
+            List<(AdminShopEntry Entry, int Score)> matches = _paneStates[AdminShopPane.Npc]
                 .SourceEntries
-                .Where(entry => entry.SupportsWishlist && MatchesCategory(entry, requestedCategory))
-                .ToList();
-
-            if (candidates.Count == 0 && requestedCategory != AdminShopCategory.All)
-            {
-                candidates = _paneStates[AdminShopPane.Npc]
-                    .SourceEntries
-                    .Where(entry => entry.SupportsWishlist)
-                    .ToList();
-                requestedCategory = AdminShopCategory.All;
-            }
-
-            List<(AdminShopEntry Entry, int Score)> matches = candidates
+                .Where(entry => entry.SupportsWishlist
+                                && MatchesCategory(entry, requestedCategory)
+                                && MatchesWishlistPriceRange(entry, priceRangeIndex))
                 .Select(entry => (Entry: entry, Score: ScoreWishlistEntry(entry, trimmedQuery)))
                 .Where(match => match.Score > 0)
                 .OrderByDescending(match => match.Score)
@@ -437,53 +516,65 @@ namespace HaCreator.MapSimulator.UI
 
             if (matches.Count == 0)
             {
-                message = $"No wish-list match was found for \"{trimmedQuery}\" in {GetWishlistServiceName()}.";
+                message = $"No wish-list results were found for \"{trimmedQuery}\" in {GetCategoryLabel(requestedCategory)} / {GetWishlistPriceRangeLabel(priceRangeIndex)}.";
                 _footerMessage = message;
                 UpdateActionButtonStates();
-                return false;
+                return Array.Empty<WishlistSearchResult>();
             }
 
-            AdminShopEntry matchedEntry = matches[0].Entry;
-            string entryKey = GetEntryKey(matchedEntry);
-            bool alreadyWishlisted = matchedEntry.Wishlisted || _wishlistedEntryKeys[_currentMode].Contains(entryKey);
+            List<WishlistSearchResult> results = matches
+                .Select(match => new WishlistSearchResult
+                {
+                    EntryKey = GetEntryKey(match.Entry),
+                    Title = match.Entry.Title,
+                    Seller = match.Entry.Seller,
+                    PriceLabel = match.Entry.PriceLabel,
+                    Detail = match.Entry.Detail,
+                    CategoryLabel = GetCategoryLabel(match.Entry.Category),
+                    AlreadyWishlisted = match.Entry.Wishlisted || _wishlistedEntryKeys[_currentMode].Contains(GetEntryKey(match.Entry)),
+                    Score = match.Score
+                })
+                .ToList();
 
-            _activePane = AdminShopPane.Npc;
-            _activeBrowseMode = AdminShopBrowseMode.All;
-            _activeCategory = requestedCategory == AdminShopCategory.All ? matchedEntry.Category : requestedCategory;
-            ApplyFilters();
-
-            AdminShopPaneState paneState = _paneStates[AdminShopPane.Npc];
-            int selectedIndex = paneState.Entries.IndexOf(matchedEntry);
-            if (selectedIndex < 0)
-            {
-                _activeCategory = AdminShopCategory.All;
-                ApplyFilters();
-                paneState = _paneStates[AdminShopPane.Npc];
-                selectedIndex = paneState.Entries.IndexOf(matchedEntry);
-            }
-
-            if (selectedIndex < 0)
-            {
-                message = $"Wish-list search found {matchedEntry.Title}, but the simulator could not focus the matching row.";
-                _footerMessage = message;
-                UpdateActionButtonStates();
-                return false;
-            }
-
-            matchedEntry.Wishlisted = true;
-            _wishlistedEntryKeys[_currentMode].Add(entryKey);
-            PersistEntrySessionState(matchedEntry);
-            paneState.SelectedIndex = selectedIndex;
-            ClampPaneState(paneState);
-            PersistBrowseSurfaceState(AdminShopPane.Npc);
-            UpdateRowButtons();
-            UpdateActionButtonStates();
-
-            message = alreadyWishlisted
-                ? $"Wish-list search focused {matchedEntry.Title}; the entry was already saved."
-                : $"Wish-list search saved {matchedEntry.Title} and focused the matching catalog row.";
+            message = $"SearchItemName staged {results.Count} result(s) for {GetWishlistServiceName()} in {GetCategoryLabel(requestedCategory)} / {GetWishlistPriceRangeLabel(priceRangeIndex)}.";
             _footerMessage = message;
-            return true;
+            UpdateActionButtonStates();
+            return results;
+        }
+
+        public bool TryApplyWishlistSearchResult(string entryKey, int categoryIndex, out string message)
+        {
+            message = "Wish-list result selection is unavailable.";
+            if (string.IsNullOrWhiteSpace(entryKey))
+            {
+                _footerMessage = message;
+                UpdateActionButtonStates();
+                return false;
+            }
+
+            AdminShopEntry matchedEntry = _paneStates[AdminShopPane.Npc]
+                .SourceEntries
+                .FirstOrDefault(entry => string.Equals(GetEntryKey(entry), entryKey, StringComparison.Ordinal));
+            if (matchedEntry == null)
+            {
+                message = "The selected wish-list result no longer maps to an NPC catalog row.";
+                _footerMessage = message;
+                UpdateActionButtonStates();
+                return false;
+            }
+
+            return TryFocusWishlistEntry(matchedEntry, ResolveWishlistCategory(categoryIndex), out message);
+        }
+
+        public bool TrySubmitWishlistSearch(string query, int categoryIndex, out string message)
+        {
+            IReadOnlyList<WishlistSearchResult> results = SearchWishlistEntries(query, categoryIndex, 0, out message);
+            if (results.Count == 0)
+            {
+                return false;
+            }
+
+            return TryApplyWishlistSearchResult(results[0].EntryKey, categoryIndex, out message);
         }
 
         public override void Show()
@@ -547,7 +638,7 @@ namespace HaCreator.MapSimulator.UI
             _activePane = AdminShopPane.Npc;
             paneState.SelectedIndex = selectedIndex;
             ClampPaneState(paneState);
-            _pendingWishlistEntry = null;
+            _pendingModalEntry = null;
             _footerMessage = $"Focused packet-owned commodity SN {commoditySerialNumber} on {matchedEntry.Title}.";
             PersistBrowseSurfaceState(AdminShopPane.Npc);
             UpdateRowButtons();
@@ -586,8 +677,15 @@ namespace HaCreator.MapSimulator.UI
 
             bool leftJustPressed = mouseState.LeftButton == ButtonState.Pressed && _previousMouseState.LeftButton == ButtonState.Released;
 
-            if (_wishlistModalVisible)
+            if (_modalVisible)
             {
+                if (_modalMode == AdminShopModalMode.RequestQuantity
+                    && wheelDelta != 0
+                    && GetModalBounds(Position.X, Position.Y).Contains(mouseState.Position))
+                {
+                    AdjustModalQuantity(wheelDelta > 0 ? 1 : -1);
+                }
+
                 _previousMouseState = mouseState;
                 _previousKeyboardState = keyboardState;
                 return;
@@ -648,8 +746,36 @@ namespace HaCreator.MapSimulator.UI
 
         private void HandleKeyboardInput(KeyboardState keyboardState)
         {
-            if (_wishlistModalVisible)
+            if (_modalVisible)
             {
+                if (_modalMode == AdminShopModalMode.RequestQuantity)
+                {
+                    if (WasPressed(keyboardState, Keys.Left) || WasPressed(keyboardState, Keys.Down))
+                    {
+                        AdjustModalQuantity(-1);
+                    }
+                    else if (WasPressed(keyboardState, Keys.Right) || WasPressed(keyboardState, Keys.Up))
+                    {
+                        AdjustModalQuantity(1);
+                    }
+                    else if (WasPressed(keyboardState, Keys.PageUp))
+                    {
+                        AdjustModalQuantity(-5);
+                    }
+                    else if (WasPressed(keyboardState, Keys.PageDown))
+                    {
+                        AdjustModalQuantity(5);
+                    }
+                    else if (WasPressed(keyboardState, Keys.Home))
+                    {
+                        SetModalQuantity(_modalQuantityMin);
+                    }
+                    else if (WasPressed(keyboardState, Keys.End))
+                    {
+                        SetModalQuantity(_modalQuantityMax);
+                    }
+                }
+
                 if (WasPressed(keyboardState, Keys.Enter) || WasPressed(keyboardState, Keys.Space))
                 {
                     OnModalConfirmClicked(_modalConfirmButton);
@@ -729,7 +855,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             ClampPaneState(paneState);
-            _pendingWishlistEntry = null;
+            _pendingModalEntry = null;
             _footerMessage = BuildSelectionMessage(GetSelectedEntry(), _activePane);
             UpdateActionButtonStates();
         }
@@ -758,7 +884,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             paneState.SelectedIndex = Math.Clamp(index, 0, paneState.Entries.Count - 1);
-            _pendingWishlistEntry = null;
+            _pendingModalEntry = null;
             ClampPaneState(paneState);
             _footerMessage = BuildSelectionMessage(paneState.Entries[paneState.SelectedIndex], _activePane);
             UpdateActionButtonStates();
@@ -797,9 +923,9 @@ namespace HaCreator.MapSimulator.UI
             DrawFooter(sprite, windowX, windowY);
             DrawMoney(sprite, windowX, windowY);
 
-            if (_wishlistModalVisible)
+            if (_modalVisible)
             {
-                DrawWishlistModal(sprite, windowX, windowY);
+                DrawModal(sprite, windowX, windowY);
             }
         }
 
@@ -993,7 +1119,7 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private void DrawWishlistModal(SpriteBatch sprite, int windowX, int windowY)
+        private void DrawModal(SpriteBatch sprite, int windowX, int windowY)
         {
             Rectangle modalBounds = GetModalBounds(windowX, windowY);
 
@@ -1007,13 +1133,35 @@ namespace HaCreator.MapSimulator.UI
                 sprite.Draw(_pixelTexture, modalBounds, new Color(248, 244, 230));
             }
 
-            float lineY = modalBounds.Y + 10f;
+            float lineY = modalBounds.Y + 8f;
             foreach (string line in WrapText(_modalMessage, ModalTextMaxWidth))
             {
                 Vector2 lineSize = _font.MeasureString(line);
                 float lineX = modalBounds.X + (modalBounds.Width - lineSize.X) / 2f;
                 sprite.DrawString(_font, line, new Vector2(lineX, lineY), new Color(55, 39, 15));
                 lineY += 14f;
+            }
+
+            if (_modalMode == AdminShopModalMode.RequestQuantity && _pendingModalEntry != null)
+            {
+                string quantityText = $"Qty: {_modalQuantity} / {_modalQuantityMax}";
+                Vector2 quantitySize = _font.MeasureString(quantityText);
+                sprite.DrawString(
+                    _font,
+                    quantityText,
+                    new Vector2(modalBounds.X + (modalBounds.Width - quantitySize.X) / 2f, modalBounds.Y + 24f),
+                    new Color(48, 68, 113));
+
+                long totalPrice = ComputeRequestPrice(_pendingModalEntry, _modalQuantity);
+                string totalText = totalPrice > 0
+                    ? $"Total: {FormatPriceLabel(totalPrice)}"
+                    : $"Deliver: x{ComputeDeliveredQuantity(_pendingModalEntry, _modalQuantity)}";
+                Vector2 totalSize = _font.MeasureString(totalText);
+                sprite.DrawString(
+                    _font,
+                    totalText,
+                    new Vector2(modalBounds.X + (modalBounds.Width - totalSize.X) / 2f, modalBounds.Y + 38f),
+                    new Color(102, 61, 23));
             }
         }
 
@@ -1024,7 +1172,10 @@ namespace HaCreator.MapSimulator.UI
                 sprite.Draw(_mesoTexture, new Vector2(windowX + MoneyIconX, windowY + MoneyIconY), Color.White);
             }
 
-            sprite.DrawString(_font, Money.ToString("N0", CultureInfo.InvariantCulture), new Vector2(windowX + MoneyTextX, windowY + MoneyTextY), Color.White);
+            long displayedBalance = _currentMode == AdminShopServiceMode.CashShop && GetSelectedEntry()?.IsStorageExpansion == true
+                ? _nexonCash
+                : Money;
+            sprite.DrawString(_font, displayedBalance.ToString("N0", CultureInfo.InvariantCulture), new Vector2(windowX + MoneyTextX, windowY + MoneyTextY), Color.White);
         }
 
         private void OnBuyButtonClicked(UIObject sender)
@@ -1054,13 +1205,12 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            _pendingWishlistEntry = null;
-            _pendingRequestEntry = entry;
-            _requestResolveTick = Environment.TickCount + 900;
-            entry.State = AdminShopEntryState.PendingResponse;
-            entry.StateLabel = "Pending";
-            _footerMessage = $"Submitted a {_currentMode} request for {entry.Title}. Waiting for simulator response.";
-            UpdateActionButtonStates();
+            if (TryOpenRequestQuantityModal(entry))
+            {
+                return;
+            }
+
+            BeginPendingRequest(entry, 1);
         }
 
         private void OnRechargeButtonClicked(UIObject sender)
@@ -1141,7 +1291,7 @@ namespace HaCreator.MapSimulator.UI
             bool wasSelected = _activePane == pane && paneState.SelectedIndex == actualIndex;
             _activePane = pane;
             paneState.SelectedIndex = actualIndex;
-            _pendingWishlistEntry = null;
+            _pendingModalEntry = null;
             AdminShopEntry selectedEntry = paneState.Entries[actualIndex];
             string selectedEntryKey = GetEntryKey(selectedEntry);
             bool isDoubleClick = wasSelected
@@ -1168,9 +1318,14 @@ namespace HaCreator.MapSimulator.UI
             _activePane = AdminShopPane.Npc;
             _activeCategory = AdminShopCategory.All;
             _activeBrowseMode = AdminShopBrowseMode.All;
-            _pendingWishlistEntry = null;
+            _pendingModalEntry = null;
             _pendingRequestEntry = null;
-            _wishlistModalVisible = false;
+            _modalVisible = false;
+            _pendingRequestQuantity = 1;
+            _modalMode = AdminShopModalMode.None;
+            _modalQuantity = 1;
+            _modalQuantityMin = 1;
+            _modalQuantityMax = 1;
             _paneStates[AdminShopPane.Npc].SourceEntries.Clear();
             _paneStates[AdminShopPane.User].SourceEntries.Clear();
             _paneStates[AdminShopPane.Npc].SourceEntries.AddRange(CreateNpcEntries(mode));
@@ -1345,7 +1500,7 @@ namespace HaCreator.MapSimulator.UI
         private void UpdateActionButtonStates()
         {
             AdminShopEntry entry = GetSelectedEntry();
-            bool modalBlocked = _wishlistModalVisible;
+            bool modalBlocked = _modalVisible;
             bool canSubmitRequest = !modalBlocked && entry != null && CanRequestEntry(entry);
             bool canOpenWishlist = !modalBlocked
                                    && WishlistWindowRequested != null
@@ -1434,7 +1589,7 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            if (_wishlistModalVisible)
+            if (_modalVisible)
             {
                 foreach (UIObject button in _modalButtons)
                 {
@@ -1834,9 +1989,12 @@ namespace HaCreator.MapSimulator.UI
 
         private void OpenWishlistConfirmation(AdminShopEntry entry)
         {
-            _pendingWishlistEntry = entry;
+            _pendingModalEntry = entry;
             _modalMode = AdminShopModalMode.WishlistOwnerConfirm;
-            _wishlistModalVisible = true;
+            _modalVisible = true;
+            _modalQuantity = 1;
+            _modalQuantityMin = 1;
+            _modalQuantityMax = 1;
             _modalMessage = $"Open the wish list for {entry.Title}?";
             _footerMessage = $"Wish-list confirmation opened for {entry.Title}.";
             PositionModalButtons();
@@ -1846,50 +2004,86 @@ namespace HaCreator.MapSimulator.UI
 
         private void OnModalConfirmClicked(UIObject sender)
         {
-            if (_pendingWishlistEntry == null)
+            if (_pendingModalEntry == null)
             {
-                CloseWishlistConfirmation("Wish list dialog closed.");
+                CloseModal("Shop dialog closed.");
                 return;
             }
 
-            string title = _pendingWishlistEntry.Title;
+            string title = _pendingModalEntry.Title;
+            if (_modalMode == AdminShopModalMode.RequestQuantity)
+            {
+                AdminShopEntry entry = _pendingModalEntry;
+                int requestQuantity = _modalQuantity;
+                CloseModal(string.Empty);
+                BeginPendingRequest(entry, requestQuantity);
+                return;
+            }
+
             if (_modalMode == AdminShopModalMode.WishlistOwnerConfirm && WishlistWindowRequested != null)
             {
                 WishlistWindowRequested.Invoke(this);
-                CloseWishlistConfirmation($"Opened the dedicated wish-list owner for {title}.");
+                CloseModal($"Opened the dedicated wish-list owner for {title}.");
                 return;
             }
 
-            CloseWishlistConfirmation($"Wish-list request confirmed for {title}.");
+            CloseModal($"Wish-list request confirmed for {title}.");
         }
 
         private void OnModalCancelClicked(UIObject sender)
         {
-            string title = _pendingWishlistEntry?.Title;
-            CloseWishlistConfirmation(string.IsNullOrWhiteSpace(title)
-                ? "Wish-list confirmation cancelled."
-                : $"Wish-list confirmation cancelled for {title}.");
+            string title = _pendingModalEntry?.Title;
+            string footerMessage = _modalMode == AdminShopModalMode.RequestQuantity
+                ? (string.IsNullOrWhiteSpace(title)
+                    ? "Item-count prompt cancelled."
+                    : $"Item-count prompt cancelled for {title}.")
+                : (string.IsNullOrWhiteSpace(title)
+                    ? "Wish-list confirmation cancelled."
+                    : $"Wish-list confirmation cancelled for {title}.");
+            CloseModal(footerMessage);
         }
 
-        private void CloseWishlistConfirmation(string footerMessage)
+        private void OnModalPreviousClicked(UIObject sender)
         {
-            _pendingWishlistEntry = null;
-            _wishlistModalVisible = false;
+            AdjustModalQuantity(-1);
+        }
+
+        private void OnModalNextClicked(UIObject sender)
+        {
+            AdjustModalQuantity(1);
+        }
+
+        private void CloseModal(string footerMessage)
+        {
+            _pendingModalEntry = null;
+            _modalVisible = false;
             _modalMode = AdminShopModalMode.None;
             _modalMessage = string.Empty;
-            _footerMessage = footerMessage;
+            _modalQuantity = 1;
+            _modalQuantityMin = 1;
+            _modalQuantityMax = 1;
+            if (!string.IsNullOrWhiteSpace(footerMessage))
+            {
+                _footerMessage = footerMessage;
+            }
             UpdateModalButtons();
             UpdateActionButtonStates();
         }
 
         private void UpdateModalButtons()
         {
-            bool visible = _wishlistModalVisible;
+            bool visible = _modalVisible;
             foreach (UIObject button in _modalButtons)
             {
                 button.SetVisible(visible);
                 button.SetEnabled(visible);
             }
+
+            bool quantityButtonsVisible = visible && _modalMode == AdminShopModalMode.RequestQuantity;
+            _modalPreviousButton?.SetVisible(quantityButtonsVisible);
+            _modalPreviousButton?.SetEnabled(quantityButtonsVisible && _modalQuantity > _modalQuantityMin);
+            _modalNextButton?.SetVisible(quantityButtonsVisible);
+            _modalNextButton?.SetEnabled(quantityButtonsVisible && _modalQuantity < _modalQuantityMax);
 
             if (visible)
             {
@@ -1911,6 +2105,19 @@ namespace HaCreator.MapSimulator.UI
                 _modalCancelButton.X = modalBounds.X - Position.X + 111;
                 _modalCancelButton.Y = modalBounds.Y - Position.Y + 35;
             }
+
+            if (_modalPreviousButton != null)
+            {
+                _modalPreviousButton.X = modalBounds.X - Position.X + 18;
+                _modalPreviousButton.Y = modalBounds.Y - Position.Y + 21;
+            }
+
+            if (_modalNextButton != null)
+            {
+                int nextButtonWidth = _modalNextButton.CanvasSnapshotWidth;
+                _modalNextButton.X = modalBounds.Right - Position.X - nextButtonWidth - 18;
+                _modalNextButton.Y = modalBounds.Y - Position.Y + 21;
+            }
         }
 
         private Rectangle GetModalBounds(int windowX, int windowY)
@@ -1920,6 +2127,161 @@ namespace HaCreator.MapSimulator.UI
             int modalX = windowX + (frameWidth - ModalWidth) / 2;
             int modalY = windowY + (frameHeight - ModalHeight) / 2;
             return new Rectangle(modalX, modalY, ModalWidth, ModalHeight);
+        }
+
+        private bool TryOpenRequestQuantityModal(AdminShopEntry entry)
+        {
+            int maxPromptQuantity = ResolveModalRequestQuantityCap(entry);
+            if (maxPromptQuantity <= 1)
+            {
+                return false;
+            }
+
+            _pendingModalEntry = entry;
+            _modalMode = AdminShopModalMode.RequestQuantity;
+            _modalVisible = true;
+            _modalQuantityMin = 1;
+            _modalQuantityMax = maxPromptQuantity;
+            _modalQuantity = 1;
+            _modalMessage = $"Select a request count for {entry.Title}.";
+            _footerMessage = $"Opened the item-count prompt for {entry.Title}.";
+            PositionModalButtons();
+            UpdateModalButtons();
+            UpdateActionButtonStates();
+            return true;
+        }
+
+        private int ResolveModalRequestQuantityCap(AdminShopEntry entry)
+        {
+            if (entry == null
+                || entry.MaxRequestCount <= 1
+                || entry.RewardInventoryType == InventoryType.NONE
+                || entry.RewardItemId <= 0
+                || InventoryItemMetadataResolver.ResolveMaxStack(entry.RewardInventoryType) <= 1)
+            {
+                return 1;
+            }
+
+            int maxPromptQuantity = entry.MaxRequestCount;
+            if (entry.ConsumeOnSuccess && entry.Price > 0 && _inventory != null)
+            {
+                maxPromptQuantity = (int)Math.Min(maxPromptQuantity, _inventory.GetMesoCount() / entry.Price);
+            }
+
+            if (_inventory != null)
+            {
+                while (maxPromptQuantity > 1
+                       && !_inventory.CanAcceptItem(entry.RewardInventoryType, entry.RewardItemId, ComputeDeliveredQuantity(entry, maxPromptQuantity)))
+                {
+                    maxPromptQuantity--;
+                }
+            }
+
+            return Math.Max(1, maxPromptQuantity);
+        }
+
+        private void BeginPendingRequest(AdminShopEntry entry, int requestQuantity)
+        {
+            _pendingModalEntry = null;
+            _pendingRequestEntry = entry;
+            _pendingRequestQuantity = Math.Max(1, requestQuantity);
+            _requestResolveTick = Environment.TickCount + 900;
+            entry.State = AdminShopEntryState.PendingResponse;
+            entry.StateLabel = "Pending";
+            long totalPrice = ComputeRequestPrice(entry, _pendingRequestQuantity);
+            string quantityLabel = _pendingRequestQuantity > 1 ? $" x{_pendingRequestQuantity}" : string.Empty;
+            string priceLabel = totalPrice > 0 ? $" for {FormatPriceLabel(totalPrice)}" : string.Empty;
+            _footerMessage = $"Submitted a {_currentMode} request for {entry.Title}{quantityLabel}{priceLabel}. Waiting for simulator response.";
+            UpdateActionButtonStates();
+        }
+
+        private void AdjustModalQuantity(int delta)
+        {
+            if (_modalMode != AdminShopModalMode.RequestQuantity)
+            {
+                return;
+            }
+
+            SetModalQuantity(_modalQuantity + delta);
+        }
+
+        private void SetModalQuantity(int quantity)
+        {
+            _modalQuantity = Math.Clamp(quantity, _modalQuantityMin, _modalQuantityMax);
+            UpdateModalButtons();
+        }
+
+        private static int ComputeDeliveredQuantity(AdminShopEntry entry, int requestQuantity)
+        {
+            if (entry == null)
+            {
+                return 0;
+            }
+
+            long quantity = (long)Math.Max(1, entry.RewardQuantity) * Math.Max(1, requestQuantity);
+            return (int)Math.Min(int.MaxValue, quantity);
+        }
+
+        private static long ComputeRequestPrice(AdminShopEntry entry, int requestQuantity)
+        {
+            if (entry == null)
+            {
+                return 0;
+            }
+
+            return Math.Max(0, entry.Price) * Math.Max(1, requestQuantity);
+        }
+
+        private bool TryFocusWishlistEntry(AdminShopEntry matchedEntry, AdminShopCategory requestedCategory, out string message)
+        {
+            message = "Wish-list selection could not be focused.";
+            if (matchedEntry == null)
+            {
+                _footerMessage = message;
+                UpdateActionButtonStates();
+                return false;
+            }
+
+            string entryKey = GetEntryKey(matchedEntry);
+            bool alreadyWishlisted = matchedEntry.Wishlisted || _wishlistedEntryKeys[_currentMode].Contains(entryKey);
+
+            _activePane = AdminShopPane.Npc;
+            _activeBrowseMode = AdminShopBrowseMode.All;
+            _activeCategory = requestedCategory == AdminShopCategory.All ? matchedEntry.Category : requestedCategory;
+            ApplyFilters();
+
+            AdminShopPaneState paneState = _paneStates[AdminShopPane.Npc];
+            int selectedIndex = paneState.Entries.IndexOf(matchedEntry);
+            if (selectedIndex < 0)
+            {
+                _activeCategory = AdminShopCategory.All;
+                ApplyFilters();
+                paneState = _paneStates[AdminShopPane.Npc];
+                selectedIndex = paneState.Entries.IndexOf(matchedEntry);
+            }
+
+            if (selectedIndex < 0)
+            {
+                message = $"Wish-list search found {matchedEntry.Title}, but the simulator could not focus the matching row.";
+                _footerMessage = message;
+                UpdateActionButtonStates();
+                return false;
+            }
+
+            matchedEntry.Wishlisted = true;
+            _wishlistedEntryKeys[_currentMode].Add(entryKey);
+            PersistEntrySessionState(matchedEntry);
+            paneState.SelectedIndex = selectedIndex;
+            ClampPaneState(paneState);
+            PersistBrowseSurfaceState(AdminShopPane.Npc);
+            UpdateRowButtons();
+            UpdateActionButtonStates();
+
+            message = alreadyWishlisted
+                ? $"Wish-list search focused {matchedEntry.Title}; the entry was already saved."
+                : $"Wish-list search saved {matchedEntry.Title} and focused the matching catalog row.";
+            _footerMessage = message;
+            return true;
         }
 
         private static int ScoreWishlistEntry(AdminShopEntry entry, string query)
@@ -2035,9 +2397,9 @@ namespace HaCreator.MapSimulator.UI
                     CreateInventoryExpansionEntry("Extending Etc. Inventory", InventoryType.ETC, "Cash Manager"),
                     CreateItemEntry("Royal Hair Coupon", "Rotating salon coupon preview from the featured cash-service board.", "Cash Manager", 3400, AdminShopCategory.Special, true, InventoryType.CASH, 5050000, featured: true),
                     CreateItemEntry("Royal Face Coupon", "Premium face coupon entry with the same preview flow the client routes into wish-list dialogs.", "Cash Manager", 2900, AdminShopCategory.Special, true, InventoryType.CASH, 5150040, featured: true),
-                    CreateItemEntry("Pet Snack Bundle", "Utility bundle with snack and pet-tag support for multi-pet sessions.", "Cash Manager", 1900, AdminShopCategory.Use, true, InventoryType.CASH, 2120000, 3, featured: true),
+                    CreateItemEntry("Pet Snack Bundle", "Utility bundle with snack and pet-tag support for multi-pet sessions.", "Cash Manager", 1900, AdminShopCategory.Use, true, InventoryType.CASH, 2120000, 3, featured: true, maxRequestCount: 5),
                     CreateStorageExpansionEntry("Storage Slot Expansion", "Convenience service for storage and shared account inventory capacity.", "Cash Manager"),
-                    CreateItemEntry("Hyper Teleport Rock", "Navigation-heavy service entry used to compare convenience bundles.", "Cash Manager", 900, AdminShopCategory.Use, true, InventoryType.CASH, 5040004),
+                    CreateItemEntry("Hyper Teleport Rock", "Navigation-heavy service entry used to compare convenience bundles.", "Cash Manager", 900, AdminShopCategory.Use, true, InventoryType.CASH, 5040004, maxRequestCount: 10),
                     CreateItemEntry("Surprise Style Box", "Random cosmetic box surfaced through the featured rotation.", "Cash Manager", 3400, AdminShopCategory.Package, true, InventoryType.CASH, 5222000, featured: true),
                     CreateItemEntry("Cosmetic Lens Coupon", "Style utility item staged for wish-list confirmation tests.", "Cash Manager", 1600, AdminShopCategory.Button, true, InventoryType.CASH, 5152057),
                     CreateEntry("Pet Equip Bundle", "Pet equipment and accessory bundle bound to the NPC-side catalog.", "Cash Manager", 2200, AdminShopCategory.Equip, true, featured: true, state: AdminShopEntryState.SoldOut, stateLabel: "Sold out")
@@ -2048,11 +2410,11 @@ namespace HaCreator.MapSimulator.UI
             {
                 CreateItemEntry("Zakum Helmet Listing", "Admin MTS preview of a high-demand helmet sold from the NPC-owned catalog view.", "MTS Clerk", 12500000, AdminShopCategory.Equip, false, InventoryType.EQUIP, 1002357, featured: true, response: AdminShopResponse.ListingSoldOut, responseMessage: "The listing refreshed before the purchase could be confirmed."),
                 CreateItemEntry("Maple Kandayo", "MTS equipment board seeded to exercise request submission and price display.", "MTS Clerk", 9800000, AdminShopCategory.Equip, false, InventoryType.EQUIP, 1332027, featured: true),
-                CreateItemEntry("Steely Throwing-Knives", "Consumable trade board sample that mirrors a browse-first MTS flow.", "MTS Clerk", 3200000, AdminShopCategory.Use, false, InventoryType.USE, 2070005, 1, response: AdminShopResponse.InventoryFull, responseMessage: "The MTS clerk rejected delivery because the destination inventory tab is full."),
+                CreateItemEntry("Steely Throwing-Knives", "Consumable trade board sample that mirrors a browse-first MTS flow.", "MTS Clerk", 3200000, AdminShopCategory.Use, false, InventoryType.USE, 2070005, 1, response: AdminShopResponse.InventoryFull, responseMessage: "The MTS clerk rejected delivery because the destination inventory tab is full.", maxRequestCount: 10),
                 CreateEntry("Chaos Scroll 60%", "Scroll listing preview staged for user-vs-NPC comparison.", "MTS Clerk", 21000000, AdminShopCategory.Scroll, false, state: AdminShopEntryState.SoldOut, stateLabel: "Sold out"),
                 CreateItemEntry("Brown Work Gloves", "Common MTS browse row with seller and price labels only.", "MTS Clerk", 4700000, AdminShopCategory.Equip, false, InventoryType.EQUIP, 1082002),
                 CreateItemEntry("Pink Adventurer Cape", "Apparel listing in the MTS catalog pane.", "MTS Clerk", 15000000, AdminShopCategory.Setup, false, InventoryType.EQUIP, 1102041, response: AdminShopResponse.SellerUnavailable, responseMessage: "The seller did not answer the trade relay request."),
-                CreateItemEntry("Ilbi Throwing-Stars", "Projectile listing to keep the pane scrollable.", "MTS Clerk", 6100000, AdminShopCategory.Use, false, InventoryType.USE, 2070000),
+                CreateItemEntry("Ilbi Throwing-Stars", "Projectile listing to keep the pane scrollable.", "MTS Clerk", 6100000, AdminShopCategory.Use, false, InventoryType.USE, 2070000, maxRequestCount: 10),
                 CreateEntry("Bathrobe for Men", "Popular dex robe listing inside the scrollable MTS pane.", "MTS Clerk", 8700000, AdminShopCategory.Equip, false, state: AdminShopEntryState.PreviewOnly, stateLabel: "Preview")
             };
         }
@@ -2126,7 +2488,8 @@ namespace HaCreator.MapSimulator.UI
             AdminShopEntryState state = AdminShopEntryState.Available,
             string stateLabel = "",
             AdminShopResponse response = AdminShopResponse.GrantItem,
-            string responseMessage = "")
+            string responseMessage = "",
+            int maxRequestCount = 1)
         {
             return new AdminShopEntry
             {
@@ -2145,7 +2508,8 @@ namespace HaCreator.MapSimulator.UI
                 RewardQuantity = Math.Max(1, rewardQuantity),
                 LockAfterSuccess = lockAfterSuccess,
                 Response = response,
-                ResponseMessage = responseMessage
+                ResponseMessage = responseMessage,
+                MaxRequestCount = Math.Max(1, maxRequestCount)
             };
         }
 
@@ -2329,7 +2693,7 @@ namespace HaCreator.MapSimulator.UI
 
         private bool CanRequestStorageExpansion(AdminShopEntry entry)
         {
-            if (entry == null || !entry.IsStorageExpansion || _inventory == null || _storageRuntime == null)
+            if (entry == null || !entry.IsStorageExpansion || _storageRuntime == null)
             {
                 return false;
             }
@@ -2339,7 +2703,34 @@ namespace HaCreator.MapSimulator.UI
                    && _storageRuntime.IsClientAccountAuthorityVerified
                    && _storageRuntime.IsSecondaryPasswordVerified
                    && _storageRuntime.CanExpandSlotLimit()
-                   && _inventory.GetMesoCount() >= entry.Price;
+                   && _nexonCash >= entry.Price;
+        }
+
+        private bool TryConsumeStorageExpansionCash(long amount)
+        {
+            long normalizedAmount = Math.Max(0L, amount);
+            if (normalizedAmount <= 0)
+            {
+                return true;
+            }
+
+            if (_nexonCash < normalizedAmount)
+            {
+                return false;
+            }
+
+            if (TryConsumeCashBalance != null && !TryConsumeCashBalance(normalizedAmount))
+            {
+                return false;
+            }
+
+            _nexonCash -= normalizedAmount;
+            return true;
+        }
+
+        private static string FormatCashPriceLabel(long amount)
+        {
+            return $"{FormatPriceLabel(amount)} NX";
         }
 
         private string BuildInventoryExpansionBlockedMessage(AdminShopEntry entry)
@@ -2368,11 +2759,6 @@ namespace HaCreator.MapSimulator.UI
             if (_storageRuntime == null)
             {
                 return "Storage runtime is unavailable for capacity updates.";
-            }
-
-            if (_inventory == null)
-            {
-                return "Inventory runtime is unavailable for cash-shop billing.";
             }
 
             if (!_storageRuntime.CanExpandSlotLimit())
@@ -2416,9 +2802,9 @@ namespace HaCreator.MapSimulator.UI
                     : "Open storage first and create a passcode before purchasing storage-slot expansion.";
             }
 
-            if (_inventory.GetMesoCount() < entry.Price)
+            if (_nexonCash < entry.Price)
             {
-                return $"Need {FormatPriceLabel(entry.Price)} before extending storage capacity.";
+                return $"Need {FormatCashPriceLabel(entry.Price)} before extending storage capacity.";
             }
 
             return BuildEntryStateText(entry);
@@ -2471,14 +2857,6 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            if (_inventory == null)
-            {
-                _footerMessage = "Inventory runtime is unavailable for cash-shop billing.";
-                _pendingRequestEntry = null;
-                UpdateActionButtonStates();
-                return;
-            }
-
             if (!_storageRuntime.CanExpandSlotLimit())
             {
                 _footerMessage = BuildStorageExpansionBlockedMessage(entry);
@@ -2505,9 +2883,9 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            if (!_inventory.TryConsumeMeso(entry.Price))
+            if (!TryConsumeStorageExpansionCash(entry.Price))
             {
-                _footerMessage = $"Need {FormatPriceLabel(entry.Price)} before extending storage capacity.";
+                _footerMessage = $"Need {FormatCashPriceLabel(entry.Price)} before extending storage capacity.";
                 _pendingRequestEntry = null;
                 UpdateActionButtonStates();
                 return;
@@ -2518,9 +2896,8 @@ namespace HaCreator.MapSimulator.UI
             entry.StateLabel = "Expanded";
             MarkEntryPurchased(entry);
             PersistEntrySessionState(entry);
-            _footerMessage = $"{entry.Title} succeeded. Storage now has {_storageRuntime.GetSlotLimit()} slots.";
+            _footerMessage = $"{entry.Title} succeeded. Storage now has {_storageRuntime.GetSlotLimit()} slots and {FormatCashPriceLabel(_nexonCash)} remains on the account.";
             _pendingRequestEntry = null;
-            Money = _inventory.GetMesoCount();
             UpdateActionButtonStates();
         }
 
@@ -2536,12 +2913,14 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            if (entry.ConsumeOnSuccess && !_inventory.TryConsumeMeso(entry.Price))
+            long totalPrice = ComputeRequestPrice(entry, _pendingRequestQuantity);
+            if (entry.ConsumeOnSuccess && !_inventory.TryConsumeMeso(totalPrice))
             {
                 entry.State = AdminShopEntryState.RequestRejected;
                 entry.StateLabel = "Need mesos";
-                _footerMessage = $"Need {FormatPriceLabel(entry.Price)} before this request can complete.";
+                _footerMessage = $"Need {FormatPriceLabel(totalPrice)} before this request can complete.";
                 _pendingRequestEntry = null;
+                _pendingRequestQuantity = 1;
                 Money = _inventory.GetMesoCount();
                 UpdateActionButtonStates();
                 return;
@@ -2555,31 +2934,33 @@ namespace HaCreator.MapSimulator.UI
                 case AdminShopResponse.ListingSoldOut:
                     FinishRejectedRequest(entry, "Sold out", string.IsNullOrWhiteSpace(entry.ResponseMessage)
                         ? $"{entry.Title} sold out before the simulator session completed the request."
-                        : entry.ResponseMessage, refundMeso: entry.ConsumeOnSuccess);
+                        : entry.ResponseMessage, refundAmount: entry.ConsumeOnSuccess ? totalPrice : 0L);
                     return;
                 case AdminShopResponse.SellerUnavailable:
                     FinishRejectedRequest(entry, "No reply", string.IsNullOrWhiteSpace(entry.ResponseMessage)
                         ? $"{entry.Seller} did not answer the simulator trade relay."
-                        : entry.ResponseMessage, refundMeso: entry.ConsumeOnSuccess);
+                        : entry.ResponseMessage, refundAmount: entry.ConsumeOnSuccess ? totalPrice : 0L);
                     return;
                 case AdminShopResponse.ListingExpired:
                     FinishRejectedRequest(entry, "Expired", string.IsNullOrWhiteSpace(entry.ResponseMessage)
                         ? $"{entry.Title} expired before delivery could be confirmed."
-                        : entry.ResponseMessage, refundMeso: entry.ConsumeOnSuccess);
+                        : entry.ResponseMessage, refundAmount: entry.ConsumeOnSuccess ? totalPrice : 0L);
                     return;
                 case AdminShopResponse.InventoryFull:
                     FinishRejectedRequest(entry, "Inventory full", string.IsNullOrWhiteSpace(entry.ResponseMessage)
                         ? $"The destination {entry.RewardInventoryType} inventory tab cannot accept {entry.Title}."
-                        : entry.ResponseMessage, refundMeso: entry.ConsumeOnSuccess);
+                        : entry.ResponseMessage, refundAmount: entry.ConsumeOnSuccess ? totalPrice : 0L);
                     return;
                 default:
-                    FinishRejectedRequest(entry, "Rejected", $"The simulator rejected the request for {entry.Title}.", refundMeso: entry.ConsumeOnSuccess);
+                    FinishRejectedRequest(entry, "Rejected", $"The simulator rejected the request for {entry.Title}.", refundAmount: entry.ConsumeOnSuccess ? totalPrice : 0L);
                     return;
             }
         }
 
         private void ResolveGrantedItemRequest(AdminShopEntry entry)
         {
+            int deliveredQuantity = ComputeDeliveredQuantity(entry, _pendingRequestQuantity);
+            long totalPrice = ComputeRequestPrice(entry, _pendingRequestQuantity);
             if (entry.RewardInventoryType == InventoryType.NONE || entry.RewardItemId <= 0)
             {
                 entry.State = AdminShopEntryState.RequestAccepted;
@@ -2587,39 +2968,42 @@ namespace HaCreator.MapSimulator.UI
                 PersistEntrySessionState(entry);
                 _footerMessage = $"Catalog response received for {entry.Title}. The simulator accepted the request.";
                 _pendingRequestEntry = null;
+                _pendingRequestQuantity = 1;
                 Money = _inventory?.GetMesoCount() ?? Money;
                 UpdateActionButtonStates();
                 return;
             }
 
-            if (!_inventory.CanAcceptItem(entry.RewardInventoryType, entry.RewardItemId, entry.RewardQuantity))
+            if (!_inventory.CanAcceptItem(entry.RewardInventoryType, entry.RewardItemId, deliveredQuantity))
             {
                 FinishRejectedRequest(
                     entry,
                     "Inventory full",
                     $"The destination {entry.RewardInventoryType} inventory tab cannot accept {entry.Title}.",
-                    refundMeso: entry.ConsumeOnSuccess);
+                    refundAmount: entry.ConsumeOnSuccess ? totalPrice : 0L);
                 return;
             }
 
             Texture2D itemTexture = ResolveEntryIcon(entry);
-            _inventory.AddItem(entry.RewardInventoryType, entry.RewardItemId, itemTexture, entry.RewardQuantity);
+            _inventory.AddItem(entry.RewardInventoryType, entry.RewardItemId, itemTexture, deliveredQuantity);
             entry.State = entry.LockAfterSuccess ? AdminShopEntryState.SoldOut : AdminShopEntryState.RequestAccepted;
             entry.StateLabel = entry.LockAfterSuccess ? "Purchased" : "Delivered";
             entry.IconTexture = itemTexture;
             MarkEntryPurchased(entry);
             PersistEntrySessionState(entry);
-            _footerMessage = $"{entry.Title} delivered to {entry.RewardInventoryType} inventory.";
+            string deliveryLabel = deliveredQuantity > 1 ? $" x{deliveredQuantity}" : string.Empty;
+            _footerMessage = $"{entry.Title}{deliveryLabel} delivered to {entry.RewardInventoryType} inventory.";
             _pendingRequestEntry = null;
+            _pendingRequestQuantity = 1;
             Money = _inventory.GetMesoCount();
             UpdateActionButtonStates();
         }
 
-        private void FinishRejectedRequest(AdminShopEntry entry, string stateLabel, string footerMessage, bool refundMeso)
+        private void FinishRejectedRequest(AdminShopEntry entry, string stateLabel, string footerMessage, long refundAmount)
         {
-            if (refundMeso && _inventory != null && entry.Price > 0)
+            if (refundAmount > 0 && _inventory != null)
             {
-                _inventory.AddMeso(entry.Price);
+                _inventory.AddMeso(refundAmount);
             }
 
             entry.State = AdminShopEntryState.RequestRejected;
@@ -2627,6 +3011,7 @@ namespace HaCreator.MapSimulator.UI
             PersistEntrySessionState(entry);
             _footerMessage = footerMessage;
             _pendingRequestEntry = null;
+            _pendingRequestQuantity = 1;
             Money = _inventory?.GetMesoCount() ?? Money;
             UpdateActionButtonStates();
         }
@@ -2786,6 +3171,36 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return entry.Category == category;
+        }
+
+        private AdminShopCategory ResolveWishlistCategory(int categoryIndex)
+        {
+            return categoryIndex >= 0 && categoryIndex < _categoryTabs.Length
+                ? GetFullCategory(categoryIndex)
+                : AdminShopCategory.All;
+        }
+
+        private bool MatchesWishlistPriceRange(AdminShopEntry entry, int priceRangeIndex)
+        {
+            if (entry == null)
+            {
+                return false;
+            }
+
+            int normalizedIndex = Math.Clamp(priceRangeIndex, 0, _wishlistPriceRanges.Count - 1);
+            WishlistPriceRange range = _wishlistPriceRanges[normalizedIndex];
+            if (normalizedIndex == _wishlistPriceRanges.Count - 1)
+            {
+                return entry.Price >= range.MinimumPrice && entry.Price <= range.MaximumPrice;
+            }
+
+            return entry.Price >= range.MinimumPrice && entry.Price < range.MaximumPrice;
+        }
+
+        private string GetWishlistPriceRangeLabel(int priceRangeIndex)
+        {
+            int normalizedIndex = Math.Clamp(priceRangeIndex, 0, _wishlistPriceRanges.Count - 1);
+            return _wishlistPriceRanges[normalizedIndex].Label;
         }
 
         private void RestoreEntryFlags(IEnumerable<AdminShopEntry> entries, AdminShopServiceMode mode)

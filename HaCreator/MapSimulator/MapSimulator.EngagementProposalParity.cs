@@ -28,7 +28,11 @@ namespace HaCreator.MapSimulator
 
         private string AcceptEngagementProposal()
         {
-            _engagementProposalRuntime.TryAccept(out _, out string message);
+            if (!_engagementProposalRuntime.TryAccept(out _, out string message))
+            {
+                return message;
+            }
+
             uiWindowManager?.HideWindow(MapSimulatorWindowNames.EngagementProposal);
             return message;
         }
@@ -48,6 +52,17 @@ namespace HaCreator.MapSimulator
             string customMessage)
         {
             string message = _engagementProposalRuntime.OpenProposal(proposerName, partnerName, ringItemId, sealItemId, customMessage);
+            ShowEngagementProposalWindow();
+            return message;
+        }
+
+        private string OpenOutgoingEngagementProposal(
+            string proposerName,
+            string partnerName,
+            int ringItemId,
+            string requestMessage)
+        {
+            string message = _engagementProposalRuntime.OpenOutgoingRequest(proposerName, partnerName, ringItemId, requestMessage);
             ShowEngagementProposalWindow();
             return message;
         }

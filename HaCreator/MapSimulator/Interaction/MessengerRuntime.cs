@@ -819,6 +819,48 @@ namespace HaCreator.MapSimulator.Interaction
                     }
 
                     return ApplyPacketMemberInfo(memberInfoPacket);
+                case MessengerPacketType.Blocked:
+                    if (!MessengerPacketCodec.TryParseBlocked(payload, out MessengerBlockedPacket blockedPacket, out string blockedError))
+                    {
+                        return blockedError ?? "Messenger blocked packet payload could not be decoded.";
+                    }
+
+                    return ApplyPacketBlocked(blockedPacket);
+                case MessengerPacketType.Avatar:
+                    if (!MessengerPacketCodec.TryParseAvatar(payload, out MessengerAvatarPacket avatarPacket, out string avatarError))
+                    {
+                        return avatarError ?? "Messenger avatar packet payload could not be decoded.";
+                    }
+
+                    return ApplyPacketAvatar(avatarPacket);
+                case MessengerPacketType.Enter:
+                    if (!MessengerPacketCodec.TryParseEnter(payload, out MessengerEnterPacket enterPacket, out string enterError))
+                    {
+                        return enterError ?? "Messenger enter packet payload could not be decoded.";
+                    }
+
+                    return ApplyPacketEnter(enterPacket);
+                case MessengerPacketType.InviteResult:
+                    if (!MessengerPacketCodec.TryParseInviteResult(payload, out MessengerInviteResultPacket inviteResultPacket, out string inviteResultError))
+                    {
+                        return inviteResultError ?? "Messenger invite-result packet payload could not be decoded.";
+                    }
+
+                    return ResolvePendingInvitePacket(inviteResultPacket.ContactName, inviteResultPacket.Accepted);
+                case MessengerPacketType.Migrated:
+                    if (!MessengerPacketCodec.TryParseMigrated(payload, out MessengerMigratedPacket migratedPacket, out string migratedError))
+                    {
+                        return migratedError ?? "Messenger migrated packet payload could not be decoded.";
+                    }
+
+                    return ApplyPacketMigrated(migratedPacket);
+                case MessengerPacketType.SelfEnterResult:
+                    if (!MessengerPacketCodec.TryParseSelfEnterResult(payload, out MessengerSelfEnterResultPacket selfEnterResultPacket, out string selfEnterError))
+                    {
+                        return selfEnterError ?? "Messenger self-enter-result packet payload could not be decoded.";
+                    }
+
+                    return ApplyPacketSelfEnterResult(selfEnterResultPacket);
                 default:
                     return $"Messenger packet type '{packetType}' is not modeled.";
             }
@@ -1219,6 +1261,211 @@ namespace HaCreator.MapSimulator.Interaction
             RecordPacketSummary(packet.AvatarLook != null
                 ? $"Decoded Messenger member-info packet for {resolvedName}, CH {Math.Max(1, packet.Channel)}, Lv. {Math.Max(1, packet.Level)}, with AvatarLook."
                 : $"Decoded Messenger member-info packet for {resolvedName}, CH {Math.Max(1, packet.Channel)}, Lv. {Math.Max(1, packet.Level)}.");
+            return _lastActionSummary;
+        }
+
+        private string ApplyPacketBlocked(MessengerBlockedPacket packet)
+        {
+            string resolvedName = NormalizeParticipantName(packet.ContactName);
+            if (resolvedName == null)
+            {
+                return "Messenger blocked packet contact name is empty.";
+            }
+
+            if (_contacts.TryGetValue(resolvedName, out MessengerContactState contact))
+            {
+                contact.AcceptsInvites = !packet.Blocked && contact.IsOnline;
+                contact.DataSourceLabel = "packet";
+            }
+
+            _lastActionSummary = packet.Blocked
+                ? $"{resolvedName} is blocking Messenger contact requests."
+                : $"{resolvedName} cleared the Messenger block state.";
+            AddSystemLog(_lastActionSummary);
+            StartBlink(Environment.TickCount);
+            RecordPacketSummary(packet.Blocked
+                ? $"Applied decoded Messenger blocked packet for {resolvedName}: blocked."
+                : $"Applied decoded Messenger blocked packet for {resolvedName}: unblocked.");
+            return _lastActionSummary;
+        }
+
+        private string ApplyPacketAvatar(MessengerAvatarPacket packet)
+        {
+            int participantIndex = packet.SlotIndex >= 0 && packet.SlotIndex < _participants.Count
+                ? packet.SlotIndex
+                : -1;
+            if (participantIndex < 0)
+            {
+                return $"Messenger avatar packet slot {packet.SlotIndex} is not active.";
+            }
+
+            MessengerParticipantState participant = _participants[participantIndex];
+            _participants[participantIndex] = participant with
+            {
+                AvatarLook = packet.AvatarLook,
+                DataSourceLabel = "packet"
+            };
+
+            if (_contacts.TryGetValue(participant.Name, out MessengerContactState contact))
+            {
+                contact.AvatarLook = packet.AvatarLook;
+                contact.DataSourceLabel = "packet";
+                SyncParticipantFromContact(contact);
+            }
+
+            _lastActionSummary = $"Applied decoded Messenger avatar packet to slot {packet.SlotIndex} ({participant.Name}).";
+            AddSystemLog(_lastActionSummary);
+            RecordPacketSummary($"Decoded Messenger avatar packet for slot {packet.SlotIndex} ({participant.Name}).");
+            return _lastActionSummary;
+        }
+
+        private string ApplyPacketEnter(MessengerEnterPacket packet)
+        {
+            int participantIndex = FindParticipantIndex(packet.ContactName);
+            if (participantIndex < 0 && _participants.Count >= MaxParticipants)
+            {
+                return $"Messenger enter packet could not add {packet.ContactName} because the room is full.";
+            }
+
+            string statusText = packet.IsOnline ? "Online" : "Offline";
+            const string dataSourceLabel = "packet";
+
+            if (participantIndex >= 0)
+            {
+                MessengerParticipantState existingParticipant = _participants[participantIndex];
+                _participants[participantIndex] = existingParticipant with
+                {
+                    Channel = packet.Channel,
+                    StatusText = packet.IsOnline
+                        ? (string.Equals(existingParticipant.StatusText, "Offline", StringComparison.OrdinalIgnoreCase)
+                            ? statusText
+                            : existingParticipant.StatusText)
+                        : statusText,
+                    IsOnline = packet.IsOnline,
+                    AvatarLook = packet.AvatarLook ?? existingParticipant.AvatarLook,
+                    DataSourceLabel = dataSourceLabel
+                };
+            }
+            else
+            {
+                int resolvedSlotIndex = Math.Clamp(packet.SlotIndex, 0, MaxParticipants - 1);
+                participantIndex = Math.Min(_participants.Count, Math.Max(1, resolvedSlotIndex));
+                _participants.Insert(participantIndex, new MessengerParticipantState
+                {
+                    Name = packet.ContactName,
+                    LocationSummary = "Field",
+                    Channel = packet.Channel,
+                    StatusText = statusText,
+                    JobName = "Adventurer",
+                    Level = 1,
+                    IsLocalPlayer = false,
+                    IsOnline = packet.IsOnline,
+                    AvatarLook = packet.AvatarLook,
+                    DataSourceLabel = dataSourceLabel
+                });
+            }
+
+            if (_contacts.TryGetValue(packet.ContactName, out MessengerContactState contact))
+            {
+                contact.IsOnline = packet.IsOnline;
+                contact.AcceptsInvites = packet.IsOnline;
+                contact.Channel = packet.Channel;
+                contact.AvatarLook = packet.AvatarLook;
+                contact.DataSourceLabel = "packet";
+                SyncParticipantFromContact(contact);
+            }
+
+            _selectedSlot = Math.Clamp(participantIndex, 0, Math.Max(0, _participants.Count - 1));
+            _lastActionSummary = $"Applied decoded Messenger enter packet for {packet.ContactName} at slot {packet.SlotIndex}.";
+            AddSystemLog(_lastActionSummary);
+            StartBlink(Environment.TickCount);
+            RecordPacketSummary(packet.AvatarLook != null
+                ? $"Decoded Messenger enter packet for {packet.ContactName}, slot {packet.SlotIndex}, CH {packet.Channel}, with AvatarLook."
+                : $"Decoded Messenger enter packet for {packet.ContactName}, slot {packet.SlotIndex}, CH {packet.Channel}.");
+            return _lastActionSummary;
+        }
+
+        private string ApplyPacketMigrated(MessengerMigratedPacket packet)
+        {
+            if (_participants.Count == 0)
+            {
+                UpdateLocalContext("Player", "Field", 1);
+            }
+
+            MessengerParticipantState localPlayer = _participants[0];
+            _participants.Clear();
+            _participants.Add(localPlayer);
+
+            foreach (MessengerMigratedParticipantPacket participantPacket in packet.Participants
+                         .Where(candidate => candidate.Present)
+                         .OrderBy(candidate => candidate.SlotIndex))
+            {
+                if (string.Equals(participantPacket.ContactName, localPlayer.Name, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (_participants.Count >= MaxParticipants)
+                {
+                    break;
+                }
+
+                string resolvedName = NormalizeParticipantName(participantPacket.ContactName);
+                if (resolvedName == null)
+                {
+                    continue;
+                }
+
+                string locationSummary = "Field";
+                string statusText = participantPacket.IsOnline ? "Online" : "Offline";
+                string jobName = "Adventurer";
+                int level = 1;
+
+                if (_contacts.TryGetValue(resolvedName, out MessengerContactState contact))
+                {
+                    contact.IsOnline = participantPacket.IsOnline;
+                    contact.AcceptsInvites = participantPacket.IsOnline;
+                    contact.Channel = participantPacket.Channel;
+                    contact.AvatarLook = participantPacket.AvatarLook;
+                    contact.DataSourceLabel = "packet";
+                    locationSummary = contact.LocationSummary;
+                    statusText = participantPacket.IsOnline ? contact.StatusText : "Offline";
+                    jobName = contact.JobName;
+                    level = contact.Level;
+                }
+
+                _participants.Add(new MessengerParticipantState
+                {
+                    Name = resolvedName,
+                    LocationSummary = locationSummary,
+                    Channel = participantPacket.Channel,
+                    StatusText = statusText,
+                    JobName = jobName,
+                    Level = level,
+                    IsLocalPlayer = false,
+                    IsOnline = participantPacket.IsOnline,
+                    AvatarLook = participantPacket.AvatarLook,
+                    DataSourceLabel = "packet"
+                });
+            }
+
+            _selectedSlot = Math.Clamp(_selectedSlot, 0, Math.Max(0, _participants.Count - 1));
+            _lastActionSummary = $"Applied decoded Messenger migrated packet with {_participants.Count - 1} remote participant(s).";
+            AddSystemLog(_lastActionSummary);
+            StartBlink(Environment.TickCount);
+            RecordPacketSummary($"Decoded Messenger migrated packet with {packet.Participants.Length} slot record(s).");
+            return _lastActionSummary;
+        }
+
+        private string ApplyPacketSelfEnterResult(MessengerSelfEnterResultPacket packet)
+        {
+            _lastActionSummary = packet.Succeeded
+                ? "Applied decoded Messenger self-enter result packet: join succeeded."
+                : "Applied decoded Messenger self-enter result packet: join failed.";
+            AddSystemLog(_lastActionSummary);
+            RecordPacketSummary(packet.Succeeded
+                ? "Decoded Messenger self-enter result packet: success."
+                : "Decoded Messenger self-enter result packet: failure.");
             return _lastActionSummary;
         }
 

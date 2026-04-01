@@ -15,11 +15,14 @@ namespace HaCreator.MapSimulator.Character
                 ["ghostrope"] = new[] { "rope" },
                 ["ghostprone"] = new[] { "prone" },
                 ["ghostpronestab"] = new[] { "proneStab", "prone" },
+                ["ghost"] = new[] { "stand1", "stand2", "dead" },
                 // `special/*` does not publish ghost or fly2/swim-specific branches for the
                 // confirmed Shadow Partner skills, so keep the client-shaped stand/fly/jump
                 // collapse ahead of broader fallback when those raw-action families surface.
                 ["ghostfly"] = new[] { "stand1", "stand2", "fly", "jump" },
                 ["ghostsit"] = new[] { "sit" },
+                ["hit"] = new[] { "alert", "stand1", "stand2" },
+                ["dead"] = new[] { "dead", "stand1" },
                 ["swim"] = new[] { "stand1", "stand2", "fly", "jump" },
                 ["fly2"] = new[] { "stand1", "stand2", "fly", "jump" },
                 ["fly2Move"] = new[] { "stand1", "stand2", "fly", "jump" },
@@ -37,6 +40,10 @@ namespace HaCreator.MapSimulator.Character
                 {
                     yield return candidate;
                 }
+
+                // CActionMan::LoadShadowPartnerAction walks the raw-action alias table first,
+                // then falls back to the plain action-name lookup before broader state fallback.
+                yield return playerActionName;
             }
 
             if (state is PlayerState.Swimming or PlayerState.Flying)
@@ -62,6 +69,17 @@ namespace HaCreator.MapSimulator.Character
             else if (state == PlayerState.Sitting)
             {
                 yield return "sit";
+            }
+            else if (state == PlayerState.Hit)
+            {
+                yield return "alert";
+                yield return "stand1";
+                yield return "stand2";
+            }
+            else if (state == PlayerState.Dead)
+            {
+                yield return "dead";
+                yield return "stand1";
             }
             else if (state == PlayerState.Walking)
             {

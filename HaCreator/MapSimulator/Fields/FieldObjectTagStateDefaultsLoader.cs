@@ -77,8 +77,6 @@ namespace HaCreator.MapSimulator.Fields
                 {
                     states[tags[i]] = state;
                 }
-
-                return;
             }
 
             if (property.WzProperties == null)

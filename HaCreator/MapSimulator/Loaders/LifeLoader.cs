@@ -6,6 +6,7 @@ using HaCreator.MapSimulator.Animation;
 using HaCreator.MapSimulator.Entities;
 using HaCreator.MapSimulator.Managers;
 using HaSharedLibrary;
+using HaSharedLibrary.Wz;
 using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
@@ -39,6 +40,7 @@ namespace HaCreator.MapSimulator.Loaders
         }
 
         private static readonly ConditionalWeakTable<GraphicsDevice, ConcurrentDictionary<string, Lazy<CachedMobAttackAssets>>> _cachedMobAttackAssetsByDevice = new();
+        private static readonly ConditionalWeakTable<GraphicsDevice, Lazy<MobAnimationSet>> _cachedDoomAnimationSetByDevice = new();
 
         #region Mob
         /// <summary>
@@ -59,6 +61,7 @@ namespace HaCreator.MapSimulator.Loaders
 
             // Create animation set to store frames per action
             MobAnimationSet animationSet = new MobAnimationSet();
+            MobAnimationSet doomAnimationSet = GetOrBuildDoomAnimationSet(texturePool, device, usedProps);
             CachedMobAttackAssets cachedAttackAssets = GetOrBuildCachedMobAttackAssets(texturePool, mobInfo, source, device, usedProps);
             ApplyCachedMobAttackAssets(animationSet, cachedAttackAssets);
 
@@ -135,7 +138,7 @@ namespace HaCreator.MapSimulator.Loaders
                     texturePool, UserScreenScaleFactor, device);
             }
 
-            var mobItem = new MobItem(mobInstance, animationSet, nameTooltip);
+            var mobItem = new MobItem(mobInstance, animationSet, nameTooltip, doomAnimationSet);
 
             // Load mob-specific sounds from Sound.wz/Mob.img/{mobId}/
             mobItem.SetSoundManager(soundManager);
@@ -166,6 +169,68 @@ namespace HaCreator.MapSimulator.Loaders
                     System.Threading.LazyThreadSafetyMode.ExecutionAndPublication));
 
             return lazyAssets.Value;
+        }
+
+        private static MobAnimationSet GetOrBuildDoomAnimationSet(
+            TexturePool texturePool,
+            GraphicsDevice device,
+            ConcurrentBag<WzObject> usedProps)
+        {
+            if (texturePool == null || device == null)
+            {
+                return null;
+            }
+
+            Lazy<MobAnimationSet> lazyAnimationSet = _cachedDoomAnimationSetByDevice.GetValue(
+                device,
+                _ => new Lazy<MobAnimationSet>(
+                    () => BuildDoomAnimationSet(texturePool, device, usedProps),
+                    System.Threading.LazyThreadSafetyMode.ExecutionAndPublication));
+
+            return lazyAnimationSet.Value;
+        }
+
+        private static MobAnimationSet BuildDoomAnimationSet(
+            TexturePool texturePool,
+            GraphicsDevice device,
+            ConcurrentBag<WzObject> usedProps)
+        {
+            WzImage doomImage = Program.FindImage("Mob", "0100101.img");
+            if (doomImage == null)
+            {
+                return null;
+            }
+
+            if (!doomImage.Parsed)
+            {
+                doomImage.ParseImage();
+            }
+
+            var animationSet = new MobAnimationSet();
+            foreach (WzImageProperty childProperty in doomImage.WzProperties)
+            {
+                if (childProperty is not WzSubProperty mobStateProperty)
+                {
+                    continue;
+                }
+
+                string actionName = mobStateProperty.Name.ToLowerInvariant();
+                if (actionName != "stand" &&
+                    actionName != "move" &&
+                    actionName != "hit1" &&
+                    actionName != "die1")
+                {
+                    continue;
+                }
+
+                List<IDXObject> actionFrames = MapSimulatorLoader.LoadFrames(texturePool, mobStateProperty, 0, 0, device, usedProps);
+                if (actionFrames.Count > 0)
+                {
+                    animationSet.AddAnimation(actionName, actionFrames);
+                }
+            }
+
+            return animationSet.ActionCount > 0 ? animationSet : null;
         }
 
         private static CachedMobAttackAssets BuildCachedMobAttackAssets(
@@ -221,14 +286,15 @@ namespace HaCreator.MapSimulator.Loaders
                     continue;
                 }
 
-                WzSubProperty infoNode = mobStateProperty["info"] as WzSubProperty;
-                MobAnimationSet.AttackInfoMetadata attackInfo = BuildAttackInfoMetadata(infoNode);
+                WzImageProperty infoProperty = WzInfoTools.GetRealProperty(mobStateProperty["info"]);
+                WzSubProperty infoNode = infoProperty as WzSubProperty;
+                MobAnimationSet.AttackInfoMetadata attackInfo = BuildAttackInfoMetadata(infoProperty);
                 if (attackInfo != null)
                 {
                     cached.AttackMetadata[actionName] = attackInfo;
                 }
 
-                WzSubProperty hitNode = infoNode?["hit"] as WzSubProperty;
+                WzImageProperty hitNode = ResolveAttackHitNode(infoProperty);
                 if (hitNode != null)
                 {
                     List<IDXObject> hitFrames = MapSimulatorLoader.LoadFrames(texturePool, hitNode, 0, 0, device, usedProps);
@@ -462,32 +528,42 @@ namespace HaCreator.MapSimulator.Loaders
             return null;
         }
 
-        private static MobAnimationSet.AttackInfoMetadata BuildAttackInfoMetadata(WzSubProperty infoNode)
+        internal static MobAnimationSet.AttackInfoMetadata BuildAttackInfoMetadata(WzImageProperty infoProperty)
         {
+            WzSubProperty infoNode = WzInfoTools.GetRealProperty(infoProperty) as WzSubProperty;
             if (infoNode == null)
             {
                 return null;
             }
 
-            WzSubProperty hitNode = infoNode["hit"] as WzSubProperty;
-            int nestedHitAttach = InfoTool.GetInt(hitNode?["bHitAttach"], InfoTool.GetInt(hitNode?["hitAttach"], int.MinValue));
-            int nestedFacingAttach = InfoTool.GetInt(
-                hitNode?["bFacingAttach"],
-                InfoTool.GetInt(hitNode?["bFacingAttatch"], InfoTool.GetInt(hitNode?["facingAttach"], int.MinValue)));
+            WzSubProperty hitNode = ResolveAttackHitNode(infoNode) as WzSubProperty;
+            int nestedHitAttach = ReadOptionalInt(hitNode, int.MinValue, "attach", "bHitAttach", "hitAttach");
+            int nestedFacingAttach = ReadOptionalInt(
+                hitNode,
+                int.MinValue,
+                "attachfacing",
+                "bFacingAttach",
+                "bFacingAttatch",
+                "facingAttach");
 
             var metadata = new MobAnimationSet.AttackInfoMetadata
             {
                 AttackType = InfoTool.GetInt(infoNode["type"], -1),
                 HitAttach = nestedHitAttach != int.MinValue
                     ? nestedHitAttach > 0
-                    : InfoTool.GetInt(infoNode["bHitAttach"], InfoTool.GetInt(infoNode["hitAttach"], 0)) > 0,
+                    : ReadOptionalInt(infoNode, 0, "attach", "bHitAttach", "hitAttach") > 0,
                 FacingAttach = nestedFacingAttach != int.MinValue
                     ? nestedFacingAttach > 0
-                    : InfoTool.GetInt(
-                        infoNode["bFacingAttach"],
-                        InfoTool.GetInt(infoNode["bFacingAttatch"], InfoTool.GetInt(infoNode["facingAttach"], 0))) > 0,
+                    : ReadOptionalInt(
+                        infoNode,
+                        0,
+                        "attachfacing",
+                        "bFacingAttach",
+                        "bFacingAttatch",
+                        "facingAttach") > 0,
                 EffectAfter = InfoTool.GetInt(infoNode["effectAfter"], 0),
                 AttackAfter = InfoTool.GetInt(infoNode["attackAfter"], 0),
+                RandDelayAttack = InfoTool.GetInt(infoNode["randDelayAttack"], 0),
                 HasPrimaryEffect = infoNode["effect"] != null,
                 HasAreaWarning = infoNode["areaWarning"] != null,
                 IsRushAttack = InfoTool.GetInt(infoNode["rush"], 0) > 0,
@@ -526,6 +602,36 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             return metadata;
+        }
+
+        internal static WzImageProperty ResolveAttackHitNode(WzImageProperty infoProperty)
+        {
+            WzSubProperty infoNode = WzInfoTools.GetRealProperty(infoProperty) as WzSubProperty;
+            return WzInfoTools.GetRealProperty(infoNode?["hit"]);
+        }
+
+        private static int ReadOptionalInt(WzImageProperty parent, int defaultValue, params string[] propertyNames)
+        {
+            if (parent == null || propertyNames == null)
+            {
+                return defaultValue;
+            }
+
+            foreach (string propertyName in propertyNames)
+            {
+                if (string.IsNullOrWhiteSpace(propertyName))
+                {
+                    continue;
+                }
+
+                WzImageProperty property = WzInfoTools.GetRealProperty(parent[propertyName]);
+                if (property != null)
+                {
+                    return InfoTool.GetInt(property, defaultValue);
+                }
+            }
+
+            return defaultValue;
         }
 
         private static bool TryBuildAttackEffectNode(

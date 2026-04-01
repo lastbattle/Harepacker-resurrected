@@ -25,12 +25,18 @@ namespace HaCreator.MapSimulator.Interaction
         public int MiniRoomOmokGuestStoneValue { get; set; } = 2;
         public bool MiniRoomOmokTieRequested { get; set; }
         public List<int> MiniRoomOmokBoard { get; set; } = new();
+        public List<SocialRoomOmokMoveSnapshot> MiniRoomOmokMoveHistory { get; set; } = new();
         public int TradeLocalOfferMeso { get; set; }
         public int TradeRemoteOfferMeso { get; set; }
         public bool TradeLocalLocked { get; set; }
         public bool TradeRemoteLocked { get; set; }
         public bool TradeLocalAccepted { get; set; }
         public bool TradeRemoteAccepted { get; set; }
+        public bool TradeVerificationPending { get; set; }
+        public bool TradeLocalVerificationReady { get; set; }
+        public bool TradeRemoteVerificationReady { get; set; }
+        public List<SocialRoomTradeVerificationEntrySnapshot> TradeLocalVerificationEntries { get; set; } = new();
+        public List<SocialRoomTradeVerificationEntrySnapshot> TradeRemoteVerificationEntries { get; set; } = new();
         public DateTime? EntrustedPermitExpiresAtUtc { get; set; }
         public int EmployeeTemplateId { get; set; }
         public bool EmployeeUseOwnerAnchor { get; set; } = true;
@@ -41,6 +47,7 @@ namespace HaCreator.MapSimulator.Interaction
         public bool EmployeeHasWorldPosition { get; set; }
         public bool? EmployeeFlip { get; set; }
         public bool EmployeeHasPacketData { get; set; }
+        public bool EmployeePacketActorHidden { get; set; }
         public int EmployeePacketEmployerId { get; set; }
         public int EmployeePacketFootholdId { get; set; }
         public string EmployeePacketNameTag { get; set; }
@@ -85,6 +92,20 @@ namespace HaCreator.MapSimulator.Interaction
     {
         public string Text { get; set; }
         public SocialRoomChatTone Tone { get; set; }
+    }
+
+    public sealed class SocialRoomOmokMoveSnapshot
+    {
+        public int X { get; set; }
+        public int Y { get; set; }
+        public int StoneValue { get; set; }
+        public int SeatIndex { get; set; }
+    }
+
+    public sealed class SocialRoomTradeVerificationEntrySnapshot
+    {
+        public int ItemId { get; set; }
+        public uint Checksum { get; set; }
     }
 
     public sealed class SocialRoomRemoteInventoryEntrySnapshot

@@ -515,7 +515,7 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            state.LastSkillAction = attackAction;
+            state.LastSkillAction = (byte)(attackAction & 0x7F);
             state.LastSkillTime = currentTime;
             state.Summon.TeslaCoilState = state.TeslaCoilState > 0 ? (byte)2 : state.Summon.TeslaCoilState;
             BeginPacketOwnedSkillAnimation(state, currentTime);
@@ -558,7 +558,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             state.Summon.LastAttackAnimationStartTime = currentTime;
-            state.Summon.CurrentAnimationBranchName = ResolvePacketOwnedSkillBranch(state.Summon);
+            state.Summon.CurrentAnimationBranchName = ResolvePacketOwnedSkillBranch(state);
             bool hasPrepareAnimation = state.Summon.SkillData?.SummonAttackPrepareAnimation?.Frames.Count > 0;
             state.Summon.ActorState = hasPrepareAnimation
                 ? SummonActorState.Prepare
@@ -2146,13 +2146,15 @@ namespace HaCreator.MapSimulator.Pools
 
             MobAnimationSet.AttackInfoMetadata attackInfo = mob?.GetAttackInfo(attackAction);
             Vector2 hitPosition = ResolvePacketHitEffectPosition(summon, attackInfo, currentTime);
+            bool followSummon = attackInfo?.HitAttach == true;
+            bool followSummonFacing = followSummon || attackInfo?.FacingAttach == true;
             _mobAttackHitEffects.Add(new PacketOwnedMobAttackHitEffectDisplay
             {
                 X = hitPosition.X,
                 Y = hitPosition.Y,
                 AttachedSummonObjectId = summon.ObjectId,
-                FollowSummon = attackInfo?.HitAttach == true,
-                FollowSummonFacing = attackInfo?.HitAttach == true,
+                FollowSummon = followSummon,
+                FollowSummonFacing = followSummonFacing,
                 Frames = frames,
                 CurrentFrame = 0,
                 LastFrameTime = currentTime,
@@ -2531,54 +2533,16 @@ namespace HaCreator.MapSimulator.Pools
             return skill.SummonAttackAnimation;
         }
 
-        private static string ResolvePacketOwnedSkillBranch(ActiveSummon summon)
+        private static string ResolvePacketOwnedSkillBranch(PacketOwnedSummonState state)
         {
+            ActiveSummon summon = state?.Summon;
             SkillData skill = summon?.SkillData;
-            if (skill?.SummonNamedAnimations == null || skill.SummonNamedAnimations.Count == 0)
+            if (skill == null)
             {
                 return null;
             }
 
-            if (summon.SkillId == 1321007)
-            {
-                return null;
-            }
-
-            if (SummonRuntimeRules.HasMinionAbilityToken(skill.MinionAbility, "heal"))
-            {
-                return ResolveNamedSummonBranch(skill, "heal", "support");
-            }
-
-            if (SummonRuntimeRules.HasMinionAbilityToken(skill.MinionAbility, "mes")
-                || SummonRuntimeRules.HasMinionAbilityToken(skill.MinionAbility, "amplifyDamage"))
-            {
-                return ResolveNamedSummonBranch(skill, "support", "heal");
-            }
-
-            if (SummonRuntimeRules.HasMinionAbilityToken(skill.MinionAbility, "summon"))
-            {
-                return ResolveNamedSummonBranch(skill, "subsummon");
-            }
-
-            return null;
-        }
-
-        private static string ResolveNamedSummonBranch(SkillData skill, params string[] preferredBranchNames)
-        {
-            if (skill?.SummonNamedAnimations == null || preferredBranchNames == null)
-            {
-                return null;
-            }
-
-            foreach (string branchName in preferredBranchNames)
-            {
-                if (!string.IsNullOrWhiteSpace(branchName) && skill.SummonNamedAnimations.ContainsKey(branchName))
-                {
-                    return branchName;
-                }
-            }
-
-            return null;
+            return SummonRuntimeRules.ResolvePacketSkillBranch(skill, state.LastSkillAction);
         }
 
         private static int? GetSkillAnimationDuration(SkillAnimation animation)

@@ -390,7 +390,13 @@ namespace HaCreator.MapSimulator.Interaction
             if (skill == null || skill.CurrentLevel >= skill.MaxLevel)
                 return string.Empty;
 
-            return skill.GetLevelDescription(skill.CurrentLevel + 1);
+            int nextLevel = skill.CurrentLevel <= 0
+                ? 2
+                : skill.CurrentLevel + 1;
+            if (nextLevel > skill.MaxLevel)
+                return string.Empty;
+
+            return skill.GetLevelDescription(nextLevel);
         }
 
         private string BuildSelectedSkillSummary(SkillDisplayData selectedSkill, int selectedRequiredGuildLevel)

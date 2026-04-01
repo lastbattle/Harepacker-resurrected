@@ -163,6 +163,27 @@ namespace HaCreator.MapSimulator.Companions
             out string rejectReason)
         {
             displacedItems = Array.Empty<CompanionEquipItem>();
+            if (!TryValidateEquipItem(targetSlot, itemId, out CompanionEquipItem item, out rejectReason))
+            {
+                return false;
+            }
+
+            if (_equippedItems.TryGetValue(targetSlot, out CompanionEquipItem displacedItem))
+            {
+                displacedItems = new ReadOnlyCollection<CompanionEquipItem>(new[] { displacedItem });
+            }
+
+            _equippedItems[targetSlot] = item;
+            return true;
+        }
+
+        public bool TryValidateEquipItem(
+            DragonEquipSlot targetSlot,
+            int itemId,
+            out CompanionEquipItem item,
+            out string rejectReason)
+        {
+            item = null;
             rejectReason = null;
             if (!HasOwnerState)
             {
@@ -177,7 +198,7 @@ namespace HaCreator.MapSimulator.Companions
                 return false;
             }
 
-            CompanionEquipItem item = _loader.LoadDragonEquipment(itemId);
+            item = _loader.LoadDragonEquipment(itemId);
             if (item == null)
             {
                 rejectReason = "This dragon item could not be loaded from Character/Dragon.";
@@ -186,20 +207,16 @@ namespace HaCreator.MapSimulator.Companions
 
             if (!CompanionEquipmentController.MeetsEquipRequirements(item, _ownerBuild, out rejectReason))
             {
+                item = null;
                 return false;
             }
 
             if (!CompanionEquipmentController.CanEquipUniqueItem(item, _equippedItems.Values, out rejectReason))
             {
+                item = null;
                 return false;
             }
 
-            if (_equippedItems.TryGetValue(targetSlot, out CompanionEquipItem displacedItem))
-            {
-                displacedItems = new ReadOnlyCollection<CompanionEquipItem>(new[] { displacedItem });
-            }
-
-            _equippedItems[targetSlot] = item;
             return true;
         }
     }
@@ -233,6 +250,27 @@ namespace HaCreator.MapSimulator.Companions
             out string rejectReason)
         {
             displacedItems = Array.Empty<CompanionEquipItem>();
+            if (!TryValidateEquipItem(pet, itemId, out CompanionEquipItem item, out rejectReason))
+            {
+                return false;
+            }
+
+            if (_equippedItems.TryGetValue(pet.RuntimeId, out CompanionEquipItem displacedItem))
+            {
+                displacedItems = new ReadOnlyCollection<CompanionEquipItem>(new[] { displacedItem });
+            }
+
+            _equippedItems[pet.RuntimeId] = item;
+            return true;
+        }
+
+        public bool TryValidateEquipItem(
+            PetRuntime pet,
+            int itemId,
+            out CompanionEquipItem item,
+            out string rejectReason)
+        {
+            item = null;
             rejectReason = null;
             if (pet == null)
             {
@@ -246,7 +284,7 @@ namespace HaCreator.MapSimulator.Companions
                 return false;
             }
 
-            CompanionEquipItem item = _loader.LoadPetEquipment(itemId);
+            item = _loader.LoadPetEquipment(itemId);
             if (item == null)
             {
                 rejectReason = "This pet accessory could not be loaded from Character/PetEquip.";
@@ -255,11 +293,13 @@ namespace HaCreator.MapSimulator.Companions
 
             if (!CompanionEquipmentController.CanEquipPetItem(item, pet, out rejectReason))
             {
+                item = null;
                 return false;
             }
 
             if (!CompanionEquipmentController.MeetsEquipRequirements(item, _ownerBuild, out rejectReason))
             {
+                item = null;
                 return false;
             }
 
@@ -268,15 +308,10 @@ namespace HaCreator.MapSimulator.Companions
                     EnumerateEquippedItemsExcept(pet.RuntimeId),
                     out rejectReason))
             {
+                item = null;
                 return false;
             }
 
-            if (_equippedItems.TryGetValue(pet.RuntimeId, out CompanionEquipItem displacedItem))
-            {
-                displacedItems = new ReadOnlyCollection<CompanionEquipItem>(new[] { displacedItem });
-            }
-
-            _equippedItems[pet.RuntimeId] = item;
             return true;
         }
 
@@ -417,54 +452,7 @@ namespace HaCreator.MapSimulator.Companions
             out string rejectReason)
         {
             displacedItems = Array.Empty<CompanionEquipItem>();
-            rejectReason = null;
-
-            if (_loader == null)
-            {
-                rejectReason = "Android equipment loader is unavailable.";
-                return false;
-            }
-
-            if (!CompanionEquipmentController.TryValidateAndroidOwnerState(_ownerBuild, out rejectReason))
-            {
-                return false;
-            }
-
-            CharacterPart part = _loader.LoadEquipment(itemId);
-            if (part == null)
-            {
-                rejectReason = "This item could not be loaded as android equipment.";
-                return false;
-            }
-
-            if (!CompanionEquipmentController.TryResolveAndroidSlot(part.Slot, out AndroidEquipSlot resolvedSlot))
-            {
-                rejectReason = "Androids can only equip cap, face accessory, top, pants, overall, gloves, shoes, and cape items.";
-                return false;
-            }
-
-            if (resolvedSlot != targetSlot)
-            {
-                rejectReason = $"Drop this item on the {ResolveSlotLabel(resolvedSlot)} slot.";
-                return false;
-            }
-
-            if (targetSlot == AndroidEquipSlot.Pants && HasOverallEquipped())
-            {
-                rejectReason = "Overall equipped";
-                return false;
-            }
-
-            if (!CompanionEquipmentController.MeetsEquipRequirements(part, _ownerBuild, out rejectReason))
-            {
-                return false;
-            }
-
-            if (!CompanionEquipmentController.CanEquipUniqueItem(
-                    part.ItemId,
-                    part.Name,
-                    GetEquippedItemsExcluding(targetSlot),
-                    out rejectReason))
+            if (!TryValidateEquipItem(targetSlot, itemId, out CharacterPart part, out rejectReason))
             {
                 return false;
             }
@@ -485,6 +473,73 @@ namespace HaCreator.MapSimulator.Companions
             displacedItems = displaced.Count == 0
                 ? Array.Empty<CompanionEquipItem>()
                 : new ReadOnlyCollection<CompanionEquipItem>(displaced);
+            return true;
+        }
+
+        public bool TryValidateEquipItem(
+            AndroidEquipSlot targetSlot,
+            int itemId,
+            out CharacterPart part,
+            out string rejectReason)
+        {
+            part = null;
+            rejectReason = null;
+
+            if (_loader == null)
+            {
+                rejectReason = "Android equipment loader is unavailable.";
+                return false;
+            }
+
+            if (!CompanionEquipmentController.TryValidateAndroidOwnerState(_ownerBuild, out rejectReason))
+            {
+                return false;
+            }
+
+            part = _loader.LoadEquipment(itemId);
+            if (part == null)
+            {
+                rejectReason = "This item could not be loaded as android equipment.";
+                return false;
+            }
+
+            if (!CompanionEquipmentController.TryResolveAndroidSlot(part.Slot, out AndroidEquipSlot resolvedSlot))
+            {
+                rejectReason = "Androids can only equip cap, face accessory, top, pants, overall, gloves, shoes, and cape items.";
+                part = null;
+                return false;
+            }
+
+            if (resolvedSlot != targetSlot)
+            {
+                rejectReason = $"Drop this item on the {ResolveSlotLabel(resolvedSlot)} slot.";
+                part = null;
+                return false;
+            }
+
+            if (targetSlot == AndroidEquipSlot.Pants && HasOverallEquipped())
+            {
+                rejectReason = "Overall equipped";
+                part = null;
+                return false;
+            }
+
+            if (!CompanionEquipmentController.MeetsEquipRequirements(part, _ownerBuild, out rejectReason))
+            {
+                part = null;
+                return false;
+            }
+
+            if (!CompanionEquipmentController.CanEquipUniqueItem(
+                    part.ItemId,
+                    part.Name,
+                    GetEquippedItemsExcluding(targetSlot),
+                    out rejectReason))
+            {
+                part = null;
+                return false;
+            }
+
             return true;
         }
 
@@ -624,6 +679,27 @@ namespace HaCreator.MapSimulator.Companions
             out string rejectReason)
         {
             displacedItems = Array.Empty<CompanionEquipItem>();
+            if (!TryValidateEquipItem(targetSlot, itemId, out CompanionEquipItem item, out rejectReason))
+            {
+                return false;
+            }
+
+            if (_equippedItems.TryGetValue(targetSlot, out CompanionEquipItem displacedItem))
+            {
+                displacedItems = new ReadOnlyCollection<CompanionEquipItem>(new[] { displacedItem });
+            }
+
+            _equippedItems[targetSlot] = item;
+            return true;
+        }
+
+        public bool TryValidateEquipItem(
+            MechanicEquipSlot targetSlot,
+            int itemId,
+            out CompanionEquipItem item,
+            out string rejectReason)
+        {
+            item = null;
             rejectReason = null;
             if (!HasOwnerState)
             {
@@ -638,7 +714,7 @@ namespace HaCreator.MapSimulator.Companions
                 return false;
             }
 
-            CompanionEquipItem item = _loader.LoadMechanicEquipment(itemId);
+            item = _loader.LoadMechanicEquipment(itemId);
             if (item == null)
             {
                 rejectReason = "This machine part could not be loaded from Character/Mechanic.";
@@ -647,20 +723,16 @@ namespace HaCreator.MapSimulator.Companions
 
             if (!CompanionEquipmentController.MeetsEquipRequirements(item, _ownerBuild, out rejectReason))
             {
+                item = null;
                 return false;
             }
 
             if (!CompanionEquipmentController.CanEquipUniqueItem(item, _equippedItems.Values, out rejectReason))
             {
+                item = null;
                 return false;
             }
 
-            if (_equippedItems.TryGetValue(targetSlot, out CompanionEquipItem displacedItem))
-            {
-                displacedItems = new ReadOnlyCollection<CompanionEquipItem>(new[] { displacedItem });
-            }
-
-            _equippedItems[targetSlot] = item;
             return true;
         }
     }
@@ -1216,18 +1288,18 @@ namespace HaCreator.MapSimulator.Companions
             out CharacterPart androidPart,
             out CharacterPart heartPart)
         {
-            androidPart = null;
-            heartPart = null;
+            androidPart = ResolveEffectiveEquippedPart(build, EquipSlot.Android);
+            heartPart = ResolveEffectiveEquippedPart(build, EquipSlot.AndroidHeart);
+            return androidPart != null && heartPart != null;
+        }
 
-            if (build?.Equipment == null)
-            {
-                return false;
-            }
-
-            return build.Equipment.TryGetValue(EquipSlot.Android, out androidPart)
-                   && androidPart != null
-                   && build.Equipment.TryGetValue(EquipSlot.AndroidHeart, out heartPart)
-                   && heartPart != null;
+        private static CharacterPart ResolveEffectiveEquippedPart(CharacterBuild build, EquipSlot slot)
+        {
+            CharacterPart displayedPart = EquipSlotStateResolver.GetEquippedPart(build, slot);
+            CharacterPart underlyingPart = EquipSlotStateResolver.ResolveUnderlyingPart(build, slot);
+            return displayedPart?.IsCash == true
+                ? underlyingPart ?? displayedPart
+                : displayedPart ?? underlyingPart;
         }
 
         private static bool CanPowerAndroid(CharacterPart androidPart, CharacterPart heartPart, out string rejectReason)

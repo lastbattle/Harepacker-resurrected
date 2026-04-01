@@ -25,12 +25,17 @@ namespace HaCreator.MapSimulator.Entities
     public class MobItem : BaseDXDrawableItem, ICombatEntity
     {
         private const int SPAWN_FADE_DURATION_MS = 750;
+        private const int DoomBodyOffsetLeft = -16;
+        private const int DoomBodyOffsetTop = -34;
+        private const int DoomBodyWidth = 35;
+        private const int DoomBodyHeight = 34;
 
         private readonly MobInstance _mobInstance;
         private NameTooltipItem _nameTooltip = null;
 
         // Animation system - using AnimationController for unified frame management
         private readonly MobAnimationSet _animationSet;
+        private readonly MobAnimationSet _doomAnimationSet;
         private readonly AnimationController _animationController;
         private bool _isPlayingOneShot = false; // Track if playing a one-shot animation (jump, death, hit)
         private bool _escortFollowActive;
@@ -304,6 +309,11 @@ namespace HaCreator.MapSimulator.Entities
         /// </summary>
         public int GetVisualHeight(int fallbackHeight = 60)
         {
+            if (AI?.IsDoomed == true)
+            {
+                return DoomBodyHeight;
+            }
+
             var currentFrame = GetCurrentFrame();
             return currentFrame != null && currentFrame.Height > 0
                 ? currentFrame.Height
@@ -316,6 +326,15 @@ namespace HaCreator.MapSimulator.Entities
         /// </summary>
         public Rectangle GetBodyHitbox(int tickCount)
         {
+            if (AI?.IsDoomed == true)
+            {
+                return new Rectangle(
+                    CurrentX + DoomBodyOffsetLeft,
+                    CurrentY + DoomBodyOffsetTop,
+                    DoomBodyWidth,
+                    DoomBodyHeight);
+            }
+
             IDXObject frame = GetCurrentAnimationFrame(tickCount) ?? GetCurrentFrame();
             if (frame == null)
             {
@@ -416,12 +435,13 @@ namespace HaCreator.MapSimulator.Entities
         /// <param name="_mobInstance"></param>
         /// <param name="animationSet"></param>
         /// <param name="_nameTooltip"></param>
-        public MobItem(MobInstance _mobInstance, MobAnimationSet animationSet, NameTooltipItem _nameTooltip)
+        public MobItem(MobInstance _mobInstance, MobAnimationSet animationSet, NameTooltipItem _nameTooltip, MobAnimationSet doomAnimationSet = null)
             : base(animationSet.GetFrames(AnimationKeys.Stand) ?? animationSet.GetFrames(null), _mobInstance.Flip)
         {
             this._mobInstance = _mobInstance;
             this._nameTooltip = _nameTooltip;
             this._animationSet = animationSet;
+            _doomAnimationSet = doomAnimationSet;
 
             // Initialize animation controller
             _animationController = new AnimationController(animationSet, AnimationKeys.Stand);
@@ -712,7 +732,7 @@ namespace HaCreator.MapSimulator.Entities
                     ProjectileCount = ResolveProjectileCount(attackMeta, attackInfo, isBoss, isRanged, isArea, actionIndex),
                     AreaWidth = areaWidth,
                     AreaHeight = areaHeight,
-                    RandomDelayWindow = isArea ? Math.Clamp(range, 120, 420) : 0,
+                    RandomDelayWindow = isArea ? Math.Max(0, attackInfo?.RandDelayAttack ?? 0) : 0,
                     HasRangeBounds = attackInfo?.HasRangeBounds == true,
                     RangeLeft = attackInfo?.RangeBounds.Left ?? 0,
                     RangeTop = attackInfo?.RangeBounds.Top ?? 0,
@@ -1367,6 +1387,15 @@ namespace HaCreator.MapSimulator.Entities
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private IDXObject GetCurrentAnimationFrame(int tickCount)
         {
+            if (AI?.IsDoomed == true)
+            {
+                IDXObject doomFrame = GetCurrentDoomAnimationFrame(tickCount);
+                if (doomFrame != null)
+                {
+                    return doomFrame;
+                }
+            }
+
             if (_animationController == null)
                 return null;
 
@@ -1374,6 +1403,60 @@ namespace HaCreator.MapSimulator.Entities
             _animationController.UpdateFrame(tickCount);
 
             return _animationController.GetCurrentFrame();
+        }
+
+        private IReadOnlyList<IDXObject> GetCurrentAnimationFrames()
+        {
+            if (AI?.IsDoomed == true)
+            {
+                IReadOnlyList<IDXObject> doomFrames = ResolveDoomAnimationFrames();
+                if (doomFrames != null && doomFrames.Count > 0)
+                {
+                    return doomFrames;
+                }
+            }
+
+            return _animationController?.CurrentFrames;
+        }
+
+        private IReadOnlyList<IDXObject> ResolveDoomAnimationFrames()
+        {
+            if (_doomAnimationSet == null)
+            {
+                return null;
+            }
+
+            string currentAction = _animationController?.CurrentAction;
+            string doomAction = currentAction?.ToLowerInvariant() switch
+            {
+                AnimationKeys.Die1 or AnimationKeys.Die2 or AnimationKeys.Die => AnimationKeys.Die1,
+                AnimationKeys.Hit1 or AnimationKeys.Hit2 or AnimationKeys.Hit => AnimationKeys.Hit1,
+                "move" or "walk" or "fly" or "jump" or "chase" => "move",
+                _ => AnimationKeys.Stand
+            };
+
+            return _doomAnimationSet.GetFrames(doomAction);
+        }
+
+        private IDXObject GetCurrentDoomAnimationFrame(int tickCount)
+        {
+            IReadOnlyList<IDXObject> doomFrames = ResolveDoomAnimationFrames();
+            if (doomFrames == null || doomFrames.Count == 0)
+            {
+                return null;
+            }
+
+            if (doomFrames.Count == 1)
+            {
+                return doomFrames[0];
+            }
+
+            if ((_animationController?.CurrentAction?.StartsWith("die", StringComparison.OrdinalIgnoreCase)).GetValueOrDefault())
+            {
+                return doomFrames[doomFrames.Count - 1];
+            }
+
+            return GetTimedAnimationFrame(doomFrames, tickCount, 0, loop: true);
         }
 
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
@@ -1639,7 +1722,7 @@ namespace HaCreator.MapSimulator.Entities
                 // When flipped, the horizontal flip inverts how origin offsets affect visual position,
                 // so we must compensate by subtracting the origin difference.
                 int adjustedShiftX = shiftCenteredX;
-                var currentFrames = _animationController?.CurrentFrames;
+                IReadOnlyList<IDXObject> currentFrames = GetCurrentAnimationFrames();
                 if (currentFrames != null && currentFrames.Count > 0 && flip)
                 {
                     IDXObject frame0 = currentFrames[0];

@@ -1,5 +1,7 @@
 using HaCreator.MapSimulator.Character;
 using System;
+using System.Collections.Generic;
+using System.Linq;
 
 namespace HaCreator.MapSimulator.Character.Skills
 {
@@ -262,23 +264,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static bool UsesVehicleOwnershipOrMountSkill(SkillData skill)
         {
-            if (skill == null)
-            {
-                return false;
-            }
-
-            if (skill.UsesTamingMobMount)
-            {
-                return true;
-            }
-
-            if (ClientOwnedVehicleSkillClassifier.IsWzAuthoredClientOwnedVehicleBuff(skill))
-            {
-                return true;
-            }
-
-            return LooksLikeRideDescriptionBuff(skill)
-                   || ClientOwnedVehicleSkillClassifier.IsClientOwnedVehicleActionSkill(skill);
+            return ClientOwnedVehicleSkillClassifier.UsesVehicleOwnershipOrMountSkill(skill);
         }
 
         private static bool LooksLikeRideDescriptionBuff(SkillData skill)
@@ -330,9 +316,38 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static bool UsesBoundJumpActionProfile(SkillData skill)
         {
-            return IsBoundJumpActionName(skill?.PrepareActionName)
-                   || IsBoundJumpActionName(skill?.ActionName)
+            return EnumerateMovementActionCandidates(skill).Any(IsBoundJumpActionName)
                    || ActionTextContains(skill?.Name, "flash jump");
+        }
+
+        private static IEnumerable<string> EnumerateMovementActionCandidates(SkillData skill)
+        {
+            if (skill == null)
+            {
+                yield break;
+            }
+
+            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (!string.IsNullOrWhiteSpace(skill.PrepareActionName) && seen.Add(skill.PrepareActionName))
+            {
+                yield return skill.PrepareActionName;
+            }
+
+            if (skill.ActionNames != null)
+            {
+                foreach (string actionName in skill.ActionNames)
+                {
+                    if (!string.IsNullOrWhiteSpace(actionName) && seen.Add(actionName))
+                    {
+                        yield return actionName;
+                    }
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(skill.ActionName) && seen.Add(skill.ActionName))
+            {
+                yield return skill.ActionName;
+            }
         }
 
         private static bool IsBoundJumpActionName(string actionName)

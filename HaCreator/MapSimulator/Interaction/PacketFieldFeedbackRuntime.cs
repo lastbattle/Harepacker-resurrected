@@ -53,7 +53,13 @@ namespace HaCreator.MapSimulator.Interaction
         internal Func<string, bool> IsBlacklistedName { get; init; }
         internal Func<string, bool> IsBlockedFriendName { get; init; }
         internal Func<int, int, int, bool> QueueMapTransfer { get; init; }
+        internal Func<IReadOnlyList<PacketFieldSwindleWarningEntry>> ResolveSwindleWarnings { get; init; }
     }
+
+    internal sealed record PacketFieldSwindleWarningEntry(
+        int GroupId,
+        IReadOnlyList<string> Keywords,
+        IReadOnlyList<string> WarningTexts);
 
     internal sealed class PacketFieldFeedbackRuntime
     {
@@ -75,48 +81,6 @@ namespace HaCreator.MapSimulator.Interaction
         private string _lastBossTimerSummary = string.Empty;
         private int _nextSwindleWarningTick;
         private BossHpState _bossHpState;
-        private static readonly string[] SwindleWarningNeedles =
-        {
-            "account",
-            "acc ",
-            "passwd",
-            "password",
-            "pin",
-            "pic",
-            "ssn",
-            "social security",
-            "paypal",
-            "western union",
-            "gift card",
-            "nx",
-            "cash trade",
-            "real money",
-            "real-world",
-            "website",
-            "web site",
-            "www.",
-            ".com",
-            ".net",
-            ".org",
-            "hotmail",
-            "gmail",
-            "yahoo",
-            "phone",
-            "cell",
-            "text me",
-            "call me",
-            "email me",
-            "e-mail",
-            "drop first",
-            "go first",
-            "trade first",
-            "mule",
-            "mesos",
-            "meso",
-            "dollar",
-            "usd"
-        };
-
         internal void Initialize(GraphicsDevice graphicsDevice)
         {
             if (_pixelTexture == null && graphicsDevice != null)
@@ -1026,7 +990,7 @@ namespace HaCreator.MapSimulator.Interaction
             if (!allowGroupFamilyWarning
                 || callbacks?.AddClientChatMessage == null
                 || currentTick < _nextSwindleWarningTick
-                || !TryBuildSwindleWarning(message, out string warningText))
+                || !TryBuildSwindleWarning(message, callbacks?.ResolveSwindleWarnings?.Invoke(), out string warningText))
             {
                 return;
             }
@@ -1035,21 +999,41 @@ namespace HaCreator.MapSimulator.Interaction
             _nextSwindleWarningTick = currentTick + 10000;
         }
 
-        private static bool TryBuildSwindleWarning(string message, out string warningText)
+        private static bool TryBuildSwindleWarning(
+            string message,
+            IReadOnlyList<PacketFieldSwindleWarningEntry> warningEntries,
+            out string warningText)
         {
             warningText = null;
             string normalized = NormalizeSwindleText(message);
-            if (string.IsNullOrWhiteSpace(normalized))
+            if (string.IsNullOrWhiteSpace(normalized)
+                || warningEntries == null
+                || warningEntries.Count == 0)
             {
                 return false;
             }
 
-            foreach (string needle in SwindleWarningNeedles)
+            foreach (PacketFieldSwindleWarningEntry entry in warningEntries.OrderByDescending(static candidate => candidate.GroupId))
             {
-                if (normalized.Contains(needle, StringComparison.Ordinal))
+                if (entry?.Keywords == null
+                    || entry.WarningTexts == null
+                    || entry.WarningTexts.Count == 0)
                 {
-                    warningText = "Warning: This message may contain scam or account-trade content.";
-                    return true;
+                    continue;
+                }
+
+                foreach (string keyword in entry.Keywords)
+                {
+                    if (string.IsNullOrWhiteSpace(keyword))
+                    {
+                        continue;
+                    }
+
+                    if (normalized.Contains(keyword, StringComparison.Ordinal))
+                    {
+                        warningText = entry.WarningTexts[Random.Shared.Next(entry.WarningTexts.Count)];
+                        return !string.IsNullOrWhiteSpace(warningText);
+                    }
                 }
             }
 

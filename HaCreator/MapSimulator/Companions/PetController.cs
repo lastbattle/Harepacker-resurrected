@@ -18,6 +18,7 @@ namespace HaCreator.MapSimulator.Companions
         public PetPersistentState(
             int skillMask,
             int commandLevel,
+            int tameness,
             int fullness,
             bool autoLootEnabled,
             bool autoConsumeHpEnabled,
@@ -26,6 +27,7 @@ namespace HaCreator.MapSimulator.Companions
         {
             SkillMask = skillMask;
             CommandLevel = commandLevel;
+            Tameness = tameness;
             Fullness = fullness;
             AutoLootEnabled = autoLootEnabled;
             AutoConsumeHpEnabled = autoConsumeHpEnabled;
@@ -35,6 +37,7 @@ namespace HaCreator.MapSimulator.Companions
 
         public int SkillMask { get; }
         public int CommandLevel { get; }
+        public int Tameness { get; }
         public int Fullness { get; }
         public bool AutoLootEnabled { get; }
         public bool AutoConsumeHpEnabled { get; }
@@ -65,6 +68,8 @@ namespace HaCreator.MapSimulator.Companions
         private const int MinFullness = 0;
         private const int MaxFullness = 100;
         private const int DefaultFullness = 60;
+        private const int MinCommandLevel = 1;
+        private const int MaxCommandLevel = 30;
         private const float FollowSpeed = 220f;
         private const float FollowSpacing = 28f;
         private const float MultiPetSpacing = 18f;
@@ -86,6 +91,39 @@ namespace HaCreator.MapSimulator.Companions
         private const int TemporaryActionDurationMs = 2200;
 
         private static readonly Random SharedRandom = new();
+        private static readonly int[] CommandLevelTamenessThresholds =
+        {
+            0,
+            1,
+            50,
+            100,
+            200,
+            300,
+            400,
+            500,
+            600,
+            700,
+            800,
+            900,
+            1000,
+            1100,
+            1200,
+            1300,
+            1400,
+            1500,
+            1600,
+            1700,
+            1800,
+            1900,
+            2000,
+            2100,
+            2200,
+            2300,
+            2400,
+            2500,
+            2600,
+            2700
+        };
 
         private readonly AnimationController _animation;
         private readonly IReadOnlyDictionary<PetAutoSpeechEvent, string[]> _eventSpeechLines;
@@ -96,7 +134,8 @@ namespace HaCreator.MapSimulator.Companions
         private int _nextIdleActionTick;
         private string _temporaryActionName;
         private int _temporaryActionExpiresAt;
-        private int _commandLevel = 1;
+        private int _commandLevel = MinCommandLevel;
+        private int _tameness;
         private string _activeSpeechText;
         private int _activeSpeechExpiresAt;
         private bool _hangOnBack;
@@ -124,6 +163,7 @@ namespace HaCreator.MapSimulator.Companions
         public string Name => Definition.Name;
         public int ChatBalloonStyle => Definition.ChatBalloonStyle;
         public int CommandLevel => _commandLevel;
+        public int Tameness => _tameness;
         public int SkillMask { get; private set; }
         public bool CanAutoSpeak => HasSkillMask(AutoSpeakingSkillMask);
         public int Fullness { get; private set; }
@@ -222,6 +262,7 @@ namespace HaCreator.MapSimulator.Companions
             return new PetPersistentState(
                 SkillMask,
                 _commandLevel,
+                _tameness,
                 Fullness,
                 AutoLootEnabled,
                 AutoConsumeHpEnabled,
@@ -232,7 +273,15 @@ namespace HaCreator.MapSimulator.Companions
         internal void RestorePersistentState(PetPersistentState state)
         {
             SkillMask = Math.Max(0, state.SkillMask);
-            _commandLevel = Math.Clamp(state.CommandLevel, 1, 30);
+            if (state.Tameness > 0 || state.CommandLevel <= MinCommandLevel)
+            {
+                SetTameness(state.Tameness);
+            }
+            else
+            {
+                SetCommandLevel(state.CommandLevel);
+            }
+
             Fullness = Math.Clamp(state.Fullness, MinFullness, MaxFullness);
             AutoLootEnabled = state.AutoLootEnabled;
             AutoConsumeHpEnabled = state.AutoConsumeHpEnabled;
@@ -324,12 +373,18 @@ namespace HaCreator.MapSimulator.Companions
 
             bool isSuccess = SharedRandom.Next(100) < command.SuccessProbability;
             ApplyReaction(isSuccess ? command.SuccessReaction : command.FailureReaction, currentTime);
+            if (isSuccess && command.ClosenessDelta > 0)
+            {
+                AddTameness(command.ClosenessDelta);
+            }
+
             return true;
         }
 
         public void SetCommandLevel(int level)
         {
-            _commandLevel = Math.Clamp(level, 1, 30);
+            int boundedLevel = Math.Clamp(level, MinCommandLevel, MaxCommandLevel);
+            SetTameness(ResolveMinimumTamenessForCommandLevel(boundedLevel));
         }
 
         public void SetAutoConsumeHpEnabled(bool enabled)
@@ -663,6 +718,42 @@ namespace HaCreator.MapSimulator.Companions
             return string.IsNullOrWhiteSpace(trigger)
                 ? string.Empty
                 : trigger.Trim().Replace(" ", string.Empty);
+        }
+
+        private void AddTameness(int amount)
+        {
+            if (amount <= 0)
+            {
+                return;
+            }
+
+            SetTameness(_tameness + amount);
+        }
+
+        private void SetTameness(int tameness)
+        {
+            _tameness = Math.Clamp(tameness, 0, CommandLevelTamenessThresholds[^1]);
+            _commandLevel = ResolveCommandLevelForTameness(_tameness);
+        }
+
+        internal static int ResolveCommandLevelForTameness(int tameness)
+        {
+            int boundedTameness = Math.Max(0, tameness);
+            for (int i = CommandLevelTamenessThresholds.Length - 1; i >= 0; i--)
+            {
+                if (boundedTameness >= CommandLevelTamenessThresholds[i])
+                {
+                    return i + 1;
+                }
+            }
+
+            return MinCommandLevel;
+        }
+
+        internal static int ResolveMinimumTamenessForCommandLevel(int commandLevel)
+        {
+            int boundedLevel = Math.Clamp(commandLevel, MinCommandLevel, MaxCommandLevel);
+            return CommandLevelTamenessThresholds[boundedLevel - 1];
         }
 
         private bool IsCommandLevelEligible(PetCommandDefinition command)
@@ -1181,7 +1272,10 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             int boundedDesiredVariant = Math.Clamp(desiredVariant, 1, 4);
-            return orderedVariants.FirstOrDefault(variant => variant >= boundedDesiredVariant, orderedVariants[^1]);
+            return orderedVariants
+                .OrderBy(variant => Math.Abs(variant - boundedDesiredVariant))
+                .ThenBy(variant => variant)
+                .First();
         }
 
         public void Update(PlayerCharacter owner, DropPool dropPool, int currentTime, float deltaTime)
