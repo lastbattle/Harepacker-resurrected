@@ -47,8 +47,9 @@ namespace HaCreator.MapSimulator.Managers
                 }
             }
 
-            trimmedWavStream.Position = 0;
-            return SoundEffect.FromStream(trimmedWavStream);
+            byte[] trimmedSoundBytes = trimmedWavStream.ToArray();
+            using MemoryStream playbackStream = new(trimmedSoundBytes, writable: false);
+            return SoundEffect.FromStream(playbackStream);
         }
 
         private static MemoryStream CreateWaveStream(WzBinaryProperty sound)
