@@ -18831,6 +18831,14 @@ namespace HaCreator.MapSimulator
             if (!_gameState.IsPlayerInputEnabled || _gameState.PendingMapChange)
                 return;
 
+            // UI windows and scripted overlays own the click when the cursor is over them.
+            // Do not let portal double-click detection fall through to the world underneath.
+            if (uiWindowManager?.ContainsPoint(mouseState.X, mouseState.Y) == true ||
+                _npcInteractionOverlay?.ContainsPoint(mouseState.X, mouseState.Y, _renderParams.RenderWidth, _renderParams.RenderHeight) == true)
+            {
+                return;
+            }
+
 
             // Check for left mouse button click (transition from pressed to released)
             bool isLeftClick = mouseState.LeftButton == ButtonState.Released && _oldMouseState.LeftButton == ButtonState.Pressed;
