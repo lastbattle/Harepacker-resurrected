@@ -1,4 +1,4 @@
-﻿using HaSharedLibrary.Render;
+using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib.WzStructure.Data;
 using Microsoft.Xna.Framework;

@@ -44,15 +44,10 @@ namespace HaCreator.MapSimulator.Pools
         bool TransferField,
         int? TransferX,
         int? TransferY);
-
     public readonly record struct RemoteUserMovePacket(int CharacterId, PlayerMovementSyncSnapshot Snapshot, byte MoveAction);
-
     public readonly record struct RemoteUserMoveActionPacket(int CharacterId, byte MoveAction);
-
     public readonly record struct RemoteUserPortableChairPacket(int CharacterId, int? ChairItemId, int? PairCharacterId);
-
     public readonly record struct RemoteUserMountPacket(int CharacterId, int? TamingMobItemId);
-
     public readonly record struct RemoteUserPreparedSkillPacket(
         int CharacterId,
         int SkillId,
@@ -75,13 +70,9 @@ namespace HaCreator.MapSimulator.Pools
         bool? FacingRight,
         string ActionName,
         int? ActionCode);
-
     public readonly record struct RemoteUserItemEffectPacket(int CharacterId, int? ItemId, int? PairCharacterId);
-
     public readonly record struct RemoteUserHelperPacket(int CharacterId, MinimapUI.HelperMarkerType? MarkerType, bool ShowDirectionOverlay);
-
     public readonly record struct RemoteUserBattlefieldTeamPacket(int CharacterId, int? TeamId);
-
     public static class RemoteUserPacketCodec
     {
         public static bool TryParseEnterField(ReadOnlySpan<byte> payload, out RemoteUserEnterFieldPacket packet, out string error)

@@ -1,4 +1,4 @@
-﻿using HaCreator.MapEditor;
+using HaCreator.MapEditor;
 using HaCreator.MapEditor.Info;
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapEditor.Instance.Shapes;

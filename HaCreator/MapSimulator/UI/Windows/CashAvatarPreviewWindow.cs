@@ -97,17 +97,11 @@ namespace HaCreator.MapSimulator.UI
                 AddButton(_takeoffAvatarButton);
             }
         }
-
         public override string WindowName => MapSimulatorWindowNames.CashAvatarPreview;
-
         public Func<string> PersonalShopRequested { get; set; }
-
         public Func<string> EntrustedShopRequested { get; set; }
-
         public Func<string> TradingRoomRequested { get; set; }
-
         public Func<string> WeatherRequested { get; set; }
-
         public Func<int, CharacterPart> EquipmentLoader
         {
             get => _equipmentLoader;

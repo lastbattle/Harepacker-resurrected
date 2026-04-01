@@ -221,13 +221,9 @@ namespace HaCreator.MapSimulator.Physics
         /// Ladder/rope Y range (bottom)
         /// </summary>
         public int LadderBottom { get; set; }
-
         private Func<float, float, float, LadderOrRopeInfo?> _ladderOrRopeLookup;
-
         #endregion
-
         #region Movement State (m_nMoveAction)
-
         /// <summary>
         /// Current movement action/state
         /// </summary>

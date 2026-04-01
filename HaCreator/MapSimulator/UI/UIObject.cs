@@ -1,4 +1,4 @@
-﻿using HaCreator.MapSimulator.UI;
+using HaCreator.MapSimulator.UI;
 using HaSharedLibrary;
 using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Util;

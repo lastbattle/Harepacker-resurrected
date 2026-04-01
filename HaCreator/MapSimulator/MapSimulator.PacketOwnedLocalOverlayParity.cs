@@ -1,4 +1,4 @@
-﻿using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Effects;
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Managers;
@@ -2086,13 +2086,9 @@ namespace HaCreator.MapSimulator
             PacketOwnedBalloonArrowKind ArrowKind,
             LocalOverlayBalloonArrowSprite ArrowSprite,
             Rectangle ArrowBounds);
-
         private readonly record struct PacketOwnedBalloonTextStyle(Color Color, bool Emphasis);
-
         private readonly record struct PacketOwnedBalloonGlyph(char Character, PacketOwnedBalloonTextStyle Style);
-
         private readonly record struct PacketOwnedBalloonTextRun(string Text, PacketOwnedBalloonTextStyle Style);
-
         private readonly record struct PacketOwnedBalloonWrappedLine(PacketOwnedBalloonTextRun[] Runs, int Width, bool PreservesLineHeight)
         {
             public static readonly PacketOwnedBalloonWrappedLine Empty = new(Array.Empty<PacketOwnedBalloonTextRun>(), 0, false);

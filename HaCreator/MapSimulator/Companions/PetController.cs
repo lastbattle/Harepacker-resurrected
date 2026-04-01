@@ -1,4 +1,4 @@
-﻿using HaCreator.MapSimulator.Animation;
+using HaCreator.MapSimulator.Animation;
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Pools;
 using HaSharedLibrary.Render.DX;

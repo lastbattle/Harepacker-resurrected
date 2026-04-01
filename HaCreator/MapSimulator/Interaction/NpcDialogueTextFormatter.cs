@@ -69,35 +69,7 @@ namespace HaCreator.MapSimulator.Interaction
             formatted = ClientPromptTagRegex.Replace(formatted, string.Empty);
             formatted = PluralSuffixRegex.Replace(formatted, "s");
 
-            var builder = new StringBuilder(formatted.Length);
-            bool previousWasSpace = false;
-            for (int i = 0; i < formatted.Length; i++)
-            {
-                char ch = formatted[i];
-                if (ch == '\n')
-                {
-                    TrimTrailingSpace(builder);
-                    builder.Append('\n');
-                    previousWasSpace = false;
-                    continue;
-                }
-
-                if (char.IsWhiteSpace(ch))
-                {
-                    if (!previousWasSpace)
-                    {
-                        builder.Append(' ');
-                        previousWasSpace = true;
-                    }
-
-                    continue;
-                }
-
-                builder.Append(ch);
-                previousWasSpace = false;
-            }
-
-            return builder.ToString().Trim();
+            return NormalizeWhitespace(formatted);
         }
 
         public static IReadOnlyList<NpcInteractionPage> FormatPages(IReadOnlyList<NpcInteractionPage> pages, NpcDialogueFormattingContext context)
@@ -196,6 +168,63 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 builder.Length--;
             }
+        }
+
+        private static string NormalizeWhitespace(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return string.Empty;
+            }
+
+            var builder = new StringBuilder(text.Length);
+            int pendingSpaces = 0;
+            bool lineHasContent = false;
+
+            for (int i = 0; i < text.Length; i++)
+            {
+                char ch = text[i];
+                if (ch == '\n')
+                {
+                    TrimTrailingSpace(builder);
+                    builder.Append('\n');
+                    pendingSpaces = 0;
+                    lineHasContent = false;
+                    continue;
+                }
+
+                if (ch == ' ')
+                {
+                    if (lineHasContent)
+                    {
+                        pendingSpaces++;
+                    }
+
+                    continue;
+                }
+
+                if (char.IsWhiteSpace(ch))
+                {
+                    if (lineHasContent)
+                    {
+                        pendingSpaces = Math.Max(pendingSpaces, 1);
+                    }
+
+                    continue;
+                }
+
+                if (pendingSpaces > 0)
+                {
+                    builder.Append(' ', pendingSpaces);
+                    pendingSpaces = 0;
+                }
+
+                builder.Append(ch);
+                lineHasContent = true;
+            }
+
+            TrimTrailingSpace(builder);
+            return builder.ToString().Trim('\n');
         }
 
         private static NpcInteractionPage FormatPage(NpcInteractionPage page, NpcDialogueFormattingContext context)

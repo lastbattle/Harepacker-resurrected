@@ -775,13 +775,9 @@ namespace HaCreator.MapSimulator.Fields
                 Duration = durationMs
             });
         }
-
         public TransportAnnouncement CurrentAnnouncement => _currentAnnouncement;
-
         #endregion
-
         #region Entity Sync
-
         public Vector2 GetShipOffset()
         {
             return new Vector2(_currentX - _x, 0);

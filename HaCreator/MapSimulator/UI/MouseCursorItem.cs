@@ -1,4 +1,4 @@
-﻿using HaSharedLibrary.Render;
+using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;

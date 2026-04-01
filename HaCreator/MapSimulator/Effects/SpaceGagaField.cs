@@ -1,4 +1,4 @@
-﻿using HaSharedLibrary.Render.DX;
+using HaSharedLibrary.Render.DX;
 using MapleLib.Helpers;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;

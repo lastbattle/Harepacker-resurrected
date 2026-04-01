@@ -21,17 +21,11 @@ namespace HaCreator.MapSimulator
             RecommendMessage = string.IsNullOrWhiteSpace(recommendMessage) ? null : recommendMessage.Trim();
             RecommendOrder = recommendOrder;
         }
-
         public int WorldId { get; }
-
         public IReadOnlyList<ChannelSelectionState> Channels { get; }
-
         public bool RequiresAdultAccount { get; }
-
         public bool HasAuthoritativePopulationData { get; }
-
         public string RecommendMessage { get; }
-
         public int? RecommendOrder { get; }
     }
 }

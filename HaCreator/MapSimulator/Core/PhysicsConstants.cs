@@ -220,13 +220,9 @@ namespace HaCreator.MapSimulator.Core
         /// Swim speed multiplier applied on top of walk speed
         /// </summary>
         public double SwimSpeedMultiplier => SwimSpeedDec;
-
         #endregion
-
         #region Loading
-
         public bool IsLoaded { get; private set; }
-
         /// <summary>
         /// Load physics constants from Physics.img WzImage
         /// </summary>

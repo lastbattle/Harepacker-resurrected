@@ -17,13 +17,9 @@ namespace HaCreator.MapSimulator.Managers
             _instance.IsLooped = looped;
             _instance.Volume = volume;
         }
-
         public SoundState State => _instance?.State ?? SoundState.Stopped;
-
         public bool HasStarted { get; private set; }
-
         public bool IsCompleted => HasStarted && State == SoundState.Stopped;
-
         public float Volume
         {
             get => _instance?.Volume ?? 0f;

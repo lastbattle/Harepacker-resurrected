@@ -1,4 +1,4 @@
-﻿using HaCreator.MapSimulator.UI;
+using HaCreator.MapSimulator.UI;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;

@@ -8064,13 +8064,9 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             return new Vector2(proj.VelocityX, proj.VelocityY);
         }
-
         public IReadOnlyList<ActiveProjectile> ActiveProjectiles => _projectiles;
-
         #endregion
-
         #region Summon System
-
         private void SpawnSummon(SkillData skill, int level, int currentTime)
         {
             var levelData = skill.GetLevel(level);

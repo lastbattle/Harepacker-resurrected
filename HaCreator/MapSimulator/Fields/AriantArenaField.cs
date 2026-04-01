@@ -1,4 +1,4 @@
-﻿using HaSharedLibrary.Render.DX;
+using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Util;
 using HaSharedLibrary.Wz;
 using HaCreator.MapEditor;

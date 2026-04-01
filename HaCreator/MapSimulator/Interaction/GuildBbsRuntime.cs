@@ -969,13 +969,9 @@ namespace HaCreator.MapSimulator.Interaction
             _hasPacketCashOwnershipOverride
                 ? _packetOwnedCashEmoticonIds
                 : _inventoryOwnedCashEmoticonIds;
-
         private int OwnedCashEmoticonCount => EffectiveOwnedCashEmoticonIds.Count;
-
         private string AuthoritySourceLabel => _packetPermissionMask.HasValue ? "Packet" : "Guild role";
-
         private string CashOwnershipSourceLabel => _hasPacketCashOwnershipOverride ? "Packet" : "Inventory";
-
         private static GuildBbsPermissionMask ResolvePermissionMask(GuildBbsPermissionLevel permissionLevel)
         {
             return permissionLevel switch

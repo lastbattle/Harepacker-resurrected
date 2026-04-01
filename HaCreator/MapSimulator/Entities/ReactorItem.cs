@@ -46,13 +46,9 @@ namespace HaCreator.MapSimulator.Entities
                 SelectorValue = selectorValue;
                 Order = order;
             }
-
             public int EventType { get; }
-
             public int TargetState { get; }
-
             public int? SelectorValue { get; }
-
             public int Order { get; }
         }
 
