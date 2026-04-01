@@ -326,11 +326,23 @@ namespace HaCreator.MapSimulator.UI
             {
                 ResetHoverTargets();
 
-                GetActiveExpandedFrame().Draw(sprite, skeletonMeshRenderer, gameTime,
-                   0, 0, centerX, centerY,
-                   drawReflectionInfo,
-                   renderParameters,
-                   TickCount);
+                BaseDXDrawableItem expandedFrame = GetActiveExpandedFrame();
+                if (ReferenceEquals(expandedFrame, this))
+                {
+                    base.Draw(sprite, skeletonMeshRenderer, gameTime,
+                        0, 0, centerX, centerY,
+                        drawReflectionInfo,
+                        renderParameters,
+                        TickCount);
+                }
+                else
+                {
+                    expandedFrame.Draw(sprite, skeletonMeshRenderer, gameTime,
+                        0, 0, centerX, centerY,
+                        drawReflectionInfo,
+                        renderParameters,
+                        TickCount);
+                }
 
                 // Use stored player position (set via SetPlayerPosition) for accurate dot placement
                 // This ensures the dot follows the actual character position, not the viewport center
