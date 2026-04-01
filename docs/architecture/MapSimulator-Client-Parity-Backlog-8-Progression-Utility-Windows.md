@@ -324,6 +324,15 @@ This service-stage surface is distinct from the in-map `CAdminShopDlg` approxima
 Notes:
 The stage-owner row above is still too coarse on its own. IDA shows that Cash Shop and related cash-service flows split into dedicated child-window owners after `CCashShop::Init` creates the stage: `CCSWnd_Char::OnCreate` allocates its own avatar preview layer, user-preview actor, physical-space helpers, and `BtBuyAvatar`/`BtDefaultAvatar`/`BtTakeoffAvatar` controls before calling `OnDefaultAvatar`; the adjacent `CCSWnd_Char` methods also expose stage-local preview actions for wear/takeoff, pet preview, weather, message box, personal shop, and entrusted shop effects rather than routing those previews through generic field windows. Separate owners then build the rest of the service UI: `CCSWnd_Locker`, `CCSWnd_Inventory`, `CCSWnd_List`, and `CCSWnd_Status` each have their own `OnCreate` routines, `CCSWnd_OneADay::OnCreate` owns the One-a-Day panel inside the service, and `CCashTradingRoomDlg::OnCreate` builds a standalone cash trading room with its own chat edit, trade/coin buttons, scrollbar, fonts, and initial cash balance. None of these client-owned child-window seams are named anywhere else in the backlog today even though they sit directly on the parity path for cash-avatar preview and service-stage usability.
 
+### 16. Packet-owned NPC shop, store-bank, and battle-record owners discovered by follow-up `CField::OnPacket` decompile
+
+- `CShopDlg::OnPacket` at `0x6eb7d0`
+- `CStoreBankDlg::OnPacket` at `0x745c60`
+- `CBattleRecordMan::OnPacket` at `0x470ba0`
+
+Notes:
+The latest `CField::OnPacket` decompile exposed another utility-owner family that is still unnamed in this backlog. Packet types `364`/`365` dispatch directly into `CShopDlg::OnPacket`, `369`/`370` dispatch into `CStoreBankDlg::OnPacket`, and `420` through `423` dispatch into `CBattleRecordMan::OnPacket` instead of flowing through the broader `CUserLocal::OnPacket` utility row or the existing social/storage packet rows. Those owners do not appear anywhere else in the current backlog set, so NPC shop parity, store-bank parity, and battle-record parity are currently easy to overstate once adjacent window shells or NPC interactions exist locally.
+
 ## Current State Summary
 
 MapSimulator is no longer "missing player simulation".
@@ -479,6 +488,14 @@ The latest IDA pass surfaced another utility-owner family that is still underrep
 | Missing | Quest reward / raise-window parity | The same follow-up scan also surfaced a dedicated reward-choice owner family that is absent from the current plan: `CUIRaiseManager`, `CUIRaiseWndBase`, `CUIRaiseWnd`, and `CUIRaisePieceWnd` own their own create, preview-image, drag/drop, QR-data, and window lifecycle instead of treating quest reward or piece-selection flow as an extension of the quest log/detail panes. A repo search across `HaCreator/MapSimulator` still does not show a corresponding manager or window seam, so this owner family remains genuinely missing rather than merely under-documented. | Quest progression parity is broader than quest lists, alarms, and result text. If these raise/reward owners stay untracked, future work can look "done" on the quest side while still missing the client-owned item-selection surface that sits between quest completion and inventory state. | quest reward/selection dialog layer (`CUIRaiseManager`, `CUIRaiseWndBase`, `CUIRaiseWnd`, `CUIRaisePieceWnd`) |
 | Missing | Revive confirmation owner parity | `CUIRevive::OnCreate`, `OnButtonClicked`, `Update`, and `Revive` confirm that death recovery is also mediated through a dedicated utility owner instead of only raw respawn state. The simulator already supports death and respawn at the gameplay layer, but a repo search still does not surface a dedicated revive window, modal owner, or packet/UI seam matching this client owner. | Respawn parity is not only about whether the player can come back. The client puts recovery choice behind a named owner with its own create/update/button lifecycle, so tracking that seam explicitly prevents death/revive parity from being overstated once the movement and respawn runtime works. | revive-choice utility owner (`CUIRevive::OnCreate`, `CUIRevive::OnButtonClicked`, `CUIRevive::Update`, `CUIRevive::Revive`) |
 
+### 16. Packet-owned NPC shop, store-bank, and battle-record owners discovered by follow-up `CField::OnPacket` decompile
+
+The latest `CField::OnPacket` decompile surfaced another utility-owner family that is still missing from this backlog: the client dispatches dedicated NPC shop, store-bank, and battle-record packet families through their own managers instead of folding them into the broader utility rows.
+
+| Status | Area | Gap | Why it matters | Primary seam |
+|--------|------|-----|----------------|--------------|
+| Missing | Packet-owned NPC shop, store-bank, and battle-record parity | `CField::OnPacket` at `0x546d50` dispatches packet types `364`/`365` into `CShopDlg::OnPacket` at `0x6eb7d0`, `369`/`370` into `CStoreBankDlg::OnPacket` at `0x745c60`, and `420` through `423` into `CBattleRecordMan::OnPacket` at `0x470ba0`. A focused repo search across `HaCreator/MapSimulator` still does not surface a corresponding NPC shop dialog owner, store-bank dialog owner, or battle-record runtime/packet bridge; the nearby seams that do exist today are limited to storage-keeper NPC launch heuristics, trunk/storage runtime, and other utility windows, not these client-owned packet handlers. | If these owners stay unnamed, progression/utility parity will look more complete than it is once NPC interaction, storage, and adjacent utility shells are in place. The client keeps ordinary shop flow, store-bank flow, and battle-record updates behind dedicated packet-owned managers, so tracking them explicitly keeps future work anchored to the real dispatch path instead of letting them disappear into generic NPC, trunk, or utility-window polish rows. | packet-owned NPC utility layer (`CField::OnPacket`, `CShopDlg::OnPacket`, `CStoreBankDlg::OnPacket`, `CBattleRecordMan::OnPacket`) |
+
 ## Priority Order
 
 If the goal is visible parity first, the next work in this area should be sequenced like this:
@@ -513,7 +530,9 @@ If the goal is visible parity first, the next work in this area should be sequen
    Tighten `CUIMacroSysEx` draw/button-owner parity after the macro surface and shared text-entry seams exist so macro behavior does not stay documented only as input polish.
 15. Utility feedback pass:
    Complete pickup notices, soft-keyboard or constrained text-entry behavior, macro behavior, cursor states, and status-bar utility-button behavior.
-16. Client seam pass:
+16. Packet-owned NPC utility pass:
+   Add `CShopDlg`, `CStoreBankDlg`, and `CBattleRecordMan` packet bridges before treating NPC shop/storage-adjacent utility parity as covered by nearby trunk, NPC, or generic utility rows.
+17. Client seam pass:
    Capture direct IDA seams for minimap, inventory, equip, and quest windows so future parity fixes are anchored to named client owners instead of simulator-only structure.
 
 ## Working Rule For Future Updates
