@@ -214,6 +214,10 @@ namespace HaCreator.MapSimulator.UI
         private UIObject _legacyExceptionShowButton;
         private UIObject _legacyExceptionHideButton;
         private MouseState _previousMouseState;
+        private CharacterBuild _snapshotCacheBuild;
+        private ItemMakerProgressionSnapshot _currentCollectionSnapshot = ItemMakerProgressionSnapshot.Default;
+        private MonsterBookSnapshot _currentMonsterBookSnapshot = new MonsterBookSnapshot();
+        private RankDeltaSnapshot _currentRankDeltaSnapshot;
 
         private static readonly Color ValueColor = new Color(45, 45, 45);
         private static readonly Color SecondaryColor = new Color(96, 96, 96);
@@ -580,6 +584,7 @@ namespace HaCreator.MapSimulator.UI
 
         public override void Update(GameTime gameTime)
         {
+            RefreshSnapshotCaches();
             ClampSelectedPetTabIndex();
 
             if (_currentPage != UserInfoPage.Character && !IsPageAvailable(_currentPage))
@@ -613,6 +618,7 @@ namespace HaCreator.MapSimulator.UI
             RenderParameters renderParameters,
             int TickCount)
         {
+            RefreshSnapshotCaches();
             DrawCurrentPageVisuals(sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo);
 
             if (_font == null)
@@ -1812,7 +1818,13 @@ namespace HaCreator.MapSimulator.UI
 
         private MonsterBookSnapshot GetMonsterBookSnapshot()
         {
-            return _monsterBookSnapshotProvider?.Invoke(_inspectionTarget?.Build ?? _characterBuild) ?? new MonsterBookSnapshot();
+            CharacterBuild activeBuild = _inspectionTarget?.Build ?? _characterBuild;
+            if (!ReferenceEquals(_snapshotCacheBuild, activeBuild))
+            {
+                RefreshSnapshotCaches();
+            }
+
+            return _currentMonsterBookSnapshot;
         }
 
         private string BuildCollectFamilySummary(ItemMakerProgressionSnapshot snapshot, ItemMakerRecipeFamily family)
@@ -2155,12 +2167,33 @@ namespace HaCreator.MapSimulator.UI
 
         private ItemMakerProgressionSnapshot GetCollectionSnapshot()
         {
-            return _collectionSnapshotProvider?.Invoke(_inspectionTarget?.Build ?? _characterBuild) ?? ItemMakerProgressionSnapshot.Default;
+            CharacterBuild activeBuild = _inspectionTarget?.Build ?? _characterBuild;
+            if (!ReferenceEquals(_snapshotCacheBuild, activeBuild))
+            {
+                RefreshSnapshotCaches();
+            }
+
+            return _currentCollectionSnapshot;
         }
 
         private RankDeltaSnapshot GetRankDeltaSnapshot()
         {
-            return _rankDeltaProvider?.Invoke(_inspectionTarget?.Build ?? _characterBuild) ?? default;
+            CharacterBuild activeBuild = _inspectionTarget?.Build ?? _characterBuild;
+            if (!ReferenceEquals(_snapshotCacheBuild, activeBuild))
+            {
+                RefreshSnapshotCaches();
+            }
+
+            return _currentRankDeltaSnapshot;
+        }
+
+        private void RefreshSnapshotCaches()
+        {
+            CharacterBuild activeBuild = _inspectionTarget?.Build ?? _characterBuild;
+            _snapshotCacheBuild = activeBuild;
+            _currentCollectionSnapshot = _collectionSnapshotProvider?.Invoke(activeBuild) ?? ItemMakerProgressionSnapshot.Default;
+            _currentMonsterBookSnapshot = _monsterBookSnapshotProvider?.Invoke(activeBuild) ?? new MonsterBookSnapshot();
+            _currentRankDeltaSnapshot = _rankDeltaProvider?.Invoke(activeBuild) ?? default;
         }
 
         private bool CanRequestPopularity(PopularityChangeDirection direction)

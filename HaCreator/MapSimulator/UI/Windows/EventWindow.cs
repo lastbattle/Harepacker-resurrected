@@ -6,7 +6,6 @@ using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -38,6 +37,11 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D[] _calendarSelectedNumberTextures;
         private SpriteFont _font;
         private Func<EventWindowSnapshot> _snapshotProvider;
+        private EventWindowSnapshot _currentSnapshot = new();
+        private readonly List<EventEntrySnapshot> _filteredEntriesBuffer = new();
+        private readonly List<EventEntrySnapshot> _visibleEntriesBuffer = new();
+        private readonly Dictionary<DateTime, int> _calendarEntryCountBuffer = new();
+        private readonly List<string> _calendarSummaryTitlesBuffer = new();
         private EventEntryStatus? _filter;
         private int _selectedIndex;
         private int _pageIndex;
@@ -87,7 +91,7 @@ namespace HaCreator.MapSimulator.UI
 
         public override void Show()
         {
-            EventWindowSnapshot snapshot = _snapshotProvider?.Invoke() ?? new EventWindowSnapshot();
+            EventWindowSnapshot snapshot = RefreshSnapshot();
             _filter = null;
             _selectedIndex = 0;
             _pageIndex = 0;
@@ -116,6 +120,7 @@ namespace HaCreator.MapSimulator.UI
         public void SetSnapshotProvider(Func<EventWindowSnapshot> snapshotProvider)
         {
             _snapshotProvider = snapshotProvider;
+            _currentSnapshot = RefreshSnapshot();
         }
 
         public override void SetFont(SpriteFont font)
@@ -175,7 +180,7 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            IReadOnlyList<EventEntrySnapshot> visibleEntries = GetVisibleEntries();
+            IReadOnlyList<EventEntrySnapshot> visibleEntries = GetVisibleEntries(_currentSnapshot ?? RefreshSnapshot());
             for (int i = 0; i < visibleEntries.Count; i++)
             {
                 if (!GetRowBounds(i).Contains(mouseState.X, mouseState.Y))
@@ -222,7 +227,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            EventWindowSnapshot snapshot = _snapshotProvider?.Invoke() ?? new EventWindowSnapshot();
+            EventWindowSnapshot snapshot = RefreshSnapshot();
             if (_autoDismissTick != int.MinValue && unchecked(TickCount - _autoDismissTick) >= 0)
             {
                 Hide();
@@ -269,7 +274,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawRows(SpriteBatch sprite, EventWindowSnapshot snapshot)
         {
-            IReadOnlyList<EventEntrySnapshot> visibleEntries = GetVisibleEntries();
+            IReadOnlyList<EventEntrySnapshot> visibleEntries = GetVisibleEntries(snapshot);
             if (visibleEntries.Count == 0)
             {
                 DrawWrappedText(sprite, "No simulator event entries match the current filter.", Position.X + 18, Position.Y + 98, Math.Max(240f, (CurrentFrame?.Width ?? 323) - 36f), new Color(224, 224, 224));
@@ -311,10 +316,7 @@ namespace HaCreator.MapSimulator.UI
         {
             DateTime month = _calendarMonth;
             IReadOnlyList<EventEntrySnapshot> entries = GetFilteredEntries(snapshot);
-            var entryCountsByDay = entries
-                .Where(static entry => entry.ScheduledAt.Year > 1)
-                .GroupBy(entry => entry.ScheduledAt.Date)
-                .ToDictionary(group => group.Key, group => group.Count());
+            BuildCalendarEntryCounts(entries);
 
             Rectangle calendarBounds = GetCalendarBounds();
             Texture2D baseTexture = _calendarBackgroundTexture ?? _normalRowTexture ?? _selectedRowTexture;
@@ -363,7 +365,7 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 DrawCalendarDayNumber(sprite, day, cellBounds.Location, isSelected || isToday);
-                if (entryCountsByDay.TryGetValue(date, out int entryCount) && entryCount > 0)
+                if (_calendarEntryCountBuffer.TryGetValue(date, out int entryCount) && entryCount > 0)
                 {
                     sprite.DrawString(_font, entryCount.ToString(), new Vector2(cellBounds.Right - 6, cellBounds.Y - 2), new Color(255, 228, 151));
                 }
@@ -385,9 +387,8 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private IReadOnlyList<EventEntrySnapshot> GetVisibleEntries()
+        private IReadOnlyList<EventEntrySnapshot> GetVisibleEntries(EventWindowSnapshot snapshot)
         {
-            EventWindowSnapshot snapshot = _snapshotProvider?.Invoke() ?? new EventWindowSnapshot();
             IReadOnlyList<EventEntrySnapshot> filtered = GetFilteredEntries(snapshot);
             int rowsPerPage = GetRowsPerPage();
             if (_selectedIndex >= filtered.Count)
@@ -397,18 +398,33 @@ namespace HaCreator.MapSimulator.UI
 
             int maxPage = filtered.Count == 0 ? 0 : Math.Max(0, (filtered.Count - 1) / rowsPerPage);
             _pageIndex = Math.Clamp(_pageIndex, 0, maxPage);
-            return filtered.Skip(_pageIndex * rowsPerPage).Take(rowsPerPage).ToArray();
+            _visibleEntriesBuffer.Clear();
+            int startIndex = _pageIndex * rowsPerPage;
+            int endIndex = Math.Min(filtered.Count, startIndex + rowsPerPage);
+            for (int i = startIndex; i < endIndex; i++)
+            {
+                _visibleEntriesBuffer.Add(filtered[i]);
+            }
+
+            return _visibleEntriesBuffer;
         }
 
         private IReadOnlyList<EventEntrySnapshot> GetFilteredEntries(EventWindowSnapshot snapshot)
         {
-            IEnumerable<EventEntrySnapshot> entries = snapshot?.Entries ?? Array.Empty<EventEntrySnapshot>();
-            if (_filter.HasValue)
+            _filteredEntriesBuffer.Clear();
+            IReadOnlyList<EventEntrySnapshot> entries = snapshot?.Entries ?? Array.Empty<EventEntrySnapshot>();
+            for (int i = 0; i < entries.Count; i++)
             {
-                entries = entries.Where(entry => entry.Status == _filter.Value);
+                EventEntrySnapshot entry = entries[i];
+                if (_filter.HasValue && entry.Status != _filter.Value)
+                {
+                    continue;
+                }
+
+                _filteredEntriesBuffer.Add(entry);
             }
 
-            return entries.ToArray();
+            return _filteredEntriesBuffer;
         }
 
         private void MovePreviousPage()
@@ -441,7 +457,7 @@ namespace HaCreator.MapSimulator.UI
             _showCalendar = !_showCalendar;
             if (_showCalendar)
             {
-                InitializeCalendarSelection(_snapshotProvider?.Invoke() ?? new EventWindowSnapshot());
+                InitializeCalendarSelection(_currentSnapshot ?? RefreshSnapshot());
             }
         }
 
@@ -489,10 +505,10 @@ namespace HaCreator.MapSimulator.UI
 
             return status switch
             {
-                EventEntryStatus.Start => _statusIcons.ElementAtOrDefault(0),
-                EventEntryStatus.InProgress => _statusIcons.ElementAtOrDefault(1),
-                EventEntryStatus.Clear => _statusIcons.ElementAtOrDefault(2),
-                EventEntryStatus.Upcoming => _statusIcons.ElementAtOrDefault(0),
+                EventEntryStatus.Start => GetStatusIcon(0),
+                EventEntryStatus.InProgress => GetStatusIcon(1),
+                EventEntryStatus.Clear => GetStatusIcon(2),
+                EventEntryStatus.Upcoming => GetStatusIcon(0),
                 _ => null,
             };
         }
@@ -570,12 +586,26 @@ namespace HaCreator.MapSimulator.UI
         private void InitializeCalendarSelection(EventWindowSnapshot snapshot)
         {
             IReadOnlyList<EventEntrySnapshot> entries = GetFilteredEntries(snapshot);
-            DateTime targetDate = entries
-                .Where(static entry => entry.ScheduledAt.Year > 1)
-                .Select(entry => entry.ScheduledAt.Date)
-                .OrderBy(date => Math.Abs((date - DateTime.Today.Date).Ticks))
-                .ThenBy(date => date)
-                .FirstOrDefault();
+            DateTime targetDate = default;
+            long bestDistance = long.MaxValue;
+            DateTime today = DateTime.Today.Date;
+            for (int i = 0; i < entries.Count; i++)
+            {
+                DateTime date = entries[i].ScheduledAt.Date;
+                if (date.Year <= 1)
+                {
+                    continue;
+                }
+
+                long distance = Math.Abs((date - today).Ticks);
+                if (distance > bestDistance || (distance == bestDistance && targetDate != default && date >= targetDate))
+                {
+                    continue;
+                }
+
+                bestDistance = distance;
+                targetDate = date;
+            }
 
             if (targetDate.Year <= 1)
             {
@@ -589,14 +619,20 @@ namespace HaCreator.MapSimulator.UI
         private void DrawCalendarSelectionSummary(SpriteBatch sprite, IReadOnlyList<EventEntrySnapshot> entries, Rectangle calendarBounds)
         {
             DateTime selectedDate = _selectedCalendarDate?.Date ?? _calendarMonth;
-            IReadOnlyList<EventEntrySnapshot> selectedEntries = entries
-                .Where(entry => entry.ScheduledAt.Date == selectedDate)
-                .Take(2)
-                .ToArray();
+            _calendarSummaryTitlesBuffer.Clear();
+            for (int i = 0; i < entries.Count && _calendarSummaryTitlesBuffer.Count < 2; i++)
+            {
+                if (entries[i].ScheduledAt.Date != selectedDate)
+                {
+                    continue;
+                }
 
-            string summary = selectedEntries.Count == 0
+                _calendarSummaryTitlesBuffer.Add(entries[i].Title);
+            }
+
+            string summary = _calendarSummaryTitlesBuffer.Count == 0
                 ? $"{selectedDate:MMM d}: no simulator event entries are scheduled for this day."
-                : $"{selectedDate:MMM d}: {string.Join(" / ", selectedEntries.Select(entry => entry.Title))}";
+                : $"{selectedDate:MMM d}: {string.Join(" / ", _calendarSummaryTitlesBuffer)}";
 
             DrawWrappedText(
                 sprite,
@@ -644,6 +680,35 @@ namespace HaCreator.MapSimulator.UI
             {
                 yield return currentLine;
             }
+        }
+
+        private EventWindowSnapshot RefreshSnapshot()
+        {
+            _currentSnapshot = _snapshotProvider?.Invoke() ?? new EventWindowSnapshot();
+            return _currentSnapshot;
+        }
+
+        private void BuildCalendarEntryCounts(IReadOnlyList<EventEntrySnapshot> entries)
+        {
+            _calendarEntryCountBuffer.Clear();
+            for (int i = 0; i < entries.Count; i++)
+            {
+                DateTime date = entries[i].ScheduledAt.Date;
+                if (date.Year <= 1)
+                {
+                    continue;
+                }
+
+                _calendarEntryCountBuffer.TryGetValue(date, out int count);
+                _calendarEntryCountBuffer[date] = count + 1;
+            }
+        }
+
+        private Texture2D GetStatusIcon(int index)
+        {
+            return index >= 0 && index < _statusIcons.Length
+                ? _statusIcons[index]
+                : null;
         }
     }
 }

@@ -51,6 +51,11 @@ namespace HaCreator.MapSimulator.UI
         private readonly List<RowLayout> _rowLayouts = new();
         private readonly Dictionary<int, Texture2D> _itemIconCache = new();
         private readonly Texture2D _pixel;
+        private readonly HashSet<int> _activeQuestIdsBuffer = new();
+        private readonly Dictionary<int, QuestAlarmEntrySnapshot> _entryByQuestIdBuffer = new();
+        private readonly List<QuestAlarmEntrySnapshot> _orderedEntriesBuffer = new();
+        private readonly List<QuestAlarmEntrySnapshot> _filteredEntriesBuffer = new();
+        private readonly List<QuestAlarmEntrySnapshot> _visibleEntriesBuffer = new();
 
         private SpriteFont _font;
         private MouseState _previousMouseState;
@@ -86,6 +91,7 @@ namespace HaCreator.MapSimulator.UI
         private IReadOnlyList<Texture2D> _questButtonAnimationFrames = Array.Empty<Texture2D>();
         private string _loadedStateCharacterKey = string.Empty;
         private bool _suppressStatePersistence;
+        private QuestAlarmSnapshot _currentSnapshot = new();
 
         public QuestAlarmWindow(
             string windowName,
@@ -118,6 +124,7 @@ namespace HaCreator.MapSimulator.UI
         internal void SetSnapshotProvider(Func<QuestAlarmSnapshot> provider)
         {
             _snapshotProvider = provider;
+            _currentSnapshot = RefreshFilteredSnapshot();
         }
 
         internal void SetItemIconProvider(Func<int, Texture2D> provider)
@@ -208,7 +215,7 @@ namespace HaCreator.MapSimulator.UI
 
             _hiddenAutoQuestIds.Remove(questId);
             _selectedQuestId = questId;
-            EnsureSelectionVisible(GetFilteredSnapshot());
+            EnsureSelectionVisible(RefreshFilteredSnapshot());
             SetMinimized(false);
             UpdateButtonStates();
             SavePersistedState();
@@ -218,7 +225,7 @@ namespace HaCreator.MapSimulator.UI
         {
             base.Update(gameTime);
 
-            QuestAlarmSnapshot snapshot = GetFilteredSnapshot();
+            QuestAlarmSnapshot snapshot = RefreshFilteredSnapshot();
             EnsureSelection(snapshot);
             EnsureSelectionVisible(snapshot);
             ClampScrollOffset(snapshot);
@@ -296,7 +303,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            QuestAlarmSnapshot snapshot = GetFilteredSnapshot();
+            QuestAlarmSnapshot snapshot = _currentSnapshot ?? RefreshFilteredSnapshot();
             EnsureSelection(snapshot);
             EnsureSelectionVisible(snapshot);
             ClampScrollOffset(snapshot);
@@ -325,10 +332,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             int y = Position.Y + ClientTitleY;
-            IReadOnlyList<QuestAlarmEntrySnapshot> visibleEntries = snapshot.Entries
-                .Skip(_scrollOffset)
-                .Take(MaxVisibleEntries)
-                .ToList();
+            IReadOnlyList<QuestAlarmEntrySnapshot> visibleEntries = GetVisibleEntries(snapshot);
 
             for (int i = 0; i < visibleEntries.Count; i++)
             {
@@ -409,13 +413,13 @@ namespace HaCreator.MapSimulator.UI
 
         private void OpenQuestLog()
         {
-            QuestAlarmSnapshot snapshot = GetFilteredSnapshot();
+            QuestAlarmSnapshot snapshot = _currentSnapshot ?? RefreshFilteredSnapshot();
             QuestLogRequested?.Invoke(_selectedQuestId, snapshot.HasAlertAnimation);
         }
 
         private void ShowMaximizedIfAvailable()
         {
-            QuestAlarmSnapshot snapshot = GetFilteredSnapshot();
+            QuestAlarmSnapshot snapshot = _currentSnapshot ?? RefreshFilteredSnapshot();
             if (snapshot.Entries.Count == 0)
             {
                 StatusMessageRequested?.Invoke("There are no active quests registered in Quest Alarm.");
@@ -428,7 +432,7 @@ namespace HaCreator.MapSimulator.UI
         private void SetMinimized(bool minimized)
         {
             _isMinimized = minimized;
-            RefreshFrame(GetFilteredSnapshot());
+            RefreshFrame(_currentSnapshot ?? RefreshFilteredSnapshot());
             UpdateButtonStates();
             SavePersistedState();
         }
@@ -450,7 +454,7 @@ namespace HaCreator.MapSimulator.UI
                 _selectedQuestId = row.QuestId;
                 _lastRowClickQuestId = row.QuestId;
                 _lastRowClickTick = Environment.TickCount64;
-                EnsureSelectionVisible(GetFilteredSnapshot());
+                EnsureSelectionVisible(_currentSnapshot ?? RefreshFilteredSnapshot());
                 UpdateButtonStates();
 
                 if (repeatedClick)
@@ -462,7 +466,7 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private QuestAlarmSnapshot GetFilteredSnapshot()
+        private QuestAlarmSnapshot RefreshFilteredSnapshot()
         {
             EnsurePersistedStateLoaded();
             QuestAlarmSnapshot snapshot = _snapshotProvider?.Invoke() ?? new QuestAlarmSnapshot();
@@ -475,35 +479,65 @@ namespace HaCreator.MapSimulator.UI
                     SavePersistedState();
                 }
 
-                return snapshot;
+                _filteredEntriesBuffer.Clear();
+                _currentSnapshot = snapshot;
+                return _currentSnapshot;
             }
 
-            HashSet<int> activeQuestIds = snapshot.Entries.Select(entry => entry.QuestId).ToHashSet();
+            _activeQuestIdsBuffer.Clear();
+            _entryByQuestIdBuffer.Clear();
+            _orderedEntriesBuffer.Clear();
+            for (int i = 0; i < snapshot.Entries.Count; i++)
+            {
+                QuestAlarmEntrySnapshot entry = snapshot.Entries[i];
+                _activeQuestIdsBuffer.Add(entry.QuestId);
+                _entryByQuestIdBuffer[entry.QuestId] = entry;
+                _orderedEntriesBuffer.Add(entry);
+            }
+
             bool stateChanged = false;
-            stateChanged |= _trackedQuestIds.RemoveAll(questId => !activeQuestIds.Contains(questId)) > 0;
-            stateChanged |= _hiddenAutoQuestIds.RemoveWhere(questId => !activeQuestIds.Contains(questId)) > 0;
-            List<QuestAlarmEntrySnapshot> orderedEntries = snapshot.Entries.ToList();
-            Dictionary<int, QuestAlarmEntrySnapshot> entryByQuestId = orderedEntries.ToDictionary(entry => entry.QuestId);
+            stateChanged |= _trackedQuestIds.RemoveAll(questId => !_activeQuestIdsBuffer.Contains(questId)) > 0;
+            stateChanged |= _hiddenAutoQuestIds.RemoveWhere(questId => !_activeQuestIdsBuffer.Contains(questId)) > 0;
 
-            int[] trackedQuestIdsInOrder = _trackedQuestIds
-                .Where(entryByQuestId.ContainsKey)
-                .Take(MaxVisibleEntries)
-                .ToArray();
-            if (_trackedQuestIds.Count > trackedQuestIdsInOrder.Length)
+            _filteredEntriesBuffer.Clear();
+            int trackedCount = 0;
+            for (int i = 0; i < _trackedQuestIds.Count && trackedCount < MaxVisibleEntries; i++)
             {
-                HashSet<int> trackedQuestIdSet = trackedQuestIdsInOrder.ToHashSet();
-                stateChanged |= _trackedQuestIds.RemoveAll(questId => !trackedQuestIdSet.Contains(questId)) > 0;
+                int questId = _trackedQuestIds[i];
+                if (!_entryByQuestIdBuffer.TryGetValue(questId, out QuestAlarmEntrySnapshot trackedEntry))
+                {
+                    continue;
+                }
+
+                _filteredEntriesBuffer.Add(trackedEntry);
+                trackedCount++;
             }
 
-            List<QuestAlarmEntrySnapshot> entries = trackedQuestIdsInOrder
-                .Select(questId => entryByQuestId[questId])
-                .ToList();
-            if (_autoTrackEnabled && entries.Count < MaxVisibleEntries)
+            if (_trackedQuestIds.Count > trackedCount)
             {
-                int remainingSlots = MaxVisibleEntries - entries.Count;
-                entries.AddRange(orderedEntries
-                    .Where(entry => !_trackedQuestIds.Contains(entry.QuestId) && !_hiddenAutoQuestIds.Contains(entry.QuestId))
-                    .Take(remainingSlots));
+                _activeQuestIdsBuffer.Clear();
+                for (int i = 0; i < _filteredEntriesBuffer.Count; i++)
+                {
+                    _activeQuestIdsBuffer.Add(_filteredEntriesBuffer[i].QuestId);
+                }
+
+                stateChanged |= _trackedQuestIds.RemoveAll(questId => !_activeQuestIdsBuffer.Contains(questId)) > 0;
+            }
+
+            if (_autoTrackEnabled && _filteredEntriesBuffer.Count < MaxVisibleEntries)
+            {
+                int remainingSlots = MaxVisibleEntries - _filteredEntriesBuffer.Count;
+                for (int i = 0; i < _orderedEntriesBuffer.Count && remainingSlots > 0; i++)
+                {
+                    QuestAlarmEntrySnapshot entry = _orderedEntriesBuffer[i];
+                    if (_trackedQuestIds.Contains(entry.QuestId) || _hiddenAutoQuestIds.Contains(entry.QuestId))
+                    {
+                        continue;
+                    }
+
+                    _filteredEntriesBuffer.Add(entry);
+                    remainingSlots--;
+                }
             }
 
             if (stateChanged)
@@ -511,11 +545,12 @@ namespace HaCreator.MapSimulator.UI
                 SavePersistedState();
             }
 
-            return new QuestAlarmSnapshot
+            _currentSnapshot = new QuestAlarmSnapshot
             {
-                Entries = entries,
-                HasAlertAnimation = entries.Any(entry => entry.IsRecentlyUpdated)
+                Entries = _filteredEntriesBuffer.ToArray(),
+                HasAlertAnimation = ContainsRecentlyUpdatedEntry(_filteredEntriesBuffer)
             };
+            return _currentSnapshot;
         }
 
         private void EnsureSelection(QuestAlarmSnapshot snapshot)
@@ -527,14 +562,40 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            if (snapshot.Entries.Any(entry => entry.QuestId == _selectedQuestId))
+            for (int i = 0; i < snapshot.Entries.Count; i++)
             {
-                return;
+                if (snapshot.Entries[i].QuestId == _selectedQuestId)
+                {
+                    return;
+                }
             }
 
-            QuestAlarmEntrySnapshot preferredEntry = snapshot.Entries.FirstOrDefault(entry => entry.IsReadyToComplete)
-                ?? snapshot.Entries.FirstOrDefault(entry => entry.IsRecentlyUpdated)
-                ?? snapshot.Entries[0];
+            QuestAlarmEntrySnapshot preferredEntry = null;
+            for (int i = 0; i < snapshot.Entries.Count; i++)
+            {
+                QuestAlarmEntrySnapshot entry = snapshot.Entries[i];
+                if (preferredEntry == null)
+                {
+                    preferredEntry = entry;
+                }
+
+                if (entry.IsReadyToComplete)
+                {
+                    preferredEntry = entry;
+                    break;
+                }
+
+                if (preferredEntry.IsRecentlyUpdated)
+                {
+                    continue;
+                }
+
+                if (entry.IsRecentlyUpdated)
+                {
+                    preferredEntry = entry;
+                }
+            }
+
             _selectedQuestId = preferredEntry.QuestId;
         }
 
@@ -891,7 +952,8 @@ namespace HaCreator.MapSimulator.UI
             }
 
             EnsurePersistedStateLoaded();
-            string questTitle = GetFilteredSnapshot().Entries.FirstOrDefault(entry => entry.QuestId == questId)?.Title;
+            QuestAlarmSnapshot snapshot = RefreshFilteredSnapshot();
+            string questTitle = TryGetQuestTitle(snapshot, questId);
             _trackedQuestIds.Remove(questId);
             if (_autoTrackEnabled)
             {
@@ -903,7 +965,7 @@ namespace HaCreator.MapSimulator.UI
                 _selectedQuestId = -1;
             }
 
-            ClampScrollOffset(GetFilteredSnapshot());
+            ClampScrollOffset(RefreshFilteredSnapshot());
             UpdateButtonStates();
             SavePersistedState();
 
@@ -915,7 +977,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void DismissAll(QuestAlarmSnapshot snapshot)
         {
-            QuestAlarmSnapshot fullSnapshot = _snapshotProvider?.Invoke() ?? snapshot ?? new QuestAlarmSnapshot();
+            QuestAlarmSnapshot fullSnapshot = snapshot ?? RefreshFilteredSnapshot();
             if ((fullSnapshot.Entries == null || fullSnapshot.Entries.Count == 0) && _trackedQuestIds.Count == 0)
             {
                 return;
@@ -1149,6 +1211,44 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return ellipsis;
+        }
+
+        private IReadOnlyList<QuestAlarmEntrySnapshot> GetVisibleEntries(QuestAlarmSnapshot snapshot)
+        {
+            _visibleEntriesBuffer.Clear();
+            int endIndex = Math.Min(snapshot.Entries.Count, _scrollOffset + MaxVisibleEntries);
+            for (int i = _scrollOffset; i < endIndex; i++)
+            {
+                _visibleEntriesBuffer.Add(snapshot.Entries[i]);
+            }
+
+            return _visibleEntriesBuffer;
+        }
+
+        private static bool ContainsRecentlyUpdatedEntry(IReadOnlyList<QuestAlarmEntrySnapshot> entries)
+        {
+            for (int i = 0; i < entries.Count; i++)
+            {
+                if (entries[i].IsRecentlyUpdated)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static string TryGetQuestTitle(QuestAlarmSnapshot snapshot, int questId)
+        {
+            for (int i = 0; i < snapshot.Entries.Count; i++)
+            {
+                if (snapshot.Entries[i].QuestId == questId)
+                {
+                    return snapshot.Entries[i].Title;
+                }
+            }
+
+            return null;
         }
 
         private static string Truncate(string text, int maxChars)
