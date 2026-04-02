@@ -19,7 +19,6 @@ using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows.Forms;
-using WeifenLuo.WinFormsUI.Docking;
 using Xceed.Wpf.AvalonDock.Controls;
 using HaCreator.Wz;
 
