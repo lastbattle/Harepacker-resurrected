@@ -1060,17 +1060,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            for (int start = 0; start < filteredMessage.Length;)
-            {
-                if (MatchesSwindleKeyword(filteredMessage, start, keywordBytes))
-                {
-                    return true;
-                }
-
-                start += GetSwindleCharacterLength(filteredMessage, start);
-            }
-
-            return false;
+            return FindSwindleSubstring(filteredMessage, keywordBytes) >= 0;
         }
 
         private static string FilterSwindleText(string message)
@@ -1113,6 +1103,36 @@ namespace HaCreator.MapSimulator.Interaction
 
             Array.Resize(ref filteredBytes, count);
             return filteredBytes;
+        }
+
+        private static int FindSwindleSubstring(byte[] filteredMessage, byte[] keywordBytes)
+        {
+            if (filteredMessage == null
+                || keywordBytes == null
+                || filteredMessage.Length == 0
+                || keywordBytes.Length == 0)
+            {
+                return -1;
+            }
+
+            for (int start = 0; start < filteredMessage.Length;)
+            {
+                // Match the client's SearchSubstring guard: it refuses to start from
+                // the terminal byte and instead advances by DBCS character boundaries.
+                if (start + 1 >= filteredMessage.Length)
+                {
+                    break;
+                }
+
+                if (MatchesSwindleKeyword(filteredMessage, start, keywordBytes))
+                {
+                    return start;
+                }
+
+                start += GetSwindleCharacterLength(filteredMessage, start);
+            }
+
+            return -1;
         }
 
         private static bool MatchesSwindleKeyword(byte[] filteredMessage, int start, byte[] keywordBytes)

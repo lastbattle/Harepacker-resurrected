@@ -196,6 +196,27 @@ namespace HaCreator.MapSimulator.Managers
             };
         }
 
+        public MapTransferRuntimeResponse PreviewRequest(CharacterBuild build, MapTransferRuntimeRequest request)
+        {
+            if (request == null)
+            {
+                return new MapTransferRuntimeResponse();
+            }
+
+            CharacterRuntimeBooks runtimeBooks = GetOrCreateBooks(build);
+            int[] slots = (int[])GetSlots(runtimeBooks, request.Book).Clone();
+
+            return request.Type switch
+            {
+                MapTransferRuntimeRequestType.Register => RegisterDestination(build, request, slots),
+                MapTransferRuntimeRequestType.Delete => DeleteDestination(build, request, slots),
+                _ => new MapTransferRuntimeResponse
+                {
+                    FailureMessage = "Unknown map transfer request."
+                }
+            };
+        }
+
         public bool TryDequeueMapTransferResultPayload(CharacterBuild build, out byte[] payload)
         {
             string characterKey = ResolveCharacterKey(build);

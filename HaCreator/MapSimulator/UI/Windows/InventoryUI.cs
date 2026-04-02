@@ -1986,6 +1986,11 @@ namespace HaCreator.MapSimulator.UI
                 segments.Add("One-of-a-kind item");
             }
 
+            if (part.IsUniqueEquipItem)
+            {
+                segments.Add("Can only be equipped once");
+            }
+
             if (part.IsNotForSale)
             {
                 segments.Add("Not for sale");
@@ -1999,6 +2004,11 @@ namespace HaCreator.MapSimulator.UI
             if (part.HasAccountShareTag)
             {
                 segments.Add("Account-share tagged");
+            }
+
+            if (part.IsNoMoveToLocker)
+            {
+                segments.Add("Cannot be moved to storage");
             }
 
             if (part.KnockbackRate > 0)

@@ -108,8 +108,22 @@ namespace HaCreator.MapSimulator.Character
         {
             var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            // CActionMan::LoadShadowPartnerAction probes the exact raw-action name first
-            // before it falls back through ghost alias remaps or broader state heuristics.
+            // `LoadShadowPartnerAction` walks the action-specific ghost remap table before
+            // it falls back to the plain `get_action_name_from_code(raw)` lookup. Keep the
+            // ghost-family aliases ahead of an authored raw branch like `fly` or `dead` so
+            // `ghostfly`/`ghost` collapse through the client mapping instead of short-circuiting
+            // on the helper's generic raw action.
+            if (ShouldPreferGhostAliasCandidates(playerActionName))
+            {
+                foreach (string candidate in EnumerateAliasCandidates(playerActionName))
+                {
+                    if (yielded.Add(candidate))
+                    {
+                        yield return candidate;
+                    }
+                }
+            }
+
             if (rawActionCode.HasValue
                 && CharacterPart.TryGetActionStringFromCode(rawActionCode.Value, out string rawActionName)
                 && !string.IsNullOrWhiteSpace(rawActionName)
@@ -294,6 +308,12 @@ namespace HaCreator.MapSimulator.Character
                     yield return alias;
                 }
             }
+        }
+
+        private static bool ShouldPreferGhostAliasCandidates(string playerActionName)
+        {
+            return !string.IsNullOrWhiteSpace(playerActionName)
+                   && playerActionName.StartsWith("ghost", StringComparison.OrdinalIgnoreCase);
         }
 
         private static IEnumerable<string> EnumerateHeuristicAttackAliases(

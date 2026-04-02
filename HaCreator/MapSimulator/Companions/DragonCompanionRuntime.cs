@@ -4,6 +4,7 @@ using System.Linq;
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Character.Skills;
 using HaCreator.MapSimulator.Core;
+using HaCreator.MapSimulator.Fields;
 using HaCreator.MapSimulator.Physics;
 using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Util;
@@ -579,6 +580,7 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             return mapInfo.vanishDragon == true
+                || mapInfo.nofollowCharacter == true
                 || mapInfo.fieldType == FieldType.FIELDTYPE_NODRAGON;
         }
 
@@ -1239,6 +1241,12 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             if (HasMountedVehicle(owner))
+            {
+                return false;
+            }
+
+            MapInfo mapInfo = _currentMapInfoProvider?.Invoke();
+            if (!string.IsNullOrWhiteSpace(FieldInteractionRestrictionEvaluator.GetQuestAlertRestrictionMessage(mapInfo?.fieldLimit ?? 0)))
             {
                 return false;
             }

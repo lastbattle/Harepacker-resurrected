@@ -511,7 +511,7 @@ namespace HaCreator.MapSimulator.Managers
         /// Draws all item/meso drops
         /// </summary>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public void DrawDrops(in RenderContext context)
+        public void DrawDrops(in RenderContext context, bool elevatedOnly = false)
         {
             if (_dropPool == null || _dropPool.ActiveDropCount == 0)
                 return;
@@ -520,13 +520,18 @@ namespace HaCreator.MapSimulator.Managers
             int screenHeight = context.RenderHeight;
 
             _dropPool.GetRenderableDrops(_renderableDropsBuffer, 0, screenWidth, 0, screenHeight,
-                context.MapShiftX, context.MapShiftY, context.MapCenterX, context.MapCenterY);
+                context.MapShiftX, context.MapShiftY, context.MapCenterX, context.MapCenterY, elevatedOnly);
 
             for (int i = 0; i < _renderableDropsBuffer.Count; i++)
             {
                 DropItem drop = _renderableDropsBuffer[i];
                 int screenX = (int)drop.X - context.MapShiftX + context.MapCenterX;
                 int screenY = (int)drop.Y - context.MapShiftY + context.MapCenterY;
+
+                if (TryDrawLayeredPacketMeso(drop, screenX, screenY, context))
+                {
+                    continue;
+                }
 
                 IDXObject currentFrame = null;
                 if (drop.AnimFrames != null && drop.AnimFrames.Count > 0)
@@ -564,6 +569,64 @@ namespace HaCreator.MapSimulator.Managers
                     }
                 }
             }
+        }
+
+        private static bool TryDrawLayeredPacketMeso(DropItem drop, int screenX, int screenY, in RenderContext context)
+        {
+            if (drop?.UseLayeredMesoAnimation != true
+                || drop.AnimFrames == null
+                || drop.AnimFrames.Count == 0
+                || drop.MesoAnimationLayerCount <= 0)
+            {
+                return false;
+            }
+
+            int layerCount = Math.Min(drop.MesoAnimationLayerCount, drop.AnimFrames.Count);
+            float pulse = MathF.Sin((context.TickCount - drop.SpawnTime) / 120f);
+
+            for (int layerIndex = 0; layerIndex < layerCount; layerIndex++)
+            {
+                IDXObject frame = drop.AnimFrames[layerIndex];
+                if (frame == null)
+                {
+                    continue;
+                }
+
+                float layerProgress = layerCount == 1 ? 0f : layerIndex / (float)(layerCount - 1);
+                float alpha = MathHelper.Clamp((0.38f + 0.18f * layerIndex + 0.12f * pulse) * drop.Alpha, 0f, 1f);
+                float scale = 0.9f + 0.08f * layerIndex + 0.03f * pulse;
+                int drawX = screenX;
+                int drawY = screenY - (int)MathF.Round(layerProgress * 4f);
+
+                if (frame.Texture != null)
+                {
+                    int width = Math.Max(1, (int)MathF.Round(frame.Width * scale));
+                    int height = Math.Max(1, (int)MathF.Round(frame.Height * scale));
+                    context.SpriteBatch.Draw(
+                        frame.Texture,
+                        new Rectangle(drawX, drawY, width, height),
+                        null,
+                        Color.White * alpha,
+                        0f,
+                        Vector2.Zero,
+                        SpriteEffects.None,
+                        0f);
+                }
+                else
+                {
+                    frame.DrawBackground(
+                        context.SpriteBatch,
+                        context.SkeletonMeshRenderer,
+                        null,
+                        drawX,
+                        drawY,
+                        Color.White * alpha,
+                        false,
+                        null);
+                }
+            }
+
+            return true;
         }
 
         private void DrawMesoAmountText(in RenderContext context, int screenX, int screenY, int size, int mesoAmount, float alpha, Color dropColor)

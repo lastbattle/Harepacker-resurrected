@@ -1,9 +1,14 @@
+using MapleLib.ClientLib;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Drawing;
+using System.Drawing.Imaging;
+using System.Runtime.InteropServices;
+using System.Text;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -37,13 +42,29 @@ namespace HaCreator.MapSimulator.UI
             ("darkness", "Darkness"),
             ("weakness", "Weakness"),
             ("curse", "Curse"),
-            ("painmark", "Pain Mark")
+            ("painmark", "Pain Mark"),
+            ("stun", "Stun"),
+            ("slow", "Slow"),
+            ("freeze", "Freeze"),
+            ("seduce", "Seduce"),
+            ("attract", "Attract"),
+            ("confusion", "Reverse Controls"),
+            ("reverseInput", "Reverse Controls"),
+            ("undead", "Zombie"),
+            ("zombie", "Zombie")
         };
-        private static readonly (string Key, string Label)[] PositivePercentEffectKeys =
+        private static readonly (string[] Keys, string Label)[] PositivePercentEffectKeys =
         {
-            ("mhpR", "Max HP"),
-            ("mmpR", "Max MP"),
-            ("asrR", "Status Resistance")
+            (new[] { "mhpR", "mhpRRate" }, "Max HP"),
+            (new[] { "mmpR", "mmpRRate" }, "Max MP"),
+            (new[] { "asrR", "indieAsrR" }, "Status Resistance")
+        };
+        private static readonly (string[] Keys, string Label)[] PrimaryFlatEffectKeys =
+        {
+            (new[] { "str", "indieSTR" }, "STR"),
+            (new[] { "dex", "indieDEX" }, "DEX"),
+            (new[] { "int", "indieINT" }, "INT"),
+            (new[] { "luk", "indieLUK" }, "LUK")
         };
         private static readonly (string Key, string Label)[] IndependentFlatEffectKeys =
         {
@@ -54,12 +75,13 @@ namespace HaCreator.MapSimulator.UI
             ("indiePdd", "Weapon DEF"),
             ("indieMdd", "Magic DEF"),
             ("indieSpeed", "Speed"),
-            ("indieJump", "Jump")
+            ("indieJump", "Jump"),
+            ("indieAllStat", "All Stats")
         };
-        private static readonly (string Key, string Label)[] IndependentPercentEffectKeys =
+        private static readonly (string[] Keys, string Label)[] IndependentPercentEffectKeys =
         {
-            ("expBuff", "EXP"),
-            ("dropRate", "Item Drop Rate")
+            (new[] { "expBuff", "expR" }, "EXP"),
+            (new[] { "dropRate", "dropR" }, "Item Drop Rate")
         };
 
         public static InventoryType ResolveInventoryType(int itemId)
@@ -142,6 +164,26 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
+        public static bool TryResolveSpecNpc(int itemId, out int npcId)
+        {
+            npcId = 0;
+
+            WzSubProperty itemProperty = LoadItemProperty(itemId);
+            if (itemProperty?["spec"] is not WzSubProperty specProperty)
+            {
+                return false;
+            }
+
+            int resolvedNpcId = GetIntValue(specProperty["npc"]);
+            if (resolvedNpcId <= 0)
+            {
+                return false;
+            }
+
+            npcId = resolvedNpcId;
+            return true;
+        }
+
         public static bool TryResolveItemInfoPath(int itemId, out string path)
         {
             path = null;
@@ -199,6 +241,23 @@ namespace HaCreator.MapSimulator.UI
 
             maxStackSize = ResolveMaxStack(ResolveInventoryType(itemId), slotMax);
             return true;
+        }
+
+        public static bool TryResolveClientItemCrc(int itemId, out uint crc)
+        {
+            crc = 0;
+            if (itemId <= 0)
+            {
+                return false;
+            }
+
+            WzSubProperty itemProperty = LoadItemProperty(itemId);
+            uint commonCrc = ComputeItemCommonCrc(itemId, itemProperty);
+            InventoryType inventoryType = ResolveInventoryType(itemId);
+            crc = inventoryType is InventoryType.USE or InventoryType.SETUP or InventoryType.ETC
+                ? ComputeBundleItemCrc(itemProperty, itemId, commonCrc)
+                : commonCrc;
+            return crc != 0;
         }
 
         public static InventoryItemTooltipMetadata ResolveTooltipMetadata(int itemId, InventoryType fallbackType = InventoryType.NONE)
@@ -356,6 +415,177 @@ namespace HaCreator.MapSimulator.UI
             return itemImage[itemNodeName] as WzSubProperty;
         }
 
+        private static uint ComputeItemCommonCrc(int itemId, WzSubProperty itemProperty)
+        {
+            uint seed = ComputeClientCrc32(95);
+            seed = ComputeClientCrc32(seed);
+
+            uint combined = seed ^ ComputeClientCrc32(itemId);
+            combined ^= ComputeItemIconCrc(itemProperty);
+
+            string description = TryResolveItemDescription(itemId, out string resolvedDescription)
+                ? resolvedDescription ?? string.Empty
+                : string.Empty;
+            string name = TryResolveItemName(itemId, out string resolvedName)
+                ? resolvedName ?? string.Empty
+                : string.Empty;
+            string combinedText = string.Concat(name, description);
+            if (!string.IsNullOrEmpty(combinedText))
+            {
+                combined ^= ComputeClientCrc32(Encoding.Default.GetBytes(combinedText));
+            }
+
+            return combined;
+        }
+
+        private static uint ComputeBundleItemCrc(WzSubProperty itemProperty, int itemId, uint commonCrc)
+        {
+            WzSubProperty infoProperty = itemProperty?["info"] as WzSubProperty;
+            if (infoProperty == null)
+            {
+                return commonCrc;
+            }
+
+            uint combined = commonCrc;
+            combined ^= ComputeClientCrc32(GetIntValue(infoProperty["reqLEV"]));
+            combined ^= ComputeClientCrc32(GetIntValue(infoProperty["price"]));
+            combined ^= ComputeClientCrc32(ReadDoubleValue(infoProperty["unitPrice"]));
+            combined ^= ComputeClientCrc32(GetIntValue(infoProperty["slotMax"]));
+            combined ^= ComputeClientCrc32(GetIntValue(infoProperty["max"]));
+            combined ^= ComputeClientCrc32(ComposeBundleItemFlagMask(infoProperty));
+            return combined;
+        }
+
+        private static int ComposeBundleItemFlagMask(WzSubProperty infoProperty)
+        {
+            return (GetIntValue(infoProperty["noCancelMouse"]) != 0 ? 1 : 0)
+                 | (GetIntValue(infoProperty["expireOnLogout"]) != 0 ? 1 << 1 : 0)
+                 | (GetIntValue(infoProperty["notSale"]) != 0 ? 1 << 2 : 0)
+                 | (GetIntValue(infoProperty["karma"]) != 0 ? 1 << 3 : 0)
+                 | (GetIntValue(infoProperty["tradeBlock"]) != 0 ? 1 << 4 : 0)
+                 | (GetIntValue(infoProperty["timeLimited"]) != 0 ? 1 << 5 : 0)
+                 | (GetIntValue(infoProperty["partyQuest"]) != 0 ? 1 << 6 : 0)
+                 | (GetIntValue(infoProperty["quest"]) != 0 ? 1 << 7 : 0);
+        }
+
+        private static uint ComputeItemIconCrc(WzSubProperty itemProperty)
+        {
+            WzSubProperty infoProperty = itemProperty?["info"] as WzSubProperty;
+            if (infoProperty == null)
+            {
+                return 0;
+            }
+
+            uint iconCrc = 0;
+            if (infoProperty["icon"] is WzCanvasProperty iconCanvas)
+            {
+                iconCrc ^= ComputeCanvasCrc(iconCanvas);
+            }
+
+            if (infoProperty["iconRaw"] is WzCanvasProperty iconRawCanvas)
+            {
+                iconCrc ^= ComputeCanvasCrc(iconRawCanvas);
+            }
+
+            return iconCrc;
+        }
+
+        private static uint ComputeCanvasCrc(WzCanvasProperty canvas)
+        {
+            try
+            {
+                using Bitmap source = canvas?.GetLinkedWzImageProperty() is WzCanvasProperty linkedCanvas
+                    ? linkedCanvas.GetBitmap()
+                    : canvas?.GetBitmap();
+                if (source == null)
+                {
+                    return 0;
+                }
+
+                using Bitmap converted = new Bitmap(source.Width, source.Height, PixelFormat.Format16bppArgb1555);
+                using (Graphics graphics = Graphics.FromImage(converted))
+                {
+                    graphics.DrawImageUnscaled(source, 0, 0);
+                }
+
+                Rectangle bounds = new Rectangle(0, 0, converted.Width, converted.Height);
+                BitmapData bitmapData = converted.LockBits(bounds, ImageLockMode.ReadOnly, PixelFormat.Format16bppArgb1555);
+                try
+                {
+                    int rowLength = converted.Width * 2;
+                    byte[] row = new byte[rowLength];
+                    uint crc = 0;
+                    for (int y = 0; y < converted.Height; y++)
+                    {
+                        IntPtr rowPtr = bitmapData.Scan0 + (y * bitmapData.Stride);
+                        Marshal.Copy(rowPtr, row, 0, rowLength);
+                        crc ^= ComputeClientCrc32(row);
+                    }
+
+                    return crc;
+                }
+                finally
+                {
+                    converted.UnlockBits(bitmapData);
+                }
+            }
+            catch
+            {
+                return 0;
+            }
+        }
+
+        private static double ReadDoubleValue(WzImageProperty property)
+        {
+            return property switch
+            {
+                WzDoubleProperty doubleProperty => doubleProperty.Value,
+                WzFloatProperty floatProperty => floatProperty.Value,
+                WzIntProperty intProperty => intProperty.Value,
+                WzShortProperty shortProperty => shortProperty.Value,
+                _ => 0d
+            };
+        }
+
+        private static uint ComputeClientCrc32(int value)
+        {
+            return CCrc32.GetCrc32(value, 0, xorInitialCrc: false, flag2: false);
+        }
+
+        private static uint ComputeClientCrc32(double value)
+        {
+            long bits = BitConverter.DoubleToInt64Bits(value);
+            return CCrc32.GetCrc32(bits, 0, xorInitialCrc: false, flag2: false);
+        }
+
+        private static uint ComputeClientCrc32(byte[] bytes)
+        {
+            if (bytes == null || bytes.Length == 0)
+            {
+                return 0;
+            }
+
+            return ComputeClientCrc32(bytes.AsSpan());
+        }
+
+        private static uint ComputeClientCrc32(ReadOnlySpan<byte> bytes)
+        {
+            const uint polynomial = 0x04C11DB7u;
+            uint crc = 0;
+            for (int index = 0; index < bytes.Length; index++)
+            {
+                crc ^= (uint)bytes[index] << 24;
+                for (int bit = 0; bit < 8; bit++)
+                {
+                    crc = (crc & 0x80000000u) != 0
+                        ? (crc << 1) ^ polynomial
+                        : crc << 1;
+                }
+            }
+
+            return crc;
+        }
+
         private static List<string> BuildEffectLines(WzSubProperty specProperty)
         {
             List<string> effectLines = new();
@@ -365,9 +595,9 @@ namespace HaCreator.MapSimulator.UI
             }
 
             AppendStatEffectLine(effectLines, "HP", TryGetPositiveInt(specProperty["hp"]), false);
-            AppendStatEffectLine(effectLines, "HP", TryGetPositiveInt(specProperty["hpR"]), true);
+            AppendStatEffectLine(effectLines, "HP", ResolveFirstPositiveInt(specProperty, "hpR", "hpRatio", "hpPer"), true);
             AppendStatEffectLine(effectLines, "MP", TryGetPositiveInt(specProperty["mp"]), false);
-            AppendStatEffectLine(effectLines, "MP", TryGetPositiveInt(specProperty["mpR"]), true);
+            AppendStatEffectLine(effectLines, "MP", ResolveFirstPositiveInt(specProperty, "mpR", "mpRatio", "mpPer"), true);
             AppendStatEffectLine(effectLines, "Weapon ATT", TryGetPositiveInt(specProperty["pad"]), false);
             AppendStatEffectLine(effectLines, "Magic ATT", TryGetPositiveInt(specProperty["mad"]), false);
             AppendStatEffectLine(effectLines, "Weapon DEF", TryGetPositiveInt(specProperty["pdd"]), false);
@@ -376,6 +606,7 @@ namespace HaCreator.MapSimulator.UI
             AppendStatEffectLine(effectLines, "Avoidability", TryGetPositiveInt(specProperty["eva"]), false);
             AppendStatEffectLine(effectLines, "Speed", TryGetPositiveInt(specProperty["speed"]), false);
             AppendStatEffectLine(effectLines, "Jump", TryGetPositiveInt(specProperty["jump"]), false);
+            AppendPrimaryFlatEffectLines(effectLines, specProperty);
             AppendPercentEffectLines(effectLines, specProperty);
             AppendIndependentFlatEffectLines(effectLines, specProperty);
             AppendIndependentPercentEffectLines(effectLines, specProperty);
@@ -490,8 +721,17 @@ namespace HaCreator.MapSimulator.UI
         {
             for (int i = 0; i < PositivePercentEffectKeys.Length; i++)
             {
-                (string key, string label) = PositivePercentEffectKeys[i];
-                AppendStatEffectLine(effectLines, label, TryGetPositiveInt(specProperty[key]), isPercent: true);
+                (string[] keys, string label) = PositivePercentEffectKeys[i];
+                AppendStatEffectLine(effectLines, label, ResolveFirstPositiveInt(specProperty, keys), isPercent: true);
+            }
+        }
+
+        private static void AppendPrimaryFlatEffectLines(List<string> effectLines, WzSubProperty specProperty)
+        {
+            for (int i = 0; i < PrimaryFlatEffectKeys.Length; i++)
+            {
+                (string[] keys, string label) = PrimaryFlatEffectKeys[i];
+                AppendStatEffectLine(effectLines, label, ResolveFirstPositiveInt(specProperty, keys), isPercent: false);
             }
         }
 
@@ -508,8 +748,8 @@ namespace HaCreator.MapSimulator.UI
         {
             for (int i = 0; i < IndependentPercentEffectKeys.Length; i++)
             {
-                (string key, string label) = IndependentPercentEffectKeys[i];
-                AppendStatEffectLine(effectLines, label, TryGetPositiveInt(specProperty[key]), isPercent: true);
+                (string[] keys, string label) = IndependentPercentEffectKeys[i];
+                AppendStatEffectLine(effectLines, label, ResolveFirstPositiveInt(specProperty, keys), isPercent: true);
             }
         }
 
@@ -535,6 +775,12 @@ namespace HaCreator.MapSimulator.UI
         {
             if (!moveToMapId.HasValue)
             {
+                return;
+            }
+
+            if (moveToMapId.Value == 999999999)
+            {
+                effectLines.Add("Moves to the nearest town");
                 return;
             }
 
@@ -578,6 +824,25 @@ namespace HaCreator.MapSimulator.UI
             }
 
             effectLines.Add($"Attack Speed {FormatSignedValue(booster)}");
+        }
+
+        private static int? ResolveFirstPositiveInt(WzSubProperty specProperty, params string[] keys)
+        {
+            if (specProperty == null || keys == null)
+            {
+                return null;
+            }
+
+            for (int i = 0; i < keys.Length; i++)
+            {
+                int? value = TryGetPositiveInt(specProperty[keys[i]]);
+                if (value.HasValue)
+                {
+                    return value;
+                }
+            }
+
+            return null;
         }
 
         private static void AppendBerserkEffectLine(List<string> effectLines, WzImageProperty property)

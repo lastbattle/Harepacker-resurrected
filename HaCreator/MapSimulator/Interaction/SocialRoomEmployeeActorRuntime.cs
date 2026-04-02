@@ -379,19 +379,24 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             if (stateKey.IndexOf("updating sale list", StringComparison.OrdinalIgnoreCase) >= 0
+                || stateKey.IndexOf("registering sale", StringComparison.OrdinalIgnoreCase) >= 0
+                || stateKey.IndexOf("sale bundles", StringComparison.OrdinalIgnoreCase) >= 0
                 || stateKey.IndexOf("restock", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 return ResolveFirstAvailableAction(actor, profile.RestockActions);
             }
 
             if (stateKey.IndexOf("ledger", StringComparison.OrdinalIgnoreCase) >= 0
-                || stateKey.IndexOf("claim", StringComparison.OrdinalIgnoreCase) >= 0)
+                || stateKey.IndexOf("claim", StringComparison.OrdinalIgnoreCase) >= 0
+                || stateKey.IndexOf("sold", StringComparison.OrdinalIgnoreCase) >= 0
+                || stateKey.IndexOf("tax", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 return ResolveFirstAvailableAction(actor, profile.LedgerActions);
             }
 
             if (stateKey.IndexOf("permit active", StringComparison.OrdinalIgnoreCase) >= 0
                 || stateKey.IndexOf("merchant", StringComparison.OrdinalIgnoreCase) >= 0
+                || stateKey.IndexOf("open shop", StringComparison.OrdinalIgnoreCase) >= 0
                 || stateKey.IndexOf("open for visitors", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 return ResolveFirstAvailableAction(actor, profile.ActiveActions);
@@ -543,29 +548,112 @@ namespace HaCreator.MapSimulator.Interaction
 
             public static EmployeeTemplateProfile CreateCashEmployee(IEnumerable<string> actionNames)
             {
-                HashSet<string> actions = new(
-                    actionNames?
-                        .Where(name => !string.IsNullOrWhiteSpace(name))
-                        .Select(name => name.Trim().ToLowerInvariant())
-                    ?? Enumerable.Empty<string>(),
-                    StringComparer.Ordinal);
+                List<string> orderedActions = NormalizeOrderedActions(actionNames);
 
                 return new EmployeeTemplateProfile(
                     MerchantNpcId,
                     speakDurationMs: 900,
                     minIdleDurationMs: 1250,
                     maxIdleDurationMs: 2400,
-                    speakActions: BuildPreferredActions(actions, "say", "say0", AnimationKeys.Stand),
-                    idleActions: BuildPreferredActions(actions, AnimationKeys.Stand, "item", "meso", "exp", "eye", "smile", "wink", "ear", "potion"),
-                    activeActions: BuildPreferredActions(actions, "item", "eye", "smile", "wink", AnimationKeys.Stand, "ear"),
-                    restockActions: BuildPreferredActions(actions, "item", "wink", "smile", "eye", "potion", AnimationKeys.Stand),
-                    ledgerActions: BuildPreferredActions(actions, "meso", "exp", "eye", "smile", "ear", AnimationKeys.Stand),
-                    expiredActions: BuildPreferredActions(actions, "fail", "say0", "smile", AnimationKeys.Stand));
+                    speakActions: BuildPreferredActions(
+                        orderedActions,
+                        fallbackToRemainingActions: true,
+                        "say",
+                        "say0",
+                        "speak",
+                        "hand",
+                        "smile",
+                        AnimationKeys.Stand),
+                    idleActions: BuildPreferredActions(
+                        orderedActions,
+                        fallbackToRemainingActions: true,
+                        AnimationKeys.Stand,
+                        "smile",
+                        "eye",
+                        "wink",
+                        "ear",
+                        "potion",
+                        "hand",
+                        "item",
+                        "meso",
+                        "exp"),
+                    activeActions: BuildPreferredActions(
+                        orderedActions,
+                        fallbackToRemainingActions: true,
+                        "item",
+                        "hand",
+                        "smile",
+                        "eye",
+                        "wink",
+                        AnimationKeys.Stand,
+                        "ear"),
+                    restockActions: BuildPreferredActions(
+                        orderedActions,
+                        fallbackToRemainingActions: true,
+                        "item",
+                        "hand",
+                        "wink",
+                        "smile",
+                        "eye",
+                        "potion",
+                        AnimationKeys.Stand),
+                    ledgerActions: BuildPreferredActions(
+                        orderedActions,
+                        fallbackToRemainingActions: true,
+                        "meso",
+                        "exp",
+                        "item",
+                        "hand",
+                        "eye",
+                        "smile",
+                        "ear",
+                        AnimationKeys.Stand),
+                    expiredActions: BuildPreferredActions(
+                        orderedActions,
+                        fallbackToRemainingActions: true,
+                        "fail",
+                        "say0",
+                        "say",
+                        "hand",
+                        "smile",
+                        AnimationKeys.Stand));
             }
 
-            private static string[] BuildPreferredActions(HashSet<string> availableActions, params string[] candidates)
+            private static List<string> NormalizeOrderedActions(IEnumerable<string> actionNames)
             {
                 List<string> resolved = new();
+                if (actionNames == null)
+                {
+                    return resolved;
+                }
+
+                foreach (string actionName in actionNames)
+                {
+                    if (string.IsNullOrWhiteSpace(actionName))
+                    {
+                        continue;
+                    }
+
+                    string normalized = actionName.Trim().ToLowerInvariant();
+                    if (!resolved.Contains(normalized, StringComparer.Ordinal))
+                    {
+                        resolved.Add(normalized);
+                    }
+                }
+
+                return resolved;
+            }
+
+            private static string[] BuildPreferredActions(
+                IReadOnlyList<string> orderedActions,
+                bool fallbackToRemainingActions,
+                params string[] candidates)
+            {
+                List<string> resolved = new();
+                HashSet<string> availableActions = new(
+                    orderedActions ?? Array.Empty<string>(),
+                    StringComparer.Ordinal);
+
                 for (int i = 0; i < candidates.Length; i++)
                 {
                     string candidate = candidates[i];
@@ -575,10 +663,24 @@ namespace HaCreator.MapSimulator.Interaction
                     }
 
                     string normalized = candidate.Trim().ToLowerInvariant();
-                    if ((availableActions.Count == 0 && !resolved.Contains(normalized, StringComparer.Ordinal))
-                        || availableActions.Contains(normalized))
+                    if ((availableActions.Count == 0 || availableActions.Contains(normalized))
+                        && !resolved.Contains(normalized, StringComparer.Ordinal))
                     {
                         resolved.Add(normalized);
+                    }
+                }
+
+                if (fallbackToRemainingActions && orderedActions != null)
+                {
+                    for (int i = 0; i < orderedActions.Count; i++)
+                    {
+                        string action = orderedActions[i];
+                        if (string.IsNullOrWhiteSpace(action) || resolved.Contains(action, StringComparer.Ordinal))
+                        {
+                            continue;
+                        }
+
+                        resolved.Add(action);
                     }
                 }
 

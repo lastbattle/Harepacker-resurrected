@@ -753,6 +753,13 @@ namespace HaCreator.MapSimulator.Loaders
                 return builder.Length != originalLength;
             }
 
+            if (string.Equals(statKey, "elemAttr", StringComparison.OrdinalIgnoreCase))
+            {
+                int originalLength = builder.Length;
+                AppendElementAttributeStat(builder, levelNode, commonNode, infoNode);
+                return builder.Length != originalLength;
+            }
+
             if (!FallbackSkillStatDefinitions.TryGetValue(statKey, out FallbackSkillStatDefinition definition))
                 return false;
 
@@ -853,6 +860,23 @@ namespace HaCreator.MapSimulator.Loaders
             AppendStatLine(builder, "Range", rangeText);
         }
 
+        private static void AppendElementAttributeStat(
+            StringBuilder builder,
+            WzImageProperty levelNode,
+            WzImageProperty commonNode,
+            WzImageProperty infoNode)
+        {
+            string elementAttribute = GetStringValue(levelNode, "elemAttr")
+                                      ?? GetStringValue(commonNode, "elemAttr")
+                                      ?? GetStringValue(infoNode, "elemAttr");
+            if (string.IsNullOrWhiteSpace(elementAttribute))
+                return;
+
+            string formatted = FormatElementAttributeValue(elementAttribute);
+            if (!string.IsNullOrWhiteSpace(formatted))
+                AppendStatLine(builder, "Element", formatted);
+        }
+
         private static bool TryGetVectorValue(
             WzImageProperty levelNode,
             WzImageProperty commonNode,
@@ -938,6 +962,35 @@ namespace HaCreator.MapSimulator.Loaders
                 : value.ToString(CultureInfo.InvariantCulture);
         }
 
+        private static string FormatElementAttributeValue(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return string.Empty;
+
+            var labels = new List<string>();
+            foreach (char attribute in value.Trim())
+            {
+                string label = attribute switch
+                {
+                    'f' or 'F' => "Fire",
+                    'i' or 'I' => "Ice",
+                    'l' or 'L' => "Lightning",
+                    's' or 'S' => "Poison",
+                    'h' or 'H' => "Holy",
+                    'd' or 'D' => "Dark",
+                    'p' or 'P' => "Physical",
+                    _ => null
+                };
+
+                if (!string.IsNullOrWhiteSpace(label) && !labels.Contains(label, StringComparer.OrdinalIgnoreCase))
+                    labels.Add(label);
+            }
+
+            return labels.Count > 0
+                ? string.Join(", ", labels)
+                : value.Trim();
+        }
+
         private sealed class FallbackSkillStatDefinition
         {
             public FallbackSkillStatDefinition(
@@ -971,6 +1024,12 @@ namespace HaCreator.MapSimulator.Loaders
             "mastery",
             "cr",
             "prop",
+            "mhpR",
+            "mmpR",
+            "asrR",
+            "terR",
+            "ignoreMobpdpR",
+            "bdR",
             "pad",
             "mad",
             "pdd",
@@ -979,10 +1038,21 @@ namespace HaCreator.MapSimulator.Loaders
             "eva",
             "speed",
             "jump",
+            "indiePad",
+            "indieMad",
+            "indieAcc",
+            "indieMhp",
+            "indieMmp",
+            "indieMhpR",
+            "indieMmpR",
             "hp",
             "mp",
+            "padX",
+            "madX",
             "bulletCount",
             "bulletSpeed",
+            "morph",
+            "elemAttr",
             "x",
             "y",
             "z"
@@ -1001,6 +1071,12 @@ namespace HaCreator.MapSimulator.Loaders
                 ["mastery"] = new("mastery", "Mastery", isPercent: true),
                 ["cr"] = new("cr", "Critical Rate", isPercent: true),
                 ["prop"] = new("prop", "Chance", isPercent: true),
+                ["mhpR"] = new("mhpR", "Max HP", isPercent: true),
+                ["mmpR"] = new("mmpR", "Max MP", isPercent: true),
+                ["asrR"] = new("asrR", "Abnormal Status Resistance", isPercent: true),
+                ["terR"] = new("terR", "Elemental Resistance", isPercent: true),
+                ["ignoreMobpdpR"] = new("ignoreMobpdpR", "Ignore Enemy DEF", isPercent: true),
+                ["bdR"] = new("bdR", "Boss Damage", isPercent: true),
                 ["pad"] = new("pad", "PAD", formatter: FormatSignedValue),
                 ["mad"] = new("mad", "MAD", formatter: FormatSignedValue),
                 ["pdd"] = new("pdd", "PDD", formatter: FormatSignedValue),
@@ -1009,10 +1085,20 @@ namespace HaCreator.MapSimulator.Loaders
                 ["eva"] = new("eva", "EVA", formatter: FormatSignedValue),
                 ["speed"] = new("speed", "Speed", formatter: FormatSignedValue),
                 ["jump"] = new("jump", "Jump", formatter: FormatSignedValue),
+                ["indiePad"] = new("indiePad", "Independent PAD", formatter: FormatSignedValue),
+                ["indieMad"] = new("indieMad", "Independent MAD", formatter: FormatSignedValue),
+                ["indieAcc"] = new("indieAcc", "Independent ACC", formatter: FormatSignedValue),
+                ["indieMhp"] = new("indieMhp", "Independent Max HP", formatter: FormatSignedValue),
+                ["indieMmp"] = new("indieMmp", "Independent Max MP", formatter: FormatSignedValue),
+                ["indieMhpR"] = new("indieMhpR", "Independent Max HP", isPercent: true),
+                ["indieMmpR"] = new("indieMmpR", "Independent Max MP", isPercent: true),
                 ["hp"] = new("hp", "HP Recovery"),
                 ["mp"] = new("mp", "MP Recovery"),
+                ["padX"] = new("padX", "PAD Bonus", formatter: FormatSignedValue),
+                ["madX"] = new("madX", "MAD Bonus", formatter: FormatSignedValue),
                 ["bulletCount"] = new("bulletCount", "Bullet Count"),
                 ["bulletSpeed"] = new("bulletSpeed", "Bullet Speed"),
+                ["morph"] = new("morph", "Morph"),
                 ["x"] = new("x", "X"),
                 ["y"] = new("y", "Y"),
                 ["z"] = new("z", "Z")

@@ -9,35 +9,60 @@ namespace HaCreator.MapSimulator.Interaction
     {
         private const int PageSize = 6;
         private readonly List<GuildRankEntryState> _entries = new();
+        private GuildDialogContext _dialogContext = new(
+            "Maple GM",
+            "Master",
+            Array.Empty<string>(),
+            string.Empty,
+            true,
+            Array.Empty<GuildRankingSeedEntry>());
+        private GuildMarkSelection? _localGuildMarkSelection;
         private int _pageIndex;
         private string _statusMessage = "Guild ranking dialog is idle.";
 
-        internal void UpdateLocalContext(CharacterBuild build)
+        internal void UpdateLocalContext(CharacterBuild build, GuildDialogContext dialogContext, GuildMarkSelection? localGuildMarkSelection)
         {
+            _dialogContext = dialogContext;
+            _localGuildMarkSelection = localGuildMarkSelection;
             EnsureSeedData();
 
-            string guildName = string.IsNullOrWhiteSpace(build?.GuildName) ? "Maple GM" : build.GuildName.Trim();
-            int points = Math.Max(1000, ((build?.Level ?? 30) * 173) + 250);
+            string guildName = string.IsNullOrWhiteSpace(dialogContext.GuildName)
+                ? (string.IsNullOrWhiteSpace(build?.GuildName) ? "Maple GM" : build.GuildName.Trim())
+                : dialogContext.GuildName.Trim();
+            int rosterWeight = Math.Max(0, dialogContext.RankTitles?.Count ?? 0) * 250;
+            int points = Math.Max(1000, ((build?.Level ?? 30) * 173) + 250 + rosterWeight);
             GuildRankEntryState localEntry = _entries.FirstOrDefault(entry =>
                 string.Equals(entry.GuildName, guildName, StringComparison.OrdinalIgnoreCase));
+            GuildMarkSelection resolvedMarkSelection = localGuildMarkSelection
+                ?? new GuildMarkSelection(1000, 5, 2000, 11, 0);
             if (localEntry == null)
             {
-                _entries.Add(new GuildRankEntryState(guildName, points, 1000, 5, 2000, 11));
+                _entries.Add(new GuildRankEntryState(
+                    guildName,
+                    points,
+                    resolvedMarkSelection.MarkBackground,
+                    resolvedMarkSelection.MarkBackgroundColor,
+                    resolvedMarkSelection.Mark,
+                    resolvedMarkSelection.MarkColor));
             }
             else
             {
                 localEntry.Points = Math.Max(localEntry.Points, points);
+                localEntry.MarkBackground = resolvedMarkSelection.MarkBackground;
+                localEntry.MarkBackgroundColor = resolvedMarkSelection.MarkBackgroundColor;
+                localEntry.Mark = resolvedMarkSelection.Mark;
+                localEntry.MarkColor = resolvedMarkSelection.MarkColor;
             }
 
             _entries.Sort((left, right) => right.Points.CompareTo(left.Points));
             _pageIndex = Math.Clamp(_pageIndex, 0, Math.Max(0, GetTotalPages() - 1));
         }
 
-        internal string Open(CharacterBuild build)
+        internal string Open(CharacterBuild build, GuildDialogContext dialogContext, GuildMarkSelection? localGuildMarkSelection)
         {
-            UpdateLocalContext(build);
+            UpdateLocalContext(build, dialogContext, localGuildMarkSelection);
             _pageIndex = 0;
-            _statusMessage = "Opened the dedicated guild-ranking dialog. Ranking rows still use simulator-owned data instead of live packet-fed standings.";
+            _statusMessage = $"Opened the dedicated guild-ranking dialog for {_dialogContext.GuildName}. Local guild identity now follows the shared guild-management seam, while rival standings still remain simulator-seeded instead of packet-fed.";
             return _statusMessage;
         }
 
@@ -65,7 +90,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal string DescribeStatus()
         {
             EnsureSeedData();
-            return $"Guild ranking page {_pageIndex + 1}/{GetTotalPages()} with {_entries.Count} seeded guild entries. {_statusMessage}";
+            return $"Guild ranking page {_pageIndex + 1}/{GetTotalPages()} with {_entries.Count} total guild entries. Active guild={_dialogContext.GuildName}, role={_dialogContext.GuildRoleLabel}. {_statusMessage}";
         }
 
         internal GuildRankSnapshot BuildSnapshot()
@@ -142,10 +167,10 @@ namespace HaCreator.MapSimulator.Interaction
 
             public string GuildName { get; }
             public int Points { get; set; }
-            public int MarkBackground { get; }
-            public int MarkBackgroundColor { get; }
-            public int Mark { get; }
-            public int MarkColor { get; }
+            public int MarkBackground { get; set; }
+            public int MarkBackgroundColor { get; set; }
+            public int Mark { get; set; }
+            public int MarkColor { get; set; }
         }
     }
 

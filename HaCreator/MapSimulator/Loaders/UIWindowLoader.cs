@@ -731,10 +731,19 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
 
-            Texture2D cardNormalTexture = LoadCanvasTexture(charSelectProperty, "charInfo", device)
-                ?? CreateFilledTexture(device, 183, 115, new Color(245, 231, 206, 255), new Color(66, 44, 32, 255));
-            Texture2D cardSelectedTexture = LoadCanvasTexture(charSelectProperty, "charInfo1", device)
-                ?? cardNormalTexture;
+            AvatarPreviewCarouselWindow.PreviewCanvasFrame cardNormalFrame = LoadPreviewCanvasFrame(charSelectProperty?["charInfo"] as WzCanvasProperty, device);
+            if (cardNormalFrame.Texture == null)
+            {
+                cardNormalFrame = new AvatarPreviewCarouselWindow.PreviewCanvasFrame(
+                    CreateFilledTexture(device, 183, 115, new Color(245, 231, 206, 255), new Color(66, 44, 32, 255)),
+                    Point.Zero);
+            }
+
+            AvatarPreviewCarouselWindow.PreviewCanvasFrame cardSelectedFrame = LoadPreviewCanvasFrame(charSelectProperty?["charInfo1"] as WzCanvasProperty, device);
+            if (cardSelectedFrame.Texture == null)
+            {
+                cardSelectedFrame = cardNormalFrame;
+            }
             Texture2D frameTexture = CreateFilledTexture(device, 618, 238, Color.Transparent, Color.Transparent);
             WzSubProperty nameTagProperty = charSelectProperty?["nameTag"] as WzSubProperty;
             var normalNameTagStyle = LoadPreviewNameTagStyle(
@@ -815,8 +824,8 @@ namespace HaCreator.MapSimulator.Loaders
 
             AvatarPreviewCarouselWindow previewWindow = new AvatarPreviewCarouselWindow(
                 new DXObject(0, 0, frameTexture, 0),
-                cardNormalTexture,
-                cardSelectedTexture,
+                cardNormalFrame,
+                cardSelectedFrame,
                 normalNameTagStyle,
                 selectedNameTagStyle,
                 jobDecorations,
@@ -1633,6 +1642,8 @@ namespace HaCreator.MapSimulator.Loaders
                 new Point(x + (cascade * 7), y + (cascade * 4)));
             RegisterQuestTimerWindows(manager, device);
             RegisterQuestDeliveryWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
+                new Point(x + (cascade * 6), y + (cascade * 3)));
+            RegisterQuestRewardRaiseWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
                 new Point(x + (cascade * 6), y + (cascade * 3)));
             RegisterRepairDurabilityWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
 
@@ -2596,6 +2607,35 @@ namespace HaCreator.MapSimulator.Loaders
         }
 
 
+        private static void RegisterQuestRewardRaiseWindow(
+            UIWindowManager manager,
+            WzImage uiWindow1Image,
+            WzImage uiWindow2Image,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            Point position)
+        {
+            if (manager.GetWindow(MapSimulatorWindowNames.QuestRewardRaise) != null)
+            {
+                return;
+            }
+
+
+            UIWindowBase questRewardRaiseWindow = CreateQuestRewardRaiseWindow(
+                uiWindow1Image,
+                uiWindow2Image,
+                basicImage,
+                soundUIImage,
+                device,
+                position);
+            if (questRewardRaiseWindow != null)
+            {
+                manager.RegisterCustomWindow(questRewardRaiseWindow);
+            }
+        }
+
+
         private static void RegisterClassCompetitionWindow(
             UIWindowManager manager,
             WzImage uiWindow2Image,
@@ -3404,7 +3444,9 @@ namespace HaCreator.MapSimulator.Loaders
         {
             WzSubProperty bookProperty = uiWindow2Image?["Book"] as WzSubProperty
                 ?? uiWindow1Image?["Book"] as WzSubProperty;
-            if (bookProperty == null)
+            WzSubProperty monsterBookProperty = uiWindow2Image?["MonsterBook"] as WzSubProperty
+                ?? uiWindow1Image?["MonsterBook"] as WzSubProperty;
+            if (monsterBookProperty == null && bookProperty == null)
             {
                 return CreatePlaceholderUtilityWindow(
                     basicImage,
@@ -3416,10 +3458,8 @@ namespace HaCreator.MapSimulator.Loaders
                     position);
             }
 
-            WzSubProperty monsterBookProperty = uiWindow2Image?["MonsterBook"] as WzSubProperty
-                ?? uiWindow1Image?["MonsterBook"] as WzSubProperty;
-
-            WzCanvasProperty background = bookProperty["backgrnd"] as WzCanvasProperty;
+            WzCanvasProperty background = monsterBookProperty?["backgrnd"] as WzCanvasProperty
+                ?? bookProperty?["backgrnd"] as WzCanvasProperty;
             if (background == null)
             {
                 return CreatePlaceholderUtilityWindow(
@@ -3489,9 +3529,12 @@ namespace HaCreator.MapSimulator.Loaders
                 LoadCanvasTexture(contextMenuProperty, "c", device),
                 LoadCanvasTexture(contextMenuProperty, "s", device));
 
-            UIObject prevButton = LoadButton(bookProperty, "BtPrev", btClickSound, btOverSound, device);
-            UIObject nextButton = LoadButton(bookProperty, "BtNext", btClickSound, btOverSound, device);
-            UIObject closeButton = LoadButton(bookProperty, "BtClose", btClickSound, btOverSound, device);
+            UIObject prevButton = LoadButton(monsterBookProperty, "arrowLeft", btClickSound, btOverSound, device)
+                ?? LoadButton(bookProperty, "BtPrev", btClickSound, btOverSound, device);
+            UIObject nextButton = LoadButton(monsterBookProperty, "arrowRight", btClickSound, btOverSound, device)
+                ?? LoadButton(bookProperty, "BtNext", btClickSound, btOverSound, device);
+            UIObject closeButton = LoadButton(monsterBookProperty, "BtClose", btClickSound, btOverSound, device)
+                ?? LoadButton(bookProperty, "BtClose", btClickSound, btOverSound, device);
             UIObject searchButton = LoadButton(monsterBookProperty, "BtSearch", btClickSound, btOverSound, device);
             UIObject registerButton = LoadButton(contextMenuProperty, "BtRegister", btClickSound, btOverSound, device);
             UIObject releaseButton = LoadButton(contextMenuProperty, "BtRelease", btClickSound, btOverSound, device);
@@ -6359,7 +6402,8 @@ namespace HaCreator.MapSimulator.Loaders
                 new DXObject(0, 0, frameTexture, 0),
                 MapSimulatorWindowNames.OptionMenu,
                 checkTexture,
-                CreateFilledTexture(device, 1, 1, Color.White, Color.White))
+                CreateFilledTexture(device, 1, 1, Color.White, Color.White),
+                Array.Empty<Texture2D>())
             {
                 Position = position
             };
@@ -6931,6 +6975,71 @@ namespace HaCreator.MapSimulator.Loaders
 
             return window;
 
+        }
+
+        private static UIWindowBase CreateQuestRewardRaiseWindow(
+            WzImage uiWindow1Image,
+            WzImage uiWindow2Image,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            Point position)
+        {
+            WzSubProperty raiseProperty = uiWindow2Image?["raise"] as WzSubProperty
+                ?? uiWindow1Image?["raise"] as WzSubProperty;
+            WzSubProperty backgroundProperty = raiseProperty?["backgrnd"] as WzSubProperty;
+            if (backgroundProperty == null)
+            {
+                return CreatePlaceholderUtilityWindow(
+                    basicImage,
+                    soundUIImage,
+                    device,
+                    MapSimulatorWindowNames.QuestRewardRaise,
+                    "Quest Reward",
+                    "Fallback owner for quest reward raise selection.",
+                    position);
+            }
+
+
+            Texture2D frameTexture = new Texture2D(device, 332, 272);
+            Color[] transparentPixels = Enumerable.Repeat(Color.Transparent, frameTexture.Width * frameTexture.Height).ToArray();
+            frameTexture.SetData(transparentPixels);
+
+            QuestRewardRaiseWindow window = new QuestRewardRaiseWindow(
+                new DXObject(0, 0, frameTexture, 0),
+                LoadCanvasTexture(backgroundProperty?["top"] as WzSubProperty, "left", device),
+                LoadCanvasTexture(backgroundProperty?["top"] as WzSubProperty, "center", device),
+                LoadCanvasTexture(backgroundProperty?["top"] as WzSubProperty, "right", device),
+                LoadCanvasTexture(backgroundProperty?["center"] as WzSubProperty, "left", device),
+                LoadCanvasTexture(backgroundProperty?["center"] as WzSubProperty, "center", device),
+                LoadCanvasTexture(backgroundProperty?["center"] as WzSubProperty, "right", device),
+                LoadCanvasTexture(backgroundProperty?["bottom"] as WzSubProperty, "left", device),
+                LoadCanvasTexture(backgroundProperty?["bottom"] as WzSubProperty, "center", device),
+                LoadCanvasTexture(backgroundProperty?["bottom"] as WzSubProperty, "right", device),
+                device)
+            {
+                Position = position
+            };
+
+
+            WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
+            WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
+            UIObject okButton = LoadButton(uiWindow2Image?["UtilDlgEx"] as WzSubProperty, "BtOK", btClickSound, btOverSound, device);
+            UIObject cancelButton = LoadButton(uiWindow2Image?["UtilDlgEx"] as WzSubProperty, "BtQNo", btClickSound, btOverSound, device)
+                ?? LoadButton(uiWindow2Image?["UtilDlgEx"] as WzSubProperty, "BtNo", btClickSound, btOverSound, device);
+            window.InitializeButtons(okButton, cancelButton);
+
+
+            UIObject closeButton = LoadButton(backgroundProperty, "BtClose", btClickSound, btOverSound, device);
+            if (closeButton != null)
+            {
+                closeButton.X = frameTexture.Width - closeButton.CanvasSnapshotWidth - 8;
+                closeButton.Y = 6;
+                window.InitializeCloseButton(closeButton);
+            }
+
+
+            return window;
         }
 
 

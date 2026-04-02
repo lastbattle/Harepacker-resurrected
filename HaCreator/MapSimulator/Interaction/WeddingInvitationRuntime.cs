@@ -1,6 +1,9 @@
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.UI;
 using System;
+using System.Collections.Generic;
+using System.IO;
+using System.Text;
 
 namespace HaCreator.MapSimulator.Interaction
 {
@@ -15,10 +18,12 @@ namespace HaCreator.MapSimulator.Interaction
         internal const string PrimaryInvitationAssetPath = "UIWindow2.img/Wedding/Invitation";
         internal const string FallbackInvitationAssetPath = "UIWindow.img/Wedding/Invitation";
         internal const string AcceptButtonAssetName = "BtOK";
-        internal const int AcceptStringPoolId = 0x19CE;
+        internal const int AcceptButtonUolStringPoolId = 0x19CE;
+        internal const int AcceptStringPoolId = AcceptButtonUolStringPoolId;
         internal const int DefaultDialogUolStringPoolId = 0xEAF;
         internal const int AlternateDialogUolStringPoolId = 0xEB0;
         internal const string NameFontToken = "FONT_BASIC_BLACK";
+        internal const string RequestedNameFontFamily = "DotumChe";
         internal const int GroomNameX = 50;
         internal const int BrideNameX = 131;
         internal const int ParticipantNameY = 105;
@@ -37,8 +42,10 @@ namespace HaCreator.MapSimulator.Interaction
         private string _sourceDescription = DefaultSourceDescription;
         private WeddingInvitationStyle _style = WeddingInvitationStyle.Neat;
         private int? _clientDialogType;
+        private byte[] _lastMarriageResultPacketPayload = Array.Empty<byte>();
         private bool _isOpen;
         private bool _lastAccepted;
+        private bool _lastOpenUsedMarriageResultPacket;
 
         internal void UpdateLocalContext(CharacterBuild build)
         {
@@ -61,11 +68,35 @@ namespace HaCreator.MapSimulator.Interaction
             _clientDialogType = NormalizeClientDialogType(clientDialogType);
             _isOpen = true;
             _lastAccepted = false;
+            _lastOpenUsedMarriageResultPacket = false;
+            _lastMarriageResultPacketPayload = Array.Empty<byte>();
             _sourceDescription = string.IsNullOrWhiteSpace(sourceDescription)
                 ? DefaultSourceDescription
                 : sourceDescription.Trim();
             _statusMessage = $"Opened {ClientOwnerTypeName}-style dialog for {_groomName} and {_brideName} using the {ResolveBackgroundAssetPath(style)} surface. Client owner path={ClientOwnerEntryPoint} subtype {ClientOpenResultSubtype} -> {ClientPresentationMode}; title StringPool 0x{ResolveDialogTitleStringPoolId(_clientDialogType):X}.";
             return _statusMessage;
+        }
+
+        internal bool TryOpenFromMarriageResultPacket(
+            byte[] payload,
+            WeddingInvitationStyle style,
+            string sourceDescription,
+            out string message)
+        {
+            if (!TryDecodeMarriageResultOpenPayload(payload, out string groomName, out string brideName, out int clientDialogType, out message))
+            {
+                return false;
+            }
+
+            string resolvedSourceDescription = string.IsNullOrWhiteSpace(sourceDescription)
+                ? "marriage-result packet handoff"
+                : sourceDescription.Trim();
+            message = OpenInvitation(groomName, brideName, style, clientDialogType, resolvedSourceDescription);
+            _lastOpenUsedMarriageResultPacket = true;
+            _lastMarriageResultPacketPayload = (byte[])payload.Clone();
+            _statusMessage = $"{message} Decoded packet-owned open payload [{FormatPayload(_lastMarriageResultPacketPayload)}]. Button UOL StringPool 0x{AcceptButtonUolStringPoolId:X}, draw font {NameFontToken}.";
+            message = _statusMessage;
+            return true;
         }
 
         internal string Accept()
@@ -77,7 +108,10 @@ namespace HaCreator.MapSimulator.Interaction
 
             _isOpen = false;
             _lastAccepted = true;
-            _statusMessage = $"Accepted wedding invitation for {_groomName} and {_brideName}. Client button focus remains modeled through StringPool 0x{AcceptStringPoolId:X}; packet/script handoff is still not modeled.";
+            string packetEvidence = _lastOpenUsedMarriageResultPacket && _lastMarriageResultPacketPayload.Length > 0
+                ? $" The dialog was opened from {ClientOwnerEntryPoint} subtype {ClientOpenResultSubtype} bytes [{FormatPayload(_lastMarriageResultPacketPayload)}]."
+                : string.Empty;
+            _statusMessage = $"Accepted wedding invitation for {_groomName} and {_brideName}. Client button focus remains modeled through StringPool 0x{AcceptButtonUolStringPoolId:X}; downstream NPC/script ceremony handoff is still not modeled.{packetEvidence}";
             return _statusMessage;
         }
 
@@ -102,6 +136,8 @@ namespace HaCreator.MapSimulator.Interaction
             _brideName = DefaultBrideName;
             _style = WeddingInvitationStyle.Neat;
             _clientDialogType = null;
+            _lastMarriageResultPacketPayload = Array.Empty<byte>();
+            _lastOpenUsedMarriageResultPacket = false;
             _sourceDescription = DefaultSourceDescription;
             _statusMessage = "Cleared wedding invitation state.";
             return _statusMessage;
@@ -120,6 +156,7 @@ namespace HaCreator.MapSimulator.Interaction
                 Style = _style,
                 AcceptButtonLabel = DefaultAcceptLabel,
                 HasAcceptFocus = _isOpen,
+                LastOpenUsedMarriageResultPacket = _lastOpenUsedMarriageResultPacket,
                 ClientOwnerTypeName = ClientOwnerTypeName,
                 ClientOwnerEntryPoint = ClientOwnerEntryPoint,
                 ClientOpenResultSubtype = ClientOpenResultSubtype,
@@ -128,11 +165,14 @@ namespace HaCreator.MapSimulator.Interaction
                 DialogUolStringPoolId = ResolveDialogTitleStringPoolId(resolvedClientDialogType),
                 DefaultDialogUolStringPoolId = DefaultDialogUolStringPoolId,
                 AlternateDialogUolStringPoolId = AlternateDialogUolStringPoolId,
+                AcceptButtonUolStringPoolId = AcceptButtonUolStringPoolId,
                 AcceptStringPoolId = AcceptStringPoolId,
                 NameFontToken = NameFontToken,
+                RequestedNameFontFamily = RequestedNameFontFamily,
                 InvitationAssetPath = ResolveBackgroundAssetPath(_style),
                 AcceptButtonAssetPath = $"{PrimaryInvitationAssetPath}/{AcceptButtonAssetName}",
                 FallbackInvitationAssetPath = ResolveFallbackBackgroundAssetPath(_style),
+                LastMarriageResultPacketPayload = Array.AsReadOnly((byte[])_lastMarriageResultPacketPayload.Clone()),
                 SourceDescription = _sourceDescription,
                 GroomNamePosition = (GroomNameX, ParticipantNameY),
                 BrideNamePosition = (BrideNameX, ParticipantNameY),
@@ -145,7 +185,22 @@ namespace HaCreator.MapSimulator.Interaction
         {
             WeddingInvitationSnapshot snapshot = BuildSnapshot();
             string state = snapshot.IsOpen ? "open" : "idle";
-            return $"Wedding invitation {state} ({snapshot.Style}): {snapshot.GroomName} + {snapshot.BrideName}. Source={snapshot.SourceDescription}; asset={snapshot.InvitationAssetPath}; {snapshot.StatusMessage}";
+            string packetPath = snapshot.LastOpenUsedMarriageResultPacket
+                ? $" packet=[{FormatPayload(snapshot.LastMarriageResultPacketPayload)}];"
+                : string.Empty;
+            return $"Wedding invitation {state} ({snapshot.Style}): {snapshot.GroomName} + {snapshot.BrideName}. Source={snapshot.SourceDescription}; asset={snapshot.InvitationAssetPath};{packetPath} {snapshot.StatusMessage}";
+        }
+
+        internal static byte[] BuildMarriageResultOpenPayload(string groomName, string brideName, int clientDialogType)
+        {
+            using MemoryStream stream = new();
+            using BinaryWriter writer = new(stream, Encoding.Default, leaveOpen: true);
+            writer.Write((byte)ClientOpenResultSubtype);
+            WriteMapleString(writer, groomName);
+            WriteMapleString(writer, brideName);
+            writer.Write((ushort)NormalizeClientDialogType(clientDialogType));
+            writer.Flush();
+            return stream.ToArray();
         }
 
         private static string NormalizeName(string proposedName, string fallbackName)
@@ -183,6 +238,88 @@ namespace HaCreator.MapSimulator.Interaction
                 ? AlternateClientDialogType
                 : DefaultClientDialogType;
         }
+
+        private static bool TryDecodeMarriageResultOpenPayload(
+            byte[] payload,
+            out string groomName,
+            out string brideName,
+            out int clientDialogType,
+            out string message)
+        {
+            groomName = DefaultGroomName;
+            brideName = DefaultBrideName;
+            clientDialogType = DefaultClientDialogType;
+
+            if (payload == null || payload.Length == 0)
+            {
+                message = $"{ClientOwnerEntryPoint} packet payload is empty.";
+                return false;
+            }
+
+            try
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream, Encoding.Default, leaveOpen: false);
+                byte subtype = reader.ReadByte();
+                if (subtype != ClientOpenResultSubtype)
+                {
+                    message = $"{ClientOwnerEntryPoint} packet subtype {subtype} does not open {ClientOwnerTypeName}; expected {ClientOpenResultSubtype}.";
+                    return false;
+                }
+
+                groomName = ReadMapleString(reader);
+                brideName = ReadMapleString(reader);
+                clientDialogType = NormalizeClientDialogType(reader.ReadUInt16());
+                message = $"Decoded {ClientOwnerEntryPoint} subtype {ClientOpenResultSubtype} for {groomName} and {brideName}.";
+                return true;
+            }
+            catch (Exception ex) when (ex is EndOfStreamException || ex is IOException)
+            {
+                message = $"{ClientOwnerEntryPoint} invitation payload is incomplete: {ex.Message}";
+                return false;
+            }
+        }
+
+        private static string ReadMapleString(BinaryReader reader)
+        {
+            int length = reader.ReadUInt16();
+            byte[] data = reader.ReadBytes(length);
+            if (data.Length != length)
+            {
+                throw new EndOfStreamException("Maple string ended before all bytes were available.");
+            }
+
+            return Encoding.Default.GetString(data);
+        }
+
+        private static void WriteMapleString(BinaryWriter writer, string value)
+        {
+            string normalized = value ?? string.Empty;
+            byte[] bytes = Encoding.Default.GetBytes(normalized);
+            writer.Write((ushort)bytes.Length);
+            writer.Write(bytes);
+        }
+
+        private static string FormatPayload(IReadOnlyList<byte> payload)
+        {
+            if (payload == null || payload.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            StringBuilder builder = new(payload.Count * 3);
+            for (int i = 0; i < payload.Count; i++)
+            {
+                if (i > 0)
+                {
+                    builder.Append(' ');
+                }
+
+                builder.Append(payload[i].ToString("X2"));
+            }
+
+            return builder.ToString();
+        }
     }
 
     internal enum WeddingInvitationStyle
@@ -198,9 +335,11 @@ namespace HaCreator.MapSimulator.Interaction
         public bool CanAccept { get; init; }
         public bool LastAccepted { get; init; }
         public bool HasAcceptFocus { get; init; }
+        public bool LastOpenUsedMarriageResultPacket { get; init; }
         public int ClientDialogType { get; init; } = WeddingInvitationRuntime.DefaultClientDialogType;
         public int ClientOpenResultSubtype { get; init; }
         public int DialogUolStringPoolId { get; init; }
+        public int AcceptButtonUolStringPoolId { get; init; }
         public int DefaultDialogUolStringPoolId { get; init; }
         public int AlternateDialogUolStringPoolId { get; init; }
         public int AcceptStringPoolId { get; init; }
@@ -214,8 +353,10 @@ namespace HaCreator.MapSimulator.Interaction
         public string AcceptButtonAssetPath { get; init; } = string.Empty;
         public string FallbackInvitationAssetPath { get; init; } = string.Empty;
         public string NameFontToken { get; init; } = string.Empty;
+        public string RequestedNameFontFamily { get; init; } = string.Empty;
         public string SourceDescription { get; init; } = string.Empty;
         public string StatusMessage { get; init; } = string.Empty;
+        public IReadOnlyList<byte> LastMarriageResultPacketPayload { get; init; } = Array.Empty<byte>();
         public WeddingInvitationStyle Style { get; init; }
         public (int X, int Y) GroomNamePosition { get; init; }
         public (int X, int Y) BrideNamePosition { get; init; }

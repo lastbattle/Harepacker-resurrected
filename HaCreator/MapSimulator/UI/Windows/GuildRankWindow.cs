@@ -16,6 +16,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly UIObject _okButton;
         private readonly UIObject _leftButton;
         private readonly UIObject _rightButton;
+        private readonly GraphicsDevice _device;
 
         private Func<GuildRankSnapshot> _snapshotProvider;
         private Action<int> _pageHandler;
@@ -39,7 +40,8 @@ namespace HaCreator.MapSimulator.UI
             _okButton = okButton;
             _leftButton = leftButton;
             _rightButton = rightButton;
-            _pixel = new Texture2D(device ?? throw new ArgumentNullException(nameof(device)), 1, 1);
+            _device = device ?? throw new ArgumentNullException(nameof(device));
+            _pixel = new Texture2D(_device, 1, 1);
             _pixel.SetData(new[] { Color.White });
 
             WireButton(_okButton, () => _closeHandler?.Invoke());
@@ -122,7 +124,7 @@ namespace HaCreator.MapSimulator.UI
                 GuildRankEntrySnapshot entry = _snapshot.Entries[i];
                 Rectangle rowBounds = new(Position.X + 44, (int)y - 2, 236, 28);
                 sprite.Draw(_pixel, rowBounds, i % 2 == 0 ? new Color(25, 40, 63, 80) : new Color(8, 18, 35, 60));
-                DrawGuildMark(sprite, Position.X + 74, (int)y + 4, entry.MarkBackgroundColor, entry.MarkColor);
+                DrawGuildMark(sprite, Position.X + 74, (int)y + 4, entry.MarkBackground, entry.MarkBackgroundColor, entry.Mark, entry.MarkColor);
                 DrawWindowText(sprite, entry.Rank.ToString("00"), new Vector2(Position.X + 56, y), new Color(242, 229, 171));
                 DrawWindowText(sprite, entry.GuildName, new Vector2(Position.X + 94, y), Color.White);
 
@@ -186,15 +188,33 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private void DrawGuildMark(SpriteBatch sprite, int x, int y, int backgroundColorIndex, int markColorIndex)
+        private void DrawGuildMark(SpriteBatch sprite, int x, int y, int backgroundId, int backgroundColorIndex, int markId, int markColorIndex)
         {
-            Color backgroundColor = ResolvePaletteColor(backgroundColorIndex);
-            Color markColor = ResolvePaletteColor(markColorIndex);
+            Texture2D backgroundTexture = GuildMarkTextureCache.GetBackgroundTexture(_device, backgroundId, backgroundColorIndex);
+            Texture2D markTexture = GuildMarkTextureCache.GetMarkTexture(_device, markId, markColorIndex);
 
             sprite.Draw(_pixel, new Rectangle(x, y, 17, 17), new Color(12, 20, 36));
-            sprite.Draw(_pixel, new Rectangle(x + 1, y + 1, 15, 15), backgroundColor);
-            sprite.Draw(_pixel, new Rectangle(x + 5, y + 3, 7, 11), markColor);
-            sprite.Draw(_pixel, new Rectangle(x + 3, y + 6, 11, 5), markColor);
+            if (backgroundTexture != null)
+            {
+                sprite.Draw(backgroundTexture, new Vector2(x, y), Color.White);
+            }
+            else
+            {
+                sprite.Draw(_pixel, new Rectangle(x + 1, y + 1, 15, 15), ResolvePaletteColor(backgroundColorIndex));
+            }
+
+            if (markTexture != null)
+            {
+                int markX = x + ((17 - markTexture.Width) / 2);
+                int markY = y + ((17 - markTexture.Height) / 2);
+                sprite.Draw(markTexture, new Vector2(markX, markY), Color.White);
+            }
+            else
+            {
+                Color markColor = ResolvePaletteColor(markColorIndex);
+                sprite.Draw(_pixel, new Rectangle(x + 5, y + 3, 7, 11), markColor);
+                sprite.Draw(_pixel, new Rectangle(x + 3, y + 6, 11, 5), markColor);
+            }
         }
 
         private static Color ResolvePaletteColor(int colorIndex)

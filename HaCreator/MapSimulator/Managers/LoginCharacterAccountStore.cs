@@ -174,6 +174,28 @@ namespace HaCreator.MapSimulator.Managers
             };
         }
 
+        public IReadOnlyList<LoginCharacterAccountState> SnapshotStatesForAccount(string accountName, int? accountId = null)
+        {
+            Dictionary<int, LoginCharacterAccountState> statesByWorld = new();
+            foreach (PersistedAccountState persisted in EnumeratePersistedStatesForAccount(accountName, accountId))
+            {
+                if (persisted == null)
+                {
+                    continue;
+                }
+
+                LoginCharacterAccountState state = CreateRuntimeState(
+                    persisted,
+                    string.IsNullOrWhiteSpace(accountName) ? persisted.AccountName : accountName);
+                statesByWorld[Math.Max(0, state.WorldId)] = state;
+            }
+
+            return statesByWorld
+                .OrderBy(entry => entry.Key)
+                .Select(entry => entry.Value)
+                .ToArray();
+        }
+
         public void SaveState(
             string accountName,
             int worldId,
@@ -225,6 +247,28 @@ namespace HaCreator.MapSimulator.Managers
             SaveToDisk();
         }
 
+        public bool BindAccountId(string accountName, int worldId, int accountId)
+        {
+            if (accountId <= 0)
+            {
+                return false;
+            }
+
+            string accountNameKey = ResolveAccountKey(accountName, worldId);
+            if (!_accountsByKey.TryGetValue(accountNameKey, out PersistedAccountState persistedState) ||
+                persistedState == null)
+            {
+                return false;
+            }
+
+            PersistedAccountState reboundState = ClonePersistedState(persistedState);
+            reboundState.AccountId = accountId;
+            _accountsByKey[ResolveAccountKey(accountName, worldId, accountId)] = reboundState;
+            _accountsByKey[accountNameKey] = ClonePersistedState(reboundState);
+            SaveToDisk();
+            return true;
+        }
+
         private PersistedAccountState TryGetPersistedState(string accountName, int worldId, int? accountId)
         {
             string accountIdKey = ResolveAccountKey(accountName, worldId, accountId);
@@ -240,6 +284,72 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return null;
+        }
+
+        private IEnumerable<PersistedAccountState> EnumeratePersistedStatesForAccount(string accountName, int? accountId)
+        {
+            string normalizedAccountName = string.IsNullOrWhiteSpace(accountName)
+                ? "explorergm"
+                : accountName.Trim();
+            HashSet<int> yieldedWorldIds = new();
+
+            if (accountId.HasValue && accountId.Value > 0)
+            {
+                foreach (PersistedAccountState persisted in _accountsByKey.Values
+                             .Where(state => state != null && state.AccountId == accountId.Value)
+                             .OrderBy(state => Math.Max(0, state.WorldId)))
+                {
+                    int worldId = Math.Max(0, persisted.WorldId);
+                    if (yieldedWorldIds.Add(worldId))
+                    {
+                        yield return persisted;
+                    }
+                }
+            }
+
+            foreach (PersistedAccountState persisted in _accountsByKey.Values
+                         .Where(state => state != null &&
+                                         string.Equals(
+                                             string.IsNullOrWhiteSpace(state.AccountName) ? "explorergm" : state.AccountName.Trim(),
+                                             normalizedAccountName,
+                                             StringComparison.OrdinalIgnoreCase))
+                         .OrderBy(state => Math.Max(0, state.WorldId)))
+            {
+                int worldId = Math.Max(0, persisted.WorldId);
+                if (yieldedWorldIds.Add(worldId))
+                {
+                    yield return persisted;
+                }
+            }
+        }
+
+        private static LoginCharacterAccountState CreateRuntimeState(PersistedAccountState persisted, string fallbackAccountName)
+        {
+            List<LoginCharacterAccountEntryState> entries = persisted.Entries?
+                .Where(entry => entry != null)
+                .Select(CloneEntryState)
+                .ToList()
+                ?? new List<LoginCharacterAccountEntryState>();
+
+            int maxCharacterId = entries.Count == 0 ? 0 : entries.Max(entry => entry.CharacterId);
+            int nextCharacterId = Math.Max(Math.Max(1, persisted.NextCharacterId), maxCharacterId + 1);
+
+            return new LoginCharacterAccountState
+            {
+                AccountName = string.IsNullOrWhiteSpace(persisted.AccountName) ? fallbackAccountName : persisted.AccountName,
+                AccountId = persisted.AccountId,
+                WorldId = Math.Max(0, persisted.WorldId),
+                SlotCount = Math.Max(0, persisted.SlotCount),
+                BuyCharacterCount = Math.Max(0, persisted.BuyCharacterCount),
+                NextCharacterId = nextCharacterId,
+                CashShopNxCredit = NormalizeCashShopNxCredit(persisted.CashShopNxCredit),
+                PicCode = NormalizeSecret(persisted.PicCode),
+                BirthDate = NormalizeBirthDate(persisted.BirthDate),
+                IsSecondaryPasswordEnabled = persisted.IsSecondaryPasswordEnabled,
+                SecondaryPassword = NormalizeSecret(persisted.SecondaryPassword),
+                StorageExpansionHistory = CloneStorageExpansionHistory(persisted.StorageExpansionHistory),
+                Entries = entries
+            };
         }
 
         private void LoadFromDisk()

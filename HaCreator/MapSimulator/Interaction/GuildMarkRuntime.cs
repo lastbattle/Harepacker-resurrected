@@ -1,36 +1,17 @@
 using System;
-using System.Collections.Generic;
+using System.Linq;
 
 namespace HaCreator.MapSimulator.Interaction
 {
     internal sealed class GuildMarkRuntime
     {
         internal const int IntroAnimationDurationMs = 3180;
-        private static readonly int[] ComboGroups = { 2, 3, 4, 5, 9 };
-        private static readonly string[] ComboLabels =
-        {
-            "Basic symbols",
-            "Shield symbols",
-            "Crest symbols",
-            "Ornament symbols",
-            "Legacy symbols"
-        };
-
-        private readonly Dictionary<int, int> _lastMarkNumbersByGroup = new()
-        {
-            [2] = 2007,
-            [3] = 3007,
-            [4] = 4007,
-            [5] = 5007,
-            [9] = 9007
-        };
+        private readonly GuildMarkCatalogData _catalog = GuildMarkCatalog.GetCatalog();
 
         private bool _isOpen;
         private int _elapsedMs;
-        private int _markBackground = 1000;
-        private int _markBackgroundColor = 1;
-        private int _mark = 2000;
-        private int _markColor = 1;
+        private GuildMarkSelection _selection = new(1000, 1, 2000, 1, 0);
+        private GuildMarkSelection? _committedSelection;
         private int _comboIndex;
         private string _statusMessage = "Guild mark dialog is idle.";
 
@@ -38,11 +19,13 @@ namespace HaCreator.MapSimulator.Interaction
         {
             _isOpen = true;
             _elapsedMs = 0;
-            _markBackground = 1000;
-            _markBackgroundColor = 1;
-            _mark = 2000;
-            _markColor = 1;
-            _comboIndex = 0;
+            _selection = _committedSelection ?? new GuildMarkSelection(
+                _catalog.DefaultBackgroundId,
+                1,
+                _catalog.DefaultMarkId,
+                1,
+                _catalog.ResolveFamilyIndex(_catalog.DefaultMarkId));
+            _comboIndex = _selection.ComboIndex;
             _statusMessage = "Opened the dedicated guild-mark dialog. Intro timing follows the WZ-backed animation plus the client-owned post-animation delay before controls unlock.";
             return _statusMessage;
         }
@@ -64,7 +47,10 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Guild mark controls unlock after the intro animation finishes.";
             }
 
-            _markBackground = Wrap(_markBackground + delta, 1000, 1015);
+            _selection = _selection with
+            {
+                MarkBackground = _catalog.MoveBackground(_selection.MarkBackground, delta)
+            };
             return BuildSelectionMessage("background");
         }
 
@@ -75,7 +61,10 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Guild mark controls unlock after the intro animation finishes.";
             }
 
-            _markBackgroundColor = Wrap(_markBackgroundColor + delta, 1, 16);
+            _selection = _selection with
+            {
+                MarkBackgroundColor = Wrap(_selection.MarkBackgroundColor + delta, 1, 16)
+            };
             return BuildSelectionMessage("background color");
         }
 
@@ -86,10 +75,10 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Guild mark controls unlock after the intro animation finishes.";
             }
 
-            int group = ComboGroups[_comboIndex];
-            int min = group * 1000;
-            int max = _lastMarkNumbersByGroup[group];
-            _mark = Wrap(_mark + delta, min, max);
+            _selection = _selection with
+            {
+                Mark = _catalog.MoveMark(_selection.Mark, _comboIndex, delta)
+            };
             return BuildSelectionMessage("symbol");
         }
 
@@ -100,7 +89,10 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Guild mark controls unlock after the intro animation finishes.";
             }
 
-            _markColor = Wrap(_markColor + delta, 1, 16);
+            _selection = _selection with
+            {
+                MarkColor = Wrap(_selection.MarkColor + delta, 1, 16)
+            };
             return BuildSelectionMessage("symbol color");
         }
 
@@ -111,15 +103,18 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Guild mark controls unlock after the intro animation finishes.";
             }
 
-            _comboIndex = (_comboIndex + 1) % ComboGroups.Length;
-            int group = ComboGroups[_comboIndex];
-            _mark = Math.Clamp(_mark, group * 1000, _lastMarkNumbersByGroup[group]);
-            if (_mark / 1000 != group)
+            _comboIndex = (_comboIndex + 1) % Math.Max(1, _catalog.Families.Count);
+            GuildMarkFamilyInfo family = _catalog.ResolveFamilyByIndex(_comboIndex);
+            int mark = family.MarkIds.Count > 0 && family.MarkIds.Contains(_selection.Mark)
+                ? _selection.Mark
+                : family.MarkIds[0];
+            _selection = _selection with
             {
-                _mark = group * 1000;
-            }
+                Mark = mark,
+                ComboIndex = _comboIndex
+            };
 
-            _statusMessage = $"Guild mark symbol family switched to {ComboLabels[_comboIndex]} (group {group}).";
+            _statusMessage = $"Guild mark symbol family switched to {family.Label} (group {family.Group}).";
             return _statusMessage;
         }
 
@@ -131,7 +126,8 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _isOpen = false;
-            _statusMessage = $"Accepted guild mark selection bg={_markBackground}:{_markBackgroundColor}, mark={_mark}:{_markColor}. Packet-backed persistence and the real guild-cost commit still remain outside the simulator.";
+            _committedSelection = _selection with { ComboIndex = _comboIndex };
+            _statusMessage = $"Accepted guild mark selection bg={_selection.MarkBackground}:{_selection.MarkBackgroundColor}, mark={_selection.Mark}:{_selection.MarkColor}. The dialog now reuses the committed emblem across the guild owners, but server-backed persistence and guild-cost commit still remain outside the simulator.";
             return _statusMessage;
         }
 
@@ -149,31 +145,40 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string DescribeStatus()
         {
-            return $"Guild mark dialog {(_isOpen ? (IsInteractive ? "interactive" : "intro") : "idle")}: bg={_markBackground}:{_markBackgroundColor}, mark={_mark}:{_markColor}, family={ComboLabels[_comboIndex]}. {_statusMessage}";
+            GuildMarkFamilyInfo family = _catalog.ResolveFamilyByIndex(_comboIndex);
+            return $"Guild mark dialog {(_isOpen ? (IsInteractive ? "interactive" : "intro") : "idle")}: bg={_selection.MarkBackground}:{_selection.MarkBackgroundColor}, mark={_selection.Mark}:{_selection.MarkColor}, family={family.Label}. {_statusMessage}";
         }
 
         internal GuildMarkSnapshot BuildSnapshot()
         {
+            GuildMarkFamilyInfo family = _catalog.ResolveFamilyByIndex(_comboIndex);
             return new GuildMarkSnapshot
             {
                 IsOpen = _isOpen,
                 IsInteractive = IsInteractive,
-                ComboLabel = ComboLabels[_comboIndex],
-                ComboGroup = ComboGroups[_comboIndex],
-                MarkBackground = _markBackground,
-                MarkBackgroundColor = _markBackgroundColor,
-                Mark = _mark,
-                MarkColor = _markColor,
+                ComboLabel = family.Label,
+                ComboGroup = family.Group,
+                MarkBackground = _selection.MarkBackground,
+                MarkBackgroundColor = _selection.MarkBackgroundColor,
+                Mark = _selection.Mark,
+                MarkColor = _selection.MarkColor,
+                BackgroundName = _catalog.ResolveBackgroundName(_selection.MarkBackground),
+                MarkName = _catalog.ResolveMarkName(_selection.Mark),
                 IntroRemainingMs = Math.Max(0, IntroAnimationDurationMs - _elapsedMs),
                 StatusMessage = _statusMessage
             };
+        }
+
+        internal GuildMarkSelection? GetCommittedSelection()
+        {
+            return _committedSelection;
         }
 
         private bool IsInteractive => _isOpen && _elapsedMs >= IntroAnimationDurationMs;
 
         private string BuildSelectionMessage(string changedPart)
         {
-            _statusMessage = $"Guild mark {changedPart} updated to bg={_markBackground}:{_markBackgroundColor}, mark={_mark}:{_markColor}.";
+            _statusMessage = $"Guild mark {changedPart} updated to bg={_selection.MarkBackground}:{_selection.MarkBackgroundColor}, mark={_selection.Mark}:{_selection.MarkColor}.";
             return _statusMessage;
         }
 
@@ -204,6 +209,8 @@ namespace HaCreator.MapSimulator.Interaction
         public int ComboGroup { get; init; }
         public int IntroRemainingMs { get; init; }
         public string ComboLabel { get; init; } = string.Empty;
+        public string BackgroundName { get; init; } = string.Empty;
+        public string MarkName { get; init; } = string.Empty;
         public string StatusMessage { get; init; } = string.Empty;
     }
 }

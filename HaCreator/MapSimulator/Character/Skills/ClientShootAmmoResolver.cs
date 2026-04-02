@@ -47,15 +47,31 @@ public static class ClientShootAmmoResolver
 
         TryResolveCashAmmoSlot(cashSlots, weaponCode, out int cashSlotIndex, out int cashItemId);
 
-        int activeBulletItemId = ResolveActiveBulletItemId(useSlots);
-        if (activeBulletItemId > 0)
+        if (TryResolveActiveBulletSelection(
+                useSlots,
+                normalizedRequiredAmmoCount,
+                out int activeSlotIndex,
+                out int activeBulletItemId))
         {
-            if (TryResolveUseAmmoSlotByItemId(useSlots, activeBulletItemId, normalizedRequiredAmmoCount, out int activeSlotIndex))
+            selection = new ShootAmmoSelection
+            {
+                UseSlotIndex = activeSlotIndex,
+                UseItemId = activeBulletItemId,
+                CashSlotIndex = cashSlotIndex,
+                CashItemId = cashItemId
+            };
+            return true;
+        }
+
+        int fallbackActiveBulletItemId = ResolveActiveBulletItemId(useSlots);
+        if (fallbackActiveBulletItemId > 0)
+        {
+            if (TryResolveUseAmmoSlotByItemId(useSlots, fallbackActiveBulletItemId, normalizedRequiredAmmoCount, out int fallbackSlotIndex))
             {
                 selection = new ShootAmmoSelection
                 {
-                    UseSlotIndex = activeSlotIndex,
-                    UseItemId = activeBulletItemId,
+                    UseSlotIndex = fallbackSlotIndex,
+                    UseItemId = fallbackActiveBulletItemId,
                     CashSlotIndex = cashSlotIndex,
                     CashItemId = cashItemId
                 };
@@ -114,6 +130,38 @@ public static class ClientShootAmmoResolver
         }
 
         return 0;
+    }
+
+    private static bool TryResolveActiveBulletSelection(
+        IReadOnlyList<InventorySlotData> useSlots,
+        int requiredAmmoCount,
+        out int slotIndex,
+        out int itemId)
+    {
+        slotIndex = -1;
+        itemId = 0;
+        if (useSlots == null)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < useSlots.Count; i++)
+        {
+            InventorySlotData slot = useSlots[i];
+            if (slot?.IsActiveBullet != true
+                || slot.IsDisabled
+                || slot.ItemId <= 0
+                || slot.Quantity < requiredAmmoCount)
+            {
+                continue;
+            }
+
+            slotIndex = i;
+            itemId = slot.ItemId;
+            return true;
+        }
+
+        return false;
     }
 
     private static bool TryResolveUseAmmoSlotByItemId(

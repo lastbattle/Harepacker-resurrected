@@ -38,9 +38,9 @@ namespace HaCreator.MapSimulator.Interaction
         internal int ActiveMessageStartedAt { get; private set; } = int.MinValue;
         internal int ActiveMessageExpiresAt { get; private set; } = int.MinValue;
         internal string StatusMessage { get; private set; } = "Tutor runtime idle.";
-        internal IReadOnlyCollection<int> KnownTutorSkillIds => _knownTutorSkillIds;
+        internal IReadOnlyCollection<int> ActiveTutorSkillIds => _activeTutorSkillIds;
 
-        private readonly HashSet<int> _knownTutorSkillIds = new();
+        private readonly HashSet<int> _activeTutorSkillIds = new();
 
         internal bool HasVisibleMessage(int currentTick)
         {
@@ -97,7 +97,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             if (skillId > 0)
             {
-                _knownTutorSkillIds.Add(skillId);
+                _activeTutorSkillIds.Add(skillId);
             }
 
             IsActive = true;
@@ -111,6 +111,11 @@ namespace HaCreator.MapSimulator.Interaction
         internal void ApplyRemoval(string reason = null)
         {
             bool hadActor = IsActive;
+            if (ActiveSkillId > 0)
+            {
+                _activeTutorSkillIds.Remove(ActiveSkillId);
+            }
+
             IsActive = false;
             ActiveSkillId = 0;
             ActiveSummonObjectId = 0;
@@ -178,12 +183,12 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string DescribeActiveTutorVariants()
         {
-            if (_knownTutorSkillIds.Count == 0)
+            if (_activeTutorSkillIds.Count == 0)
             {
                 return "none";
             }
 
-            return string.Join(", ", _knownTutorSkillIds.OrderBy(skillId => skillId));
+            return string.Join(", ", _activeTutorSkillIds.OrderBy(skillId => skillId));
         }
 
         private static int ClampDuration(int durationMs)

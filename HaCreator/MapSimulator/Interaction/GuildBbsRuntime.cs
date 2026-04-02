@@ -601,6 +601,27 @@ namespace HaCreator.MapSimulator.Interaction
             return $"Guild BBS thread page {_threadPageIndex + 1}/{pageCount}.";
         }
 
+        public string SetThreadPage(int pageIndex)
+        {
+            int pageCount = Math.Max(1, (int)Math.Ceiling(_threads.Count / (double)VisibleThreadCount));
+            int nextPage = Math.Clamp(pageIndex, 0, pageCount - 1);
+            if (nextPage == _threadPageIndex)
+            {
+                return $"Guild BBS thread page {_threadPageIndex + 1}/{pageCount}.";
+            }
+
+            _threadPageIndex = nextPage;
+            IReadOnlyList<GuildBbsThreadState> orderedThreads = GetOrderedThreads();
+            GuildBbsThreadState firstThread = orderedThreads.Skip(_threadPageIndex * VisibleThreadCount).FirstOrDefault();
+            if (firstThread != null)
+            {
+                _selectedThreadId = firstThread.ThreadId;
+                _commentPageIndex = 0;
+            }
+
+            return $"Guild BBS thread page {_threadPageIndex + 1}/{pageCount}.";
+        }
+
         public string MoveCommentPage(int delta)
         {
             GuildBbsThreadState selectedThread = GetSelectedThread();

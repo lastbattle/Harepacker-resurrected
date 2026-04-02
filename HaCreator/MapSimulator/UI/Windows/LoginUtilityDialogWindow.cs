@@ -60,6 +60,7 @@ namespace HaCreator.MapSimulator.UI
         private bool _inputMasked;
         private int _inputMaxLength;
         private SoftKeyboardKeyboardType _softKeyboardType = SoftKeyboardKeyboardType.AlphaNumeric;
+        private bool _inputFocused;
         private bool _softKeyboardActive;
         private string _compositionText = string.Empty;
         private ImeCandidateListState _candidateListState = ImeCandidateListState.Empty;
@@ -102,12 +103,12 @@ namespace HaCreator.MapSimulator.UI
         public override string WindowName => MapSimulatorWindowNames.LoginUtilityDialog;
 
         public override bool SupportsDragging => false;
-        public override bool CapturesKeyboardInput => true;
-        bool ISoftKeyboardHost.WantsSoftKeyboard => IsVisible && HasInputField && _softKeyboardActive;
+        public override bool CapturesKeyboardInput => IsVisible && HasInputField && _inputFocused;
+        bool ISoftKeyboardHost.WantsSoftKeyboard => IsVisible && HasInputField && _inputFocused && _softKeyboardActive;
         SoftKeyboardKeyboardType ISoftKeyboardHost.SoftKeyboardKeyboardType => _softKeyboardType;
         int ISoftKeyboardHost.SoftKeyboardTextLength => _inputValue?.Length ?? 0;
         int ISoftKeyboardHost.SoftKeyboardMaxLength => _inputMaxLength;
-        bool ISoftKeyboardHost.CanSubmitSoftKeyboard => HasInputField && _drawPrimaryButtonLabel;
+        bool ISoftKeyboardHost.CanSubmitSoftKeyboard => HasInputField && _inputFocused && _drawPrimaryButtonLabel;
 
         public event Action PrimaryRequested;
         public event Action SecondaryRequested;
@@ -122,8 +123,7 @@ namespace HaCreator.MapSimulator.UI
         public override void Hide()
         {
             base.Hide();
-            _softKeyboardActive = false;
-            ClearCompositionText();
+            ClearInputFocus();
         }
 
         public void Configure(
@@ -154,10 +154,10 @@ namespace HaCreator.MapSimulator.UI
             _inputMaxLength = Math.Max(0, inputMaxLength);
             _inputValue = inputValue ?? string.Empty;
             _softKeyboardType = softKeyboardType;
+            _inputFocused = HasInputField;
             if (!HasInputField)
             {
-                _softKeyboardActive = false;
-                ClearCompositionText();
+                ClearInputFocus();
             }
             ConfigureButtons();
         }
@@ -184,7 +184,7 @@ namespace HaCreator.MapSimulator.UI
                 SecondaryRequested?.Invoke();
             }
 
-            if (Pressed(keyboardState, Keys.Back))
+            if (_inputFocused && Pressed(keyboardState, Keys.Back))
             {
                 ClearCompositionText();
                 RemoveLastCharacter();
@@ -202,11 +202,22 @@ namespace HaCreator.MapSimulator.UI
             }
 
             bool leftClicked = mouseState.LeftButton == ButtonState.Pressed;
-            if (leftClicked && GetInputBounds().Contains(mouseState.X, mouseState.Y))
+            if (!leftClicked)
             {
+                return false;
+            }
+
+            if (GetInputBounds().Contains(mouseState.X, mouseState.Y))
+            {
+                _inputFocused = true;
                 _softKeyboardActive = true;
                 mouseCursor?.SetMouseCursorMovedToClickableItem();
                 return true;
+            }
+
+            if (ContainsPoint(mouseState.X, mouseState.Y))
+            {
+                ClearInputFocus();
             }
 
             return false;
@@ -464,7 +475,7 @@ namespace HaCreator.MapSimulator.UI
 
         public override void HandleCommittedText(string text)
         {
-            if (!HasInputField || string.IsNullOrEmpty(text))
+            if (!CapturesKeyboardInput || string.IsNullOrEmpty(text))
             {
                 return;
             }
@@ -483,7 +494,7 @@ namespace HaCreator.MapSimulator.UI
 
         public override void HandleCompositionState(ImeCompositionState state)
         {
-            if (!HasInputField)
+            if (!CapturesKeyboardInput)
             {
                 ClearCompositionText();
                 return;
@@ -518,7 +529,7 @@ namespace HaCreator.MapSimulator.UI
 
         public override void HandleImeCandidateList(ImeCandidateListState state)
         {
-            _candidateListState = HasInputField && state != null && state.HasCandidates
+            _candidateListState = CapturesKeyboardInput && state != null && state.HasCandidates
                 ? state
                 : ImeCandidateListState.Empty;
         }
@@ -563,9 +574,9 @@ namespace HaCreator.MapSimulator.UI
         bool ISoftKeyboardHost.TryInsertSoftKeyboardCharacter(char character, out string errorMessage)
         {
             errorMessage = string.Empty;
-            if (!HasInputField)
+            if (!HasInputField || !_inputFocused)
             {
-                errorMessage = "This dialog has no editable field.";
+                errorMessage = "This dialog input field is not focused.";
                 return false;
             }
 
@@ -588,6 +599,12 @@ namespace HaCreator.MapSimulator.UI
         bool ISoftKeyboardHost.TryBackspaceSoftKeyboard(out string errorMessage)
         {
             errorMessage = string.Empty;
+            if (!_inputFocused)
+            {
+                errorMessage = "This dialog input field is not focused.";
+                return false;
+            }
+
             if (string.IsNullOrEmpty(_inputValue))
             {
                 errorMessage = "Nothing to remove.";
@@ -601,7 +618,7 @@ namespace HaCreator.MapSimulator.UI
         bool ISoftKeyboardHost.TrySubmitSoftKeyboard(out string errorMessage)
         {
             errorMessage = string.Empty;
-            if (!HasInputField || !_drawPrimaryButtonLabel)
+            if (!HasInputField || !_inputFocused || !_drawPrimaryButtonLabel)
             {
                 errorMessage = "This dialog cannot be submitted.";
                 return false;
@@ -614,6 +631,13 @@ namespace HaCreator.MapSimulator.UI
         void ISoftKeyboardHost.OnSoftKeyboardClosed()
         {
             _softKeyboardActive = false;
+        }
+
+        private void ClearInputFocus()
+        {
+            _inputFocused = false;
+            _softKeyboardActive = false;
+            ClearCompositionText();
         }
 
         private bool CanAcceptCharacter(char character)

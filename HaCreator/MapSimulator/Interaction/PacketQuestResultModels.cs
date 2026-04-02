@@ -14,13 +14,6 @@ namespace HaCreator.MapSimulator.Interaction
         RewardSummary = 6
     }
 
-    internal enum PacketQuestResultViewMode : byte
-    {
-        NoticeOnly = 0,
-        ModalOnly = 1,
-        NoticeAndModal = 2
-    }
-
     internal sealed class PacketQuestResultPresentation
     {
         public int QuestId { get; init; }

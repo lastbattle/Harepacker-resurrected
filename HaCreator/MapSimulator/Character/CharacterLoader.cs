@@ -1745,9 +1745,11 @@ namespace HaCreator.MapSimulator.Character
             part.IsTradeBlocked = GetIntValue(info["tradeBlock"]) == 1;
             part.IsEquipTradeBlocked = GetIntValue(info["equipTradeBlock"]) == 1;
             part.IsOneOfAKind = GetIntValue(info["only"]) == 1;
+            part.IsUniqueEquipItem = GetIntValue(info["onlyEquip"]) == 1;
             part.IsNotForSale = GetIntValue(info["notSale"]) == 1;
             part.IsAccountSharable = GetIntValue(info["accountSharable"]) == 1;
             part.HasAccountShareTag = GetIntValue(info["accountShareTag"]) == 1;
+            part.IsNoMoveToLocker = GetIntValue(info["noMoveToLocker"]) == 1;
             part.IsTimeLimited = GetIntValue(info["timeLimited"]) == 1;
             part.MaxDurability = GetIntValue(info["durability"]);
             part.Durability = part.MaxDurability;

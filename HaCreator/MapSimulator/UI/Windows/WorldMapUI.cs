@@ -56,6 +56,15 @@ namespace HaCreator.MapSimulator.UI
             public string Description { get; init; } = string.Empty;
         }
 
+        public sealed class WorldMapSurfaceDefinition
+        {
+            public string SurfaceName { get; init; } = string.Empty;
+            public string ParentSurfaceName { get; init; } = string.Empty;
+            public Texture2D BaseTexture { get; init; }
+            public Point BaseOrigin { get; init; }
+            public IReadOnlyDictionary<int, Point> MapSpots { get; init; } = new Dictionary<int, Point>();
+        }
+
         private sealed class RegionButtonEntry
         {
             public RegionButtonEntry(string regionCode, UIObject button)
@@ -148,6 +157,8 @@ namespace HaCreator.MapSimulator.UI
         private readonly List<MapEntry> _allEntries = new List<MapEntry>();
         private readonly List<SearchResultEntry> _searchResults = new List<SearchResultEntry>();
         private readonly List<QuestOverlayEntry> _questOverlays = new List<QuestOverlayEntry>();
+        private readonly Dictionary<string, WorldMapSurfaceDefinition> _worldMapSurfacesByName = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<int, string> _worldMapSurfaceNameByMapId = new();
         private SpriteFont _font;
         private bool _showAnotherWorld;
         private bool _searchMode;
@@ -570,6 +581,29 @@ namespace HaCreator.MapSimulator.UI
             UpdateButtonStates();
         }
 
+        public void ConfigureWorldMapSurfaces(IEnumerable<WorldMapSurfaceDefinition> surfaces)
+        {
+            _worldMapSurfacesByName.Clear();
+            _worldMapSurfaceNameByMapId.Clear();
+
+            foreach (WorldMapSurfaceDefinition surface in surfaces ?? Enumerable.Empty<WorldMapSurfaceDefinition>())
+            {
+                if (surface?.BaseTexture == null || string.IsNullOrWhiteSpace(surface.SurfaceName))
+                {
+                    continue;
+                }
+
+                _worldMapSurfacesByName[surface.SurfaceName] = surface;
+                foreach ((int mapId, _) in surface.MapSpots ?? Enumerable.Empty<KeyValuePair<int, Point>>())
+                {
+                    if (mapId > 0)
+                    {
+                        _worldMapSurfaceNameByMapId[mapId] = surface.SurfaceName;
+                    }
+                }
+            }
+        }
+
         public bool HasEntry(int mapId)
         {
             return mapId > 0 && _allEntries.Any(entry => entry.MapId == mapId);
@@ -645,6 +679,8 @@ namespace HaCreator.MapSimulator.UI
             RenderParameters renderParameters,
             int TickCount)
         {
+            DrawWorldMapSurface(sprite, TickCount);
+
             if (_sidePanelTexture != null)
             {
                 sprite.Draw(_sidePanelTexture, new Vector2(Position.X + _sidePanelOffset.X, Position.Y + _sidePanelOffset.Y), Color.White);
@@ -1125,6 +1161,104 @@ namespace HaCreator.MapSimulator.UI
             return _searchMode
                 ? GetMaxPageIndex(GetFilteredSearchResults().Count)
                 : GetMaxPageIndex(GetFilteredEntries().Count);
+        }
+
+        private void DrawWorldMapSurface(SpriteBatch sprite, int tickCount)
+        {
+            if (sprite == null || !TryResolveActiveSurface(out WorldMapSurfaceDefinition surface))
+            {
+                return;
+            }
+
+            sprite.Draw(surface.BaseTexture, new Vector2(Position.X, Position.Y), Color.White);
+
+            if (!_questOverlayMarkersVisible)
+            {
+                return;
+            }
+
+            OverlayMarkerFrame? markerFrame = GetActiveOverlayMarkerFrame(tickCount);
+            if (!markerFrame.HasValue)
+            {
+                return;
+            }
+
+            var visibleMapIds = new HashSet<int>();
+            foreach (QuestOverlayEntry overlay in _questOverlays)
+            {
+                if (overlay == null || overlay.MapId <= 0 || !visibleMapIds.Add(overlay.MapId))
+                {
+                    continue;
+                }
+
+                if (!TryResolveMapSpot(surface, overlay.MapId, out Point spotAnchor))
+                {
+                    continue;
+                }
+
+                DrawSurfaceMarker(sprite, markerFrame.Value, spotAnchor);
+            }
+        }
+
+        private bool TryResolveActiveSurface(out WorldMapSurfaceDefinition surface)
+        {
+            if (TryResolveSurfaceForMapId(_selectedMapId, out surface))
+            {
+                return true;
+            }
+
+            if (TryResolveSurfaceForMapId(_currentMapId, out surface))
+            {
+                return true;
+            }
+
+            foreach (QuestOverlayEntry overlay in _questOverlays)
+            {
+                if (overlay != null && TryResolveSurfaceForMapId(overlay.MapId, out surface))
+                {
+                    return true;
+                }
+            }
+
+            surface = null;
+            return false;
+        }
+
+        private bool TryResolveSurfaceForMapId(int mapId, out WorldMapSurfaceDefinition surface)
+        {
+            if (mapId > 0 &&
+                _worldMapSurfaceNameByMapId.TryGetValue(mapId, out string surfaceName) &&
+                !string.IsNullOrWhiteSpace(surfaceName) &&
+                _worldMapSurfacesByName.TryGetValue(surfaceName, out surface))
+            {
+                return true;
+            }
+
+            surface = null;
+            return false;
+        }
+
+        private bool TryResolveMapSpot(WorldMapSurfaceDefinition surface, int mapId, out Point anchor)
+        {
+            if (surface?.MapSpots != null && surface.MapSpots.TryGetValue(mapId, out Point surfaceSpot))
+            {
+                anchor = new Point(Position.X + surface.BaseOrigin.X + surfaceSpot.X, Position.Y + surface.BaseOrigin.Y + surfaceSpot.Y);
+                return true;
+            }
+
+            anchor = Point.Zero;
+            return false;
+        }
+
+        private static void DrawSurfaceMarker(SpriteBatch sprite, OverlayMarkerFrame frame, Point anchor)
+        {
+            if (frame.Texture == null)
+            {
+                return;
+            }
+
+            Vector2 drawPosition = new(anchor.X - frame.Origin.X, anchor.Y - frame.Origin.Y);
+            sprite.Draw(frame.Texture, drawPosition, Color.White);
         }
 
         private static int GetMaxPageIndex(int count)

@@ -237,6 +237,11 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int RequiredLevel { get; set; }       // Level required
         public int RequiredSkill { get; set; }       // Prerequisite skill ID
         public int RequiredSkillLevel { get; set; }  // Required level of prerequisite
+
+        public SkillLevelData ShallowClone()
+        {
+            return (SkillLevelData)MemberwiseClone();
+        }
     }
 
     #endregion

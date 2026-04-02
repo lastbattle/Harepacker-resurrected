@@ -352,8 +352,27 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     SocialSearchTab.Party => new[] { "Party finder surface from `UserList/Search/Party`.", "Sort and request buttons are now simulator-owned.", $"{GetFilteredSearchEntries(tab).Count} visible party listings." },
                     SocialSearchTab.PartyMember => new[] { "Party-member finder surface from `UserList/Search/PartyMember`.", "Invite and sort buttons work against simulator-owned candidates.", $"{GetFilteredSearchEntries(tab).Count} visible member candidates." },
-                    SocialSearchTab.Expedition => new[] { "Expedition finder surface from `UserList/Search/Expedition`.", _expeditionRegisterMode ? "Registration strip is armed." : "Use REGIST to open the registration strip.", $"{GetFilteredSearchEntries(tab).Count} visible expedition listings." },
+                    SocialSearchTab.Expedition => new[]
+                    {
+                        "Expedition finder surface from `UserList/Search/Expedition`.",
+                        _expeditionRegisterMode
+                            ? $"Registration strip is armed. {GetFilteredSearchEntries(tab).Count} visible expedition listings."
+                            : $"Use REGIST to open the registration strip. {GetFilteredSearchEntries(tab).Count} visible expedition listings.",
+                        DescribeExpeditionStatus()
+                    },
                     _ => Array.Empty<string>()
+                };
+            }
+
+            if (tab == SocialSearchTab.Expedition)
+            {
+                return new[]
+                {
+                    selectedEntry.Title,
+                    $"{selectedEntry.PrimaryText}  {selectedEntry.SecondaryText}".Trim(),
+                    selectedEntry.IsIntermediaryOwned
+                        ? DescribeExpeditionStatus()
+                        : $"{selectedEntry.LocationSummary}  CH {selectedEntry.Channel}  {selectedEntry.StatusText}".Trim()
                 };
             }
 
@@ -516,8 +535,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string StartExpedition()
         {
-            _expeditionAdmissionActive = true;
-            return "Expedition start staged locally from the search surface. Packet-authored expedition runtime still remains out of scope.";
+            return StartLocalExpeditionIntermediary();
         }
 
         private string ToggleExpeditionRegistration(bool enabled)
@@ -529,8 +547,7 @@ namespace HaCreator.MapSimulator.Interaction
         private string ConfirmExpeditionRegistration()
         {
             _expeditionRegisterMode = false;
-            _expeditionAdmissionActive = true;
-            return $"Expedition registration drafted from {_locationSummary}.";
+            return StartLocalExpeditionIntermediary($"{_playerName}'s Expedition", registrationDraft: true);
         }
 
         private string RemoveSelectedExpedition()
@@ -539,6 +556,11 @@ namespace HaCreator.MapSimulator.Interaction
             if (selectedEntry == null)
             {
                 return "Select an expedition entry before deleting it.";
+            }
+
+            if (selectedEntry.IsIntermediaryOwned)
+            {
+                return ClearExpeditionIntermediary(_expeditionIntermediary.PacketOwned);
             }
 
             _searchEntriesByTab[SocialSearchTab.Expedition].RemoveAll(entry => string.Equals(entry.Title, selectedEntry.Title, StringComparison.OrdinalIgnoreCase));
@@ -554,8 +576,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Select an expedition entry before quick-joining.";
             }
 
-            _expeditionAdmissionActive = true;
-            return $"Quick-join request sent for {selectedEntry.Title}.";
+            return StageExpeditionRequest(selectedEntry.Title, selectedEntry.PrimaryText, quickJoin: true, packetOwned: false);
         }
 
         private string RequestSelectedExpedition()
@@ -566,7 +587,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Select an expedition entry before requesting entry.";
             }
 
-            return $"Expedition request sent to {selectedEntry.PrimaryText} for {selectedEntry.Title}.";
+            return StageExpeditionRequest(selectedEntry.Title, selectedEntry.PrimaryText, quickJoin: false, packetOwned: false);
         }
 
         private string WhisperSelectedExpedition()

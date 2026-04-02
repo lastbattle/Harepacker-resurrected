@@ -257,14 +257,14 @@ namespace HaCreator.MapSimulator.Pools
                 actor.Name = build.Name.Trim();
                 actor.Position = position;
                 actor.FacingRight = facingRight;
-                actor.ActionName = NormalizeActionName(actionName, actor.Build.ActivePortableChair != null);
+                SetActorAction(actor, actionName, actor.Build.ActivePortableChair != null);
                 actor.SourceTag = string.IsNullOrWhiteSpace(sourceTag) ? actor.SourceTag : sourceTag.Trim();
                 actor.IsVisibleInWorld = isVisibleInWorld;
                 SyncPortableChairPairRecord(
                     characterId,
                     actor.Build.ActivePortableChair,
                     actor.PreferredPortableChairPairCharacterId);
-                actor.RefreshAssembler();
+                SyncTemporaryStatPresentation(actor);
                 RegisterMeleeAfterImage(actor, 0, actor.ActionName, Environment.TickCount, 10, 0);
                 UpdateNameLookup(previousName, actor.Name, characterId);
                 return true;
@@ -279,6 +279,7 @@ namespace HaCreator.MapSimulator.Pools
                 NormalizeActionName(actionName, build.ActivePortableChair != null),
                 string.IsNullOrWhiteSpace(sourceTag) ? "remote" : sourceTag.Trim(),
                 isVisibleInWorld);
+            created.BaseActionName = created.ActionName;
             RegisterMeleeAfterImage(created, 0, created.ActionName, Environment.TickCount, 10, 0);
             _actorsById[characterId] = created;
             _actorIdsByName[created.Name] = characterId;
@@ -286,6 +287,7 @@ namespace HaCreator.MapSimulator.Pools
                 characterId,
                 created.Build?.ActivePortableChair,
                 created.PreferredPortableChairPairCharacterId);
+            SyncTemporaryStatPresentation(created);
             return true;
         }
 
@@ -355,7 +357,7 @@ namespace HaCreator.MapSimulator.Pools
             if (!string.IsNullOrWhiteSpace(actionName))
             {
                 actor.BeginMeleeAfterImageFade(Environment.TickCount);
-                actor.ActionName = NormalizeActionName(actionName, actor.Build.ActivePortableChair != null);
+                SetActorAction(actor, actionName, actor.Build.ActivePortableChair != null);
                 RegisterMeleeAfterImage(actor, 0, actor.ActionName, Environment.TickCount, 10, 0);
             }
 
@@ -486,7 +488,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             actor.BeginMeleeAfterImageFade(Environment.TickCount);
-            actor.ActionName = NormalizeActionName(actionName, actor.Build.ActivePortableChair != null);
+            SetActorAction(actor, actionName, actor.Build.ActivePortableChair != null);
             if (facingRight.HasValue)
             {
                 actor.FacingRight = facingRight.Value;
@@ -538,7 +540,7 @@ namespace HaCreator.MapSimulator.Pools
             if (!string.IsNullOrWhiteSpace(resolvedActionName))
             {
                 actor.BeginMeleeAfterImageFade(currentTime);
-                actor.ActionName = NormalizeActionName(resolvedActionName, actor.Build.ActivePortableChair != null);
+                SetActorAction(actor, resolvedActionName, actor.Build.ActivePortableChair != null);
             }
             RegisterMeleeAfterImage(actor, skillId, actor.ActionName, currentTime, masteryPercent, chargeElement, actionCode);
             return true;
@@ -556,7 +558,7 @@ namespace HaCreator.MapSimulator.Pools
             actor.LastMoveActionRaw = moveAction;
             actor.FacingRight = DecodeFacingRight(moveAction);
             actor.BeginMeleeAfterImageFade(Environment.TickCount);
-            actor.ActionName = ResolveActionName(actor, MoveActionFromRaw(moveAction));
+            SetActorAction(actor, ResolveActionName(actor, MoveActionFromRaw(moveAction)), actor.Build.ActivePortableChair != null);
             actor.MovementDrivenActionSelection = true;
             RegisterMeleeAfterImage(actor, 0, actor.ActionName, Environment.TickCount, 10, 0);
             return true;
@@ -640,8 +642,8 @@ namespace HaCreator.MapSimulator.Pools
                 actor.Build.ActivePortableChair = null;
                 actor.PreferredPortableChairPairCharacterId = null;
                 ClearPortableChairPairRecord(characterId);
-                actor.ActionName = CharacterPart.GetActionString(CharacterAction.Stand1);
-                actor.RefreshAssembler();
+                SetActorAction(actor, CharacterPart.GetActionString(CharacterAction.Stand1), allowSitFallback: false);
+                SyncTemporaryStatPresentation(actor);
                 actor.ClearMeleeAfterImage();
                 return true;
             }
@@ -657,8 +659,8 @@ namespace HaCreator.MapSimulator.Pools
             actor.PreferredPortableChairPairCharacterId = pairCharacterId;
             SyncPortableChairPairRecord(characterId, chair, pairCharacterId);
             ApplyPortableChairMount(actor, chair);
-            actor.ActionName = NormalizeActionName("sit", allowSitFallback: true);
-            actor.RefreshAssembler();
+            SetActorAction(actor, "sit", allowSitFallback: true);
+            SyncTemporaryStatPresentation(actor);
             actor.ClearMeleeAfterImage();
             return true;
         }
@@ -681,7 +683,7 @@ namespace HaCreator.MapSimulator.Pools
             if (!tamingMobItemId.HasValue || tamingMobItemId.Value <= 0)
             {
                 actor.Build.Unequip(EquipSlot.TamingMob);
-                actor.RefreshAssembler();
+                SyncTemporaryStatPresentation(actor);
                 RegisterMeleeAfterImage(actor, 0, actor.ActionName, Environment.TickCount, 10, 0);
                 return true;
             }
@@ -694,7 +696,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             actor.Build.Equip(mountPart);
-            actor.RefreshAssembler();
+            SyncTemporaryStatPresentation(actor);
             RegisterMeleeAfterImage(actor, 0, actor.ActionName, Environment.TickCount, 10, 0);
             return true;
         }
@@ -801,7 +803,7 @@ namespace HaCreator.MapSimulator.Pools
 
                 actor.BeginMeleeAfterImageFade(currentTime);
                 actor.Build = updatedBuild;
-                actor.ActionName = NormalizeActionName(actor.ActionName, actor.Build.ActivePortableChair != null);
+                actor.BaseActionName = NormalizeActionName(actor.BaseActionName, actor.Build.ActivePortableChair != null);
                 if (actor.Build.ActivePortableChair != null)
                 {
                     SyncPortableChairPairRecord(
@@ -816,7 +818,7 @@ namespace HaCreator.MapSimulator.Pools
                     ClearPortableChairMountState(actor);
                 }
 
-                actor.RefreshAssembler();
+                SyncTemporaryStatPresentation(actor);
                 RegisterMeleeAfterImage(actor, 0, actor.ActionName, currentTime, 10, 0);
             }
 
@@ -889,6 +891,7 @@ namespace HaCreator.MapSimulator.Pools
 
             actor.TemporaryStats = temporaryStats;
             actor.TemporaryStatDelay = delay;
+            SyncTemporaryStatPresentation(actor);
             message = temporaryStats.HasPayload
                 ? $"Remote user {characterId} temporary-stat snapshot applied."
                 : $"Remote user {characterId} temporary-stat snapshot cleared.";
@@ -943,6 +946,7 @@ namespace HaCreator.MapSimulator.Pools
                 ? actor.TemporaryStats with { MaskWords = remainingMaskWords }
                 : default;
             actor.TemporaryStatDelay = 0;
+            SyncTemporaryStatPresentation(actor);
             message = hasActiveBits
                 ? $"Remote user {packet.CharacterId} temporary-stat mask updated."
                 : $"Remote user {packet.CharacterId} temporary-stat mask cleared.";
@@ -2163,10 +2167,14 @@ namespace HaCreator.MapSimulator.Pools
 
         private static bool IsRelationshipOverlayGhostAction(string actionName)
         {
-            return string.Equals(
-                actionName,
-                CharacterPart.GetActionString(CharacterAction.Ghost),
-                StringComparison.OrdinalIgnoreCase);
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            return string.Equals(actionName, CharacterPart.GetActionString(CharacterAction.Ghost), StringComparison.OrdinalIgnoreCase)
+                || actionName.StartsWith("ghost", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(actionName, "darksight", StringComparison.OrdinalIgnoreCase);
         }
 
         private static PortableChairLayer ResolveCarryItemEffectLayer(
@@ -2869,6 +2877,87 @@ namespace HaCreator.MapSimulator.Pools
             return actionName.Trim();
         }
 
+        private void SyncTemporaryStatPresentation(RemoteUserActor actor)
+        {
+            if (actor == null)
+            {
+                return;
+            }
+
+            RemoteUserTemporaryStatKnownState knownState = actor.TemporaryStats.KnownState;
+            CharacterPart overrideAvatarPart = null;
+            if (knownState.MorphId is int morphTemplateId && morphTemplateId > 0)
+            {
+                overrideAvatarPart = _loader?.LoadMorph(morphTemplateId);
+                if (overrideAvatarPart?.Type != CharacterPartType.Morph)
+                {
+                    overrideAvatarPart = actor.TemporaryStatAvatarOverridePart?.Type == CharacterPartType.Morph
+                        && actor.TemporaryStatAvatarOverridePart.ItemId == morphTemplateId
+                        ? actor.TemporaryStatAvatarOverridePart
+                        : null;
+                }
+            }
+
+            actor.TemporaryStatAvatarOverridePart = overrideAvatarPart;
+            actor.HasMorphTemplate = overrideAvatarPart?.Type == CharacterPartType.Morph;
+            actor.HiddenLikeClient = knownState.IsHiddenLikeClient;
+            actor.ActionName = ResolveClientVisibleActionName(actor.BaseActionName, knownState);
+            actor.RefreshAssembler();
+        }
+
+        private static void SetActorAction(RemoteUserActor actor, string actionName, bool allowSitFallback)
+        {
+            if (actor == null)
+            {
+                return;
+            }
+
+            actor.BaseActionName = NormalizeActionName(actionName, allowSitFallback);
+            actor.ActionName = ResolveClientVisibleActionName(actor.BaseActionName, actor.TemporaryStats.KnownState);
+        }
+
+        internal static string ResolveClientVisibleActionName(
+            string baseActionName,
+            RemoteUserTemporaryStatKnownState knownState)
+        {
+            string normalized = NormalizeActionName(baseActionName, allowSitFallback: false);
+            if (!knownState.IsHiddenLikeClient)
+            {
+                return normalized;
+            }
+
+            if (string.IsNullOrWhiteSpace(normalized)
+                || normalized.StartsWith("ghost", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalized, "darksight", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalized, "dead", StringComparison.OrdinalIgnoreCase))
+            {
+                return normalized;
+            }
+
+            return normalized switch
+            {
+                "stand1" or "stand2" or "alert" or "sit" => "ghoststand",
+                "walk1" or "walk2" => "ghostwalk",
+                "jump" => "ghostjump",
+                "ladder" => "ghostladder",
+                "rope" => "ghostrope",
+                "swim" or "fly" => "ghostfly",
+                "prone" or "proneStab" => "ghostproneStab",
+                _ when IsHiddenLikeAttackAction(normalized) => "ghoststand",
+                _ => normalized
+            };
+        }
+
+        private static bool IsHiddenLikeAttackAction(string actionName)
+        {
+            return actionName.StartsWith("attack", StringComparison.OrdinalIgnoreCase)
+                || actionName.StartsWith("stab", StringComparison.OrdinalIgnoreCase)
+                || actionName.StartsWith("swing", StringComparison.OrdinalIgnoreCase)
+                || actionName.StartsWith("shoot", StringComparison.OrdinalIgnoreCase)
+                || actionName.StartsWith("shot", StringComparison.OrdinalIgnoreCase)
+                || actionName.StartsWith("magic", StringComparison.OrdinalIgnoreCase);
+        }
+
         private void RegisterMeleeAfterImage(
             RemoteUserActor actor,
             int skillId,
@@ -3225,7 +3314,7 @@ namespace HaCreator.MapSimulator.Pools
 
             if (actor.MovementDrivenActionSelection)
             {
-                actor.ActionName = ResolveActionName(actor, sampled.Action);
+                SetActorAction(actor, ResolveActionName(actor, sampled.Action), actor.Build.ActivePortableChair != null);
                 if (!string.Equals(previousActionName, actor.ActionName, StringComparison.OrdinalIgnoreCase))
                 {
                     actor.BeginMeleeAfterImageFade(currentTime);
@@ -3354,7 +3443,7 @@ namespace HaCreator.MapSimulator.Pools
                 MoveAction.Rope => "rope",
                 MoveAction.Swim => "swim",
                 MoveAction.Fly => "fly",
-                MoveAction.Attack => string.IsNullOrWhiteSpace(actor?.ActionName) ? "alert" : actor.ActionName,
+                MoveAction.Attack => string.IsNullOrWhiteSpace(actor?.BaseActionName) ? "alert" : actor.BaseActionName,
                 MoveAction.Hit => "alert",
                 MoveAction.Die => "dead",
                 _ => hasPortableChair ? "sit" : CharacterPart.GetActionString(CharacterAction.Stand1)
@@ -3432,6 +3521,7 @@ namespace HaCreator.MapSimulator.Pools
             Build = build;
             Position = position;
             FacingRight = facingRight;
+            BaseActionName = actionName;
             ActionName = actionName;
             SourceTag = sourceTag;
             IsVisibleInWorld = isVisibleInWorld;
@@ -3444,6 +3534,7 @@ namespace HaCreator.MapSimulator.Pools
         public CharacterAssembler Assembler { get; private set; }
         public Vector2 Position { get; set; }
         public bool FacingRight { get; set; }
+        public string BaseActionName { get; set; }
         public string ActionName { get; set; }
         public string SourceTag { get; set; }
         public bool IsVisibleInWorld { get; set; }
@@ -3462,6 +3553,8 @@ namespace HaCreator.MapSimulator.Pools
         public int CurrentFootholdId { get; set; }
         public bool MovementDrivenActionSelection { get; set; }
         public bool HasMorphTemplate { get; set; }
+        public bool HiddenLikeClient { get; set; }
+        public CharacterPart TemporaryStatAvatarOverridePart { get; set; }
         public int? CarryItemEffectId { get; set; }
         public int CompletedSetItemId { get; set; }
         public Dictionary<EquipSlot, CharacterPart> BattlefieldOriginalEquipment { get; set; }
@@ -3475,6 +3568,10 @@ namespace HaCreator.MapSimulator.Pools
         public void RefreshAssembler()
         {
             Assembler = new CharacterAssembler(Build);
+            if (Assembler != null)
+            {
+                Assembler.OverrideAvatarPart = TemporaryStatAvatarOverridePart;
+            }
         }
 
         public void ApplyMeleeAfterImage(

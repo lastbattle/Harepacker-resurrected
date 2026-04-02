@@ -1,10 +1,14 @@
 using HaCreator.MapSimulator.UI;
+using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
+using System;
 using System.Collections.Generic;
 
 namespace HaCreator.MapSimulator.Character.Skills
 {
     internal static class PreparedSkillHudRules
     {
+        private const int MonkeyWaveSkillId = 5311002;
         private static readonly HashSet<int> ReleaseTriggeredSkillIds = new()
         {
             2121001,
@@ -14,12 +18,14 @@ namespace HaCreator.MapSimulator.Character.Skills
             22151001,
             4341002,
             4341003,
-            5311002,
+            MonkeyWaveSkillId,
             WildHunterSwallowSkillId
         };
 
         private const int SG88SkillId = 35121003;
         private const int WildHunterSwallowSkillId = 33101005;
+        private const int MonkeyWaveFallbackGaugeDurationMs = 1080;
+        private static int? _monkeyWaveGaugeDurationMs;
 
         public static PreparedSkillHudProfile ResolveProfile(int skillId)
         {
@@ -38,7 +44,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 4341003 => new PreparedSkillHudProfile(true, "KeyDownBar", 1200),
                 // `Skill/531.img/skill/5311002/prepare/time` owns the authored
                 // Monkey Wave charge window, so the runtime should fall back to loaded WZ time.
-                5311002 => new PreparedSkillHudProfile(true, "KeyDownBar", 0),
+                MonkeyWaveSkillId => new PreparedSkillHudProfile(true, "KeyDownBar", 0),
                 5201002 => new PreparedSkillHudProfile(true, "KeyDownBar", 1000),
                 13111002 => new PreparedSkillHudProfile(true, "KeyDownBar", 1000),
                 22121000 => new PreparedSkillHudProfile(true, "KeyDownBar3", 500, PreparedSkillHudSurface.World, showText: false),
@@ -60,7 +66,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             if (skillId == 4341002
                 || skillId == 4341003
-                || skillId == 5311002
+                || skillId == MonkeyWaveSkillId
                 || skillId == 2121001
                 || skillId == 2221001
                 || skillId == 2321001
@@ -74,9 +80,58 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         public static bool UsesReleaseTriggeredExecution(int skillId) => ReleaseTriggeredSkillIds.Contains(skillId);
 
-        public static bool UsesChargeDamageScaling(int skillId) => skillId is 22121000 or 22151001 or 5311002;
+        public static int ResolveGaugeDuration(int skillId, int authoredDurationMs = 0)
+        {
+            if (authoredDurationMs > 0)
+            {
+                return authoredDurationMs;
+            }
+
+            PreparedSkillHudProfile profile = ResolveProfile(skillId);
+            if (profile.GaugeDurationMs > 0)
+            {
+                return profile.GaugeDurationMs;
+            }
+
+            return skillId == MonkeyWaveSkillId
+                ? ResolveMonkeyWaveGaugeDuration()
+                : 0;
+        }
+
+        public static bool UsesChargeDamageScaling(int skillId) => skillId is 22121000 or 22151001 or MonkeyWaveSkillId;
+
+        public static bool ArmsAtFullStrengthOnCriticalHit(int skillId) => skillId == MonkeyWaveSkillId;
 
         public static bool IsDragonOverlaySkill(int skillId) => skillId is 22121000 or 22151001;
+
+        private static int ResolveMonkeyWaveGaugeDuration()
+        {
+            if (_monkeyWaveGaugeDurationMs.HasValue)
+            {
+                return _monkeyWaveGaugeDurationMs.Value;
+            }
+
+            int resolvedDuration = MonkeyWaveFallbackGaugeDurationMs;
+            try
+            {
+                WzImage image = global::HaCreator.Program.FindImage("Skill", "531.img");
+                if (image?["skill"] is WzSubProperty skillRoot
+                    && skillRoot[MonkeyWaveSkillId.ToString()] is WzSubProperty monkeyWave
+                    && monkeyWave["prepare"] is WzSubProperty prepare
+                    && prepare["time"] is WzIntProperty prepareTime
+                    && prepareTime.Value > 0)
+                {
+                    resolvedDuration = prepareTime.Value;
+                }
+            }
+            catch (Exception)
+            {
+                resolvedDuration = MonkeyWaveFallbackGaugeDurationMs;
+            }
+
+            _monkeyWaveGaugeDurationMs = resolvedDuration;
+            return resolvedDuration;
+        }
 
         internal readonly struct PreparedSkillHudProfile
         {

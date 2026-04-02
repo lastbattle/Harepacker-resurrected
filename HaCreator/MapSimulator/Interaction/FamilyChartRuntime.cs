@@ -159,6 +159,7 @@ namespace HaCreator.MapSimulator.Interaction
             int focusIndex = GetFocusIndex(focusOrder, selectedMember?.Id ?? LocalPlayerId);
             Dictionary<int, int> slotMembers = BuildTreeLayout(selectedMember);
             ValidateEmptyTreeSelection(slotMembers);
+            FamilyMemberState treeTitleMember = TryGetTreeMember(slotMembers, 0);
 
             FamilyTreeNodeSnapshot[] nodes = Enumerable.Range(0, 11)
                 .Select(slotIndex => CreateNodeSnapshot(slotIndex, slotMembers))
@@ -169,8 +170,8 @@ namespace HaCreator.MapSimulator.Interaction
                 Nodes = nodes,
                 TotalMembers = _members.Count,
                 FocusName = selectedMember?.Name ?? "Player",
-                TitleText = BuildTreeTitle(selectedMember),
-                JuniorCountText = BuildJuniorCountText(selectedMember),
+                TitleText = BuildTreeTitle(treeTitleMember),
+                JuniorCountText = BuildJuniorCountText(slotMembers),
                 SummaryLines = BuildTreeSummaryLines(selectedMember),
                 CanPageBackward = focusIndex > 0,
                 CanPageForward = focusIndex < focusOrder.Count - 1,
@@ -735,7 +736,9 @@ namespace HaCreator.MapSimulator.Interaction
                 Name = member.Name,
                 Rank = GetRankLabel(member),
                 Detail = $"Lv.{member.Level} {member.JobName}",
-                StatisticText = slotIndex >= GrandchildSlotStart ? GetStatisticValue(member).ToString() : string.Empty,
+                StatisticText = slotIndex >= GrandchildSlotStart
+                    ? _textResources.FormatGrandchildCount(GetStatisticValue(member))
+                    : string.Empty,
                 IsLeader = member.Id == _familyHeadId,
                 IsLocalPlayer = member.Id == LocalPlayerId,
                 IsSelected = member.Id == _selectedMemberId,
@@ -930,29 +933,35 @@ namespace HaCreator.MapSimulator.Interaction
             return member.Children.Count > 0 ? "Senior" : "Junior";
         }
 
-        private string BuildTreeTitle(FamilyMemberState selectedMember)
+        private string BuildTreeTitle(FamilyMemberState titleMember)
         {
-            return selectedMember == null
+            return titleMember == null
                 ? _textResources.NoSelectionTitle
-                : _textResources.FormatTreeTitle(selectedMember.Name);
+                : _textResources.FormatTitle(titleMember.Name);
         }
 
         private string BuildCompactTitle()
         {
             return string.IsNullOrWhiteSpace(_familyName)
                 ? _textResources.NoSelectionTitle
-                : _textResources.FormatCompactTitle(_familyName);
+                : _textResources.FormatTitle(_familyName);
         }
 
-        private string BuildJuniorCountText(FamilyMemberState selectedMember)
+        private string BuildJuniorCountText(Dictionary<int, int> slotMembers)
         {
-            int juniorCount = Math.Max(0, GetStatisticValue(selectedMember));
-            int grandchildCount = selectedMember == null
-                ? 0
-                : GetChildren(selectedMember.Id)
-                    .SelectMany(childId => GetChildren(childId))
-                    .Count();
-            return _textResources.FormatJuniorCount(juniorCount, grandchildCount);
+            FamilyMemberState rootMember = TryGetTreeMember(slotMembers, 0);
+            int juniorCount = Math.Max(0, GetStatisticValue(rootMember));
+            if (slotMembers.ContainsKey(1))
+            {
+                juniorCount--;
+            }
+
+            if (slotMembers.ContainsKey(2))
+            {
+                juniorCount--;
+            }
+
+            return _textResources.FormatJuniorCount(Math.Max(0, juniorCount));
         }
 
         private string GetClientPlaceholderText(int slotIndex)
@@ -960,6 +969,13 @@ namespace HaCreator.MapSimulator.Interaction
             return slotIndex is DirectJuniorSlotLeft or DirectJuniorSlotRight
                 ? _textResources.JuniorEntryPlaceholder
                 : _textResources.EmptyBranchPlaceholder;
+        }
+
+        private FamilyMemberState TryGetTreeMember(Dictionary<int, int> slotMembers, int slotIndex)
+        {
+            return slotMembers.TryGetValue(slotIndex, out int memberId)
+                ? GetMember(memberId)
+                : null;
         }
 
         private void NormalizeRosterState()
@@ -1195,41 +1211,40 @@ namespace HaCreator.MapSimulator.Interaction
     internal sealed class FamilyChartTextResources
     {
         public string NoSelectionTitle { get; init; } = string.Empty;
+        public string SharedTitleFormat { get; init; } = "{0}";
         public string JuniorEntryPlaceholder { get; init; } = string.Empty;
         public string EmptyBranchPlaceholder { get; init; } = string.Empty;
+        public string JuniorCountFormat { get; init; } = string.Empty;
+        public string GrandchildCountFormat { get; init; } = string.Empty;
 
         public static FamilyChartTextResources CreateDefault()
         {
             return new FamilyChartTextResources
             {
-                NoSelectionTitle = "Family Tree",
+                NoSelectionTitle = "Family",
+                SharedTitleFormat = "{0}",
                 JuniorEntryPlaceholder = "Junior Entry",
-                EmptyBranchPlaceholder = "Empty Branch"
+                EmptyBranchPlaceholder = "Empty Branch",
+                JuniorCountFormat = "{0} junior member(s)",
+                GrandchildCountFormat = "{0} grandchild member(s)"
             };
         }
 
-        public string FormatTreeTitle(string memberName)
+        public string FormatTitle(string titleValue)
         {
-            return string.IsNullOrWhiteSpace(memberName)
+            return string.IsNullOrWhiteSpace(titleValue)
                 ? NoSelectionTitle
-                : $"{memberName.Trim()}'s Family Tree";
+                : string.Format(SharedTitleFormat, titleValue.Trim());
         }
 
-        public string FormatCompactTitle(string memberName)
+        public string FormatJuniorCount(int juniorCount)
         {
-            return string.IsNullOrWhiteSpace(memberName)
-                ? NoSelectionTitle
-                : $"{memberName.Trim()} Family";
+            return string.Format(JuniorCountFormat, Math.Max(0, juniorCount));
         }
 
-        public string FormatJuniorCount(int juniorCount, int grandchildCount)
+        public string FormatGrandchildCount(int grandchildCount)
         {
-            if (grandchildCount > 0)
-            {
-                return $"{juniorCount} junior / {grandchildCount} grandchild";
-            }
-
-            return $"{juniorCount} junior member(s)";
+            return string.Format(GrandchildCountFormat, Math.Max(0, grandchildCount));
         }
     }
 

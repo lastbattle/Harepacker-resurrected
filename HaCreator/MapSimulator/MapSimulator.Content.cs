@@ -838,12 +838,13 @@ namespace HaCreator.MapSimulator
 
             }
 
-            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.BookCollection) is BookCollectionWindow bookCollectionWindow
-                && _playerManager?.Player?.Build != null)
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.BookCollection) is BookCollectionWindow bookCollectionWindow)
             {
-                bookCollectionWindow.CharacterBuild = _playerManager.Player.Build;
+                bookCollectionWindow.CharacterBuild = _playerManager?.Player?.Build ?? _loginCharacterRoster.SelectedEntry?.Build;
                 bookCollectionWindow.SetFont(_fontDebugValues);
-                bookCollectionWindow.SetCollectionSnapshotProvider(BuildActiveCollectionBookSnapshot);
+                bookCollectionWindow.SetCollectionSnapshotProvider(null);
+                bookCollectionWindow.SetMonsterBookSnapshotProvider(BuildActiveMonsterBookSnapshot);
+                bookCollectionWindow.SetMonsterBookRegistrationHandler(ApplyActiveMonsterBookRegistration);
                 bookCollectionWindow.CloseRequested = HandleBookCollectionClosed;
 
             }

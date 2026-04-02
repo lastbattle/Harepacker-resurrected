@@ -361,9 +361,10 @@ namespace HaCreator.MapSimulator
             PreparedSkillHudRules.PreparedSkillHudProfile hudProfile = PreparedSkillHudRules.ResolveProfile(skillId);
             string skinKey = null;
             List<string> skillNameParts = null;
-            int gaugeDurationMs = hudProfile.GaugeDurationMs > 0 ? hudProfile.GaugeDurationMs : durationMs;
+            int gaugeDurationMs = 0;
             int holdDurationMs = 0;
             string stateToken = null;
+            bool hasGaugeOverride = false;
 
             for (int index = 4; index < args.Length; index++)
             {
@@ -383,6 +384,7 @@ namespace HaCreator.MapSimulator
                                 return ChatCommandHandler.CommandResult.Error($"Invalid prepared-skill gauge duration: {optionValue}");
                             }
 
+                            hasGaugeOverride = true;
                             break;
 
                         case "hold":
@@ -434,6 +436,9 @@ namespace HaCreator.MapSimulator
             }
 
             skinKey ??= hudProfile.SkinKey;
+            int resolvedGaugeDurationMs = hasGaugeOverride
+                ? Math.Max(0, gaugeDurationMs)
+                : PreparedSkillHudRules.ResolveGaugeDuration(skillId);
             string skillName = skillNameParts != null && skillNameParts.Count > 0
                 ? string.Join(" ", skillNameParts)
                 : null;
@@ -453,7 +458,7 @@ namespace HaCreator.MapSimulator
                 skinKey,
                 isKeydownSkill: true,
                 isHolding: startHolding,
-                gaugeDurationMs: Math.Max(0, gaugeDurationMs),
+                gaugeDurationMs: resolvedGaugeDurationMs,
                 maxHoldDurationMs: maxHoldDurationMs,
                 PreparedSkillHudRules.ResolveTextVariant(skillId),
                 showText: hudProfile.ShowText,
@@ -890,7 +895,7 @@ namespace HaCreator.MapSimulator
                         string.IsNullOrWhiteSpace(preparePacket.SkinKey) ? hudProfile.SkinKey : preparePacket.SkinKey,
                         preparePacket.IsKeydownSkill,
                         preparePacket.IsHolding,
-                        preparePacket.GaugeDurationMs > 0 ? preparePacket.GaugeDurationMs : hudProfile.GaugeDurationMs,
+                        PreparedSkillHudRules.ResolveGaugeDuration(preparePacket.SkillId, preparePacket.GaugeDurationMs),
                         preparePacket.MaxHoldDurationMs,
                         PreparedSkillHudRules.ResolveTextVariant(preparePacket.SkillId),
                         preparePacket.ShowText && hudProfile.ShowText,

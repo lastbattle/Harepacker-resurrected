@@ -162,6 +162,8 @@ namespace HaCreator.MapSimulator.Interaction
     {
         private readonly Dictionary<LocalOverlayBalloonVisualCacheKey, Texture2D> _cachedVisuals = new();
         private Texture2D _cachedBodyTexture;
+        private int _cachedBodyWidth;
+        private int _cachedBodyHeight;
 
         public LocalOverlayBalloonMessage(string text, int requestedWidth, int expiresAt, LocalOverlayBalloonAnchorMode anchorMode, Point worldAnchor)
         {
@@ -218,10 +220,13 @@ namespace HaCreator.MapSimulator.Interaction
 
         public bool HasCachedBodyTexture(int bodyWidth, int bodyHeight)
         {
-            return _cachedBodyTexture != null && !_cachedBodyTexture.IsDisposed;
+            return _cachedBodyTexture != null
+                && !_cachedBodyTexture.IsDisposed
+                && _cachedBodyWidth == bodyWidth
+                && _cachedBodyHeight == bodyHeight;
         }
 
-        public void SetCachedBodyTexture(Texture2D texture)
+        public void SetCachedBodyTexture(Texture2D texture, int bodyWidth, int bodyHeight)
         {
             if (_cachedBodyTexture != null && !_cachedBodyTexture.IsDisposed)
             {
@@ -229,6 +234,8 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _cachedBodyTexture = texture != null && !texture.IsDisposed ? texture : null;
+            _cachedBodyWidth = _cachedBodyTexture == null ? 0 : bodyWidth;
+            _cachedBodyHeight = _cachedBodyTexture == null ? 0 : bodyHeight;
         }
 
         public void DisposeVisual()
@@ -239,6 +246,8 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _cachedBodyTexture = null;
+            _cachedBodyWidth = 0;
+            _cachedBodyHeight = 0;
             foreach ((LocalOverlayBalloonVisualCacheKey _, Texture2D texture) in _cachedVisuals)
             {
                 if (texture != null && !texture.IsDisposed)

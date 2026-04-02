@@ -2367,14 +2367,14 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            if (rawActionCode.HasValue
-                && CharacterPart.TryGetActionStringFromCode(rawActionCode.Value, out string rawActionName)
-                && !string.IsNullOrWhiteSpace(rawActionName))
+            foreach (string candidate in EnumeratePacketOwnedMeleeAttackCandidateVariants(
+                         rawActionCode.HasValue && CharacterPart.TryGetActionStringFromCode(rawActionCode.Value, out string rawActionName)
+                             ? rawActionName
+                             : null))
             {
-                string normalizedRawActionName = rawActionName.Trim();
-                if (yielded.Add(normalizedRawActionName))
+                if (yielded.Add(candidate))
                 {
-                    yield return normalizedRawActionName;
+                    yield return candidate;
                 }
             }
 
@@ -2382,44 +2382,169 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 foreach (string actionName in skill.ActionNames)
                 {
-                    if (string.IsNullOrWhiteSpace(actionName))
+                    foreach (string candidate in EnumeratePacketOwnedMeleeAttackCandidateVariants(actionName))
                     {
-                        continue;
-                    }
-
-                    string normalizedActionName = actionName.Trim();
-                    if (yielded.Add(normalizedActionName))
-                    {
-                        yield return normalizedActionName;
+                        if (yielded.Add(candidate))
+                        {
+                            yield return candidate;
+                        }
                     }
                 }
             }
 
-            if (!string.IsNullOrWhiteSpace(skill?.ActionName))
+            foreach (string candidate in EnumeratePacketOwnedMeleeAttackCandidateVariants(skill?.ActionName))
             {
-                string normalizedSkillActionName = skill.ActionName.Trim();
-                if (yielded.Add(normalizedSkillActionName))
+                if (yielded.Add(candidate))
                 {
-                    yield return normalizedSkillActionName;
+                    yield return candidate;
                 }
             }
 
-            if (!string.IsNullOrWhiteSpace(currentActionName))
+            foreach (string candidate in EnumeratePacketOwnedMeleeAttackCandidateVariants(currentActionName))
             {
-                string normalizedCurrentActionName = currentActionName.Trim();
-                if (yielded.Add(normalizedCurrentActionName))
+                if (yielded.Add(candidate))
                 {
-                    yield return normalizedCurrentActionName;
+                    yield return candidate;
                 }
             }
 
             string resolvedDefaultActionName = ResolveSkillActionName(skill);
-            if (!string.IsNullOrWhiteSpace(resolvedDefaultActionName))
+            foreach (string candidate in EnumeratePacketOwnedMeleeAttackCandidateVariants(resolvedDefaultActionName))
             {
-                string normalizedDefaultActionName = resolvedDefaultActionName.Trim();
-                if (yielded.Add(normalizedDefaultActionName))
+                if (yielded.Add(candidate))
                 {
-                    yield return normalizedDefaultActionName;
+                    yield return candidate;
+                }
+            }
+        }
+
+        private static IEnumerable<string> EnumeratePacketOwnedMeleeAttackCandidateVariants(string actionName)
+        {
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                yield break;
+            }
+
+            string normalizedActionName = actionName.Trim();
+            yield return normalizedActionName;
+
+            foreach (string lookupActionName in CharacterPart.GetActionLookupStrings(normalizedActionName))
+            {
+                if (!string.Equals(lookupActionName, normalizedActionName, StringComparison.OrdinalIgnoreCase))
+                {
+                    yield return lookupActionName;
+                }
+            }
+
+            foreach (string meleeFamilyAlias in EnumeratePacketOwnedMeleeAttackFamilyAliases(normalizedActionName))
+            {
+                yield return meleeFamilyAlias;
+            }
+        }
+
+        internal static IEnumerable<string> EnumeratePacketOwnedMeleeAttackFamilyAliases(string actionName)
+        {
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                yield break;
+            }
+
+            if (string.Equals(actionName, "attack1", StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (string candidate in new[]
+                {
+                    "stabO1", "stabO2", "stabOF",
+                    "stabT1", "stabT2", "stabTF",
+                    "proneStab"
+                })
+                {
+                    yield return candidate;
+                }
+
+                yield break;
+            }
+
+            if (string.Equals(actionName, "attack2", StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (string candidate in new[]
+                {
+                    "swingO1", "swingO2", "swingO3", "swingOF",
+                    "swingT1", "swingT2", "swingT3", "swingTF",
+                    "swingP1", "swingP2", "swingPF"
+                })
+                {
+                    yield return candidate;
+                }
+
+                yield break;
+            }
+
+            if (actionName.StartsWith("stabO", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(actionName, "stabD1", StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (string candidate in new[] { "stabO1", "stabO2", "stabOF", "stabD1" })
+                {
+                    yield return candidate;
+                }
+
+                yield break;
+            }
+
+            if (actionName.StartsWith("stabT", StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (string candidate in new[] { "stabT1", "stabT2", "stabTF" })
+                {
+                    yield return candidate;
+                }
+
+                yield break;
+            }
+
+            if (actionName.StartsWith("swingO", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(actionName, "swingD1", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(actionName, "swingD2", StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (string candidate in new[] { "swingO1", "swingO2", "swingO3", "swingOF", "swingD1", "swingD2" })
+                {
+                    yield return candidate;
+                }
+
+                yield break;
+            }
+
+            if (actionName.StartsWith("swingT", StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (string candidate in new[] { "swingT1", "swingT2", "swingT3", "swingTF", "swingT2PoleArm" })
+                {
+                    yield return candidate;
+                }
+
+                yield break;
+            }
+
+            if (actionName.StartsWith("swingP", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(actionName, "doubleSwing", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(actionName, "tripleSwing", StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (string candidate in new[]
+                {
+                    "swingP1", "swingP2", "swingPF",
+                    "swingP1PoleArm", "swingP2PoleArm",
+                    "doubleSwing", "tripleSwing"
+                })
+                {
+                    yield return candidate;
+                }
+
+                yield break;
+            }
+
+            if (actionName.StartsWith("shoot", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(actionName, "shotC1", StringComparison.OrdinalIgnoreCase))
+            {
+                foreach (string candidate in new[] { "shoot1", "shoot2", "shootF", "shotC1" })
+                {
+                    yield return candidate;
                 }
             }
         }
@@ -3879,7 +4004,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             bool? facingRightOverride = null,
             Vector2? attackOriginOverride = null,
             int shootRange0Override = 0,
-            float? damageScaleOverride = null)
+            float? damageScaleOverride = null,
+            string currentActionNameOverride = null)
         {
             bool facingRight = facingRightOverride ?? _player.FacingRight;
             float? previousDamageScaleOverride = _activeSkillDamageScaleOverride;
@@ -3946,7 +4072,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                     isQueuedFinalAttack: isQueuedFinalAttack,
                     facingRightOverride: facingRight,
                     attackOriginOverride: attackOriginOverride,
-                    shootRange0Override: shootRange0Override);
+                    shootRange0Override: shootRange0Override,
+                    currentActionNameOverride: currentActionNameOverride);
             }
             finally
             {
@@ -3970,7 +4097,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             bool isQueuedSparkAttack = false,
             bool? facingRightOverride = null,
             Vector2? attackOriginOverride = null,
-            int shootRange0Override = 0)
+            int shootRange0Override = 0,
+            string currentActionNameOverride = null)
         {
             bool facingRight = facingRightOverride ?? _player.FacingRight;
             bool forceCriticalForAttack = ConsumePacketOwnedExJablinIfApplicable(skill);
@@ -4018,17 +4146,17 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             if (skill.AttackType == SkillAttackType.Magic)
             {
-                ProcessMagicAttack(skill, level, currentTime, facingRight, queueFollowUps, preferredTargetMobId, preferredTargetPositionOverride, attackOriginOverride);
+                ProcessMagicAttack(skill, level, currentTime, facingRight, queueFollowUps, preferredTargetMobId, preferredTargetPositionOverride, attackOriginOverride, currentActionNameOverride);
                 return;
             }
 
             if (skill.AttackType == SkillAttackType.Ranged)
             {
-                ProcessNoProjectileRangedAttack(skill, level, currentTime, facingRight, queueFollowUps, preferredTargetMobId, preferredTargetPositionOverride, attackOriginOverride, shootRange0Override, forceCriticalForAttack);
+                ProcessNoProjectileRangedAttack(skill, level, currentTime, facingRight, queueFollowUps, preferredTargetMobId, preferredTargetPositionOverride, attackOriginOverride, shootRange0Override, forceCriticalForAttack, currentActionNameOverride);
                 return;
             }
 
-            ProcessMeleeAttack(skill, level, currentTime, facingRight, queueFollowUps, preferredTargetMobId, preferredTargetPositionOverride, attackOriginOverride);
+            ProcessMeleeAttack(skill, level, currentTime, facingRight, queueFollowUps, preferredTargetMobId, preferredTargetPositionOverride, attackOriginOverride, currentActionNameOverride);
         }
 
         private bool TryExecuteClientSkillBranch(SkillData skill, int level, int currentTime)
@@ -4404,6 +4532,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                 PreferredTargetPosition = preferredTargetPosition,
                 FacingRight = facingRight,
                 AttackOrigin = attackOrigin,
+                // `m_movingShootEntry` keeps the queue-time attack action metadata instead of
+                // re-reading a later avatar state once the delayed shot finally executes.
+                ActionName = _player?.CurrentActionName,
                 IsQueuedFinalAttack = isQueuedFinalAttack,
                 IsQueuedSparkAttack = isQueuedSparkAttack,
                 ShootRange0 = shootRange0Override,
@@ -4650,16 +4781,40 @@ namespace HaCreator.MapSimulator.Character.Skills
             return prepared.OwnerInputToken == 0 || ownerInputToken == prepared.OwnerInputToken;
         }
 
-        private void BeginPreparedSkillHold(PreparedSkill prepared, int currentTime)
+        internal static bool TryEnterPreparedSkillHoldState(
+            PreparedSkill prepared,
+            int currentTime,
+            int repeatInterval,
+            bool armAtFullStrength = false)
         {
             if (prepared == null || prepared.IsHolding)
             {
-                return;
+                return false;
+            }
+
+            if (armAtFullStrength)
+            {
+                int armedDurationMs = prepared.Duration > 0
+                    ? prepared.Duration
+                    : prepared.HudGaugeDurationMs;
+                if (armedDurationMs > 0)
+                {
+                    prepared.StartTime = currentTime - armedDurationMs;
+                }
             }
 
             prepared.IsHolding = true;
             prepared.HoldStartTime = currentTime;
-            prepared.LastRepeatTime = currentTime - GetKeydownRepeatInterval(prepared.SkillData);
+            prepared.LastRepeatTime = currentTime - Math.Max(1, repeatInterval);
+            return true;
+        }
+
+        private void ActivatePreparedSkillHoldRuntime(PreparedSkill prepared, int currentTime)
+        {
+            if (prepared == null)
+            {
+                return;
+            }
 
             if (prepared.MaxHoldDurationMs > 0)
             {
@@ -4678,6 +4833,39 @@ namespace HaCreator.MapSimulator.Character.Skills
                 ResolvePreparedAvatarActionName(
                     prepared.SkillData,
                     GetKeydownActionName(prepared.SkillData)));
+        }
+
+        private void BeginPreparedSkillHold(PreparedSkill prepared, int currentTime)
+        {
+            if (!TryEnterPreparedSkillHoldState(
+                    prepared,
+                    currentTime,
+                    GetKeydownRepeatInterval(prepared?.SkillData)))
+            {
+                return;
+            }
+
+            ActivatePreparedSkillHoldRuntime(prepared, currentTime);
+        }
+
+        public void NotifyLocalCriticalHit(int currentTime)
+        {
+            if (_preparedSkill?.IsKeydownSkill != true
+                || !PreparedSkillHudRules.ArmsAtFullStrengthOnCriticalHit(_preparedSkill.SkillId))
+            {
+                return;
+            }
+
+            if (!TryEnterPreparedSkillHoldState(
+                    _preparedSkill,
+                    currentTime,
+                    GetKeydownRepeatInterval(_preparedSkill.SkillData),
+                    armAtFullStrength: true))
+            {
+                return;
+            }
+
+            ActivatePreparedSkillHoldRuntime(_preparedSkill, currentTime);
         }
 
         private static int GetPrepareDuration(SkillData skill, SkillLevelData levelData)
@@ -4721,17 +4909,13 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static int ResolvePreparedSkillHudGaugeDuration(SkillData skill, int prepareDurationMs, int explicitGaugeDurationMs)
         {
-            if (explicitGaugeDurationMs > 0)
-            {
-                return explicitGaugeDurationMs;
-            }
-
-            if (UsesReleaseTriggeredKeydownExecution(skill) && prepareDurationMs > 0)
-            {
-                return prepareDurationMs;
-            }
-
-            return 0;
+            return PreparedSkillHudRules.ResolveGaugeDuration(
+                skill?.SkillId ?? 0,
+                explicitGaugeDurationMs > 0
+                    ? explicitGaugeDurationMs
+                    : UsesReleaseTriggeredKeydownExecution(skill)
+                        ? prepareDurationMs
+                        : 0);
         }
 
         private void ReleasePreparedSkill(int currentTime)
@@ -5885,7 +6069,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                         isQueuedSparkAttack: pending.IsQueuedSparkAttack,
                         facingRightOverride: pending.FacingRight,
                         attackOriginOverride: pending.AttackOrigin,
-                        shootRange0Override: pending.ShootRange0);
+                        shootRange0Override: pending.ShootRange0,
+                        currentActionNameOverride: pending.ActionName);
                 }
                 finally
                 {
@@ -5960,7 +6145,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 pending.AttackOrigin,
                 pending.PreferredTargetPosition.Value,
                 mode,
-                shootRange0Override);
+                shootRange0Override,
+                pending.ActionName);
             if (resolvedTargetMobId.HasValue)
             {
                 return resolvedTargetMobId;
@@ -5977,7 +6163,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                     pending.AttackOrigin,
                     pending.PreferredTargetPosition.Value,
                     AttackResolutionMode.Ranged,
-                    shootRange0Override);
+                    shootRange0Override,
+                    pending.ActionName);
             }
 
             return pending.PreferredTargetMobId;
@@ -5992,9 +6179,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             Vector2? attackOriginOverride,
             Vector2 preferredTargetPosition,
             AttackResolutionMode mode,
-            int shootRange0Override = 0)
+            int shootRange0Override = 0,
+            string currentActionNameOverride = null)
         {
-            Rectangle worldHitbox = GetWorldAttackHitbox(skill, level, levelData, mode, facingRight, attackOriginOverride, shootRange0Override);
+            Rectangle worldHitbox = GetWorldAttackHitbox(skill, level, levelData, mode, facingRight, attackOriginOverride, shootRange0Override, currentActionNameOverride);
             if (worldHitbox.Width <= 0 || worldHitbox.Height <= 0 || _mobPool == null)
             {
                 return null;
@@ -6936,9 +7124,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             bool queueFollowUps = true,
             int? preferredTargetMobId = null,
             Vector2? preferredTargetPosition = null,
-            Vector2? attackOriginOverride = null)
+            Vector2? attackOriginOverride = null,
+            string currentActionNameOverride = null)
         {
-            ProcessDirectionalAttack(skill, level, currentTime, AttackResolutionMode.Melee, facingRight, queueFollowUps, preferredTargetMobId, preferredTargetPosition, attackOriginOverride);
+            ProcessDirectionalAttack(skill, level, currentTime, AttackResolutionMode.Melee, facingRight, queueFollowUps, preferredTargetMobId, preferredTargetPosition, attackOriginOverride, 0, false, currentActionNameOverride);
         }
 
         private void ProcessMagicAttack(
@@ -6949,9 +7138,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             bool queueFollowUps = true,
             int? preferredTargetMobId = null,
             Vector2? preferredTargetPosition = null,
-            Vector2? attackOriginOverride = null)
+            Vector2? attackOriginOverride = null,
+            string currentActionNameOverride = null)
         {
-            ProcessDirectionalAttack(skill, level, currentTime, AttackResolutionMode.Magic, facingRight, queueFollowUps, preferredTargetMobId, preferredTargetPosition, attackOriginOverride);
+            ProcessDirectionalAttack(skill, level, currentTime, AttackResolutionMode.Magic, facingRight, queueFollowUps, preferredTargetMobId, preferredTargetPosition, attackOriginOverride, 0, false, currentActionNameOverride);
         }
 
         private void ProcessRangedAttack(
@@ -6964,9 +7154,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             Vector2? preferredTargetPosition = null,
             Vector2? attackOriginOverride = null,
             int shootRange0Override = 0,
-            bool forceCriticalForAttack = false)
+            bool forceCriticalForAttack = false,
+            string currentActionNameOverride = null)
         {
-            ProcessDirectionalAttack(skill, level, currentTime, AttackResolutionMode.Ranged, facingRight, queueFollowUps, preferredTargetMobId, preferredTargetPosition, attackOriginOverride, shootRange0Override, forceCriticalForAttack);
+            ProcessDirectionalAttack(skill, level, currentTime, AttackResolutionMode.Ranged, facingRight, queueFollowUps, preferredTargetMobId, preferredTargetPosition, attackOriginOverride, shootRange0Override, forceCriticalForAttack, currentActionNameOverride);
         }
 
         private void ProcessNoProjectileRangedAttack(
@@ -6979,11 +7170,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             Vector2? preferredTargetPosition = null,
             Vector2? attackOriginOverride = null,
             int shootRange0Override = 0,
-            bool forceCriticalForAttack = false)
+            bool forceCriticalForAttack = false,
+            string currentActionNameOverride = null)
         {
             if (!ShouldTryMeleeBeforeRangedFallback(skill))
             {
-                ProcessRangedAttack(skill, level, currentTime, facingRight, queueFollowUps, preferredTargetMobId, preferredTargetPosition, attackOriginOverride, shootRange0Override, forceCriticalForAttack);
+                ProcessRangedAttack(skill, level, currentTime, facingRight, queueFollowUps, preferredTargetMobId, preferredTargetPosition, attackOriginOverride, shootRange0Override, forceCriticalForAttack, currentActionNameOverride);
                 return;
             }
 
@@ -6998,7 +7190,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                     preferredTargetPosition,
                     attackOriginOverride,
                     shootRange0Override,
-                    forceCriticalForAttack))
+                    forceCriticalForAttack,
+                    currentActionNameOverride))
             {
                 return;
             }
@@ -7014,7 +7207,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 preferredTargetPosition,
                 attackOriginOverride,
                 shootRange0Override,
-                forceCriticalForAttack);
+                forceCriticalForAttack,
+                currentActionNameOverride);
         }
 
         private void ProcessDirectionalAttack(
@@ -7028,9 +7222,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             Vector2? preferredTargetPosition,
             Vector2? attackOriginOverride,
             int shootRange0Override = 0,
-            bool forceCriticalForAttack = false)
+            bool forceCriticalForAttack = false,
+            string currentActionNameOverride = null)
         {
-            TryProcessDirectionalAttack(skill, level, currentTime, mode, facingRight, queueFollowUps, preferredTargetMobId, preferredTargetPosition, attackOriginOverride, shootRange0Override, forceCriticalForAttack);
+            TryProcessDirectionalAttack(skill, level, currentTime, mode, facingRight, queueFollowUps, preferredTargetMobId, preferredTargetPosition, attackOriginOverride, shootRange0Override, forceCriticalForAttack, currentActionNameOverride);
         }
 
         private bool TryProcessDirectionalAttack(
@@ -7044,7 +7239,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             Vector2? preferredTargetPosition,
             Vector2? attackOriginOverride,
             int shootRange0Override = 0,
-            bool forceCriticalForAttack = false)
+            bool forceCriticalForAttack = false,
+            string currentActionNameOverride = null)
         {
             if (_mobPool == null)
                 return false;
@@ -7054,7 +7250,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
 
             Vector2 attackOrigin = attackOriginOverride ?? new Vector2(_player.X, _player.Y);
-            Rectangle worldHitbox = GetWorldAttackHitbox(skill, level, levelData, mode, facingRight, attackOrigin, shootRange0Override);
+            Rectangle worldHitbox = GetWorldAttackHitbox(skill, level, levelData, mode, facingRight, attackOrigin, shootRange0Override, currentActionNameOverride);
             NotifyAttackAreaResolved(worldHitbox, currentTime, skill.SkillId);
             int maxTargets = Math.Max(1, levelData.MobCount);
             int attackCount = Math.Max(1, levelData.AttackCount);
@@ -7106,13 +7302,13 @@ namespace HaCreator.MapSimulator.Character.Skills
             return true;
         }
 
-        private Rectangle GetWorldAttackHitbox(SkillData skill, int level, SkillLevelData levelData, AttackResolutionMode mode, bool facingRight, Vector2? attackOriginOverride = null, int shootRange0Override = 0)
+        private Rectangle GetWorldAttackHitbox(SkillData skill, int level, SkillLevelData levelData, AttackResolutionMode mode, bool facingRight, Vector2? attackOriginOverride = null, int shootRange0Override = 0, string currentActionNameOverride = null)
         {
             Rectangle hitbox = skill.GetAttackRange(level, facingRight);
             if (hitbox.Width <= 0 || hitbox.Height <= 0)
             {
                 if (mode == AttackResolutionMode.Melee
-                    && TryGetMeleeAfterImageHitbox(skill, facingRight, out Rectangle afterImageHitbox))
+                    && TryGetMeleeAfterImageHitbox(skill, facingRight, out Rectangle afterImageHitbox, currentActionNameOverride))
                 {
                     hitbox = afterImageHitbox;
                 }
@@ -7137,7 +7333,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 Math.Max(1, hitbox.Height));
         }
 
-        private bool TryGetMeleeAfterImageHitbox(SkillData skill, bool facingRight, out Rectangle hitbox)
+        private bool TryGetMeleeAfterImageHitbox(SkillData skill, bool facingRight, out Rectangle hitbox, string currentActionNameOverride = null)
         {
             hitbox = Rectangle.Empty;
 
@@ -7145,7 +7341,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (!_loader.TryResolveMeleeAfterImageAction(
                     skill,
                     weapon,
-                    _player.CurrentActionName,
+                    currentActionNameOverride ?? _player.CurrentActionName,
                     _player.Level,
                     GetMastery(weapon),
                     ResolveActiveAfterImageChargeElement(),
@@ -7799,6 +7995,11 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private void ShowSkillDamageNumber(MobItem mob, int damage, bool isCritical, int currentTime, int hitIndex)
         {
+            if (isCritical)
+            {
+                NotifyLocalCriticalHit(currentTime);
+            }
+
             if (_combatEffects == null)
                 return;
 
@@ -11033,18 +11234,15 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return 0;
             }
 
-            SkillAnimation suspendAnimation = null;
-            string branchName = ResolveSupplementalSummonAnimationBranch(summon.SkillData, "heal", "support");
-            if (!string.IsNullOrWhiteSpace(branchName)
-                && summon.SkillData.SummonNamedAnimations != null
-                && summon.SkillData.SummonNamedAnimations.TryGetValue(branchName, out SkillAnimation namedAnimation))
+            int suspendDuration = SummonRuntimeRules.ResolveSupportSuspendDurationMs(
+                summon.SkillData,
+                preferHealFirst: true);
+            if (suspendDuration <= 0)
             {
-                suspendAnimation = namedAnimation;
+                suspendDuration = GetSkillAnimationDuration(summon.SkillData.SummonAttackAnimation)
+                ?? summon.SkillData.SummonAttackHitDelayMs;
             }
 
-            suspendAnimation ??= summon.SkillData.SummonAttackAnimation;
-            int suspendDuration = GetSkillAnimationDuration(suspendAnimation)
-                ?? summon.SkillData.SummonAttackHitDelayMs;
             if (suspendDuration <= 0)
             {
                 suspendDuration = summon.SkillData.HitEffect?.TotalDuration ?? 0;
@@ -12455,6 +12653,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             bool hasTemporaryStats =
+                levelData.X != 0 ||
                 levelData.PAD != 0 ||
                 levelData.MAD != 0 ||
                 levelData.PDD != 0 ||
@@ -12487,6 +12686,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                 levelData.AllStat != 0 ||
                 levelData.AbnormalStatusResistance != 0 ||
                 levelData.ElementalResistance != 0 ||
+                levelData.ExperienceRate != 0 ||
+                levelData.DropRate != 0 ||
+                levelData.MesoRate != 0 ||
                 levelData.STR != 0 ||
                 levelData.DEX != 0 ||
                 levelData.INT != 0 ||
@@ -12538,9 +12740,11 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             int syntheticBuffId = ResolveExternalAreaSupportBuffId(areaObjectId);
             int normalizedDurationMs = Math.Max(500, durationMs);
+            SkillData syntheticSkillData = BuildExternalAreaSupportBuffSkillData(sourceSkill, supportSkills, syntheticBuffId);
             ActiveBuff existingBuff = _buffs.LastOrDefault(buff => buff.SkillId == syntheticBuffId);
             if (existingBuff != null)
             {
+                bool previouslyHadPersistentAvatarEffect = existingBuff.SkillData?.HasPersistentAvatarEffect == true;
                 if (!ProjectedSupportBuffStatsMatch(existingBuff.LevelData, projectedLevelData))
                 {
                     ApplyBuffStats(existingBuff, false);
@@ -12551,8 +12755,14 @@ namespace HaCreator.MapSimulator.Character.Skills
                 existingBuff.StartTime = currentTime;
                 existingBuff.Duration = normalizedDurationMs;
                 existingBuff.Level = Math.Max(1, projectedLevelData.Level);
-                existingBuff.SkillData = BuildExternalAreaSupportBuffSkillData(sourceSkill, supportSkills, syntheticBuffId);
+                existingBuff.SkillData = syntheticSkillData;
                 _externalAreaSupportBuffIds.Add(syntheticBuffId);
+                if (syntheticSkillData.HasPersistentAvatarEffect
+                    && (!previouslyHadPersistentAvatarEffect || !_player.HasSkillAvatarEffect(syntheticBuffId)))
+                {
+                    _player.ApplySkillAvatarEffect(syntheticBuffId, syntheticSkillData, currentTime);
+                }
+
                 RefreshBuffControlledFlyingAbility();
                 return true;
             }
@@ -12563,12 +12773,17 @@ namespace HaCreator.MapSimulator.Character.Skills
                 Level = Math.Max(1, projectedLevelData.Level),
                 StartTime = currentTime,
                 Duration = normalizedDurationMs,
-                SkillData = BuildExternalAreaSupportBuffSkillData(sourceSkill, supportSkills, syntheticBuffId),
+                SkillData = syntheticSkillData,
                 LevelData = projectedLevelData
             };
 
             _buffs.Add(buff);
             _externalAreaSupportBuffIds.Add(syntheticBuffId);
+            if (syntheticSkillData.HasPersistentAvatarEffect)
+            {
+                _player.ApplySkillAvatarEffect(buff.SkillId, syntheticSkillData, currentTime);
+            }
+
             OnBuffApplied?.Invoke(buff);
             ApplyBuffStats(buff, true);
             RefreshBuffControlledFlyingAbility();
@@ -14130,6 +14345,17 @@ namespace HaCreator.MapSimulator.Character.Skills
             bool reflectsIncomingDamage = sourceSkill?.ReflectsIncomingDamage == true;
             bool hasInvincibleMetadata = sourceSkill?.HasInvincibleMetadata == true;
             string zoneType = sourceSkill?.ZoneType;
+            SkillAnimation avatarOverlayAnimation = null;
+            SkillAnimation avatarOverlaySecondaryAnimation = null;
+            SkillAnimation avatarUnderFaceAnimation = null;
+            SkillAnimation avatarUnderFaceSecondaryAnimation = null;
+
+            AssignExternalAreaSupportAvatarEffectPlanes(
+                sourceSkill,
+                ref avatarOverlayAnimation,
+                ref avatarOverlaySecondaryAnimation,
+                ref avatarUnderFaceAnimation,
+                ref avatarUnderFaceSecondaryAnimation);
 
             if (supportSkills != null)
             {
@@ -14165,6 +14391,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                     {
                         zoneType = supportSkill.ZoneType;
                     }
+
+                    AssignExternalAreaSupportAvatarEffectPlanes(
+                        supportSkill,
+                        ref avatarOverlayAnimation,
+                        ref avatarOverlaySecondaryAnimation,
+                        ref avatarUnderFaceAnimation,
+                        ref avatarUnderFaceSecondaryAnimation);
                 }
             }
 
@@ -14178,8 +14411,38 @@ namespace HaCreator.MapSimulator.Character.Skills
                 ReflectsIncomingDamage = reflectsIncomingDamage,
                 HasInvincibleMetadata = hasInvincibleMetadata,
                 ZoneType = zoneType,
-                AffectedSkillEffect = mergedAffectedSkillEffect
+                AffectedSkillEffect = mergedAffectedSkillEffect,
+                AvatarOverlayEffect = avatarOverlayAnimation,
+                AvatarOverlaySecondaryEffect = avatarOverlaySecondaryAnimation,
+                AvatarUnderFaceEffect = avatarUnderFaceAnimation,
+                AvatarUnderFaceSecondaryEffect = avatarUnderFaceSecondaryAnimation
             };
+        }
+
+        private static void AssignExternalAreaSupportAvatarEffectPlanes(
+            SkillData skill,
+            ref SkillAnimation overlayAnimation,
+            ref SkillAnimation overlaySecondaryAnimation,
+            ref SkillAnimation underFaceAnimation,
+            ref SkillAnimation underFaceSecondaryAnimation)
+        {
+            if (skill == null)
+            {
+                return;
+            }
+
+            AssignAvatarBuffEffectPlane(
+                CreateLoopingAvatarEffect(skill.AffectedEffect),
+                ref overlayAnimation,
+                ref overlaySecondaryAnimation,
+                ref underFaceAnimation,
+                ref underFaceSecondaryAnimation);
+            AssignAvatarBuffEffectPlane(
+                CreateLoopingAvatarEffect(skill.AffectedSecondaryEffect),
+                ref overlayAnimation,
+                ref overlaySecondaryAnimation,
+                ref underFaceAnimation,
+                ref underFaceSecondaryAnimation);
         }
 
         internal int GetActiveDamageReductionPercent(int currentTime)

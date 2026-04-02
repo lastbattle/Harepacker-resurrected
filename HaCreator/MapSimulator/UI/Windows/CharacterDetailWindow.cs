@@ -107,19 +107,33 @@ namespace HaCreator.MapSimulator.UI
         {
             "DotumChe",
             "Dotum",
+            "DodoomChe",
+            "Dodoom",
+            "DODOOMCHE",
+            "DODOOM",
             "DOTOOMCHE",
             "DOTOOM",
             "DODUMCHE",
             "DODUM",
+            "돋움체",
+            "돋움",
             "GulimChe",
             "Gulim",
+            "굴림체",
+            "굴림",
             "BatangChe",
-            "Batang"
+            "Batang",
+            "바탕체",
+            "바탕"
         };
         private static readonly string[] BasicBlackFontFamilyCandidates =
         {
             "DotumChe",
             "Dotum",
+            "DodoomChe",
+            "Dodoom",
+            "DODOOMCHE",
+            "DODOOM",
             "DOTOOM",
             "DOTOOMCHE",
             "DODUM",
@@ -130,6 +144,10 @@ namespace HaCreator.MapSimulator.UI
             "Gulim",
             "굴림체",
             "굴림",
+            "BatangChe",
+            "Batang",
+            "바탕체",
+            "바탕",
             "Tahoma",
             SD.SystemFonts.MessageBoxFont?.FontFamily?.Name,
             SD.FontFamily.GenericSansSerif.Name

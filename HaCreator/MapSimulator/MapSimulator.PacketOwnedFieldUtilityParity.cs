@@ -1,7 +1,9 @@
 using HaCreator.MapSimulator.Fields;
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.UI;
+using HaCreator.MapSimulator.Character;
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Input;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -78,6 +80,7 @@ namespace HaCreator.MapSimulator
                 _packetFieldUtilityWeatherType = WeatherType.None;
                 _packetFieldUtilityWeatherPath = null;
                 _packetFieldUtilityWeatherMessage = null;
+                ResetPacketOwnedAnimationDisplayerTransientLayers();
                 _fieldEffects?.StopWeather();
                 return;
             }
@@ -88,6 +91,7 @@ namespace HaCreator.MapSimulator
             _packetFieldUtilityWeatherType = ResolvePacketOwnedWeatherType(weatherPath);
             _packetFieldUtilityWeatherMessage = string.IsNullOrWhiteSpace(message) ? null : message.Trim();
 
+            ApplyPacketOwnedAnimationDisplayerTransientLayer(itemId, weatherPath);
             ToggleWeather(_packetFieldUtilityWeatherType);
             _fieldEffects?.OnBlowWeather(
                 ConvertToFieldWeatherEffect(_packetFieldUtilityWeatherType),
@@ -216,7 +220,61 @@ namespace HaCreator.MapSimulator
         private void ApplyPacketOwnedQuickslotKeyMap(int[] keyCodes, bool useDefault)
         {
             _packetFieldUtilityQuickslotKeyCodes = useDefault ? null : keyCodes?.ToArray();
+            ApplyPacketOwnedQuickslotBindings(_packetFieldUtilityQuickslotKeyCodes, useDefault);
             uiWindowManager?.QuickSlotWindow?.SetPrimaryBarKeyLabels(BuildPacketOwnedQuickslotLabels(_packetFieldUtilityQuickslotKeyCodes));
+        }
+
+        private void ApplyPacketOwnedQuickslotBindings(IReadOnlyList<int> keyCodes, bool useDefault)
+        {
+            PlayerInput input = _playerManager?.Input;
+            if (input == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < 8; i++)
+            {
+                InputAction action = InputAction.QuickSlot1 + i;
+                if (useDefault || keyCodes == null || keyCodes.Count <= i)
+                {
+                    RestorePacketOwnedQuickslotDefaultBinding(input, action);
+                    continue;
+                }
+
+                Keys primaryKey = ResolvePacketOwnedScanCodeKey(keyCodes[i]);
+                KeyBinding existingBinding = input.GetBinding(action);
+                if (existingBinding != null && existingBinding.PrimaryKey == primaryKey)
+                {
+                    continue;
+                }
+
+                input.SetBinding(
+                    action,
+                    primaryKey,
+                    existingBinding?.SecondaryKey ?? Keys.None,
+                    existingBinding?.GamepadButton ?? (Buttons)0);
+            }
+        }
+
+        private static void RestorePacketOwnedQuickslotDefaultBinding(PlayerInput input, InputAction action)
+        {
+            if (input == null)
+            {
+                return;
+            }
+
+            foreach ((InputAction defaultAction, Keys primary, Keys secondary, Buttons gamepad) in PlayerInput.GetDefaultBindings())
+            {
+                if (defaultAction != action)
+                {
+                    continue;
+                }
+
+                input.SetBinding(action, primary, secondary, gamepad);
+                return;
+            }
+
+            input.SetBinding(action, Keys.None, Keys.None, (Buttons)0);
         }
 
         private static string[] BuildPacketOwnedQuickslotLabels(int[] keyCodes)
@@ -237,47 +295,42 @@ namespace HaCreator.MapSimulator
 
         private static string ResolveQuickslotKeyLabel(int keyCode)
         {
-            return keyCode switch
+            Keys key = ResolvePacketOwnedScanCodeKey(keyCode);
+            return key switch
             {
-                2 => "1",
-                3 => "2",
-                4 => "3",
-                5 => "4",
-                6 => "5",
-                7 => "6",
-                8 => "7",
-                9 => "8",
-                10 => "9",
-                11 => "0",
-                16 => "Q",
-                17 => "W",
-                18 => "E",
-                19 => "R",
-                20 => "T",
-                21 => "Y",
-                22 => "U",
-                23 => "I",
-                24 => "O",
-                25 => "P",
-                26 => "[",
-                27 => "]",
-                29 => "A",
-                30 => "S",
-                31 => "D",
-                32 => "F",
-                33 => "G",
-                34 => "H",
-                35 => "J",
-                36 => "K",
-                37 => "L",
-                38 => ";",
-                39 => "'",
-                40 => "Z",
-                41 => "X",
-                42 => "C",
-                43 => "V",
-                44 => "B",
-                _ => keyCode.ToString(CultureInfo.InvariantCulture)
+                Keys.D0 => "0",
+                Keys.D1 => "1",
+                Keys.D2 => "2",
+                Keys.D3 => "3",
+                Keys.D4 => "4",
+                Keys.D5 => "5",
+                Keys.D6 => "6",
+                Keys.D7 => "7",
+                Keys.D8 => "8",
+                Keys.D9 => "9",
+                Keys.LeftControl or Keys.RightControl => "Ctrl",
+                Keys.LeftShift or Keys.RightShift => "Shift",
+                Keys.LeftAlt or Keys.RightAlt => "Alt",
+                Keys.PageUp => "PgUp",
+                Keys.PageDown => "PgDn",
+                Keys.Escape => "Esc",
+                Keys.Enter => "Enter",
+                Keys.Back => "Bksp",
+                Keys.CapsLock => "Caps",
+                Keys.Space => "Space",
+                Keys.OemOpenBrackets => "[",
+                Keys.OemCloseBrackets => "]",
+                Keys.OemSemicolon => ";",
+                Keys.OemQuotes => "'",
+                Keys.OemComma => ",",
+                Keys.OemPeriod => ".",
+                Keys.OemQuestion => "/",
+                Keys.OemPipe => "\\",
+                Keys.OemMinus => "-",
+                Keys.OemPlus => "=",
+                Keys.OemTilde => "`",
+                Keys.None => keyCode.ToString(CultureInfo.InvariantCulture),
+                _ => key.ToString()
             };
         }
 
@@ -427,6 +480,7 @@ namespace HaCreator.MapSimulator
                 _packetFieldUtilityWeatherMessage = null;
                 _packetFieldUtilityQuizSummary = null;
                 _packetFieldUtilityFootholdRequestSummary = "No packet-owned foothold-info request has been handled.";
+                ApplyPacketOwnedQuickslotBindings(null, useDefault: true);
                 uiWindowManager?.QuickSlotWindow?.SetPrimaryBarKeyLabels(null);
                 _fieldEffects?.StopWeather();
                 return ChatCommandHandler.CommandResult.Ok(_packetFieldUtilityRuntime.DescribeStatus());

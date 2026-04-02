@@ -116,19 +116,24 @@ namespace HaCreator.MapSimulator.Fields
         private const byte MemoryGameTurnUpCardPacketType = 68;
         private static readonly IReadOnlyDictionary<int, MiniRoomGameMessageDefinition> MiniRoomGameMessages = new Dictionary<int, MiniRoomGameMessageDefinition>
         {
-            [0] = new MiniRoomGameMessageDefinition(0x1C8, "{0} requested a tie."),
-            [1] = new MiniRoomGameMessageDefinition(0x1CD, "{0} accepted the tie request."),
-            [2] = new MiniRoomGameMessageDefinition(0x1CA, "{0} declined the tie request."),
-            [3] = new MiniRoomGameMessageDefinition(0x1CB, "{0} is ready."),
-            [4] = new MiniRoomGameMessageDefinition(0x1C5, "{0} left the room."),
-            [5] = new MiniRoomGameMessageDefinition(0x1C6, "{0} entered the room."),
-            [6] = new MiniRoomGameMessageDefinition(0x1C7, "{0} is watching the game."),
-            [7] = new MiniRoomGameMessageDefinition(0x1C4, "{0} was removed from the room."),
-            [8] = new MiniRoomGameMessageDefinition(0x1CF, "{0} won the round."),
-            [9] = new MiniRoomGameMessageDefinition(0x1CE, "{0} lost the round."),
-            [101] = new MiniRoomGameMessageDefinition(0x1D2, "The round ended in a draw."),
-            [102] = new MiniRoomGameMessageDefinition(0x1D0, "The other player left the room."),
-            [103] = new MiniRoomGameMessageDefinition(0x1D1, "The game ended because a player left the room.")
+            [0] = new MiniRoomGameMessageDefinition(0x1C8, "[%s] have been expelled."),
+            [1] = new MiniRoomGameMessageDefinition(0x1CD, "[%s]'s turn."),
+            [2] = new MiniRoomGameMessageDefinition(0x1CA, "[%s] have forfeited."),
+            [3] = new MiniRoomGameMessageDefinition(0x1CB, "[%s] have requested a handicap."),
+            [4] = new MiniRoomGameMessageDefinition(0x1C5, "[%s] have left."),
+            [5] = new MiniRoomGameMessageDefinition(0x1C6, "[%s] have called to leave after this game."),
+            [6] = new MiniRoomGameMessageDefinition(0x1C7, "[%s] have cancelled the request to leave after this game."),
+            [7] = new MiniRoomGameMessageDefinition(0x1C4, "[%s] have entered."),
+            [8] = new MiniRoomGameMessageDefinition(0x1CF, "[%s] can't start the game due to lack of mesos."),
+            [9] = new MiniRoomGameMessageDefinition(0x1CE, "[%s] has matched cards. Please continue."),
+            [101] = new MiniRoomGameMessageDefinition(0x1D2, "10 sec. left."),
+            [102] = new MiniRoomGameMessageDefinition(0x1D0, "The game has started."),
+            [103] = new MiniRoomGameMessageDefinition(0x1D1, "The game has ended.\r\nThe room will automatically close in 10 sec.")
+        };
+        private static readonly IReadOnlyDictionary<int, MiniRoomNoticeMessageDefinition> MiniRoomLeaveNotices = new Dictionary<int, MiniRoomNoticeMessageDefinition>
+        {
+            [0x1CC] = new MiniRoomNoticeMessageDefinition(0x1CC, "You have left the room."),
+            [0x1D3] = new MiniRoomNoticeMessageDefinition(0x1D3, "The room is closed.")
         };
 
 
@@ -229,6 +234,21 @@ namespace HaCreator.MapSimulator.Fields
 
             public string FallbackText { get; }
 
+        }
+
+
+        private readonly struct MiniRoomNoticeMessageDefinition
+        {
+            public MiniRoomNoticeMessageDefinition(int stringPoolId, string text)
+            {
+                StringPoolId = stringPoolId;
+                Text = text ?? string.Empty;
+            }
+
+
+            public int StringPoolId { get; }
+
+            public string Text { get; }
         }
 
 

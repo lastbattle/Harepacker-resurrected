@@ -2300,8 +2300,7 @@ namespace HaCreator.MapSimulator.Interaction
             for (int i = 0; i < displayPages.Count; i++)
             {
                 NpcInteractionPage page = displayPages[i];
-                if (page != null &&
-                    (!string.IsNullOrWhiteSpace(page.Text) || (page.Choices?.Count ?? 0) > 0))
+                if (ShouldDisplayConversationPage(page))
                 {
                     pages.Add(page);
                 }
@@ -2320,6 +2319,12 @@ namespace HaCreator.MapSimulator.Interaction
             return NpcDialogueTextFormatter.FormatPages(
                 sourcePages as IReadOnlyList<NpcInteractionPage> ?? sourcePages.ToList(),
                 formattingContext);
+        }
+
+        internal static bool ShouldDisplayConversationPage(NpcInteractionPage page)
+        {
+            return page != null &&
+                   (!string.IsNullOrWhiteSpace(page.Text) || (page.Choices?.Count ?? 0) > 0);
         }
 
         private IReadOnlyList<NpcInteractionPage> SelectIssueConversationPages(
@@ -6851,57 +6856,13 @@ namespace HaCreator.MapSimulator.Interaction
             QuestActionBundle actions = state == QuestStateType.Not_Started
                 ? definition.StartActions
                 : definition.EndActions;
-            var sections = new List<string>();
-
-            string itemCategoryText = BuildClientPacketQuestResultItemCategorySummary(actions, build);
-            if (!string.IsNullOrWhiteSpace(itemCategoryText))
+            string summaryText = BuildClientPacketQuestResultItemCategorySummary(actions, build);
+            if (actions != null && actions.MesoReward < 0)
             {
-                sections.Add(itemCategoryText);
+                summaryText = QuestClientPacketResultNoticeText.ApplyNegativeMesoWrap(summaryText);
             }
 
-            if (actions != null && actions.MesoReward != 0)
-            {
-                sections.Add($"Meso {actions.MesoReward:+#;-#;0}");
-            }
-
-            if (sections.Count == 0 && actions?.Messages?.Count > 0)
-            {
-                for (int i = 0; i < actions.Messages.Count; i++)
-                {
-                    string message = actions.Messages[i]?.Trim();
-                    if (!IsMeaningfulQuestActionText(message))
-                    {
-                        continue;
-                    }
-
-                    sections.Add(formattingContext == null
-                        ? message
-                        : NpcDialogueTextFormatter.Format(message, formattingContext));
-                    break;
-                }
-            }
-
-            if (sections.Count == 0)
-            {
-                IReadOnlyList<string> actionLines = BuildPacketQuestResultActionLines(definition, build, state, PacketQuestResultTextKind.Auto);
-                if (actionLines.Count > 0)
-                {
-                    sections.Add(string.Join("\n", actionLines));
-                }
-            }
-
-            if (sections.Count == 0)
-            {
-                string primaryText = ResolvePacketQuestResultPrimaryText(definition, state, PacketQuestResultTextKind.Auto);
-                if (!string.IsNullOrWhiteSpace(primaryText))
-                {
-                    sections.Add(formattingContext == null
-                        ? primaryText
-                        : NpcDialogueTextFormatter.Format(primaryText, formattingContext));
-                }
-            }
-
-            return string.Join("\n", sections.Where(section => !string.IsNullOrWhiteSpace(section)));
+            return summaryText;
         }
 
         private static string ResolvePacketQuestResultPrimaryText(
@@ -6941,7 +6902,7 @@ namespace HaCreator.MapSimulator.Interaction
             IEnumerable<NpcInteractionPage> sourcePages = SelectPacketQuestResultConversationPages(definition, state, textKind);
             IReadOnlyList<NpcInteractionPage> formattedPages = GetDisplayConversationPages(sourcePages, formattingContext);
             return formattedPages
-                .Where(page => page != null && !string.IsNullOrWhiteSpace(page.Text))
+                .Where(ShouldDisplayConversationPage)
                 .ToArray();
         }
 
@@ -7086,33 +7047,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal static string DescribeClientPacketQuestResultItemCategories(IEnumerable<int> itemIds)
         {
-            if (itemIds == null)
-            {
-                return string.Empty;
-            }
-
-            var categories = new List<string>();
-            foreach (int itemId in itemIds)
-            {
-                InventoryType? inventoryType = InventoryTypeExtensions.GetByType((byte)(Math.Max(0, itemId) / 1000000));
-                string categoryLabel = inventoryType switch
-                {
-                    InventoryType.EQUIP => "Equip",
-                    InventoryType.USE => "Use",
-                    InventoryType.SETUP => "Setup",
-                    InventoryType.ETC => "Etc",
-                    InventoryType.CASH => "Cash",
-                    _ => null
-                };
-
-                if (!string.IsNullOrWhiteSpace(categoryLabel) &&
-                    !categories.Contains(categoryLabel, StringComparer.Ordinal))
-                {
-                    categories.Add(categoryLabel);
-                }
-            }
-
-            return string.Join(", ", categories);
+            return QuestClientPacketResultNoticeText.DescribeRewardItemCategories(itemIds);
         }
 
         private string BuildClientPacketQuestResultItemCategorySummary(QuestActionBundle actions, CharacterBuild build)
@@ -7146,10 +7081,7 @@ namespace HaCreator.MapSimulator.Interaction
                 itemIds.Add(reward.ItemId);
             }
 
-            string categoryList = DescribeClientPacketQuestResultItemCategories(itemIds);
-            return string.IsNullOrWhiteSpace(categoryList)
-                ? string.Empty
-                : $"Reward items: {categoryList}";
+            return QuestClientPacketResultNoticeText.FormatRewardInventoryNotice(itemIds);
         }
 
         private List<string> RemoveGiveUpItems(QuestActionBundle actions)

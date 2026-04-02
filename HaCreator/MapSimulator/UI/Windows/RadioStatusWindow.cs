@@ -177,7 +177,9 @@ namespace HaCreator.MapSimulator.UI
 
         private void UpdateAnchoredPosition(RenderParameters renderParameters)
         {
-            int frameWidth = _inactiveTexture.Width;
+            // CUIRadio::CreateLayer anchors the widget to Origin_RT, then applies
+            // x = -3 - width - (bLeft ? 40 : 0), y = +3.
+            int frameWidth = ResolveIndicatorTexture(Environment.TickCount)?.Width ?? _inactiveTexture.Width;
             int rightInset = ClientRightInset + ((_clientLeftInsetProvider?.Invoke() == true) ? ClientLeftModeExtraRightInset : 0);
             Position = new Point(
                 Math.Max(0, renderParameters.RenderWidth - frameWidth - rightInset),

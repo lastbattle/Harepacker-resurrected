@@ -44,11 +44,12 @@ namespace HaCreator.MapSimulator.Character
             "icePanic"
         };
 
-        private static readonly IReadOnlyDictionary<string, string[]> GenericMorphAttackAliasMap =
-            new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
-            {
-                ["shotC1"] = new[] { "shoot1", "shoot2", "shootF" }
-            };
+        private static readonly string[] GenericMorphRangedAttackAliases =
+        {
+            "shoot1",
+            "shoot2",
+            "shootF"
+        };
 
         public static IEnumerable<string> EnumerateClientActionAliases(CharacterPart morphPart, string actionName)
         {
@@ -213,12 +214,12 @@ namespace HaCreator.MapSimulator.Character
                 yield break;
             }
 
-            if (!GenericMorphAttackAliasMap.TryGetValue(actionName, out string[] aliases))
+            if (!IsGenericRangedAttackAction(actionName))
             {
                 yield break;
             }
 
-            foreach (string alias in aliases)
+            foreach (string alias in GenericMorphRangedAttackAliases)
             {
                 if (!string.IsNullOrWhiteSpace(alias) && morphPart.Animations.ContainsKey(alias))
                 {
@@ -359,6 +360,20 @@ namespace HaCreator.MapSimulator.Character
                    || actionName.IndexOf("swing", StringComparison.OrdinalIgnoreCase) >= 0
                    || actionName.IndexOf("shoot", StringComparison.OrdinalIgnoreCase) >= 0
                    || actionName.IndexOf("shot", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static bool IsGenericRangedAttackAction(string actionName)
+        {
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            return actionName.IndexOf("shoot", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("shot", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("spear", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("rain", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("break", StringComparison.OrdinalIgnoreCase) >= 0;
         }
     }
 }

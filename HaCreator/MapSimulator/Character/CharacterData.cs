@@ -436,12 +436,15 @@ namespace HaCreator.MapSimulator.Character
         public bool IsTradeBlocked { get; set; }
         public bool IsEquipTradeBlocked { get; set; }
         public bool IsOneOfAKind { get; set; }
+        public bool IsUniqueEquipItem { get; set; }
         public bool IsNotForSale { get; set; }
         public bool IsAccountSharable { get; set; }
         public bool HasAccountShareTag { get; set; }
+        public bool IsNoMoveToLocker { get; set; }
         public bool IsTimeLimited { get; set; }
         public string PotentialTierText { get; set; }
         public List<string> PotentialLines { get; set; } = new();
+        public List<int> ItemOptionIds { get; set; } = new();
         public bool HasGrowthInfo { get; set; }
         public int GrowthLevel { get; set; }
         public int GrowthMaxLevel { get; set; }
@@ -502,12 +505,15 @@ namespace HaCreator.MapSimulator.Character
                 IsTradeBlocked = IsTradeBlocked,
                 IsEquipTradeBlocked = IsEquipTradeBlocked,
                 IsOneOfAKind = IsOneOfAKind,
+                IsUniqueEquipItem = IsUniqueEquipItem,
                 IsNotForSale = IsNotForSale,
                 IsAccountSharable = IsAccountSharable,
                 HasAccountShareTag = HasAccountShareTag,
+                IsNoMoveToLocker = IsNoMoveToLocker,
                 IsTimeLimited = IsTimeLimited,
                 PotentialTierText = PotentialTierText,
                 PotentialLines = PotentialLines != null ? new List<string>(PotentialLines) : new List<string>(),
+                ItemOptionIds = ItemOptionIds != null ? new List<int>(ItemOptionIds) : new List<int>(),
                 HasGrowthInfo = HasGrowthInfo,
                 GrowthLevel = GrowthLevel,
                 GrowthMaxLevel = GrowthMaxLevel,
@@ -830,6 +836,7 @@ namespace HaCreator.MapSimulator.Character
                 IsTimeLimited = IsTimeLimited,
                 PotentialTierText = PotentialTierText,
                 PotentialLines = PotentialLines != null ? new List<string>(PotentialLines) : new List<string>(),
+                ItemOptionIds = ItemOptionIds != null ? new List<int>(ItemOptionIds) : new List<int>(),
                 HasGrowthInfo = HasGrowthInfo,
                 GrowthLevel = GrowthLevel,
                 GrowthMaxLevel = GrowthMaxLevel,
@@ -1642,11 +1649,11 @@ namespace HaCreator.MapSimulator.Character
             int jobBranch = absoluteJobId / 100;
             return jobBranch switch
             {
-                1 or 11 or 21 or 31 => AutoAssignClassWarrior,
-                2 or 12 or 22 or 32 => AutoAssignClassMagician,
+                1 or 11 or 21 or 31 or 51 or 61 => AutoAssignClassWarrior,
+                2 or 12 or 22 or 27 or 32 => AutoAssignClassMagician,
                 3 or 13 or 23 or 33 => AutoAssignClassBowman,
                 4 or 14 or 24 => AutoAssignClassThief,
-                5 or 15 or 35 => AutoAssignClassPirate,
+                5 or 15 or 35 or 65 => AutoAssignClassPirate,
                 // Hero branches use job-root starters before their first advancement.
                 20 when absoluteJobId == 2000 => AutoAssignClassWarrior,
                 20 when absoluteJobId == 2001 => AutoAssignClassMagician,
@@ -1654,6 +1661,10 @@ namespace HaCreator.MapSimulator.Character
                 20 when absoluteJobId == 2003 => AutoAssignClassThief,
                 // Resistance uses a shared Citizen beginner plus the Demon beginner root.
                 30 when absoluteJobId == 3001 => AutoAssignClassWarrior,
+                // Post-Big Bang roots keep their own beginner ids before advancing into later job branches.
+                50 when absoluteJobId == 5000 => AutoAssignClassWarrior,
+                60 when absoluteJobId == 6000 => AutoAssignClassWarrior,
+                60 when absoluteJobId == 6001 => AutoAssignClassPirate,
                 _ => AutoAssignClassBeginner
             };
         }

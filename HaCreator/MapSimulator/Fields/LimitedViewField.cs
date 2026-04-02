@@ -2,6 +2,8 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using System;
 using System.Runtime.CompilerServices;
+using SD = System.Drawing;
+using HaSharedLibrary.Util;
 
 namespace HaCreator.MapSimulator.Fields
 {
@@ -42,6 +44,7 @@ namespace HaCreator.MapSimulator.Fields
         private float _clientOwnedMaskHeight;
         private float _clientOwnedMaskOriginX;
         private float _clientOwnedMaskOriginY;
+        private Vector2 _clientOwnedScreenMaskCenter;
         #endregion
 
         #region Runtime State
@@ -63,6 +66,7 @@ namespace HaCreator.MapSimulator.Fields
         #region Textures
         private Texture2D _gradientCircle;          // Radial gradient for soft edges
         private Texture2D _pixelTexture;            // 1x1 white pixel for drawing
+        private Texture2D _clientOwnedViewrangeTexture;
         private GraphicsDevice _device;
         private int _screenWidth, _screenHeight;
         #endregion
@@ -81,6 +85,7 @@ namespace HaCreator.MapSimulator.Fields
             _device = device;
             _screenWidth = screenWidth;
             _screenHeight = screenHeight;
+            _clientOwnedScreenMaskCenter = new Vector2(screenWidth * 0.5f, screenHeight * 0.5f);
 
             // Create 1x1 white pixel texture
             _pixelTexture = new Texture2D(device, 1, 1);
@@ -242,6 +247,12 @@ namespace HaCreator.MapSimulator.Fields
             EnableCircle(radius);
         }
 
+        public void SetClientOwnedViewrangeTexture(SD.Bitmap bitmap)
+        {
+            _clientOwnedViewrangeTexture?.Dispose();
+            _clientOwnedViewrangeTexture = bitmap.ToTexture2DAndDispose(_device);
+        }
+
         public void ClearClientOwnedMask()
         {
             _clientOwnedMaskWidth = 0f;
@@ -270,6 +281,7 @@ namespace HaCreator.MapSimulator.Fields
 
             if (_clientOwnedImmediateMode)
             {
+                _clientOwnedScreenMaskCenter = GetScreenMaskCenter();
                 _currentRadius = _targetRadius;
                 _currentAlpha = _targetAlpha;
 
@@ -327,6 +339,11 @@ namespace HaCreator.MapSimulator.Fields
             // The fog of war is always centered on the SCREEN (where the player would be)
             // Not on map coordinates - the viewport center IS the player position
             Vector2 maskCenter = GetScreenMaskCenter();
+            if (_clientOwnedUpdateParityMode)
+            {
+                maskCenter = _clientOwnedScreenMaskCenter;
+            }
+
             int screenCenterX = (int)MathF.Round(maskCenter.X);
             int screenCenterY = (int)MathF.Round(maskCenter.Y);
 
@@ -361,6 +378,12 @@ namespace HaCreator.MapSimulator.Fields
 
         private void DrawCircularFog(SpriteBatch spriteBatch, int centerX, int centerY, float radius, Color fogColor)
         {
+            if (_clientOwnedUpdateParityMode && _clientOwnedViewrangeTexture != null)
+            {
+                DrawClientOwnedViewrangeFog(spriteBatch, centerX, centerY, fogColor);
+                return;
+            }
+
             if (_gradientCircle == null)
                 return;
 
@@ -414,6 +437,42 @@ namespace HaCreator.MapSimulator.Fields
                 spriteBatch.Draw(_pixelTexture,
                     new Rectangle(gradientRight, stripTop, _screenWidth - gradientRight, stripBottom - stripTop),
                     fogColor);
+            }
+        }
+
+        private void DrawClientOwnedViewrangeFog(SpriteBatch spriteBatch, int centerX, int centerY, Color fogColor)
+        {
+            int width = _clientOwnedViewrangeTexture.Width;
+            int height = _clientOwnedViewrangeTexture.Height;
+            int left = centerX - (width / 2);
+            int top = centerY - (height / 2);
+            int right = left + width;
+            int bottom = top + height;
+
+            spriteBatch.Draw(_clientOwnedViewrangeTexture, new Vector2(left, top), fogColor);
+
+            if (top > 0)
+            {
+                spriteBatch.Draw(_pixelTexture, new Rectangle(0, 0, _screenWidth, top), fogColor);
+            }
+
+            if (bottom < _screenHeight)
+            {
+                spriteBatch.Draw(_pixelTexture, new Rectangle(0, bottom, _screenWidth, _screenHeight - bottom), fogColor);
+            }
+
+            if (left > 0)
+            {
+                int stripTop = Math.Max(0, top);
+                int stripBottom = Math.Min(_screenHeight, bottom);
+                spriteBatch.Draw(_pixelTexture, new Rectangle(0, stripTop, left, stripBottom - stripTop), fogColor);
+            }
+
+            if (right < _screenWidth)
+            {
+                int stripTop = Math.Max(0, top);
+                int stripBottom = Math.Min(_screenHeight, bottom);
+                spriteBatch.Draw(_pixelTexture, new Rectangle(right, stripTop, _screenWidth - right, stripBottom - stripTop), fogColor);
             }
         }
 
@@ -556,6 +615,7 @@ namespace HaCreator.MapSimulator.Fields
         {
             _gradientCircle?.Dispose();
             _pixelTexture?.Dispose();
+            _clientOwnedViewrangeTexture?.Dispose();
         }
         #endregion
     }

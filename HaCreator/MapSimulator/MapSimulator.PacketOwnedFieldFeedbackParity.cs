@@ -602,6 +602,13 @@ namespace HaCreator.MapSimulator
             return EnumeratePacketOwnedRewardRouletteLayerSourcePaths().ToArray();
         }
 
+        internal static IReadOnlyList<string> GetPacketOwnedScreenEffectCandidatesForTest(string descriptor)
+        {
+            return EnumeratePacketOwnedScreenEffectCandidates(descriptor)
+                .Select(static candidate => $"{candidate.ImageName}:{candidate.PropertyPath}")
+                .ToArray();
+        }
+
         internal static bool ShouldUsePacketOwnedNpcSummonFallback(byte effectId)
         {
             return PacketOwnedNpcSummonFallbackEffectIds.Contains(effectId);

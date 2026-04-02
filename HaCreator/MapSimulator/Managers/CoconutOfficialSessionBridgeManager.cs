@@ -86,6 +86,7 @@ namespace HaCreator.MapSimulator.Managers
         public string RemoteHost { get; private set; } = IPAddress.Loopback.ToString();
         public int RemotePort { get; private set; }
         public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
+        public bool HasAttachedClient => _activePair != null;
         public bool HasConnectedSession => _activePair?.InitCompleted == true;
         public int ReceivedCount { get; private set; }
         public int SentCount { get; private set; }
@@ -168,12 +169,36 @@ namespace HaCreator.MapSimulator.Managers
         {
             lock (_sync)
             {
+                int resolvedListenPort = listenPort <= 0 ? DefaultListenPort : listenPort;
+                string resolvedRemoteHost = NormalizeRemoteHost(remoteHost);
+                if (HasAttachedClient)
+                {
+                    if (MatchesTargetConfiguration(ListenPort, RemoteHost, RemotePort, resolvedListenPort, resolvedRemoteHost, remotePort))
+                    {
+                        status = $"Coconut official-session bridge is already attached to {RemoteHost}:{RemotePort}; keeping the current live Maple session.";
+                        LastStatus = status;
+                        return true;
+                    }
+
+                    status = $"Coconut official-session bridge is already attached to {RemoteHost}:{RemotePort}; stop it before starting a different proxy target.";
+                    LastStatus = status;
+                    return false;
+                }
+
+                if (IsRunning
+                    && MatchesTargetConfiguration(ListenPort, RemoteHost, RemotePort, resolvedListenPort, resolvedRemoteHost, remotePort))
+                {
+                    status = $"Coconut official-session bridge already listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}.";
+                    LastStatus = status;
+                    return true;
+                }
+
                 StopInternal(clearPending: true);
 
                 try
                 {
-                    ListenPort = listenPort <= 0 ? DefaultListenPort : listenPort;
-                    RemoteHost = string.IsNullOrWhiteSpace(remoteHost) ? IPAddress.Loopback.ToString() : remoteHost.Trim();
+                    ListenPort = resolvedListenPort;
+                    RemoteHost = resolvedRemoteHost;
                     RemotePort = remotePort;
                     _listenerCancellation = new CancellationTokenSource();
                     _listener = new TcpListener(IPAddress.Loopback, ListenPort);
@@ -214,6 +239,28 @@ namespace HaCreator.MapSimulator.Managers
             {
                 LastStatus = status;
                 return false;
+            }
+
+            int resolvedListenPort = listenPort <= 0 ? DefaultListenPort : listenPort;
+            if (HasAttachedClient)
+            {
+                if (MatchesDiscoveredTargetConfiguration(ListenPort, RemoteHost, RemotePort, resolvedListenPort, candidate.RemoteEndpoint))
+                {
+                    status = $"Coconut official-session bridge is already attached to {RemoteHost}:{RemotePort}; keeping the current live Maple session.";
+                    LastStatus = status;
+                    return true;
+                }
+
+                status = $"Coconut official-session bridge is already attached to {RemoteHost}:{RemotePort}; stop it before starting a different proxy target.";
+                LastStatus = status;
+                return false;
+            }
+
+            if (MatchesDiscoveredTargetConfiguration(ListenPort, RemoteHost, RemotePort, resolvedListenPort, candidate.RemoteEndpoint) && IsRunning)
+            {
+                status = $"Coconut official-session bridge remains armed for {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}.";
+                LastStatus = status;
+                return true;
             }
 
             if (!TryStart(listenPort, candidate.RemoteEndpoint.Address.ToString(), candidate.RemoteEndpoint.Port, out string startStatus))
@@ -594,6 +641,50 @@ namespace HaCreator.MapSimulator.Managers
             return trimmed.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
                 ? trimmed[..^4]
                 : trimmed;
+        }
+
+        private static string NormalizeRemoteHost(string remoteHost)
+        {
+            return string.IsNullOrWhiteSpace(remoteHost)
+                ? IPAddress.Loopback.ToString()
+                : remoteHost.Trim();
+        }
+
+        private static bool MatchesTargetConfiguration(
+            int currentListenPort,
+            string currentRemoteHost,
+            int currentRemotePort,
+            int requestedListenPort,
+            string requestedRemoteHost,
+            int requestedRemotePort)
+        {
+            return currentListenPort == requestedListenPort
+                && currentRemotePort == requestedRemotePort
+                && string.Equals(
+                    NormalizeRemoteHost(currentRemoteHost),
+                    NormalizeRemoteHost(requestedRemoteHost),
+                    StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool MatchesDiscoveredTargetConfiguration(
+            int currentListenPort,
+            string currentRemoteHost,
+            int currentRemotePort,
+            int requestedListenPort,
+            IPEndPoint discoveredRemoteEndpoint)
+        {
+            if (discoveredRemoteEndpoint == null)
+            {
+                return false;
+            }
+
+            return MatchesTargetConfiguration(
+                currentListenPort,
+                currentRemoteHost,
+                currentRemotePort,
+                requestedListenPort,
+                discoveredRemoteEndpoint.Address.ToString(),
+                discoveredRemoteEndpoint.Port);
         }
 
         private static string DescribeSelector(int? owningProcessId, string owningProcessName)

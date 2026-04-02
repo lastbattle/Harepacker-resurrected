@@ -55,6 +55,7 @@ namespace HaCreator.MapSimulator.Companions
         public bool IsNotForSale { get; init; }
         public bool IsAccountSharable { get; init; }
         public bool HasAccountShareTag { get; init; }
+        public bool IsNoMoveToLocker { get; init; }
         public bool AutoPickupMeso { get; init; }
         public bool AutoPickupItems { get; init; }
         public bool AutoPickupOthers { get; init; }
@@ -144,9 +145,11 @@ namespace HaCreator.MapSimulator.Companions
                 IsTradeBlocked = item.IsTradeBlocked,
                 IsEquipTradeBlocked = item.IsEquipTradeBlocked,
                 IsOneOfAKind = item.IsUniqueItem,
+                IsUniqueEquipItem = item.IsUniqueEquipItem,
                 IsNotForSale = item.IsNotForSale,
                 IsAccountSharable = item.IsAccountSharable,
                 HasAccountShareTag = item.HasAccountShareTag,
+                IsNoMoveToLocker = item.IsNoMoveToLocker,
                 IsTimeLimited = item.IsTimeLimited,
                 Durability = item.Durability,
                 MaxDurability = item.MaxDurability,
@@ -654,8 +657,14 @@ namespace HaCreator.MapSimulator.Companions
                 ItemTexture = part.IconRaw?.Texture ?? part.Icon?.Texture,
                 Icon = part.Icon,
                 IconRaw = part.IconRaw,
+                IsTradeBlocked = part.IsTradeBlocked,
+                IsEquipTradeBlocked = part.IsEquipTradeBlocked,
+                IsUniqueItem = part.IsOneOfAKind,
+                IsUniqueEquipItem = part.IsUniqueEquipItem,
+                IsNotForSale = part.IsNotForSale,
                 IsAccountSharable = part.IsAccountSharable,
                 HasAccountShareTag = part.HasAccountShareTag,
+                IsNoMoveToLocker = part.IsNoMoveToLocker,
                 CharacterPart = part
             };
         }
@@ -1598,6 +1607,7 @@ namespace HaCreator.MapSimulator.Companions
                 IsNotForSale = GetIntValue(image?["info"]?["notSale"]) == 1,
                 IsAccountSharable = GetIntValue(image?["info"]?["accountSharable"]) == 1,
                 HasAccountShareTag = GetIntValue(image?["info"]?["accountShareTag"]) == 1,
+                IsNoMoveToLocker = GetIntValue(image?["info"]?["noMoveToLocker"]) == 1,
                 RequiredLevel = GetIntValue(image?["info"]?["reqLevel"]) ?? 0,
                 RequiredJobMask = GetIntValue(image?["info"]?["reqJob"]) ?? 0,
                 RequiredFame = GetIntValue(image?["info"]?["reqPOP"]) ?? 0,
@@ -1666,6 +1676,7 @@ namespace HaCreator.MapSimulator.Companions
                 IsNotForSale = GetIntValue(image?["info"]?["notSale"]) == 1,
                 IsAccountSharable = GetIntValue(image?["info"]?["accountSharable"]) == 1,
                 HasAccountShareTag = GetIntValue(image?["info"]?["accountShareTag"]) == 1,
+                IsNoMoveToLocker = GetIntValue(image?["info"]?["noMoveToLocker"]) == 1,
                 AutoPickupMeso = GetIntValue(image?["info"]?["pickupMeso"]) == 1,
                 AutoPickupItems = GetIntValue(image?["info"]?["pickupItem"]) == 1,
                 AutoPickupOthers = GetIntValue(image?["info"]?["pickupOthers"]) == 1,
@@ -1737,6 +1748,7 @@ namespace HaCreator.MapSimulator.Companions
                 IsNotForSale = GetIntValue(image?["info"]?["notSale"]) == 1,
                 IsAccountSharable = GetIntValue(image?["info"]?["accountSharable"]) == 1,
                 HasAccountShareTag = GetIntValue(image?["info"]?["accountShareTag"]) == 1,
+                IsNoMoveToLocker = GetIntValue(image?["info"]?["noMoveToLocker"]) == 1,
                 RequiredLevel = GetIntValue(image?["info"]?["reqLevel"]) ?? 0,
                 RequiredJobMask = GetIntValue(image?["info"]?["reqJob"]) ?? 0,
                 RequiredFame = GetIntValue(image?["info"]?["reqPOP"]) ?? 0,

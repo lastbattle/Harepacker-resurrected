@@ -31,7 +31,9 @@ namespace HaCreator.MapSimulator.Loaders
         {
             Texture2D transparentTexture = new(device, 1, 1);
             transparentTexture.SetData(new[] { Color.Transparent });
-            return new QuestTimerRuntimeWindow(new DXObject(0, 0, transparentTexture, 0), windowName, drawActionLayer);
+            return drawActionLayer
+                ? new QuestTimerActionWindow(new DXObject(0, 0, transparentTexture, 0))
+                : new QuestTimerWindow(new DXObject(0, 0, transparentTexture, 0));
         }
     }
 }

@@ -72,6 +72,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             "alert2",
             "alert3",
             "proneStab",
+            "shot",
             "ladder",
             "rope",
             "ladder2",

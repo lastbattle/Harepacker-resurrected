@@ -16,8 +16,31 @@ namespace HaCreator.MapSimulator
         private const string AnimationDisplayerFireCrackerEffectUol = "Effect/OnUserEff.img/itemEffect/firework/5680024";
         private const string AnimationDisplayerGenericUserStateEffectUol = "Effect/OnUserEff.img/character";
         private const int AnimationDisplayerUserStateOffsetY = -70;
+        private const int AnimationDisplayerTransientLayerWidth = 800;
+        private const int AnimationDisplayerTransientLayerHeight = 600;
+        private const int AnimationDisplayerTransientLayerDurationMs = 30000;
+        private const int AnimationDisplayerNewYearUpdateIntervalMs = 2000;
+        private const int AnimationDisplayerNewYearUpdateCount = 3;
+        private const int AnimationDisplayerNewYearUpdateNextMs = 100;
+        private const int AnimationDisplayerFireCrackerUpdateNextMs = 200;
+        private static readonly (int UpdateIntervalMs, int UpdateCount)[] AnimationDisplayerFireCrackerBurstSchedule =
+        {
+            (200, 1),
+            (1000, 5),
+            (500, 3),
+            (300, 2),
+            (200, 1)
+        };
 
         private readonly Dictionary<string, List<IDXObject>> _animationDisplayerEffectCache = new(StringComparer.OrdinalIgnoreCase);
+        private readonly List<int> _packetOwnedAnimationDisplayerAreaAnimationIds = new();
+
+        internal enum AnimationDisplayerTransientEffectKind
+        {
+            None = 0,
+            NewYear = 1,
+            FireCracker = 2
+        }
 
         private void RegisterAnimationDisplayerChatCommand()
         {
@@ -100,6 +123,7 @@ namespace HaCreator.MapSimulator
         {
             _animationEffects.ClearUserStates();
             _animationEffects.ClearAreaAnimations();
+            _packetOwnedAnimationDisplayerAreaAnimationIds.Clear();
             ResetAnimationDisplayerLocalFadeLayer();
         }
 
@@ -110,14 +134,7 @@ namespace HaCreator.MapSimulator
 
         private bool TryRegisterAnimationDisplayerNewYearAnimation(Rectangle area, out string message)
         {
-            bool registered = TryRegisterAnimationDisplayerAreaAnimation(
-                cacheKey: "newyear",
-                effectUol: AnimationDisplayerNewYearEffectUol,
-                area,
-                updateIntervalMs: 900,
-                updateCount: 6,
-                updateNextMs: 0,
-                durationMs: 5400);
+            bool registered = TryRegisterAnimationDisplayerNewYearAnimation(area);
             message = registered
                 ? $"Registered New Year animation-displayer area effect in ({area.X}, {area.Y}, {area.Width}, {area.Height})."
                 : $"Could not resolve {AnimationDisplayerNewYearEffectUol}.";
@@ -126,21 +143,45 @@ namespace HaCreator.MapSimulator
 
         private bool TryRegisterAnimationDisplayerFireCrackerAnimation(Rectangle area, out string message)
         {
-            bool registered = TryRegisterAnimationDisplayerAreaAnimation(
-                cacheKey: "firecracker",
-                effectUol: AnimationDisplayerFireCrackerEffectUol,
-                area,
-                updateIntervalMs: 180,
-                updateCount: 10,
-                updateNextMs: 0,
-                durationMs: 1800);
+            bool registered = TryRegisterAnimationDisplayerFireCrackerAnimation(area);
             message = registered
                 ? $"Registered firecracker animation-displayer area effect in ({area.X}, {area.Y}, {area.Width}, {area.Height})."
                 : $"Could not resolve {AnimationDisplayerFireCrackerEffectUol}.";
             return registered;
         }
 
-        private bool TryRegisterAnimationDisplayerAreaAnimation(
+        private bool TryRegisterAnimationDisplayerNewYearAnimation(Rectangle area)
+        {
+            return TryRegisterAnimationDisplayerAreaAnimation(
+                cacheKey: "newyear",
+                effectUol: AnimationDisplayerNewYearEffectUol,
+                area,
+                updateIntervalMs: AnimationDisplayerNewYearUpdateIntervalMs,
+                updateCount: AnimationDisplayerNewYearUpdateCount,
+                updateNextMs: AnimationDisplayerNewYearUpdateNextMs,
+                durationMs: AnimationDisplayerTransientLayerDurationMs) >= 0;
+        }
+
+        private bool TryRegisterAnimationDisplayerFireCrackerAnimation(Rectangle area)
+        {
+            bool anyRegistered = false;
+            for (int i = 0; i < AnimationDisplayerFireCrackerBurstSchedule.Length; i++)
+            {
+                (int updateIntervalMs, int updateCount) = AnimationDisplayerFireCrackerBurstSchedule[i];
+                anyRegistered |= TryRegisterAnimationDisplayerAreaAnimation(
+                    cacheKey: $"firecracker:{i}",
+                    effectUol: AnimationDisplayerFireCrackerEffectUol,
+                    area,
+                    updateIntervalMs,
+                    updateCount,
+                    AnimationDisplayerFireCrackerUpdateNextMs,
+                    AnimationDisplayerTransientLayerDurationMs) >= 0;
+            }
+
+            return anyRegistered;
+        }
+
+        private int TryRegisterAnimationDisplayerAreaAnimation(
             string cacheKey,
             string effectUol,
             Rectangle area,
@@ -151,17 +192,17 @@ namespace HaCreator.MapSimulator
         {
             if (!TryGetAnimationDisplayerFrames(cacheKey, effectUol, out List<IDXObject> frames))
             {
-                return false;
+                return -1;
             }
 
             return _animationEffects.RegisterAreaAnimation(
-                       frames,
-                       area,
-                       updateIntervalMs,
-                       updateCount,
-                       updateNextMs,
-                       durationMs,
-                       currTickCount) >= 0;
+                frames,
+                area,
+                updateIntervalMs,
+                updateCount,
+                updateNextMs,
+                durationMs,
+                currTickCount);
         }
 
         private bool TryRegisterAnimationDisplayerUserState(int ownerCharacterId, Func<Vector2> getPosition)
@@ -265,12 +306,105 @@ namespace HaCreator.MapSimulator
                 return new Rectangle(x, y, Math.Max(1, width), Math.Max(1, height));
             }
 
-            Vector2 playerPosition = _playerManager?.Player?.Position ?? Vector2.Zero;
+            return ResolveAnimationDisplayerTransientLayerArea(_playerManager?.Player?.Position ?? Vector2.Zero);
+        }
+
+        private void ApplyPacketOwnedAnimationDisplayerTransientLayer(int itemId, string weatherPath)
+        {
+            ResetPacketOwnedAnimationDisplayerTransientLayers();
+
+            Rectangle area = ResolveAnimationDisplayerTransientLayerArea(_playerManager?.Player?.Position ?? Vector2.Zero);
+            switch (ResolveAnimationDisplayerTransientEffectKind(itemId, weatherPath))
+            {
+                case AnimationDisplayerTransientEffectKind.NewYear:
+                    int newYearId = TryRegisterAnimationDisplayerAreaAnimation(
+                        cacheKey: "newyear",
+                        effectUol: AnimationDisplayerNewYearEffectUol,
+                        area,
+                        AnimationDisplayerNewYearUpdateIntervalMs,
+                        AnimationDisplayerNewYearUpdateCount,
+                        AnimationDisplayerNewYearUpdateNextMs,
+                        AnimationDisplayerTransientLayerDurationMs);
+                    if (newYearId >= 0)
+                    {
+                        _packetOwnedAnimationDisplayerAreaAnimationIds.Add(newYearId);
+                    }
+                    break;
+
+                case AnimationDisplayerTransientEffectKind.FireCracker:
+                    for (int i = 0; i < AnimationDisplayerFireCrackerBurstSchedule.Length; i++)
+                    {
+                        (int updateIntervalMs, int updateCount) = AnimationDisplayerFireCrackerBurstSchedule[i];
+                        int areaAnimationId = TryRegisterAnimationDisplayerAreaAnimation(
+                            cacheKey: $"firecracker:{i}",
+                            effectUol: AnimationDisplayerFireCrackerEffectUol,
+                            area,
+                            updateIntervalMs,
+                            updateCount,
+                            AnimationDisplayerFireCrackerUpdateNextMs,
+                            AnimationDisplayerTransientLayerDurationMs);
+                        if (areaAnimationId >= 0)
+                        {
+                            _packetOwnedAnimationDisplayerAreaAnimationIds.Add(areaAnimationId);
+                        }
+                    }
+                    break;
+            }
+        }
+
+        private void ResetPacketOwnedAnimationDisplayerTransientLayers()
+        {
+            for (int i = 0; i < _packetOwnedAnimationDisplayerAreaAnimationIds.Count; i++)
+            {
+                _animationEffects.RemoveAreaAnimation(_packetOwnedAnimationDisplayerAreaAnimationIds[i]);
+            }
+
+            _packetOwnedAnimationDisplayerAreaAnimationIds.Clear();
+        }
+
+        internal static Rectangle ResolveAnimationDisplayerTransientLayerArea(Vector2 centerPosition)
+        {
+            int width = AnimationDisplayerTransientLayerWidth;
+            int height = AnimationDisplayerTransientLayerHeight;
             return new Rectangle(
-                (int)Math.Round(playerPosition.X) - 120,
-                (int)Math.Round(playerPosition.Y) - 180,
-                240,
-                180);
+                (int)Math.Round(centerPosition.X) - width / 2,
+                (int)Math.Round(centerPosition.Y) - height / 2,
+                width,
+                height);
+        }
+
+        internal static AnimationDisplayerTransientEffectKind ResolveAnimationDisplayerTransientEffectKind(int itemId, string weatherPath)
+        {
+            if (itemId == 4300000)
+            {
+                return AnimationDisplayerTransientEffectKind.NewYear;
+            }
+
+            if (itemId == 5680024)
+            {
+                return AnimationDisplayerTransientEffectKind.FireCracker;
+            }
+
+            string normalizedPath = weatherPath?.Replace('\\', '/').Trim();
+            if (string.Equals(normalizedPath, AnimationDisplayerNewYearEffectUol, StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedPath, "Map/MapHelper.img/weather/newyear", StringComparison.OrdinalIgnoreCase))
+            {
+                return AnimationDisplayerTransientEffectKind.NewYear;
+            }
+
+            if (string.Equals(normalizedPath, AnimationDisplayerFireCrackerEffectUol, StringComparison.OrdinalIgnoreCase)
+                || normalizedPath?.Contains("/firecracker", StringComparison.OrdinalIgnoreCase) == true
+                || normalizedPath?.Contains("/firework", StringComparison.OrdinalIgnoreCase) == true)
+            {
+                return AnimationDisplayerTransientEffectKind.FireCracker;
+            }
+
+            return AnimationDisplayerTransientEffectKind.None;
+        }
+
+        internal static IReadOnlyList<(int UpdateIntervalMs, int UpdateCount)> GetAnimationDisplayerFireCrackerBurstSchedule()
+        {
+            return AnimationDisplayerFireCrackerBurstSchedule;
         }
 
         private bool TryResolveAnimationDisplayerOwner(

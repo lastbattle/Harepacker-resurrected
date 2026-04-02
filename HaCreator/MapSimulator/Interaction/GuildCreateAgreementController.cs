@@ -16,12 +16,13 @@ namespace HaCreator.MapSimulator.Interaction
         internal string Open(
             string masterName,
             string guildName,
+            GuildDialogContext dialogContext,
             UIWindowManager windowManager,
             SpriteFont font,
             Action<string> feedbackHandler,
             Action showWindow)
         {
-            string message = _runtime.Open(masterName, guildName);
+            string message = _runtime.Open(masterName, guildName, dialogContext);
             WireWindow(windowManager, font, feedbackHandler);
             showWindow?.Invoke();
             return message;
@@ -48,7 +49,12 @@ namespace HaCreator.MapSimulator.Interaction
                         windowManager.HideWindow(MapSimulatorWindowNames.GuildCreateAgreement);
                     }
                 },
-                () => feedbackHandler?.Invoke(Close(windowManager, _runtime.Accept)),
+                () =>
+                {
+                    string message = _runtime.Accept(out _);
+                    feedbackHandler?.Invoke(message);
+                    windowManager?.HideWindow(MapSimulatorWindowNames.GuildCreateAgreement);
+                },
                 () => feedbackHandler?.Invoke(Close(windowManager, _runtime.Decline)));
             window.SetFont(font);
         }

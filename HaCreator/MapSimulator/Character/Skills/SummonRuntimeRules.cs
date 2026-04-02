@@ -6,6 +6,11 @@ namespace HaCreator.MapSimulator.Character.Skills
     internal static class SummonRuntimeRules
     {
         private const int Sg88SkillId = 35121003;
+        private const int BeholderPddBranchIndex = 0;
+        private const int BeholderMddBranchIndex = 1;
+        private const int BeholderAccBranchIndex = 2;
+        private const int BeholderEvaBranchIndex = 3;
+        private const int BeholderPadBranchIndex = 4;
         private const byte PacketSkillActionBeholderHeal = 7;
         private const byte PacketSkillActionBeholderBuffBase = 8;
         private const byte PacketSkillActionBeholderBuffMax = 12;
@@ -232,6 +237,139 @@ namespace HaCreator.MapSimulator.Character.Skills
                 : ResolveNamedSummonBranch(skill, "support", "heal", "stand");
         }
 
+        internal static int ResolveSupportSuspendDurationMs(
+            SkillData skill,
+            bool preferHealFirst = true,
+            string explicitBranchName = null)
+        {
+            if (skill?.SummonNamedAnimations == null || skill.SummonNamedAnimations.Count == 0)
+            {
+                return 0;
+            }
+
+            string branchName = explicitBranchName;
+            if (string.IsNullOrWhiteSpace(branchName))
+            {
+                branchName = ResolveSupportOwnedBranch(skill, preferHealFirst);
+            }
+
+            if (string.IsNullOrWhiteSpace(branchName)
+                || !skill.SummonNamedAnimations.TryGetValue(branchName, out SkillAnimation suspendAnimation))
+            {
+                return 0;
+            }
+
+            return GetAnimationDuration(suspendAnimation);
+        }
+
+        internal static int? ResolveBeholderBuffBranchIndex(
+            SkillData skill,
+            SkillLevelData buffLevelData,
+            int currentPad,
+            int currentPdd,
+            int currentMdd,
+            int currentAcc,
+            int currentEva,
+            int randomValue)
+        {
+            if (skill?.SummonNamedAnimations == null || buffLevelData == null)
+            {
+                return null;
+            }
+
+            int totalWeight = 0;
+            for (int branchIndex = BeholderPddBranchIndex; branchIndex <= BeholderPadBranchIndex; branchIndex++)
+            {
+                if (HasBeholderBuffBranch(skill, buffLevelData, branchIndex))
+                {
+                    totalWeight += branchIndex + 1;
+                }
+            }
+
+            if (totalWeight <= 0)
+            {
+                return null;
+            }
+
+            int weightedRoll = (Math.Abs(randomValue) % totalWeight) + 1;
+            int cumulativeWeight = 0;
+            int thresholdBranchIndex = BeholderPddBranchIndex;
+            for (int branchIndex = BeholderPddBranchIndex; branchIndex <= BeholderPadBranchIndex; branchIndex++)
+            {
+                if (!HasBeholderBuffBranch(skill, buffLevelData, branchIndex))
+                {
+                    continue;
+                }
+
+                cumulativeWeight += branchIndex + 1;
+                if (weightedRoll <= cumulativeWeight)
+                {
+                    thresholdBranchIndex = branchIndex;
+                    break;
+                }
+            }
+
+            if (thresholdBranchIndex >= BeholderPadBranchIndex
+                && HasBeholderBuffBranch(skill, buffLevelData, BeholderPadBranchIndex)
+                && currentPad < buffLevelData.PAD)
+            {
+                return BeholderPadBranchIndex;
+            }
+
+            if (thresholdBranchIndex >= BeholderEvaBranchIndex
+                && HasBeholderBuffBranch(skill, buffLevelData, BeholderEvaBranchIndex)
+                && currentEva < buffLevelData.EVA)
+            {
+                return BeholderEvaBranchIndex;
+            }
+
+            if (thresholdBranchIndex >= BeholderAccBranchIndex
+                && HasBeholderBuffBranch(skill, buffLevelData, BeholderAccBranchIndex)
+                && currentAcc < buffLevelData.ACC)
+            {
+                return BeholderAccBranchIndex;
+            }
+
+            if (thresholdBranchIndex >= BeholderMddBranchIndex
+                && HasBeholderBuffBranch(skill, buffLevelData, BeholderMddBranchIndex)
+                && currentMdd < buffLevelData.MDD)
+            {
+                return BeholderMddBranchIndex;
+            }
+
+            if (HasBeholderBuffBranch(skill, buffLevelData, BeholderPddBranchIndex)
+                && currentPdd < buffLevelData.PDD)
+            {
+                return BeholderPddBranchIndex;
+            }
+
+            return null;
+        }
+
+        internal static string ResolveBeholderBuffBranchName(
+            SkillData skill,
+            SkillLevelData buffLevelData,
+            int currentPad,
+            int currentPdd,
+            int currentMdd,
+            int currentAcc,
+            int currentEva,
+            int randomValue)
+        {
+            int? branchIndex = ResolveBeholderBuffBranchIndex(
+                skill,
+                buffLevelData,
+                currentPad,
+                currentPdd,
+                currentMdd,
+                currentAcc,
+                currentEva,
+                randomValue);
+            return branchIndex.HasValue
+                ? GetBeholderBranchName(branchIndex.Value)
+                : null;
+        }
+
         public static bool IsSatelliteSummonSkill(int skillId)
         {
             return skillId == 35111001
@@ -263,6 +401,45 @@ namespace HaCreator.MapSimulator.Character.Skills
                 && !string.IsNullOrWhiteSpace(branchName)
                 && skill.SummonNamedAnimations.TryGetValue(branchName, out SkillAnimation branchAnimation)
                 && branchAnimation?.Frames.Count > 0;
+        }
+
+        private static bool HasBeholderBuffBranch(SkillData skill, SkillLevelData buffLevelData, int branchIndex)
+        {
+            string branchName = GetBeholderBranchName(branchIndex);
+            return branchName != null
+                   && GetBeholderBranchValue(buffLevelData, branchIndex) > 0
+                   && UsesNamedSummonAnimationBranch(skill, branchName);
+        }
+
+        private static string GetBeholderBranchName(int branchIndex)
+        {
+            return branchIndex switch
+            {
+                BeholderPddBranchIndex => "skill2",
+                BeholderMddBranchIndex => "skill3",
+                BeholderAccBranchIndex => "skill4",
+                BeholderEvaBranchIndex => "skill5",
+                BeholderPadBranchIndex => "skill6",
+                _ => null
+            };
+        }
+
+        private static int GetBeholderBranchValue(SkillLevelData buffLevelData, int branchIndex)
+        {
+            if (buffLevelData == null)
+            {
+                return 0;
+            }
+
+            return branchIndex switch
+            {
+                BeholderPddBranchIndex => buffLevelData.PDD,
+                BeholderMddBranchIndex => buffLevelData.MDD,
+                BeholderAccBranchIndex => buffLevelData.ACC,
+                BeholderEvaBranchIndex => buffLevelData.EVA,
+                BeholderPadBranchIndex => buffLevelData.PAD,
+                _ => 0
+            };
         }
 
         private static int GetAnimationDuration(SkillAnimation animation)

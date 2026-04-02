@@ -2,6 +2,7 @@ using MapleLib.WzLib.WzStructure.Data;
 using MapleLib.WzLib.WzStructure;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Input;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -221,6 +222,17 @@ namespace HaCreator.MapSimulator.Fields
         public bool TryScrollMatchTableDialog(int delta, out string message)
         {
             return _matchTableDialog.TryScroll(delta, out message);
+        }
+
+        public bool HandleMatchTableDialogMouse(
+            Point mousePosition,
+            int viewportWidth,
+            int viewportHeight,
+            int scrollWheelDelta,
+            bool leftClickReleased,
+            out string message)
+        {
+            return _matchTableDialog.HandleMouse(mousePosition, viewportWidth, viewportHeight, scrollWheelDelta, leftClickReleased, out message);
         }
 
         public void CloseMatchTableDialog()
@@ -582,6 +594,59 @@ namespace HaCreator.MapSimulator.Fields
             return $"Tournament match-table dialog: open | payload={PayloadLength} bytes | stage={Stage} | scroll={Scroll} | entrants={names}";
         }
 
+        public bool HandleMouse(
+            Point mousePosition,
+            int viewportWidth,
+            int viewportHeight,
+            int scrollWheelDelta,
+            bool leftClickReleased,
+            out string message)
+        {
+            message = null;
+            if (!IsVisible)
+            {
+                return false;
+            }
+
+            GetLayout(viewportWidth, viewportHeight, out Rectangle panelRect, out Rectangle closeButtonRect, out Rectangle upButtonRect, out Rectangle downButtonRect);
+            if (!panelRect.Contains(mousePosition))
+            {
+                return false;
+            }
+
+            if (scrollWheelDelta != 0)
+            {
+                int step = Math.Sign(scrollWheelDelta);
+                return TryScroll(-step, out message);
+            }
+
+            if (!leftClickReleased)
+            {
+                message = null;
+                return true;
+            }
+
+            if (closeButtonRect.Contains(mousePosition))
+            {
+                Close("Tournament match-table dialog closed via CMatchTableDlg::BtClose.");
+                message = Summary;
+                return true;
+            }
+
+            if (upButtonRect.Contains(mousePosition))
+            {
+                return TryScroll(-1, out message);
+            }
+
+            if (downButtonRect.Contains(mousePosition))
+            {
+                return TryScroll(1, out message);
+            }
+
+            message = "Tournament match-table dialog captured the click.";
+            return true;
+        }
+
         public void Draw(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font)
         {
             if (!IsVisible || spriteBatch == null || pixelTexture == null || font == null)
@@ -590,13 +655,11 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             Viewport viewport = spriteBatch.GraphicsDevice.Viewport;
-            float scale = Math.Min(1f, Math.Min((viewport.Width - 48f) / DialogWidth, (viewport.Height - 64f) / DialogHeight));
-            scale = Math.Max(0.72f, scale);
-
-            int scaledWidth = Scale(DialogWidth, scale);
-            int scaledHeight = Scale(DialogHeight, scale);
-            int panelX = Math.Max(18, (viewport.Width - scaledWidth) / 2);
-            int panelY = Math.Max(18, (viewport.Height - scaledHeight) / 2);
+            GetLayout(viewport.Width, viewport.Height, out Rectangle panelRect, out Rectangle closeButtonRect, out Rectangle upButtonRect, out Rectangle downButtonRect, out float scale);
+            int panelX = panelRect.X;
+            int panelY = panelRect.Y;
+            int scaledWidth = panelRect.Width;
+            int scaledHeight = panelRect.Height;
 
             DrawFilled(spriteBatch, pixelTexture, new Rectangle(panelX, panelY, scaledWidth, scaledHeight), new Color(14, 18, 27, 238));
             DrawBorder(spriteBatch, pixelTexture, new Rectangle(panelX, panelY, scaledWidth, scaledHeight), new Color(205, 182, 119, 255));
@@ -605,12 +668,9 @@ namespace HaCreator.MapSimulator.Fields
             float titleScale = Math.Max(0.82f, 0.92f * scale);
             TournamentField.DrawShadowedText(spriteBatch, font, "Tournament Match Table", new Vector2(panelX + Scale(12, scale), panelY + Scale(6, scale)), Color.White, titleScale);
 
-            Rectangle closeButtonRect = new(panelX + Scale(710, scale), panelY + Scale(9, scale), Scale(CloseButtonWidth, scale), Scale(CloseButtonHeight, scale));
-            Rectangle upButtonRect = new(panelX + Scale(729, scale), panelY + Scale(36, scale), Scale(ScrollButtonWidth, scale), Scale(ScrollButtonHeight, scale));
-            Rectangle downButtonRect = new(panelX + Scale(729, scale), panelY + Scale(433, scale), Scale(ScrollButtonWidth, scale), Scale(ScrollButtonHeight, scale));
-            DrawButton(spriteBatch, pixelTexture, font, closeButtonRect, "X", Scroll >= 0, scale);
-            DrawButton(spriteBatch, pixelTexture, font, upButtonRect, "Up", Scroll < MaxScroll, Math.Max(0.68f, 0.78f * scale));
-            DrawButton(spriteBatch, pixelTexture, font, downButtonRect, "Dn", Scroll > 0, Math.Max(0.68f, 0.78f * scale));
+            DrawButton(spriteBatch, pixelTexture, font, closeButtonRect, "X", true, scale);
+            DrawButton(spriteBatch, pixelTexture, font, upButtonRect, "Up", Scroll > 0, Math.Max(0.68f, 0.78f * scale));
+            DrawButton(spriteBatch, pixelTexture, font, downButtonRect, "Dn", Scroll < MaxScroll, Math.Max(0.68f, 0.78f * scale));
 
             Rectangle tableRect = new(
                 panelX + Scale(DrawOffsetX, scale),
@@ -633,6 +693,39 @@ namespace HaCreator.MapSimulator.Fields
             DrawBracketSkeleton(spriteBatch, pixelTexture, tableRect, scale);
             DrawRoundOne(spriteBatch, font, tableRect, scale);
             DrawRoundSummary(spriteBatch, font, tableRect, scale);
+        }
+
+        private void GetLayout(
+            int viewportWidth,
+            int viewportHeight,
+            out Rectangle panelRect,
+            out Rectangle closeButtonRect,
+            out Rectangle upButtonRect,
+            out Rectangle downButtonRect)
+        {
+            GetLayout(viewportWidth, viewportHeight, out panelRect, out closeButtonRect, out upButtonRect, out downButtonRect, out _);
+        }
+
+        private void GetLayout(
+            int viewportWidth,
+            int viewportHeight,
+            out Rectangle panelRect,
+            out Rectangle closeButtonRect,
+            out Rectangle upButtonRect,
+            out Rectangle downButtonRect,
+            out float scale)
+        {
+            scale = Math.Min(1f, Math.Min((viewportWidth - 48f) / DialogWidth, (viewportHeight - 64f) / DialogHeight));
+            scale = Math.Max(0.72f, scale);
+
+            int scaledWidth = Scale(DialogWidth, scale);
+            int scaledHeight = Scale(DialogHeight, scale);
+            int panelX = Math.Max(18, (viewportWidth - scaledWidth) / 2);
+            int panelY = Math.Max(18, (viewportHeight - scaledHeight) / 2);
+            panelRect = new Rectangle(panelX, panelY, scaledWidth, scaledHeight);
+            closeButtonRect = new Rectangle(panelX + Scale(710, scale), panelY + Scale(9, scale), Scale(CloseButtonWidth, scale), Scale(CloseButtonHeight, scale));
+            upButtonRect = new Rectangle(panelX + Scale(729, scale), panelY + Scale(36, scale), Scale(ScrollButtonWidth, scale), Scale(ScrollButtonHeight, scale));
+            downButtonRect = new Rectangle(panelX + Scale(729, scale), panelY + Scale(433, scale), Scale(ScrollButtonWidth, scale), Scale(ScrollButtonHeight, scale));
         }
 
         private void DecodeMatchValues()

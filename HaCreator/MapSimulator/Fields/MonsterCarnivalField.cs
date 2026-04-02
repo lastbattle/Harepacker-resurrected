@@ -130,6 +130,8 @@ namespace HaCreator.MapSimulator.Fields
         public int MapId { get; init; }
         public FieldType FieldType { get; init; }
         public int MapType { get; init; } = -1;
+        public string MapName { get; init; }
+        public string StreetName { get; init; }
         public int DefaultTimeSeconds { get; init; }
         public int ExpandTimeSeconds { get; init; }
         public int MessageTimeSeconds { get; init; }
@@ -230,6 +232,8 @@ namespace HaCreator.MapSimulator.Fields
             {
                 MapId = mapInfo?.id ?? 0,
                 FieldType = mapInfo?.fieldType ?? FieldType.FIELDTYPE_DEFAULT,
+                MapName = NormalizeMapLabel(mapInfo?.strMapName, mapInfo?.mapName),
+                StreetName = NormalizeMapLabel(mapInfo?.strStreetName, mapInfo?.streetName),
                 MapType = ReadInt(property["mapType"], -1),
                 DefaultTimeSeconds = ReadInt(property["timeDefault"]),
                 ExpandTimeSeconds = ReadInt(property["timeExpand"]),
@@ -530,6 +534,18 @@ namespace HaCreator.MapSimulator.Fields
             {
                 return property.GetString();
             }
+        }
+
+        private static string NormalizeMapLabel(string preferred, string fallback)
+        {
+            if (!string.IsNullOrWhiteSpace(preferred) && !string.Equals(preferred, "<Untitled>", StringComparison.OrdinalIgnoreCase))
+            {
+                return preferred.Trim();
+            }
+
+            return string.IsNullOrWhiteSpace(fallback)
+                ? string.Empty
+                : fallback.Trim();
         }
 
         private sealed class MonsterCarnivalMobMetadata
@@ -910,6 +926,11 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
+            if (!TryValidateClientOwnedPacket(packetType, out errorMessage))
+            {
+                return false;
+            }
+
             payload ??= Array.Empty<byte>();
 
             try
@@ -990,6 +1011,11 @@ namespace HaCreator.MapSimulator.Fields
             if (!_isVisible)
             {
                 errorMessage = "Monster Carnival runtime inactive.";
+                return false;
+            }
+
+            if (!TryValidateClientOwnedRawPacket(packetType, out errorMessage))
+            {
                 return false;
             }
 
@@ -1092,10 +1118,17 @@ namespace HaCreator.MapSimulator.Fields
                 ? "No WZ carnival definition loaded."
                 : $"Time {_definition.DefaultTimeSeconds}s +{_definition.ExpandTimeSeconds}s | Death CP {_definition.DeathCp} | {_definition.VariantLabel}{FormatMapTypeSuffix(_definition)} | owner={_definition.ClientOwnerLabel}";
             DrawShadowedText(spriteBatch, font, headerText, new Vector2(panelX + 12, timerY), Color.Gainsboro, 0.85f);
+            DrawShadowedText(
+                spriteBatch,
+                font,
+                BuildClientOwnerHeaderSummary(),
+                new Vector2(panelX + 12, timerY + 18),
+                Color.LightSteelBlue,
+                0.75f);
 
-            DrawCpRow(spriteBatch, pixelTexture, font, panelX + 12, panelY + 76, panelWidth - 24);
-            DrawTabs(spriteBatch, pixelTexture, font, panelX + 12, panelY + 130, panelWidth - 24);
-            DrawEntryList(spriteBatch, pixelTexture, font, panelX + 12, panelY + 164, panelWidth - 24, 154);
+            DrawCpRow(spriteBatch, pixelTexture, font, panelX + 12, panelY + 94, panelWidth - 24);
+            DrawTabs(spriteBatch, pixelTexture, font, panelX + 12, panelY + 148, panelWidth - 24);
+            DrawEntryList(spriteBatch, pixelTexture, font, panelX + 12, panelY + 182, panelWidth - 24, 136);
             DrawFooter(spriteBatch, pixelTexture, font, panelX + 12, panelY + 324, panelWidth - 24, 44);
         }
 
@@ -1106,7 +1139,7 @@ namespace HaCreator.MapSimulator.Fields
                 return "Monster Carnival runtime is inactive on this map.";
             }
 
-            return $"Monster Carnival: {(_enteredField ? "entered" : "configured")} | mode={_definition?.VariantLabel ?? "Unknown"}{FormatMapTypeSuffix(_definition)} | owner={_definition?.ClientOwnerLabel ?? "unknown"} | tab={_activeTab} | personalCP={_personalCp}/{_personalTotalCp} | team0={_team0.CurrentCp}/{_team0.TotalCp} | team1={_team1.CurrentCp}/{_team1.TotalCp} | mobs={GetTotalCount(_mobSpellCounts)}/{Math.Max(0, _definition?.MobGenMax ?? 0)} | guardians={GetTotalCount(_guardianCounts)}/{Math.Max(0, _definition?.GuardianGenMax ?? 0)}";
+            return $"Monster Carnival: {(_enteredField ? "entered" : "configured")} | mode={_definition?.VariantLabel ?? "Unknown"}{FormatMapTypeSuffix(_definition)} | owner={_definition?.ClientOwnerLabel ?? "unknown"} | tab={_activeTab} | personalCP={_personalCp}/{_personalTotalCp} | team0={_team0.CurrentCp}/{_team0.TotalCp} | team1={_team1.CurrentCp}/{_team1.TotalCp} | mobs={GetTotalCount(_mobSpellCounts)}/{Math.Max(0, _definition?.MobGenMax ?? 0)} | guardians={GetTotalCount(_guardianCounts)}/{Math.Max(0, _definition?.GuardianGenMax ?? 0)} | seam={BuildClientOwnerStatusSummary()}";
         }
 
         public void Reset()
@@ -1240,12 +1273,93 @@ namespace HaCreator.MapSimulator.Fields
 
             if (string.IsNullOrWhiteSpace(status))
             {
-                status = _enteredField
-                    ? "Use /mcarnival request, requestok, cpdelta, or death to drive the Monster Carnival runtime."
-                    : "Use /mcarnival enter ... to populate the Carnival HUD like CField_MonsterCarnival::OnEnter.";
+                status = BuildIdleStatusMessage();
             }
 
             DrawShadowedText(spriteBatch, font, status, new Vector2(x + 8, y + 8), Color.Gainsboro, 0.8f);
+        }
+
+        private bool TryValidateClientOwnedPacket(MonsterCarnivalPacketType packetType, out string errorMessage)
+        {
+            if (_definition?.IsReviveMode == true
+                && packetType != MonsterCarnivalPacketType.Enter
+                && packetType != MonsterCarnivalPacketType.GameResult)
+            {
+                errorMessage = $"{_definition.ClientOwnerLabel} only owns packet types {(int)MonsterCarnivalPacketType.Enter} and {(int)MonsterCarnivalPacketType.GameResult} in the client; packet {(int)packetType} stays on the broader Carnival seam.";
+                return false;
+            }
+
+            errorMessage = null;
+            return true;
+        }
+
+        private bool TryValidateClientOwnedRawPacket(int packetType, out string errorMessage)
+        {
+            if (_definition?.IsReviveMode == true
+                && packetType != (int)MonsterCarnivalRawPacketType.Enter
+                && packetType != (int)MonsterCarnivalRawPacketType.GameResult)
+            {
+                errorMessage = $"{_definition.ClientOwnerLabel} only owns raw packet types {(int)MonsterCarnivalRawPacketType.Enter} and {(int)MonsterCarnivalRawPacketType.GameResult} in the client; packet {packetType} stays on the broader Carnival seam.";
+                return false;
+            }
+
+            errorMessage = null;
+            return true;
+        }
+
+        private string BuildIdleStatusMessage()
+        {
+            if (_definition == null)
+            {
+                return "Use /mcarnival enter ... to populate the Carnival HUD like CField_MonsterCarnival::OnEnter.";
+            }
+
+            if (_definition.IsReviveMode)
+            {
+                return $"{_definition.ClientOwnerLabel} only handles /mcarnival enter and result in its recovered client-owned packet seam.";
+            }
+
+            if (_definition.IsWaitingRoom || _definition.IsSeason2Mode)
+            {
+                return $"{_definition.ClientOwnerLabel} is anchored by monsterCarnival/mapType={_definition.MapType} for this map; use /mcarnival enter ... to populate the shared Carnival HUD.";
+            }
+
+            return _enteredField
+                ? "Use /mcarnival request, requestok, cpdelta, or death to drive the Monster Carnival runtime."
+                : "Use /mcarnival enter ... to populate the Carnival HUD like CField_MonsterCarnival::OnEnter.";
+        }
+
+        private string BuildClientOwnerHeaderSummary()
+        {
+            if (_definition == null)
+            {
+                return string.Empty;
+            }
+
+            string mapLabel = FormatMapIdentity(_definition);
+            return _definition.FieldType switch
+            {
+                FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM => $"{mapLabel} | Init reads monsterCarnival/mapType={_definition.MapType}",
+                FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => $"{mapLabel} | Season 2 Init reads monsterCarnival/mapType={_definition.MapType}",
+                FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => $"{mapLabel} | revive owner packets 346/353 | result ids 0x1020-0x1023",
+                _ => $"{mapLabel} | shared Carnival packet family 346-353"
+            };
+        }
+
+        private string BuildClientOwnerStatusSummary()
+        {
+            if (_definition == null)
+            {
+                return "none";
+            }
+
+            return _definition.FieldType switch
+            {
+                FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM => $"{_definition.ClientOwnerLabel} Init->monsterCarnival/mapType={_definition.MapType} on {FormatMapIdentity(_definition)}",
+                FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => $"{_definition.ClientOwnerLabel} Init->monsterCarnival/mapType={_definition.MapType} on {FormatMapIdentity(_definition)}",
+                FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => $"{_definition.ClientOwnerLabel} packets=346/353 | result StringPool=0x1020/0x1021/0x1022/0x1023 | map={FormatMapIdentity(_definition)}",
+                _ => $"{_definition.ClientOwnerLabel} packets=346-353 | map={FormatMapIdentity(_definition)}"
+            };
         }
 
         private MonsterCarnivalEntry GetEntry(MonsterCarnivalTab tab, int index)
@@ -1726,6 +1840,35 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return $" | mapType {definition.MapType}";
+        }
+
+        private static string FormatMapIdentity(MonsterCarnivalFieldDefinition definition)
+        {
+            if (definition == null)
+            {
+                return "unknown map";
+            }
+
+            string mapName = string.IsNullOrWhiteSpace(definition.MapName) ? null : definition.MapName.Trim();
+            string streetName = string.IsNullOrWhiteSpace(definition.StreetName) ? null : definition.StreetName.Trim();
+            if (!string.IsNullOrWhiteSpace(streetName) && !string.IsNullOrWhiteSpace(mapName))
+            {
+                return $"{streetName} / {mapName}";
+            }
+
+            if (!string.IsNullOrWhiteSpace(mapName))
+            {
+                return mapName;
+            }
+
+            if (!string.IsNullOrWhiteSpace(streetName))
+            {
+                return streetName;
+            }
+
+            return definition.MapId > 0
+                ? definition.MapId.ToString(CultureInfo.InvariantCulture)
+                : "unknown map";
         }
 
         private string BuildMobPlacementSummary()

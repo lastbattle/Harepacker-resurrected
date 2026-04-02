@@ -731,7 +731,7 @@ namespace HaCreator.MapSimulator
                 Math.Max(0, bodyHeight - (PacketOwnedBalloonVerticalPadding * 2)));
             if (TryCreatePacketOwnedBalloonBodyTexture(lines, lineHeight, bodyWidth, bodyHeight, contentBounds, out Texture2D bodyTexture))
             {
-                message.SetCachedBodyTexture(bodyTexture);
+                message.SetCachedBodyTexture(bodyTexture, bodyWidth, bodyHeight);
             }
         }
 

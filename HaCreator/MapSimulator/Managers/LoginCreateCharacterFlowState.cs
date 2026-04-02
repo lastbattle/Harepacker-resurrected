@@ -54,6 +54,9 @@ namespace HaCreator.MapSimulator.Managers
         public CharacterGender Gender { get; init; }
         public int BeginnerJobId { get; init; }
         public short SubJob { get; init; }
+        public bool IsCharSale { get; init; }
+        public int CharSaleJob { get; init; }
+        public IReadOnlyList<int> ExtraSaleAvatarValues { get; init; } = Array.Empty<int>();
         public SkinColor Skin { get; init; }
         public int FaceId { get; init; }
         public int HairStyleId { get; init; }
@@ -78,7 +81,10 @@ namespace HaCreator.MapSimulator.Managers
                 CoatId,
                 PantsId,
                 ShoesId,
-                WeaponId);
+                WeaponId,
+                IsCharSale,
+                CharSaleJob,
+                ExtraSaleAvatarValues);
         }
     }
 
@@ -340,7 +346,7 @@ namespace HaCreator.MapSimulator.Managers
                 request.WeaponId);
         }
 
-        public LoginCreateCharacterRequestProfile BuildRequestProfile(CharacterLoader loader)
+        public LoginCreateCharacterRequestProfile BuildRequestProfile(CharacterLoader loader, bool useCharSaleRequest = false)
         {
             CharacterLoader.LoginStarterAvatarCatalog catalog = loader?.GetLoginStarterAvatarCatalog(SelectedRace, SelectedGender);
             if (catalog == null)
@@ -354,6 +360,11 @@ namespace HaCreator.MapSimulator.Managers
                 Gender = SelectedGender,
                 BeginnerJobId = SelectedJob?.BeginnerJobId ?? 0,
                 SubJob = SelectedJob?.SubJob ?? 0,
+                IsCharSale = useCharSaleRequest,
+                CharSaleJob = Math.Max(0, (int)(SelectedJob?.SubJob ?? 0)),
+                ExtraSaleAvatarValues = useCharSaleRequest
+                    ? new[] { (int)SelectedGender }
+                    : Array.Empty<int>(),
                 Skin = GetValue(catalog.Skins, SelectedSkinIndex, SkinColor.Light),
                 FaceId = GetValue(catalog.FaceIds, SelectedFaceIndex, SelectedGender == CharacterGender.Male ? 20000 : 21000),
                 HairStyleId = GetValue(catalog.HairStyleIds, SelectedHairIndex, SelectedGender == CharacterGender.Male ? 30000 : 31000),

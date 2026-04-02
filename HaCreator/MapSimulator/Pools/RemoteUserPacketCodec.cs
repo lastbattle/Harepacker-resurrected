@@ -12,6 +12,14 @@ namespace HaCreator.MapSimulator.Pools
     {
         UserFollowCharacter = -1001,
         UserDropPickup = -1002,
+        UserCoupleRecordAdd = -1101,
+        UserCoupleRecordRemove = -1102,
+        UserFriendRecordAdd = -1103,
+        UserFriendRecordRemove = -1104,
+        UserMarriageRecordAdd = -1105,
+        UserMarriageRecordRemove = -1106,
+        UserNewYearCardRecordAdd = -1107,
+        UserNewYearCardRecordRemove = -1108,
         UserEnterField = 179,
         UserLeaveField = 180,
         UserMove = 181,
@@ -182,6 +190,13 @@ namespace HaCreator.MapSimulator.Pools
         long? PairItemSerial,
         int? CharacterId,
         int? PairCharacterId);
+    public readonly record struct RemoteUserRelationshipRecordPacket(
+        RemoteRelationshipOverlayType RelationshipType,
+        RemoteUserRelationshipRecord RelationshipRecord);
+    public readonly record struct RemoteUserRelationshipRecordRemovePacket(
+        RemoteRelationshipOverlayType RelationshipType,
+        long? ItemSerial,
+        int? CharacterId);
     public readonly record struct RemoteUserAvatarModifiedPacket(
         int CharacterId,
         LoginAvatarLook AvatarLook,
@@ -190,11 +205,14 @@ namespace HaCreator.MapSimulator.Pools
         RemoteUserRelationshipRecord CoupleRecord,
         RemoteUserRelationshipRecord FriendshipRecord,
         RemoteUserRelationshipRecord MarriageRecord,
+        RemoteUserRelationshipRecord NewYearCardRecord,
         int CompletedSetItemId);
     public readonly record struct RemoteUserHelperPacket(int CharacterId, MinimapUI.HelperMarkerType? MarkerType, bool ShowDirectionOverlay);
     public readonly record struct RemoteUserBattlefieldTeamPacket(int CharacterId, int? TeamId);
     public static class RemoteUserPacketCodec
     {
+        private const int NewYearCardDefaultItemId = 4300000;
+
         public static bool TryParseEnterField(ReadOnlySpan<byte> payload, out RemoteUserEnterFieldPacket packet, out string error)
         {
             packet = default;
@@ -744,6 +762,23 @@ namespace HaCreator.MapSimulator.Pools
                     };
                 }
 
+                bool hasNewYearCardRecord = false;
+                RemoteUserRelationshipRecord newYearCardRecord = default;
+                if (reader.RemainingLength > sizeof(int))
+                {
+                    hasNewYearCardRecord = reader.ReadByte() != 0;
+                    if (hasNewYearCardRecord)
+                    {
+                        newYearCardRecord = new RemoteUserRelationshipRecord(
+                            true,
+                            ItemId: NewYearCardDefaultItemId,
+                            ItemSerial: reader.ReadInt64(),
+                            PairItemSerial: null,
+                            CharacterId: null,
+                            PairCharacterId: reader.ReadInt32());
+                    }
+                }
+
                 int completedSetItemId = reader.ReadInt32();
                 packet = new RemoteUserAvatarModifiedPacket(
                     characterId,
@@ -753,8 +788,165 @@ namespace HaCreator.MapSimulator.Pools
                     hasCoupleRecord ? coupleRecord : default,
                     hasFriendshipRecord ? friendshipRecord : default,
                     hasMarriageRecord ? marriageRecord : default,
+                    hasNewYearCardRecord ? newYearCardRecord : default,
                     completedSetItemId);
                 return true;
+            }
+            catch (InvalidOperationException ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+        }
+
+        public static bool TryParseRelationshipRecordAdd(
+            int packetType,
+            ReadOnlySpan<byte> payload,
+            out RemoteUserRelationshipRecordPacket packet,
+            out string error)
+        {
+            packet = default;
+            error = null;
+
+            try
+            {
+                var reader = new PacketReader(payload);
+                switch ((RemoteUserPacketType)packetType)
+                {
+                    case RemoteUserPacketType.UserCoupleRecordAdd:
+                    case RemoteUserPacketType.UserFriendRecordAdd:
+                    {
+                        int ownerCharacterId = reader.ReadInt32();
+                        int pairCharacterId = reader.ReadInt32();
+                        int itemId = reader.ReadInt32();
+                        long itemSerial = reader.ReadInt64();
+                        long pairItemSerial = reader.ReadInt64();
+                        EnsureRelationshipRecordAddConsumed(ref reader, packetType);
+
+                        packet = new RemoteUserRelationshipRecordPacket(
+                            packetType == (int)RemoteUserPacketType.UserCoupleRecordAdd
+                                ? RemoteRelationshipOverlayType.Couple
+                                : RemoteRelationshipOverlayType.Friendship,
+                            new RemoteUserRelationshipRecord(
+                                IsActive: true,
+                                ItemId: itemId,
+                                ItemSerial: itemSerial,
+                                PairItemSerial: pairItemSerial,
+                                CharacterId: ownerCharacterId,
+                                PairCharacterId: pairCharacterId));
+                        return true;
+                    }
+
+                    case RemoteUserPacketType.UserMarriageRecordAdd:
+                    {
+                        int ownerCharacterId = reader.ReadInt32();
+                        int pairCharacterId = reader.ReadInt32();
+                        int itemId = reader.ReadInt32();
+                        EnsureRelationshipRecordAddConsumed(ref reader, packetType);
+
+                        packet = new RemoteUserRelationshipRecordPacket(
+                            RemoteRelationshipOverlayType.Marriage,
+                            new RemoteUserRelationshipRecord(
+                                IsActive: true,
+                                ItemId: itemId,
+                                ItemSerial: null,
+                                PairItemSerial: null,
+                                CharacterId: ownerCharacterId,
+                                PairCharacterId: pairCharacterId));
+                        return true;
+                    }
+
+                    case RemoteUserPacketType.UserNewYearCardRecordAdd:
+                    {
+                        int ownerCharacterId = reader.ReadInt32();
+                        int pairCharacterId = reader.ReadInt32();
+                        long itemSerial = (uint)reader.ReadInt32();
+                        int itemId = reader.RemainingLength >= sizeof(int)
+                            ? reader.ReadInt32()
+                            : 4300000;
+                        EnsureRelationshipRecordAddConsumed(ref reader, packetType);
+
+                        packet = new RemoteUserRelationshipRecordPacket(
+                            RemoteRelationshipOverlayType.NewYearCard,
+                            new RemoteUserRelationshipRecord(
+                                IsActive: true,
+                                ItemId: itemId,
+                                ItemSerial: itemSerial,
+                                PairItemSerial: null,
+                                CharacterId: ownerCharacterId,
+                                PairCharacterId: pairCharacterId));
+                        return true;
+                    }
+
+                    default:
+                        error = $"Remote user relationship-record add packet type {packetType} is not supported.";
+                        return false;
+                }
+            }
+            catch (InvalidOperationException ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+        }
+
+        public static bool TryParseRelationshipRecordRemove(
+            int packetType,
+            ReadOnlySpan<byte> payload,
+            out RemoteUserRelationshipRecordRemovePacket packet,
+            out string error)
+        {
+            packet = default;
+            error = null;
+
+            try
+            {
+                var reader = new PacketReader(payload);
+                switch ((RemoteUserPacketType)packetType)
+                {
+                    case RemoteUserPacketType.UserCoupleRecordRemove:
+                    case RemoteUserPacketType.UserFriendRecordRemove:
+                    {
+                        long itemSerial = reader.ReadInt64();
+                        EnsureRelationshipRecordRemoveConsumed(ref reader, packetType);
+
+                        packet = new RemoteUserRelationshipRecordRemovePacket(
+                            packetType == (int)RemoteUserPacketType.UserCoupleRecordRemove
+                                ? RemoteRelationshipOverlayType.Couple
+                                : RemoteRelationshipOverlayType.Friendship,
+                            ItemSerial: itemSerial,
+                            CharacterId: null);
+                        return true;
+                    }
+
+                    case RemoteUserPacketType.UserMarriageRecordRemove:
+                    {
+                        int characterId = reader.ReadInt32();
+                        EnsureRelationshipRecordRemoveConsumed(ref reader, packetType);
+
+                        packet = new RemoteUserRelationshipRecordRemovePacket(
+                            RemoteRelationshipOverlayType.Marriage,
+                            ItemSerial: null,
+                            CharacterId: characterId);
+                        return true;
+                    }
+
+                    case RemoteUserPacketType.UserNewYearCardRecordRemove:
+                    {
+                        long itemSerial = (uint)reader.ReadInt32();
+                        EnsureRelationshipRecordRemoveConsumed(ref reader, packetType);
+
+                        packet = new RemoteUserRelationshipRecordRemovePacket(
+                            RemoteRelationshipOverlayType.NewYearCard,
+                            ItemSerial: itemSerial,
+                            CharacterId: null);
+                        return true;
+                    }
+
+                    default:
+                        error = $"Remote user relationship-record remove packet type {packetType} is not supported.";
+                        return false;
+                }
             }
             catch (InvalidOperationException ex)
             {
@@ -1145,6 +1337,24 @@ namespace HaCreator.MapSimulator.Pools
                 _ => RemoteRelationshipOverlayType.Generic
             };
             return value <= (byte)RemoteRelationshipOverlayType.Marriage;
+        }
+
+        private static void EnsureRelationshipRecordAddConsumed(ref PacketReader reader, int packetType)
+        {
+            if (reader.RemainingLength != 0)
+            {
+                throw new InvalidOperationException(
+                    $"Remote user relationship-record add packet {packetType} has {reader.RemainingLength} unread bytes remaining.");
+            }
+        }
+
+        private static void EnsureRelationshipRecordRemoveConsumed(ref PacketReader reader, int packetType)
+        {
+            if (reader.RemainingLength != 0)
+            {
+                throw new InvalidOperationException(
+                    $"Remote user relationship-record remove packet {packetType} has {reader.RemainingLength} unread bytes remaining.");
+            }
         }
 
         private const int OfficialEnterFieldSuffixLength = (sizeof(int) * 6) + (sizeof(short) * 2) + sizeof(byte);

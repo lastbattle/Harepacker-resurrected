@@ -1199,6 +1199,25 @@ namespace HaCreator.MapSimulator.Fields
                 return true;
             }
 
+            if (existingObservation.SourceMapId == sourceMapId)
+            {
+                if (existingObservation.ObservationSource == RemoteTownPortalObservationSource.PacketCast
+                    || observationSource == RemoteTownPortalObservationSource.PacketCast)
+                {
+                    int sameSourceAuthorityComparison = CompareRemoteTownPortalSameSourceCoordinateAuthority(
+                        existingObservation.ObservationSource,
+                        existingObservation.RecordedAt,
+                        observationSource,
+                        recordedAt);
+                    return sameSourceAuthorityComparison < 0;
+                }
+
+                if (existingObservation.RecordedAt != recordedAt)
+                {
+                    return recordedAt > existingObservation.RecordedAt;
+                }
+            }
+
             int qualityComparison = CompareRemoteTownPortalObservationQuality(
                 observationSource,
                 recordedAt: 0,
@@ -1246,6 +1265,21 @@ namespace HaCreator.MapSimulator.Fields
             RemoteTownPortalObservationSource observationSource,
             int observationRecordedAt)
         {
+            if (metadataObservationSource != RemoteTownPortalObservationSource.PacketCast
+                && observationSource != RemoteTownPortalObservationSource.PacketCast)
+            {
+                if (metadataRecordedAt != observationRecordedAt)
+                {
+                    return metadataRecordedAt.CompareTo(observationRecordedAt);
+                }
+
+                return CompareRemoteTownPortalObservationQuality(
+                    metadataObservationSource,
+                    metadataRecordedAt,
+                    observationSource,
+                    observationRecordedAt);
+            }
+
             int metadataPositionAuthority = GetRemoteTownPortalPositionAuthority(metadataObservationSource);
             int observationPositionAuthority = GetRemoteTownPortalPositionAuthority(observationSource);
             if (metadataPositionAuthority != observationPositionAuthority)

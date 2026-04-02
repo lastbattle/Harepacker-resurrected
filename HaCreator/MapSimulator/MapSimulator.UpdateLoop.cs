@@ -220,6 +220,7 @@ namespace HaCreator.MapSimulator
             EnsureLocalUtilityPacketInboxState(shouldRun: true);
             DrainLocalUtilityPacketInbox();
             DrainLocalUtilityOfficialSessionBridge();
+            DrainMapTransferOfficialSessionBridge();
             UpdatePacketOwnedTutorRuntime(currTickCount);
             UpdatePacketOwnedRadioSchedule(currTickCount);
 
@@ -235,13 +236,32 @@ namespace HaCreator.MapSimulator
                 }
 
                 bool memoryGameMouseConsumed = false;
+                bool tournamentMatchTableMouseConsumed = false;
                 if (npcOverlayResult.PrimaryActionEntry != null)
                 {
                     HandleNpcOverlayPrimaryAction(npcOverlayResult.PrimaryActionEntry);
                 }
 
+                if (!npcOverlayResult.Consumed &&
+                    uiWindowManager?.ContainsPoint(newMouseState.X, newMouseState.Y) != true &&
+                    _specialFieldRuntime.Minigames.Tournament.HandleMatchTableDialogMouse(
+                        new Point(newMouseState.X, newMouseState.Y),
+                        _renderParams.RenderWidth,
+                        _renderParams.RenderHeight,
+                        newMouseState.ScrollWheelValue - _oldMouseState.ScrollWheelValue,
+                        newMouseState.LeftButton == ButtonState.Released && _oldMouseState.LeftButton == ButtonState.Pressed,
+                        out string tournamentMatchTableMessage))
+                {
+                    tournamentMatchTableMouseConsumed = true;
+                    if (!string.IsNullOrWhiteSpace(tournamentMatchTableMessage))
+                    {
+                        _chat.AddMessage(tournamentMatchTableMessage, new Color(255, 228, 151), currTickCount);
+                    }
+                }
+
 
                 if (!npcOverlayResult.Consumed &&
+                    !tournamentMatchTableMouseConsumed &&
                     newMouseState.LeftButton == ButtonState.Released &&
                     _oldMouseState.LeftButton == ButtonState.Pressed &&
                     uiWindowManager?.ContainsPoint(newMouseState.X, newMouseState.Y) != true &&
@@ -260,7 +280,7 @@ namespace HaCreator.MapSimulator
                 }
 
 
-                if (!npcOverlayResult.Consumed && !memoryGameMouseConsumed)
+                if (!npcOverlayResult.Consumed && !memoryGameMouseConsumed && !tournamentMatchTableMouseConsumed)
                 {
                     // Avoid leaking the overlay-dismissal click into world interactions while
                     // direction mode is transitioning through its delayed release window.
@@ -781,6 +801,7 @@ namespace HaCreator.MapSimulator
             {
                 _playerManager.IsPlayerControlEnabled = _gameState.IsPlayerInputEnabled;
                 _playerManager.Update(currTickCount, deltaSeconds, _chat.IsActive || uiCapturesKeyboard, isWindowActive);
+                UpdatePacketOwnedPetConsumeMpRuntime(currTickCount);
                 SyncPacketOwnedLocalFollowCharacter();
 
 

@@ -71,6 +71,7 @@ namespace HaCreator.MapSimulator.Character
         ToggleMinimap,
         ToggleChat,
         ToggleQuickSlot,  // Toggle quick slot bar visibility
+        ToggleKeyConfig,
         Escape
     }
 
@@ -288,6 +289,7 @@ namespace HaCreator.MapSimulator.Character
             (InputAction.ToggleMinimap, Keys.M, Keys.None, (Buttons)0),
             (InputAction.ToggleChat, Keys.Enter, Keys.None, (Buttons)0),
             (InputAction.ToggleQuickSlot, Keys.OemTilde, Keys.None, (Buttons)0),  // ` key to toggle quick slot bar
+            (InputAction.ToggleKeyConfig, Keys.None, Keys.None, (Buttons)0),
             (InputAction.Escape, Keys.Escape, Keys.None, Buttons.Start)
         };
 

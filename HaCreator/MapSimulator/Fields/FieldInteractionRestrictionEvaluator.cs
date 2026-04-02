@@ -406,6 +406,11 @@ namespace HaCreator.MapSimulator.Fields
                 return true;
             }
 
+            if (InventoryItemMetadataResolver.TryResolveSpecNpc(itemId, out int npcId) && npcId > 0)
+            {
+                return true;
+            }
+
             if (InventoryItemMetadataResolver.TryResolveSpecScript(itemId, out string scriptName)
                 && string.Equals(scriptName, SummonEventNpcScriptName, StringComparison.OrdinalIgnoreCase))
             {

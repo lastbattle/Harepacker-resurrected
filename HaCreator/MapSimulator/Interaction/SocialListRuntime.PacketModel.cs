@@ -14,13 +14,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             string[] tabLines = Enum.GetValues(typeof(SocialListTab))
                 .Cast<SocialListTab>()
-                .Select(tab =>
-                {
-                    IReadOnlyList<SocialEntryState> entries = GetFilteredEntries(tab);
-                    SocialEntryState selectedEntry = GetSelectedEntry(tab);
-                    string selection = selectedEntry == null ? "none" : selectedEntry.Name;
-                    return $"{GetHeaderTitle(tab)}: {entries.Count} entries, owner={(IsPacketOwned(tab) ? "packet" : "local")}, selected={selection}";
-                })
+                .Select(DescribeTabStatusLine)
                 .ToArray();
 
             string guildAuthority = _packetGuildAuthority.HasValue
@@ -34,6 +28,24 @@ namespace HaCreator.MapSimulator.Interaction
                 : $"Alliance authority local-role ({GetLocalAllianceRoleLabel()})";
 
             return string.Join(Environment.NewLine, tabLines.Concat(new[] { guildAuthority, guildUiContext, allianceAuthority }));
+        }
+
+        private string DescribeTabStatusLine(SocialListTab tab)
+        {
+            IReadOnlyList<SocialEntryState> visibleEntries = GetFilteredEntries(tab);
+            int totalEntries = _entriesByTab.TryGetValue(tab, out List<SocialEntryState> entries) && entries != null
+                ? entries.Count
+                : visibleEntries.Count;
+            SocialEntryState selectedEntry = GetSelectedEntry(tab);
+            string selection = selectedEntry == null ? "none" : selectedEntry.Name;
+            string syncSummary = _lastPacketSyncSummaryByTab.TryGetValue(tab, out string sync) && !string.IsNullOrWhiteSpace(sync)
+                ? sync.Trim()
+                : "none";
+            string pendingSummary = _lastPendingRequestByTab.TryGetValue(tab, out string pending) && !string.IsNullOrWhiteSpace(pending)
+                ? pending.Trim()
+                : "none";
+
+            return $"{GetHeaderTitle(tab)}: total={totalEntries}, visible={visibleEntries.Count}, owner={(IsPacketOwned(tab) ? "packet" : "local")}, selected={selection}, sync={syncSummary}, pending={pendingSummary}";
         }
 
         internal string SetPacketRosterOwnership(SocialListTab tab, bool packetOwned, string summary = null)

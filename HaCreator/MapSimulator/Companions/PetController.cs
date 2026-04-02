@@ -74,6 +74,7 @@ namespace HaCreator.MapSimulator.Companions
         private const int MinCommandLevel = 1;
         private const int MaxCommandLevel = 30;
         private const float FollowSpeed = 220f;
+        private const float QuestSpeedStepMultiplier = 0.1f;
         private const float FollowSpacing = 28f;
         private const float MultiPetSpacing = 18f;
         private const float SnapDistance = 220f;
@@ -321,7 +322,7 @@ namespace HaCreator.MapSimulator.Companions
             FacingRight = owner.FacingRight;
             Vector2 followTarget = GetFollowTarget(owner, currentTime, activePetCount);
             Vector2 desiredTarget = followTarget;
-            float moveSpeed = _hangOnBack ? HangOnBackMoveSpeed : FollowSpeed;
+            float moveSpeed = ResolveQuestAdjustedMoveSpeed(_hangOnBack ? HangOnBackMoveSpeed : FollowSpeed);
             bool chasingDrop = false;
 
             if (dropPool != null)
@@ -341,7 +342,7 @@ namespace HaCreator.MapSimulator.Companions
                     if (target != null)
                     {
                         desiredTarget = new Vector2(target.TargetX, target.TargetY);
-                        moveSpeed = target.ChaseSpeed;
+                        moveSpeed = ResolveQuestAdjustedMoveSpeed(target.ChaseSpeed);
                         chasingDrop = target.IsChasing;
 
                         dropPool.TryPickUpDropByPet(RuntimeId, X, Y, ownerId, currentTime);
@@ -460,6 +461,11 @@ namespace HaCreator.MapSimulator.Companions
 
             SetQuestSpeed(updatedSpeed);
             return true;
+        }
+
+        internal float ResolveQuestAdjustedMoveSpeed(float baseSpeed)
+        {
+            return ApplyQuestSpeedToMoveSpeed(baseSpeed, _questSpeed);
         }
 
         internal bool TryFeed(int fullnessIncrease)
@@ -774,6 +780,16 @@ namespace HaCreator.MapSimulator.Companions
         private void SetQuestSpeed(int questSpeed)
         {
             _questSpeed = Math.Max(0, questSpeed);
+        }
+
+        internal static float ApplyQuestSpeedToMoveSpeed(float baseSpeed, int questSpeed)
+        {
+            if (baseSpeed <= 0f || questSpeed <= 0)
+            {
+                return baseSpeed;
+            }
+
+            return baseSpeed * (1f + (Math.Max(0, questSpeed) * QuestSpeedStepMultiplier));
         }
 
         internal static int ResolveCommandLevelForTameness(int tameness)

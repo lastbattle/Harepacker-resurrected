@@ -44,8 +44,16 @@ namespace HaCreator.MapSimulator
 
         private void OpenPacketOwnedScriptInteraction(PacketScriptMessageRuntime.PacketScriptMessageOpenRequest request)
         {
-            if (request?.State == null || _npcInteractionOverlay == null)
+            if (request == null || _npcInteractionOverlay == null)
             {
+                return;
+            }
+
+            if (request.CloseExistingDialog || request.State == null)
+            {
+                _npcInteractionOverlay.Close();
+                _activeNpcInteractionNpc = null;
+                _activeNpcInteractionNpcId = 0;
                 return;
             }
 

@@ -56,6 +56,8 @@ namespace HaCreator.MapSimulator.Entities
         private readonly Dictionary<int, IDXObject[]> _stateFrames;
         private readonly Dictionary<int, AuthoredStateTransition[]> _stateTransitions;
         private readonly int[] _availableStates;
+        private readonly int _originWorldX;
+        private readonly int _originWorldY;
         private int _activeState;
         private int _activeFrameIndex;
         private int _lastStateTick;
@@ -75,6 +77,8 @@ namespace HaCreator.MapSimulator.Entities
             _stateFrames = new Dictionary<int, IDXObject[]>();
             _stateTransitions = new Dictionary<int, AuthoredStateTransition[]>();
             _availableStates = Array.Empty<int>();
+            _originWorldX = reactorInstance?.X ?? 0;
+            _originWorldY = reactorInstance?.Y ?? 0;
         }
 
         public ReactorItem(ReactorInstance reactorInstance, Dictionary<int, List<IDXObject>> stateFrames)
@@ -83,6 +87,8 @@ namespace HaCreator.MapSimulator.Entities
             _reactorInstance = reactorInstance;
             _stateFrames = new Dictionary<int, IDXObject[]>();
             _stateTransitions = LoadStateTransitions(reactorInstance);
+            _originWorldX = reactorInstance?.X ?? 0;
+            _originWorldY = reactorInstance?.Y ?? 0;
 
             if (stateFrames != null)
             {
@@ -106,6 +112,8 @@ namespace HaCreator.MapSimulator.Entities
             _stateFrames = new Dictionary<int, IDXObject[]>();
             _stateTransitions = new Dictionary<int, AuthoredStateTransition[]>();
             _availableStates = Array.Empty<int>();
+            _originWorldX = reactorInstance?.X ?? 0;
+            _originWorldY = reactorInstance?.Y ?? 0;
         }
 
         public void SetAnimationState(int state, int tickCount)
@@ -122,6 +130,33 @@ namespace HaCreator.MapSimulator.Entities
         public int GetInitialState()
         {
             return ResolveInitialState();
+        }
+
+        public void SetWorldPosition(int x, int y)
+        {
+            if (_reactorInstance != null)
+            {
+                _reactorInstance.X = x;
+                _reactorInstance.Y = y;
+            }
+
+            Position = new Point(_originWorldX - x, _originWorldY - y);
+        }
+
+        public void SetFlipState(bool isFlipped)
+        {
+            flip = isFlipped;
+            if (_reactorInstance != null)
+            {
+                _reactorInstance.Flip = isFlipped;
+            }
+        }
+
+        public bool HasAuthoredEventInfo(int state)
+        {
+            int resolvedState = ResolveState(state);
+            return _stateTransitions.TryGetValue(resolvedState, out AuthoredStateTransition[] transitions)
+                && transitions.Length > 0;
         }
 
         public bool TryGetNextState(int currentState, out int nextState)

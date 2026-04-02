@@ -435,6 +435,7 @@ namespace HaCreator.MapSimulator.Character
                 if (_mobPool != null)
                 {
                     var results = Combat.ProcessAttack(_mobPool, hitbox);
+                    bool landedCritical = false;
 
                     // Add damage numbers to combat effects
                     if (_combatEffects != null)
@@ -442,6 +443,7 @@ namespace HaCreator.MapSimulator.Character
                         int comboIndex = 0;
                         foreach (var result in results)
                         {
+                            landedCritical |= result.IsCritical;
                             _combatEffects.AddDamageNumber(
                                 result.Damage,
                                 result.HitX,
@@ -451,6 +453,18 @@ namespace HaCreator.MapSimulator.Character
                                 currentTime,
                                 comboIndex++);
                         }
+                    }
+                    else
+                    {
+                        foreach (var result in results)
+                        {
+                            landedCritical |= result.IsCritical;
+                        }
+                    }
+
+                    if (landedCritical)
+                    {
+                        Skills?.NotifyLocalCriticalHit(currentTime);
                     }
                 }
 
@@ -543,11 +557,13 @@ namespace HaCreator.MapSimulator.Character
                 if (_mobPool != null)
                 {
                     var results = Combat.ProcessAttack(_mobPool, hitbox);
+                    bool landedCritical = false;
                     if (_combatEffects != null)
                     {
                         int comboIndex = 0;
                         foreach (var result in results)
                         {
+                            landedCritical |= result.IsCritical;
                             _combatEffects.AddDamageNumber(
                                 result.Damage,
                                 result.HitX,
@@ -557,6 +573,18 @@ namespace HaCreator.MapSimulator.Character
                                 currentTime,
                                 comboIndex++);
                         }
+                    }
+                    else
+                    {
+                        foreach (var result in results)
+                        {
+                            landedCritical |= result.IsCritical;
+                        }
+                    }
+
+                    if (landedCritical)
+                    {
+                        Skills?.NotifyLocalCriticalHit(currentTime);
                     }
                 }
 

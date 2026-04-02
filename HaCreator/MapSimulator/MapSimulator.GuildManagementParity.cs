@@ -7,9 +7,12 @@ namespace HaCreator.MapSimulator
     {
         private string OpenGuildRankWindow()
         {
+            GuildDialogContext dialogContext = _socialListRuntime.BuildGuildDialogContext(_playerManager?.Player?.Build);
             return _guildRankController.Open(
                 uiWindowManager,
                 _playerManager?.Player?.Build,
+                dialogContext,
+                _guildMarkController.GetCommittedSelection(),
                 _fontChat,
                 ShowUtilityFeedbackMessage,
                 () => ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.GuildRank));
@@ -26,9 +29,11 @@ namespace HaCreator.MapSimulator
 
         private string OpenGuildCreateAgreementWindow(string masterName, string guildName)
         {
+            GuildDialogContext dialogContext = _socialListRuntime.BuildGuildDialogContext(_playerManager?.Player?.Build);
             return _guildCreateAgreementController.Open(
                 masterName,
                 guildName,
+                dialogContext,
                 uiWindowManager,
                 _fontChat,
                 ShowUtilityFeedbackMessage,
@@ -37,9 +42,12 @@ namespace HaCreator.MapSimulator
 
         private void WireGuildRankWindowData()
         {
+            GuildDialogContext dialogContext = _socialListRuntime.BuildGuildDialogContext(_playerManager?.Player?.Build);
             _guildRankController.WireWindow(
                 uiWindowManager,
                 _playerManager?.Player?.Build,
+                dialogContext,
+                _guildMarkController.GetCommittedSelection(),
                 _fontChat,
                 ShowUtilityFeedbackMessage);
         }

@@ -148,6 +148,7 @@ namespace HaCreator.MapSimulator.UI
 
         public override string WindowName => MapSimulatorWindowNames.BookCollection;
         public override bool CapturesKeyboardInput => IsVisible && _searchMode;
+        public Action ClosingRequested { get; set; }
         public Action CloseRequested { get; set; }
         public override void SetFont(SpriteFont font)
         {
@@ -315,12 +316,17 @@ namespace HaCreator.MapSimulator.UI
         private void HideBook(bool notifyCloseRequested)
         {
             bool wasVisible = IsVisible;
+            if (wasVisible && notifyCloseRequested)
+            {
+                _closeRequested?.Invoke();
+                ClosingRequested?.Invoke();
+            }
+
             ResetBookState();
             base.Hide();
 
             if (wasVisible && notifyCloseRequested)
             {
-                _closeRequested?.Invoke();
                 CloseRequested?.Invoke();
             }
         }
@@ -544,7 +550,11 @@ namespace HaCreator.MapSimulator.UI
             int tickCount = Environment.TickCount;
             if (UsesCollectionLayout)
             {
-                if (WasPressed(keyboard, Keys.Left) || WasPressed(keyboard, Keys.PageUp))
+                if (WasPressed(keyboard, Keys.Enter) || WasPressed(keyboard, Keys.Escape))
+                {
+                    CloseBook();
+                }
+                else if (WasPressed(keyboard, Keys.Left) || WasPressed(keyboard, Keys.PageUp))
                 {
                     MoveSpread(-1);
                 }

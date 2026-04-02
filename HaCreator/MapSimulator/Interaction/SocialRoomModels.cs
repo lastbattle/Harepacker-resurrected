@@ -2681,10 +2681,13 @@ namespace HaCreator.MapSimulator.Interaction
 
             _items.Remove(entry);
             _inventoryEscrow.RemoveAll(escrow => ReferenceEquals(escrow.Entry, entry));
+            int trimmedRows = TrimActiveMerchantPacketRows(Math.Max(0, remainingItemCount));
             NormalizeActiveMerchantPacketSlots();
             RoomState = "Closed for setup";
             ModeName = "Repricing";
-            StatusMessage = $"Moved {entry.ItemName} back to inventory from packet slot {removedIndex}. {Math.Max(0, remainingItemCount)} bundle(s) remain in the client packet array.";
+            StatusMessage = trimmedRows > 0
+                ? $"Moved {entry.ItemName} back to inventory from packet slot {removedIndex}. {Math.Max(0, remainingItemCount)} bundle(s) remain in the client packet array after trimming {trimmedRows} stale row(s)."
+                : $"Moved {entry.ItemName} back to inventory from packet slot {removedIndex}. {Math.Max(0, remainingItemCount)} bundle(s) remain in the client packet array.";
             PersistState();
             message = StatusMessage;
             return true;
@@ -2720,14 +2723,9 @@ namespace HaCreator.MapSimulator.Interaction
 
         private void ApplyEntrustedWithdrawMoneyResult()
         {
-            if (MesoAmount > 0)
-            {
-                _inventoryRuntime?.AddMeso(MesoAmount);
-            }
-
             MesoAmount = 0;
             RoomState = "Ledger settled";
-            StatusMessage = "Entrusted-shop withdraw-money packet moved all mesos out of the ledger.";
+            StatusMessage = "Entrusted-shop withdraw-money packet cleared the ledger meso total and refreshed the dialog state.";
             PersistState();
         }
 
@@ -2796,6 +2794,14 @@ namespace HaCreator.MapSimulator.Interaction
                 return null;
             }
 
+            SocialRoomItemEntry exact = _items.FirstOrDefault(item =>
+                !item.IsClaimed &&
+                item.PacketSlotIndex == packetSlotIndex);
+            if (exact != null)
+            {
+                return exact;
+            }
+
             List<SocialRoomItemEntry> activeEntries = NormalizeActiveMerchantPacketSlots();
             return packetSlotIndex < activeEntries.Count
                 ? activeEntries[packetSlotIndex]
@@ -2819,6 +2825,39 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return activeEntries;
+        }
+
+        private int TrimActiveMerchantPacketRows(int activeRowCount)
+        {
+            int normalizedActiveRowCount = Math.Max(0, activeRowCount);
+            if (normalizedActiveRowCount == 0)
+            {
+                int removedAllRows = _items.RemoveAll(item => !item.IsClaimed);
+                if (removedAllRows > 0)
+                {
+                    _inventoryEscrow.RemoveAll(escrow => escrow.Entry != null && !escrow.Entry.IsClaimed);
+                }
+
+                return removedAllRows;
+            }
+
+            List<SocialRoomItemEntry> activeEntries = NormalizeActiveMerchantPacketSlots();
+            if (activeEntries.Count <= normalizedActiveRowCount)
+            {
+                return 0;
+            }
+
+            List<SocialRoomItemEntry> staleEntries = activeEntries
+                .Skip(normalizedActiveRowCount)
+                .ToList();
+            if (staleEntries.Count == 0)
+            {
+                return 0;
+            }
+
+            _items.RemoveAll(item => staleEntries.Contains(item));
+            _inventoryEscrow.RemoveAll(escrow => staleEntries.Contains(escrow.Entry));
+            return staleEntries.Count;
         }
 
         private int RemoveClaimedMerchantRows()

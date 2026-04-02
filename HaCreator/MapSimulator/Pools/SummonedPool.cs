@@ -83,6 +83,7 @@ namespace HaCreator.MapSimulator.Pools
     public sealed class SummonedPool
     {
         private const int TeslaCoilSkillId = 35111002;
+        private const int HealingRobotSkillId = 35111011;
         private const int TeslaCoilMasterySkillId = 35120001;
         private const int TeslaMinimumImpactDelayMs = 300;
         private const int PacketOwnedSummonBodyContactCooldownMs = 700;
@@ -583,6 +584,7 @@ namespace HaCreator.MapSimulator.Pools
 
             state.Summon.LastAttackAnimationStartTime = currentTime;
             state.Summon.CurrentAnimationBranchName = ResolvePacketOwnedSkillBranch(state);
+            ArmPacketOwnedSupportSuspend(state, currentTime);
             bool hasPrepareAnimation = SummonRuntimeRules.ResolveSummonActionPrepareDurationMs(
                 state.Summon.SkillData,
                 state.Summon.CurrentAnimationBranchName) > 0;
@@ -605,6 +607,24 @@ namespace HaCreator.MapSimulator.Pools
                     : SummonActorState.Attack;
                 teslaState.Summon.LastStateChangeTime = currentTime;
             }
+        }
+
+        private static void ArmPacketOwnedSupportSuspend(PacketOwnedSummonState state, int currentTime)
+        {
+            if (state?.Summon?.SkillData == null
+                || state.Summon.SkillId != HealingRobotSkillId
+                || state.Summon.AssistType != SummonAssistType.Support)
+            {
+                return;
+            }
+
+            int suspendDurationMs = SummonRuntimeRules.ResolveSupportSuspendDurationMs(
+                state.Summon.SkillData,
+                preferHealFirst: true,
+                explicitBranchName: state.Summon.CurrentAnimationBranchName);
+            state.Summon.SupportSuspendUntilTime = suspendDurationMs > 0
+                ? currentTime + suspendDurationMs
+                : int.MinValue;
         }
 
         private static void BeginPacketOwnedAttackAnimation(PacketOwnedSummonState state, int currentTime)
@@ -2237,7 +2257,57 @@ namespace HaCreator.MapSimulator.Pools
                 return 0;
             }
 
-            return Math.Max(0, _localCancelFamilyRemainingDurationAccessor?.Invoke(skillId, currentTime) ?? 0);
+            PlayerCharacter localPlayer = _localPlayerAccessor?.Invoke();
+            int localOwnerId = localPlayer?.Build?.Id ?? 0;
+            IEnumerable<ActiveSummon> localPacketOwnedSummons = localOwnerId > 0
+                ? EnumerateOwnerSummonStates(localOwnerId).Select(static state => state.Summon)
+                : Array.Empty<ActiveSummon>();
+
+            return ResolveInheritedLocalCancelFamilyDurationMs(
+                skillId,
+                currentTime,
+                localPacketOwnedSummons,
+                _localCancelFamilyRemainingDurationAccessor,
+                ResolveCancelSkillData,
+                GetCancelSkillCatalog());
+        }
+
+        internal static int ResolveInheritedLocalCancelFamilyDurationMs(
+            int skillId,
+            int currentTime,
+            IEnumerable<ActiveSummon> localPacketOwnedSummons,
+            Func<int, int, int> localCancelFamilyRemainingDurationAccessor,
+            Func<int, SkillData> getSkillData,
+            IReadOnlyCollection<SkillData> skillCatalog)
+        {
+            int remainingDurationMs = Math.Max(0, localCancelFamilyRemainingDurationAccessor?.Invoke(skillId, currentTime) ?? 0);
+            if (skillId <= 0 || localPacketOwnedSummons == null)
+            {
+                return remainingDurationMs;
+            }
+
+            HashSet<int> cancelFamily = new(ClientSkillCancelResolver.ResolveConnectedCancelFamilySkillIds(
+                skillId,
+                getSkillData,
+                skillCatalog));
+            if (cancelFamily.Count == 0)
+            {
+                cancelFamily.Add(skillId);
+            }
+
+            foreach (ActiveSummon summon in localPacketOwnedSummons)
+            {
+                if (summon?.SkillId <= 0
+                    || summon.IsPendingRemoval
+                    || !cancelFamily.Contains(summon.SkillId))
+                {
+                    continue;
+                }
+
+                remainingDurationMs = Math.Max(remainingDurationMs, summon.GetRemainingTime(currentTime));
+            }
+
+            return remainingDurationMs;
         }
 
         private bool DoesClientCancelMatchSkillId(int activeSkillId, int requestedSkillId)

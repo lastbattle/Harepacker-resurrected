@@ -1,6 +1,7 @@
 using HaCreator.MapSimulator.Pools;
 using HaCreator.MapSimulator.Entities;
 using Microsoft.Xna.Framework;
+using System;
 
 namespace HaCreator.MapSimulator
 {
@@ -87,11 +88,45 @@ namespace HaCreator.MapSimulator
 
         private string ResolveRemoteDropPacketActorName(PacketDropLeaveReason reason, RemoteDropLeavePacket packet)
         {
+            return ResolveRemoteDropPacketActorName(
+                reason,
+                packet,
+                _remoteUserPool,
+                ResolveMobPickupSourceName,
+                ResolvePickupItemName);
+        }
+
+        internal static string ResolveRemoteDropPacketActorName(
+            PacketDropLeaveReason reason,
+            RemoteDropLeavePacket packet,
+            RemoteUserActorPool remoteUserPool,
+            Func<int, string> mobNameResolver,
+            Func<int, string> itemNameResolver)
+        {
             return reason switch
             {
-                PacketDropLeaveReason.PlayerPickup => ResolveRemotePickupActorName(DropPickupActorKind.Player, packet.ActorId, null),
-                PacketDropLeaveReason.MobPickup => ResolveRemotePickupActorName(DropPickupActorKind.Mob, packet.ActorId, null),
-                PacketDropLeaveReason.PetPickup => ResolveRemotePickupActorName(DropPickupActorKind.Player, packet.ActorId, null),
+                PacketDropLeaveReason.PlayerPickup => ResolveRemotePickupActorName(
+                    DropPickupActorKind.Player,
+                    packet.ActorId,
+                    null,
+                    remoteUserPool,
+                    mobNameResolver,
+                    itemNameResolver),
+                PacketDropLeaveReason.MobPickup => ResolveRemotePickupActorName(
+                    DropPickupActorKind.Mob,
+                    packet.ActorId,
+                    null,
+                    remoteUserPool,
+                    mobNameResolver,
+                    itemNameResolver),
+                PacketDropLeaveReason.PetPickup => ResolveRemotePickupActorName(
+                    DropPickupActorKind.Pet,
+                    packet.SecondaryActorId != 0 ? packet.SecondaryActorId : packet.ActorId,
+                    null,
+                    remoteUserPool,
+                    mobNameResolver,
+                    itemNameResolver,
+                    packet.ActorId),
                 _ => null
             };
         }

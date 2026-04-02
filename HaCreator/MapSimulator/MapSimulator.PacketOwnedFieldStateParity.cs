@@ -2,9 +2,7 @@ using HaCreator.MapSimulator.Interaction;
 using Microsoft.Xna.Framework;
 using System;
 using System.Collections.Generic;
-using System.IO;
 using System.Linq;
-using System.Text;
 
 namespace HaCreator.MapSimulator
 {
@@ -51,7 +49,7 @@ namespace HaCreator.MapSimulator
             if (payload == null ||
                 payload.Length == 0 ||
                 activeOwners == FieldSpecificStringPairOwnerMask.None ||
-                !TryDecodeFieldSpecificStringPairs(payload, out IReadOnlyList<KeyValuePair<string, string>> pairs, out int headerSize))
+                !PacketFieldSpecificDataCodec.TryDecodeStringPairs(payload, out IReadOnlyList<KeyValuePair<string, string>> pairs, out int headerSize))
             {
                 return false;
             }
@@ -59,9 +57,12 @@ namespace HaCreator.MapSimulator
             List<string> applied = new();
             foreach (KeyValuePair<string, string> pair in pairs)
             {
-                if (TryApplyStructuredFieldSpecificPair(pair.Key, pair.Value, currentTick, out string target))
+                string key = pair.Key;
+                PacketFieldSpecificDataOwnerHint ownerHint = PacketFieldSpecificDataCodec.ResolveOwnerHint(ref key);
+                if (TryApplyStructuredFieldSpecificPair(key, pair.Value, ownerHint, currentTick, out string target))
                 {
-                    applied.Add($"{pair.Key}={pair.Value} ({target})");
+                    string ownerPrefix = ownerHint == PacketFieldSpecificDataOwnerHint.None ? string.Empty : $"{ownerHint.ToString().ToLowerInvariant()}:";
+                    applied.Add($"{ownerPrefix}{key}={pair.Value} ({target})");
                 }
             }
 
@@ -79,7 +80,12 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
-        private bool TryApplyStructuredFieldSpecificPair(string key, string value, int currentTick, out string target)
+        private bool TryApplyStructuredFieldSpecificPair(
+            string key,
+            string value,
+            PacketFieldSpecificDataOwnerHint ownerHint,
+            int currentTick,
+            out string target)
         {
             target = null;
             if (string.IsNullOrWhiteSpace(key))
@@ -87,20 +93,24 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (_specialFieldRuntime.PartyRaid.IsActive && _specialFieldRuntime.PartyRaid.OnFieldSetVariable(key, value))
+            if (ShouldRouteFieldSpecificPairToPartyRaid(ownerHint) &&
+                _specialFieldRuntime.PartyRaid.IsActive &&
+                _specialFieldRuntime.PartyRaid.OnFieldSetVariable(key, value))
             {
                 target = "PartyRaidField";
                 return true;
             }
 
-            if (IsEscortResultWrapperMap(_mapBoard?.MapInfo) &&
+            if (ShouldRouteFieldSpecificPairToFieldWrappers(ownerHint) &&
+                IsEscortResultWrapperMap(_mapBoard?.MapInfo) &&
                 TryApplyClientOwnedWrapperFieldValue("escortresult", key, value, currentTick, out _))
             {
                 target = "escort-result wrapper";
                 return true;
             }
 
-            if (_mapBoard?.MapInfo?.fieldType == MapleLib.WzLib.WzStructure.Data.FieldType.FIELDTYPE_HUNTINGADBALLOON &&
+            if (ShouldRouteFieldSpecificPairToFieldWrappers(ownerHint) &&
+                _mapBoard?.MapInfo?.fieldType == MapleLib.WzLib.WzStructure.Data.FieldType.FIELDTYPE_HUNTINGADBALLOON &&
                 TryApplyClientOwnedWrapperFieldValue("huntingadballoon", key, value, currentTick, out _))
             {
                 target = "hunting-ad-balloon wrapper";
@@ -108,6 +118,20 @@ namespace HaCreator.MapSimulator
             }
 
             return false;
+        }
+
+        private static bool ShouldRouteFieldSpecificPairToPartyRaid(PacketFieldSpecificDataOwnerHint ownerHint)
+        {
+            return ownerHint is PacketFieldSpecificDataOwnerHint.None
+                or PacketFieldSpecificDataOwnerHint.Party
+                or PacketFieldSpecificDataOwnerHint.Session;
+        }
+
+        private static bool ShouldRouteFieldSpecificPairToFieldWrappers(PacketFieldSpecificDataOwnerHint ownerHint)
+        {
+            return ownerHint is PacketFieldSpecificDataOwnerHint.None
+                or PacketFieldSpecificDataOwnerHint.Field
+                or PacketFieldSpecificDataOwnerHint.Session;
         }
 
         private FieldSpecificStringPairOwnerMask GetActiveFieldSpecificStringPairOwners()
@@ -150,113 +174,6 @@ namespace HaCreator.MapSimulator
             }
 
             return names.Count == 0 ? "no known owner" : string.Join(", ", names);
-        }
-
-        private static bool TryDecodeFieldSpecificStringPairs(
-            byte[] payload,
-            out IReadOnlyList<KeyValuePair<string, string>> pairs,
-            out int headerSize)
-        {
-            pairs = null;
-            headerSize = -1;
-            payload ??= Array.Empty<byte>();
-            if (TryDecodeFieldSpecificStringPairs(payload, 1, out pairs))
-            {
-                headerSize = 1;
-                return true;
-            }
-
-            if (TryDecodeFieldSpecificStringPairs(payload, 2, out pairs))
-            {
-                headerSize = 2;
-                return true;
-            }
-
-            if (TryDecodeFieldSpecificStringPairs(payload, 4, out pairs))
-            {
-                headerSize = 4;
-                return true;
-            }
-
-            if (TryDecodeFieldSpecificStringPairs(payload, 0, out pairs))
-            {
-                headerSize = 0;
-                return true;
-            }
-
-            return false;
-        }
-
-        private static bool TryDecodeFieldSpecificStringPairs(byte[] payload, int headerSize, out IReadOnlyList<KeyValuePair<string, string>> pairs)
-        {
-            pairs = null;
-            try
-            {
-                using var stream = new MemoryStream(payload, writable: false);
-                using var reader = new BinaryReader(stream, Encoding.Default, leaveOpen: false);
-                int declaredCount = 0;
-                if (headerSize == 1)
-                {
-                    declaredCount = reader.ReadByte();
-                }
-                else if (headerSize == 2)
-                {
-                    declaredCount = reader.ReadUInt16();
-                }
-                else if (headerSize == 4)
-                {
-                    declaredCount = reader.ReadInt32();
-                }
-
-                List<KeyValuePair<string, string>> decoded = new();
-                if (headerSize == 0)
-                {
-                    while (stream.Position < stream.Length)
-                    {
-                        string key = ReadMapleString(reader);
-                        string value = ReadMapleString(reader);
-                        decoded.Add(new KeyValuePair<string, string>(key, value));
-                    }
-                }
-                else
-                {
-                    if (declaredCount <= 0 || declaredCount > 32)
-                    {
-                        return false;
-                    }
-
-                    for (int i = 0; i < declaredCount; i++)
-                    {
-                        string key = ReadMapleString(reader);
-                        string value = ReadMapleString(reader);
-                        decoded.Add(new KeyValuePair<string, string>(key, value));
-                    }
-                }
-
-                if (decoded.Count == 0 || stream.Position != stream.Length || decoded.Any(static pair => string.IsNullOrWhiteSpace(pair.Key)))
-                {
-                    return false;
-                }
-
-                pairs = decoded;
-                return true;
-            }
-            catch (Exception ex) when (ex is IOException || ex is EndOfStreamException || ex is ArgumentException)
-            {
-                return false;
-            }
-        }
-
-        private static string ReadMapleString(BinaryReader reader)
-        {
-            ushort length = reader.ReadUInt16();
-            byte[] bytes = reader.ReadBytes(length);
-            if (bytes.Length != length)
-            {
-                throw new EndOfStreamException("Field-specific data string ended before its declared Maple-string length.");
-            }
-
-            return Encoding.Default.GetString(bytes);
         }
 
         [Flags]

@@ -137,6 +137,7 @@ namespace HaCreator.MapSimulator
             DrawPlayer(gameTime, mapCenterX, mapCenterY, TickCount); // player character (has tombstone logic)
             _mobAttackSystem.Draw(_spriteBatch, _debugBoundaryTexture, mapShiftX, mapShiftY, mapCenterX, mapCenterY, TickCount);
             _renderingManager.DrawDrops(in renderContext); // item/meso drops
+            _renderingManager.DrawDrops(in renderContext, elevatedOnly: true); // packet-authored elevated drop layer
             _renderingManager.DrawPortals(in renderContext); // portals
             _temporaryPortalField?.DrawCurrentMap(
                 _mapBoard.MapInfo.id,

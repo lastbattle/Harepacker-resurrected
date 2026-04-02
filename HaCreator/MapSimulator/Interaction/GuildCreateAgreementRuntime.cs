@@ -13,17 +13,25 @@ namespace HaCreator.MapSimulator.Interaction
         private int _choiceRemainingMs;
         private string _masterName = "Guild Master";
         private string _guildName = "New Guild";
+        private GuildDialogContext _dialogContext = new(
+            "No Guild",
+            "Member",
+            Array.Empty<string>(),
+            string.Empty,
+            true,
+            Array.Empty<GuildRankingSeedEntry>());
         private string _statusMessage = "Guild creation agreement is idle.";
 
-        internal string Open(string masterName, string guildName)
+        internal string Open(string masterName, string guildName, GuildDialogContext dialogContext)
         {
             _isOpen = true;
             _timedOut = false;
             _elapsedMs = 0;
             _choiceRemainingMs = ChoiceTimeoutMs;
+            _dialogContext = dialogContext;
             _masterName = string.IsNullOrWhiteSpace(masterName) ? "Guild Master" : masterName.Trim();
             _guildName = string.IsNullOrWhiteSpace(guildName) ? "New Guild" : guildName.Trim();
-            _statusMessage = $"Opened guild creation agreement for {_masterName} creating {_guildName}. The dialog still uses simulator-authored text instead of the packet or script entry path.";
+            _statusMessage = $"Opened guild creation agreement for {_masterName} creating {_guildName}. The guild-management seam now supplies the active role and admission state, while packet or script entry still remains outside the simulator.";
             return _statusMessage;
         }
 
@@ -52,8 +60,9 @@ namespace HaCreator.MapSimulator.Interaction
             return _statusMessage;
         }
 
-        internal string Accept()
+        internal string Accept(out GuildCreateAgreementAcceptance acceptance)
         {
+            acceptance = default;
             if (!_isOpen)
             {
                 return _timedOut
@@ -67,7 +76,8 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _isOpen = false;
-            _statusMessage = $"Accepted guild creation agreement for {_masterName} and {_guildName}. The simulator still does not create a real server-backed guild record from this dialog.";
+            acceptance = new GuildCreateAgreementAcceptance(_masterName, _guildName, DateTimeOffset.UtcNow);
+            _statusMessage = $"Accepted guild creation agreement for {_masterName} and {_guildName}. The simulator now hands the acceptance back to the shared guild seam, but a real server-backed guild record still remains outside this runtime.";
             return _statusMessage;
         }
 

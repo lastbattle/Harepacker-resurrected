@@ -1696,6 +1696,12 @@ namespace HaCreator.MapSimulator
 
                 });
 
+            _chat.CommandHandler.RegisterCommand(
+                "maptransfer",
+                "Inspect or drive the map-transfer packet/session bridge",
+                "/maptransfer [status|session ...|packet result <resultCode> <regular|continent> [mapIds...]]",
+                HandleMapTransferCommand);
+
 
 
             // /job <jobid> - Change the active player job and refocus skill UI
@@ -2561,6 +2567,308 @@ namespace HaCreator.MapSimulator
 
                     return ChatCommandHandler.CommandResult.Error("Usage: /guildui [status|rank open|mark open|agree open <masterName> <guildName>]");
                 });
+            _chat.CommandHandler.RegisterCommand(
+                "sociallist",
+                "Inspect or drive the Social List, guild-manage, alliance-editor, and packet-owned roster-authority seams",
+                "/sociallist [status|open [friend|party|guild|alliance|blacklist]|search [party|partymember|expedition]|guildsearch open|guildmanage open [position|admission|change]|alliance open [rank|notice]|packet ...]",
+                args =>
+                {
+                    const string usage = "/sociallist [status|open [friend|party|guild|alliance|blacklist]|search [party|partymember|expedition]|guildsearch open|guildmanage open [position|admission|change]|alliance open [rank|notice]|packet ...]";
+                    if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return ChatCommandHandler.CommandResult.Info(_socialListRuntime.DescribeStatus());
+                    }
+
+                    if (string.Equals(args[0], "open", StringComparison.OrdinalIgnoreCase))
+                    {
+                        SocialListTab targetTab = _socialListRuntime.CurrentTab;
+                        if (args.Length >= 2 && !TryParseSocialListTabToken(args[1], out targetTab))
+                        {
+                            return ChatCommandHandler.CommandResult.Error("Usage: /sociallist open [friend|party|guild|alliance|blacklist]");
+                        }
+
+                        _socialListRuntime.SelectTab(targetTab);
+                        WireSocialListWindowData();
+                        ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.SocialList);
+                        return ChatCommandHandler.CommandResult.Ok($"Opened Social List on the {DescribePacketOwnedSocialListTab(targetTab)} tab.");
+                    }
+
+                    if (string.Equals(args[0], "search", StringComparison.OrdinalIgnoreCase))
+                    {
+                        SocialSearchTab searchTab = SocialSearchTab.Party;
+                        if (args.Length >= 2 && !TryParseSocialSearchTabToken(args[1], out searchTab))
+                        {
+                            return ChatCommandHandler.CommandResult.Error("Usage: /sociallist search [party|partymember|expedition]");
+                        }
+
+                        _socialListRuntime.OpenSearchWindow(searchTab);
+                        WireSocialSearchWindowData();
+                        ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.SocialSearch);
+                        return ChatCommandHandler.CommandResult.Ok($"Opened Social Search on the {searchTab} tab.");
+                    }
+
+                    if (string.Equals(args[0], "guildsearch", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (args.Length >= 2 && !string.Equals(args[1], "open", StringComparison.OrdinalIgnoreCase))
+                        {
+                            return ChatCommandHandler.CommandResult.Error("Usage: /sociallist guildsearch open");
+                        }
+
+                        _socialListRuntime.OpenGuildSearchWindow();
+                        WireGuildSearchWindowData();
+                        ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.GuildSearch);
+                        return ChatCommandHandler.CommandResult.Ok("Opened the dedicated guild-search owner.");
+                    }
+
+                    if (string.Equals(args[0], "guildmanage", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (args.Length < 2 || !string.Equals(args[1], "open", StringComparison.OrdinalIgnoreCase))
+                        {
+                            return ChatCommandHandler.CommandResult.Error("Usage: /sociallist guildmanage open [position|admission|change]");
+                        }
+
+                        GuildManageTab manageTab = GuildManageTab.Position;
+                        if (args.Length >= 3 && !TryParseGuildManageTabToken(args[2], out manageTab))
+                        {
+                            return ChatCommandHandler.CommandResult.Error("Usage: /sociallist guildmanage open [position|admission|change]");
+                        }
+
+                        _socialListRuntime.OpenGuildManageWindow(manageTab);
+                        WireGuildManageWindowData();
+                        ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.GuildManage);
+                        return ChatCommandHandler.CommandResult.Ok($"Opened Guild Manage on the {manageTab} tab.");
+                    }
+
+                    if (string.Equals(args[0], "alliance", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (args.Length < 2 || !string.Equals(args[1], "open", StringComparison.OrdinalIgnoreCase))
+                        {
+                            return ChatCommandHandler.CommandResult.Error("Usage: /sociallist alliance open [rank|notice]");
+                        }
+
+                        AllianceEditorFocus focus = AllianceEditorFocus.RankTitle;
+                        if (args.Length >= 3 && !TryParseAllianceEditorFocusToken(args[2], out focus))
+                        {
+                            return ChatCommandHandler.CommandResult.Error("Usage: /sociallist alliance open [rank|notice]");
+                        }
+
+                        _socialListRuntime.OpenAllianceEditor(focus);
+                        WireAllianceEditorWindowData();
+                        ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.AllianceEditor);
+                        return ChatCommandHandler.CommandResult.Ok(
+                            focus == AllianceEditorFocus.Notice
+                                ? "Opened the alliance editor on the notice branch."
+                                : "Opened the alliance editor on the rank-title branch.");
+                    }
+
+                    if (string.Equals(args[0], "packet", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (args.Length == 1 || string.Equals(args[1], "status", StringComparison.OrdinalIgnoreCase))
+                        {
+                            return ChatCommandHandler.CommandResult.Info(_socialListRuntime.DescribeStatus());
+                        }
+
+                        string packetAction = args[1].ToLowerInvariant();
+                        if (string.Equals(packetAction, "owner", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (args.Length < 4 || !TryParseSocialListTabToken(args[2], out SocialListTab ownerTab))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /sociallist packet owner <friend|party|guild|alliance|blacklist> <local|packet> [summary]");
+                            }
+
+                            bool packetOwned = args[3].ToLowerInvariant() switch
+                            {
+                                "packet" => true,
+                                "local" => false,
+                                _ => throw new ArgumentException("Roster owner must be local or packet.")
+                            };
+
+                            string summary = args.Length > 4 ? string.Join(' ', args.Skip(4)) : null;
+                            return ChatCommandHandler.CommandResult.Ok(_socialListRuntime.SetPacketRosterOwnership(ownerTab, packetOwned, summary));
+                        }
+
+                        if (string.Equals(packetAction, "seed", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (args.Length < 3 || !TryParseSocialListTabToken(args[2], out SocialListTab seedTab))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /sociallist packet seed <friend|party|guild|alliance|blacklist>");
+                            }
+
+                            return ChatCommandHandler.CommandResult.Ok(_socialListRuntime.SeedPacketRoster(seedTab));
+                        }
+
+                        if (string.Equals(packetAction, "clear", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (args.Length < 3 || !TryParseSocialListTabToken(args[2], out SocialListTab clearTab))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /sociallist packet clear <friend|party|guild|alliance|blacklist>");
+                            }
+
+                            return ChatCommandHandler.CommandResult.Ok(_socialListRuntime.ClearPacketRoster(clearTab));
+                        }
+
+                        if (string.Equals(packetAction, "remove", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (args.Length < 4 || !TryParseSocialListTabToken(args[2], out SocialListTab removeTab))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /sociallist packet remove <friend|party|guild|alliance|blacklist> <name>");
+                            }
+
+                            return ChatCommandHandler.CommandResult.Ok(_socialListRuntime.RemovePacketEntry(removeTab, string.Join(' ', args.Skip(3))));
+                        }
+
+                        if (string.Equals(packetAction, "select", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (args.Length < 4 || !TryParseSocialListTabToken(args[2], out SocialListTab selectTab))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /sociallist packet select <friend|party|guild|alliance|blacklist> <name>");
+                            }
+
+                            return ChatCommandHandler.CommandResult.Ok(_socialListRuntime.SelectEntryByName(selectTab, string.Join(' ', args.Skip(3))));
+                        }
+
+                        if (string.Equals(packetAction, "summary", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (args.Length < 4 || !TryParseSocialListTabToken(args[2], out SocialListTab summaryTab))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /sociallist packet summary <friend|party|guild|alliance|blacklist> <summary>");
+                            }
+
+                            return ChatCommandHandler.CommandResult.Ok(_socialListRuntime.SetPacketSyncSummary(summaryTab, string.Join(' ', args.Skip(3))));
+                        }
+
+                        if (string.Equals(packetAction, "resolve", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (args.Length < 4 || !TryParseSocialListTabToken(args[2], out SocialListTab resolveTab))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /sociallist packet resolve <friend|party|guild|alliance|blacklist> <approve|reject> [summary]");
+                            }
+
+                            bool approved = args[3].ToLowerInvariant() switch
+                            {
+                                "approve" or "approved" or "accept" => true,
+                                "reject" or "rejected" or "deny" => false,
+                                _ => throw new ArgumentException("Resolve action must be approve or reject.")
+                            };
+
+                            string summary = args.Length > 4 ? string.Join(' ', args.Skip(4)) : null;
+                            return ChatCommandHandler.CommandResult.Ok(_socialListRuntime.ResolvePacketOwnedRequest(resolveTab, approved, summary));
+                        }
+
+                        if (string.Equals(packetAction, "upsert", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (args.Length < 4 || !TryParseSocialListTabToken(args[2], out SocialListTab upsertTab))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /sociallist packet upsert <friend|party|guild|alliance|blacklist> <name>|<primary>|<secondary>|<location>|<channel>|<online>|<leader>|<blocked>|<local>");
+                            }
+
+                            string[] fields = string.Join(' ', args.Skip(3)).Split('|', StringSplitOptions.TrimEntries);
+                            if (fields.Length != 9
+                                || !int.TryParse(fields[4], out int channel)
+                                || !TryParsePacketOwnedBooleanToken(fields[5], out bool isOnline)
+                                || !TryParsePacketOwnedBooleanToken(fields[6], out bool isLeader)
+                                || !TryParsePacketOwnedBooleanToken(fields[7], out bool isBlocked)
+                                || !TryParsePacketOwnedBooleanToken(fields[8], out bool isLocalPlayer))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /sociallist packet upsert <friend|party|guild|alliance|blacklist> <name>|<primary>|<secondary>|<location>|<channel>|<online>|<leader>|<blocked>|<local>");
+                            }
+
+                            return ChatCommandHandler.CommandResult.Ok(
+                                _socialListRuntime.UpsertPacketEntry(
+                                    upsertTab,
+                                    fields[0],
+                                    fields[1],
+                                    fields[2],
+                                    fields[3],
+                                    channel,
+                                    isOnline,
+                                    isLeader,
+                                    isBlocked,
+                                    isLocalPlayer));
+                        }
+
+                        if (string.Equals(packetAction, "guildauth", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (args.Length < 3)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /sociallist packet guildauth <clear|<role>|<role>|<rank>|<admission>|<notice>>");
+                            }
+
+                            if (string.Equals(args[2], "clear", StringComparison.OrdinalIgnoreCase)
+                                || string.Equals(args[2], "local", StringComparison.OrdinalIgnoreCase))
+                            {
+                                return ChatCommandHandler.CommandResult.Ok(_socialListRuntime.ClearPacketGuildAuthority());
+                            }
+
+                            string[] fields = string.Join(' ', args.Skip(2)).Split('|', StringSplitOptions.TrimEntries);
+                            if (fields.Length != 4
+                                || !TryParsePacketOwnedBooleanToken(fields[1], out bool canManageRanks)
+                                || !TryParsePacketOwnedBooleanToken(fields[2], out bool canToggleAdmission)
+                                || !TryParsePacketOwnedBooleanToken(fields[3], out bool canEditNotice))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /sociallist packet guildauth <clear|<role>|<rank>|<admission>|<notice>>");
+                            }
+
+                            return ChatCommandHandler.CommandResult.Ok(
+                                _socialListRuntime.SetPacketGuildAuthority(fields[0], canManageRanks, canToggleAdmission, canEditNotice));
+                        }
+
+                        if (string.Equals(packetAction, "allianceauth", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (args.Length < 3)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /sociallist packet allianceauth <clear|<role>|<rank>|<notice>>");
+                            }
+
+                            if (string.Equals(args[2], "clear", StringComparison.OrdinalIgnoreCase)
+                                || string.Equals(args[2], "local", StringComparison.OrdinalIgnoreCase))
+                            {
+                                return ChatCommandHandler.CommandResult.Ok(_socialListRuntime.ClearPacketAllianceAuthority());
+                            }
+
+                            string[] fields = string.Join(' ', args.Skip(2)).Split('|', StringSplitOptions.TrimEntries);
+                            if (fields.Length != 3
+                                || !TryParsePacketOwnedBooleanToken(fields[1], out bool canEditRanks)
+                                || !TryParsePacketOwnedBooleanToken(fields[2], out bool canEditAllianceNotice))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /sociallist packet allianceauth <clear|<role>|<rank>|<notice>>");
+                            }
+
+                            return ChatCommandHandler.CommandResult.Ok(
+                                _socialListRuntime.SetPacketAllianceAuthority(fields[0], canEditRanks, canEditAllianceNotice));
+                        }
+
+                        if (string.Equals(packetAction, "guildui", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (args.Length < 3)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /sociallist packet guildui <clear|<member>|<guildName>|<guildLevel>>");
+                            }
+
+                            if (string.Equals(args[2], "clear", StringComparison.OrdinalIgnoreCase)
+                                || string.Equals(args[2], "local", StringComparison.OrdinalIgnoreCase))
+                            {
+                                return ChatCommandHandler.CommandResult.Ok(_socialListRuntime.ClearPacketGuildUiContext());
+                            }
+
+                            string[] fields = string.Join(' ', args.Skip(2)).Split('|', StringSplitOptions.TrimEntries);
+                            if (fields.Length != 3
+                                || !TryParsePacketOwnedBooleanToken(fields[0], out bool hasGuildMembership)
+                                || !int.TryParse(fields[2], out int guildLevel))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /sociallist packet guildui <clear|<member>|<guildName>|<guildLevel>>");
+                            }
+
+                            return ChatCommandHandler.CommandResult.Ok(
+                                _socialListRuntime.SetPacketGuildUiContext(hasGuildMembership, fields[1], guildLevel));
+                        }
+
+                        return ChatCommandHandler.CommandResult.Error(
+                            "Usage: /sociallist packet [status|owner <tab> <local|packet> [summary]|seed <tab>|clear <tab>|remove <tab> <name>|select <tab> <name>|summary <tab> <summary>|resolve <tab> <approve|reject> [summary]|upsert <tab> <name>|<primary>|<secondary>|<location>|<channel>|<online>|<leader>|<blocked>|<local>|guildauth <clear|<role>|<rank>|<admission>|<notice>>|allianceauth <clear|<role>|<rank>|<notice>>|guildui <clear|<member>|<guildName>|<guildLevel>>]");
+                    }
+
+                    return ChatCommandHandler.CommandResult.Error(usage);
+                });
 
 
 
@@ -3057,7 +3365,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "tournament",
                 "Inspect or drive the Tournament field wrapper",
-                "/tournament [status|raw <374|375|376|377|378> <hex>|packetraw <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]]",
+                "/tournament [status|dialog [status|close|scroll <up|down|0..2>]|raw <374|375|376|377|378> <hex>|packetraw <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]]",
                 args =>
                 {
                     TournamentField field = _specialFieldRuntime.Minigames.Tournament;
@@ -3071,6 +3379,62 @@ namespace HaCreator.MapSimulator
                     {
                         return ChatCommandHandler.CommandResult.Info(
                             $"{field.DescribeStatus()}{Environment.NewLine}{_tournamentPacketInbox.LastStatus}{Environment.NewLine}{_tournamentOfficialSessionBridge.DescribeStatus()}");
+                    }
+
+                    if (string.Equals(args[0], "dialog", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (args.Length == 1 || string.Equals(args[1], "status", StringComparison.OrdinalIgnoreCase))
+                        {
+                            return ChatCommandHandler.CommandResult.Info(field.DescribeMatchTableDialog());
+                        }
+
+                        if (string.Equals(args[1], "close", StringComparison.OrdinalIgnoreCase))
+                        {
+                            field.CloseMatchTableDialog();
+                            return ChatCommandHandler.CommandResult.Ok(field.DescribeMatchTableDialog());
+                        }
+
+                        if (string.Equals(args[1], "scroll", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (args.Length < 3)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /tournament dialog scroll <up|down|0..2>");
+                            }
+
+                            int delta = args[2].ToLowerInvariant() switch
+                            {
+                                "up" => -1,
+                                "down" => 1,
+                                _ => int.MinValue
+                            };
+
+                            if (delta == int.MinValue)
+                            {
+                                if (!int.TryParse(args[2], out int absoluteScroll) || absoluteScroll < 0 || absoluteScroll > 2)
+                                {
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /tournament dialog scroll <up|down|0..2>");
+                                }
+
+                                string beforeStatus = field.DescribeMatchTableDialog();
+                                if (beforeStatus.Contains("closed.", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    return ChatCommandHandler.CommandResult.Error("Tournament match-table dialog is not open.");
+                                }
+
+                                if (!field.TryScrollMatchTableDialog(absoluteScroll - field.MatchTableDialog.Scroll, out string absoluteMessage))
+                                {
+                                    return ChatCommandHandler.CommandResult.Error(absoluteMessage);
+                                }
+
+                                return ChatCommandHandler.CommandResult.Ok(absoluteMessage);
+                            }
+
+                            return field.TryScrollMatchTableDialog(delta, out string scrollMessage)
+                                ? ChatCommandHandler.CommandResult.Ok(scrollMessage)
+                                : ChatCommandHandler.CommandResult.Error(scrollMessage);
+                        }
+
+                        return ChatCommandHandler.CommandResult.Error("Usage: /tournament dialog [status|close|scroll <up|down|0..2>]");
                     }
 
 
@@ -3230,7 +3594,7 @@ namespace HaCreator.MapSimulator
                     }
 
 
-                    return ChatCommandHandler.CommandResult.Error("Usage: /tournament [status|raw <374|375|376|377|378> <hex>|packetraw <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /tournament [status|dialog [status|close|scroll <up|down|0..2>]|raw <374|375|376|377|378> <hex>|packetraw <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]]");
                 });
 
 
@@ -4393,10 +4757,24 @@ namespace HaCreator.MapSimulator
 
                 "dojo",
 
-                "Inspect the Mu Lung Dojo HUD state or its loopback inbox",
-                "/dojo [status|inbox [status|start [port]|stop]]",
+                "Inspect the Mu Lung Dojo HUD state, loopback inbox, or official-session bridge",
+                "/dojo [status|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|map <opcode> <clock|stage|clear|timeover>|unmap <opcode>|clearmap|recent|stop]]",
                 args =>
                 {
+                    static bool TryParseDojoSessionPacketType(string text, out int packetType)
+                    {
+                        packetType = text?.Trim().ToLowerInvariant() switch
+                        {
+                            "clock" => DojoField.PacketTypeClock,
+                            "stage" => DojoField.PacketTypeStage,
+                            "clear" => DojoField.PacketTypeClear,
+                            "timeover" => DojoField.PacketTypeTimeOver,
+                            _ => -1
+                        };
+
+                        return packetType >= DojoField.PacketTypeClock;
+                    }
+
                     if (!_specialFieldRuntime.SpecialEffects.Dojo.IsActive)
                     {
                         return ChatCommandHandler.CommandResult.Error("Mu Lung Dojo HUD is only active on Dojo maps");
@@ -4406,7 +4784,7 @@ namespace HaCreator.MapSimulator
                     if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
                     {
                         return ChatCommandHandler.CommandResult.Info(
-                            $"{_specialFieldRuntime.SpecialEffects.Dojo.DescribeStatus()}{Environment.NewLine}{_dojoPacketInbox.LastStatus}");
+                            $"{_specialFieldRuntime.SpecialEffects.Dojo.DescribeStatus()}{Environment.NewLine}{_dojoPacketInbox.LastStatus}{Environment.NewLine}{_dojoOfficialSessionBridge.DescribeStatus()}");
                     }
 
 
@@ -4415,7 +4793,7 @@ namespace HaCreator.MapSimulator
                         if (args.Length == 1 || string.Equals(args[1], "status", StringComparison.OrdinalIgnoreCase))
                         {
                             return ChatCommandHandler.CommandResult.Info(
-                                $"{_specialFieldRuntime.SpecialEffects.Dojo.DescribeStatus()}{Environment.NewLine}{_dojoPacketInbox.LastStatus}");
+                                $"{_specialFieldRuntime.SpecialEffects.Dojo.DescribeStatus()}{Environment.NewLine}{_dojoPacketInbox.LastStatus}{Environment.NewLine}{_dojoOfficialSessionBridge.DescribeStatus()}");
                         }
 
 
@@ -4447,9 +4825,136 @@ namespace HaCreator.MapSimulator
 
                     }
 
+                    if (string.Equals(args[0], "session", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (args.Length == 1 || string.Equals(args[1], "status", StringComparison.OrdinalIgnoreCase))
+                        {
+                            return ChatCommandHandler.CommandResult.Info(
+                                $"{_specialFieldRuntime.SpecialEffects.Dojo.DescribeStatus()}{Environment.NewLine}{_dojoOfficialSessionBridge.DescribeStatus()}");
+                        }
+
+                        if (string.Equals(args[1], "discover", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (args.Length < 3
+                                || !int.TryParse(args[2], out int discoverRemotePort)
+                                || discoverRemotePort <= 0)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /dojo session discover <remotePort> [processName|pid] [localPort]");
+                            }
+
+                            string processSelector = args.Length >= 4 ? args[3] : null;
+                            int? localPortFilter = null;
+                            if (args.Length >= 5)
+                            {
+                                if (!int.TryParse(args[4], out int parsedLocalPort) || parsedLocalPort <= 0)
+                                {
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /dojo session discover <remotePort> [processName|pid] [localPort]");
+                                }
+
+                                localPortFilter = parsedLocalPort;
+                            }
+
+                            return ChatCommandHandler.CommandResult.Info(
+                                _dojoOfficialSessionBridge.DescribeDiscoveredSessions(discoverRemotePort, processSelector, localPortFilter));
+                        }
+
+                        if (string.Equals(args[1], "start", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (args.Length < 5
+                                || !int.TryParse(args[2], out int listenPort)
+                                || listenPort <= 0
+                                || !int.TryParse(args[4], out int remotePort)
+                                || remotePort <= 0)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /dojo session start <listenPort> <serverHost> <serverPort>");
+                            }
+
+                            return _dojoOfficialSessionBridge.TryStart(listenPort, args[3], remotePort, out string startStatus)
+                                ? ChatCommandHandler.CommandResult.Ok(startStatus)
+                                : ChatCommandHandler.CommandResult.Error(startStatus);
+                        }
+
+                        if (string.Equals(args[1], "startauto", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (args.Length < 4
+                                || !int.TryParse(args[2], out int autoListenPort)
+                                || autoListenPort <= 0
+                                || !int.TryParse(args[3], out int autoRemotePort)
+                                || autoRemotePort <= 0)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /dojo session startauto <listenPort> <remotePort> [processName|pid] [localPort]");
+                            }
+
+                            string processSelector = args.Length >= 5 ? args[4] : null;
+                            int? localPortFilter = null;
+                            if (args.Length >= 6)
+                            {
+                                if (!int.TryParse(args[5], out int parsedLocalPort) || parsedLocalPort <= 0)
+                                {
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /dojo session startauto <listenPort> <remotePort> [processName|pid] [localPort]");
+                                }
+
+                                localPortFilter = parsedLocalPort;
+                            }
+
+                            return _dojoOfficialSessionBridge.TryStartFromDiscovery(autoListenPort, autoRemotePort, processSelector, localPortFilter, out string startStatus)
+                                ? ChatCommandHandler.CommandResult.Ok(startStatus)
+                                : ChatCommandHandler.CommandResult.Error(startStatus);
+                        }
+
+                        if (string.Equals(args[1], "map", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (args.Length < 4
+                                || !int.TryParse(args[2], out int opcode)
+                                || opcode <= 0
+                                || !TryParseDojoSessionPacketType(args[3], out int packetType))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /dojo session map <opcode> <clock|stage|clear|timeover>");
+                            }
+
+                            return _dojoOfficialSessionBridge.TryConfigurePacketMapping(opcode, packetType, out string mapStatus)
+                                ? ChatCommandHandler.CommandResult.Ok(mapStatus)
+                                : ChatCommandHandler.CommandResult.Error(mapStatus);
+                        }
+
+                        if (string.Equals(args[1], "unmap", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (args.Length < 3
+                                || !int.TryParse(args[2], out int opcode)
+                                || opcode <= 0)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /dojo session unmap <opcode>");
+                            }
+
+                            return _dojoOfficialSessionBridge.RemovePacketMapping(opcode, out string unmapStatus)
+                                ? ChatCommandHandler.CommandResult.Ok(unmapStatus)
+                                : ChatCommandHandler.CommandResult.Error(unmapStatus);
+                        }
+
+                        if (string.Equals(args[1], "clearmap", StringComparison.OrdinalIgnoreCase))
+                        {
+                            _dojoOfficialSessionBridge.ClearPacketMappings();
+                            return ChatCommandHandler.CommandResult.Ok(_dojoOfficialSessionBridge.LastStatus);
+                        }
+
+                        if (string.Equals(args[1], "recent", StringComparison.OrdinalIgnoreCase))
+                        {
+                            return ChatCommandHandler.CommandResult.Info(
+                                $"{_specialFieldRuntime.SpecialEffects.Dojo.DescribeStatus()}{Environment.NewLine}{_dojoOfficialSessionBridge.DescribeStatus()}");
+                        }
+
+                        if (string.Equals(args[1], "stop", StringComparison.OrdinalIgnoreCase))
+                        {
+                            _dojoOfficialSessionBridge.Stop();
+                            return ChatCommandHandler.CommandResult.Ok(_dojoOfficialSessionBridge.LastStatus);
+                        }
+
+                        return ChatCommandHandler.CommandResult.Error("Usage: /dojo session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|map <opcode> <clock|stage|clear|timeover>|unmap <opcode>|clearmap|recent|stop]");
+                    }
 
 
-                    return ChatCommandHandler.CommandResult.Error("Usage: /dojo [status|inbox [status|start [port]|stop]]");
+
+                    return ChatCommandHandler.CommandResult.Error("Usage: /dojo [status|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|map <opcode> <clock|stage|clear|timeover>|unmap <opcode>|clearmap|recent|stop]]");
                 });
 
 
@@ -6960,6 +7465,11 @@ namespace HaCreator.MapSimulator
                 "Inspect or drive packet-authored local utility and event dispatch handlers",
                 "/localutility [status|inbox [status|start [port]|stop|packet <sitresult|questresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|follow|followfail|directionmode|standalone|damagemeter|hpdec|skillcooltime|193|231|242|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|1012|1013|1014|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]|packetclientraw <hex>]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|directionmode <on|off|1|0> [delayMs]|standalone <on|off|1|0>|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv]|classcompetition|skillguide|antimacro [status|launch <normal|admin> [first|retry]|notice <noticeType> [antiMacroType]|result <mode> [antiMacroType] [userName]|clear]|apsp [status|seed [characterId]|receive <token>|send <token>|context <receiveToken> [sendToken]|<contextToken> <11|12|13>|text]|follow <status|request <driverId|name> [auto|manual] [keyinput]|ask <requesterId|name>|accept|decline|attach <driverId|name>|detach [transferX transferY]|passengerdetach [requesterId|name] [transferX transferY]>|followfail [reasonCode [driverId]|text]|packet <sitresult|questresult|openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|skillguide|antimacro|apspevent|directionmode|standalone|follow|followfail|193|231|242|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|1012|1013|1014> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]",
                 HandlePacketOwnedUtilityCommand);
+            _chat.CommandHandler.RegisterCommand(
+                "expedition",
+                "Inspect or drive the dedicated expedition intermediary owner discovered in the client",
+                "/expedition [status|open|search|clear|local clear|get|modified|invite|response|notice|master|removed|start|register] ...",
+                HandleExpeditionIntermediaryCommand);
 
             _chat.CommandHandler.RegisterCommand(
                 "fieldfeedback",
@@ -8936,7 +9446,7 @@ namespace HaCreator.MapSimulator
             using var writer = new BinaryWriter(stream, Encoding.Default, leaveOpen: true);
             writer.Write((byte)4);
             writer.Write(npcId);
-            writer.Write((byte)12);
+            writer.Write((byte)15);
             writer.Write((byte)0);
             WritePacketOwnedMapleString(writer, prompt);
             writer.Write(skin);
@@ -9037,6 +9547,535 @@ namespace HaCreator.MapSimulator
             writer.Write(bytes);
         }
 
+        private ChatCommandHandler.CommandResult HandleExpeditionIntermediaryCommand(string[] args)
+        {
+            _socialListRuntime.UpdateLocalContext(_playerManager?.Player?.Build, GetCurrentMapTransferDisplayName(), 1);
+            if (args.Length == 0)
+            {
+                return ChatCommandHandler.CommandResult.Info(_socialListRuntime.DescribeExpeditionStatus());
+            }
+
+            int index = 0;
+            bool packetOwned = false;
+            if (string.Equals(args[0], "packet", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(args[0], "local", StringComparison.OrdinalIgnoreCase))
+            {
+                packetOwned = string.Equals(args[0], "packet", StringComparison.OrdinalIgnoreCase);
+                index = 1;
+                if (args.Length <= index)
+                {
+                    return ChatCommandHandler.CommandResult.Info(_socialListRuntime.DescribeExpeditionStatus());
+                }
+            }
+
+            string action = args[index].ToLowerInvariant();
+            switch (action)
+            {
+                case "status":
+                    return ChatCommandHandler.CommandResult.Info(_socialListRuntime.DescribeExpeditionStatus());
+
+                case "open":
+                case "search":
+                    _socialListRuntime.OpenSearchWindow(SocialSearchTab.Expedition);
+                    WireSocialSearchWindowData();
+                    ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.SocialSearch);
+                    return ChatCommandHandler.CommandResult.Ok(_socialListRuntime.DescribeExpeditionStatus());
+
+                case "clear":
+                    return ChatCommandHandler.CommandResult.Ok(_socialListRuntime.ClearExpeditionIntermediary(packetOwned));
+
+                case "start":
+                case "register":
+                {
+                    string title = TryGetExpeditionCommandValue(args, index + 1, "title", out string titledValue)
+                        ? NormalizeExpeditionCommandText(titledValue)
+                        : TryGetExpeditionPositionalValue(args, index + 1, out string positionalTitle)
+                            ? NormalizeExpeditionCommandText(positionalTitle)
+                            : null;
+                    return ChatCommandHandler.CommandResult.Ok(
+                        _socialListRuntime.StartLocalExpeditionIntermediary(title, registrationDraft: string.Equals(action, "register", StringComparison.OrdinalIgnoreCase)));
+                }
+
+                case "get":
+                {
+                    string title = TryGetExpeditionCommandValue(args, index + 1, "title", out string titledValue)
+                        ? NormalizeExpeditionCommandText(titledValue)
+                        : TryGetExpeditionPositionalValue(args, index + 1, out string positionalTitle)
+                            ? NormalizeExpeditionCommandText(positionalTitle)
+                            : null;
+                    int masterPartyIndex = TryGetExpeditionCommandInt(args, index + 1, "master", out int parsedMaster) ? parsedMaster : 0;
+                    int retCode = TryGetExpeditionCommandInt(args, index + 1, "ret", out int parsedRetCode) ? parsedRetCode : 59;
+                    if (!TryGetExpeditionCommandValue(args, index + 1, "parties", out string partySpec)
+                        || string.IsNullOrWhiteSpace(partySpec))
+                    {
+                        return ChatCommandHandler.CommandResult.Ok(
+                            _socialListRuntime.ApplyExpeditionGet(title, masterPartyIndex, null, packetOwned, retCode));
+                    }
+
+                    if (!TryParseExpeditionPartySeeds(
+                            partySpec,
+                            _playerManager?.Player?.Build?.Name,
+                            GetCurrentMapTransferDisplayName(),
+                            1,
+                            out IReadOnlyList<ExpeditionPartySeed> parties,
+                            out string error))
+                    {
+                        return ChatCommandHandler.CommandResult.Error(error);
+                    }
+
+                    return ChatCommandHandler.CommandResult.Ok(
+                        _socialListRuntime.ApplyExpeditionGet(title, masterPartyIndex, parties, packetOwned, retCode));
+                }
+
+                case "modified":
+                {
+                    int partyIndex = TryGetExpeditionCommandInt(args, index + 1, "party", out int parsedPartyIndex)
+                        ? parsedPartyIndex
+                        : 0;
+                    int? masterPartyIndex = TryGetExpeditionCommandInt(args, index + 1, "master", out int parsedMaster)
+                        ? parsedMaster
+                        : null;
+                    int retCode = TryGetExpeditionCommandInt(args, index + 1, "ret", out int parsedRetCode) ? parsedRetCode : 70;
+                    TryGetExpeditionCommandValue(args, index + 1, "members", out string memberSpec);
+                    if (!TryParseExpeditionMemberSeeds(
+                            memberSpec,
+                            _playerManager?.Player?.Build?.Name,
+                            GetCurrentMapTransferDisplayName(),
+                            1,
+                            out IReadOnlyList<ExpeditionMemberSeed> members,
+                            out string error))
+                    {
+                        return ChatCommandHandler.CommandResult.Error(error);
+                    }
+
+                    return ChatCommandHandler.CommandResult.Ok(
+                        _socialListRuntime.ApplyExpeditionModified(partyIndex, members, masterPartyIndex, packetOwned, retCode));
+                }
+
+                case "invite":
+                {
+                    string inviterName = TryGetExpeditionCommandValue(args, index + 1, "name", out string namedInviter)
+                        ? NormalizeExpeditionCommandText(namedInviter)
+                        : TryGetExpeditionPositionalValue(args, index + 1, out string positionalInviter)
+                            ? NormalizeExpeditionCommandText(positionalInviter)
+                            : "Expedition Leader";
+                    int level = TryGetExpeditionCommandInt(args, index + 1, "level", out int parsedLevel) ? parsedLevel : 1;
+                    int jobCode = TryGetExpeditionCommandInt(args, index + 1, "job", out int parsedJobCode) ? parsedJobCode : 0;
+                    int partyQuestId = TryGetExpeditionCommandInt(args, index + 1, "pq", out int parsedPartyQuestId) ? parsedPartyQuestId : 0;
+                    int retCode = TryGetExpeditionCommandInt(args, index + 1, "ret", out int parsedRetCode) ? parsedRetCode : 72;
+                    return ChatCommandHandler.CommandResult.Ok(
+                        _socialListRuntime.ApplyExpeditionInvite(inviterName, level, jobCode, partyQuestId, packetOwned, retCode));
+                }
+
+                case "response":
+                {
+                    string inviterName = TryGetExpeditionCommandValue(args, index + 1, "name", out string namedInviter)
+                        ? NormalizeExpeditionCommandText(namedInviter)
+                        : TryGetExpeditionPositionalValue(args, index + 1, out string positionalInviter)
+                            ? NormalizeExpeditionCommandText(positionalInviter)
+                            : null;
+                    string responseToken = TryGetExpeditionCommandValue(args, index + 1, "result", out string namedResponse)
+                        ? namedResponse
+                        : TryGetExpeditionPositionalValue(args, index + 2, out string positionalResponse)
+                            ? positionalResponse
+                            : "accept";
+                    if (!TryParseExpeditionResponseCode(responseToken, out int responseCode))
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Response must be accept, decline, busy, changed, blocked, unavailable, fail6, promptopen, or a numeric code.");
+                    }
+
+                    int retCode = TryGetExpeditionCommandInt(args, index + 1, "ret", out int parsedRetCode) ? parsedRetCode : 73;
+                    return ChatCommandHandler.CommandResult.Ok(
+                        _socialListRuntime.ApplyExpeditionResponseInvite(inviterName, responseCode, packetOwned, retCode));
+                }
+
+                case "notice":
+                {
+                    string kindToken = TryGetExpeditionCommandValue(args, index + 1, "kind", out string namedKind)
+                        ? namedKind
+                        : TryGetExpeditionPositionalValue(args, index + 1, out string positionalKind)
+                            ? positionalKind
+                            : "joined";
+                    if (!TryParseExpeditionNoticeKind(kindToken, out ExpeditionNoticeKind noticeKind))
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Notice kind must be joined, left, or removed.");
+                    }
+
+                    string characterName = TryGetExpeditionCommandValue(args, index + 1, "name", out string namedCharacter)
+                        ? NormalizeExpeditionCommandText(namedCharacter)
+                        : TryGetExpeditionPositionalValue(args, index + 2, out string positionalCharacter)
+                            ? NormalizeExpeditionCommandText(positionalCharacter)
+                            : null;
+                    int retCode = TryGetExpeditionCommandInt(args, index + 1, "ret", out int parsedRetCode)
+                        ? parsedRetCode
+                        : noticeKind switch
+                        {
+                            ExpeditionNoticeKind.Left => 64,
+                            ExpeditionNoticeKind.Removed => 66,
+                            _ => 60
+                        };
+                    return ChatCommandHandler.CommandResult.Ok(
+                        _socialListRuntime.ApplyExpeditionNotice(noticeKind, characterName, packetOwned, retCode));
+                }
+
+                case "master":
+                {
+                    int masterPartyIndex = TryGetExpeditionCommandInt(args, index + 1, "party", out int parsedPartyIndex)
+                        ? parsedPartyIndex
+                        : TryGetExpeditionPositionalInt(args, index + 1, out int positionalPartyIndex)
+                            ? positionalPartyIndex
+                            : 0;
+                    int retCode = TryGetExpeditionCommandInt(args, index + 1, "ret", out int parsedRetCode) ? parsedRetCode : 69;
+                    return ChatCommandHandler.CommandResult.Ok(
+                        _socialListRuntime.ApplyExpeditionMasterChanged(masterPartyIndex, packetOwned, retCode));
+                }
+
+                case "removed":
+                {
+                    string removalToken = TryGetExpeditionCommandValue(args, index + 1, "kind", out string namedKind)
+                        ? namedKind
+                        : TryGetExpeditionPositionalValue(args, index + 1, out string positionalKind)
+                            ? positionalKind
+                            : "disband";
+                    if (!TryParseExpeditionRemovalKind(removalToken, out ExpeditionRemovalKind removalKind))
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Removal kind must be leave, disband, removed, or kicked.");
+                    }
+
+                    int retCode = TryGetExpeditionCommandInt(args, index + 1, "ret", out int parsedRetCode)
+                        ? parsedRetCode
+                        : removalKind switch
+                        {
+                            ExpeditionRemovalKind.Leave => 65,
+                            ExpeditionRemovalKind.Removed => 68,
+                            _ => 67
+                        };
+                    return ChatCommandHandler.CommandResult.Ok(
+                        _socialListRuntime.ApplyExpeditionRemoved(removalKind, packetOwned, retCode));
+                }
+
+                default:
+                    return ChatCommandHandler.CommandResult.Error(
+                        "Usage: /expedition [packet|local] [status|open|search|clear|start [title=Name]|register [title=Name]|get [title=Name] [master=n] [parties=party~name~role~level~map~channel~online~local;...]|modified [party=n] [members=name~role~level~map~channel~online~local;...] [master=n]|invite [name=Leader] [level=n] [job=n] [pq=n]|response [name=Leader] [result=accept|decline|busy|changed|blocked|unavailable|fail6|promptopen|n]|notice [kind=joined|left|removed] [name=Member]|master [party=n]|removed [kind=leave|disband|removed]]");
+            }
+        }
+
+        private static bool TryGetExpeditionCommandValue(string[] args, int startIndex, string key, out string value)
+        {
+            value = null;
+            if (args == null || string.IsNullOrWhiteSpace(key))
+            {
+                return false;
+            }
+
+            string prefix = key.Trim() + "=";
+            for (int i = startIndex; i < args.Length; i++)
+            {
+                if (args[i].StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+                {
+                    value = args[i][prefix.Length..];
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryGetExpeditionCommandInt(string[] args, int startIndex, string key, out int value)
+        {
+            value = 0;
+            return TryGetExpeditionCommandValue(args, startIndex, key, out string rawValue)
+                   && int.TryParse(rawValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out value);
+        }
+
+        private static bool TryGetExpeditionPositionalValue(string[] args, int index, out string value)
+        {
+            value = null;
+            return args != null
+                   && index >= 0
+                   && index < args.Length
+                   && !args[index].Contains("=")
+                   && !string.IsNullOrWhiteSpace(args[index])
+                   && ((value = args[index]) != null);
+        }
+
+        private static bool TryGetExpeditionPositionalInt(string[] args, int index, out int value)
+        {
+            value = 0;
+            return TryGetExpeditionPositionalValue(args, index, out string token)
+                   && int.TryParse(token, NumberStyles.Integer, CultureInfo.InvariantCulture, out value);
+        }
+
+        private static string NormalizeExpeditionCommandText(string value)
+        {
+            return string.IsNullOrWhiteSpace(value)
+                ? string.Empty
+                : value.Trim().Replace('_', ' ');
+        }
+
+        private static bool TryParseExpeditionPartySeeds(
+            string rawSpec,
+            string localPlayerName,
+            string defaultLocation,
+            int defaultChannel,
+            out IReadOnlyList<ExpeditionPartySeed> parties,
+            out string error)
+        {
+            parties = Array.Empty<ExpeditionPartySeed>();
+            error = null;
+            if (string.IsNullOrWhiteSpace(rawSpec))
+            {
+                return true;
+            }
+
+            Dictionary<int, List<ExpeditionMemberSeed>> groupedMembers = new();
+            string[] memberSpecs = rawSpec.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (string rawMemberSpec in memberSpecs)
+            {
+                string[] fields = rawMemberSpec.Split('~');
+                if (fields.Length < 2)
+                {
+                    error = "Party specs must use partyIndex~name~role~level~map~channel~online~local.";
+                    return false;
+                }
+
+                if (!int.TryParse(fields[0], NumberStyles.Integer, CultureInfo.InvariantCulture, out int partyIndex))
+                {
+                    error = $"Invalid expedition party index in '{rawMemberSpec}'.";
+                    return false;
+                }
+
+                if (!TryCreateExpeditionMemberSeed(
+                        fields.Skip(1).ToArray(),
+                        localPlayerName,
+                        defaultLocation,
+                        defaultChannel,
+                        out ExpeditionMemberSeed member,
+                        out error))
+                {
+                    return false;
+                }
+
+                if (!groupedMembers.TryGetValue(Math.Max(0, partyIndex), out List<ExpeditionMemberSeed> members))
+                {
+                    members = new List<ExpeditionMemberSeed>();
+                    groupedMembers[Math.Max(0, partyIndex)] = members;
+                }
+
+                members.Add(member);
+            }
+
+            parties = groupedMembers
+                .OrderBy(entry => entry.Key)
+                .Select(entry => new ExpeditionPartySeed(entry.Key, entry.Value.ToArray()))
+                .ToArray();
+            return true;
+        }
+
+        private static bool TryParseExpeditionMemberSeeds(
+            string rawSpec,
+            string localPlayerName,
+            string defaultLocation,
+            int defaultChannel,
+            out IReadOnlyList<ExpeditionMemberSeed> members,
+            out string error)
+        {
+            members = Array.Empty<ExpeditionMemberSeed>();
+            error = null;
+            if (string.IsNullOrWhiteSpace(rawSpec) || string.Equals(rawSpec, "clear", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            List<ExpeditionMemberSeed> parsedMembers = new();
+            string[] memberSpecs = rawSpec.Split(new[] { ';' }, StringSplitOptions.RemoveEmptyEntries);
+            foreach (string rawMemberSpec in memberSpecs)
+            {
+                if (!TryCreateExpeditionMemberSeed(
+                        rawMemberSpec.Split('~'),
+                        localPlayerName,
+                        defaultLocation,
+                        defaultChannel,
+                        out ExpeditionMemberSeed member,
+                        out error))
+                {
+                    return false;
+                }
+
+                parsedMembers.Add(member);
+            }
+
+            members = parsedMembers.ToArray();
+            return true;
+        }
+
+        private static bool TryCreateExpeditionMemberSeed(
+            string[] fields,
+            string localPlayerName,
+            string defaultLocation,
+            int defaultChannel,
+            out ExpeditionMemberSeed member,
+            out string error)
+        {
+            member = default;
+            error = null;
+            if (fields == null || fields.Length == 0 || string.IsNullOrWhiteSpace(fields[0]))
+            {
+                error = "Expedition member specs require at least a name field.";
+                return false;
+            }
+
+            string name = NormalizeExpeditionCommandText(fields[0]);
+            string role = fields.Length >= 2 && !string.IsNullOrWhiteSpace(fields[1])
+                ? NormalizeExpeditionCommandText(fields[1])
+                : "Member";
+            int level = fields.Length >= 3 && int.TryParse(fields[2], NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedLevel)
+                ? Math.Max(1, parsedLevel)
+                : 1;
+            string location = fields.Length >= 4 && !string.IsNullOrWhiteSpace(fields[3])
+                ? NormalizeExpeditionCommandText(fields[3])
+                : defaultLocation;
+            int channel = fields.Length >= 5 && int.TryParse(fields[4], NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedChannel)
+                ? Math.Max(1, parsedChannel)
+                : Math.Max(1, defaultChannel);
+            bool isOnline = fields.Length < 6 || TryParseExpeditionFlag(fields[5], true);
+            bool isLocalPlayer = fields.Length >= 7
+                ? TryParseExpeditionFlag(fields[6], string.Equals(name, localPlayerName, StringComparison.OrdinalIgnoreCase))
+                : string.Equals(name, localPlayerName, StringComparison.OrdinalIgnoreCase);
+            member = new ExpeditionMemberSeed(name, role, level, location, channel, isOnline, isLocalPlayer);
+            return true;
+        }
+
+        private static bool TryParseExpeditionResponseCode(string token, out int responseCode)
+        {
+            responseCode = 0;
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            switch (token.Trim().ToLowerInvariant())
+            {
+                case "accept":
+                case "accepted":
+                    responseCode = 1;
+                    return true;
+                case "decline":
+                case "reject":
+                case "declined":
+                    responseCode = 0;
+                    return true;
+                case "busy":
+                    responseCode = 2;
+                    return true;
+                case "changed":
+                    responseCode = 3;
+                    return true;
+                case "blocked":
+                    responseCode = 4;
+                    return true;
+                case "unavailable":
+                    responseCode = 5;
+                    return true;
+                case "fail6":
+                    responseCode = 6;
+                    return true;
+                case "promptopen":
+                case "pending":
+                    responseCode = 7;
+                    return true;
+                default:
+                    return int.TryParse(token, NumberStyles.Integer, CultureInfo.InvariantCulture, out responseCode);
+            }
+        }
+
+        private static bool TryParseExpeditionNoticeKind(string token, out ExpeditionNoticeKind noticeKind)
+        {
+            noticeKind = ExpeditionNoticeKind.Joined;
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            switch (token.Trim().ToLowerInvariant())
+            {
+                case "join":
+                case "joined":
+                    noticeKind = ExpeditionNoticeKind.Joined;
+                    return true;
+                case "left":
+                case "leave":
+                    noticeKind = ExpeditionNoticeKind.Left;
+                    return true;
+                case "remove":
+                case "removed":
+                case "kick":
+                case "kicked":
+                    noticeKind = ExpeditionNoticeKind.Removed;
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private static bool TryParseExpeditionRemovalKind(string token, out ExpeditionRemovalKind removalKind)
+        {
+            removalKind = ExpeditionRemovalKind.Disband;
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            switch (token.Trim().ToLowerInvariant())
+            {
+                case "leave":
+                case "left":
+                case "withdraw":
+                    removalKind = ExpeditionRemovalKind.Leave;
+                    return true;
+                case "remove":
+                case "removed":
+                case "kick":
+                case "kicked":
+                    removalKind = ExpeditionRemovalKind.Removed;
+                    return true;
+                case "disband":
+                case "clear":
+                    removalKind = ExpeditionRemovalKind.Disband;
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private static bool TryParseExpeditionFlag(string token, bool defaultValue)
+        {
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return defaultValue;
+            }
+
+            switch (token.Trim().ToLowerInvariant())
+            {
+                case "1":
+                case "true":
+                case "yes":
+                case "on":
+                case "online":
+                case "local":
+                    return true;
+                case "0":
+                case "false":
+                case "no":
+                case "off":
+                case "offline":
+                case "remote":
+                    return false;
+                default:
+                    return defaultValue;
+            }
+        }
+
         private static bool TryParsePacketOwnedItemIdList(string input, out int[] itemIds)
         {
             itemIds = Array.Empty<int>();
@@ -9130,6 +10169,129 @@ namespace HaCreator.MapSimulator
                 && args.Length > index
                 && int.TryParse(args[index], out value)
                 && value > 0;
+        }
+
+        private static bool TryParseSocialListTabToken(string token, out SocialListTab tab)
+        {
+            tab = SocialListTab.Friend;
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            switch (token.Trim().ToLowerInvariant())
+            {
+                case "friend":
+                case "friends":
+                    tab = SocialListTab.Friend;
+                    return true;
+
+                case "party":
+                    tab = SocialListTab.Party;
+                    return true;
+
+                case "guild":
+                    tab = SocialListTab.Guild;
+                    return true;
+
+                case "alliance":
+                case "union":
+                    tab = SocialListTab.Alliance;
+                    return true;
+
+                case "blacklist":
+                case "black":
+                    tab = SocialListTab.Blacklist;
+                    return true;
+
+                default:
+                    return false;
+            }
+        }
+
+        private static bool TryParseSocialSearchTabToken(string token, out SocialSearchTab tab)
+        {
+            tab = SocialSearchTab.Party;
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            switch (token.Trim().ToLowerInvariant())
+            {
+                case "party":
+                    tab = SocialSearchTab.Party;
+                    return true;
+
+                case "partymember":
+                case "member":
+                    tab = SocialSearchTab.PartyMember;
+                    return true;
+
+                case "expedition":
+                case "exp":
+                    tab = SocialSearchTab.Expedition;
+                    return true;
+
+                default:
+                    return false;
+            }
+        }
+
+        private static bool TryParseGuildManageTabToken(string token, out GuildManageTab tab)
+        {
+            tab = GuildManageTab.Position;
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            switch (token.Trim().ToLowerInvariant())
+            {
+                case "position":
+                case "rank":
+                    tab = GuildManageTab.Position;
+                    return true;
+
+                case "admission":
+                case "admit":
+                    tab = GuildManageTab.Admission;
+                    return true;
+
+                case "change":
+                case "notice":
+                    tab = GuildManageTab.Change;
+                    return true;
+
+                default:
+                    return false;
+            }
+        }
+
+        private static bool TryParseAllianceEditorFocusToken(string token, out AllianceEditorFocus focus)
+        {
+            focus = AllianceEditorFocus.RankTitle;
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            switch (token.Trim().ToLowerInvariant())
+            {
+                case "rank":
+                case "ranks":
+                case "title":
+                case "titles":
+                    focus = AllianceEditorFocus.RankTitle;
+                    return true;
+
+                case "notice":
+                    focus = AllianceEditorFocus.Notice;
+                    return true;
+
+                default:
+                    return false;
+            }
         }
 
     }

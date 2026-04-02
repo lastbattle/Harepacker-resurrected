@@ -79,6 +79,7 @@ namespace HaCreator.MapSimulator.Interaction
         public int EntrustedBlacklistSelectedIndex { get; set; } = -1;
         public string EntrustedChildDialogStatus { get; set; }
         public List<EntrustedShopVisitLogEntrySnapshot> EntrustedVisitLogEntries { get; set; } = new();
+        public EntrustedShopChildDialogSnapshot EntrustedChildDialog { get; set; }
         public List<string> BlockedVisitors { get; set; } = new();
         public int RemoteInventoryMeso { get; set; }
         public List<SocialRoomRemoteInventoryEntrySnapshot> RemoteInventoryEntries { get; set; } = new();
@@ -99,7 +100,9 @@ namespace HaCreator.MapSimulator.Interaction
 
     public sealed class EntrustedShopChildDialogSnapshot
     {
+        public bool IsOpen { get; set; }
         public EntrustedShopChildDialogKind Kind { get; set; }
+        public string OwnerName { get; set; }
         public string Title { get; set; }
         public string Subtitle { get; set; }
         public string StatusText { get; set; }

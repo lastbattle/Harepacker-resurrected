@@ -13,6 +13,11 @@ namespace HaCreator.MapSimulator.Interaction
             return _runtime.DescribeStatus();
         }
 
+        internal GuildMarkSelection? GetCommittedSelection()
+        {
+            return _runtime.GetCommittedSelection();
+        }
+
         internal string Open(
             UIWindowManager windowManager,
             SpriteFont font,

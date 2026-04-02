@@ -145,30 +145,37 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            response = new EngagementProposalResponse(AcceptPacketType, new[] { AcceptPayloadValue });
             _lastPrimaryActionSent = true;
+            _isOpen = false;
+            if (_mode == EngagementProposalDialogMode.OutgoingRequest)
+            {
+                response = default;
+                _lastResponsePacketType = -1;
+                _lastResponsePayload = Array.Empty<byte>();
+                _acceptedProposal = null;
+                _statusMessage = $"Closed the requester-side engagement dialog through SetRet after sending the client request packet {AcceptPacketType} [00]. No recipient accept payload was emitted.";
+                message = _statusMessage;
+                return true;
+            }
+
+            response = new EngagementProposalResponse(AcceptPacketType, new[] { AcceptPayloadValue });
             _lastResponsePacketType = response.PacketType;
             _lastResponsePayload = (byte[])response.Payload.Clone();
-            _isOpen = false;
-            _acceptedProposal = _mode == EngagementProposalDialogMode.IncomingProposal
-                ? new EngagementProposalAcceptedSnapshot
-                {
-                    LocalCharacterName = _localCharacterName,
-                    ProposerName = _proposerName,
-                    PartnerName = _partnerName,
-                    RingItemId = _ringItemId,
-                    RingItemName = _ringItemName,
-                    RingItemDescription = _ringItemDescription,
-                    SealItemId = _sealItemId,
-                    SealItemName = _sealItemName,
-                    SealItemDescription = _sealItemDescription,
-                    RequestMessage = _outgoingRequestMessage,
-                    CustomMessage = _customMessage
-                }
-                : null;
-            _statusMessage = _mode == EngagementProposalDialogMode.OutgoingRequest
-                ? $"Closed the requester-side engagement dialog through SetRet. Sent client packet {AcceptPacketType} with payload 01."
-                : $"Triggered the proposal dialog SetRet branch for {_proposerName} -> {_partnerName}. Sent client packet {AcceptPacketType} with payload 01 and primed the wedding handoff state.";
+            _acceptedProposal = new EngagementProposalAcceptedSnapshot
+            {
+                LocalCharacterName = _localCharacterName,
+                ProposerName = _proposerName,
+                PartnerName = _partnerName,
+                RingItemId = _ringItemId,
+                RingItemName = _ringItemName,
+                RingItemDescription = _ringItemDescription,
+                SealItemId = _sealItemId,
+                SealItemName = _sealItemName,
+                SealItemDescription = _sealItemDescription,
+                RequestMessage = _outgoingRequestMessage,
+                CustomMessage = _customMessage
+            };
+            _statusMessage = $"Triggered the proposal dialog SetRet branch for {_proposerName} -> {_partnerName}. Sent client packet {AcceptPacketType} with payload 01 and primed the wedding handoff state.";
             message = _statusMessage;
             return true;
         }

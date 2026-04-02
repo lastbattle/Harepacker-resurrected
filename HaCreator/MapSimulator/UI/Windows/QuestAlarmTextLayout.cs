@@ -84,6 +84,66 @@ namespace HaCreator.MapSimulator.UI
             return lines;
         }
 
+        internal static string TruncateToWidth(string text, float maxWidth, Func<string, float> measureWidth)
+        {
+            if (string.IsNullOrWhiteSpace(text) || measureWidth == null || maxWidth <= 0f)
+            {
+                return string.Empty;
+            }
+
+            string trimmed = text.Trim();
+            if (measureWidth(trimmed) <= maxWidth)
+            {
+                return trimmed;
+            }
+
+            const string ellipsis = "...";
+            float ellipsisWidth = measureWidth(ellipsis);
+            if (ellipsisWidth >= maxWidth)
+            {
+                return ellipsis;
+            }
+
+            string bestCandidate = ellipsis;
+            foreach (string segment in BuildPreferredSegments(trimmed))
+            {
+                string normalizedSegment = segment.TrimEnd();
+                if (normalizedSegment.Length == 0)
+                {
+                    continue;
+                }
+
+                string candidate = normalizedSegment + ellipsis;
+                if (measureWidth(candidate) <= maxWidth)
+                {
+                    bestCandidate = candidate;
+                }
+                else
+                {
+                    break;
+                }
+            }
+
+            if (!string.Equals(bestCandidate, ellipsis, StringComparison.Ordinal))
+            {
+                return bestCandidate;
+            }
+
+            StringBuilder builder = new();
+            foreach (char character in trimmed)
+            {
+                string candidate = builder.ToString() + character + ellipsis;
+                if (builder.Length > 0 && measureWidth(candidate) > maxWidth)
+                {
+                    break;
+                }
+
+                builder.Append(character);
+            }
+
+            return builder.Length == 0 ? ellipsis : builder + ellipsis;
+        }
+
         private static IEnumerable<string> TokenizeBlock(string block, float maxWidth, Func<string, float> measureWidth)
         {
             foreach (string word in block.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries))
@@ -166,6 +226,35 @@ namespace HaCreator.MapSimulator.UI
             if (current.Length > 0)
             {
                 yield return current.ToString();
+            }
+        }
+
+        private static IEnumerable<string> BuildPreferredSegments(string text)
+        {
+            StringBuilder builder = new();
+            for (int i = 0; i < text.Length; i++)
+            {
+                builder.Append(text[i]);
+                yield return builder.ToString();
+            }
+
+            foreach (string segment in SplitAtPreferredBreaks(text))
+            {
+                if (string.IsNullOrEmpty(segment))
+                {
+                    continue;
+                }
+
+                if (builder.Length == 0)
+                {
+                    builder.Append(segment);
+                }
+                else if (builder.Length < text.Length)
+                {
+                    builder.Append(segment);
+                }
+
+                yield return builder.ToString();
             }
         }
     }

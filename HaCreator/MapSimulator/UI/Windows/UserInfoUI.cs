@@ -698,6 +698,7 @@ namespace HaCreator.MapSimulator.UI
             GameTime gameTime,
             ReflectionDrawableBoundary drawReflectionInfo)
         {
+            CharacterBuild displayBuild = GetDisplayedBuild();
             if (_currentPage == UserInfoPage.Character)
             {
                 DrawLayer(_foreground, _foregroundOffset, sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo);
@@ -714,7 +715,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 if (_currentPage == UserInfoPage.Personality &&
                     string.Equals(layer.Name, "before30level", StringComparison.OrdinalIgnoreCase) &&
-                    (_characterBuild?.Level ?? 0) >= 30)
+                    (displayBuild?.Level ?? 0) >= 30)
                 {
                     continue;
                 }
@@ -727,21 +728,22 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawCharacterPage(SpriteBatch sprite)
         {
+            CharacterBuild displayBuild = GetDisplayedBuild();
             string inspectionBanner = BuildInspectionBanner();
             if (!string.IsNullOrWhiteSpace(inspectionBanner))
             {
                 DrawPlainText(sprite, FitText(inspectionBanner, 150), new Vector2(Position.X + 18, Position.Y + 96), WarningColor, 0.48f);
             }
 
-            string name = _characterBuild?.Name;
-            string job = _characterBuild?.JobName;
-            string level = _characterBuild != null ? _characterBuild.Level.ToString() : "-";
-            string fame = _characterBuild != null ? _characterBuild.Fame.ToString() : "-";
+            string name = displayBuild?.Name;
+            string job = displayBuild?.JobName;
+            string level = displayBuild != null ? displayBuild.Level.ToString() : "-";
+            string fame = displayBuild != null ? displayBuild.Fame.ToString() : "-";
             RankDeltaSnapshot rankSnapshot = GetRankDeltaSnapshot();
-            string rank = FormatRank(_characterBuild?.WorldRank ?? 0, rankSnapshot.PreviousWorldRank);
-            string jobRank = FormatRank(_characterBuild?.JobRank ?? 0, rankSnapshot.PreviousJobRank);
-            string guild = _characterBuild?.GuildDisplayText ?? "-";
-            string alliance = _characterBuild?.AllianceDisplayText ?? "-";
+            string rank = FormatRank(displayBuild?.WorldRank ?? 0, rankSnapshot.PreviousWorldRank);
+            string jobRank = FormatRank(displayBuild?.JobRank ?? 0, rankSnapshot.PreviousJobRank);
+            string guild = displayBuild?.GuildDisplayText ?? "-";
+            string alliance = displayBuild?.AllianceDisplayText ?? "-";
             string guildAlliance = guild == "-" && alliance == "-"
                 ? "-"
                 : alliance == "-"
@@ -791,15 +793,16 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawRidePage(SpriteBatch sprite)
         {
-            string mountName = GetEquippedItemName(EquipSlot.TamingMob);
-            string saddleName = GetEquippedItemName(EquipSlot.Saddle);
-            bool ridingReady = _characterBuild?.HasMonsterRiding == true && !string.Equals(mountName, "-", StringComparison.Ordinal);
+            CharacterBuild displayBuild = GetDisplayedBuild();
+            string mountName = GetEquippedItemName(EquipSlot.TamingMob, displayBuild);
+            string saddleName = GetEquippedItemName(EquipSlot.Saddle, displayBuild);
+            bool ridingReady = displayBuild?.HasMonsterRiding == true && !string.Equals(mountName, "-", StringComparison.Ordinal);
 
             DrawSectionHeader(sprite, "Ride");
             DrawLabeledRow(sprite, 42, "Status", ridingReady ? "Ride available" : "No active mount slot", ridingReady ? SuccessColor : WarningColor);
             DrawLabeledRow(sprite, 66, "Mount", mountName, ValueColor);
             DrawLabeledRow(sprite, 90, "Saddle", saddleName, ValueColor);
-            DrawLabeledRow(sprite, 114, "Job", _characterBuild?.JobName ?? "-", ValueColor);
+            DrawLabeledRow(sprite, 114, "Job", displayBuild?.JobName ?? "-", ValueColor);
             DrawLabeledRow(sprite, 138, "Notes", ridingReady
                 ? "Taming-mob equipment is present in the simulator build."
                 : "Equip a taming mob and saddle to mirror the client ride page.", MutedColor, 144);
@@ -865,16 +868,17 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawPersonalityPage(SpriteBatch sprite)
         {
+            CharacterBuild displayBuild = GetDisplayedBuild();
             DrawSectionHeader(sprite, "Personality");
 
             (string Label, int Value)[] traits =
             {
-                ("Charisma", _characterBuild?.TraitCharisma ?? 0),
-                ("Insight", _characterBuild?.TraitInsight ?? 0),
-                ("Will", _characterBuild?.TraitWill ?? 0),
-                ("Craft", _characterBuild?.TraitCraft ?? 0),
-                ("Sense", _characterBuild?.TraitSense ?? 0),
-                ("Charm", _characterBuild?.TraitCharm ?? 0)
+                ("Charisma", displayBuild?.TraitCharisma ?? 0),
+                ("Insight", displayBuild?.TraitInsight ?? 0),
+                ("Will", displayBuild?.TraitWill ?? 0),
+                ("Craft", displayBuild?.TraitCraft ?? 0),
+                ("Sense", displayBuild?.TraitSense ?? 0),
+                ("Charm", displayBuild?.TraitCharm ?? 0)
             };
 
             int topValue = traits.Max(entry => entry.Value);
@@ -1540,17 +1544,18 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private string GetEquippedItemName(EquipSlot slot)
+        private string GetEquippedItemName(EquipSlot slot, CharacterBuild build = null)
         {
-            if (_characterBuild?.Equipment != null &&
-                _characterBuild.Equipment.TryGetValue(slot, out CharacterPart part) &&
+            build ??= GetDisplayedBuild();
+            if (build?.Equipment != null &&
+                build.Equipment.TryGetValue(slot, out CharacterPart part) &&
                 !string.IsNullOrWhiteSpace(part?.Name))
             {
                 return part.Name;
             }
 
-            if (_characterBuild?.HiddenEquipment != null &&
-                _characterBuild.HiddenEquipment.TryGetValue(slot, out CharacterPart hiddenPart) &&
+            if (build?.HiddenEquipment != null &&
+                build.HiddenEquipment.TryGetValue(slot, out CharacterPart hiddenPart) &&
                 !string.IsNullOrWhiteSpace(hiddenPart?.Name))
             {
                 return hiddenPart.Name;
@@ -1596,9 +1601,10 @@ namespace HaCreator.MapSimulator.UI
 
         private bool IsPageAvailable(UserInfoPage page)
         {
+            CharacterBuild displayBuild = GetDisplayedBuild();
             return page switch
             {
-                UserInfoPage.Ride => _characterBuild?.HasMonsterRiding == true || !string.Equals(GetEquippedItemName(EquipSlot.TamingMob), "-", StringComparison.Ordinal),
+                UserInfoPage.Ride => displayBuild?.HasMonsterRiding == true || !string.Equals(GetEquippedItemName(EquipSlot.TamingMob, displayBuild), "-", StringComparison.Ordinal),
                 UserInfoPage.Pet => HasActivePets(),
                 UserInfoPage.Collect => true,
                 UserInfoPage.Personality => true,
@@ -1877,14 +1883,15 @@ namespace HaCreator.MapSimulator.UI
 
         private string BuildPocketSummary()
         {
+            CharacterBuild displayBuild = GetDisplayedBuild();
             string pocketName = GetEquippedItemName(EquipSlot.Pocket);
             if (!string.Equals(pocketName, "-", StringComparison.Ordinal))
             {
                 return $"Pocket: {pocketName}";
             }
 
-            int charm = Math.Max(0, _characterBuild?.TraitCharm ?? 0);
-            return _characterBuild?.IsPocketSlotAvailable == true
+            int charm = Math.Max(0, displayBuild?.TraitCharm ?? 0);
+            return displayBuild?.IsPocketSlotAvailable == true
                 ? IsRemoteInspectionActive()
                     ? $"Pocket unlocked on inspected build (Charm {charm})"
                     : $"Pocket unlocked at Charm {charm}"
@@ -2238,7 +2245,7 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            return direction != PopularityChangeDirection.Down || (_characterBuild?.Fame ?? 0) > 0;
+            return direction != PopularityChangeDirection.Down || (GetDisplayedBuild()?.Fame ?? 0) > 0;
         }
 
         private bool CanScrollPopupSelectionUp()
@@ -2283,14 +2290,15 @@ namespace HaCreator.MapSimulator.UI
 
         private int GetPersonalityTraitValue(string traitKey)
         {
+            CharacterBuild displayBuild = GetDisplayedBuild();
             return traitKey?.ToLowerInvariant() switch
             {
-                "charisma" => _characterBuild?.TraitCharisma ?? 0,
-                "insight" => _characterBuild?.TraitInsight ?? 0,
-                "will" => _characterBuild?.TraitWill ?? 0,
-                "craft" => _characterBuild?.TraitCraft ?? 0,
-                "sense" => _characterBuild?.TraitSense ?? 0,
-                "charm" => _characterBuild?.TraitCharm ?? 0,
+                "charisma" => displayBuild?.TraitCharisma ?? 0,
+                "insight" => displayBuild?.TraitInsight ?? 0,
+                "will" => displayBuild?.TraitWill ?? 0,
+                "craft" => displayBuild?.TraitCraft ?? 0,
+                "sense" => displayBuild?.TraitSense ?? 0,
+                "charm" => displayBuild?.TraitCharm ?? 0,
                 _ => 0
             };
         }
@@ -2298,12 +2306,17 @@ namespace HaCreator.MapSimulator.UI
         private bool ShouldDrawCharmCollectionTooltip()
         {
             return _personalityTooltipVisual?.CharmCollectionBody != null &&
-                   (_characterBuild?.IsPocketSlotAvailable ?? false);
+                   (GetDisplayedBuild()?.IsPocketSlotAvailable ?? false);
         }
 
         private bool IsRemoteInspectionActive()
         {
             return _inspectionTarget?.Build != null;
+        }
+
+        private CharacterBuild GetDisplayedBuild()
+        {
+            return _inspectionTarget?.Build ?? _characterBuild;
         }
 
         private UserInfoActionContext BuildCurrentActionContext()

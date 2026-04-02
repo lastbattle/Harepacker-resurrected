@@ -4,6 +4,7 @@ using Microsoft.Xna.Framework.Graphics;
 using SD = System.Drawing;
 using SDImaging = System.Drawing.Imaging;
 using SDText = System.Drawing.Text;
+using Microsoft.Win32;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -60,6 +61,49 @@ namespace HaCreator.MapSimulator.UI
             "Fonts",
             "Content",
             Path.Combine("Content", "Fonts")
+        };
+        private static readonly string[] PerUserWindowsFontDirectories =
+        {
+            Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Microsoft",
+                "Windows",
+                "Fonts"),
+            Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "Microsoft",
+                "Windows",
+                "Fonts")
+        };
+        private static readonly string[] MapleInstallRegistrySubKeys =
+        {
+            @"SOFTWARE\WOW6432Node\Microsoft\Windows\CurrentVersion\Uninstall",
+            @"SOFTWARE\Microsoft\Windows\CurrentVersion\Uninstall",
+            @"SOFTWARE\WOW6432Node\Wizet",
+            @"SOFTWARE\Wizet"
+        };
+        private static readonly string[] MapleInstallValueNames =
+        {
+            "InstallLocation",
+            "DisplayIcon"
+        };
+        private static readonly string[] WindowsFontRegistrySubKeys =
+        {
+            @"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts",
+            @"SOFTWARE\WOW6432Node\Microsoft\Windows NT\CurrentVersion\Fonts"
+        };
+        private static readonly string[] DefaultPrivateFontRegistryNameCandidates =
+        {
+            "DotumChe",
+            "Dotum",
+            "DOTOOMCHE",
+            "DOTOOM",
+            "DODUMCHE",
+            "DODUM",
+            "GulimChe",
+            "Gulim",
+            "BatangChe",
+            "Batang"
         };
         private static readonly string[] DefaultFontFamilyCandidates =
         {
@@ -467,6 +511,14 @@ namespace HaCreator.MapSimulator.UI
                     yield return directWindowsFontPath;
                 }
             }
+
+            foreach (string registryFontPath in EnumerateRegisteredPrivateFontPaths())
+            {
+                if (seenPaths.Add(registryFontPath))
+                {
+                    yield return registryFontPath;
+                }
+            }
         }
 
         private static IEnumerable<string> EnumerateLegacyWindowsFontCandidates()
@@ -579,6 +631,47 @@ namespace HaCreator.MapSimulator.UI
                     }
                 }
             }
+
+            foreach (string userFontsDirectory in PerUserWindowsFontDirectories)
+            {
+                foreach (string rootDirectory in EnumerateSearchRootAncestors(userFontsDirectory))
+                {
+                    if (Directory.Exists(rootDirectory) && seenPaths.Add(rootDirectory))
+                    {
+                        yield return rootDirectory;
+                    }
+                }
+            }
+
+            foreach (string installDirectory in EnumerateMapleInstallDirectories())
+            {
+                foreach (string rootDirectory in EnumerateSearchRootAncestors(installDirectory))
+                {
+                    foreach (string suffix in DefaultPrivateFontSearchDirectorySuffixes)
+                    {
+                        string candidate = string.IsNullOrEmpty(suffix)
+                            ? rootDirectory
+                            : Path.Combine(rootDirectory, suffix);
+
+                        string fullPath;
+                        try
+                        {
+                            fullPath = Path.GetFullPath(candidate);
+                        }
+                        catch
+                        {
+                            continue;
+                        }
+
+                        if (!Directory.Exists(fullPath) || !seenPaths.Add(fullPath))
+                        {
+                            continue;
+                        }
+
+                        yield return fullPath;
+                    }
+                }
+            }
         }
 
         private static IEnumerable<string> EnumerateSearchRootAncestors(string baseDirectory)
@@ -603,6 +696,216 @@ namespace HaCreator.MapSimulator.UI
         private static int QuantizeScale(float scale)
         {
             return (int)Math.Round(Math.Max(0.1f, scale) * 1000f);
+        }
+
+        private static IEnumerable<string> EnumerateMapleInstallDirectories()
+        {
+            HashSet<string> seenDirectories = new(StringComparer.OrdinalIgnoreCase);
+
+            foreach (string registrySubKey in MapleInstallRegistrySubKeys)
+            {
+                foreach (RegistryHive hive in new[] { RegistryHive.CurrentUser, RegistryHive.LocalMachine })
+                {
+                    foreach (RegistryView view in new[] { RegistryView.Registry64, RegistryView.Registry32 })
+                    {
+                        RegistryKey baseKey;
+                        try
+                        {
+                            baseKey = RegistryKey.OpenBaseKey(hive, view);
+                        }
+                        catch
+                        {
+                            continue;
+                        }
+
+                        using (baseKey)
+                        using (RegistryKey rootKey = baseKey.OpenSubKey(registrySubKey))
+                        {
+                            if (rootKey == null)
+                            {
+                                continue;
+                            }
+
+                            foreach (string subKeyName in rootKey.GetSubKeyNames())
+                            {
+                                if (subKeyName.IndexOf("maple", StringComparison.OrdinalIgnoreCase) < 0 &&
+                                    subKeyName.IndexOf("wizet", StringComparison.OrdinalIgnoreCase) < 0)
+                                {
+                                    continue;
+                                }
+
+                                using RegistryKey installKey = rootKey.OpenSubKey(subKeyName);
+                                if (installKey == null)
+                                {
+                                    continue;
+                                }
+
+                                foreach (string valueName in MapleInstallValueNames)
+                                {
+                                    if (!TryNormalizeRegistryDirectory(installKey.GetValue(valueName) as string, out string directory) ||
+                                        !seenDirectories.Add(directory))
+                                    {
+                                        continue;
+                                    }
+
+                                    yield return directory;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        private static IEnumerable<string> EnumerateRegisteredPrivateFontPaths()
+        {
+            HashSet<string> seenPaths = new(StringComparer.OrdinalIgnoreCase);
+
+            foreach (RegistryHive hive in new[] { RegistryHive.CurrentUser, RegistryHive.LocalMachine })
+            {
+                foreach (RegistryView view in new[] { RegistryView.Registry64, RegistryView.Registry32 })
+                {
+                    RegistryKey baseKey;
+                    try
+                    {
+                        baseKey = RegistryKey.OpenBaseKey(hive, view);
+                    }
+                    catch
+                    {
+                        continue;
+                    }
+
+                    using (baseKey)
+                    {
+                        foreach (string subKey in WindowsFontRegistrySubKeys)
+                        {
+                            using RegistryKey fontKey = baseKey.OpenSubKey(subKey);
+                            if (fontKey == null)
+                            {
+                                continue;
+                            }
+
+                            foreach (string valueName in fontKey.GetValueNames())
+                            {
+                                if (!IsPrivateFontRegistryEntry(valueName) ||
+                                    !TryNormalizeRegistryFontFile(fontKey.GetValue(valueName)?.ToString(), out string fontPath) ||
+                                    !seenPaths.Add(fontPath))
+                                {
+                                    continue;
+                                }
+
+                                yield return fontPath;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        private static bool TryNormalizeRegistryDirectory(string rawValue, out string directory)
+        {
+            directory = null;
+            if (string.IsNullOrWhiteSpace(rawValue))
+            {
+                return false;
+            }
+
+            string normalizedValue = rawValue.Trim().Trim('"');
+            int resourceSuffixIndex = normalizedValue.IndexOf(",0", StringComparison.Ordinal);
+            if (resourceSuffixIndex >= 0)
+            {
+                normalizedValue = normalizedValue.Substring(0, resourceSuffixIndex).Trim().Trim('"');
+            }
+
+            string fullPath;
+            try
+            {
+                fullPath = Path.GetFullPath(normalizedValue);
+            }
+            catch
+            {
+                return false;
+            }
+
+            if (Directory.Exists(fullPath))
+            {
+                directory = fullPath;
+                return true;
+            }
+
+            if (!File.Exists(fullPath))
+            {
+                return false;
+            }
+
+            string parentDirectory = Path.GetDirectoryName(fullPath);
+            if (string.IsNullOrWhiteSpace(parentDirectory) || !Directory.Exists(parentDirectory))
+            {
+                return false;
+            }
+
+            directory = parentDirectory;
+            return true;
+        }
+
+        private static bool IsPrivateFontRegistryEntry(string valueName)
+        {
+            if (string.IsNullOrWhiteSpace(valueName))
+            {
+                return false;
+            }
+
+            foreach (string candidate in DefaultPrivateFontRegistryNameCandidates)
+            {
+                if (valueName.IndexOf(candidate, StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryNormalizeRegistryFontFile(string rawValue, out string fontPath)
+        {
+            fontPath = null;
+            if (string.IsNullOrWhiteSpace(rawValue))
+            {
+                return false;
+            }
+
+            string normalizedValue = rawValue.Trim().Trim('"');
+            string[] candidateValues =
+            {
+                normalizedValue,
+                Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.Windows),
+                    "Fonts",
+                    normalizedValue)
+            };
+
+            foreach (string candidateValue in candidateValues)
+            {
+                string fullPath;
+                try
+                {
+                    fullPath = Path.GetFullPath(candidateValue);
+                }
+                catch
+                {
+                    continue;
+                }
+
+                if (!File.Exists(fullPath))
+                {
+                    continue;
+                }
+
+                fontPath = fullPath;
+                return true;
+            }
+
+            return false;
         }
 
         private static string BuildCacheKey(string text, float scale)

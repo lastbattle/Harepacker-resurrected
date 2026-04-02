@@ -26,6 +26,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly UIObject _markColorLeftButton;
         private readonly UIObject _markColorRightButton;
         private readonly UIObject _comboButton;
+        private readonly GraphicsDevice _device;
 
         private Func<GuildMarkSnapshot> _snapshotProvider;
         private Action<int> _advanceHandler;
@@ -75,7 +76,8 @@ namespace HaCreator.MapSimulator.UI
             _markColorLeftButton = markColorLeftButton;
             _markColorRightButton = markColorRightButton;
             _comboButton = comboButton;
-            _pixel = new Texture2D(device ?? throw new ArgumentNullException(nameof(device)), 1, 1);
+            _device = device ?? throw new ArgumentNullException(nameof(device));
+            _pixel = new Texture2D(_device, 1, 1);
             _pixel.SetData(new[] { Color.White });
 
             WireButton(_agreeButton, () => _acceptHandler?.Invoke());
@@ -161,13 +163,15 @@ namespace HaCreator.MapSimulator.UI
             DrawGuildMarkPreview(sprite);
             DrawText(sprite, _snapshot.ComboLabel, Position.X + 10, Position.Y + 255, new Color(244, 243, 234));
             DrawText(sprite, $"Group {_snapshot.ComboGroup}", Position.X + 178, Position.Y + 255, new Color(200, 205, 214));
-            DrawText(sprite, $"BG {_snapshot.MarkBackground}  Color {_snapshot.MarkBackgroundColor}", Position.X + 28, Position.Y + 285, new Color(223, 229, 236));
-            DrawText(sprite, $"Mark {_snapshot.Mark}  Color {_snapshot.MarkColor}", Position.X + 28, Position.Y + 303, new Color(223, 229, 236));
+            DrawText(sprite, $"BG {_snapshot.MarkBackground}  Color {_snapshot.MarkBackgroundColor}", Position.X + 28, Position.Y + 279, new Color(223, 229, 236));
+            DrawText(sprite, _snapshot.BackgroundName, Position.X + 28, Position.Y + 294, new Color(184, 196, 211));
+            DrawText(sprite, $"Mark {_snapshot.Mark}  Color {_snapshot.MarkColor}", Position.X + 28, Position.Y + 309, new Color(223, 229, 236));
+            DrawText(sprite, _snapshot.MarkName, Position.X + 28, Position.Y + 324, new Color(184, 196, 211));
 
             string status = _snapshot.IsInteractive
                 ? _snapshot.StatusMessage
                 : $"Intro animation active. Controls unlock in {_snapshot.IntroRemainingMs} ms.";
-            DrawWrappedText(sprite, status, new Rectangle(Position.X + 14, Position.Y + 318, 222, 42), new Color(255, 228, 151), 0.36f);
+            DrawWrappedText(sprite, status, new Rectangle(Position.X + 14, Position.Y + 337, 222, 30), new Color(255, 228, 151), 0.36f);
         }
 
         private GuildMarkSnapshot RefreshSnapshot()
@@ -233,11 +237,31 @@ namespace HaCreator.MapSimulator.UI
         {
             int x = Position.X + 117;
             int y = Position.Y + 103;
+            Texture2D backgroundTexture = GuildMarkTextureCache.GetBackgroundTexture(_device, _snapshot.MarkBackground, _snapshot.MarkBackgroundColor);
+            Texture2D markTexture = GuildMarkTextureCache.GetMarkTexture(_device, _snapshot.Mark, _snapshot.MarkColor);
+
             sprite.Draw(_pixel, new Rectangle(x, y, 17, 17), new Color(14, 19, 27));
-            sprite.Draw(_pixel, new Rectangle(x + 1, y + 1, 15, 15), ResolvePaletteColor(_snapshot.MarkBackgroundColor));
-            sprite.Draw(_pixel, new Rectangle(x + 4, y + 4, 9, 9), ResolvePaletteColor(_snapshot.MarkColor));
-            sprite.Draw(_pixel, new Rectangle(x + 6, y + 2, 5, 13), ResolvePaletteColor(_snapshot.MarkColor));
-            sprite.Draw(_pixel, new Rectangle(x + 2, y + 6, 13, 5), ResolvePaletteColor(_snapshot.MarkColor));
+            if (backgroundTexture != null)
+            {
+                sprite.Draw(backgroundTexture, new Vector2(x, y), Color.White);
+            }
+            else
+            {
+                sprite.Draw(_pixel, new Rectangle(x + 1, y + 1, 15, 15), ResolvePaletteColor(_snapshot.MarkBackgroundColor));
+            }
+
+            if (markTexture != null)
+            {
+                int markX = x + ((17 - markTexture.Width) / 2);
+                int markY = y + ((17 - markTexture.Height) / 2);
+                sprite.Draw(markTexture, new Vector2(markX, markY), Color.White);
+            }
+            else
+            {
+                sprite.Draw(_pixel, new Rectangle(x + 4, y + 4, 9, 9), ResolvePaletteColor(_snapshot.MarkColor));
+                sprite.Draw(_pixel, new Rectangle(x + 6, y + 2, 5, 13), ResolvePaletteColor(_snapshot.MarkColor));
+                sprite.Draw(_pixel, new Rectangle(x + 2, y + 6, 13, 5), ResolvePaletteColor(_snapshot.MarkColor));
+            }
         }
 
         private void DrawText(SpriteBatch sprite, string text, int x, int y, Color color)

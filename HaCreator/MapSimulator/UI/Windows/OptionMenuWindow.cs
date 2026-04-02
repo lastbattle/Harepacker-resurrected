@@ -106,13 +106,22 @@ namespace HaCreator.MapSimulator.UI
 
         private sealed class JoypadRow
         {
-            public JoypadRow(InputAction? action, string label, string description, Func<JoypadSessionSnapshot, string> getValue, Action<JoypadSessionSnapshot, int> adjustValue)
+            public JoypadRow(
+                InputAction? action,
+                string label,
+                string description,
+                Func<JoypadSessionSnapshot, string> getValue,
+                Action<JoypadSessionSnapshot, int> adjustValue,
+                JoypadRowKind kind = JoypadRowKind.Command,
+                int sliderStepCount = 0)
             {
                 Action = action;
                 Label = label;
                 Description = description;
                 GetValue = getValue;
                 AdjustValue = adjustValue;
+                Kind = kind;
+                SliderStepCount = sliderStepCount;
             }
 
             public InputAction? Action { get; }
@@ -120,6 +129,21 @@ namespace HaCreator.MapSimulator.UI
             public string Description { get; }
             public Func<JoypadSessionSnapshot, string> GetValue { get; }
             public Action<JoypadSessionSnapshot, int> AdjustValue { get; }
+            public JoypadRowKind Kind { get; }
+            public int SliderStepCount { get; }
+        }
+
+        private enum JoypadRowKind
+        {
+            Command = 0,
+            Calibration = 1,
+            ControllerSlot = 2,
+            AxisThreshold = 3,
+            TriggerThreshold = 4,
+            ResponseCurve = 5,
+            Toggle = 6,
+            Reset = 7,
+            Binding = 8,
         }
 
         private sealed class JoypadSessionSnapshot
@@ -163,6 +187,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Dictionary<int, bool> _committedClientOptionValues = new();
         private readonly Texture2D _checkTexture;
         private readonly Texture2D _highlightTexture;
+        private readonly Texture2D[] _scrollTextures;
         private readonly string _windowName;
         private OptionMenuMode _mode;
         private string _statusMessage = string.Empty;
@@ -176,12 +201,13 @@ namespace HaCreator.MapSimulator.UI
         private GamePadState _previousJoypadCaptureState;
         private GamePadState _currentJoypadCaptureState;
 
-        public OptionMenuWindow(IDXObject frame, string windowName, Texture2D checkTexture, Texture2D highlightTexture)
+        public OptionMenuWindow(IDXObject frame, string windowName, Texture2D checkTexture, Texture2D highlightTexture, Texture2D[] scrollTextures)
             : base(frame)
         {
             _windowName = windowName ?? throw new ArgumentNullException(nameof(windowName));
             _checkTexture = checkTexture;
             _highlightTexture = highlightTexture;
+            _scrollTextures = scrollTextures ?? Array.Empty<Texture2D>();
         }
 
         public override string WindowName => _windowName;

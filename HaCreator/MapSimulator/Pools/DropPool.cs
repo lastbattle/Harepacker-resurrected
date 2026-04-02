@@ -160,6 +160,9 @@ namespace HaCreator.MapSimulator.Pools
         public int LastFrameTime { get; set; }
         public bool IsRare { get; set; }                // Glow effect for rare items
         public Color GlowColor { get; set; } = Color.White;
+        public bool UseLayeredMesoAnimation { get; set; }
+        public int MesoAnimationLayerCount { get; set; }
+        public bool DrawOnElevatedLayer { get; set; }
 
         // Pickup state
         public bool CanPickup { get; set; } = true;
@@ -549,6 +552,7 @@ namespace HaCreator.MapSimulator.Pools
 
         #region Resources
         private IDXObject _mesoIcon;
+        private readonly List<IDXObject>[] _mesoAnimationFrames = new List<IDXObject>[] { new(), new(), new(), new() };
         private Dictionary<string, IDXObject> _itemIcons = new Dictionary<string, IDXObject>();
         #endregion
 
@@ -597,6 +601,22 @@ namespace HaCreator.MapSimulator.Pools
         public void SetMesoIcon(IDXObject icon)
         {
             _mesoIcon = icon;
+        }
+
+        public void SetMesoAnimationFrames(int iconType, List<IDXObject> frames)
+        {
+            if ((uint)iconType >= _mesoAnimationFrames.Length)
+            {
+                return;
+            }
+
+            _mesoAnimationFrames[iconType].Clear();
+            if (frames == null)
+            {
+                return;
+            }
+
+            _mesoAnimationFrames[iconType].AddRange(frames.Where(frame => frame != null));
         }
 
         public void SetItemIcon(string itemId, IDXObject icon)
@@ -648,6 +668,7 @@ namespace HaCreator.MapSimulator.Pools
             InitializeDrop(drop, DropType.Meso, null, x, y, currentTime, ownerId);
             drop.MesoAmount = amount;
             drop.Icon = _mesoIcon;
+            ApplyMesoVisuals(drop, packetControlled: false);
 
             // Meso glow based on amount
             if (amount >= 10000)
@@ -798,6 +819,9 @@ namespace HaCreator.MapSimulator.Pools
             drop.CanPickup = true;
             drop.IsRare = false;
             drop.GlowColor = Color.White;
+            drop.UseLayeredMesoAnimation = false;
+            drop.MesoAnimationLayerCount = 0;
+            drop.DrawOnElevatedLayer = false;
             drop.AnimFrames = null;
             drop.Icon = null;
             drop.Quantity = 1;
@@ -1179,7 +1203,17 @@ namespace HaCreator.MapSimulator.Pools
         /// <summary>
         /// Get all drops that should be rendered (with screen culling)
         /// </summary>
-        public void GetRenderableDrops(List<DropItem> destination, int screenLeft, int screenRight, int screenTop, int screenBottom, int mapShiftX, int mapShiftY, int centerX, int centerY)
+        public void GetRenderableDrops(
+            List<DropItem> destination,
+            int screenLeft,
+            int screenRight,
+            int screenTop,
+            int screenBottom,
+            int mapShiftX,
+            int mapShiftY,
+            int centerX,
+            int centerY,
+            bool elevatedOnly = false)
         {
             if (destination == null)
             {
@@ -1192,6 +1226,11 @@ namespace HaCreator.MapSimulator.Pools
             {
                 DropItem drop = _activeDrops[i];
                 if (drop.Alpha <= 0)
+                {
+                    continue;
+                }
+
+                if (drop.DrawOnElevatedLayer != elevatedOnly)
                 {
                     continue;
                 }
@@ -1979,11 +2018,14 @@ namespace HaCreator.MapSimulator.Pools
             {
                 drop.MesoAmount = Math.Max(0, packet.Info);
                 drop.Icon = _mesoIcon;
+                ApplyMesoVisuals(drop, packetControlled: true);
             }
             else if (_itemIcons.TryGetValue(itemId, out IDXObject icon))
             {
                 drop.Icon = icon;
             }
+
+            drop.DrawOnElevatedLayer = packet.ElevateLayer;
 
             if (packet.EnterType == 2)
             {
@@ -2157,6 +2199,27 @@ namespace HaCreator.MapSimulator.Pools
             drop.LastStateChangeTime = currentTime;
             drop.MotionElapsedMs = 0;
             drop.MotionLastUpdateTime = currentTime;
+        }
+
+        private void ApplyMesoVisuals(DropItem drop, bool packetControlled)
+        {
+            if (drop == null || drop.Type != DropType.Meso)
+            {
+                return;
+            }
+
+            int iconType = GetMoneyIconTypeForAmount(drop.MesoAmount);
+            List<IDXObject> frames = _mesoAnimationFrames[iconType];
+            if (frames != null && frames.Count > 0)
+            {
+                drop.AnimFrames = frames;
+                drop.Icon = frames[0];
+            }
+
+            drop.UseLayeredMesoAnimation = packetControlled && frames != null && frames.Count > 1;
+            drop.MesoAnimationLayerCount = drop.UseLayeredMesoAnimation
+                ? Math.Min(frames.Count, iconType + 2)
+                : 0;
         }
 
         #endregion

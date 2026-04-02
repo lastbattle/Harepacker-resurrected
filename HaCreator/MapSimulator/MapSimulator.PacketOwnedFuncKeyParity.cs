@@ -19,10 +19,11 @@ namespace HaCreator.MapSimulator
 
         private static readonly (int ClientFunctionId, InputAction Action)[] PacketOwnedKnownFunctionBindings =
         {
-            (0, InputAction.ToggleEquip),
-            (1, InputAction.ToggleInventory),
+            (0, InputAction.ToggleInventory),
+            (1, InputAction.ToggleEquip),
             (2, InputAction.ToggleStats),
             (3, InputAction.ToggleSkills),
+            (8, InputAction.ToggleKeyConfig),
         };
 
         private readonly PacketOwnedFuncKeyConfigStore _packetOwnedFuncKeyConfigStore = new();
@@ -120,6 +121,7 @@ namespace HaCreator.MapSimulator
         private void SavePacketOwnedFuncKeyConfigFromLiveInput(PlayerInput input)
         {
             ApplyPersistedPacketOwnedFuncKeyConfig();
+            SyncPacketOwnedUtilityWindowBindings(input);
             PersistPacketOwnedFuncKeyConfig(input);
         }
 
@@ -353,7 +355,13 @@ namespace HaCreator.MapSimulator
                 appliedBindings++;
             }
 
+            SyncPacketOwnedUtilityWindowBindings(input);
             return appliedBindings;
+        }
+
+        private void SyncPacketOwnedUtilityWindowBindings(PlayerInput input = null)
+        {
+            uiWindowManager?.SyncKeyBindingsFromPlayerInput(input ?? _playerManager?.Input);
         }
 
         private void UpdatePacketOwnedPetConsumeMpRuntime(int currentTime)

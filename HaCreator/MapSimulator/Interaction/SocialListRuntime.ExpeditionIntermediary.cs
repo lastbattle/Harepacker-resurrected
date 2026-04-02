@@ -197,11 +197,11 @@ namespace HaCreator.MapSimulator.Interaction
             return _expeditionIntermediary.LastStatusMessage;
         }
 
-        internal string ApplyExpeditionNotice(ExpeditionNoticeKind noticeKind, string characterName, bool packetOwned, int retCode = 60)
+        internal string ApplyExpeditionNotice(ExpeditionNoticeKind noticeKind, string characterName, bool packetOwned, int? retCode = null)
         {
             string resolvedName = string.IsNullOrWhiteSpace(characterName) ? "Unknown member" : characterName.Trim();
             _expeditionIntermediary.PacketOwned = packetOwned;
-            _expeditionIntermediary.LastPacketRetCode = retCode;
+            _expeditionIntermediary.LastPacketRetCode = retCode ?? ResolveExpeditionNoticeRetCode(noticeKind);
             _expeditionIntermediary.LastStatusMessage = noticeKind switch
             {
                 ExpeditionNoticeKind.Joined => $"{resolvedName} joined the expedition roster.",
@@ -246,12 +246,56 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string ApplyExpeditionRemoved(ExpeditionRemovalKind removalKind, bool packetOwned, int retCode = 67)
         {
-            return ApplyExpeditionRemovedInternal(removalKind, packetOwned, null, retCode);
+            return ApplyExpeditionRemovedInternal(removalKind, packetOwned, null, ResolveExpeditionRemovalRetCode(removalKind, retCode));
         }
 
         internal bool HasActiveExpedition()
         {
             return _expeditionIntermediary.HasActiveExpedition;
+        }
+
+        internal string StartLocalExpeditionIntermediary(string expeditionTitle = null, bool registrationDraft = false)
+        {
+            if (_expeditionIntermediary.PacketOwned && _expeditionIntermediary.HasActiveExpedition)
+            {
+                _expeditionIntermediary.LastStatusMessage = "Packet-owned expedition intermediary already owns the active roster.";
+                return _expeditionIntermediary.LastStatusMessage;
+            }
+
+            string resolvedTitle = string.IsNullOrWhiteSpace(expeditionTitle)
+                ? $"{_playerName}'s Expedition"
+                : expeditionTitle.Trim();
+            ApplyExpeditionGet(
+                resolvedTitle,
+                0,
+                CreateDefaultExpeditionSeedParties(resolvedTitle),
+                packetOwned: false,
+                retCode: registrationDraft ? 57 : 59);
+            _expeditionIntermediary.LastStatusMessage = registrationDraft
+                ? $"Local expedition intermediary published {resolvedTitle} from {_locationSummary}."
+                : $"Local expedition intermediary created {resolvedTitle}.";
+            SyncExpeditionSearchEntryFromIntermediary();
+            ClampSearchSelection(SocialSearchTab.Expedition);
+            return _expeditionIntermediary.LastStatusMessage;
+        }
+
+        internal string StageExpeditionRequest(string expeditionTitle, string ownerName, bool quickJoin, bool packetOwned)
+        {
+            string resolvedTitle = string.IsNullOrWhiteSpace(expeditionTitle)
+                ? "Expedition Listing"
+                : expeditionTitle.Trim();
+            string resolvedOwner = string.IsNullOrWhiteSpace(ownerName)
+                ? "Expedition Leader"
+                : ownerName.Trim();
+            _expeditionIntermediary.PacketOwned = packetOwned;
+            _expeditionAdmissionActive = true;
+            _expeditionIntermediary.PendingRequestSummary = quickJoin
+                ? $"Quick-join request staged for {resolvedTitle} ({resolvedOwner})."
+                : $"Admission request staged for {resolvedTitle} ({resolvedOwner}).";
+            _expeditionIntermediary.LastStatusMessage = quickJoin
+                ? $"Expedition intermediary staged a quick-join request to {resolvedOwner}."
+                : $"Expedition intermediary staged an admission request to {resolvedOwner}.";
+            return _expeditionIntermediary.LastStatusMessage;
         }
 
         private string ResetLocalExpeditionIntermediary()
@@ -491,6 +535,27 @@ namespace HaCreator.MapSimulator.Interaction
                 6 => $"{inviterName} returned an expedition response code 6 failure.",
                 7 => $"{inviterName} already has a pending expedition prompt open.",
                 _ => $"{inviterName} returned expedition response code {responseCode}."
+            };
+        }
+
+        private static int ResolveExpeditionNoticeRetCode(ExpeditionNoticeKind noticeKind)
+        {
+            return noticeKind switch
+            {
+                ExpeditionNoticeKind.Left => 64,
+                ExpeditionNoticeKind.Removed => 66,
+                _ => 60
+            };
+        }
+
+        private static int ResolveExpeditionRemovalRetCode(ExpeditionRemovalKind removalKind, int fallbackRetCode)
+        {
+            return removalKind switch
+            {
+                ExpeditionRemovalKind.Leave => 65,
+                ExpeditionRemovalKind.Removed => 68,
+                ExpeditionRemovalKind.Disband => 67,
+                _ => fallbackRetCode
             };
         }
 

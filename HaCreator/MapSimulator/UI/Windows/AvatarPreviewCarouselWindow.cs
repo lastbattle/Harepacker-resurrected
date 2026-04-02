@@ -16,10 +16,10 @@ namespace HaCreator.MapSimulator.UI
         private const int EntriesPerPage = 3;
         private const int CardWidth = 183;
         private const int CardHeight = 151;
-        private const int CardStartX = 18;
-        private const int CardStartY = 46;
-        private const int CardGap = 14;
-        private const int AvatarFeetOffsetY = 106;
+        private const int SlotAnchorStartX = 170;
+        private const int SlotAnchorStepX = 125;
+        private const int SlotAnchorY = 80;
+        private const int NameTagOffsetY = 63;
         private const int NameTagBaselineOffsetY = 120;
         private const int DoubleClickThresholdMs = 400;
         private const int ClientNameTagMinimumWidth = 58;
@@ -31,8 +31,8 @@ namespace HaCreator.MapSimulator.UI
         private readonly UIObject _prevPageButton;
         private readonly UIObject _nextPageButton;
         private readonly Dictionary<LoginCharacterRosterEntry, CharacterAssembler> _previewAssemblers = new();
-        private readonly Texture2D _normalCardTexture;
-        private readonly Texture2D _selectedCardTexture;
+        private readonly PreviewCanvasFrame _normalCardFrame;
+        private readonly PreviewCanvasFrame _selectedCardFrame;
         private readonly PreviewNameTagStyle _normalNameTagStyle;
         private readonly PreviewNameTagStyle _selectedNameTagStyle;
         private readonly IReadOnlyDictionary<LoginJobDecorationStyle, PreviewCanvasFrame> _jobDecorations;
@@ -50,8 +50,8 @@ namespace HaCreator.MapSimulator.UI
 
         public AvatarPreviewCarouselWindow(
             IDXObject frame,
-            Texture2D normalCardTexture,
-            Texture2D selectedCardTexture,
+            PreviewCanvasFrame normalCardFrame,
+            PreviewCanvasFrame selectedCardFrame,
             PreviewNameTagStyle normalNameTagStyle,
             PreviewNameTagStyle selectedNameTagStyle,
             IReadOnlyDictionary<LoginJobDecorationStyle, PreviewCanvasFrame> jobDecorations,
@@ -62,8 +62,8 @@ namespace HaCreator.MapSimulator.UI
             UIObject nextPageButton)
             : base(frame)
         {
-            _normalCardTexture = normalCardTexture;
-            _selectedCardTexture = selectedCardTexture ?? normalCardTexture;
+            _normalCardFrame = normalCardFrame;
+            _selectedCardFrame = selectedCardFrame.Texture != null ? selectedCardFrame : normalCardFrame;
             _normalNameTagStyle = normalNameTagStyle;
             _selectedNameTagStyle = selectedNameTagStyle;
             _jobDecorations = jobDecorations ?? new Dictionary<LoginJobDecorationStyle, PreviewCanvasFrame>();
@@ -191,21 +191,18 @@ namespace HaCreator.MapSimulator.UI
 
                 Rectangle cardBounds = GetCardBounds(slotIndex);
                 bool isSelected = displaySlotIndex == _selectedIndex;
-                Texture2D cardTexture = isSelected ? _selectedCardTexture : _normalCardTexture;
-                if (cardTexture != null)
-                {
-                    sprite.Draw(cardTexture, new Vector2(cardBounds.X, cardBounds.Y), Color.White);
-                }
+                Point slotAnchor = GetSlotAnchor(slotIndex);
+                DrawCard(sprite, slotAnchor, isSelected);
 
                 if (slotKind == LoginCharacterRosterSlotKind.Empty)
                 {
-                    DrawEmptySlot(sprite, cardBounds);
+                    DrawEmptySlot(sprite, slotAnchor);
                     continue;
                 }
 
                 if (slotKind == LoginCharacterRosterSlotKind.BuyCharacter)
                 {
-                    DrawBuyCharacterCard(sprite, cardBounds, tickCount);
+                    DrawBuyCharacterCard(sprite, slotAnchor, tickCount);
                     continue;
                 }
 
@@ -221,8 +218,8 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
-                int avatarAnchorX = cardBounds.Center.X;
-                int avatarAnchorY = cardBounds.Y + AvatarFeetOffsetY;
+                int avatarAnchorX = slotAnchor.X;
+                int avatarAnchorY = slotAnchor.Y;
                 DrawJobDecoration(sprite, build, avatarAnchorX, avatarAnchorY);
 
                 if (_previewAssemblers.TryGetValue(entry, out CharacterAssembler assembler))
@@ -236,7 +233,7 @@ namespace HaCreator.MapSimulator.UI
 
                 if (_font != null)
                 {
-                    DrawNameTag(sprite, build.Name, isSelected, cardBounds.X + 91, cardBounds.Y + NameTagBaselineOffsetY);
+                    DrawNameTag(sprite, build.Name, isSelected, avatarAnchorX, cardBounds.Y + NameTagBaselineOffsetY);
                 }
             }
         }
@@ -341,25 +338,58 @@ namespace HaCreator.MapSimulator.UI
 
         private Rectangle GetCardBounds(int visibleSlotIndex)
         {
-            int x = Position.X + CardStartX + (visibleSlotIndex * (CardWidth + CardGap));
-            int y = Position.Y + CardStartY;
+            Point slotAnchor = GetSlotAnchor(visibleSlotIndex);
+            PreviewCanvasFrame frame = _selectedCardFrame.Texture != null
+                ? _selectedCardFrame
+                : _normalCardFrame;
+            int x = Position.X + slotAnchor.X - frame.Origin.X;
+            int y = Position.Y + slotAnchor.Y - frame.Origin.Y;
             return new Rectangle(x, y, CardWidth, CardHeight);
         }
 
-        private void DrawEmptySlot(SpriteBatch sprite, Rectangle cardBounds)
+        private Point GetSlotAnchor(int visibleSlotIndex)
+        {
+            return new Point(
+                SlotAnchorStartX + (visibleSlotIndex * SlotAnchorStepX),
+                SlotAnchorY);
+        }
+
+        private void DrawCard(SpriteBatch sprite, Point slotAnchor, bool isSelected)
+        {
+            PreviewCanvasFrame frame = isSelected ? _selectedCardFrame : _normalCardFrame;
+            if (frame.Texture == null)
+            {
+                return;
+            }
+
+            sprite.Draw(
+                frame.Texture,
+                new Vector2(
+                    Position.X + slotAnchor.X - frame.Origin.X,
+                    Position.Y + slotAnchor.Y - frame.Origin.Y),
+                Color.White);
+        }
+
+        private void DrawEmptySlot(SpriteBatch sprite, Point slotAnchor)
         {
             if (_emptySlotTexture == null)
             {
                 return;
             }
 
+            Point origin = Point.Zero;
+            if (_emptySlotTexture.Bounds.Width > 0 && _emptySlotTexture.Bounds.Height > 0)
+            {
+                origin = new Point(_emptySlotTexture.Width / 2, _emptySlotTexture.Height + 1);
+            }
+
             Vector2 position = new(
-                cardBounds.Center.X - (_emptySlotTexture.Width / 2f),
-                cardBounds.Y + 34f);
+                Position.X + slotAnchor.X - origin.X,
+                Position.Y + slotAnchor.Y - origin.Y);
             sprite.Draw(_emptySlotTexture, position, Color.White);
         }
 
-        private void DrawBuyCharacterCard(SpriteBatch sprite, Rectangle cardBounds, int tickCount)
+        private void DrawBuyCharacterCard(SpriteBatch sprite, Point slotAnchor, int tickCount)
         {
             PreviewCanvasFrame frame = ResolveBuyCharacterFrame(tickCount);
             if (frame.Texture == null)
@@ -368,8 +398,8 @@ namespace HaCreator.MapSimulator.UI
             }
 
             Vector2 position = new(
-                cardBounds.Center.X - frame.Origin.X,
-                cardBounds.Center.Y - frame.Origin.Y + 6f);
+                Position.X + slotAnchor.X - frame.Origin.X,
+                Position.Y + slotAnchor.Y - frame.Origin.Y);
             sprite.Draw(frame.Texture, position, Color.White);
         }
 

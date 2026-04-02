@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Character.Skills;
+using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.UI.Controls;
 using HaCreator.MapSimulator;
 using HaSharedLibrary.Render;
@@ -87,14 +88,10 @@ namespace HaCreator.MapSimulator.UI
         private const int CHECKBOX_Y = 235;
         private const int CHECKBOX_SIZE = 15;
 
-        // `CUIMacroSysEx::OnCreate` loads the change-name button tooltip from
+        // `CUIMacroSysEx::OnCreate` loads the owner save-button tooltip from
         // StringPool 0x1108 and `OnButtonClicked` shows StringPool 0x0D01 after saving.
-        // The exact localized client payload is still unresolved in the simulator, so
-        // keep the fallback text scoped to this owner seam.
-        private const int CHANGE_NAME_TOOLTIP_STRING_POOL_ID = 0x1108;
-        private const int SAVE_NOTICE_STRING_POOL_ID = 0x0D01;
-        private const string CHANGE_NAME_TOOLTIP_FALLBACK = "Save the selected macro.";
-        private const string SAVE_NOTICE_FALLBACK = "The selected macro has been saved.";
+        // Keep the unresolved payload path in the dedicated owner-local resolver so the
+        // exact client text can be filled in later without touching the dialog seam again.
         #endregion
 
         #region Fields
@@ -664,7 +661,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 sprite.DrawString(
                     _font,
-                    $"{CHANGE_NAME_TOOLTIP_FALLBACK} (StringPool 0x{CHANGE_NAME_TOOLTIP_STRING_POOL_ID:X3} fallback)",
+                    SkillMacroOwnerStringPoolText.GetSaveButtonTooltip(),
                     new Vector2(fieldX, fieldY - _font.LineSpacing - 2),
                     new Color(216, 226, 183));
             }
@@ -1037,7 +1034,7 @@ namespace HaCreator.MapSimulator.UI
             OnMacroSaved?.Invoke(_editingMacroIndex, _macros[_editingMacroIndex]);
             _validationMessage = string.Empty;
             SetOwnerNotice(
-                $"{SAVE_NOTICE_FALLBACK} (StringPool 0x{SAVE_NOTICE_STRING_POOL_ID:X3} fallback)",
+                SkillMacroOwnerStringPoolText.GetSaveNotice(),
                 new Color(216, 226, 183));
             UpdateOwnerButtonState();
             return true;

@@ -1,3 +1,4 @@
+using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.UI;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
@@ -38,28 +39,19 @@ namespace HaCreator.MapSimulator.UI
         // Window currently being dragged (prevents other windows from starting drag)
         private UIWindowBase _draggingWindow;
 
-        // Keyboard toggle bindings
-        private readonly Dictionary<Keys, string> keyBindings = new Dictionary<Keys, string>
+        private static readonly Dictionary<InputAction, string> PlayerInputWindowBindings = new Dictionary<InputAction, string>
         {
-            { Keys.I, MapSimulatorWindowNames.Inventory },
-            { Keys.E, MapSimulatorWindowNames.Equipment },
-            { Keys.S, MapSimulatorWindowNames.Skills },
-            { Keys.Q, MapSimulatorWindowNames.Quest },
-            { Keys.A, MapSimulatorWindowNames.Ability },
-            //{ Keys.G, MapSimulatorWindowNames.SocialList }, // Simulator shortcut until every client launcher path is mirrored
-            //{ Keys.N, MapSimulatorWindowNames.MemoMailbox }, // Simulator shortcut until a dedicated memo launcher is wired
-            //{ Keys.B, MapSimulatorWindowNames.GuildBbs }, // Simulator shortcut until guild-board launch parity is wired
-            //{ Keys.M, MapSimulatorWindowNames.ItemMaker }, // Simulator shortcut until inventory/NPC launch parity is wired
-            { Keys.T, MapSimulatorWindowNames.TradingRoom },
-            { Keys.P, MapSimulatorWindowNames.PersonalShop },
-            { Keys.H, MapSimulatorWindowNames.EntrustedShop },
-            { Keys.O, MapSimulatorWindowNames.MiniRoom },
-            //{ Keys.Y, MapSimulatorWindowNames.Trunk }, // Fallback shortcut in addition to storage-keeper NPC access
-            //{ Keys.U, MapSimulatorWindowNames.ItemUpgrade }, // Simulator shortcut until inventory/NPC launch parity is wired
-            //{ Keys.V, MapSimulatorWindowNames.MapleTv }, // Simulator shortcut until MapleTV launch parity is wired
-            { Keys.OemCloseBrackets, MapSimulatorWindowNames.QuickSlot }  // ` key toggles quick slot bar
-            // Note: SkillMacro window is opened via MACRO button in Skill window, not keyboard shortcut
+            { InputAction.ToggleInventory, MapSimulatorWindowNames.Inventory },
+            { InputAction.ToggleEquip, MapSimulatorWindowNames.Equipment },
+            { InputAction.ToggleSkills, MapSimulatorWindowNames.Skills },
+            { InputAction.ToggleQuest, MapSimulatorWindowNames.Quest },
+            { InputAction.ToggleStats, MapSimulatorWindowNames.Ability },
+            { InputAction.ToggleQuickSlot, MapSimulatorWindowNames.QuickSlot },
+            { InputAction.ToggleKeyConfig, MapSimulatorWindowNames.KeyConfig },
         };
+
+        // Keyboard toggle bindings
+        private readonly Dictionary<Keys, string> keyBindings = BuildWindowBindingsFromPlayerInput(input: null);
 
         // Last key states for toggle detection
         private KeyboardState _previousKeyState;
@@ -241,6 +233,63 @@ namespace HaCreator.MapSimulator.UI
         public void SetKeyBinding(Keys key, string windowName)
         {
             keyBindings[key] = windowName;
+        }
+
+        public void SyncKeyBindingsFromPlayerInput(PlayerInput input)
+        {
+            keyBindings.Clear();
+            foreach (KeyValuePair<Keys, string> entry in BuildWindowBindingsFromPlayerInput(input))
+            {
+                keyBindings[entry.Key] = entry.Value;
+            }
+        }
+
+        private static Dictionary<Keys, string> BuildWindowBindingsFromPlayerInput(PlayerInput input)
+        {
+            var bindings = new Dictionary<Keys, string>();
+            foreach (KeyValuePair<InputAction, string> entry in PlayerInputWindowBindings)
+            {
+                KeyBinding binding = input?.GetBinding(entry.Key);
+                if (binding == null)
+                {
+                    foreach (var defaultBinding in PlayerInput.GetDefaultBindings())
+                    {
+                        if (defaultBinding.action != entry.Key)
+                        {
+                            continue;
+                        }
+
+                        TryAddWindowBinding(bindings, defaultBinding.primary, entry.Value);
+                        TryAddWindowBinding(bindings, defaultBinding.secondary, entry.Value);
+                        goto NextBinding;
+                    }
+
+                    continue;
+                }
+
+                TryAddWindowBinding(bindings, binding.PrimaryKey, entry.Value);
+                TryAddWindowBinding(bindings, binding.SecondaryKey, entry.Value);
+
+            NextBinding:
+                ;
+            }
+
+            // Fallback simulator shortcuts that are not yet modeled through PlayerInput.
+            bindings[Keys.T] = MapSimulatorWindowNames.TradingRoom;
+            bindings[Keys.P] = MapSimulatorWindowNames.PersonalShop;
+            bindings[Keys.H] = MapSimulatorWindowNames.EntrustedShop;
+            bindings[Keys.O] = MapSimulatorWindowNames.MiniRoom;
+            return bindings;
+        }
+
+        private static void TryAddWindowBinding(Dictionary<Keys, string> bindings, Keys key, string windowName)
+        {
+            if (key == Keys.None || string.IsNullOrWhiteSpace(windowName))
+            {
+                return;
+            }
+
+            bindings[key] = windowName;
         }
         #endregion
 

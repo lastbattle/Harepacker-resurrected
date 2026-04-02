@@ -10,6 +10,7 @@ using Microsoft.Xna.Framework.Graphics;
 using Spine;
 using System.IO;
 using System.Linq;
+using System.Runtime.CompilerServices;
 
 namespace HaCreator.MapSimulator.Character
 {
@@ -195,7 +196,15 @@ namespace HaCreator.MapSimulator.Character
             public string PreparedActionName { get; set; }
             public int PreparedFrameIndex { get; set; } = -1;
             public int PreparedFeetOffset { get; set; }
-            public IReadOnlyList<AssembledPart>[] PreparedSourceLayers { get; set; } = AssembledFrame.CreateEmptyAvatarRenderLayers();
+            public MirrorImagePreparedSourceLayer[] PreparedSourceLayers { get; set; } = CreateEmptyMirrorImagePreparedSourceLayers();
+        }
+
+        private sealed class MirrorImagePreparedSourceLayer
+        {
+            public AvatarRenderLayer RenderLayer { get; init; }
+            public int SourceSignature { get; init; }
+            public Rectangle Bounds { get; init; }
+            public IReadOnlyList<AssembledPart> Parts { get; init; } = Array.Empty<AssembledPart>();
         }
 
         private readonly struct AvatarEffectRenderable
@@ -562,7 +571,7 @@ namespace HaCreator.MapSimulator.Character
             ClearForcedActionName();
             State = PlayerState.Sitting;
             CurrentAction = CharacterAction.Sit;
-            CurrentActionName = GetPortableChairActionName(chair);
+            CurrentActionName = ResolvePortableChairActionName(chair);
             _animationStartTime = Environment.TickCount;
             _nextPortableChairRecoveryTime = Environment.TickCount + PORTABLE_CHAIR_RECOVERY_INTERVAL_MS;
             _packetOwnedChairSitConfirmed = false;
@@ -582,7 +591,7 @@ namespace HaCreator.MapSimulator.Character
             ClearForcedActionName();
             State = PlayerState.Sitting;
             CurrentAction = CharacterAction.Sit;
-            CurrentActionName = GetPortableChairActionName(Build?.ActivePortableChair);
+            CurrentActionName = ResolvePortableChairActionName(Build?.ActivePortableChair);
             _animationStartTime = Environment.TickCount;
             _packetOwnedChairSitConfirmed = true;
         }
@@ -1685,7 +1694,7 @@ namespace HaCreator.MapSimulator.Character
             }
             else if (State == PlayerState.Sitting)
             {
-                newActionName = GetPortableChairActionName(Build?.ActivePortableChair);
+                newActionName = ResolvePortableChairActionName(Build?.ActivePortableChair);
             }
             else
             {
@@ -3559,7 +3568,7 @@ namespace HaCreator.MapSimulator.Character
             }
 
             int adjustedY = screenY - _activeMirrorImage.PreparedFeetOffset;
-            IReadOnlyList<AssembledPart>[] layeredParts = _activeMirrorImage.PreparedSourceLayers;
+            MirrorImagePreparedSourceLayer[] layeredParts = _activeMirrorImage.PreparedSourceLayers;
             if (layeredParts.Length == 0)
             {
                 return;
@@ -3567,7 +3576,8 @@ namespace HaCreator.MapSimulator.Character
 
             for (int layerIndex = 0; layerIndex < layeredParts.Length; layerIndex++)
             {
-                IReadOnlyList<AssembledPart> parts = layeredParts[layerIndex];
+                MirrorImagePreparedSourceLayer layer = layeredParts[layerIndex];
+                IReadOnlyList<AssembledPart> parts = layer?.Parts;
                 if (parts == null)
                 {
                     continue;
@@ -3594,17 +3604,12 @@ namespace HaCreator.MapSimulator.Character
             }
 
             string actionName = CurrentActionName ?? string.Empty;
-            if (_activeMirrorImage.PreparedFrameIndex == currentFrameIndex
-                && _activeMirrorImage.PreparedFeetOffset == frame.FeetOffset
-                && string.Equals(_activeMirrorImage.PreparedActionName, actionName, StringComparison.OrdinalIgnoreCase))
-            {
-                return;
-            }
-
             _activeMirrorImage.PreparedActionName = actionName;
             _activeMirrorImage.PreparedFrameIndex = currentFrameIndex;
             _activeMirrorImage.PreparedFeetOffset = frame.FeetOffset;
-            _activeMirrorImage.PreparedSourceLayers = CloneMirrorImageSourceLayers(frame.AvatarRenderLayers);
+            _activeMirrorImage.PreparedSourceLayers = BuildPreparedMirrorImageSourceLayers(
+                frame.AvatarRenderLayers,
+                _activeMirrorImage.PreparedSourceLayers);
         }
 
         private void ResetMirrorImagePreparedSourceLayers()
@@ -3617,54 +3622,188 @@ namespace HaCreator.MapSimulator.Character
             _activeMirrorImage.PreparedActionName = null;
             _activeMirrorImage.PreparedFrameIndex = -1;
             _activeMirrorImage.PreparedFeetOffset = 0;
-            _activeMirrorImage.PreparedSourceLayers = AssembledFrame.CreateEmptyAvatarRenderLayers();
+            _activeMirrorImage.PreparedSourceLayers = CreateEmptyMirrorImagePreparedSourceLayers();
         }
 
-        private static IReadOnlyList<AssembledPart>[] CloneMirrorImageSourceLayers(IReadOnlyList<AssembledPart>[] sourceLayers)
+        private static MirrorImagePreparedSourceLayer[] CreateEmptyMirrorImagePreparedSourceLayers()
+        {
+            var layers = new MirrorImagePreparedSourceLayer[5];
+            for (int layerIndex = 0; layerIndex < layers.Length; layerIndex++)
+            {
+                layers[layerIndex] = new MirrorImagePreparedSourceLayer
+                {
+                    RenderLayer = (AvatarRenderLayer)layerIndex,
+                    SourceSignature = 0,
+                    Bounds = Rectangle.Empty,
+                    Parts = Array.Empty<AssembledPart>()
+                };
+            }
+
+            return layers;
+        }
+
+        private static MirrorImagePreparedSourceLayer[] BuildPreparedMirrorImageSourceLayers(
+            IReadOnlyList<AssembledPart>[] sourceLayers,
+            MirrorImagePreparedSourceLayer[] existingLayers)
         {
             if (sourceLayers == null || sourceLayers.Length == 0)
             {
-                return AssembledFrame.CreateEmptyAvatarRenderLayers();
+                return CreateEmptyMirrorImagePreparedSourceLayers();
             }
 
-            var clonedLayers = new IReadOnlyList<AssembledPart>[sourceLayers.Length];
-            for (int layerIndex = 0; layerIndex < sourceLayers.Length; layerIndex++)
+            const int MirrorLayerCount = 5;
+            var preparedLayers = new MirrorImagePreparedSourceLayer[MirrorLayerCount];
+            int populatedLayerCount = Math.Min(sourceLayers.Length, MirrorLayerCount);
+            for (int layerIndex = 0; layerIndex < populatedLayerCount; layerIndex++)
             {
                 IReadOnlyList<AssembledPart> sourceParts = sourceLayers[layerIndex];
-                if (sourceParts == null || sourceParts.Count == 0)
+                int sourceSignature = ComputeMirrorImageSourceLayerSignature(sourceParts);
+                if (existingLayers != null
+                    && layerIndex < existingLayers.Length
+                    && existingLayers[layerIndex] != null
+                    && existingLayers[layerIndex].SourceSignature == sourceSignature)
                 {
-                    clonedLayers[layerIndex] = Array.Empty<AssembledPart>();
+                    preparedLayers[layerIndex] = existingLayers[layerIndex];
                     continue;
                 }
 
-                var clonedParts = new AssembledPart[sourceParts.Count];
-                for (int partIndex = 0; partIndex < sourceParts.Count; partIndex++)
-                {
-                    AssembledPart part = sourceParts[partIndex];
-                    clonedParts[partIndex] = part == null
-                        ? null
-                        : new AssembledPart
-                        {
-                            Texture = part.Texture,
-                            OffsetX = part.OffsetX,
-                            OffsetY = part.OffsetY,
-                            ZLayer = part.ZLayer,
-                            ZIndex = part.ZIndex,
-                            VisibilityTokens = part.VisibilityTokens,
-                            VisibilityPriority = part.VisibilityPriority,
-                            IsVisible = part.IsVisible,
-                            SourcePart = part.SourcePart,
-                            Tint = part.Tint,
-                            PartType = part.PartType,
-                            SourcePortableChairLayer = part.SourcePortableChairLayer,
-                            RenderLayer = part.RenderLayer
-                        };
-                }
-
-                clonedLayers[layerIndex] = clonedParts;
+                preparedLayers[layerIndex] = CreatePreparedMirrorImageSourceLayer(
+                    (AvatarRenderLayer)layerIndex,
+                    sourceParts,
+                    sourceSignature);
             }
 
-            return clonedLayers;
+            for (int layerIndex = sourceLayers.Length; layerIndex < preparedLayers.Length; layerIndex++)
+            {
+                preparedLayers[layerIndex] = new MirrorImagePreparedSourceLayer
+                {
+                    RenderLayer = (AvatarRenderLayer)layerIndex,
+                    SourceSignature = 0,
+                    Bounds = Rectangle.Empty,
+                    Parts = Array.Empty<AssembledPart>()
+                };
+            }
+
+            return preparedLayers;
+        }
+
+        private static MirrorImagePreparedSourceLayer CreatePreparedMirrorImageSourceLayer(
+            AvatarRenderLayer renderLayer,
+            IReadOnlyList<AssembledPart> sourceParts,
+            int sourceSignature)
+        {
+            if (sourceParts == null || sourceParts.Count == 0)
+            {
+                return new MirrorImagePreparedSourceLayer
+                {
+                    RenderLayer = renderLayer,
+                    SourceSignature = sourceSignature,
+                    Bounds = Rectangle.Empty,
+                    Parts = Array.Empty<AssembledPart>()
+                };
+            }
+
+            var clonedParts = new AssembledPart[sourceParts.Count];
+            for (int partIndex = 0; partIndex < sourceParts.Count; partIndex++)
+            {
+                clonedParts[partIndex] = CloneMirrorImageSourcePart(sourceParts[partIndex]);
+            }
+
+            return new MirrorImagePreparedSourceLayer
+            {
+                RenderLayer = renderLayer,
+                SourceSignature = sourceSignature,
+                Bounds = CalculateMirrorImageSourceLayerBounds(clonedParts),
+                Parts = clonedParts
+            };
+        }
+
+        private static AssembledPart CloneMirrorImageSourcePart(AssembledPart part)
+        {
+            return part == null
+                ? null
+                : new AssembledPart
+                {
+                    Texture = part.Texture,
+                    OffsetX = part.OffsetX,
+                    OffsetY = part.OffsetY,
+                    ZLayer = part.ZLayer,
+                    ZIndex = part.ZIndex,
+                    VisibilityTokens = part.VisibilityTokens,
+                    VisibilityPriority = part.VisibilityPriority,
+                    IsVisible = part.IsVisible,
+                    SourcePart = part.SourcePart,
+                    Tint = part.Tint,
+                    PartType = part.PartType,
+                    SourcePortableChairLayer = part.SourcePortableChairLayer,
+                    RenderLayer = part.RenderLayer
+                };
+        }
+
+        private static int ComputeMirrorImageSourceLayerSignature(IReadOnlyList<AssembledPart> sourceParts)
+        {
+            if (sourceParts == null || sourceParts.Count == 0)
+            {
+                return 0;
+            }
+
+            var signature = new HashCode();
+            signature.Add(sourceParts.Count);
+            for (int partIndex = 0; partIndex < sourceParts.Count; partIndex++)
+            {
+                AssembledPart part = sourceParts[partIndex];
+                if (part == null)
+                {
+                    signature.Add(0);
+                    continue;
+                }
+
+                signature.Add(RuntimeHelpers.GetHashCode(part.Texture));
+                signature.Add(part.OffsetX);
+                signature.Add(part.OffsetY);
+                signature.Add(part.ZIndex);
+                signature.Add(part.IsVisible);
+                signature.Add((int)part.PartType);
+                signature.Add((int)part.RenderLayer);
+                signature.Add(part.ZLayer, StringComparer.Ordinal);
+                signature.Add(RuntimeHelpers.GetHashCode(part.SourcePortableChairLayer));
+            }
+
+            return signature.ToHashCode();
+        }
+
+        private static Rectangle CalculateMirrorImageSourceLayerBounds(IReadOnlyList<AssembledPart> sourceParts)
+        {
+            if (sourceParts == null || sourceParts.Count == 0)
+            {
+                return Rectangle.Empty;
+            }
+
+            int minX = int.MaxValue;
+            int minY = int.MaxValue;
+            int maxX = int.MinValue;
+            int maxY = int.MinValue;
+
+            for (int partIndex = 0; partIndex < sourceParts.Count; partIndex++)
+            {
+                AssembledPart part = sourceParts[partIndex];
+                if (part?.Texture == null || !part.IsVisible)
+                {
+                    continue;
+                }
+
+                minX = Math.Min(minX, part.OffsetX);
+                minY = Math.Min(minY, part.OffsetY);
+                maxX = Math.Max(maxX, part.OffsetX + part.Texture.Width);
+                maxY = Math.Max(maxY, part.OffsetY + part.Texture.Height);
+            }
+
+            if (minX == int.MaxValue || minY == int.MaxValue)
+            {
+                return Rectangle.Empty;
+            }
+
+            return new Rectangle(minX, minY, Math.Max(0, maxX - minX), Math.Max(0, maxY - minY));
         }
 
         private bool TryGetShadowPartnerAnimation(
@@ -4648,7 +4787,7 @@ namespace HaCreator.MapSimulator.Character
             _portableChairPairAssembler = new CharacterAssembler(pairBuild);
             _portableChairPairOffset = ResolvePortableChairPairOffset(chair, FacingRight);
             _portableChairPairFacingRight = ResolvePortableChairPairFacingRight(chair, FacingRight);
-            _portableChairPairActionName = GetPortableChairActionName(chair);
+            _portableChairPairActionName = ResolvePortableChairActionName(chair);
         }
 
         private bool ShouldDrawPortableChairPairPreview()
@@ -4981,7 +5120,7 @@ namespace HaCreator.MapSimulator.Character
             return y1 + ((y2 - y1) * t);
         }
 
-        private static string GetPortableChairActionName(PortableChair chair)
+        internal static string ResolvePortableChairActionName(PortableChair chair)
         {
             if (chair?.SitActionId is int sitActionId && sitActionId >= 0)
             {

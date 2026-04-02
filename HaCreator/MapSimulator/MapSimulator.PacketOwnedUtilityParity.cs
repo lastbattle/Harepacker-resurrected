@@ -1,5 +1,6 @@
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Character.Skills;
+using HaCreator.MapSimulator.Fields;
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.Pools;
@@ -40,9 +41,6 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedCurrentVengeanceSkillId = 31101003;
         private const string PacketOwnedApspPromptPrimaryLabel = "OK";
         private const string PacketOwnedApspPromptSecondaryLabel = "Cancel";
-        private const int PacketOwnedTutorBalloonHorizontalPadding = 10;
-        private const int PacketOwnedTutorBalloonVerticalPadding = 10;
-        private const int PacketOwnedTutorBalloonBodyExtraWidth = PacketOwnedTutorBalloonHorizontalPadding * 2;
         private const int PacketOwnedTutorBalloonScreenMargin = 6;
         private const int PacketOwnedTutorBalloonArrowOverlap = 6;
         private const int PacketOwnedTutorBalloonAnchorOffsetY = 8;
@@ -66,7 +64,15 @@ namespace HaCreator.MapSimulator
             public string DisplayName { get; init; }
         }
 
+        internal readonly record struct PacketOwnedTimeBombInvincibilityOptionLevelData(int DurationMs, int ProbabilityPercent);
+
+        private sealed class PacketOwnedTimeBombInvincibilityOptionDefinition
+        {
+            public PacketOwnedTimeBombInvincibilityOptionLevelData[] Levels { get; init; } = Array.Empty<PacketOwnedTimeBombInvincibilityOptionLevelData>();
+        }
+
         private readonly Dictionary<int, HashSet<int>> _packetQuestGuideTargetsByMobId = new();
+        private readonly Dictionary<int, PacketOwnedTimeBombInvincibilityOptionDefinition> _packetOwnedTimeBombInvincibilityOptions = new();
         private readonly LocalFollowCharacterRuntime _localFollowRuntime = new();
         private readonly TutorRuntime _packetOwnedTutorRuntime = new();
         private readonly LocalUtilityPacketInboxManager _localUtilityPacketInbox = new();
@@ -726,6 +732,10 @@ namespace HaCreator.MapSimulator
             _scriptedDirectionModeOwnerActive = true;
             _activeNpcInteractionNpc = FindNpcById(entry.TargetNpcId);
             _activeNpcInteractionNpcId = entry.TargetNpcId;
+            IReadOnlyList<string> publishedScriptNames = _activeNpcInteractionNpc != null
+                ? FieldObjectNpcScriptNameResolver.ResolvePublishedScriptNames(_activeNpcInteractionNpc.NpcInstance)
+                : FieldObjectNpcScriptNameResolver.ResolvePublishedScriptNames(entry.TargetNpcId);
+            PublishDynamicObjectTagStatesForScriptNames(publishedScriptNames, currTickCount);
             _npcInteractionOverlay.Open(interactionState);
 
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.QuestDelivery) is QuestDeliveryWindow questDeliveryWindow)
@@ -1816,8 +1826,8 @@ namespace HaCreator.MapSimulator
                 _lastPacketOwnedRadioStartTick = Environment.TickCount;
                 _lastPacketOwnedRadioLastPollTick = int.MinValue;
                 _lastPacketOwnedRadioStatusMessage =
-                    $"Joined packet-owned radio playback for {trackResolution.DisplayName} " +
-                    $"at {normalizedTimeValue}s (StringPool 0x{PacketOwnedRadioStartStringPoolId:X}).";
+                    $"Radio play active at {normalizedTimeValue}s via " +
+                    $"{FormatPacketOwnedRadioStringPoolInvocation(PacketOwnedRadioStartStringPoolId, trackResolution.DisplayName)}.";
 
                 _packetOwnedRadioAudio.Play();
                 ApplyUtilityAudioSettings();
@@ -1827,7 +1837,9 @@ namespace HaCreator.MapSimulator
                     Environment.TickCount,
                     12);
 
-                string message = $"Started packet-owned radio playback for {trackResolution.DisplayName} ({trackResolution.ResolvedAudioDescriptor}).";
+                string message =
+                    $"Started packet-owned radio playback for {trackResolution.DisplayName} " +
+                    $"via {FormatPacketOwnedRadioTemplateResolution(PacketOwnedRadioAudioTemplateStringPoolId, normalizedTrackDescriptor, trackResolution.ResolvedAudioDescriptor)}.";
                 ShowUtilityFeedbackMessage(message);
                 return message;
             }
@@ -1896,14 +1908,14 @@ namespace HaCreator.MapSimulator
             }
 
             _lastPacketOwnedRadioStatusMessage = completed
-                ? $"Completed packet-owned radio playback for {displayName} (StringPool 0x{PacketOwnedRadioCompleteStringPoolId:X})."
+                ? $"Radio completion notice: {FormatPacketOwnedRadioStringPoolInvocation(PacketOwnedRadioCompleteStringPoolId, displayName)}."
                 : $"Stopped packet-owned radio playback for {displayName}.";
 
             if (emitChatNotice)
             {
                 string chatText = completed
                     ? FormatPacketOwnedRadioChatMessage(PacketOwnedRadioCompleteStringPoolId, displayName)
-                    : $"[Radio] Stopped playing {displayName}.";
+                    : $"Radio stop requested for {FormatPacketOwnedRadioQuotedValue(displayName)}.";
                 _chat?.AddClientChatMessage(chatText, Environment.TickCount, 12);
             }
 
@@ -1962,9 +1974,14 @@ namespace HaCreator.MapSimulator
                 lines.Add($"Remaining runtime: {Math.Max(0, _lastPacketOwnedRadioAvailableDurationMs - elapsedMs) / 1000f:0.0}s");
             }
 
-            lines.Add(
-                $"Client templates: StringPool 0x{PacketOwnedRadioTrackTemplateStringPoolId:X} track UOL, " +
-                $"0x{PacketOwnedRadioAudioTemplateStringPoolId:X} audio UOL.");
+            lines.Add(FormatPacketOwnedRadioTemplateResolution(
+                PacketOwnedRadioTrackTemplateStringPoolId,
+                _lastPacketOwnedRadioTrackDescriptor,
+                _lastPacketOwnedRadioResolvedTrackDescriptor));
+            lines.Add(FormatPacketOwnedRadioTemplateResolution(
+                PacketOwnedRadioAudioTemplateStringPoolId,
+                _lastPacketOwnedRadioTrackDescriptor,
+                _lastPacketOwnedRadioResolvedDescriptor));
             lines.Add("Field BGM is temporarily muted while the radio session owns playback.");
             return lines;
         }
@@ -1983,18 +2000,26 @@ namespace HaCreator.MapSimulator
 
         private static string FormatPacketOwnedRadioChatMessage(int stringPoolId, string displayName)
         {
-            string normalizedDisplayName = string.IsNullOrWhiteSpace(displayName)
+            return FormatPacketOwnedRadioStringPoolInvocation(stringPoolId, displayName);
+        }
+
+        private static string FormatPacketOwnedRadioTemplateResolution(int stringPoolId, string trackDescriptor, string resolvedDescriptor)
+        {
+            return $"{FormatPacketOwnedRadioStringPoolInvocation(stringPoolId, trackDescriptor, "sTrack")} => " +
+                   $"{FormatPacketOwnedRadioQuotedValue(resolvedDescriptor)}";
+        }
+
+        private static string FormatPacketOwnedRadioStringPoolInvocation(int stringPoolId, string trackValue, string parameterName = "track")
+        {
+            return $"StringPool[0x{stringPoolId:X}]({parameterName}={FormatPacketOwnedRadioQuotedValue(trackValue)})";
+        }
+
+        private static string FormatPacketOwnedRadioQuotedValue(string value)
+        {
+            string normalizedValue = string.IsNullOrWhiteSpace(value)
                 ? "radio track"
-                : displayName.Trim();
-            return stringPoolId switch
-            {
-                PacketOwnedRadioStartStringPoolId =>
-                    $"[Radio] Joined {normalizedDisplayName}. [StringPool 0x{PacketOwnedRadioStartStringPoolId:X}]",
-                PacketOwnedRadioCompleteStringPoolId =>
-                    $"[Radio] Finished {normalizedDisplayName}. [StringPool 0x{PacketOwnedRadioCompleteStringPoolId:X}]",
-                _ =>
-                    $"[Radio] {normalizedDisplayName}. [StringPool 0x{stringPoolId:X}]",
-            };
+                : value.Trim();
+            return $"\"{normalizedValue.Replace("\"", "\\\"", StringComparison.Ordinal)}\"";
         }
 
         private static bool TryResolvePacketOwnedRadioTrack(
@@ -2342,9 +2367,12 @@ namespace HaCreator.MapSimulator
             }
 
             int resolvedHitPeriodMs = Math.Max(0, hitPeriodMs);
-            if (resolvedHitPeriodMs > 0)
+            int appliedHitPeriodMs = impactPercent > 0
+                ? ResolvePacketOwnedTimeBombHitPeriodMs(resolvedHitPeriodMs)
+                : resolvedHitPeriodMs;
+            if (appliedHitPeriodMs > 0)
             {
-                _playerManager.Combat.SetInvincible(currTickCount, resolvedHitPeriodMs);
+                _playerManager.Combat.SetInvincible(currTickCount, appliedHitPeriodMs);
             }
 
             float knockbackX = 0f;
@@ -2358,7 +2386,7 @@ namespace HaCreator.MapSimulator
 
             _playerManager.Player.ApplyPacketDamageReaction(
                 Math.Max(0, damage),
-                Math.Max(1, resolvedHitPeriodMs),
+                Math.Max(1, appliedHitPeriodMs),
                 knockbackX,
                 knockbackY,
                 useQueuedImpact: true);
@@ -2367,7 +2395,7 @@ namespace HaCreator.MapSimulator
             string actionSummary = string.IsNullOrWhiteSpace(resolvedActionName)
                 ? Math.Max(0, action).ToString(CultureInfo.InvariantCulture)
                 : $"{Math.Max(0, action)} => {resolvedActionName}";
-            string message = $"Applied packet-owned Time Bomb attack for {skillName} Lv.{level} (action {actionSummary}, hit {Math.Max(0, hitPeriodMs)} ms, impact {Math.Max(0, impactPercent)}%, damage {Math.Max(0, damage)}).";
+            string message = $"Applied packet-owned Time Bomb attack for {skillName} Lv.{level} (action {actionSummary}, hit {appliedHitPeriodMs} ms, impact {Math.Max(0, impactPercent)}%, damage {Math.Max(0, damage)}).";
             ShowUtilityFeedbackMessage(message);
             return message;
         }
@@ -3208,8 +3236,24 @@ namespace HaCreator.MapSimulator
 
             Vector2 lineMeasure = MeasureChatTextWithFallback("Ay");
             int lineHeight = Math.Max(14, (int)Math.Ceiling(lineMeasure.Y));
-            int bodyWidth = requestedWidth + PacketOwnedTutorBalloonBodyExtraWidth;
-            int bodyHeight = (lines.Length * lineHeight) + (PacketOwnedTutorBalloonVerticalPadding * 2);
+            Texture2D northWest = _packetOwnedTutorBalloonSkin.NorthWest;
+            Texture2D northEast = _packetOwnedTutorBalloonSkin.NorthEast;
+            Texture2D southWest = _packetOwnedTutorBalloonSkin.SouthWest;
+            Texture2D southEast = _packetOwnedTutorBalloonSkin.SouthEast;
+            int leftInset = Math.Max(
+                Math.Max(northWest?.Width ?? 0, southWest?.Width ?? 0),
+                Math.Max(_packetOwnedTutorBalloonSkin.West?.Width ?? 0, 19));
+            int rightInset = Math.Max(
+                Math.Max(northEast?.Width ?? 0, southEast?.Width ?? 0),
+                Math.Max(_packetOwnedTutorBalloonSkin.East?.Width ?? 0, 19));
+            int topInset = Math.Max(
+                Math.Max(northWest?.Height ?? 0, northEast?.Height ?? 0),
+                Math.Max(_packetOwnedTutorBalloonSkin.North?.Height ?? 0, 21));
+            int bottomInset = Math.Max(
+                Math.Max(southWest?.Height ?? 0, southEast?.Height ?? 0),
+                Math.Max(_packetOwnedTutorBalloonSkin.South?.Height ?? 0, 19));
+            int bodyWidth = requestedWidth + leftInset + rightInset;
+            int bodyHeight = (lines.Length * lineHeight) + topInset + bottomInset;
             Texture2D arrowTexture = _packetOwnedTutorBalloonSkin.Arrow?.Texture;
             int arrowWidth = arrowTexture?.Width ?? 0;
             int arrowHeight = arrowTexture?.Height ?? 0;
@@ -3243,7 +3287,10 @@ namespace HaCreator.MapSimulator
                 _spriteBatch.Draw(arrowTexture, arrowBounds.Location.ToVector2(), Color.White);
             }
 
-            float drawY = bodyBounds.Y + PacketOwnedTutorBalloonVerticalPadding;
+            // Client evidence: CTutor::OnMessage(ZXString&,long,long) uses the authored
+            // width as the text analyzer box and offsets the wrapped text by the
+            // tutorial frame extents instead of centering each line inside the bubble.
+            float drawY = bodyBounds.Y + topInset;
             for (int lineIndex = 0; lineIndex < lines.Length; lineIndex++)
             {
                 PacketOwnedBalloonWrappedLine line = lines[lineIndex];
@@ -3253,7 +3300,7 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                float drawX = bodyBounds.X + ((bodyBounds.Width - line.Width) / 2f);
+                float drawX = bodyBounds.X + leftInset;
                 if (line.Runs != null)
                 {
                     for (int runIndex = 0; runIndex < line.Runs.Length; runIndex++)
@@ -3997,6 +4044,172 @@ namespace HaCreator.MapSimulator
             return value.EndsWith(".img", StringComparison.OrdinalIgnoreCase)
                 ? value
                 : $"{value}.img";
+        }
+
+        private int ResolvePacketOwnedTimeBombHitPeriodMs(int baseHitPeriodMs)
+        {
+            CharacterPart armorPart = ResolvePacketOwnedTimeBombArmorPart();
+            if (armorPart?.ItemOptionIds == null || armorPart.ItemOptionIds.Count == 0)
+            {
+                return Math.Max(0, baseHitPeriodMs);
+            }
+
+            int equipLevel = ResolvePacketOwnedTimeBombItemOptionEquipLevel(armorPart.RequiredLevel);
+            if (equipLevel <= 0)
+            {
+                return Math.Max(0, baseHitPeriodMs);
+            }
+
+            var optionLevels = new List<PacketOwnedTimeBombInvincibilityOptionLevelData>(armorPart.ItemOptionIds.Count);
+            foreach (int itemOptionId in armorPart.ItemOptionIds)
+            {
+                PacketOwnedTimeBombInvincibilityOptionLevelData? optionLevel = ResolvePacketOwnedTimeBombInvincibilityOptionLevel(itemOptionId, equipLevel);
+                if (optionLevel.HasValue)
+                {
+                    optionLevels.Add(optionLevel.Value);
+                }
+            }
+
+            return ApplyPacketOwnedTimeBombInvincibilityOptions(
+                baseHitPeriodMs,
+                optionLevels,
+                Random.Shared.Next(0, 101));
+        }
+
+        private CharacterPart ResolvePacketOwnedTimeBombArmorPart()
+        {
+            CharacterBuild build = _playerManager?.Player?.Build;
+            if (build == null)
+            {
+                return null;
+            }
+
+            foreach (EquipSlot slot in new[] { EquipSlot.Longcoat, EquipSlot.Coat })
+            {
+                CharacterPart displayed = EquipSlotStateResolver.ResolveDisplayedPart(build, slot);
+                if (displayed?.IsCash == true)
+                {
+                    CharacterPart underlying = EquipSlotStateResolver.ResolveUnderlyingPart(build, slot);
+                    if (underlying != null)
+                    {
+                        return underlying;
+                    }
+                }
+
+                if (displayed != null)
+                {
+                    return displayed;
+                }
+            }
+
+            return null;
+        }
+
+        internal static int ResolvePacketOwnedTimeBombItemOptionEquipLevel(int requiredLevel)
+        {
+            return requiredLevel <= 0
+                ? 0
+                : Math.Clamp((requiredLevel - 1) / 10, 1, 20);
+        }
+
+        internal static int ApplyPacketOwnedTimeBombInvincibilityOptions(
+            int baseHitPeriodMs,
+            IEnumerable<PacketOwnedTimeBombInvincibilityOptionLevelData> optionLevels,
+            int probabilityRollInclusivePercent)
+        {
+            int resolvedHitPeriodMs = Math.Max(0, baseHitPeriodMs);
+            int additionalDurationMs = 0;
+            int probabilisticDurationMs = 0;
+            int probabilisticChancePercent = 0;
+
+            if (optionLevels != null)
+            {
+                foreach (PacketOwnedTimeBombInvincibilityOptionLevelData optionLevel in optionLevels)
+                {
+                    if (optionLevel.DurationMs <= 0)
+                    {
+                        continue;
+                    }
+
+                    if (optionLevel.ProbabilityPercent > 0)
+                    {
+                        probabilisticChancePercent = Math.Max(probabilisticChancePercent, optionLevel.ProbabilityPercent);
+                        probabilisticDurationMs = Math.Max(probabilisticDurationMs, optionLevel.DurationMs);
+                        continue;
+                    }
+
+                    additionalDurationMs += optionLevel.DurationMs;
+                }
+            }
+
+            int clampedRoll = Math.Clamp(probabilityRollInclusivePercent, 0, 100);
+            if (probabilisticChancePercent > 0 && clampedRoll <= probabilisticChancePercent)
+            {
+                resolvedHitPeriodMs = probabilisticDurationMs;
+            }
+
+            return resolvedHitPeriodMs + additionalDurationMs;
+        }
+
+        private PacketOwnedTimeBombInvincibilityOptionLevelData? ResolvePacketOwnedTimeBombInvincibilityOptionLevel(int itemOptionId, int equipLevel)
+        {
+            PacketOwnedTimeBombInvincibilityOptionDefinition definition = ResolvePacketOwnedTimeBombInvincibilityOptionDefinition(itemOptionId);
+            if (definition?.Levels == null || equipLevel <= 0 || equipLevel >= definition.Levels.Length)
+            {
+                return null;
+            }
+
+            PacketOwnedTimeBombInvincibilityOptionLevelData levelData = definition.Levels[equipLevel];
+            return levelData.DurationMs > 0 || levelData.ProbabilityPercent > 0
+                ? levelData
+                : null;
+        }
+
+        private PacketOwnedTimeBombInvincibilityOptionDefinition ResolvePacketOwnedTimeBombInvincibilityOptionDefinition(int itemOptionId)
+        {
+            if (itemOptionId <= 0)
+            {
+                return null;
+            }
+
+            if (_packetOwnedTimeBombInvincibilityOptions.TryGetValue(itemOptionId, out PacketOwnedTimeBombInvincibilityOptionDefinition cached))
+            {
+                return cached;
+            }
+
+            WzImage itemOptionImage = Program.DataSource?.GetImage("Item", "ItemOption.img");
+            if (itemOptionImage == null)
+            {
+                return null;
+            }
+
+            itemOptionImage.ParseImage();
+            if (itemOptionImage.GetFromPath($"{itemOptionId:D6}/level") is not WzSubProperty levelProperty)
+            {
+                return null;
+            }
+
+            var levels = new PacketOwnedTimeBombInvincibilityOptionLevelData[21];
+            foreach (WzSubProperty levelEntry in levelProperty.WzProperties.OfType<WzSubProperty>())
+            {
+                if (!int.TryParse(levelEntry.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int level)
+                    || level <= 0
+                    || level >= levels.Length)
+                {
+                    continue;
+                }
+
+                int durationMs = Math.Max(0, (levelEntry["time"] as WzIntProperty)?.Value ?? 0) * 1000;
+                int probabilityPercent = Math.Max(0, (levelEntry["prop"] as WzIntProperty)?.Value ?? 0);
+                levels[level] = new PacketOwnedTimeBombInvincibilityOptionLevelData(durationMs, probabilityPercent);
+            }
+
+            var definition = new PacketOwnedTimeBombInvincibilityOptionDefinition
+            {
+                Levels = levels
+            };
+            _packetOwnedTimeBombInvincibilityOptions[itemOptionId] = definition;
+            return definition;
         }
 
         private static int NormalizePacketOwnedCooldownSkillId(int skillId, out bool isVehicleSentinel)
@@ -5259,15 +5472,16 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            bool isMounted = player.Build?.HasMonsterRiding == true
-                || player.Build?.Equipment?.TryGetValue(EquipSlot.TamingMob, out CharacterPart mountPart) == true && mountPart != null;
+            CharacterPart mountPart = null;
+            player.Build?.Equipment?.TryGetValue(EquipSlot.TamingMob, out mountPart);
+            bool isMounted = FollowCharacterEligibilityResolver.IsMountedState(mountPart, player.CurrentActionName);
             bool isImmovable = player.State == PlayerState.Sitting
                 || player.IsMovementLockedBySkillTransform
                 || player.GmFlyMode
                 || player.Physics.IsOnLadderOrRope
                 || player.Physics.IsUserFlying()
                 || player.Physics.IsInSwimArea;
-            bool isGhost = string.Equals(player.CurrentActionName, CharacterPart.GetActionString(CharacterAction.Ghost), StringComparison.OrdinalIgnoreCase);
+            bool isGhost = FollowCharacterEligibilityResolver.IsGhostAction(player.CurrentActionName);
             snapshot = new LocalFollowUserSnapshot(
                 player.Build?.Id ?? 0,
                 player.Build?.Name,
@@ -5315,11 +5529,12 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            bool isMounted = actor.Build?.HasMonsterRiding == true
-                || actor.Build?.Equipment?.TryGetValue(EquipSlot.TamingMob, out CharacterPart mountPart) == true && mountPart != null;
+            CharacterPart mountPart = null;
+            actor.Build?.Equipment?.TryGetValue(EquipSlot.TamingMob, out mountPart);
+            bool isMounted = FollowCharacterEligibilityResolver.IsMountedState(mountPart, actor.ActionName);
             bool hasMorphTemplate = actor.HasMorphTemplate
                 || actor.Build?.Body?.Type == CharacterPartType.Morph;
-            bool isGhost = string.Equals(actor.ActionName, CharacterPart.GetActionString(CharacterAction.Ghost), StringComparison.OrdinalIgnoreCase);
+            bool isGhost = FollowCharacterEligibilityResolver.IsGhostAction(actor.ActionName);
             snapshot = new LocalFollowUserSnapshot(
                 actor.CharacterId,
                 actor.Name,

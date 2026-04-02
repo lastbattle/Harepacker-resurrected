@@ -11,7 +11,8 @@ namespace HaCreator.MapSimulator.Managers
     public enum CookieHousePointInboxPayloadKind
     {
         TextPoint,
-        RawContextPoint
+        RawContextPoint,
+        OpcodeFramedRawContextPoint
     }
 
     public sealed class CookieHousePointInboxMessage
@@ -32,14 +33,17 @@ namespace HaCreator.MapSimulator.Managers
 
     /// <summary>
     /// Optional loopback inbox for externally authored Cookie House point updates.
-    /// Each line is encoded as either "<point>", "point <point>", or
-    /// "raw <hex>" where <hex> is the client-shaped little-endian
-    /// CWvsContext Cookie House point dword recovered from v95.
+    /// Each line is encoded as either "<point>", "point <point>", "raw <hex>",
+    /// or "packetraw <hex>" where <hex> is either the client-shaped little-endian
+    /// CWvsContext Cookie House point dword recovered from v95 or a full decrypted
+    /// Maple packet frame whose payload is that same dword.
     /// </summary>
     public sealed class CookieHousePointInboxManager : IDisposable
     {
         public const int DefaultPort = 18486;
+        public const int ClientPacketOpcodeByteLength = 2;
         public const int ClientContextPointByteLength = 4;
+        public const int ClientOpcodeFramedPointByteLength = ClientPacketOpcodeByteLength + ClientContextPointByteLength;
         public const int ClientContextPointOffset = 0x4148;
 
         private readonly ConcurrentQueue<CookieHousePointInboxMessage> _pendingMessages = new();
@@ -131,6 +135,11 @@ namespace HaCreator.MapSimulator.Managers
 
             string trimmed = text.Trim();
             string[] parts = trimmed.Split(new[] { ' ', '\t' }, StringSplitOptions.RemoveEmptyEntries);
+            if (parts.Length >= 2 && IsOpcodeFramedRawContextAlias(parts[0]))
+            {
+                return TryParseOpcodeFramedRawContextPoint(parts[1], out point, out payloadKind, out error);
+            }
+
             if (parts.Length >= 2 && IsRawContextAlias(parts[0]))
             {
                 return TryParseRawContextPoint(parts[1], out point, out payloadKind, out error);
@@ -156,8 +165,14 @@ namespace HaCreator.MapSimulator.Managers
         private static bool IsRawContextAlias(string token)
         {
             return string.Equals(token, "raw", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(token, "packetraw", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(token, "context", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsOpcodeFramedRawContextAlias(string token)
+        {
+            return string.Equals(token, "packetraw", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(token, "packet", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(token, "packetrecv", StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool TryParseRawContextPoint(
@@ -196,6 +211,65 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             point = Math.Max(0, BitConverter.ToInt32(bytes, 0));
+            return true;
+        }
+
+        private static bool TryParseOpcodeFramedRawContextPoint(
+            string hexPayload,
+            out int point,
+            out CookieHousePointInboxPayloadKind payloadKind,
+            out string error)
+        {
+            point = 0;
+            payloadKind = CookieHousePointInboxPayloadKind.OpcodeFramedRawContextPoint;
+            error = null;
+
+            if (!TryParseHexBytes(hexPayload, out byte[] bytes, out error))
+            {
+                return false;
+            }
+
+            if (bytes.Length != ClientOpcodeFramedPointByteLength)
+            {
+                error = $"Cookie House opcode-framed raw payload must be exactly {ClientOpcodeFramedPointByteLength} bytes (2-byte opcode + 4-byte CWvsContext+0x{ClientContextPointOffset:X} point payload).";
+                return false;
+            }
+
+            point = Math.Max(0, BitConverter.ToInt32(bytes, ClientPacketOpcodeByteLength));
+            return true;
+        }
+
+        private static bool TryParseHexBytes(string hexPayload, out byte[] bytes, out string error)
+        {
+            bytes = null;
+            error = null;
+
+            if (string.IsNullOrWhiteSpace(hexPayload))
+            {
+                error = "Cookie House raw payload is empty.";
+                return false;
+            }
+
+            string normalized = hexPayload.Replace("0x", string.Empty, StringComparison.OrdinalIgnoreCase);
+            normalized = normalized.Replace("-", string.Empty, StringComparison.OrdinalIgnoreCase);
+            normalized = normalized.Replace(" ", string.Empty, StringComparison.OrdinalIgnoreCase);
+            if ((normalized.Length & 1) != 0)
+            {
+                error = $"Invalid Cookie House raw payload: {hexPayload}";
+                return false;
+            }
+
+            bytes = new byte[normalized.Length / 2];
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                if (!byte.TryParse(normalized.Substring(i * 2, 2), System.Globalization.NumberStyles.HexNumber, null, out bytes[i]))
+                {
+                    error = $"Invalid Cookie House raw payload: {hexPayload}";
+                    bytes = null;
+                    return false;
+                }
+            }
+
             return true;
         }
 
@@ -246,9 +320,12 @@ namespace HaCreator.MapSimulator.Managers
 
                         _pendingMessages.Enqueue(new CookieHousePointInboxMessage(point, remoteEndpoint, line, payloadKind));
                         ReceivedCount++;
-                        string payloadLabel = payloadKind == CookieHousePointInboxPayloadKind.RawContextPoint
-                            ? "raw context point"
-                            : "point";
+                        string payloadLabel = payloadKind switch
+                        {
+                            CookieHousePointInboxPayloadKind.RawContextPoint => "raw context point",
+                            CookieHousePointInboxPayloadKind.OpcodeFramedRawContextPoint => "opcode-framed raw context point",
+                            _ => "point"
+                        };
                         LastStatus = $"Queued Cookie House {payloadLabel} {point} from {remoteEndpoint}.";
                     }
                 }
