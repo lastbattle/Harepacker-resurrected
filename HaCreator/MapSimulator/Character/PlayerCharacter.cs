@@ -1350,7 +1350,18 @@ namespace HaCreator.MapSimulator.Character
         /// </summary>
         private void TryGrabLadder()
         {
-            if (Physics.TryGetLadderOrRope(X, Y, 50f, out LadderOrRopeInfo ladder))
+            const float horizontalSearchRange = 50f;
+            const float bottomGrabTolerance = 10f;
+
+            bool foundLadder = Physics.TryGetLadderOrRope(X, Y, horizontalSearchRange, out LadderOrRopeInfo ladder);
+            if (!foundLadder)
+            {
+                foundLadder = Physics.TryGetLadderOrRope(X, Y - bottomGrabTolerance, horizontalSearchRange, out ladder)
+                              && Y >= ladder.Top
+                              && Y <= ladder.Bottom + bottomGrabTolerance;
+            }
+
+            if (foundLadder)
             {
                 Physics.GrabLadder(ladder.X, ladder.Top, ladder.Bottom, ladder.IsLadder);
                 State = ladder.IsLadder ? PlayerState.Ladder : PlayerState.Rope;
