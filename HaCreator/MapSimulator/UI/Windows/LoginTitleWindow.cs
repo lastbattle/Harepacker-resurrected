@@ -247,6 +247,7 @@ namespace HaCreator.MapSimulator.UI
         public override void SetFont(SpriteFont font)
         {
             _font = font;
+            base.SetFont(font);
         }
 
         public override void Hide()
@@ -450,7 +451,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            Vector2 size = _font.MeasureString(text);
+            Vector2 size = ClientTextDrawing.Measure((GraphicsDevice)null, text, 1.0f, _font);
             float x = Position.X + button.X + ((button.CanvasSnapshotWidth - size.X) / 2f);
             float y = Position.Y + button.Y + ((button.CanvasSnapshotHeight - size.Y) / 2f) - 1f;
             SelectorWindowDrawing.DrawShadowedText(sprite, _font, text, new Vector2(x, y), Color.White);
@@ -794,7 +795,7 @@ namespace HaCreator.MapSimulator.UI
             int start = Math.Clamp(_candidateListState.PageStart, 0, _candidateListState.Candidates.Count);
             int count = Math.Min(GetVisibleCandidateCount(), _candidateListState.Candidates.Count - start);
             int rowHeight = Math.Max(_font.LineSpacing + 1, 16);
-            int numberWidth = (int)Math.Ceiling(_font.MeasureString($"{Math.Max(1, count)}.").X);
+            int numberWidth = (int)Math.Ceiling(ClientTextDrawing.Measure((GraphicsDevice)null, $"{Math.Max(1, count)}.", 1.0f, _font).X);
             for (int i = 0; i < count; i++)
             {
                 int candidateIndex = start + i;
@@ -806,12 +807,14 @@ namespace HaCreator.MapSimulator.UI
                     sprite.Draw(_pixelTexture, rowBounds, new Color(89, 108, 147, 220));
                 }
 
-                sprite.DrawString(_font, numberText, new Vector2(rowBounds.X + 4, rowBounds.Y), selected ? Color.White : new Color(222, 222, 222));
-                sprite.DrawString(
-                    _font,
+                ClientTextDrawing.Draw(sprite, numberText, new Vector2(rowBounds.X + 4, rowBounds.Y), selected ? Color.White : new Color(222, 222, 222), 1.0f, _font);
+                ClientTextDrawing.Draw(
+                    sprite,
                     _candidateListState.Candidates[candidateIndex] ?? string.Empty,
                     new Vector2(rowBounds.X + 8 + numberWidth, rowBounds.Y),
-                    selected ? Color.White : new Color(240, 235, 200));
+                    selected ? Color.White : new Color(240, 235, 200),
+                    1.0f,
+                    _font);
             }
         }
 
@@ -831,7 +834,9 @@ namespace HaCreator.MapSimulator.UI
             {
                 int candidateIndex = Math.Clamp(_candidateListState.PageStart + i, 0, _candidateListState.Candidates.Count - 1);
                 string candidateText = _candidateListState.Candidates[candidateIndex] ?? string.Empty;
-                int entryWidth = (int)Math.Ceiling(_font.MeasureString($"{i + 1}.").X + _font.MeasureString(candidateText).X) + 16;
+                int entryWidth = (int)Math.Ceiling(
+                    ClientTextDrawing.Measure((GraphicsDevice)null, $"{i + 1}.", 1.0f, _font).X +
+                    ClientTextDrawing.Measure((GraphicsDevice)null, candidateText, 1.0f, _font).X) + 16;
                 widestEntryWidth = Math.Max(widestEntryWidth, entryWidth);
             }
 
@@ -871,7 +876,7 @@ namespace HaCreator.MapSimulator.UI
             foreach (string word in words)
             {
                 string candidate = currentLine.Length == 0 ? word : $"{currentLine} {word}";
-                if (currentLine.Length > 0 && _font.MeasureString(candidate).X > maxWidth)
+                if (currentLine.Length > 0 && ClientTextDrawing.Measure((GraphicsDevice)null, candidate, 1.0f, _font).X > maxWidth)
                 {
                     yield return currentLine.ToString();
                     currentLine.Clear();

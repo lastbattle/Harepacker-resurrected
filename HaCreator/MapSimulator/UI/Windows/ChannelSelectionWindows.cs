@@ -1034,8 +1034,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            sprite.DrawString(font, text, position + Vector2.One, Color.Black);
-            sprite.DrawString(font, text, position, color);
+            ClientTextDrawing.DrawShadowed(sprite, text, position, color, font);
         }
 
         public static Color GetAvailabilityColor(SelectorAvailability availability)

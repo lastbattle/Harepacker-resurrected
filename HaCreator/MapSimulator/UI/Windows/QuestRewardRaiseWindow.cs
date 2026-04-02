@@ -40,7 +40,6 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D _backgroundBottomRight;
         private readonly Dictionary<int, Texture2D> _itemIconCache = new();
 
-        private SpriteFont _font;
         private Func<int, Texture2D> _itemIconProvider;
         private UIObject _confirmButton;
         private UIObject _cancelButton;
@@ -112,7 +111,7 @@ namespace HaCreator.MapSimulator.UI
 
         public override void SetFont(SpriteFont font)
         {
-            _font = font;
+            base.SetFont(font);
         }
 
         public override void Update(GameTime gameTime)
@@ -182,7 +181,7 @@ namespace HaCreator.MapSimulator.UI
             int TickCount)
         {
             DrawBackground(sprite);
-            if (_font == null)
+            if (!CanDrawWindowText)
             {
                 return;
             }
@@ -314,7 +313,7 @@ namespace HaCreator.MapSimulator.UI
                 sprite.Draw(icon, iconPosition, null, Color.White, 0f, Vector2.Zero, iconScale, SpriteEffects.None, 0f);
             }
 
-            if (_font == null)
+            if (!CanDrawWindowText)
             {
                 return;
             }
@@ -435,17 +434,17 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawText(SpriteBatch sprite, string text, Vector2 position, Color color, float scale)
         {
-            if (_font == null || string.IsNullOrWhiteSpace(text))
+            if (!CanDrawWindowText || string.IsNullOrWhiteSpace(text))
             {
                 return;
             }
 
-            sprite.DrawString(_font, text, position, color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            DrawWindowText(sprite, text, position, color, scale);
         }
 
         private IEnumerable<string> WrapText(string text, float width, float scale)
         {
-            if (_font == null || string.IsNullOrWhiteSpace(text))
+            if (!CanDrawWindowText || string.IsNullOrWhiteSpace(text))
             {
                 return Array.Empty<string>();
             }
@@ -457,7 +456,7 @@ namespace HaCreator.MapSimulator.UI
             foreach (string word in words)
             {
                 string candidate = string.IsNullOrEmpty(current) ? word : $"{current} {word}";
-                if (_font.MeasureString(candidate).X * scale <= width)
+                if (MeasureWindowText(null, candidate, scale).X <= width)
                 {
                     current = candidate;
                     continue;

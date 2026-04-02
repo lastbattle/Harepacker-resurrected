@@ -165,6 +165,7 @@ namespace HaCreator.MapSimulator.UI
         private IDXObject _nameBanner;
         private Point _nameBannerOffset;
         private SpriteFont _font;
+        private ClientTextRasterizer _clientTextRasterizer;
         private CharacterBuild _characterBuild;
         private PetController _petController;
         private UserInfoInspectionTarget _inspectionTarget;
@@ -674,11 +675,11 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            Vector2 textSize = _font.MeasureString(text) * scale;
+            Vector2 textSize = MeasureText(sprite, text, scale);
             Vector2 position = new Vector2(
                 bounds.X + Math.Max(0f, (bounds.Width - textSize.X) * 0.5f),
                 bounds.Y + Math.Max(0f, (bounds.Height - textSize.Y) * 0.5f) - 1f);
-            sprite.DrawString(_font, text, position, color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            DrawText(sprite, text, position, color, scale);
         }
 
         private void DrawPlainText(SpriteBatch sprite, string text, Vector2 position, Color color, float scale)
@@ -688,7 +689,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            sprite.DrawString(_font, text, position, color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            DrawText(sprite, text, position, color, scale);
         }
 
         private void DrawCurrentPageVisuals(
@@ -2141,7 +2142,7 @@ namespace HaCreator.MapSimulator.UI
         private string FitText(string text, float maxWidth)
         {
             string safeText = string.IsNullOrWhiteSpace(text) ? "-" : text.Trim();
-            if (_font == null || _font.MeasureString(safeText).X <= maxWidth)
+            if (_font == null || MeasureText(null, safeText, 1f).X <= maxWidth)
             {
                 return safeText;
             }
@@ -2150,13 +2151,53 @@ namespace HaCreator.MapSimulator.UI
             for (int length = safeText.Length - 1; length > 0; length--)
             {
                 string candidate = safeText.Substring(0, length) + ellipsis;
-                if (_font.MeasureString(candidate).X <= maxWidth)
+                if (MeasureText(null, candidate, 1f).X <= maxWidth)
                 {
                     return candidate;
                 }
             }
 
             return ellipsis;
+        }
+
+        private ClientTextRasterizer EnsureClientTextRasterizer(GraphicsDevice graphicsDevice)
+        {
+            if (_clientTextRasterizer == null && graphicsDevice != null)
+            {
+                _clientTextRasterizer = new ClientTextRasterizer(graphicsDevice);
+            }
+
+            return _clientTextRasterizer;
+        }
+
+        private Vector2 MeasureText(SpriteBatch sprite, string text, float scale)
+        {
+            if (_font == null || string.IsNullOrEmpty(text))
+            {
+                return Vector2.Zero;
+            }
+
+            ClientTextRasterizer rasterizer = EnsureClientTextRasterizer(sprite?.GraphicsDevice);
+            return rasterizer != null
+                ? rasterizer.MeasureString(text, scale)
+                : _font.MeasureString(text) * scale;
+        }
+
+        private void DrawText(SpriteBatch sprite, string text, Vector2 position, Color color, float scale)
+        {
+            if (_font == null || sprite == null || string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            ClientTextRasterizer rasterizer = EnsureClientTextRasterizer(sprite.GraphicsDevice);
+            if (rasterizer != null)
+            {
+                rasterizer.DrawString(sprite, text, position, color, scale);
+                return;
+            }
+
+            sprite.DrawString(_font, text, position, color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
         }
 
         private ItemMakerProgressionSnapshot GetCollectionSnapshot()

@@ -20,7 +20,6 @@ namespace HaCreator.MapSimulator.UI
         private Func<GuildRankSnapshot> _snapshotProvider;
         private Action<int> _pageHandler;
         private Action _closeHandler;
-        private SpriteFont _font;
         private GuildRankSnapshot _snapshot = new();
         private int _iconFrameIndex;
         private double _iconAccumulatorMs;
@@ -64,7 +63,7 @@ namespace HaCreator.MapSimulator.UI
 
         public override void SetFont(SpriteFont font)
         {
-            _font = font;
+            base.SetFont(font);
         }
 
         public override void Update(GameTime gameTime)
@@ -112,7 +111,7 @@ namespace HaCreator.MapSimulator.UI
                 sprite.Draw(_iconFrames[frameIndex], new Vector2(Position.X + offset.X, Position.Y + offset.Y), Color.White);
             }
 
-            if (_font == null)
+            if (!CanDrawWindowText)
             {
                 return;
             }
@@ -124,17 +123,17 @@ namespace HaCreator.MapSimulator.UI
                 Rectangle rowBounds = new(Position.X + 44, (int)y - 2, 236, 28);
                 sprite.Draw(_pixel, rowBounds, i % 2 == 0 ? new Color(25, 40, 63, 80) : new Color(8, 18, 35, 60));
                 DrawGuildMark(sprite, Position.X + 74, (int)y + 4, entry.MarkBackgroundColor, entry.MarkColor);
-                sprite.DrawString(_font, entry.Rank.ToString("00"), new Vector2(Position.X + 56, y), new Color(242, 229, 171));
-                sprite.DrawString(_font, entry.GuildName, new Vector2(Position.X + 94, y), Color.White);
+                DrawWindowText(sprite, entry.Rank.ToString("00"), new Vector2(Position.X + 56, y), new Color(242, 229, 171));
+                DrawWindowText(sprite, entry.GuildName, new Vector2(Position.X + 94, y), Color.White);
 
                 string pointsText = entry.Points.ToString();
-                float pointsWidth = _font.MeasureString(pointsText).X;
-                sprite.DrawString(_font, pointsText, new Vector2(Position.X + 275 - pointsWidth, y), new Color(226, 232, 242));
+                float pointsWidth = MeasureWindowText(sprite, pointsText).X;
+                DrawWindowText(sprite, pointsText, new Vector2(Position.X + 275 - pointsWidth, y), new Color(226, 232, 242));
                 y += 36f;
             }
 
-            sprite.DrawString(
-                _font,
+            DrawWindowText(
+                sprite,
                 $"Page {_snapshot.Page}/{_snapshot.TotalPages}",
                 new Vector2(Position.X + 18, Position.Y + 318),
                 new Color(224, 229, 238));
@@ -170,7 +169,7 @@ namespace HaCreator.MapSimulator.UI
             while (remaining.Length > 0)
             {
                 int length = remaining.Length;
-                while (length > 1 && _font.MeasureString(remaining[..length]).X > width)
+                while (length > 1 && MeasureWindowText(null, remaining[..length]).X > width)
                 {
                     length = remaining.LastIndexOf(' ', length - 1, length - 1);
                     if (length <= 0)
@@ -181,8 +180,8 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 string line = remaining[..length].TrimEnd();
-                sprite.DrawString(_font, line, new Vector2(x, drawY), color);
-                drawY += _font.LineSpacing;
+                DrawWindowText(sprite, line, new Vector2(x, drawY), color);
+                drawY += WindowLineSpacing;
                 remaining = remaining[length..].TrimStart();
             }
         }

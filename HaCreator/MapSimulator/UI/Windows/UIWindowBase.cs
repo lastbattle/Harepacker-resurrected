@@ -22,6 +22,7 @@ namespace HaCreator.MapSimulator.UI
         #region Fields
         protected readonly List<UIObject> uiButtons = new List<UIObject>();
         protected UIObject closeButton;
+        protected SpriteFont WindowFont;
 
         private bool _isVisible = false;
         private Point? _mouseOffsetOnDragStart = null;
@@ -447,7 +448,31 @@ namespace HaCreator.MapSimulator.UI
         /// <param name="font">The font to use</param>
         public virtual void SetFont(SpriteFont font)
         {
-            // Base implementation does nothing - override in derived classes
+            WindowFont = font;
+        }
+
+        protected bool CanDrawWindowText => WindowFont != null;
+
+        protected float WindowLineSpacing => WindowFont?.LineSpacing ?? 0f;
+
+        protected Vector2 MeasureWindowText(SpriteBatch sprite, string text, float scale = 1.0f)
+        {
+            if (WindowFont == null || string.IsNullOrEmpty(text))
+            {
+                return Vector2.Zero;
+            }
+
+            return ClientTextDrawing.Measure(sprite?.GraphicsDevice, text, scale, WindowFont);
+        }
+
+        protected void DrawWindowText(SpriteBatch sprite, string text, Vector2 position, Color color, float scale = 1.0f, float? maxWidth = null)
+        {
+            if (WindowFont == null || string.IsNullOrWhiteSpace(text))
+            {
+                return;
+            }
+
+            ClientTextDrawing.Draw(sprite, text, position, color, scale, WindowFont, maxWidth);
         }
         #endregion
     }

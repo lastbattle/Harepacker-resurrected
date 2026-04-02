@@ -332,6 +332,7 @@ namespace HaCreator.MapSimulator.UI
         public override void SetFont(SpriteFont font)
         {
             _font = font;
+            base.SetFont(font);
         }
 
         private void UpdateTabStates()
@@ -1147,7 +1148,7 @@ namespace HaCreator.MapSimulator.UI
                 Rectangle bounds = slot.Bounds;
                 string countText = slot.Entry.Count.ToString();
                 float countScale = 0.38f;
-                Vector2 countMeasure = _font.MeasureString(countText) * countScale;
+                Vector2 countMeasure = ClientTextDrawing.Measure((GraphicsDevice)null, countText, countScale, _font);
                 Color labelColor = enabled ? new Color(70, 45, 24) : new Color(106, 98, 88);
                 Color countColor = enabled ? new Color(108, 76, 42) : new Color(128, 120, 108);
 
@@ -1603,7 +1604,7 @@ namespace HaCreator.MapSimulator.UI
                 while (!string.IsNullOrEmpty(remaining))
                 {
                     int length = remaining.Length;
-                    while (length > 1 && (_font.MeasureString(remaining[..length]).X * scale) > maxWidth)
+                    while (length > 1 && ClientTextDrawing.Measure((GraphicsDevice)null, remaining[..length], scale, _font).X > maxWidth)
                     {
                         int previousSpace = remaining.LastIndexOf(' ', length - 1, length - 1);
                         length = previousSpace > 0 ? previousSpace : length - 1;
@@ -1654,7 +1655,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             string wrapped = maxWidth == int.MaxValue ? text : WrapText(text, maxWidth, scale);
-            sprite.DrawString(_font, wrapped, position, color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            ClientTextDrawing.Draw(sprite, wrapped, position, color, scale, _font);
         }
 
         private string WrapText(string text, int maxWidth, float scale)
@@ -1671,7 +1672,7 @@ namespace HaCreator.MapSimulator.UI
                 foreach (string word in paragraph.Split(' ', StringSplitOptions.RemoveEmptyEntries))
                 {
                     string candidate = string.IsNullOrEmpty(current) ? word : $"{current} {word}";
-                    if (_font.MeasureString(candidate).X * scale <= maxWidth)
+                    if (ClientTextDrawing.Measure((GraphicsDevice)null, candidate, scale, _font).X <= maxWidth)
                     {
                         current = candidate;
                     }

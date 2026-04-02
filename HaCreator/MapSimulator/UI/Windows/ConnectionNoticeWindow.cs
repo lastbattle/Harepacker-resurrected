@@ -35,7 +35,6 @@ namespace HaCreator.MapSimulator.UI
         private readonly IReadOnlyDictionary<ConnectionNoticeWindowVariant, IReadOnlyList<Texture2D>> _animationFramesByVariant;
         private readonly IReadOnlyDictionary<int, Texture2D> _noticeTextTextures;
         private readonly UIObject _cancelButton;
-        private SpriteFont _font;
         private string _title = "Connection Notice";
         private string _body = string.Empty;
         private float _progress;
@@ -66,7 +65,7 @@ namespace HaCreator.MapSimulator.UI
 
         public override void SetFont(SpriteFont font)
         {
-            _font = font;
+            base.SetFont(font);
         }
 
         public event Action CancelRequested;
@@ -113,7 +112,7 @@ namespace HaCreator.MapSimulator.UI
                 DrawAnimatedOverlay(sprite, TickCount);
             }
 
-            if (_font == null)
+            if (!CanDrawWindowText)
             {
                 return;
             }
@@ -139,7 +138,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 SelectorWindowDrawing.DrawShadowedText(
                     sprite,
-                    _font,
+                    WindowFont,
                     _title,
                     new Vector2(Position.X + TitleOffsetX, Position.Y + TitleOffsetY),
                     Color.White);
@@ -149,11 +148,11 @@ namespace HaCreator.MapSimulator.UI
             {
                 SelectorWindowDrawing.DrawShadowedText(
                     sprite,
-                    _font,
+                    WindowFont,
                     line,
                     new Vector2(Position.X + BodyOffsetX, y),
                     new Color(232, 232, 232));
-                y += _font.LineSpacing;
+                y += WindowLineSpacing;
             }
         }
 
@@ -204,7 +203,7 @@ namespace HaCreator.MapSimulator.UI
 
         private IEnumerable<string> WrapText(string text, float maxWidth)
         {
-            if (_font == null || string.IsNullOrWhiteSpace(text))
+            if (!CanDrawWindowText || string.IsNullOrWhiteSpace(text))
             {
                 yield break;
             }
@@ -214,7 +213,7 @@ namespace HaCreator.MapSimulator.UI
             foreach (string word in words)
             {
                 string candidate = string.IsNullOrEmpty(currentLine) ? word : $"{currentLine} {word}";
-                if (!string.IsNullOrEmpty(currentLine) && _font.MeasureString(candidate).X > maxWidth)
+                if (!string.IsNullOrEmpty(currentLine) && MeasureWindowText(null, candidate).X > maxWidth)
                 {
                     yield return currentLine;
                     currentLine = word;

@@ -32,7 +32,6 @@ namespace HaCreator.MapSimulator.UI
         private readonly UIObject _selectButton;
         private readonly UIObject _closeButton;
         private readonly List<RecommendWorldEntry> _entries = new();
-        private SpriteFont _font;
         private int _selectedIndex;
         private bool _requestAllowed = true;
 
@@ -96,7 +95,7 @@ namespace HaCreator.MapSimulator.UI
 
         public override void SetFont(SpriteFont font)
         {
-            _font = font;
+            base.SetFont(font);
         }
 
         public void Configure(IReadOnlyList<RecommendWorldEntry> entries, int selectedIndex, bool requestAllowed)
@@ -130,7 +129,7 @@ namespace HaCreator.MapSimulator.UI
             RenderParameters renderParameters,
             int TickCount)
         {
-            if (_font == null)
+            if (!CanDrawWindowText)
             {
                 return;
             }
@@ -145,10 +144,10 @@ namespace HaCreator.MapSimulator.UI
             else
             {
                 string worldLabel = selectedEntry?.WorldLabel ?? "World";
-                Vector2 labelSize = _font.MeasureString(worldLabel);
+                Vector2 labelSize = MeasureWindowText(sprite, worldLabel);
                 SelectorWindowDrawing.DrawShadowedText(
                     sprite,
-                    _font,
+                    WindowFont,
                     worldLabel,
                     new Vector2(Position.X + 40 + Math.Max(0f, (MessageAreaWidth - labelSize.X) / 2f), Position.Y + 38),
                     Color.White);
@@ -159,18 +158,18 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            int lineHeight = Math.Max(1, _font.LineSpacing);
+            int lineHeight = Math.Max(1, (int)Math.Round(WindowLineSpacing));
             int maxLineCount = Math.Max(1, 70 / lineHeight);
             IReadOnlyList<string> lines = WrapMessage(selectedEntry.Message, maxLineCount);
             for (int i = 0; i < lines.Count; i++)
             {
                 string line = lines[i];
-                Vector2 lineSize = _font.MeasureString(line);
+                Vector2 lineSize = MeasureWindowText(sprite, line);
                 float lineX = Position.X + 40 + Math.Max(0f, (MessageAreaWidth - lineSize.X) / 2f);
                 float lineY = Position.Y + 110 + (i * lineHeight);
                 SelectorWindowDrawing.DrawShadowedText(
                     sprite,
-                    _font,
+                    WindowFont,
                     line,
                     new Vector2(lineX, lineY),
                     new Color(232, 232, 232));
@@ -186,7 +185,7 @@ namespace HaCreator.MapSimulator.UI
 
         private IReadOnlyList<string> WrapMessage(string message, int maxLineCount)
         {
-            if (string.IsNullOrWhiteSpace(message) || _font == null || maxLineCount <= 0)
+            if (string.IsNullOrWhiteSpace(message) || !CanDrawWindowText || maxLineCount <= 0)
             {
                 return Array.Empty<string>();
             }
@@ -231,7 +230,7 @@ namespace HaCreator.MapSimulator.UI
                 string candidate = builder.Length == 0
                     ? word
                     : $"{builder} {word}";
-                if (_font.MeasureString(candidate).X <= MessageAreaWidth)
+                if (MeasureWindowText(null, candidate).X <= MessageAreaWidth)
                 {
                     builder.Clear();
                     builder.Append(candidate);
@@ -264,7 +263,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void AppendBrokenWord(List<string> lines, string word, int maxLineCount, StringBuilder carry)
         {
-            if (_font.MeasureString(word).X <= MessageAreaWidth)
+            if (MeasureWindowText(null, word).X <= MessageAreaWidth)
             {
                 carry.Append(word);
                 return;
@@ -274,7 +273,7 @@ namespace HaCreator.MapSimulator.UI
             foreach (char ch in word)
             {
                 string candidate = segment.ToString() + ch;
-                if (_font.MeasureString(candidate).X <= MessageAreaWidth || segment.Length == 0)
+                if (MeasureWindowText(null, candidate).X <= MessageAreaWidth || segment.Length == 0)
                 {
                     segment.Append(ch);
                     continue;

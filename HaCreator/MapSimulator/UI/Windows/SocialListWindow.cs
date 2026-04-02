@@ -54,7 +54,6 @@ namespace HaCreator.MapSimulator.UI
         private UIObject _pageNextButton;
         private UIObject _showAllButton;
         private UIObject _showOnlineButton;
-        private SpriteFont _font;
         private MouseState _previousMouseState;
         private int _previousScrollWheelValue;
         private bool _isDraggingScrollThumb;
@@ -173,7 +172,7 @@ namespace HaCreator.MapSimulator.UI
 
         public override void SetFont(SpriteFont font)
         {
-            _font = font;
+            base.SetFont(font);
         }
 
         public override void Update(GameTime gameTime)
@@ -228,7 +227,7 @@ namespace HaCreator.MapSimulator.UI
             DrawTabStrip(sprite, snapshot);
             DrawHeader(sprite, snapshot, drawReflectionInfo, skeletonMeshRenderer, gameTime);
 
-            if (_font == null)
+            if (!CanDrawWindowText)
             {
                 return;
             }
@@ -366,7 +365,7 @@ namespace HaCreator.MapSimulator.UI
                 DrawText(sprite, entry.PrimaryText, rowBounds.X + 98, rowBounds.Y + 2, new Color(197, 209, 220), 0.41f);
 
                 string rightText = entry.IsLeader ? "Leader" : $"CH {entry.Channel}";
-                Vector2 rightSize = _font.MeasureString(rightText) * 0.38f;
+                Vector2 rightSize = MeasureWindowText(sprite, rightText, 0.38f);
                 DrawText(sprite, rightText, rowBounds.Right - (int)rightSize.X - 6, rowBounds.Y + 3, new Color(175, 226, 188), 0.38f);
                 DrawText(sprite, entry.LocationSummary, rowBounds.X + 16, rowBounds.Y + 11, new Color(164, 172, 183), 0.36f);
                 DrawText(sprite, entry.SecondaryText, rowBounds.X + 98, rowBounds.Y + 11, new Color(164, 172, 183), 0.36f);
@@ -693,7 +692,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            sprite.DrawString(_font, text, new Vector2(x, y), color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            DrawWindowText(sprite, text, new Vector2(x, y), color, scale);
         }
 
         private Rectangle GetTabBounds(int index)

@@ -27,7 +27,6 @@ namespace HaCreator.MapSimulator.UI
         private readonly List<PageLayer> _layers = new();
         private readonly Texture2D _highlightTexture;
         private readonly string _windowName;
-        private SpriteFont _font;
         private Func<RankingWindowSnapshot> _snapshotProvider;
         private RankingWindowSnapshot _currentSnapshot = new();
         private readonly List<string> _wrappedTextBuffer = new();
@@ -57,7 +56,7 @@ namespace HaCreator.MapSimulator.UI
 
         public override void SetFont(SpriteFont font)
         {
-            _font = font;
+            base.SetFont(font);
         }
 
         public override bool CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState, MouseCursorItem mouseCursor, int renderWidth, int renderHeight)
@@ -90,13 +89,13 @@ namespace HaCreator.MapSimulator.UI
                     drawReflectionInfo);
             }
 
-            if (_font == null)
+            if (!CanDrawWindowText)
             {
                 return;
             }
 
             RankingWindowSnapshot snapshot = _currentSnapshot ?? RefreshSnapshot();
-            sprite.DrawString(_font, snapshot.Title, new Vector2(Position.X + 18, Position.Y + 16), Color.White);
+            DrawWindowText(sprite, snapshot.Title, new Vector2(Position.X + 18, Position.Y + 16), Color.White);
             float contentWidth = Math.Max(220f, (CurrentFrame?.Width ?? 303) - 36f);
             DrawWrappedText(sprite, snapshot.Subtitle, Position.X + 18, Position.Y + 38, contentWidth, new Color(220, 220, 220), maxLines: 2);
 
@@ -129,8 +128,8 @@ namespace HaCreator.MapSimulator.UI
                     DrawTrimmedText(sprite, entry.Label, bounds.X + 10, bounds.Y + 6, bounds.Width - 100f, new Color(255, 228, 151));
 
                     string valueText = TrimTextToWidth(entry.Value, 92f);
-                    Vector2 valueSize = _font.MeasureString(valueText);
-                    sprite.DrawString(_font, valueText, new Vector2(bounds.Right - valueSize.X - 10, bounds.Y + 6), Color.White);
+                    Vector2 valueSize = MeasureWindowText(sprite, valueText);
+                    DrawWindowText(sprite, valueText, new Vector2(bounds.Right - valueSize.X - 10, bounds.Y + 6), Color.White);
 
                     DrawWrappedText(sprite, entry.Detail, bounds.X + 10, bounds.Y + 21, bounds.Width - 18f, new Color(215, 215, 215), maxLines: 1);
                 }
@@ -142,7 +141,7 @@ namespace HaCreator.MapSimulator.UI
                     sprite,
                     snapshot.StatusText,
                     Position.X + 18,
-                    Position.Y + Math.Max(0, (CurrentFrame?.Height ?? 298) - (_font.LineSpacing * 2) - 10),
+                    Position.Y + (int)Math.Max(0f, (CurrentFrame?.Height ?? 298) - (WindowLineSpacing * 2f) - 10f),
                     contentWidth,
                     new Color(255, 228, 151),
                     maxLines: 2);
@@ -179,24 +178,24 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawTrimmedText(SpriteBatch sprite, string text, int x, int y, float maxWidth, Color color)
         {
-            if (_font == null || string.IsNullOrWhiteSpace(text))
+            if (!CanDrawWindowText || string.IsNullOrWhiteSpace(text))
             {
                 return;
             }
 
-            sprite.DrawString(_font, TrimTextToWidth(text, maxWidth), new Vector2(x, y), color);
+            DrawWindowText(sprite, TrimTextToWidth(text, maxWidth), new Vector2(x, y), color);
         }
 
         private string TrimTextToWidth(string text, float maxWidth)
         {
-            if (_font == null || string.IsNullOrEmpty(text) || _font.MeasureString(text).X <= maxWidth)
+            if (!CanDrawWindowText || string.IsNullOrEmpty(text) || MeasureWindowText(null, text).X <= maxWidth)
             {
                 return text ?? string.Empty;
             }
 
             const string ellipsis = "...";
             string trimmed = text;
-            while (trimmed.Length > 1 && _font.MeasureString(trimmed + ellipsis).X > maxWidth)
+            while (trimmed.Length > 1 && MeasureWindowText(null, trimmed + ellipsis).X > maxWidth)
             {
                 trimmed = trimmed[..^1];
             }
@@ -206,7 +205,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawWrappedText(SpriteBatch sprite, string text, int x, int y, float maxWidth, Color color, int maxLines = int.MaxValue)
         {
-            if (_font == null || string.IsNullOrWhiteSpace(text))
+            if (!CanDrawWindowText || string.IsNullOrWhiteSpace(text))
             {
                 return;
             }
@@ -214,8 +213,8 @@ namespace HaCreator.MapSimulator.UI
             float drawY = y;
             foreach (string line in WrapText(text, maxWidth).Take(Math.Max(1, maxLines)))
             {
-                sprite.DrawString(_font, line, new Vector2(x, drawY), color);
-                drawY += _font.LineSpacing;
+                DrawWindowText(sprite, line, new Vector2(x, drawY), color);
+                drawY += WindowLineSpacing;
             }
         }
 
@@ -227,7 +226,7 @@ namespace HaCreator.MapSimulator.UI
             foreach (string word in words)
             {
                 string candidate = string.IsNullOrEmpty(currentLine) ? word : $"{currentLine} {word}";
-                if (!string.IsNullOrEmpty(currentLine) && _font.MeasureString(candidate).X > maxWidth)
+                if (!string.IsNullOrEmpty(currentLine) && MeasureWindowText(null, candidate).X > maxWidth)
                 {
                     _wrappedTextBuffer.Add(currentLine);
                     currentLine = word;

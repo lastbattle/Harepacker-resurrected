@@ -46,7 +46,6 @@ namespace HaCreator.MapSimulator.UI
         private Action<string> _feedbackHandler;
         private UIObject _allLevelButton;
         private UIObject _similarLevelButton;
-        private SpriteFont _font;
         private MouseState _previousMouseState;
         private SocialSearchSnapshot _currentSnapshot = new();
 
@@ -87,7 +86,7 @@ namespace HaCreator.MapSimulator.UI
 
         public override void SetFont(SpriteFont font)
         {
-            _font = font;
+            base.SetFont(font);
         }
 
         internal void SetSnapshotProvider(Func<SocialSearchSnapshot> snapshotProvider)
@@ -191,7 +190,7 @@ namespace HaCreator.MapSimulator.UI
                 DrawLayer(sprite, contentLayer.Layer, contentLayer.Offset, drawReflectionInfo, skeletonMeshRenderer, gameTime);
             }
 
-            if (_font == null)
+            if (!CanDrawWindowText)
             {
                 return;
             }
@@ -362,7 +361,7 @@ namespace HaCreator.MapSimulator.UI
         {
             if (!string.IsNullOrWhiteSpace(text))
             {
-                sprite.DrawString(_font, text, new Vector2(x, y), color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+                DrawWindowText(sprite, text, new Vector2(x, y), color, scale);
             }
         }
 

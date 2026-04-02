@@ -164,7 +164,6 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D _checkTexture;
         private readonly Texture2D _highlightTexture;
         private readonly string _windowName;
-        private SpriteFont _font;
         private OptionMenuMode _mode;
         private string _statusMessage = string.Empty;
         private Func<PlayerInput> _joypadBindingSource;
@@ -189,7 +188,7 @@ namespace HaCreator.MapSimulator.UI
 
         public override void SetFont(SpriteFont font)
         {
-            _font = font;
+            base.SetFont(font);
         }
 
         public void AddLayer(IDXObject layer, Point offset)
@@ -398,13 +397,13 @@ namespace HaCreator.MapSimulator.UI
                     drawReflectionInfo);
             }
 
-            if (_font == null)
+            if (!CanDrawWindowText)
             {
                 return;
             }
 
-            sprite.DrawString(_font, GetTitle(), new Vector2(Position.X + 16, Position.Y + 16), Color.White);
-            sprite.DrawString(_font, GetSubtitle(), new Vector2(Position.X + 16, Position.Y + 38), new Color(214, 214, 214));
+            DrawWindowText(sprite, GetTitle(), new Vector2(Position.X + 16, Position.Y + 16), Color.White);
+            DrawWindowText(sprite, GetSubtitle(), new Vector2(Position.X + 16, Position.Y + 38), new Color(214, 214, 214));
 
             if (_mode == OptionMenuMode.Joypad)
             {
@@ -436,11 +435,11 @@ namespace HaCreator.MapSimulator.UI
 
             if (!string.IsNullOrWhiteSpace(_statusMessage))
             {
-                sprite.DrawString(
-                    _font,
-                    _statusMessage,
-                    new Vector2(Position.X + 16, Position.Y + (CurrentFrame?.Height ?? 320) - _font.LineSpacing - 12),
-                    new Color(255, 228, 151));
+            DrawWindowText(
+                sprite,
+                _statusMessage,
+                new Vector2(Position.X + 16, Position.Y + (CurrentFrame?.Height ?? 320) - WindowLineSpacing - 12),
+                new Color(255, 228, 151));
             }
         }
 
@@ -520,11 +519,11 @@ namespace HaCreator.MapSimulator.UI
                 sprite.Draw(_highlightTexture, bounds, rowTint);
 
                 JoypadRow row = _joypadRows[i];
-                sprite.DrawString(_font, row.Label, new Vector2(bounds.X + 8, bounds.Y + 2), Color.White);
+            DrawWindowText(sprite, row.Label, new Vector2(bounds.X + 8, bounds.Y + 2), Color.White);
                 string value = captureArmed
                     ? "Press..."
                     : row.GetValue?.Invoke(session) ?? "Unavailable";
-                sprite.DrawString(_font, value, new Vector2(bounds.Right - Math.Min(156, (int)_font.MeasureString(value).X) - 8, bounds.Y + 2), new Color(255, 228, 151));
+            DrawWindowText(sprite, value, new Vector2(bounds.Right - Math.Min(156, (int)MeasureWindowText(sprite, value).X) - 8, bounds.Y + 2), new Color(255, 228, 151));
             }
         }
 
@@ -667,17 +666,17 @@ namespace HaCreator.MapSimulator.UI
                 sprite.Draw(_checkTexture, new Vector2(bounds.X + 8, bounds.Y + 5), Color.White);
             }
 
-            sprite.DrawString(_font, row.Label, new Vector2(bounds.X + 24, bounds.Y - 1), Color.White);
+            DrawWindowText(sprite, row.Label, new Vector2(bounds.X + 24, bounds.Y - 1), Color.White);
 
             string valueText = enabled ? "ON" : "OFF";
-            Vector2 valueSize = _font.MeasureString(valueText);
-            sprite.DrawString(_font, valueText, new Vector2(bounds.Right - valueSize.X - 8, bounds.Y - 1), new Color(255, 228, 151));
+            Vector2 valueSize = MeasureWindowText(sprite, valueText);
+            DrawWindowText(sprite, valueText, new Vector2(bounds.Right - valueSize.X - 8, bounds.Y - 1), new Color(255, 228, 151));
 
             if (row.ConfigId.HasValue)
             {
                 string idText = row.ConfigId.Value.ToString();
-                Vector2 idSize = _font.MeasureString(idText) * 0.45f;
-                sprite.DrawString(_font, idText, new Vector2(bounds.Right - idSize.X - 52, bounds.Y + 1), new Color(184, 184, 184), 0f, Vector2.Zero, 0.45f, SpriteEffects.None, 0f);
+            Vector2 idSize = MeasureWindowText(sprite, idText, 0.45f);
+            DrawWindowText(sprite, idText, new Vector2(bounds.Right - idSize.X - 52, bounds.Y + 1), new Color(184, 184, 184), 0.45f);
             }
         }
 
@@ -691,7 +690,7 @@ namespace HaCreator.MapSimulator.UI
                 sprite.Draw(_checkTexture, new Vector2(bounds.X + 8, bounds.Y + 7), Color.White);
             }
 
-            sprite.DrawString(_font, row.Label, new Vector2(bounds.X + 24, bounds.Y + 4), Color.White);
+            DrawWindowText(sprite, row.Label, new Vector2(bounds.X + 24, bounds.Y + 4), Color.White);
             DrawWrappedText(sprite, row.Description, bounds.X + 24, bounds.Y + 22, bounds.Width - 30, new Color(204, 204, 204));
         }
 
@@ -899,9 +898,9 @@ namespace HaCreator.MapSimulator.UI
                 : "Cycle the slot until a live controller is found; binding rows keep directional movement reserved.";
             string thresholdText = $"DX {session.LeftStickDeadZoneX:0.00} DY {session.LeftStickDeadZoneY:0.00}  LT/RT {session.LeftTriggerThreshold:0.00}/{session.RightTriggerThreshold:0.00}  {FormatResponseCurve(session.ResponseCurve)}";
 
-            sprite.DrawString(_font, connectionText, new Vector2(bounds.X + 8, bounds.Y + 3), Color.White);
-            sprite.DrawString(_font, calibrationText, new Vector2(bounds.X + 8, bounds.Y + 17), new Color(210, 210, 210));
-            sprite.DrawString(_font, thresholdText, new Vector2(bounds.X + 8, bounds.Y + 28), new Color(255, 228, 151));
+            DrawWindowText(sprite, connectionText, new Vector2(bounds.X + 8, bounds.Y + 3), Color.White);
+            DrawWindowText(sprite, calibrationText, new Vector2(bounds.X + 8, bounds.Y + 17), new Color(210, 210, 210));
+            DrawWindowText(sprite, thresholdText, new Vector2(bounds.X + 8, bounds.Y + 28), new Color(255, 228, 151));
         }
 
         private void BeginSession()
@@ -1315,7 +1314,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawWrappedText(SpriteBatch sprite, string text, int x, int y, float maxWidth, Color color)
         {
-            if (_font == null || string.IsNullOrWhiteSpace(text))
+            if (!CanDrawWindowText || string.IsNullOrWhiteSpace(text))
             {
                 return;
             }
@@ -1323,8 +1322,8 @@ namespace HaCreator.MapSimulator.UI
             float drawY = y;
             foreach (string line in WrapText(text, maxWidth))
             {
-                sprite.DrawString(_font, line, new Vector2(x, drawY), color);
-                drawY += _font.LineSpacing;
+                DrawWindowText(sprite, line, new Vector2(x, drawY), color);
+                drawY += WindowLineSpacing;
             }
         }
 
@@ -1335,7 +1334,7 @@ namespace HaCreator.MapSimulator.UI
             foreach (string word in words)
             {
                 string candidate = string.IsNullOrEmpty(currentLine) ? word : $"{currentLine} {word}";
-                if (!string.IsNullOrEmpty(currentLine) && _font.MeasureString(candidate).X > maxWidth)
+                if (!string.IsNullOrEmpty(currentLine) && MeasureWindowText(null, candidate).X > maxWidth)
                 {
                     yield return currentLine;
                     currentLine = word;

@@ -311,9 +311,9 @@ namespace HaCreator.MapSimulator.UI
 
         private float MeasureTextWidth(string text, float scale)
         {
-            return _font == null || string.IsNullOrWhiteSpace(text)
+            return string.IsNullOrWhiteSpace(text)
                 ? 0f
-                : _font.MeasureString(text).X * scale;
+                : ClientTextDrawing.Measure((GraphicsDevice)null, text, scale, _font).X;
         }
 
         private static int GetFrameWidth(Texture2D top, Texture2D center, Texture2D bottom, int fallbackWidth)
@@ -396,8 +396,8 @@ namespace HaCreator.MapSimulator.UI
             }
 
             Vector2 shadowOffset = new(1f, 1f);
-            spriteBatch.DrawString(_font, text, position + shadowOffset, shadowColor, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
-            spriteBatch.DrawString(_font, text, position, textColor, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            ClientTextDrawing.Draw(spriteBatch, text, position + shadowOffset, shadowColor, scale, _font);
+            ClientTextDrawing.Draw(spriteBatch, text, position, textColor, scale, _font);
         }
     }
 }

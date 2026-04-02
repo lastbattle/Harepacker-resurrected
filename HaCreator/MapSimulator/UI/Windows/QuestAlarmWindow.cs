@@ -200,6 +200,7 @@ namespace HaCreator.MapSimulator.UI
         public override void SetFont(SpriteFont font)
         {
             _font = font;
+            base.SetFont(font);
         }
 
         internal void TrackQuest(int questId)
@@ -307,7 +308,7 @@ namespace HaCreator.MapSimulator.UI
             RenderParameters renderParameters,
             int TickCount)
         {
-            if (_font == null)
+            if (!CanDrawWindowText)
             {
                 return;
             }

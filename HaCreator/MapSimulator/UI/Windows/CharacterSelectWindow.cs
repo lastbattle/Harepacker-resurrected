@@ -183,6 +183,7 @@ namespace HaCreator.MapSimulator.UI
         public override void SetFont(SpriteFont font)
         {
             _font = font;
+            base.SetFont(font);
         }
 
         public override bool SupportsDragging => false;
@@ -615,9 +616,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            Vector2 shadowOffset = new(1f, 1f);
-            sprite.DrawString(_font, text, position + shadowOffset, new Color(32, 24, 16, 180), 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
-            sprite.DrawString(_font, text, position, color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            ClientTextDrawing.DrawShadowed(sprite, text, position, color, _font, scale);
         }
 
         private string WrapText(string text, int maxWidth, float scale, int maxLines)

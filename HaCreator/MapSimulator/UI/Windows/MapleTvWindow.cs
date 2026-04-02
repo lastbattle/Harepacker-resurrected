@@ -113,6 +113,7 @@ namespace HaCreator.MapSimulator.UI
         public override void SetFont(SpriteFont font)
         {
             _font = font;
+            base.SetFont(font);
         }
 
         public override void Update(GameTime gameTime)
@@ -319,8 +320,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             Vector2 position = new Vector2(x, y);
-            sprite.DrawString(_font, text, position + new Vector2(1f, 1f), new Color(255, 255, 255, 180), 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
-            sprite.DrawString(_font, text, position, color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            ClientTextDrawing.DrawShadowed(sprite, text, position, color, _font, scale);
         }
 
         private void DrawPreview(
@@ -551,7 +551,7 @@ namespace HaCreator.MapSimulator.UI
                 return 24;
             }
 
-            float glyphWidth = Math.Max(1f, _font.MeasureString("W").X * scale);
+            float glyphWidth = Math.Max(1f, ClientTextDrawing.Measure((GraphicsDevice)null, "W", scale, _font).X);
             return Math.Max(8, (int)(width / glyphWidth));
         }
 

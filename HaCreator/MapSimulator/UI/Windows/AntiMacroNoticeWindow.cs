@@ -40,6 +40,7 @@ namespace HaCreator.MapSimulator.UI
         public override void SetFont(SpriteFont font)
         {
             _font = font;
+            base.SetFont(font);
             _lines = WrapText(_text);
         }
 
@@ -154,7 +155,7 @@ namespace HaCreator.MapSimulator.UI
             for (int i = 1; i <= text.Length; i++)
             {
                 string candidate = text[..i];
-                if (_font.MeasureString(candidate).X >= WrapWidth)
+                if (ClientTextDrawing.Measure((GraphicsDevice)null, candidate, 1.0f, _font).X >= WrapWidth)
                 {
                     bestFit = i > 1 ? i - 1 : 1;
                     break;

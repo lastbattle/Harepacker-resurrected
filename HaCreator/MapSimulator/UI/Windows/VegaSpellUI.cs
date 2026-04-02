@@ -81,6 +81,7 @@ namespace HaCreator.MapSimulator.UI
         public override void SetFont(SpriteFont font)
         {
             _font = font;
+            base.SetFont(font);
         }
 
         public void SetFrames(IDXObject frame10, IDXObject frame60)
@@ -623,8 +624,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            sprite.DrawString(_font, text, position + Vector2.One, Color.Black);
-            sprite.DrawString(_font, text, position, color);
+            ClientTextDrawing.DrawShadowed(sprite, text, position, color, _font);
         }
 
         private enum VegaAnimationState

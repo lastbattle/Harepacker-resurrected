@@ -333,7 +333,7 @@ namespace HaCreator.MapSimulator.UI
                     continue;
 
                 // Measure text to right-align
-                Vector2 textSize = _font.MeasureString(notice.Message);
+                Vector2 textSize = ClientTextDrawing.Measure(spriteBatch, notice.Message, 1f, _font);
                 float totalWidth = textSize.X;
                 if (notice.ItemIcon != null)
                 {
@@ -379,11 +379,11 @@ namespace HaCreator.MapSimulator.UI
 
             foreach (var offset in offsets)
             {
-                spriteBatch.DrawString(_font, text, position + offset, outlineColor);
+                ClientTextDrawing.Draw(spriteBatch, text, position + offset, outlineColor, 1f, _font);
             }
 
             // Draw main text
-            spriteBatch.DrawString(_font, text, position, textColor);
+            ClientTextDrawing.Draw(spriteBatch, text, position, textColor, 1f, _font);
         }
         #endregion
 

@@ -69,6 +69,7 @@ namespace HaCreator.MapSimulator.UI
         public override void SetFont(SpriteFont font)
         {
             _font = font;
+            base.SetFont(font);
         }
 
         public override void Update(GameTime gameTime)
@@ -154,7 +155,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            sprite.DrawString(_font, name, drawPosition, Color.Black);
+            ClientTextDrawing.Draw(sprite, name, drawPosition, Color.Black, 1.0f, _font);
         }
 
         private WeddingInvitationSnapshot RefreshSnapshot()

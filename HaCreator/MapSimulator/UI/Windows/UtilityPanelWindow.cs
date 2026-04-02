@@ -40,7 +40,6 @@ namespace HaCreator.MapSimulator.UI
         private readonly Dictionary<UIObject, Action> _buttonActions = new();
         private readonly List<string> _staticLines = new();
         private readonly List<IndicatorFrame> _activeIndicatorFrames = new();
-        private SpriteFont _font;
         private Func<IReadOnlyList<string>> _contentProvider;
         private Func<string> _footerProvider;
         private Func<bool> _indicatorActiveProvider;
@@ -58,7 +57,7 @@ namespace HaCreator.MapSimulator.UI
 
         public override void SetFont(SpriteFont font)
         {
-            _font = font;
+            base.SetFont(font);
         }
 
         public void AddLayer(IDXObject layer, Point offset)
@@ -159,15 +158,15 @@ namespace HaCreator.MapSimulator.UI
 
             DrawIndicator(sprite, TickCount);
 
-            if (_font == null)
+            if (!CanDrawWindowText)
             {
                 return;
             }
 
             Vector2 origin = new(Position.X + 16, Position.Y + 16);
-            sprite.DrawString(_font, _title, origin, Color.White);
+            DrawWindowText(sprite, _title, origin, Color.White);
 
-            float y = origin.Y + _font.LineSpacing + 10;
+            float y = origin.Y + WindowLineSpacing + 10;
             IReadOnlyList<string> lines = _contentProvider?.Invoke();
             if (lines == null || lines.Count == 0)
             {
@@ -178,14 +177,14 @@ namespace HaCreator.MapSimulator.UI
             {
                 if (string.IsNullOrWhiteSpace(line))
                 {
-                    y += _font.LineSpacing * 0.5f;
+                    y += WindowLineSpacing * 0.5f;
                     continue;
                 }
 
                 foreach (string wrappedLine in WrapText(line, Math.Max(200f, (CurrentFrame?.Width ?? 320) - 32f)))
                 {
-                    sprite.DrawString(_font, wrappedLine, new Vector2(origin.X, y), new Color(224, 224, 224));
-                    y += _font.LineSpacing;
+                    DrawWindowText(sprite, wrappedLine, new Vector2(origin.X, y), new Color(224, 224, 224));
+                    y += WindowLineSpacing;
                 }
 
                 y += 2f;
@@ -194,10 +193,10 @@ namespace HaCreator.MapSimulator.UI
             string footer = _footerProvider?.Invoke();
             if (!string.IsNullOrWhiteSpace(footer))
             {
-                sprite.DrawString(
-                    _font,
+                DrawWindowText(
+                    sprite,
                     footer,
-                    new Vector2(origin.X, Position.Y + Math.Max(24, (CurrentFrame?.Height ?? 180) - _font.LineSpacing - 12)),
+                    new Vector2(origin.X, Position.Y + Math.Max(24, (CurrentFrame?.Height ?? 180) - WindowLineSpacing - 12)),
                     new Color(255, 228, 151));
             }
         }
@@ -257,7 +256,7 @@ namespace HaCreator.MapSimulator.UI
 
         private IEnumerable<string> WrapText(string text, float maxWidth)
         {
-            if (_font == null || string.IsNullOrWhiteSpace(text))
+            if (!CanDrawWindowText || string.IsNullOrWhiteSpace(text))
             {
                 yield break;
             }
@@ -267,7 +266,7 @@ namespace HaCreator.MapSimulator.UI
             foreach (string word in words)
             {
                 string candidate = string.IsNullOrEmpty(currentLine) ? word : $"{currentLine} {word}";
-                if (!string.IsNullOrEmpty(currentLine) && _font.MeasureString(candidate).X > maxWidth)
+                if (!string.IsNullOrEmpty(currentLine) && MeasureWindowText(null, candidate).X > maxWidth)
                 {
                     yield return currentLine;
                     currentLine = word;

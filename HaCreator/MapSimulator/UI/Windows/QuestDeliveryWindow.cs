@@ -51,7 +51,6 @@ namespace HaCreator.MapSimulator.UI
 
         private readonly List<DeliveryEntry> _entries = new();
 
-        private SpriteFont _font;
         private UIObject _okButton;
         private UIObject _cancelButton;
         private MouseState _previousMouseState;
@@ -123,7 +122,7 @@ namespace HaCreator.MapSimulator.UI
 
         public override void SetFont(SpriteFont font)
         {
-            _font = font;
+            base.SetFont(font);
         }
 
         public override void Update(GameTime gameTime)
@@ -186,7 +185,7 @@ namespace HaCreator.MapSimulator.UI
             RenderParameters renderParameters,
             int TickCount)
         {
-            if (_font == null)
+            if (!CanDrawWindowText)
             {
                 return;
             }
@@ -459,13 +458,13 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            sprite.DrawString(_font, text, position + new Vector2(1f, 1f), new Color(24, 24, 24, 180), 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
-            sprite.DrawString(_font, text, position, color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            DrawWindowText(sprite, text, position + new Vector2(1f, 1f), new Color(24, 24, 24, 180), scale);
+            DrawWindowText(sprite, text, position, color, scale);
         }
 
         private IEnumerable<string> WrapText(string text, float maxWidth, float scale)
         {
-            if (_font == null || string.IsNullOrWhiteSpace(text))
+            if (!CanDrawWindowText || string.IsNullOrWhiteSpace(text))
             {
                 yield break;
             }
@@ -476,7 +475,7 @@ namespace HaCreator.MapSimulator.UI
             for (int i = 0; i < words.Length; i++)
             {
                 string candidate = string.IsNullOrEmpty(currentLine) ? words[i] : $"{currentLine} {words[i]}";
-                if (!string.IsNullOrEmpty(currentLine) && (_font.MeasureString(candidate).X * scale) > maxWidth)
+                if (!string.IsNullOrEmpty(currentLine) && MeasureWindowText(null, candidate, scale).X > maxWidth)
                 {
                     yield return currentLine;
                     currentLine = words[i];

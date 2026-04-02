@@ -99,6 +99,7 @@ namespace HaCreator.MapSimulator.UI
         public override void SetFont(SpriteFont font)
         {
             _font = font;
+            base.SetFont(font);
         }
 
         internal void SetSnapshotProvider(Func<GuildSkillSnapshot> snapshotProvider)
@@ -485,7 +486,7 @@ namespace HaCreator.MapSimulator.UI
                 Color color = i == 0
                     ? new Color(255, 236, 173)
                     : new Color(224, 229, 236);
-                sprite.DrawString(_font, lines[i], new Vector2(tooltipBounds.X + 6, y), color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+                ClientTextDrawing.Draw(sprite, lines[i], new Vector2(tooltipBounds.X + 6, y), color, scale, _font);
                 y += Math.Max(lineSpacing, (int)Math.Ceiling(_font.LineSpacing * scale));
             }
         }
@@ -578,7 +579,7 @@ namespace HaCreator.MapSimulator.UI
             for (int i = 1; i < words.Length; i++)
             {
                 string candidate = line + " " + words[i];
-                if ((_font.MeasureString(candidate) * scale).X <= maxWidth)
+                if (ClientTextDrawing.Measure((GraphicsDevice)null, candidate, scale, _font).X <= maxWidth)
                 {
                     line = candidate;
                     continue;
@@ -639,7 +640,7 @@ namespace HaCreator.MapSimulator.UI
         {
             if (!string.IsNullOrWhiteSpace(text))
             {
-                sprite.DrawString(_font, text, new Vector2(x, y), color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+                ClientTextDrawing.Draw(sprite, text, new Vector2(x, y), color, scale, _font);
             }
         }
 
@@ -650,7 +651,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            Vector2 size = _font.MeasureString(text) * scale;
+            Vector2 size = ClientTextDrawing.Measure((GraphicsDevice)null, text, scale, _font);
             DrawText(sprite, text, (int)Math.Round(rightX - size.X), y, color, scale);
         }
 
@@ -674,7 +675,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             string candidate = text.Trim();
-            if ((_font.MeasureString(candidate) * scale).X <= maxWidth)
+            if (ClientTextDrawing.Measure((GraphicsDevice)null, candidate, scale, _font).X <= maxWidth)
             {
                 return candidate;
             }
@@ -684,7 +685,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 candidate = candidate[..^1].TrimEnd();
                 string truncated = candidate + ellipsis;
-                if ((_font.MeasureString(truncated) * scale).X <= maxWidth)
+                if (ClientTextDrawing.Measure((GraphicsDevice)null, truncated, scale, _font).X <= maxWidth)
                 {
                     return truncated;
                 }

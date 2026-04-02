@@ -75,6 +75,7 @@ namespace HaCreator.MapSimulator.UI
         public override void SetFont(SpriteFont font)
         {
             _font = font;
+            base.SetFont(font);
         }
 
         internal void SetIndicatorActiveProvider(Func<bool> indicatorActiveProvider)
@@ -153,7 +154,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            Vector2 textSize = _font.MeasureString(trackName) * TooltipScale;
+            Vector2 textSize = ClientTextDrawing.Measure((GraphicsDevice)null, trackName, TooltipScale, _font);
             int tooltipWidth = (int)Math.Ceiling(textSize.X) + (TooltipPadding * 2);
             int tooltipHeight = (int)Math.Ceiling(textSize.Y) + (TooltipPadding * 2);
             int tooltipX = Math.Max(0, Math.Min(mouse.X, Math.Max(0, renderParameters.RenderWidth - tooltipWidth)));
@@ -165,16 +166,13 @@ namespace HaCreator.MapSimulator.UI
             sprite.Draw(_pixel, new Rectangle(tooltipBounds.X, tooltipBounds.Bottom - 1, tooltipBounds.Width, 1), new Color(255, 228, 151));
             sprite.Draw(_pixel, new Rectangle(tooltipBounds.X, tooltipBounds.Y, 1, tooltipBounds.Height), new Color(255, 228, 151));
             sprite.Draw(_pixel, new Rectangle(tooltipBounds.Right - 1, tooltipBounds.Y, 1, tooltipBounds.Height), new Color(255, 228, 151));
-            sprite.DrawString(
-                _font,
+            ClientTextDrawing.Draw(
+                sprite,
                 trackName,
                 new Vector2(tooltipBounds.X + TooltipPadding, tooltipBounds.Y + TooltipPadding),
                 Color.White,
-                0f,
-                Vector2.Zero,
                 TooltipScale,
-                SpriteEffects.None,
-                0f);
+                _font);
         }
 
         private void UpdateAnchoredPosition(RenderParameters renderParameters)

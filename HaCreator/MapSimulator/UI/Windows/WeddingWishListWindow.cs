@@ -126,6 +126,7 @@ namespace HaCreator.MapSimulator.UI
         public override void SetFont(SpriteFont font)
         {
             _font = font;
+            base.SetFont(font);
         }
 
         public override void Update(GameTime gameTime)
@@ -566,11 +567,11 @@ namespace HaCreator.MapSimulator.UI
             string description = hoveredItem.Description ?? string.Empty;
             string[] wrappedDescription = WrapText(description, 210f, TooltipBodyScale);
 
-            Vector2 titleSize = _font.MeasureString(title) * TooltipTitleScale;
-            Vector2 lineSize = _font.MeasureString(line) * TooltipBodyScale;
+            Vector2 titleSize = ClientTextDrawing.Measure((GraphicsDevice)null, title, TooltipTitleScale, _font);
+            Vector2 lineSize = ClientTextDrawing.Measure((GraphicsDevice)null, line, TooltipBodyScale, _font);
             float descriptionWidth = wrappedDescription.Length == 0
                 ? 0f
-                : wrappedDescription.Max(text => _font.MeasureString(text).X * TooltipBodyScale);
+                : wrappedDescription.Max(text => ClientTextDrawing.Measure((GraphicsDevice)null, text, TooltipBodyScale, _font).X);
             int width = (int)Math.Ceiling(Math.Max(titleSize.X, Math.Max(lineSize.X, descriptionWidth))) + (TooltipPadding * 2) + RowIconSize + 10;
             int height = TooltipPadding * 2 + RowIconSize;
             if (!string.IsNullOrWhiteSpace(line))
@@ -829,13 +830,13 @@ namespace HaCreator.MapSimulator.UI
             }
 
             string trimmed = text.Trim();
-            if (_font.MeasureString(trimmed).X * scale <= maxWidth)
+            if (ClientTextDrawing.Measure((GraphicsDevice)null, trimmed, scale, _font).X <= maxWidth)
             {
                 return trimmed;
             }
 
             const string ellipsis = "...";
-            while (trimmed.Length > 1 && (_font.MeasureString(trimmed + ellipsis).X * scale) > maxWidth)
+            while (trimmed.Length > 1 && ClientTextDrawing.Measure((GraphicsDevice)null, trimmed + ellipsis, scale, _font).X > maxWidth)
             {
                 trimmed = trimmed[..^1];
             }
@@ -855,7 +856,7 @@ namespace HaCreator.MapSimulator.UI
             foreach (string word in text.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries))
             {
                 string candidate = string.IsNullOrEmpty(currentLine) ? word : $"{currentLine} {word}";
-                if (!string.IsNullOrEmpty(currentLine) && (_font.MeasureString(candidate).X * scale) > maxWidth)
+                if (!string.IsNullOrEmpty(currentLine) && ClientTextDrawing.Measure((GraphicsDevice)null, candidate, scale, _font).X > maxWidth)
                 {
                     lines.Add(currentLine);
                     currentLine = word;

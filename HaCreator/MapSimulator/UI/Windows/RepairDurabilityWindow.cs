@@ -127,6 +127,7 @@ namespace HaCreator.MapSimulator.UI
         public override void SetFont(SpriteFont font)
         {
             _font = font;
+            base.SetFont(font);
         }
 
         public void AddLayer(IDXObject layer, Point offset)
@@ -342,7 +343,7 @@ namespace HaCreator.MapSimulator.UI
             string feeText = selectedEntry == null
                 ? "0"
                 : selectedEntry.RepairCost.ToString("N0", CultureInfo.InvariantCulture);
-            Vector2 size = _font.MeasureString(feeText) * TextScale;
+            Vector2 size = ClientTextDrawing.Measure((GraphicsDevice)null, feeText, TextScale, _font);
             Vector2 position = new(Position.X + RepairFeeValueRight - size.X, Position.Y + RepairFeeValueY);
             DrawOutlinedText(sprite, feeText, position, Color.White, TextScale);
         }
@@ -532,9 +533,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            Vector2 shadowOffset = new(1f, 1f);
-            sprite.DrawString(_font, text, position + shadowOffset, Color.Black * 0.55f, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
-            sprite.DrawString(_font, text, position, color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            ClientTextDrawing.DrawShadowed(sprite, text, position, color, _font, scale);
         }
 
         private static string Truncate(string text, int maxLength)

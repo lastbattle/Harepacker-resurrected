@@ -30,8 +30,6 @@ namespace HaCreator.MapSimulator.UI
         private readonly string _windowName;
         private readonly string _title;
         private readonly string _body;
-        private SpriteFont _font;
-
         public PlaceholderUtilityWindow(IDXObject frame, string windowName, string title, string body)
             : base(frame)
         {
@@ -44,7 +42,7 @@ namespace HaCreator.MapSimulator.UI
 
         public override void SetFont(SpriteFont font)
         {
-            _font = font;
+            base.SetFont(font);
         }
 
         public void AddLayer(IDXObject layer, Point offset)
@@ -80,25 +78,25 @@ namespace HaCreator.MapSimulator.UI
                     drawReflectionInfo);
             }
 
-            if (_font == null)
+            if (!CanDrawWindowText)
             {
                 return;
             }
 
             Vector2 origin = new Vector2(Position.X + 16, Position.Y + 18);
-            sprite.DrawString(_font, _title, origin, Color.White);
+            DrawWindowText(sprite, _title, origin, Color.White);
 
-            float y = origin.Y + _font.LineSpacing + 8;
+            float y = origin.Y + WindowLineSpacing + 8;
             foreach (string line in WrapText(_body, 250f))
             {
-                sprite.DrawString(_font, line, new Vector2(origin.X, y), new Color(210, 210, 210));
-                y += _font.LineSpacing;
+                DrawWindowText(sprite, line, new Vector2(origin.X, y), new Color(210, 210, 210));
+                y += WindowLineSpacing;
             }
         }
 
         private IEnumerable<string> WrapText(string text, float maxWidth)
         {
-            if (_font == null || string.IsNullOrWhiteSpace(text))
+            if (!CanDrawWindowText || string.IsNullOrWhiteSpace(text))
             {
                 yield break;
             }
@@ -108,7 +106,7 @@ namespace HaCreator.MapSimulator.UI
             foreach (string word in words)
             {
                 string candidate = string.IsNullOrEmpty(currentLine) ? word : $"{currentLine} {word}";
-                if (!string.IsNullOrEmpty(currentLine) && _font.MeasureString(candidate).X > maxWidth)
+                if (!string.IsNullOrEmpty(currentLine) && MeasureWindowText(null, candidate).X > maxWidth)
                 {
                     yield return currentLine;
                     currentLine = word;

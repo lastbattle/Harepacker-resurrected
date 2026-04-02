@@ -122,6 +122,7 @@ namespace HaCreator.MapSimulator.UI
         public override void SetFont(SpriteFont font)
         {
             _font = font;
+            base.SetFont(font);
         }
 
         public override void Update(GameTime gameTime)
@@ -243,7 +244,7 @@ namespace HaCreator.MapSimulator.UI
         {
             if (!string.IsNullOrWhiteSpace(text))
             {
-                sprite.DrawString(_font, text, new Vector2(x, y), color);
+                ClientTextDrawing.Draw(sprite, text, new Vector2(x, y), color, 1.0f, _font);
             }
         }
 
@@ -259,7 +260,7 @@ namespace HaCreator.MapSimulator.UI
             while (remaining.Length > 0 && y <= bounds.Bottom - 10)
             {
                 int length = remaining.Length;
-                while (length > 1 && _font.MeasureString(remaining[..length]).X * scale > bounds.Width)
+                while (length > 1 && ClientTextDrawing.Measure((GraphicsDevice)null, remaining[..length], scale, _font).X > bounds.Width)
                 {
                     length = remaining.LastIndexOf(' ', length - 1, length - 1);
                     if (length <= 0)
@@ -270,8 +271,8 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 string line = remaining[..length].TrimEnd();
-                sprite.DrawString(_font, line, new Vector2(bounds.X, y), color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
-                y += (int)Math.Ceiling(_font.LineSpacing * scale);
+                ClientTextDrawing.Draw(sprite, line, new Vector2(bounds.X, y), color, scale, _font);
+                y += (int)Math.Ceiling((_font?.LineSpacing ?? 0) * scale);
                 remaining = remaining[length..].TrimStart();
             }
         }

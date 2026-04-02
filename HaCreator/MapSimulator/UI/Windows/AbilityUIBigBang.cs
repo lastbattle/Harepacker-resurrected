@@ -221,6 +221,7 @@ namespace HaCreator.MapSimulator.UI
         public override void SetFont(SpriteFont font)
         {
             _statsFont = font;
+            base.SetFont(font);
         }
 
         public void SetDetailBackground(IDXObject detailBg)
@@ -283,9 +284,13 @@ namespace HaCreator.MapSimulator.UI
 
             // Draw AP
             Color apColor = _characterBuild.AP > 0 ? APAvailableColor : TextColorDark;
-            sprite.DrawString(_statsFont, _characterBuild.AP.ToString(),
+            ClientTextDrawing.Draw(
+                sprite,
+                _characterBuild.AP.ToString(),
                 new Vector2(windowX + VALUE_X + LEFT_BORDER_X + 10, windowY + AP_Y),
-                apColor, 0f, Vector2.Zero, TEXT_SCALE, SpriteEffects.None, 0f);
+                apColor,
+                TEXT_SCALE,
+                _statsFont);
 
             // Draw primary stats
             DrawStatRow(sprite, windowX, windowY, STR_Y, _characterBuild.TotalSTR.ToString());
@@ -316,10 +321,13 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawStatRow(SpriteBatch sprite, int windowX, int windowY, int y, string value, Color? color = null)
         {
-            sprite.DrawString(_statsFont, value,
+            ClientTextDrawing.Draw(
+                sprite,
+                value,
                 new Vector2(windowX + VALUE_X + LEFT_BORDER_X, windowY + y),
                 color ?? TextColorDark,
-                0f, Vector2.Zero, TEXT_SCALE, SpriteEffects.None, 0f);
+                TEXT_SCALE,
+                _statsFont);
         }
 
         private void DrawExtendedStats(SpriteBatch sprite, int panelX, int panelY)
@@ -341,10 +349,13 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawDetailStatRow(SpriteBatch sprite, int panelX, int panelY, int y, string value)
         {
-            sprite.DrawString(_statsFont, value,
+            ClientTextDrawing.Draw(
+                sprite,
+                value,
                 new Vector2(panelX + 75, panelY + y),
                 TextColorDark,
-                0f, Vector2.Zero, TEXT_SCALE, SpriteEffects.None, 0f);
+                TEXT_SCALE,
+                _statsFont);
         }
         #endregion
 

@@ -14,7 +14,6 @@ namespace HaCreator.MapSimulator.UI
     {
         private readonly bool _drawActionLayer;
         private PacketFieldStateRuntime _runtime;
-        private SpriteFont _font;
         private MouseState _previousMouseState;
         private Func<int> _renderWidthProvider;
         private Func<int> _renderHeightProvider;
@@ -48,7 +47,7 @@ namespace HaCreator.MapSimulator.UI
 
         public override void SetFont(SpriteFont font)
         {
-            _font = font;
+            base.SetFont(font);
         }
 
         public override bool CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState, MouseCursorItem mouseCursor, int renderWidth, int renderHeight)
@@ -98,7 +97,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (_drawActionLayer)
             {
-                _runtime.DrawQuestTimerActionLayer(sprite, _font, renderWidth, renderHeight, tick);
+                _runtime.DrawQuestTimerActionLayer(sprite, WindowFont, renderWidth, renderHeight, tick);
                 return;
             }
 

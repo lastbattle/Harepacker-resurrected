@@ -52,6 +52,7 @@ namespace HaCreator.MapSimulator.UI
         public override void SetFont(SpriteFont font)
         {
             _font = font;
+            base.SetFont(font);
         }
 
         internal void SetSnapshotProvider(Func<GuildSearchSnapshot> snapshotProvider)
@@ -224,8 +225,8 @@ namespace HaCreator.MapSimulator.UI
         {
             if (!string.IsNullOrWhiteSpace(text))
             {
-                sprite.DrawString(_font, text, new Vector2(x, y), color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
-            }
+                ClientTextDrawing.Draw(sprite, text, new Vector2(x, y), color, scale, _font);
+        }
         }
 
         private const int GuildSearchPageRows = 7;

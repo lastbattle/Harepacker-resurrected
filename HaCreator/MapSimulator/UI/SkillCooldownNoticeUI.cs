@@ -326,7 +326,7 @@ namespace HaCreator.MapSimulator.UI
                 return string.Empty;
             }
 
-            if ((_font.MeasureString(value).X * scale) <= maxWidth)
+            if (ClientTextDrawing.Measure((GraphicsDevice)null, value, scale, _font).X <= maxWidth)
             {
                 return value;
             }
@@ -337,7 +337,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 trimmed = trimmed.Substring(0, trimmed.Length - 1);
                 string candidate = trimmed + ellipsis;
-                if ((_font.MeasureString(candidate).X * scale) <= maxWidth)
+                if (ClientTextDrawing.Measure((GraphicsDevice)null, candidate, scale, _font).X <= maxWidth)
                 {
                     return candidate;
                 }
@@ -752,9 +752,9 @@ namespace HaCreator.MapSimulator.UI
 
         private float MeasureTextWidth(string value, float scale)
         {
-            return _font == null || string.IsNullOrWhiteSpace(value)
+            return string.IsNullOrWhiteSpace(value)
                 ? 0f
-                : _font.MeasureString(value).X * scale;
+                : ClientTextDrawing.Measure((GraphicsDevice)null, value, scale, _font).X;
         }
 
         private void DrawTextWithShadow(SpriteBatch spriteBatch, string text, Vector2 position, Color textColor, Color shadowColor, float scale)
@@ -765,8 +765,8 @@ namespace HaCreator.MapSimulator.UI
             }
 
             Vector2 shadowOffset = new Vector2(1f, 1f);
-            spriteBatch.DrawString(_font, text, position + shadowOffset, shadowColor, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
-            spriteBatch.DrawString(_font, text, position, textColor, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            ClientTextDrawing.Draw(spriteBatch, text, position + shadowOffset, shadowColor, scale, _font);
+            ClientTextDrawing.Draw(spriteBatch, text, position, textColor, scale, _font);
         }
     }
 }

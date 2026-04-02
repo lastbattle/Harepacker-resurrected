@@ -20,7 +20,6 @@ namespace HaCreator.MapSimulator.UI
         private readonly IDXObject _lineLayer;
         private readonly Point _lineOffset;
 
-        private SpriteFont _font;
         private Func<MemoMailboxAttachmentSnapshot> _snapshotProvider;
         private Func<string> _claimHandler;
         private Action _closeHandler;
@@ -75,7 +74,7 @@ namespace HaCreator.MapSimulator.UI
 
         public override void SetFont(SpriteFont font)
         {
-            _font = font;
+            base.SetFont(font);
         }
 
         public override void Update(GameTime gameTime)
@@ -106,7 +105,7 @@ namespace HaCreator.MapSimulator.UI
             DrawLayer(sprite, _sheetLayer, _sheetOffset, drawReflectionInfo, skeletonMeshRenderer, gameTime);
             DrawLayer(sprite, _lineLayer, _lineOffset, drawReflectionInfo, skeletonMeshRenderer, gameTime);
 
-            if (_font == null)
+            if (!CanDrawWindowText)
             {
                 return;
             }
@@ -114,17 +113,17 @@ namespace HaCreator.MapSimulator.UI
             MemoMailboxAttachmentSnapshot snapshot = _currentSnapshot ?? RefreshSnapshot();
             Rectangle bounds = GetContentBounds();
 
-            sprite.DrawString(_font, "MEMO PACKAGE", new Vector2(Position.X + 26, Position.Y + 8), Color.White, 0f, Vector2.Zero, 0.48f, SpriteEffects.None, 0f);
-            sprite.DrawString(_font, Truncate(snapshot.Subject, 28), new Vector2(bounds.X, bounds.Y), new Color(62, 70, 82), 0f, Vector2.Zero, 0.49f, SpriteEffects.None, 0f);
-            sprite.DrawString(_font, $"From {snapshot.Sender}", new Vector2(bounds.X, bounds.Y + 18), new Color(99, 107, 119), 0f, Vector2.Zero, 0.4f, SpriteEffects.None, 0f);
-            sprite.DrawString(_font, snapshot.DeliveredAtText, new Vector2(bounds.X, bounds.Y + 32), new Color(120, 126, 137), 0f, Vector2.Zero, 0.36f, SpriteEffects.None, 0f);
-            sprite.DrawString(_font, "Attachment", new Vector2(bounds.X, bounds.Y + 56), new Color(99, 107, 119), 0f, Vector2.Zero, 0.39f, SpriteEffects.None, 0f);
-            sprite.DrawString(_font, Truncate(snapshot.AttachmentSummary, 28), new Vector2(bounds.X, bounds.Y + 72), new Color(58, 68, 81), 0f, Vector2.Zero, 0.46f, SpriteEffects.None, 0f);
+            DrawWindowText(sprite, "MEMO PACKAGE", new Vector2(Position.X + 26, Position.Y + 8), Color.White, 0.48f);
+            DrawWindowText(sprite, Truncate(snapshot.Subject, 28), new Vector2(bounds.X, bounds.Y), new Color(62, 70, 82), 0.49f);
+            DrawWindowText(sprite, $"From {snapshot.Sender}", new Vector2(bounds.X, bounds.Y + 18), new Color(99, 107, 119), 0.4f);
+            DrawWindowText(sprite, snapshot.DeliveredAtText, new Vector2(bounds.X, bounds.Y + 32), new Color(120, 126, 137), 0.36f);
+            DrawWindowText(sprite, "Attachment", new Vector2(bounds.X, bounds.Y + 56), new Color(99, 107, 119), 0.39f);
+            DrawWindowText(sprite, Truncate(snapshot.AttachmentSummary, 28), new Vector2(bounds.X, bounds.Y + 72), new Color(58, 68, 81), 0.46f);
 
             float y = bounds.Y + 96;
             foreach (string line in WrapText(snapshot.AttachmentDescription, bounds.Width - 4, 0.39f))
             {
-                sprite.DrawString(_font, line, new Vector2(bounds.X + 2, y), new Color(86, 95, 108), 0f, Vector2.Zero, 0.39f, SpriteEffects.None, 0f);
+                DrawWindowText(sprite, line, new Vector2(bounds.X + 2, y), new Color(86, 95, 108), 0.39f);
                 y += 12f;
             }
 
@@ -136,7 +135,7 @@ namespace HaCreator.MapSimulator.UI
             Color footerColor = snapshot.CanClaim
                 ? new Color(74, 134, 80)
                 : new Color(123, 129, 141);
-            sprite.DrawString(_font, footer, new Vector2(bounds.X, bounds.Bottom - 12), footerColor, 0f, Vector2.Zero, 0.38f, SpriteEffects.None, 0f);
+            DrawWindowText(sprite, footer, new Vector2(bounds.X, bounds.Bottom - 12), footerColor, 0.38f);
         }
 
         private void ConfigureButton(UIObject button, Action action)
@@ -195,7 +194,7 @@ namespace HaCreator.MapSimulator.UI
 
         private IEnumerable<string> WrapText(string text, float maxWidth, float scale)
         {
-            if (_font == null || string.IsNullOrWhiteSpace(text))
+            if (!CanDrawWindowText || string.IsNullOrWhiteSpace(text))
             {
                 yield return string.Empty;
                 yield break;
@@ -206,7 +205,7 @@ namespace HaCreator.MapSimulator.UI
             foreach (string word in words)
             {
                 string candidate = string.IsNullOrEmpty(currentLine) ? word : $"{currentLine} {word}";
-                if (!string.IsNullOrEmpty(currentLine) && (_font.MeasureString(candidate).X * scale) > maxWidth)
+                if (!string.IsNullOrEmpty(currentLine) && MeasureWindowText(null, candidate, scale).X > maxWidth)
                 {
                     yield return currentLine;
                     currentLine = word;

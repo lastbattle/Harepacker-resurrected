@@ -120,6 +120,7 @@ namespace HaCreator.MapSimulator.UI
         public override void SetFont(SpriteFont font)
         {
             _font = font;
+            base.SetFont(font);
         }
 
         public override void Update(GameTime gameTime)
@@ -298,9 +299,9 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            Vector2 size = _font.MeasureString(text) * scale;
+            Vector2 size = ClientTextDrawing.Measure((GraphicsDevice)null, text, scale, _font);
             float drawX = Position.X + x + Math.Max(0f, (width - size.X) * 0.5f);
-            sprite.DrawString(_font, text, new Vector2(drawX, Position.Y + y), color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            ClientTextDrawing.Draw(sprite, text, new Vector2(drawX, Position.Y + y), color, scale, _font);
         }
 
         private void DrawRightAlignedText(SpriteBatch sprite, string text, int x, int y, int width, Color color, float scale)
@@ -310,9 +311,9 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            Vector2 size = _font.MeasureString(text) * scale;
+            Vector2 size = ClientTextDrawing.Measure((GraphicsDevice)null, text, scale, _font);
             float drawX = Position.X + x + Math.Max(0f, width - size.X);
-            sprite.DrawString(_font, text, new Vector2(drawX, Position.Y + y), color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            ClientTextDrawing.Draw(sprite, text, new Vector2(drawX, Position.Y + y), color, scale, _font);
         }
 
         private void DrawText(SpriteBatch sprite, string text, int x, int y, Color color, float scale)
@@ -322,7 +323,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            sprite.DrawString(_font, text, new Vector2(Position.X + x, Position.Y + y), color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            ClientTextDrawing.Draw(sprite, text, new Vector2(Position.X + x, Position.Y + y), color, scale, _font);
         }
 
         private void DrawWrappedText(SpriteBatch sprite, string text, int x, int y, int maxWidth, Color color, float scale, int lineHeight)
@@ -337,7 +338,7 @@ namespace HaCreator.MapSimulator.UI
             while (!string.IsNullOrEmpty(remaining))
             {
                 int bestLength = remaining.Length;
-                while (bestLength > 0 && (_font.MeasureString(remaining[..bestLength]).X * scale) > maxWidth)
+                while (bestLength > 0 && ClientTextDrawing.Measure((GraphicsDevice)null, remaining[..bestLength], scale, _font).X > maxWidth)
                 {
                     bestLength = remaining.LastIndexOf(' ', Math.Max(0, bestLength - 1));
                     if (bestLength <= 0)

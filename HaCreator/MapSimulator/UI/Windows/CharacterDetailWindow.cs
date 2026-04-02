@@ -367,7 +367,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            sprite.DrawString(_font, text, new Vector2(Position.X + x, Position.Y + y), color, 0f, Vector2.Zero, 0.5f, SpriteEffects.None, 0f);
+            ClientTextDrawing.Draw(sprite, text, new Vector2(Position.X + x, Position.Y + y), color, 0.5f, _font);
         }
 
         private Vector2 MeasureText(string text)
@@ -384,7 +384,7 @@ namespace HaCreator.MapSimulator.UI
                 return rasterSize;
             }
 
-            return _font == null ? Vector2.Zero : _font.MeasureString(text) * 0.5f;
+            return _font == null ? Vector2.Zero : ClientTextDrawing.Measure((GraphicsDevice)null, text, 0.5f, _font);
         }
 
         private static bool IsJobName(string jobName, params string[] fragments)
@@ -989,6 +989,7 @@ namespace HaCreator.MapSimulator.UI
         public override void SetFont(SpriteFont font)
         {
             _font = font;
+            base.SetFont(font);
         }
 
         public void SetEntry(LoginCharacterRosterEntry entry, string statusMessage)

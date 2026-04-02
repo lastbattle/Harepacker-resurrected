@@ -104,6 +104,7 @@ namespace HaCreator.MapSimulator.UI
         public override void SetFont(SpriteFont font)
         {
             _font = font;
+            base.SetFont(font);
         }
 
         internal void SetSnapshotProvider(Func<GuildManageSnapshot> snapshotProvider)
@@ -389,7 +390,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (active && ((tickCount / 500) % 2 == 0))
             {
-                int cursorX = bounds.X + 8 + (int)Math.Round(_font.MeasureString(drawText).X * 0.38f);
+                int cursorX = bounds.X + 8 + (int)Math.Round(ClientTextDrawing.Measure((GraphicsDevice)null, drawText, 0.38f, _font).X);
                 sprite.Draw(_pixel, new Rectangle(Math.Min(bounds.Right - 3, cursorX), bounds.Bottom - 16, 1, 12), new Color(238, 242, 248));
             }
         }
@@ -524,7 +525,7 @@ namespace HaCreator.MapSimulator.UI
         {
             if (!string.IsNullOrWhiteSpace(text))
             {
-                sprite.DrawString(_font, text, new Vector2(x, y), color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+                ClientTextDrawing.Draw(sprite, text, new Vector2(x, y), color, scale, _font);
             }
         }
 
@@ -541,7 +542,7 @@ namespace HaCreator.MapSimulator.UI
             foreach (string word in words)
             {
                 string candidate = string.IsNullOrEmpty(currentLine) ? word : $"{currentLine} {word}";
-                if (_font.MeasureString(candidate).X * scale <= bounds.Width - 12)
+                if (ClientTextDrawing.Measure((GraphicsDevice)null, candidate, scale, _font).X <= bounds.Width - 12)
                 {
                     currentLine = candidate;
                     continue;
