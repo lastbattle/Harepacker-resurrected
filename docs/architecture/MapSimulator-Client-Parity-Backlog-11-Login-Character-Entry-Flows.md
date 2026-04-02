@@ -128,7 +128,20 @@ Targeted IDA lookup shows the client does not treat new-character creation as a 
 Notes:
 The current login doc names the pre-field selector windows, but this targeted IDA pass shows the packet-fed selector ownership is also a first-class login seam rather than only window-local state. `CLogin::OnWorldInformation` populates the world/channel list payloads that `CUIWorldSelect` and `CUIChannelSelect` render, `CLogin::OnRecommendWorldMessage` feeds the helper/recommendation surface, `CLogin::OnLatestConnectedWorld` restores the client-owned recent-world focus, and `CLogin::OnCheckUserLimitResult` gates the handoff from world selection into channel selection instead of acting like a generic error popup. Those handlers are already important enough in the simulator codebase to have their own `LoginRuntimeManager`, `LoginWorldInfoPacketCodec`, and `LoginSelectorPacketPayloadCodec` seams, so they should be tracked explicitly in the login backlog rather than being left implicit or only mentioned in the broader progression/utility doc.
 
-### 4. Additional roster-result handlers discovered by targeted `CLogin::OnPacket` scan
+### 4. Additional account-dialog and security-result handlers confirmed by targeted IDA lookup
+
+- `CLogin::OnSetAccountResult` at `0x5d5e80`
+- `CLogin::OnConfirmEULAResult` at `0x5d4d00`
+- `CLogin::OnCheckPinCodeResult` at `0x5db000`
+- `CLogin::OnSelectWorldResult` at `0x5dda00`
+- `CLogin::OnUpdatePinCodeResult` at `0x5d2420`
+- `CLogin::OnEnableSPWResult` at `0x5d2290`
+- `CLogin::OnCheckSPWResult` at `0x5d23f0`
+
+Notes:
+The earlier login rows already described this modal/account surface in prose, but the latest IDA lookup pins the concrete handlers and keeps them out of the generic utility bucket. `CLogin::OnSetAccountResult`, `CLogin::OnConfirmEULAResult`, and `CLogin::OnCheckPinCodeResult` sit on the bootstrap chain that decides whether account setup can advance without reopening the wrong prompt; `CLogin::OnSelectWorldResult` owns the broader world-entry error and website-handoff family after selector choice; and `CLogin::OnUpdatePinCodeResult`, `CLogin::OnEnableSPWResult`, and `CLogin::OnCheckSPWResult` prove that PIC/SPW completion notices are first-class login-owned result handlers rather than anonymous canned dialogs. These handlers already map onto the simulator's `LoginRuntimeManager`, account-dialog codec path, and login utility windows, so keeping them indexed here makes future parity work start from the actual client owners instead of scattered row prose.
+
+### 5. Additional roster-result handlers discovered by targeted `CLogin::OnPacket` scan
 
 - `CLogin::OnViewAllCharResult` at `0x5de120`
 - `CLogin::OnSelectCharacterResult` at `0x5dea80`
@@ -137,14 +150,14 @@ The current login doc names the pre-field selector windows, but this targeted ID
 Notes:
 The targeted `CLogin::OnPacket` pass exposed another login-owned result family that was still only implied by the roster UI row. `OnViewAllCharResult` is not just more selector data; the decompile shows it owning the multi-server `ViewAllChar` aggregation path, the success-vs-failure notice branches, the `GotoWorldSelect` fallback when no characters arrive, and the separate VAC dialog handoff once the related-server count drains. `OnSelectCharacterResult` is likewise broader than a generic roster click result because it owns its own error table, title-return cases, website-handoff prompts, and the direct `CWvsContext::IssueConnect` success path for both normal and alternate result families. `OnDeleteCharacterResult` is another distinct owner rather than only a button callback, because it owns the roster mutation itself, the direct-notice StringPool text path (`0xFD4`), the mapped `CLoginUtilDlg::Error` table, and the follow-up avatar/detail refresh after a successful deletion. Those result handlers are now concrete enough to track as their own packet-owned seam inside the login backlog instead of leaving them spread across avatar or utility-window documents.
 
-### 5. Additional extra-character entitlement handler discovered by targeted `CLogin::OnPacket` scan
+### 6. Additional extra-character entitlement handler discovered by targeted `CLogin::OnPacket` scan
 
 - `CLogin::OnExtraCharInfoResult` at `0x5d25a0`
 
 Notes:
 This handler is still absent from the login backlog even though it owns a distinct roster-side entitlement seam. The decompile shows `CLogin::OnExtraCharInfoResult` clearing `m_bCanHaveExtraChar`, decoding an account id plus a one-byte result flag, and only re-enabling the extra-character entitlement when the packet account matches the active `CWvsContext` account and the result flag is `0`. That is not just another selector refresh; it is the client-owned gate for whether the roster should expose a `buyCharacter` slot at all, and the simulator already has matching seams in `LoginExtraCharInfoResultCodec`, `LoginRuntimeManager`, `_loginCanHaveExtraCharacter`, and the roster `BuyCharacterCount` path.
 
-### 6. Additional alternate-entry packet handler discovered by targeted `CLogin::OnPacket` scan
+### 7. Additional alternate-entry packet handler discovered by targeted `CLogin::OnPacket` scan
 
 - `CLogin::OnSelectCharacterByVACResult` at `0x5de670`
 
