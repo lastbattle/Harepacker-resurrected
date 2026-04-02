@@ -21,6 +21,13 @@ namespace HaCreator.MapSimulator.Fields
 
     public sealed class PartyRaidField
     {
+        private readonly record struct ClientStringPoolEvidence(
+            int Id,
+            byte Seed,
+            string RawHex,
+            string DecodedValue,
+            string ClientSource);
+
         private readonly struct CanvasSprite
         {
             public CanvasSprite(Texture2D texture, Point origin) { Texture = texture; Origin = origin; }
@@ -108,6 +115,55 @@ namespace HaCreator.MapSimulator.Fields
         private const int BossChargeSegmentSpacing = 2;
         private const int PartyRaidBossMobId = 9700037;
         private const int PartyRaidBossGaugeIconMobId = 9700036;
+        private const string PartyRaidPointClientStringPoolSource = "StringPool::ms_aString[0x1A58]";
+        private const string PartyRaidBonusClientStringPoolSource = "StringPool::ms_aString[0x156D]";
+        private const string PartyRaidTotalClientStringPoolSource = "StringPool::ms_aString[0x156E]";
+        private const string PartyRaidBossRedDamageClientStringPoolSource = "StringPool::ms_aString[0x1ACE]";
+        private const string PartyRaidBossBlueDamageClientStringPoolSource = "StringPool::ms_aString[0x1AA3]";
+        private const string PartyRaidBossRedChargeClientStringPoolSource = "StringPool::ms_aString[0x174D]";
+        private const string PartyRaidBossBlueChargeClientStringPoolSource = "StringPool::ms_aString[0x174E]";
+        private static readonly ClientStringPoolEvidence PartyRaidPointStringPoolEvidence = new(
+            PartyRaidPointStringId,
+            0x8E,
+            "8E CD 33 F0 F0 4C 83 2A 56 F7 9A B8",
+            "PRaid_Point",
+            "CField_PartyRaidBoss::OnPartyValue / CField_PartyRaidResult::OnSessionValue");
+        private static readonly ClientStringPoolEvidence PartyRaidBonusStringPoolEvidence = new(
+            PartyRaidBonusStringId,
+            0xA4,
+            "A4 36 18 56 77 EA 38 FF 5C 5D 7B 01",
+            "PRaid_Bonus",
+            "CField_PartyRaidResult::OnSessionValue");
+        private static readonly ClientStringPoolEvidence PartyRaidTotalStringPoolEvidence = new(
+            PartyRaidTotalStringId,
+            0xA5,
+            "A5 9C C6 0F 54 78 90 2E 09 12 7D 89",
+            "PRaid_Total",
+            "CField_PartyRaidResult::OnSessionValue");
+        private static readonly ClientStringPoolEvidence PartyRaidBossRedDamageStringPoolEvidence = new(
+            PartyRaidBossRedDamageStringId,
+            0x04,
+            "04 1F 82 3C 30 03 2B 5A 5A EF 0A DC 54 56",
+            "redTeamDamage",
+            "CField_PartyRaidBoss::OnFieldSetVariable");
+        private static readonly ClientStringPoolEvidence PartyRaidBossBlueDamageStringPoolEvidence = new(
+            PartyRaidBossBlueDamageStringId,
+            0xD9,
+            "D9 C4 0A 14 AB 09 C8 DD 86 48 ED A4 27 84 B4",
+            "blueTeamDamage",
+            "CField_PartyRaidBoss::OnFieldSetVariable");
+        private static readonly ClientStringPoolEvidence PartyRaidBossRedChargeStringPoolEvidence = new(
+            HuntingAdballoonRedChargeStringId,
+            0x84,
+            "84 1F 82 3C 3B 25 22 56 6C E9 02",
+            "red_Charge",
+            "CField_PartyRaidBoss::OnFieldSetVariable");
+        private static readonly ClientStringPoolEvidence PartyRaidBossBlueChargeStringPoolEvidence = new(
+            HuntingAdballoonBlueChargeStringId,
+            0x85,
+            "85 B9 A2 C5 AD 93 D7 06 5C 6E A8 1F",
+            "blue_Charge",
+            "CField_PartyRaidBoss::OnFieldSetVariable");
 
         private bool _isActive;
         private bool _assetsLoaded;
@@ -442,6 +498,7 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             if (MatchesAlias(key, "redDamage", "red", "damage_r", "partyraid_red")
+                || MatchesClientLiteral(key, PartyRaidBossRedDamageStringPoolEvidence)
                 || MatchesStringPoolKey(key, PartyRaidBossRedDamageStringId))
             {
                 _redDamage = parsedValue;
@@ -449,6 +506,7 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             if (MatchesAlias(key, "blueDamage", "blue", "damage_b", "partyraid_blue")
+                || MatchesClientLiteral(key, PartyRaidBossBlueDamageStringPoolEvidence)
                 || MatchesStringPoolKey(key, PartyRaidBossBlueDamageStringId))
             {
                 _blueDamage = parsedValue;
@@ -456,6 +514,7 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             if (MatchesAlias(key, "redCharge", "chargeRed", "charge0", "adballoonChargeRed")
+                || MatchesClientLiteral(key, PartyRaidBossRedChargeStringPoolEvidence)
                 || MatchesStringPoolKey(key, HuntingAdballoonRedChargeStringId))
             {
                 _redCharge = ClampBossCharge(parsedValue);
@@ -463,6 +522,7 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             if (MatchesAlias(key, "blueCharge", "chargeBlue", "charge1", "adballoonChargeBlue")
+                || MatchesClientLiteral(key, PartyRaidBossBlueChargeStringPoolEvidence)
                 || MatchesStringPoolKey(key, HuntingAdballoonBlueChargeStringId))
             {
                 _blueCharge = ClampBossCharge(parsedValue);
@@ -517,6 +577,7 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             if (MatchesAlias(key, "point", "partyPoint", "pt")
+                || MatchesClientLiteral(key, PartyRaidPointStringPoolEvidence)
                 || MatchesStringPoolKey(key, PartyRaidPointStringId))
             {
                 _point = parsedValue;
@@ -551,16 +612,19 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             if (MatchesAlias(key, "point", "partyPoint", "pt")
+                || MatchesClientLiteral(key, PartyRaidPointStringPoolEvidence)
                 || MatchesStringPoolKey(key, PartyRaidPointStringId))
             {
                 _resultPoint = parsedValue;
             }
             else if (MatchesAlias(key, "bonus", "rewardBonus")
+                || MatchesClientLiteral(key, PartyRaidBonusStringPoolEvidence)
                 || MatchesStringPoolKey(key, PartyRaidBonusStringId))
             {
                 _resultBonus = parsedValue;
             }
             else if (MatchesAlias(key, "total", "sum")
+                || MatchesClientLiteral(key, PartyRaidTotalStringPoolEvidence)
                 || MatchesStringPoolKey(key, PartyRaidTotalStringId))
             {
                 _resultTotal = parsedValue;
@@ -588,9 +652,9 @@ namespace HaCreator.MapSimulator.Fields
             string timerText = HasRunningClock ? $", timer={FormatTimer(RemainingSeconds)}" : string.Empty;
             return _mode switch
             {
-                PartyRaidFieldMode.Field => $"Party Raid field map {_mapId}: team {GetTeamLabel(_teamColor)}, stage {_mineStage}{DescribeOtherStageStatus()}, point {_point}{DescribeBatteryStatus()}{timerText}.",
-                PartyRaidFieldMode.Boss => $"{_clientOwnedBossOverlayLabel ?? "Party Raid boss"} map {_mapId}: point {_point}, red damage {_redDamage}, blue damage {_blueDamage}, charge {_redCharge}/{_blueCharge}, gauge cap {_gaugeCapacity}, ids=0x{PartyRaidBossRedDamageStringId:X}/0x{PartyRaidBossBlueDamageStringId:X}/0x{HuntingAdballoonRedChargeStringId:X}/0x{HuntingAdballoonBlueChargeStringId:X}{timerText}.",
-                PartyRaidFieldMode.Result => $"Party Raid result map {_mapId}: point {_resultPoint}, bonus {_resultBonus}, total {_resultTotal}, outcome {GetOutcomeLabel(_resultOutcome)}{timerText}.",
+                PartyRaidFieldMode.Field => $"Party Raid field map {_mapId}: team {GetTeamLabel(_teamColor)}, stage {_mineStage}{DescribeOtherStageStatus()}, point {_point}{DescribeBatteryStatus()}{timerText}, client point key {FormatClientStringPoolLiteral(PartyRaidPointStringPoolEvidence, PartyRaidPointClientStringPoolSource)}.",
+                PartyRaidFieldMode.Boss => $"{_clientOwnedBossOverlayLabel ?? "Party Raid boss"} map {_mapId}: point {_point}, red damage {_redDamage}, blue damage {_blueDamage}, charge {_redCharge}/{_blueCharge}, gauge cap {_gaugeCapacity}, keys=[{FormatClientStringPoolLiteral(PartyRaidBossRedDamageStringPoolEvidence, PartyRaidBossRedDamageClientStringPoolSource)}, {FormatClientStringPoolLiteral(PartyRaidBossBlueDamageStringPoolEvidence, PartyRaidBossBlueDamageClientStringPoolSource)}, {FormatClientStringPoolLiteral(PartyRaidBossRedChargeStringPoolEvidence, PartyRaidBossRedChargeClientStringPoolSource)}, {FormatClientStringPoolLiteral(PartyRaidBossBlueChargeStringPoolEvidence, PartyRaidBossBlueChargeClientStringPoolSource)}]{timerText}.",
+                PartyRaidFieldMode.Result => $"Party Raid result map {_mapId}: point {_resultPoint}, bonus {_resultBonus}, total {_resultTotal}, outcome {GetOutcomeLabel(_resultOutcome)}, keys=[{FormatClientStringPoolLiteral(PartyRaidPointStringPoolEvidence, PartyRaidPointClientStringPoolSource)}, {FormatClientStringPoolLiteral(PartyRaidBonusStringPoolEvidence, PartyRaidBonusClientStringPoolSource)}, {FormatClientStringPoolLiteral(PartyRaidTotalStringPoolEvidence, PartyRaidTotalClientStringPoolSource)}]{timerText}.",
                 _ => "Party Raid runtime inactive."
             };
         }
@@ -1608,6 +1672,17 @@ namespace HaCreator.MapSimulator.Fields
 
             return int.TryParse(trimmed, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedValue)
                 && parsedValue == stringId;
+        }
+
+        private static bool MatchesClientLiteral(string key, ClientStringPoolEvidence evidence)
+        {
+            return !string.IsNullOrWhiteSpace(evidence.DecodedValue)
+                && string.Equals(key?.Trim(), evidence.DecodedValue, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string FormatClientStringPoolLiteral(ClientStringPoolEvidence evidence, string clientStringPoolSource)
+        {
+            return $"0x{evidence.Id:X}={evidence.DecodedValue} (seed=0x{evidence.Seed:X2}, via {clientStringPoolSource})";
         }
 
         private static string NormalizeKey(string key) => key.Replace("_", string.Empty).Replace("-", string.Empty).Trim().ToLowerInvariant();

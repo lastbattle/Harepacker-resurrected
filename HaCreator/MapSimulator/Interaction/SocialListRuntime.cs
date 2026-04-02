@@ -110,8 +110,8 @@ namespace HaCreator.MapSimulator.Interaction
         {
             _playerName = string.IsNullOrWhiteSpace(build?.Name) ? "Player" : build.Name.Trim();
             _locationSummary = string.IsNullOrWhiteSpace(locationSummary) ? "Field" : locationSummary.Trim();
-            _hasGuildMembership = GuildSkillRuntime.HasGuildMembership(build);
-            _guildName = _hasGuildMembership ? build.GuildName.Trim() : "No Guild";
+            _hasGuildMembership = ResolveEffectiveGuildMembership(build);
+            _guildName = ResolveEffectiveGuildName(build, _hasGuildMembership);
             _allianceName = string.IsNullOrWhiteSpace(build?.AllianceDisplayText) ? "Maple Union" : build.AllianceDisplayText.Trim();
             _channel = Math.Max(1, channel);
             string localGuildRoleLabel = ResolveUpdatedLocalGuildRoleLabel();
@@ -140,6 +140,17 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     IsLocalPlayer = true
                 });
+        }
+
+        internal GuildSkillUiContext BuildGuildSkillUiContext(CharacterBuild build)
+        {
+            bool hasGuildMembership = ResolveEffectiveGuildMembership(build);
+            return new GuildSkillUiContext(
+                hasGuildMembership,
+                ResolveEffectiveGuildName(build, hasGuildMembership),
+                ResolveEffectiveGuildLevel(),
+                GetEffectiveGuildRoleLabelForUi(),
+                CanManageGuildSkills());
         }
 
         internal SocialListSnapshot BuildSnapshot()
@@ -447,7 +458,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string GetLocalGuildRoleLabel()
         {
-            if (!_hasGuildMembership)
+            if (!ResolveEffectiveGuildMembership(null))
             {
                 return "Member";
             }
@@ -462,7 +473,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string ResolveUpdatedLocalGuildRoleLabel()
         {
-            if (!_hasGuildMembership)
+            if (!ResolveEffectiveGuildMembership(null))
             {
                 return "Member";
             }
@@ -578,6 +589,12 @@ namespace HaCreator.MapSimulator.Interaction
 
         private void UpdateOrInsertLocalEntry(SocialListTab tab, SocialEntryState localEntry)
         {
+            if (ShouldSuppressPacketOwnedLocalGuildEntry(tab))
+            {
+                RemoveLocalEntry(tab);
+                return;
+            }
+
             List<SocialEntryState> entries = _entriesByTab[tab];
             int existingIndex = entries.FindIndex(entry => entry.IsLocalPlayer);
             if (existingIndex >= 0)
@@ -591,6 +608,57 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 entries.Insert(0, localEntry);
             }
+        }
+
+        private bool ShouldSuppressPacketOwnedLocalGuildEntry(SocialListTab tab)
+        {
+            return tab == SocialListTab.Guild &&
+                   IsPacketOwned(tab) &&
+                   _packetGuildUiState.HasValue &&
+                   !_packetGuildUiState.Value.HasGuildMembership;
+        }
+
+        private void RemoveLocalEntry(SocialListTab tab)
+        {
+            if (!_entriesByTab.TryGetValue(tab, out List<SocialEntryState> entries))
+            {
+                return;
+            }
+
+            int existingIndex = entries.FindIndex(entry => entry.IsLocalPlayer);
+            if (existingIndex >= 0)
+            {
+                entries.RemoveAt(existingIndex);
+            }
+        }
+
+        private bool ResolveEffectiveGuildMembership(CharacterBuild build)
+        {
+            return _packetGuildUiState?.HasGuildMembership ?? GuildSkillRuntime.HasGuildMembership(build);
+        }
+
+        private string ResolveEffectiveGuildName(CharacterBuild build, bool hasGuildMembership)
+        {
+            if (!hasGuildMembership)
+            {
+                return "No Guild";
+            }
+
+            if (_packetGuildUiState.HasValue)
+            {
+                string packetGuildName = _packetGuildUiState.Value.GuildName?.Trim();
+                if (GuildSkillRuntime.HasGuildMembership(packetGuildName))
+                {
+                    return packetGuildName;
+                }
+            }
+
+            return string.IsNullOrWhiteSpace(build?.GuildName) ? "No Guild" : build.GuildName.Trim();
+        }
+
+        private int ResolveEffectiveGuildLevel()
+        {
+            return _packetGuildUiState?.GuildLevel ?? 0;
         }
 
         private IReadOnlyList<SocialEntryState> GetFilteredEntries(SocialListTab tab)
@@ -776,7 +844,7 @@ namespace HaCreator.MapSimulator.Interaction
                     break;
                 case SocialListTab.Guild:
                     destination.Add("Guild.Search");
-                    if (!_hasGuildMembership)
+                    if (!ResolveEffectiveGuildMembership(null))
                     {
                         break;
                     }

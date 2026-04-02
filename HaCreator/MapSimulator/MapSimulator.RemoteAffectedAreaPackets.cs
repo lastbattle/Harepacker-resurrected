@@ -158,14 +158,15 @@ namespace HaCreator.MapSimulator
             System.Collections.Generic.ISet<int> activeProjectedSupportAreaIds)
         {
             SkillData skill = _playerManager?.SkillLoader?.LoadSkill(area.SkillId);
+            SkillData[] supportSkills = ResolveRemoteAffectedAreaSupportSkills(skill);
             SkillLevelData levelData = ResolveRemoteAffectedAreaSkillLevel(skill, area.SkillLevel);
-            SkillLevelData supportLevelData = ResolveRemoteAffectedAreaSupportLevelData(skill, levelData);
+            SkillLevelData supportLevelData = ResolveRemoteAffectedAreaSupportLevelData(levelData, supportSkills);
             if (skill == null || levelData == null)
             {
                 return;
             }
 
-            if (TryApplyRemotePlayerSupportAffectedAreaGameplay(area, skill, supportLevelData ?? levelData, currentTime, activeProjectedSupportAreaIds))
+            if (TryApplyRemotePlayerSupportAffectedAreaGameplay(area, skill, supportSkills, supportLevelData ?? levelData, currentTime, activeProjectedSupportAreaIds))
             {
                 return;
             }
@@ -206,6 +207,7 @@ namespace HaCreator.MapSimulator
         private bool TryApplyRemotePlayerSupportAffectedAreaGameplay(
             ActiveAffectedArea area,
             SkillData skill,
+            SkillData[] supportSkills,
             SkillLevelData levelData,
             int currentTime,
             System.Collections.Generic.ISet<int> activeProjectedSupportAreaIds)
@@ -224,6 +226,7 @@ namespace HaCreator.MapSimulator
             int localPlayerId = player.Build?.Id ?? 0;
             if (!RemoteAffectedAreaSupportResolver.CanAffectLocalPlayer(
                     skill,
+                    supportSkills,
                     localPlayerId,
                     area.OwnerId,
                     IsAffectedAreaOwnerPartyMember(area.OwnerId)))
@@ -275,15 +278,37 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
-        private SkillLevelData ResolveRemoteAffectedAreaSupportLevelData(SkillData skill, SkillLevelData primaryLevelData)
+        private SkillData[] ResolveRemoteAffectedAreaSupportSkills(SkillData skill)
         {
             if (skill == null)
             {
-                return primaryLevelData;
+                return Array.Empty<SkillData>();
             }
 
+            var supportSkills = new System.Collections.Generic.List<SkillData> { skill };
             int[] affectedSkillIds = skill.GetAffectedSkillIds();
             if (affectedSkillIds.Length == 0)
+            {
+                return supportSkills.ToArray();
+            }
+
+            for (int i = 0; i < affectedSkillIds.Length; i++)
+            {
+                SkillData affectedSkill = _playerManager?.SkillLoader?.LoadSkill(affectedSkillIds[i]);
+                if (affectedSkill != null)
+                {
+                    supportSkills.Add(affectedSkill);
+                }
+            }
+
+            return supportSkills.ToArray();
+        }
+
+        private static SkillLevelData ResolveRemoteAffectedAreaSupportLevelData(
+            SkillLevelData primaryLevelData,
+            params SkillData[] supportSkills)
+        {
+            if (supportSkills == null || supportSkills.Length == 0)
             {
                 return primaryLevelData;
             }
@@ -293,13 +318,18 @@ namespace HaCreator.MapSimulator
                 primaryLevelData
             };
 
-            for (int i = 0; i < affectedSkillIds.Length; i++)
+            for (int i = 0; i < supportSkills.Length; i++)
             {
-                SkillData affectedSkill = _playerManager?.SkillLoader?.LoadSkill(affectedSkillIds[i]);
-                SkillLevelData affectedLevelData = ResolveRemoteAffectedAreaSkillLevel(affectedSkill, primaryLevelData?.Level ?? 1);
-                if (affectedLevelData != null)
+                SkillData supportSkill = supportSkills[i];
+                if (supportSkill == null)
                 {
-                    levelDataEntries.Add(affectedLevelData);
+                    continue;
+                }
+
+                SkillLevelData supportLevelData = ResolveRemoteAffectedAreaSkillLevel(supportSkill, primaryLevelData?.Level ?? 1);
+                if (supportLevelData != null)
+                {
+                    levelDataEntries.Add(supportLevelData);
                 }
             }
 
@@ -368,6 +398,7 @@ namespace HaCreator.MapSimulator
                 if (!RemoteAffectedAreaSupportResolver.IsInvincibleZone(skill)
                     || !RemoteAffectedAreaSupportResolver.CanAffectLocalPlayer(
                         skill,
+                        ResolveRemoteAffectedAreaSupportSkills(skill),
                         localPlayerId,
                         area.OwnerId,
                         IsAffectedAreaOwnerPartyMember(area.OwnerId)))

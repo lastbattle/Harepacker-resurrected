@@ -39,6 +39,12 @@ namespace HaCreator.MapSimulator.UI
             ("curse", "Curse"),
             ("painmark", "Pain Mark")
         };
+        private static readonly (string Key, string Label)[] PositivePercentEffectKeys =
+        {
+            ("mhpR", "Max HP"),
+            ("mmpR", "Max MP"),
+            ("asrR", "Status Resistance")
+        };
 
         public static InventoryType ResolveInventoryType(int itemId)
         {
@@ -98,6 +104,26 @@ namespace HaCreator.MapSimulator.UI
                    && !string.IsNullOrWhiteSpace(itemInfo?.Item3)
                 ? (description = itemInfo.Item3) != null
                 : false;
+        }
+
+        public static bool TryResolveSpecScript(int itemId, out string script)
+        {
+            script = null;
+
+            WzSubProperty itemProperty = LoadItemProperty(itemId);
+            if (itemProperty?["spec"] is not WzSubProperty specProperty)
+            {
+                return false;
+            }
+
+            string resolvedScript = (specProperty["script"] as WzStringProperty)?.Value;
+            if (string.IsNullOrWhiteSpace(resolvedScript))
+            {
+                return false;
+            }
+
+            script = resolvedScript.Trim();
+            return true;
         }
 
         public static bool TryResolveItemInfoPath(int itemId, out string path)
@@ -334,9 +360,15 @@ namespace HaCreator.MapSimulator.UI
             AppendStatEffectLine(effectLines, "Avoidability", TryGetPositiveInt(specProperty["eva"]), false);
             AppendStatEffectLine(effectLines, "Speed", TryGetPositiveInt(specProperty["speed"]), false);
             AppendStatEffectLine(effectLines, "Jump", TryGetPositiveInt(specProperty["jump"]), false);
+            AppendPercentEffectLines(effectLines, specProperty);
             AppendCureEffectLine(effectLines, specProperty);
             AppendMoveToEffectLine(effectLines, TryGetPositiveInt(specProperty["moveTo"]));
             AppendMorphEffectLine(effectLines, specProperty);
+            AppendBoosterEffectLine(effectLines, specProperty["booster"]);
+            AppendBerserkEffectLine(effectLines, specProperty["berserk"]);
+            AppendThawEffectLine(effectLines, specProperty["thaw"]);
+            AppendCrossContinentEffectLine(effectLines, specProperty["ignoreContinent"]);
+            AppendReturnMapRecordEffectLine(effectLines, specProperty["returnMapQR"]);
 
             int? durationMs = TryGetPositiveInt(specProperty["time"]);
             if (durationMs.HasValue)
@@ -436,6 +468,15 @@ namespace HaCreator.MapSimulator.UI
             effectLines.Add($"{label} +{value.Value.ToString(CultureInfo.InvariantCulture)}{suffix}");
         }
 
+        private static void AppendPercentEffectLines(List<string> effectLines, WzSubProperty specProperty)
+        {
+            for (int i = 0; i < PositivePercentEffectKeys.Length; i++)
+            {
+                (string key, string label) = PositivePercentEffectKeys[i];
+                AppendStatEffectLine(effectLines, label, TryGetPositiveInt(specProperty[key]), isPercent: true);
+            }
+        }
+
         private static void AppendCureEffectLine(List<string> effectLines, WzSubProperty specProperty)
         {
             List<string> curedStatuses = new();
@@ -481,6 +522,56 @@ namespace HaCreator.MapSimulator.UI
                 && morphRandom.WzProperties.Count > 0)
             {
                 effectLines.Add("Transforms into a random morph");
+            }
+        }
+
+        private static void AppendBoosterEffectLine(List<string> effectLines, WzImageProperty property)
+        {
+            int booster = GetIntValue(property);
+            if (booster == 0)
+            {
+                return;
+            }
+
+            effectLines.Add($"Attack Speed {FormatSignedValue(booster)}");
+        }
+
+        private static void AppendBerserkEffectLine(List<string> effectLines, WzImageProperty property)
+        {
+            int berserk = GetIntValue(property);
+            if (berserk == 0)
+            {
+                return;
+            }
+
+            effectLines.Add($"Berserk {FormatSignedValue(berserk)}");
+        }
+
+        private static void AppendThawEffectLine(List<string> effectLines, WzImageProperty property)
+        {
+            int thaw = GetIntValue(property);
+            if (thaw == 0)
+            {
+                return;
+            }
+
+            effectLines.Add($"Thaw {FormatSignedValue(thaw)}");
+        }
+
+        private static void AppendCrossContinentEffectLine(List<string> effectLines, WzImageProperty property)
+        {
+            if (GetIntValue(property) == 1)
+            {
+                effectLines.Add("Can be used across continents");
+            }
+        }
+
+        private static void AppendReturnMapRecordEffectLine(List<string> effectLines, WzImageProperty property)
+        {
+            int returnMapRecordId = GetIntValue(property);
+            if (returnMapRecordId > 0)
+            {
+                effectLines.Add($"Uses return-map record #{returnMapRecordId.ToString(CultureInfo.InvariantCulture)}");
             }
         }
 
@@ -540,6 +631,13 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return $"{Math.Max(1, (int)Math.Round(duration.TotalSeconds)).ToString(CultureInfo.InvariantCulture)} sec";
+        }
+
+        private static string FormatSignedValue(int value)
+        {
+            return value >= 0
+                ? $"+{value.ToString(CultureInfo.InvariantCulture)}"
+                : value.ToString(CultureInfo.InvariantCulture);
         }
 
         private static int? TryGetPositiveInt(WzImageProperty property)

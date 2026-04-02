@@ -1396,6 +1396,7 @@ namespace HaCreator.MapSimulator.Pools
                 state.OneTimeAction = 0;
                 state.OneTimeActionEndTime = int.MinValue;
                 state.Summon.OneTimeActionFallbackAnimation = null;
+                state.Summon.OneTimeActionFallbackStartTime = int.MinValue;
                 state.Summon.OneTimeActionFallbackAnimationTime = int.MinValue;
                 state.Summon.OneTimeActionFallbackEndTime = int.MinValue;
             }
@@ -1560,6 +1561,7 @@ namespace HaCreator.MapSimulator.Pools
             if (hasHitAnimation)
             {
                 state.Summon.OneTimeActionFallbackAnimation = null;
+                state.Summon.OneTimeActionFallbackStartTime = int.MinValue;
                 state.Summon.OneTimeActionFallbackAnimationTime = int.MinValue;
                 state.Summon.OneTimeActionFallbackEndTime = int.MinValue;
             }
@@ -1569,6 +1571,7 @@ namespace HaCreator.MapSimulator.Pools
                 SkillAnimation fallbackAnimation = ResolvePreHitSummonAnimation(state.Summon, currentTime, elapsed, out int fallbackAnimationTime);
                 int fallbackDuration = ResolveOneTimeActionFallbackDurationMs(fallbackAnimation, fallbackAnimationTime);
                 state.Summon.OneTimeActionFallbackAnimation = fallbackAnimation;
+                state.Summon.OneTimeActionFallbackStartTime = currentTime;
                 state.Summon.OneTimeActionFallbackAnimationTime = fallbackAnimation?.Frames.Count > 0
                     ? Math.Max(0, fallbackAnimationTime)
                     : int.MinValue;
@@ -3101,10 +3104,9 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             if (summon?.OneTimeActionFallbackAnimation?.Frames.Count > 0
-                && summon.OneTimeActionFallbackEndTime > currentTime
-                && summon.OneTimeActionFallbackAnimationTime != int.MinValue)
+                && TryResolveOneTimeActionFallbackPlayback(summon, currentTime, out int fallbackAnimationTime))
             {
-                animationTime = summon.OneTimeActionFallbackAnimationTime;
+                animationTime = fallbackAnimationTime;
                 return summon.OneTimeActionFallbackAnimation;
             }
 
@@ -3128,6 +3130,42 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return skill.SummonAnimation?.Frames.Count > 0 ? skill.SummonAnimation : skill.Effect;
+        }
+
+        internal static bool TryResolveOneTimeActionFallbackPlayback(ActiveSummon summon, int currentTime, out int animationTime)
+        {
+            animationTime = 0;
+            if (summon?.OneTimeActionFallbackAnimation?.Frames.Count <= 0
+                || summon.OneTimeActionFallbackAnimationTime == int.MinValue)
+            {
+                return false;
+            }
+
+            int baseAnimationTime = Math.Max(0, summon.OneTimeActionFallbackAnimationTime);
+            int totalDuration = GetSkillAnimationDuration(summon.OneTimeActionFallbackAnimation) ?? 0;
+            if (totalDuration <= 0)
+            {
+                animationTime = baseAnimationTime;
+                return summon.OneTimeActionFallbackEndTime > currentTime;
+            }
+
+            int remainingDuration = Math.Max(0, totalDuration - Math.Min(baseAnimationTime, totalDuration));
+            if (remainingDuration <= 0)
+            {
+                return false;
+            }
+
+            int fallbackStartTime = summon.OneTimeActionFallbackStartTime == int.MinValue
+                ? currentTime
+                : summon.OneTimeActionFallbackStartTime;
+            int elapsed = Math.Max(0, currentTime - fallbackStartTime);
+            if (elapsed >= remainingDuration)
+            {
+                return false;
+            }
+
+            animationTime = Math.Min(totalDuration - 1, baseAnimationTime + elapsed);
+            return true;
         }
 
         private static bool ShouldUseSummonPrepareAnimation(ActiveSummon summon, SkillData skill)

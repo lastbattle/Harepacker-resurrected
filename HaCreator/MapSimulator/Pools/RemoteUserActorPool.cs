@@ -1450,6 +1450,14 @@ namespace HaCreator.MapSimulator.Pools
                     tickCount,
                     drawFrontLayers: false);
                 DrawMeleeAfterImage(spriteBatch, skeletonMeshRenderer, actor, screenX, screenY, tickCount);
+                DrawCompletedSetItemEffect(
+                    spriteBatch,
+                    skeletonMeshRenderer,
+                    actor,
+                    screenX,
+                    screenY,
+                    tickCount,
+                    drawFrontLayers: false);
                 if (statusBarUi != null
                     && actor.PreparedSkill != null
                     && PreparedSkillHudRules.IsDragonOverlaySkill(actor.PreparedSkill.SkillId))
@@ -1504,6 +1512,14 @@ namespace HaCreator.MapSimulator.Pools
                     tickCount,
                     drawFrontLayers: true,
                     _renderedCouplePairsBuffer);
+                DrawCompletedSetItemEffect(
+                    spriteBatch,
+                    skeletonMeshRenderer,
+                    actor,
+                    screenX,
+                    screenY,
+                    tickCount,
+                    drawFrontLayers: true);
 
                 if (font == null)
                 {
@@ -1716,6 +1732,45 @@ namespace HaCreator.MapSimulator.Pools
                     screenY,
                     currentTime,
                     renderedPairs);
+            }
+        }
+
+        private void DrawCompletedSetItemEffect(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            RemoteUserActor actor,
+            int screenX,
+            int screenY,
+            int currentTime,
+            bool drawFrontLayers)
+        {
+            if (_loader == null
+                || actor?.CompletedSetItemId <= 0)
+            {
+                return;
+            }
+
+            ItemEffectAnimationSet effect = _loader.LoadCompletedSetItemEffectAnimationSet(actor.CompletedSetItemId);
+            if (effect?.OwnerLayers == null || effect.OwnerLayers.Count == 0)
+            {
+                return;
+            }
+
+            foreach (PortableChairLayer layer in effect.OwnerLayers)
+            {
+                if ((layer.RelativeZ > 0) != drawFrontLayers)
+                {
+                    continue;
+                }
+
+                CharacterFrame frame = PlayerCharacter.GetPortableChairLayerFrameAtTime(layer, currentTime);
+                PlayerCharacter.DrawPortableChairLayerFrame(
+                    spriteBatch,
+                    skeletonMeshRenderer,
+                    frame,
+                    screenX,
+                    screenY,
+                    actor.FacingRight);
             }
         }
 
@@ -2712,6 +2767,25 @@ namespace HaCreator.MapSimulator.Pools
                     out string uniqueAfterImageActionName))
             {
                 string preferredActionName = ResolvePreferredRemoteMeleeActionName(actor, actionName, uniqueAfterImageActionName);
+                if (!string.IsNullOrWhiteSpace(preferredActionName))
+                {
+                    return preferredActionName;
+                }
+            }
+
+            if (_skillLoader != null
+                && actor?.Build != null
+                && _skillLoader.TryResolveRenderableMeleeAfterImageActionName(
+                    skill,
+                    actor.Build.GetWeapon(),
+                    EnumerateRemoteActionResolutionCandidates(actor, skill, actionName, rawActionCode),
+                    actor.Build.Level,
+                    masteryPercent,
+                    chargeElement,
+                    candidate => actor.Assembler?.GetAnimation(candidate)?.Length > 0,
+                    out string renderableAfterImageActionName))
+            {
+                string preferredActionName = ResolvePreferredRemoteMeleeActionName(actor, actionName, renderableAfterImageActionName);
                 if (!string.IsNullOrWhiteSpace(preferredActionName))
                 {
                     return preferredActionName;

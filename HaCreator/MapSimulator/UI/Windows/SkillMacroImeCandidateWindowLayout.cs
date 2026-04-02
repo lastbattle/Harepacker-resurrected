@@ -1,4 +1,5 @@
 using System;
+using Microsoft.Xna.Framework;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -31,6 +32,47 @@ namespace HaCreator.MapSimulator.UI
             int width = (cellWidth * safePageSize) + 4;
             int height = safeFontHeight + 10;
             return new SkillMacroImeCandidateWindowMetrics(width, height, cellWidth, 0);
+        }
+
+        internal static int HitTestCandidate(
+            Rectangle bounds,
+            Point point,
+            bool vertical,
+            int visibleCount,
+            int rowHeight,
+            int cellWidth)
+        {
+            if (visibleCount <= 0 || !bounds.Contains(point))
+            {
+                return -1;
+            }
+
+            if (vertical)
+            {
+                int safeRowHeight = Math.Max(1, rowHeight);
+                int relativeY = point.Y - (bounds.Y + 2);
+                if (relativeY < 0)
+                {
+                    return -1;
+                }
+
+                int rowIndex = relativeY / safeRowHeight;
+                return rowIndex >= 0 && rowIndex < visibleCount
+                    ? rowIndex
+                    : -1;
+            }
+
+            int safeCellWidth = Math.Max(1, cellWidth);
+            int relativeX = point.X - (bounds.X + 3);
+            if (relativeX < 0)
+            {
+                return -1;
+            }
+
+            int columnIndex = relativeX / safeCellWidth;
+            return columnIndex >= 0 && columnIndex < visibleCount
+                ? columnIndex
+                : -1;
         }
     }
 }

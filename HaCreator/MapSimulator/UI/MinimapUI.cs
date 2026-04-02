@@ -95,8 +95,7 @@ namespace HaCreator.MapSimulator.UI
         private const int TOOLTIP_PADDING = 8;
         private const int TOOLTIP_MARGIN = 10;
         private const int TOOLTIP_LINE_GAP = 2;
-        private const int ClientButtonIdMin = 1000;
-        private const int ClientButtonIdMax = 1001;
+        private const int ClientButtonIdMinimapState = 1000;
         private const int ClientButtonIdMap = 1002;
         private const int ClientButtonIdOption = 1003;
         private const int ClientOptionCollapsed = 0;
@@ -533,7 +532,7 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         private void ObjUIBtMin_ButtonClickReleased(UIObject sender)
         {
-            HandleClientButtonClick(ClientButtonIdMin);
+            HandleClientButtonClick(ClientButtonIdMinimapState);
         }
 
         /// <summary>
@@ -542,7 +541,7 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         private void ObjUIBtMax_ButtonClickReleased(UIObject sender)
         {
-            HandleClientButtonClick(ClientButtonIdMax);
+            HandleClientButtonClick(ClientButtonIdMinimapState);
         }
 
         /// <summary>
@@ -586,11 +585,8 @@ namespace HaCreator.MapSimulator.UI
         {
             switch (buttonId)
             {
-                case ClientButtonIdMin:
-                    CollapseMinimapToRememberedOption();
-                    break;
-                case ClientButtonIdMax:
-                    RestoreRememberedExpandedOption();
+                case ClientButtonIdMinimapState:
+                    HandleMinimapStateButtonClick();
                     break;
                 case ClientButtonIdMap:
                     WorldMapRequested?.Invoke();
@@ -599,6 +595,17 @@ namespace HaCreator.MapSimulator.UI
                     ToggleExpandedOption();
                     break;
             }
+        }
+
+        private void HandleMinimapStateButtonClick()
+        {
+            if (_bIsCollapsedState || _currentOption <= ClientOptionCollapsed)
+            {
+                RestoreRememberedExpandedOption();
+                return;
+            }
+
+            CollapseMinimapToRememberedOption();
         }
 
         private void CollapseMinimapToRememberedOption()

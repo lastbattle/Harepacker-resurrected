@@ -1,5 +1,6 @@
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Effects;
+using HaCreator.MapSimulator.Pools;
 using Microsoft.Xna.Framework;
 using System.Collections.Generic;
 
@@ -45,6 +46,23 @@ namespace HaCreator.MapSimulator
                     snapshot.PortableChairItemId,
                     out _,
                     snapshot.PortableChairPairCharacterId);
+
+                if (snapshot.TemporaryStats.HasPayload)
+                {
+                    _remoteUserPool.TryApplyTemporaryStatSnapshot(
+                        characterId,
+                        snapshot.TemporaryStats,
+                        delay: 0,
+                        out _);
+                }
+
+                if (snapshot.AvatarModifiedState is RemoteUserAvatarModifiedPacket avatarModifiedState)
+                {
+                    _remoteUserPool.TryApplyAvatarModified(
+                        avatarModifiedState,
+                        System.Environment.TickCount,
+                        out _);
+                }
 
                 if (snapshot.MovementSnapshot != null)
                 {

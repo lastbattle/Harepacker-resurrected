@@ -188,8 +188,7 @@ namespace HaCreator.MapSimulator.Fields
                 return "This skill is forbidden in this field.";
             }
 
-            int resolvedJobClass = ResolveSkillRestrictionJobClass(currentJobId, skill);
-            if (resolvedJobClass > 0 && MatchesListedSkillClass(noSkillProperty["class"], resolvedJobClass))
+            if (MatchesListedSkillClass(noSkillProperty["class"], currentJobId, skill))
             {
                 return "This field forbids skills for your job branch.";
             }
@@ -242,14 +241,37 @@ namespace HaCreator.MapSimulator.Fields
             return skillId > 0 && ContainsIntValue(property, skillId);
         }
 
-        private static bool MatchesListedSkillClass(WzImageProperty property, int jobClass)
+        private static bool MatchesListedSkillClass(WzImageProperty property, int currentJobId, SkillData skill)
         {
-            return jobClass > 0 && ContainsIntValue(property, jobClass);
+            if (property == null)
+            {
+                return false;
+            }
+
+            foreach (int candidate in EnumerateSkillRestrictionJobCandidates(currentJobId, skill))
+            {
+                if (ContainsIntValue(property, candidate))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static bool ContainsIntValue(WzImageProperty property, int expectedValue)
         {
-            if (property?.WzProperties == null)
+            if (property == null)
+            {
+                return false;
+            }
+
+            if (TryReadInt(property, out int directValue) && directValue == expectedValue)
+            {
+                return true;
+            }
+
+            if (property.WzProperties == null)
             {
                 return false;
             }
@@ -284,7 +306,7 @@ namespace HaCreator.MapSimulator.Fields
             }
         }
 
-        private static int ResolveSkillRestrictionJobClass(int currentJobId, SkillData skill)
+        private static IEnumerable<int> EnumerateSkillRestrictionJobCandidates(int currentJobId, SkillData skill)
         {
             int resolvedJobId = Math.Abs(currentJobId);
             if (resolvedJobId <= 0)
@@ -297,9 +319,9 @@ namespace HaCreator.MapSimulator.Fields
                 resolvedJobId = Math.Abs(skill.SkillId / 10000);
             }
 
-            if (resolvedJobId <= 0)
+            if (resolvedJobId > 0)
             {
-                return 0;
+                yield return resolvedJobId;
             }
 
             int jobClass = resolvedJobId % 1000 / 100;
@@ -308,7 +330,10 @@ namespace HaCreator.MapSimulator.Fields
                 jobClass = resolvedJobId / 100;
             }
 
-            return jobClass;
+            if (jobClass > 0)
+            {
+                yield return jobClass;
+            }
         }
 
         private static bool IsMysticDoorSkill(SkillData skill)

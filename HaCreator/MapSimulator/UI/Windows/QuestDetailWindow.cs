@@ -337,7 +337,7 @@ namespace HaCreator.MapSimulator.UI
                 _actionButtons.TryGetValue(state.PrimaryAction, out ActionButtonBinding primaryBinding))
             {
                 primaryBinding.Button.SetVisible(true);
-                primaryBinding.Button.SetButtonState(state.PrimaryActionEnabled ? UIObjectState.Normal : UIObjectState.Disabled);
+                primaryBinding.Button.SetButtonState(ResolveButtonState(state.PrimaryActionEnabled, state.PrimaryActionSelected));
                 _activePrimaryButton = primaryBinding.Button;
                 _drawPrimaryLabel = primaryBinding.DrawLabel;
             }
@@ -1267,15 +1267,49 @@ namespace HaCreator.MapSimulator.UI
             const int gap = 8;
             float titleWidth = tooltipWidth - (padding * 2);
             float bodyWidth = tooltipWidth - ((padding * 2) + iconSize + gap);
+            InventoryItemTooltipMetadata metadata = InventoryItemMetadataResolver.ResolveTooltipMetadata(
+                _hoveredQuestItem.ItemId,
+                InventoryItemMetadataResolver.ResolveInventoryType(_hoveredQuestItem.ItemId));
 
             string[] wrappedTitle = WrapTooltipText(title, titleWidth);
-            string[] wrappedSubtitle = WrapTooltipText(_hoveredQuestItem.Subtitle, bodyWidth);
-            string[] wrappedDescription = WrapTooltipText(_hoveredQuestItem.Description, bodyWidth);
-
             float titleHeight = wrappedTitle.Length * _font.LineSpacing;
-            float subtitleHeight = wrappedSubtitle.Length * _font.LineSpacing;
-            float descriptionHeight = wrappedDescription.Length * _font.LineSpacing;
-            float bodyHeight = subtitleHeight + (descriptionHeight > 0f ? 4f + descriptionHeight : 0f);
+            var wrappedSections = new List<(string[] Lines, Color Color, float Height)>();
+
+            void AddSection(string text, Color color)
+            {
+                string[] wrapped = WrapTooltipText(text, bodyWidth);
+                float height = wrapped.Length * _font.LineSpacing;
+                if (height > 0f)
+                {
+                    wrappedSections.Add((wrapped, color, height));
+                }
+            }
+
+            AddSection(_hoveredQuestItem.Subtitle, new Color(228, 233, 242));
+            AddSection(metadata.TypeName, new Color(180, 220, 255));
+            for (int i = 0; i < metadata.EffectLines.Count; i++)
+            {
+                AddSection(metadata.EffectLines[i], new Color(180, 255, 210));
+            }
+
+            for (int i = 0; i < metadata.MetadataLines.Count; i++)
+            {
+                AddSection(metadata.MetadataLines[i], new Color(255, 214, 156));
+            }
+
+            AddSection(_hoveredQuestItem.Description, new Color(199, 206, 218));
+
+            float bodyHeight = 0f;
+            for (int i = 0; i < wrappedSections.Count; i++)
+            {
+                if (bodyHeight > 0f)
+                {
+                    bodyHeight += 4f;
+                }
+
+                bodyHeight += wrappedSections[i].Height;
+            }
+
             int tooltipHeight = (int)Math.Ceiling((padding * 2) + titleHeight + 6f + Math.Max(iconSize, bodyHeight));
 
             int viewportWidth = sprite.GraphicsDevice.Viewport.Width;
@@ -1309,10 +1343,16 @@ namespace HaCreator.MapSimulator.UI
             }
 
             float bodyX = tooltipX + padding + iconSize + gap;
-            DrawTooltipLines(sprite, wrappedSubtitle, new Vector2(bodyX, textY), new Color(228, 233, 242));
-            if (descriptionHeight > 0f)
+            float sectionY = textY;
+            for (int i = 0; i < wrappedSections.Count; i++)
             {
-                DrawTooltipLines(sprite, wrappedDescription, new Vector2(bodyX, textY + subtitleHeight + 4f), new Color(199, 206, 218));
+                if (i > 0)
+                {
+                    sectionY += 4f;
+                }
+
+                DrawTooltipLines(sprite, wrappedSections[i].Lines, new Vector2(bodyX, sectionY), wrappedSections[i].Color);
+                sectionY += wrappedSections[i].Height;
             }
         }
 
@@ -1503,6 +1543,18 @@ namespace HaCreator.MapSimulator.UI
                 QuestWindowActionKind.QuestDeliveryComplete => "Delivery",
                 _ => string.Empty
             };
+        }
+
+        private static UIObjectState ResolveButtonState(bool enabled, bool selected)
+        {
+            if (!enabled)
+            {
+                return UIObjectState.Disabled;
+            }
+
+            return selected
+                ? UIObjectState.Pressed
+                : UIObjectState.Normal;
         }
 
         private static void AppendDistinctVisibleButton(ICollection<UIObject> buttons, UIObject button)

@@ -99,6 +99,7 @@ namespace HaCreator.MapSimulator.UI
         private SkillManager _skillManager;
         private SkillLoader _skillLoader;
         private SpriteFont _font;
+        private readonly GraphicsDevice _graphicsDevice;
 
         // Macro data
         private readonly SkillMacro[] _macros = new SkillMacro[MAX_MACRO_SLOTS];
@@ -161,6 +162,7 @@ namespace HaCreator.MapSimulator.UI
         private SkillMacroSoftKeyboardFunctionKey _pressedSoftKeyboardFunctionKey = SkillMacroSoftKeyboardFunctionKey.None;
         private SkillMacroSoftKeyboardWindowButton _pressedSoftKeyboardWindowButton = SkillMacroSoftKeyboardWindowButton.None;
         private int _softKeyboardPressedVisualUntil;
+        private Point? _lastMousePosition;
 
         // Buttons
         private UIObject _btnOK;
@@ -244,12 +246,14 @@ namespace HaCreator.MapSimulator.UI
         /// Callback when macro window is closed
         /// </summary>
         public Action OnMacroWindowClosed;
+        internal Func<int, int, bool> OnImeCandidateSelected;
         #endregion
 
         #region Constructor
         public SkillMacroUI(IDXObject frame, GraphicsDevice device)
             : base(frame)
         {
+            _graphicsDevice = device;
             // Initialize macro slots
             for (int i = 0; i < MAX_MACRO_SLOTS; i++)
             {
@@ -653,6 +657,14 @@ namespace HaCreator.MapSimulator.UI
                 sprite.DrawString(_font, _ownerNoticeMessage,
                     new Vector2(fieldX, fieldY - _font.LineSpacing - 2),
                     _ownerNoticeColor);
+            }
+            else if (ShouldShowChangeNameTooltip())
+            {
+                sprite.DrawString(
+                    _font,
+                    $"{CHANGE_NAME_TOOLTIP_FALLBACK} (StringPool 0x{CHANGE_NAME_TOOLTIP_STRING_POOL_ID:X3} fallback)",
+                    new Vector2(fieldX, fieldY - _font.LineSpacing - 2),
+                    new Color(216, 226, 183));
             }
         }
 
@@ -1373,6 +1385,8 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public void OnMouseMove(int mouseX, int mouseY)
         {
+            _lastMousePosition = new Point(mouseX, mouseY);
+
             if (_dragMode != MacroDragMode.None)
             {
                 _dragPosition = new Vector2(mouseX, mouseY);
@@ -1427,6 +1441,12 @@ namespace HaCreator.MapSimulator.UI
             if (leftButton && IsPointInSoftKeyboard(mouseX, mouseY))
             {
                 HandleSoftKeyboardMouseDown(mouseX, mouseY);
+                return;
+            }
+
+            if (IsPointInImeCandidateWindow(mouseX, mouseY))
+            {
+                HandleImeCandidateMouseDown(mouseX, mouseY, leftButton);
                 return;
             }
 
@@ -1686,11 +1706,32 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private void HandleImeCandidateMouseDown(int mouseX, int mouseY, bool leftButton)
+        {
+            SetNameFieldFocus(true);
+            ClearOwnerNotice();
+            _caretBlinkTick = Environment.TickCount;
+
+            if (!leftButton)
+            {
+                return;
+            }
+
+            int candidateIndex = ResolveImeCandidateIndexFromPoint(mouseX, mouseY);
+            if (candidateIndex < 0)
+            {
+                return;
+            }
+
+            OnImeCandidateSelected?.Invoke(_candidateListState.ListIndex, candidateIndex);
+        }
+
         public bool HandlesMacroInteractionPoint(int mouseX, int mouseY)
         {
             return GetMacroIndexAtPosition(mouseX, mouseY) >= 0
                 || IsPointInCheckbox(mouseX, mouseY)
                 || IsPointInNameField(mouseX, mouseY)
+                || IsPointInImeCandidateWindow(mouseX, mouseY)
                 || IsPointInSoftKeyboard(mouseX, mouseY);
         }
 
@@ -1705,12 +1746,19 @@ namespace HaCreator.MapSimulator.UI
             {
                 yield return SkillMacroSoftKeyboardLayout.GetBounds(GetSoftKeyboardPosition(), _softKeyboardMinimized);
             }
+
+            Rectangle candidateBounds = GetImeCandidateWindowBounds(GetActiveViewport());
+            if (!candidateBounds.IsEmpty)
+            {
+                yield return candidateBounds;
+            }
         }
         #endregion
 
         #region Button Handlers
         private void OnOKClicked(UIObject sender)
         {
+            SetNameFieldFocus(false);
             SaveCurrentMacro();
         }
 
@@ -1991,6 +2039,31 @@ namespace HaCreator.MapSimulator.UI
             _ownerNoticeColor = Color.White;
         }
 
+        private bool ShouldShowChangeNameTooltip()
+        {
+            if (_editingMacroIndex < 0
+                || _selectedMacroIndex < 0
+                || _btnOK == null
+                || !_btnOK.ButtonVisible
+                || !_btnOK.IsEnabled
+                || _dragMode != MacroDragMode.None
+                || !_lastMousePosition.HasValue)
+            {
+                return false;
+            }
+
+            return GetButtonBounds(_btnOK).Contains(_lastMousePosition.Value);
+        }
+
+        private Rectangle GetButtonBounds(UIObject button)
+        {
+            return new Rectangle(
+                Position.X + button.X,
+                Position.Y + button.Y,
+                Math.Max(1, button.CanvasSnapshotWidth),
+                Math.Max(1, button.CanvasSnapshotHeight));
+        }
+
         private static string SanitizeCompositionText(string text)
         {
             if (string.IsNullOrEmpty(text))
@@ -2155,6 +2228,49 @@ namespace HaCreator.MapSimulator.UI
 
             y = Math.Clamp(y, 0, Math.Max(0, viewportHeight - height));
             return new Rectangle(x, y, width, height);
+        }
+
+        private Viewport GetActiveViewport()
+        {
+            if (_graphicsDevice != null)
+            {
+                return _graphicsDevice.Viewport;
+            }
+
+            return new Viewport(0, 0, SkillMacroImeCandidateWindowLayout.ClientViewportWidth, SkillMacroImeCandidateWindowLayout.ClientViewportHeight);
+        }
+
+        private bool IsPointInImeCandidateWindow(int mouseX, int mouseY)
+        {
+            Rectangle candidateBounds = GetImeCandidateWindowBounds(GetActiveViewport());
+            return !candidateBounds.IsEmpty && candidateBounds.Contains(mouseX, mouseY);
+        }
+
+        private int ResolveImeCandidateIndexFromPoint(int mouseX, int mouseY)
+        {
+            if (!_candidateListState.HasCandidates)
+            {
+                return -1;
+            }
+
+            int start = Math.Clamp(_candidateListState.PageStart, 0, _candidateListState.Candidates.Count);
+            int count = Math.Min(GetVisibleCandidateCount(), _candidateListState.Candidates.Count - start);
+            if (count <= 0)
+            {
+                return -1;
+            }
+
+            Rectangle candidateBounds = GetImeCandidateWindowBounds(GetActiveViewport());
+            int localIndex = SkillMacroImeCandidateWindowLayout.HitTestCandidate(
+                candidateBounds,
+                new Point(mouseX, mouseY),
+                _candidateListState.Vertical,
+                count,
+                GetClientCandidateRowHeight(),
+                GetHorizontalCandidateCellWidth());
+            return localIndex >= 0
+                ? start + localIndex
+                : -1;
         }
 
         private Point ResolveCandidateWindowOrigin()

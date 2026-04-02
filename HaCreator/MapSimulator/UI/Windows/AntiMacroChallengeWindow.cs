@@ -6,6 +6,7 @@ using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -21,6 +22,7 @@ namespace HaCreator.MapSimulator.UI
         private const string DefaultAttemptMessageFormat = "Attempt {0} of 2";
         private static readonly Color InputCaretColor = new(32, 32, 32);
         private static readonly Color InputCompositionColor = new(74, 74, 74);
+        private static readonly Color InputCompositionUnderlineColor = new(74, 74, 74);
         private static readonly Color FallbackInputBackgroundColor = new(255, 255, 255);
         private static readonly Color FallbackInputBorderColor = new(114, 114, 114);
 
@@ -489,7 +491,9 @@ namespace HaCreator.MapSimulator.UI
                 if (compositionText.Length > 0)
                 {
                     float committedWidth = MeasureTextWidth(committedText);
-                    sprite.DrawString(_font, compositionText, textPosition + new Vector2(committedWidth, 0f), InputCompositionColor);
+                    Vector2 compositionPosition = textPosition + new Vector2(committedWidth, 0f);
+                    sprite.DrawString(_font, compositionText, compositionPosition, InputCompositionColor);
+                    DrawCompositionUnderline(sprite, compositionPosition, compositionText, inputBounds);
                 }
             }
 
@@ -542,6 +546,13 @@ namespace HaCreator.MapSimulator.UI
 
         private void HandleKeyboardInput(KeyboardState keyboardState)
         {
+            bool ctrlHeld = keyboardState.IsKeyDown(Keys.LeftControl) || keyboardState.IsKeyDown(Keys.RightControl);
+
+            if (ctrlHeld && Pressed(keyboardState, Keys.V))
+            {
+                PasteClipboardText();
+            }
+
             if (Pressed(keyboardState, Keys.Back))
             {
                 if (_compositionText.Length > 0)
@@ -550,8 +561,7 @@ namespace HaCreator.MapSimulator.UI
                 }
                 else if (_caretIndex > 0)
                 {
-                    _inputText = _inputText.Remove(_caretIndex - 1, 1);
-                    _caretIndex--;
+                    RemoveCharacterBeforeCaret();
                 }
 
                 _caretBlinkTick = Environment.TickCount;
@@ -565,7 +575,7 @@ namespace HaCreator.MapSimulator.UI
                 }
                 else if (_caretIndex < _inputText.Length)
                 {
-                    _inputText = _inputText.Remove(_caretIndex, 1);
+                    RemoveCharacterAtCaret();
                 }
 
                 _caretBlinkTick = Environment.TickCount;
@@ -574,14 +584,14 @@ namespace HaCreator.MapSimulator.UI
             if (Pressed(keyboardState, Keys.Left))
             {
                 ClearCompositionText();
-                _caretIndex = Math.Max(0, _caretIndex - 1);
+                _caretIndex = GetPreviousCaretStop(_inputText, _caretIndex);
                 _caretBlinkTick = Environment.TickCount;
             }
 
             if (Pressed(keyboardState, Keys.Right))
             {
                 ClearCompositionText();
-                _caretIndex = Math.Min(_inputText.Length, _caretIndex + 1);
+                _caretIndex = GetNextCaretStop(_inputText, _caretIndex);
                 _caretBlinkTick = Environment.TickCount;
             }
 
@@ -664,6 +674,20 @@ namespace HaCreator.MapSimulator.UI
             _inputText = _inputText.Insert(insertionIndex, character.ToString());
             _caretIndex = insertionIndex + 1;
             _caretBlinkTick = Environment.TickCount;
+        }
+
+        private void DrawCompositionUnderline(SpriteBatch sprite, Vector2 compositionPosition, string compositionText, Rectangle inputBounds)
+        {
+            float underlineWidth = MeasureTextWidth(compositionText);
+            if (underlineWidth <= 0f)
+            {
+                return;
+            }
+
+            int underlineX = (int)Math.Floor(compositionPosition.X);
+            int underlineY = Math.Min(inputBounds.Bottom - 2, inputBounds.Y + _font.LineSpacing + 1);
+            Rectangle underlineBounds = new(underlineX, underlineY, Math.Max(1, (int)Math.Ceiling(underlineWidth)), 1);
+            sprite.Draw(_pixelTexture, underlineBounds, InputCompositionUnderlineColor);
         }
 
         private static Rectangle FitTexture(Rectangle bounds, int width, int height, bool upscale)
@@ -803,17 +827,128 @@ namespace HaCreator.MapSimulator.UI
                 return 0;
             }
 
-            for (int i = 1; i <= _inputText.Length; i++)
+            foreach (int caretStop in EnumerateCaretStops(_inputText))
             {
-                float width = MeasureTextWidth(_inputText[..i]);
+                if (caretStop <= 0)
+                {
+                    continue;
+                }
+
+                float width = MeasureTextWidth(_inputText[..caretStop]);
                 if (relativeX < width)
                 {
-                    float previousWidth = MeasureTextWidth(_inputText[..(i - 1)]);
-                    return relativeX - previousWidth <= width - relativeX ? i - 1 : i;
+                    int previousCaretStop = GetPreviousCaretStop(_inputText, caretStop);
+                    float previousWidth = previousCaretStop <= 0 ? 0f : MeasureTextWidth(_inputText[..previousCaretStop]);
+                    return relativeX - previousWidth <= width - relativeX ? previousCaretStop : caretStop;
                 }
             }
 
             return _inputText.Length;
+        }
+
+        private void RemoveCharacterBeforeCaret()
+        {
+            int currentCaret = Math.Clamp(_caretIndex, 0, _inputText.Length);
+            int previousCaret = GetPreviousCaretStop(_inputText, currentCaret);
+            if (previousCaret >= currentCaret)
+            {
+                return;
+            }
+
+            _inputText = _inputText.Remove(previousCaret, currentCaret - previousCaret);
+            _caretIndex = previousCaret;
+        }
+
+        private void RemoveCharacterAtCaret()
+        {
+            int currentCaret = Math.Clamp(_caretIndex, 0, _inputText.Length);
+            int nextCaret = GetNextCaretStop(_inputText, currentCaret);
+            if (nextCaret <= currentCaret)
+            {
+                return;
+            }
+
+            _inputText = _inputText.Remove(currentCaret, nextCaret - currentCaret);
+        }
+
+        private void PasteClipboardText()
+        {
+            try
+            {
+                if (!System.Windows.Forms.Clipboard.ContainsText())
+                {
+                    return;
+                }
+
+                HandleCommittedText(System.Windows.Forms.Clipboard.GetText());
+            }
+            catch
+            {
+            }
+        }
+
+        private static int GetTextElementCount(string value)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return 0;
+            }
+
+            int count = 0;
+            TextElementEnumerator enumerator = StringInfo.GetTextElementEnumerator(value);
+            while (enumerator.MoveNext())
+            {
+                count++;
+            }
+
+            return count;
+        }
+
+        private static IEnumerable<int> EnumerateCaretStops(string value)
+        {
+            yield return 0;
+            if (string.IsNullOrEmpty(value))
+            {
+                yield break;
+            }
+
+            TextElementEnumerator enumerator = StringInfo.GetTextElementEnumerator(value);
+            while (enumerator.MoveNext())
+            {
+                yield return enumerator.ElementIndex + enumerator.GetTextElement().Length;
+            }
+        }
+
+        private static int GetPreviousCaretStop(string value, int caretIndex)
+        {
+            int clampedCaretIndex = Math.Clamp(caretIndex, 0, value?.Length ?? 0);
+            int previous = 0;
+            foreach (int stop in EnumerateCaretStops(value))
+            {
+                if (stop >= clampedCaretIndex)
+                {
+                    break;
+                }
+
+                previous = stop;
+            }
+
+            return previous;
+        }
+
+        private static int GetNextCaretStop(string value, int caretIndex)
+        {
+            int length = value?.Length ?? 0;
+            int clampedCaretIndex = Math.Clamp(caretIndex, 0, length);
+            foreach (int stop in EnumerateCaretStops(value))
+            {
+                if (stop > clampedCaretIndex)
+                {
+                    return stop;
+                }
+            }
+
+            return length;
         }
 
         private static Texture2D CreateFallbackFrameTexture(GraphicsDevice graphicsDevice)

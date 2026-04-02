@@ -954,6 +954,13 @@ namespace HaCreator.MapSimulator.UI
             {
                 _locationButton.SetVisible(true);
                 _locationButton.SetEnabled(_currentMapId > 0);
+                if (_currentMapId > 0)
+                {
+                    _locationButton.SetButtonState(
+                        _selectedMapId == _currentMapId
+                            ? UIObjectState.Pressed
+                            : UIObjectState.Normal);
+                }
             }
 
             if (_questToggleButton != null)
@@ -965,7 +972,7 @@ namespace HaCreator.MapSimulator.UI
                 {
                     _questToggleButton.SetButtonState(
                         _questOverlayMarkersVisible
-                            ? UIObjectState.Disabled
+                            ? UIObjectState.Pressed
                             : UIObjectState.Normal);
                 }
             }
@@ -1394,9 +1401,25 @@ namespace HaCreator.MapSimulator.UI
             }
 
             OverlayMarkerFrame frame = markerFrame.Value;
-            Rectangle destination = new(rowBounds.X + 1, rowBounds.Y + 1, 12, 14);
+            Texture2D texture = frame.Texture;
+            if (texture == null)
+            {
+                return 12;
+            }
+
+            int maxHeight = Math.Max(1, rowBounds.Height - 2);
+            float scale = Math.Min(1f, maxHeight / (float)Math.Max(1, texture.Height));
+            int width = Math.Max(1, (int)Math.Round(texture.Width * scale));
+            int height = Math.Max(1, (int)Math.Round(texture.Height * scale));
+            int anchorX = rowBounds.X + 7;
+            int anchorY = rowBounds.Bottom - 1;
+            Rectangle destination = new(
+                anchorX - (int)Math.Round(frame.Origin.X * scale),
+                anchorY - (int)Math.Round(frame.Origin.Y * scale),
+                width,
+                height);
             sprite.Draw(frame.Texture, destination, Color.White);
-            return destination.Width + 2;
+            return Math.Max(12, destination.Width) + 2;
         }
 
         private OverlayMarkerFrame? GetActiveOverlayMarkerFrame(int tickCount)

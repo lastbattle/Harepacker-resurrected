@@ -42,6 +42,8 @@ namespace HaCreator.MapSimulator
 
         private bool _comboCounterPacketInboxEnabled = EnablePacketConnectionsByDefault;
         private int _comboCounterPacketInboxConfiguredPort = ComboCounterPacketInboxManager.DefaultPort;
+        private int _packetOwnedComboCount;
+        private int _packetOwnedComboLastSetTick;
         private PacketOwnedComboDisplayState _packetOwnedComboState;
 
         private void LoadPacketOwnedComboAssets()
@@ -250,10 +252,13 @@ namespace HaCreator.MapSimulator
             string listeningText = _comboCounterPacketInbox.IsRunning
                 ? $"listening on 127.0.0.1:{_comboCounterPacketInbox.Port}"
                 : $"configured for 127.0.0.1:{_comboCounterPacketInboxConfiguredPort}";
+            string ownerStateText = _packetOwnedComboCount > 0
+                ? $"Owner combo count={_packetOwnedComboCount} set at tick {_packetOwnedComboLastSetTick}."
+                : "Owner combo count is clear.";
             string activeComboText = _packetOwnedComboState == null
                 ? "No packet-owned combo HUD is active."
                 : $"Combo HUD showing {_packetOwnedComboState.ComboCount} ({DescribePacketOwnedComboTier(_packetOwnedComboState.ComboLevel)}).";
-            return $"Combo packet inbox {enabledText}, {listeningText}, received {_comboCounterPacketInbox.ReceivedCount} packet(s). {activeComboText}";
+            return $"Combo packet inbox {enabledText}, {listeningText}, received {_comboCounterPacketInbox.ReceivedCount} packet(s). {ownerStateText} {activeComboText}";
         }
 
         private bool TryApplyPacketOwnedComboPacket(int packetType, byte[] payload, out string message)
@@ -293,6 +298,8 @@ namespace HaCreator.MapSimulator
 
         private string ApplyPacketOwnedComboCount(int comboCount, int currentTickCount)
         {
+            _packetOwnedComboCount = Math.Max(0, comboCount);
+            _packetOwnedComboLastSetTick = currentTickCount;
             if (comboCount <= 0)
             {
                 _packetOwnedComboState = null;
@@ -318,12 +325,12 @@ namespace HaCreator.MapSimulator
                 int buffSkillLevel = Math.Max(0, _playerManager?.Skills?.GetSkillLevel(binding.BuffSkillId) ?? 0);
                 if (attackSkillLevel > 0)
                 {
-                    commandAttackFrames = ResolvePacketOwnedComboCommandFrames(binding.AttackSkillId, binding.AttackPathName);
+                    commandAttackFrames = ResolvePacketOwnedComboCommandFrames(comboLevel, commandIndex: 0, binding.AttackSkillId, binding.AttackPathName);
                 }
 
                 if (buffSkillLevel > 0)
                 {
-                    commandBuffFrames = ResolvePacketOwnedComboCommandFrames(binding.BuffSkillId, binding.BuffPathName);
+                    commandBuffFrames = ResolvePacketOwnedComboCommandFrames(comboLevel, commandIndex: 1, binding.BuffSkillId, binding.BuffPathName);
                 }
 
                 if (commandAttackFrames?.Count > 0 || commandBuffFrames?.Count > 0)
@@ -407,10 +414,16 @@ namespace HaCreator.MapSimulator
             return null;
         }
 
-        private List<IDXObject> ResolvePacketOwnedComboCommandFrames(int skillId, string fallbackPathName)
+        private List<IDXObject> ResolvePacketOwnedComboCommandFrames(int comboLevel, int commandIndex, int skillId, string fallbackPathName)
         {
+            List<IDXObject> frames = ResolvePacketOwnedComboAnimationFrames($"ComboCommand/{comboLevel}/{commandIndex}");
+            if (frames?.Count > 0)
+            {
+                return frames;
+            }
+
             string numericPath = $"ComboCommand/{skillId}";
-            List<IDXObject> frames = ResolvePacketOwnedComboAnimationFrames(numericPath);
+            frames = ResolvePacketOwnedComboAnimationFrames(numericPath);
             if (frames?.Count > 0)
             {
                 return frames;
@@ -454,6 +467,8 @@ namespace HaCreator.MapSimulator
 
             if (string.Equals(args[0], "clear", StringComparison.OrdinalIgnoreCase))
             {
+                _packetOwnedComboCount = 0;
+                _packetOwnedComboLastSetTick = currTickCount;
                 _packetOwnedComboState = null;
                 return ChatCommandHandler.CommandResult.Ok("Cleared the packet-owned combo HUD.");
             }

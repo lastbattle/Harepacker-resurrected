@@ -229,12 +229,36 @@ namespace HaCreator.MapSimulator.Character.Skills
             return false;
         }
 
-        private static bool IsBattleshipMountedActionName(string actionName)
+        internal static bool IsBattleshipMountedActionName(string actionName)
         {
             return string.Equals(actionName, "cannon", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(actionName, "torpedo", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(actionName, "fireburner", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(actionName, "coolingeffect", StringComparison.OrdinalIgnoreCase);
+        }
+
+        internal static bool IsBattleshipVehicleActionName(string actionName, bool includeSupportActions = false)
+        {
+            if (IsBattleshipMountedActionName(actionName))
+            {
+                return true;
+            }
+
+            return includeSupportActions
+                   && (string.Equals(actionName, "alert2", StringComparison.OrdinalIgnoreCase)
+                       || string.Equals(actionName, "alert3", StringComparison.OrdinalIgnoreCase));
+        }
+
+        internal static bool IsDistinctMechanicVehicleActionName(string actionName, bool includeTransformStates = false)
+        {
+            if (!IsMechanicVehicleActionName(actionName, includeTransformStates))
+            {
+                return false;
+            }
+
+            return !string.Equals(actionName, "alert3", StringComparison.OrdinalIgnoreCase)
+                   && !string.Equals(actionName, "ride2", StringComparison.OrdinalIgnoreCase)
+                   && !string.Equals(actionName, "getoff2", StringComparison.OrdinalIgnoreCase);
         }
 
         internal static bool HasRideDescriptionText(SkillData skill)

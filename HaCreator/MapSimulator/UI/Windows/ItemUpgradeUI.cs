@@ -2819,16 +2819,14 @@ namespace HaCreator.MapSimulator.UI
                 return slots.Count > 0;
             }
 
-            var resolvedSlots = new HashSet<EquipSlot>();
+            HashSet<EquipSlot> resolvedSlots = ResolveTargetSlotsFromText(ResolveCachedItemDescription(itemId));
             string name = ResolveCachedItemNameOrFallback(itemId);
-            Match nameMatch = ScrollTargetRegex.Match(name ?? string.Empty);
-            if (nameMatch.Success)
+            if (resolvedSlots.Count == 0)
             {
-                AddTargetSlotsFromText(nameMatch.Groups[1].Value, resolvedSlots);
-            }
-            else
-            {
-                AddTargetSlotsFromText(ResolveCachedItemDescription(itemId), resolvedSlots);
+                Match nameMatch = ScrollTargetRegex.Match(name ?? string.Empty);
+                resolvedSlots = nameMatch.Success
+                    ? ResolveTargetSlotsFromText(nameMatch.Groups[1].Value)
+                    : ResolveTargetSlotsFromText(name);
             }
 
             slots = resolvedSlots.Count > 0
@@ -2836,6 +2834,14 @@ namespace HaCreator.MapSimulator.UI
                 : Array.Empty<EquipSlot>();
             ScrollTargetSlotCache[itemId] = slots;
             return slots.Count > 0;
+        }
+
+        // Some WZ item names are misleading; the description text is the more reliable target hint.
+        private static HashSet<EquipSlot> ResolveTargetSlotsFromText(string text)
+        {
+            var targetSlots = new HashSet<EquipSlot>();
+            AddTargetSlotsFromText(text, targetSlots);
+            return targetSlots;
         }
 
         private static void AddTargetSlotsFromText(string text, ISet<EquipSlot> targetSlots)

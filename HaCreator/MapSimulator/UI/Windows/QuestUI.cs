@@ -1491,15 +1491,49 @@ namespace HaCreator.MapSimulator.UI
             float bodyScale = 0.44f;
             float titleWidth = tooltipWidth - (padding * 2);
             float bodyWidth = tooltipWidth - ((padding * 2) + iconSize + gap);
+            InventoryItemTooltipMetadata metadata = InventoryItemMetadataResolver.ResolveTooltipMetadata(
+                _hoveredQuestItem.ItemId,
+                InventoryItemMetadataResolver.ResolveInventoryType(_hoveredQuestItem.ItemId));
 
             string[] wrappedTitle = WrapText(title, titleWidth, titleScale);
-            string[] wrappedSubtitle = WrapText(_hoveredQuestItem.Subtitle, bodyWidth, bodyScale);
-            string[] wrappedDescription = WrapText(_hoveredQuestItem.Description, bodyWidth, bodyScale);
-
             float titleHeight = MeasureTooltipHeight(wrappedTitle, titleScale);
-            float subtitleHeight = MeasureTooltipHeight(wrappedSubtitle, bodyScale);
-            float descriptionHeight = MeasureTooltipHeight(wrappedDescription, bodyScale);
-            float bodyHeight = subtitleHeight + (descriptionHeight > 0f ? 4f + descriptionHeight : 0f);
+            var wrappedSections = new List<(string[] Lines, Color Color, float Height)>();
+
+            void AddSection(string text, Color color)
+            {
+                string[] wrapped = WrapText(text, bodyWidth, bodyScale);
+                float height = MeasureTooltipHeight(wrapped, bodyScale);
+                if (height > 0f)
+                {
+                    wrappedSections.Add((wrapped, color, height));
+                }
+            }
+
+            AddSection(_hoveredQuestItem.Subtitle, new Color(228, 233, 242));
+            AddSection(metadata.TypeName, new Color(180, 220, 255));
+            for (int i = 0; i < metadata.EffectLines.Count; i++)
+            {
+                AddSection(metadata.EffectLines[i], new Color(180, 255, 210));
+            }
+
+            for (int i = 0; i < metadata.MetadataLines.Count; i++)
+            {
+                AddSection(metadata.MetadataLines[i], new Color(255, 214, 156));
+            }
+
+            AddSection(_hoveredQuestItem.Description, new Color(199, 206, 218));
+
+            float bodyHeight = 0f;
+            for (int i = 0; i < wrappedSections.Count; i++)
+            {
+                if (bodyHeight > 0f)
+                {
+                    bodyHeight += 4f;
+                }
+
+                bodyHeight += wrappedSections[i].Height;
+            }
+
             int tooltipHeight = (int)Math.Ceiling((padding * 2) + titleHeight + 6f + Math.Max(iconSize, bodyHeight));
 
             int viewportWidth = sprite.GraphicsDevice.Viewport.Width;
@@ -1533,10 +1567,16 @@ namespace HaCreator.MapSimulator.UI
             }
 
             float bodyX = tooltipX + padding + iconSize + gap;
-            DrawTooltipLines(sprite, wrappedSubtitle, new Vector2(bodyX, textY), new Color(228, 233, 242), bodyScale);
-            if (descriptionHeight > 0f)
+            float sectionY = textY;
+            for (int i = 0; i < wrappedSections.Count; i++)
             {
-                DrawTooltipLines(sprite, wrappedDescription, new Vector2(bodyX, textY + subtitleHeight + 4f), new Color(199, 206, 218), bodyScale);
+                if (i > 0)
+                {
+                    sectionY += 4f;
+                }
+
+                DrawTooltipLines(sprite, wrappedSections[i].Lines, new Vector2(bodyX, sectionY), wrappedSections[i].Color, bodyScale);
+                sectionY += wrappedSections[i].Height;
             }
         }
 

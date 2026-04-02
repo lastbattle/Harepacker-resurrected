@@ -29,15 +29,15 @@ namespace HaCreator.MapSimulator
 
         private string HandleFieldSpecificDataPacketHandoff(byte[] payload, int currentTick)
         {
-            if (TryApplyStructuredFieldSpecificDataPayload(payload, currentTick, out string structuredMessage))
-            {
-                return structuredMessage;
-            }
-
             string wrapperMessage = HandleClientOwnedFieldSpecificDataPacket(payload, currentTick);
             if (!string.IsNullOrWhiteSpace(wrapperMessage))
             {
                 return wrapperMessage;
+            }
+
+            if (TryApplyStructuredFieldSpecificDataPayload(payload, currentTick, out string structuredMessage))
+            {
+                return structuredMessage;
             }
 
             string areaName = _specialFieldRuntime.ActiveArea?.ToString() ?? "no active special-field owner";
@@ -47,7 +47,11 @@ namespace HaCreator.MapSimulator
         private bool TryApplyStructuredFieldSpecificDataPayload(byte[] payload, int currentTick, out string message)
         {
             message = null;
-            if (payload == null || payload.Length == 0 || !TryDecodeFieldSpecificStringPairs(payload, out IReadOnlyList<KeyValuePair<string, string>> pairs))
+            FieldSpecificStringPairOwnerMask activeOwners = GetActiveFieldSpecificStringPairOwners();
+            if (payload == null ||
+                payload.Length == 0 ||
+                activeOwners == FieldSpecificStringPairOwnerMask.None ||
+                !TryDecodeFieldSpecificStringPairs(payload, out IReadOnlyList<KeyValuePair<string, string>> pairs, out int headerSize))
             {
                 return false;
             }
@@ -63,11 +67,15 @@ namespace HaCreator.MapSimulator
 
             if (applied.Count == 0)
             {
-                message = $"decoded {pairs.Count} field-specific key/value pair(s), but no active owner accepted them";
+                message =
+                    $"decoded {pairs.Count} field-specific key/value pair(s) for {DescribeFieldSpecificStringPairOwners(activeOwners)} " +
+                    $"using header size {headerSize}, but no active owner accepted them";
                 return true;
             }
 
-            message = $"decoded {pairs.Count} field-specific key/value pair(s): {string.Join(", ", applied.Take(4))}";
+            message =
+                $"decoded {pairs.Count} field-specific key/value pair(s) for {DescribeFieldSpecificStringPairOwners(activeOwners)} " +
+                $"using header size {headerSize}: {string.Join(", ", applied.Take(4))}";
             return true;
         }
 
@@ -102,14 +110,81 @@ namespace HaCreator.MapSimulator
             return false;
         }
 
-        private static bool TryDecodeFieldSpecificStringPairs(byte[] payload, out IReadOnlyList<KeyValuePair<string, string>> pairs)
+        private FieldSpecificStringPairOwnerMask GetActiveFieldSpecificStringPairOwners()
+        {
+            FieldSpecificStringPairOwnerMask owners = FieldSpecificStringPairOwnerMask.None;
+            if (_specialFieldRuntime.PartyRaid.IsActive)
+            {
+                owners |= FieldSpecificStringPairOwnerMask.PartyRaid;
+            }
+
+            if (IsEscortResultWrapperMap(_mapBoard?.MapInfo))
+            {
+                owners |= FieldSpecificStringPairOwnerMask.EscortResult;
+            }
+
+            if (_mapBoard?.MapInfo?.fieldType == MapleLib.WzLib.WzStructure.Data.FieldType.FIELDTYPE_HUNTINGADBALLOON)
+            {
+                owners |= FieldSpecificStringPairOwnerMask.HuntingAdBalloon;
+            }
+
+            return owners;
+        }
+
+        private static string DescribeFieldSpecificStringPairOwners(FieldSpecificStringPairOwnerMask owners)
+        {
+            List<string> names = new();
+            if ((owners & FieldSpecificStringPairOwnerMask.PartyRaid) != 0)
+            {
+                names.Add("PartyRaidField");
+            }
+
+            if ((owners & FieldSpecificStringPairOwnerMask.EscortResult) != 0)
+            {
+                names.Add("escort-result wrapper");
+            }
+
+            if ((owners & FieldSpecificStringPairOwnerMask.HuntingAdBalloon) != 0)
+            {
+                names.Add("hunting-ad-balloon wrapper");
+            }
+
+            return names.Count == 0 ? "no known owner" : string.Join(", ", names);
+        }
+
+        private static bool TryDecodeFieldSpecificStringPairs(
+            byte[] payload,
+            out IReadOnlyList<KeyValuePair<string, string>> pairs,
+            out int headerSize)
         {
             pairs = null;
+            headerSize = -1;
             payload ??= Array.Empty<byte>();
-            return TryDecodeFieldSpecificStringPairs(payload, 1, out pairs)
-                || TryDecodeFieldSpecificStringPairs(payload, 2, out pairs)
-                || TryDecodeFieldSpecificStringPairs(payload, 4, out pairs)
-                || TryDecodeFieldSpecificStringPairs(payload, 0, out pairs);
+            if (TryDecodeFieldSpecificStringPairs(payload, 1, out pairs))
+            {
+                headerSize = 1;
+                return true;
+            }
+
+            if (TryDecodeFieldSpecificStringPairs(payload, 2, out pairs))
+            {
+                headerSize = 2;
+                return true;
+            }
+
+            if (TryDecodeFieldSpecificStringPairs(payload, 4, out pairs))
+            {
+                headerSize = 4;
+                return true;
+            }
+
+            if (TryDecodeFieldSpecificStringPairs(payload, 0, out pairs))
+            {
+                headerSize = 0;
+                return true;
+            }
+
+            return false;
         }
 
         private static bool TryDecodeFieldSpecificStringPairs(byte[] payload, int headerSize, out IReadOnlyList<KeyValuePair<string, string>> pairs)
@@ -184,6 +259,15 @@ namespace HaCreator.MapSimulator
             return Encoding.Default.GetString(bytes);
         }
 
+        [Flags]
+        private enum FieldSpecificStringPairOwnerMask
+        {
+            None = 0,
+            PartyRaid = 1 << 0,
+            EscortResult = 1 << 1,
+            HuntingAdBalloon = 1 << 2
+        }
+
         private QuestLogSnapshot BuildQuestLogSnapshotWithPacketState(QuestLogTabType tab, bool showAllLevels)
         {
             QuestLogSnapshot snapshot = _questRuntime.BuildQuestLogSnapshot(tab, _playerManager?.Player?.Build, showAllLevels);
@@ -256,6 +340,7 @@ namespace HaCreator.MapSimulator
                 TotalProgress = state.TotalProgress,
                 PrimaryAction = state.PrimaryAction,
                 PrimaryActionEnabled = state.PrimaryActionEnabled,
+                PrimaryActionSelected = state.PrimaryActionSelected,
                 PrimaryActionLabel = state.PrimaryActionLabel,
                 SecondaryAction = state.SecondaryAction,
                 SecondaryActionEnabled = state.SecondaryActionEnabled,

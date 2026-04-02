@@ -71,6 +71,7 @@ namespace HaCreator.MapSimulator
         private const float ClientOwnedLimitedViewFallbackOriginX = 158f;
         private const float ClientOwnedLimitedViewFallbackOriginY = 179f;
         private const int EscortFailOverlayDurationMs = 2500;
+        private readonly DynamicFootholdField _dynamicFootholdField = new();
         private bool _tutorialAppearanceOverrideApplied;
         private CharacterBuild _tutorialAppearanceOverrideBuild;
         private Dictionary<EquipSlot, CharacterPart> _tutorialEquipmentSnapshot;
@@ -93,6 +94,7 @@ namespace HaCreator.MapSimulator
         private void ApplyClientOwnedFieldWrappers()
         {
             MapInfo mapInfo = _mapBoard?.MapInfo;
+            ConfigureDynamicFootholdFieldWrapper(mapInfo);
             ConfigureClientOwnedLimitedView(mapInfo);
             ConfigureNoDragonPresentation(mapInfo);
             ApplyTransitAndVoyageFieldWrapper(mapInfo);
@@ -383,6 +385,11 @@ namespace HaCreator.MapSimulator
                 _clientOwnedLimitedViewOriginY);
         }
 
+        private void ConfigureDynamicFootholdFieldWrapper(MapInfo mapInfo)
+        {
+            _dynamicFootholdField.Configure(mapInfo, _dynamicFootholds);
+        }
+
         private void ApplyTutorialFieldAppearance(MapInfo mapInfo)
         {
             TutorialWrapperKind wrapperKind = GetTutorialWrapperKind(mapInfo);
@@ -575,6 +582,15 @@ namespace HaCreator.MapSimulator
                 activeWrappers.Add($"no-dragon presentation active ({source}): dragon actor and equipment pane stay suppressed.");
             }
 
+            if (_dynamicFootholdField.IsActive)
+            {
+                string wzSummary = _dynamicFootholdField.HasWzFootholdRoot
+                    ? $"WZ foothold root present with {_dynamicFootholdField.FootholdLayerCount} layers, {_dynamicFootholdField.FootholdGroupCount} groups, and {_dynamicFootholdField.FootholdSegmentCount} segments"
+                    : "WZ foothold root unavailable";
+                activeWrappers.Add(
+                    $"dynamic-foothold wrapper active (client owner {DynamicFootholdField.ClientOwnerName}, fieldType {(int)FieldType.FIELDTYPE_DYNAMICFOOTHOLD}, GetFieldType 0x{DynamicFootholdField.ClientGetFieldTypeAddress:X}, Init stub 0x{DynamicFootholdField.ClientInitStubAddress:X}): {wzSummary}; runtime {_dynamicFootholds.DescribeClientOwnedWrapperState()}.");
+            }
+
             if (_activeWeddingPhotoSceneContract is WeddingPhotoSceneContract weddingPhotoContract)
             {
                 string safeArea = weddingPhotoContract.HasSafeArea
@@ -585,7 +601,7 @@ namespace HaCreator.MapSimulator
             }
 
             return activeWrappers.Count == 0
-                ? "Client-owned wrappers: none of tutorial, limited-view, no-dragon, or wedding-photo are active on this map."
+                ? "Client-owned wrappers: none of tutorial, limited-view, no-dragon, dynamic-foothold, or wedding-photo are active on this map."
                 : "Client-owned wrappers: " + string.Join(" ", activeWrappers);
         }
 
@@ -624,6 +640,11 @@ namespace HaCreator.MapSimulator
         private static bool IsNoDragonWrapperMap(MapInfo mapInfo)
         {
             return mapInfo?.fieldType == FieldType.FIELDTYPE_NODRAGON;
+        }
+
+        private static bool IsDynamicFootholdWrapperMap(MapInfo mapInfo)
+        {
+            return mapInfo?.fieldType == FieldType.FIELDTYPE_DYNAMICFOOTHOLD;
         }
 
         private static bool SuppressesDragonPresentation(MapInfo mapInfo)

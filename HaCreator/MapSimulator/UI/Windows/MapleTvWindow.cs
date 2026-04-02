@@ -15,8 +15,9 @@ namespace HaCreator.MapSimulator.UI
     {
         // CUIMapleTV::Draw centers the broadcast art on a 240px-wide MapleTV surface and
         // draws the send-board item text at (39,70) with its one-pixel highlight at (40,71).
-        private static readonly Point WorldOverlayAnchor = new(400, 70);
-        private static readonly Point WorldQueueAnchor = new(400, 118);
+        // The in-field layer uses WZ-authored origins, so center the composed frame union and
+        // keep it inside a top-safe strip instead of using older simulator-only anchors.
+        private const int WorldOverlayTopMargin = 20;
         private static readonly Rectangle SelfMessageTextBounds = new(18, 113, 180, 75);
         private static readonly Rectangle ReceiverMessageTextBounds = new(40, 113, 135, 75);
         private static readonly Rectangle ReceiverNameBounds = new(46, 68, 146, 14);
@@ -196,26 +197,22 @@ namespace HaCreator.MapSimulator.UI
 
             RefreshAssemblers(snapshot);
 
-            Point overlayOrigin = snapshot.IsShowingMessage
-                ? new Point(Math.Max(0, (renderWidth / 2) - 120), WorldOverlayAnchor.Y)
-                : new Point(Math.Max(0, (renderWidth / 2) - 120), WorldQueueAnchor.Y);
-
             if (!snapshot.IsShowingMessage)
             {
                 MapleTvAnimationFrame idleFrame = SelectFrame(_visualAssets.OffFrames.Count > 0 ? _visualAssets.OffFrames : _visualAssets.BasicFrames, tickCount);
-                DrawAnimationFrame(sprite, idleFrame, overlayOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
+                Point idleOverlayOrigin = ResolveOverlayAnchor(renderWidth, WorldOverlayTopMargin, idleFrame);
+                DrawAnimationFrame(sprite, idleFrame, idleOverlayOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
                 return;
             }
 
             MapleTvAnimationFrame mediaFrame = SelectFrame(_visualAssets.GetMediaFrames(snapshot.ResolvedMediaIndex), tickCount);
-            DrawAnimationFrame(sprite, mediaFrame, overlayOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
-
             MapleTvAnimationFrame onFrame = SelectFrame(
                 _visualAssets.OnFrames.Count > 0 ? _visualAssets.OnFrames : _visualAssets.BasicFrames,
                 tickCount);
-            DrawAnimationFrame(sprite, onFrame, overlayOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
-
             MapleTvAnimationFrame chatFrame = SelectFrame(_visualAssets.GetChatFrames(snapshot.ResolvedMediaIndex), tickCount);
+            Point overlayOrigin = ResolveOverlayAnchor(renderWidth, WorldOverlayTopMargin, mediaFrame, onFrame, chatFrame);
+            DrawAnimationFrame(sprite, mediaFrame, overlayOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
+            DrawAnimationFrame(sprite, onFrame, overlayOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
             DrawAnimationFrame(sprite, chatFrame, overlayOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
 
             DrawOverlayAvatars(sprite, skeletonMeshRenderer, tickCount, overlayOrigin, snapshot);
@@ -500,6 +497,34 @@ namespace HaCreator.MapSimulator.UI
                 : new Point(origin.X + frame.Offset.X, origin.Y + frame.Offset.Y);
         }
 
+        private static Point ResolveOverlayAnchor(int renderWidth, int topMargin, params MapleTvAnimationFrame[] frames)
+        {
+            int minLeft = 0;
+            int minTop = 0;
+            int maxRight = 240;
+            int maxBottom = 90;
+
+            foreach (MapleTvAnimationFrame frame in frames ?? Array.Empty<MapleTvAnimationFrame>())
+            {
+                if (frame == null)
+                {
+                    continue;
+                }
+
+                minLeft = Math.Min(minLeft, frame.Offset.X);
+                minTop = Math.Min(minTop, frame.Offset.Y);
+                maxRight = Math.Max(maxRight, frame.Offset.X + frame.Width);
+                maxBottom = Math.Max(maxBottom, frame.Offset.Y + frame.Height);
+            }
+
+            int surfaceWidth = Math.Max(1, maxRight - minLeft);
+            int surfaceHeight = Math.Max(1, maxBottom - minTop);
+            int desiredLeft = Math.Max(0, (renderWidth - surfaceWidth) / 2);
+            int desiredTop = Math.Max(0, topMargin);
+
+            return new Point(desiredLeft - minLeft, desiredTop - minTop);
+        }
+
         private void DrawChatText(
             SpriteBatch sprite,
             IReadOnlyList<string> lines,
@@ -568,16 +593,20 @@ namespace HaCreator.MapSimulator.UI
 
     internal sealed class MapleTvAnimationFrame
     {
-        internal MapleTvAnimationFrame(IDXObject drawable, Point offset, int delayMs)
+        internal MapleTvAnimationFrame(IDXObject drawable, Point offset, int delayMs, int width, int height)
         {
             Drawable = drawable;
             Offset = offset;
             DelayMs = delayMs;
+            Width = width;
+            Height = height;
         }
 
         internal IDXObject Drawable { get; }
         internal Point Offset { get; }
         internal int DelayMs { get; }
+        internal int Width { get; }
+        internal int Height { get; }
     }
 
     internal sealed class MapleTvVisualAssets

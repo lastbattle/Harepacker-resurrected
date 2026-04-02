@@ -2347,6 +2347,7 @@ namespace HaCreator.MapSimulator.Character
         private bool ShouldHideRotateSensitiveAvatarEffect()
         {
             return ClientOwnedAvatarEffectParity.ShouldHideDuringPlayerAction(
+                TryGetCurrentClientRawActionCode(out int rawActionCode) ? rawActionCode : null,
                 _forcedActionName,
                 CurrentActionName,
                 CharacterPart.GetActionString(CurrentAction));
@@ -3528,7 +3529,7 @@ namespace HaCreator.MapSimulator.Character
             }
 
             int adjustedY = screenY - frame.FeetOffset;
-            List<AssembledPart>[] layeredParts = GetMirrorImageSourceLayers(frame);
+            IReadOnlyList<AssembledPart>[] layeredParts = GetMirrorImageSourceLayers(frame);
             if (layeredParts == null)
             {
                 return;
@@ -3536,7 +3537,7 @@ namespace HaCreator.MapSimulator.Character
 
             for (int layerIndex = 0; layerIndex < layeredParts.Length; layerIndex++)
             {
-                List<AssembledPart> parts = layeredParts[layerIndex];
+                IReadOnlyList<AssembledPart> parts = layeredParts[layerIndex];
                 if (parts == null)
                 {
                     continue;
@@ -3549,30 +3550,14 @@ namespace HaCreator.MapSimulator.Character
             }
         }
 
-        private static List<AssembledPart>[] GetMirrorImageSourceLayers(AssembledFrame frame)
+        private static IReadOnlyList<AssembledPart>[] GetMirrorImageSourceLayers(AssembledFrame frame)
         {
-            if (frame?.Parts == null || frame.Parts.Count == 0)
+            if (frame?.AvatarRenderLayers == null || frame.AvatarRenderLayers.Length == 0)
             {
                 return null;
             }
 
-            // PrepareMirrorActionLayer copies the avatar's five composed layer owners in order:
-            // UnderCharacter, OverCharacter, UnderFace, Face, OverFace.
-            var layeredParts = new List<AssembledPart>[5];
-            for (int i = 0; i < frame.Parts.Count; i++)
-            {
-                AssembledPart part = frame.Parts[i];
-                if (part?.Texture == null || !part.IsVisible)
-                {
-                    continue;
-                }
-
-                int layerIndex = (int)part.RenderLayer;
-                layeredParts[layerIndex] ??= new List<AssembledPart>();
-                layeredParts[layerIndex].Add(part);
-            }
-
-            return layeredParts;
+            return frame.AvatarRenderLayers;
         }
 
         private bool TryGetShadowPartnerAnimation(
@@ -3982,8 +3967,13 @@ namespace HaCreator.MapSimulator.Character
         private IEnumerable<string> EnumerateShadowPartnerClientMappedCandidates(string playerActionName, string fallbackActionName)
         {
             var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            string normalizedWeaponType = Build?.GetWeapon()?.WeaponType;
 
-            foreach (string candidate in ShadowPartnerClientActionResolver.EnumerateClientMappedCandidates(playerActionName, State, fallbackActionName))
+            foreach (string candidate in ShadowPartnerClientActionResolver.EnumerateClientMappedCandidates(
+                         playerActionName,
+                         State,
+                         fallbackActionName,
+                         normalizedWeaponType))
             {
                 if (!string.IsNullOrWhiteSpace(candidate) && yielded.Add(candidate))
                 {
@@ -3994,7 +3984,11 @@ namespace HaCreator.MapSimulator.Character
 
         private IEnumerable<string> GetShadowPartnerClientMappedCandidates(string playerActionName, string fallbackActionName)
         {
-            foreach (string candidate in ShadowPartnerClientActionResolver.EnumerateClientMappedCandidates(playerActionName, State, fallbackActionName))
+            foreach (string candidate in ShadowPartnerClientActionResolver.EnumerateClientMappedCandidates(
+                         playerActionName,
+                         State,
+                         fallbackActionName,
+                         Build?.GetWeapon()?.WeaponType))
             {
                 yield return candidate;
             }
@@ -4355,7 +4349,7 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
-            if (TryGetMirrorImageClientRawActionCode(out int rawActionCode)
+            if (TryGetCurrentClientRawActionCode(out int rawActionCode)
                 && rawActionCode == 48)
             {
                 return false;
@@ -4364,7 +4358,7 @@ namespace HaCreator.MapSimulator.Character
             return !IsMirrorImageSuppressedAction(CurrentActionName);
         }
 
-        private bool TryGetMirrorImageClientRawActionCode(out int rawActionCode)
+        private bool TryGetCurrentClientRawActionCode(out int rawActionCode)
         {
             rawActionCode = default;
 
@@ -4711,6 +4705,11 @@ namespace HaCreator.MapSimulator.Character
             return new Point(directionSign * distanceX, distanceY);
         }
 
+        internal static bool IsPortableChairRidingChairMountItemId(int itemId)
+        {
+            return itemId > 0 && itemId / 1000 == 1983;
+        }
+
         internal static bool IsPortableChairPairPlacementValid(
             PortableChair chair,
             bool facingRight,
@@ -4880,6 +4879,7 @@ namespace HaCreator.MapSimulator.Character
             if (Build == null
                 || chair?.TamingMobItemId is not int tamingMobItemId
                 || tamingMobItemId <= 0
+                || !IsPortableChairRidingChairMountItemId(tamingMobItemId)
                 || _portableChairTamingMobLoader == null)
             {
                 return;
@@ -5052,6 +5052,27 @@ namespace HaCreator.MapSimulator.Character
             return frame == null || frame.Bounds.IsEmpty
                 ? null
                 : frame.Bounds;
+        }
+
+        public int GetCurrentUnderFaceLayerZ(int currentTime)
+        {
+            AssembledFrame frame = TryGetCurrentFrame(currentTime);
+            if (frame?.Parts == null || frame.Parts.Count == 0)
+            {
+                return 0;
+            }
+
+            int layerZ = 0;
+            for (int i = 0; i < frame.Parts.Count; i++)
+            {
+                AssembledPart part = frame.Parts[i];
+                if (part.RenderLayer == AvatarRenderLayer.UnderFace)
+                {
+                    layerZ = Math.Max(layerZ, part.ZIndex);
+                }
+            }
+
+            return layerZ;
         }
 
         private void ClearForcedActionName()

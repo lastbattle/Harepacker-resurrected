@@ -55,6 +55,7 @@ namespace HaCreator.MapSimulator.Character
         private readonly Dictionary<int, CharacterPart> _morphCache = new();
         private readonly Dictionary<int, PortableChair> _portableChairCache = new();
         private readonly Dictionary<int, ItemEffectAnimationSet> _itemEffectCache = new();
+        private readonly Dictionary<int, ItemEffectAnimationSet> _completedSetEffectCache = new();
         private readonly Dictionary<RemoteRelationshipOverlayType, RelationshipTextTagStyle> _relationshipTextTagCache = new();
         private readonly Dictionary<CharacterGender, StarterAvatarRandomizationCatalog> _starterAvatarCatalogCache = new();
 
@@ -542,6 +543,42 @@ namespace HaCreator.MapSimulator.Character
             return effectSet;
         }
 
+        public ItemEffectAnimationSet LoadCompletedSetItemEffectAnimationSet(int setItemId)
+        {
+            if (setItemId <= 0)
+            {
+                return null;
+            }
+
+            if (_completedSetEffectCache.TryGetValue(setItemId, out ItemEffectAnimationSet cached))
+            {
+                return cached;
+            }
+
+            WzSubProperty effectProperty = ResolveCompletedSetItemEffectProperty(setItemId);
+            if (effectProperty == null)
+            {
+                return null;
+            }
+
+            PortableChairLayer layer = LoadPortableChairLayer(
+                effectProperty,
+                $"setItem/{setItemId}",
+                loop: true);
+            if (layer == null || IsPlaceholderPortableChairLayer(layer))
+            {
+                return null;
+            }
+
+            var effectSet = new ItemEffectAnimationSet
+            {
+                ItemId = setItemId
+            };
+            effectSet.OwnerLayers.Add(layer);
+            _completedSetEffectCache[setItemId] = effectSet;
+            return effectSet;
+        }
+
         public RelationshipTextTagStyle LoadRelationshipTextTagStyle(RemoteRelationshipOverlayType relationshipType)
         {
             if (relationshipType != RemoteRelationshipOverlayType.NewYearCard)
@@ -825,6 +862,74 @@ namespace HaCreator.MapSimulator.Character
             WzImageProperty LayerProperty,
             string LayerName,
             bool IsSharedLayer);
+
+        internal static bool TryParseSetItemEffectLink(
+            string effectLink,
+            out string imageName,
+            out string propertyPath)
+        {
+            imageName = null;
+            propertyPath = null;
+            if (string.IsNullOrWhiteSpace(effectLink))
+            {
+                return false;
+            }
+
+            string normalized = effectLink.Trim().Replace('\\', '/');
+            const string effectPrefix = "Effect/";
+            if (normalized.StartsWith(effectPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                normalized = normalized[effectPrefix.Length..];
+            }
+
+            int separatorIndex = normalized.IndexOf('/');
+            if (separatorIndex <= 0 || separatorIndex >= normalized.Length - 1)
+            {
+                return false;
+            }
+
+            imageName = normalized[..separatorIndex].Trim();
+            propertyPath = normalized[(separatorIndex + 1)..].Trim();
+            return !string.IsNullOrWhiteSpace(imageName)
+                   && !string.IsNullOrWhiteSpace(propertyPath);
+        }
+
+        private WzSubProperty ResolveCompletedSetItemEffectProperty(int setItemId)
+        {
+            WzImage setItemInfoImage = Program.FindImage("Etc", "SetItemInfo.img");
+            if (setItemInfoImage == null)
+            {
+                return null;
+            }
+
+            setItemInfoImage.ParseImage();
+            if (setItemInfoImage[setItemId.ToString(CultureInfo.InvariantCulture)] is not WzSubProperty setInfoProperty)
+            {
+                return null;
+            }
+
+            string effectLink = InfoTool.GetString(setInfoProperty["effectLink"]);
+            if (TryParseSetItemEffectLink(effectLink, out string imageName, out string propertyPath))
+            {
+                WzImage linkedEffectImage = Program.FindImage("Effect", imageName);
+                linkedEffectImage?.ParseImage();
+                if (linkedEffectImage?[propertyPath] is WzSubProperty linkedEffectProperty
+                    && PortableChairLayerHasRenderableFrames(linkedEffectProperty))
+                {
+                    return linkedEffectProperty;
+                }
+            }
+
+            WzImage setItemEffectImage = Program.FindImage("Effect", "SetItemInfoEff.img");
+            setItemEffectImage?.ParseImage();
+            if (setItemEffectImage?[setItemId.ToString(CultureInfo.InvariantCulture)] is WzSubProperty directEffectProperty
+                && PortableChairLayerHasRenderableFrames(directEffectProperty))
+            {
+                return directEffectProperty;
+            }
+
+            return null;
+        }
 
         private static string ResolvePortableChairName(int itemId)
         {
@@ -1593,6 +1698,8 @@ namespace HaCreator.MapSimulator.Character
             part.IsEquipTradeBlocked = GetIntValue(info["equipTradeBlock"]) == 1;
             part.IsOneOfAKind = GetIntValue(info["only"]) == 1;
             part.IsNotForSale = GetIntValue(info["notSale"]) == 1;
+            part.IsAccountSharable = GetIntValue(info["accountSharable"]) == 1;
+            part.HasAccountShareTag = GetIntValue(info["accountShareTag"]) == 1;
             part.IsTimeLimited = GetIntValue(info["timeLimited"]) == 1;
             part.MaxDurability = GetIntValue(info["durability"]);
             part.Durability = part.MaxDurability;

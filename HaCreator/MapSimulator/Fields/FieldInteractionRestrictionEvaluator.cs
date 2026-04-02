@@ -1,3 +1,4 @@
+using HaCreator.MapSimulator.UI;
 using MapleLib.WzLib.WzStructure.Data;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using System;
@@ -15,6 +16,14 @@ namespace HaCreator.MapSimulator.Fields
         private const int PetReviveItemGroup = 518;
         private const int PetSkillItemGroup = 519;
         private const int NearestTownPortalScrollItemId = 2030000;
+        private const int WeddingInvitationCardItemGroup = 4211;
+        private const int WeddingInvitationPremiumItemGroup = 4212;
+        private const int WeddingInvitationCashCardItemId = 5090100;
+        private const int WeddingInvitationTicketItemId = 5251100;
+        private const int WeddingInvitationEtcCardItemId = 4150000;
+        private const int NpcSummonScriptItemId = 2430011;
+        private const int NpcSummonQuestItemId = 4032363;
+        private const string SummonEventNpcScriptName = "summonEventNpc";
 
         public static bool CanTransferField(long fieldLimit)
         {
@@ -187,7 +196,7 @@ namespace HaCreator.MapSimulator.Fields
                 return "Stat-change consumables cannot be used in this field.";
             }
 
-            if (FieldLimitType.Unable_To_Use_Wedding_Invitation_Item.Check(fieldLimit) && IsWeddingInvitationItem(inventoryType, itemName, itemDescription))
+            if (FieldLimitType.Unable_To_Use_Wedding_Invitation_Item.Check(fieldLimit) && IsWeddingInvitationItem(inventoryType, itemId, itemName, itemDescription))
             {
                 return "Wedding invitation items cannot be used in this field.";
             }
@@ -207,7 +216,7 @@ namespace HaCreator.MapSimulator.Fields
                 return "Anti-macro items cannot be used in this field.";
             }
 
-            if (FieldLimitType.Unable_To_Summon_NPC.Check(fieldLimit) && IsNpcSummonItem(itemName, itemDescription))
+            if (FieldLimitType.Unable_To_Summon_NPC.Check(fieldLimit) && IsNpcSummonItem(itemId, itemName, itemDescription))
             {
                 return "NPC-summon items cannot be used in this field.";
             }
@@ -369,11 +378,19 @@ namespace HaCreator.MapSimulator.Fields
                    || ContainsPhrase(itemDescription, "lie detector");
         }
 
-        private static bool IsWeddingInvitationItem(InventoryType inventoryType, string itemName, string itemDescription)
+        private static bool IsWeddingInvitationItem(InventoryType inventoryType, int itemId, string itemName, string itemDescription)
         {
             if (inventoryType is not (InventoryType.CASH or InventoryType.ETC))
             {
                 return false;
+            }
+
+            int itemGroup = itemId / 1000;
+            if (itemId is WeddingInvitationCashCardItemId or WeddingInvitationTicketItemId or WeddingInvitationEtcCardItemId
+                || itemGroup is WeddingInvitationCardItemGroup or WeddingInvitationPremiumItemGroup
+                || itemId is 4031377 or 4031395 or 4031406 or 4031407)
+            {
+                return true;
             }
 
             return ContainsPhrase(itemName, "wedding invitation")
@@ -382,8 +399,19 @@ namespace HaCreator.MapSimulator.Fields
                    || ContainsPhrase(itemDescription, "wedding invitation");
         }
 
-        private static bool IsNpcSummonItem(string itemName, string itemDescription)
+        private static bool IsNpcSummonItem(int itemId, string itemName, string itemDescription)
         {
+            if (itemId is NpcSummonScriptItemId or NpcSummonQuestItemId)
+            {
+                return true;
+            }
+
+            if (InventoryItemMetadataResolver.TryResolveSpecScript(itemId, out string scriptName)
+                && string.Equals(scriptName, SummonEventNpcScriptName, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
             return ContainsPhrase(itemName, "summon npc")
                    || ContainsPhrase(itemDescription, "summon npc")
                    || ContainsPhrase(itemDescription, "summons NPC");

@@ -1083,8 +1083,11 @@ namespace HaCreator.MapSimulator.Character.Skills
         public float OwnerY { get; set; }
         public int? PreferredTargetMobId { get; set; }
         public Vector2? PreferredTargetPosition { get; set; }
+        public ShootAmmoSelection ResolvedShootAmmoSelection { get; set; }
         public bool AllowFollowUpQueue { get; set; } = true;
         public bool ForceCritical { get; set; }
+        public bool IsQueuedFinalAttack { get; set; }
+        public bool IsQueuedSparkAttack { get; set; }
 
         public void Update(float deltaTime, int currentTime)
         {
@@ -1287,6 +1290,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public SummonActorState ActorState { get; set; } = SummonActorState.Spawn;
         public string CurrentAnimationBranchName { get; set; }
         public SkillAnimation OneTimeActionFallbackAnimation { get; set; }
+        public int OneTimeActionFallbackStartTime { get; set; } = int.MinValue;
         public int OneTimeActionFallbackAnimationTime { get; set; } = int.MinValue;
         public int OneTimeActionFallbackEndTime { get; set; } = int.MinValue;
         public bool ExpiryActionTriggered { get; set; }

@@ -148,6 +148,7 @@ namespace HaCreator.MapSimulator.UI
 
         public override string WindowName => MapSimulatorWindowNames.BookCollection;
         public override bool CapturesKeyboardInput => IsVisible && _searchMode;
+        public Action CloseRequested { get; set; }
         public override void SetFont(SpriteFont font)
         {
             _font = font;
@@ -306,10 +307,23 @@ namespace HaCreator.MapSimulator.UI
             DrawContextMenu(sprite);
         }
 
-        protected override void OnCloseButtonClicked(UIObject sender) { CloseBook(); _closeRequested?.Invoke(); }
-        public void CloseBook() { ResetBookState(); base.Hide(); }
-        public override void Hide() { ResetBookState(); base.Hide(); }
+        protected override void OnCloseButtonClicked(UIObject sender) => CloseBook();
+        public void CloseBook() => HideBook(notifyCloseRequested: true);
+        public override void Hide() => HideBook(notifyCloseRequested: true);
         private bool UsesCollectionLayout => _collectionSnapshotProvider != null;
+
+        private void HideBook(bool notifyCloseRequested)
+        {
+            bool wasVisible = IsVisible;
+            ResetBookState();
+            base.Hide();
+
+            if (wasVisible && notifyCloseRequested)
+            {
+                _closeRequested?.Invoke();
+                CloseRequested?.Invoke();
+            }
+        }
 
         private static IReadOnlyList<TabVisual> BuildTabs(IReadOnlyList<Texture2D> normals, IReadOnlyList<Texture2D> selected, IReadOnlyList<Texture2D> hover, IReadOnlyList<Texture2D> disabled, IReadOnlyList<Texture2D> icons)
         {

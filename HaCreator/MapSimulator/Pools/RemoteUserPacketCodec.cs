@@ -144,7 +144,11 @@ namespace HaCreator.MapSimulator.Pools
         bool? FacingRight,
         string ActionName,
         int? ActionCode);
-    public readonly record struct RemoteUserItemEffectPacket(int CharacterId, int? ItemId, int? PairCharacterId);
+    public readonly record struct RemoteUserItemEffectPacket(
+        int CharacterId,
+        int? ItemId,
+        int? PairCharacterId,
+        RemoteRelationshipOverlayType RelationshipType);
     public readonly record struct RemoteUserRelationshipRecord(
         bool IsActive,
         int ItemId,
@@ -601,10 +605,19 @@ namespace HaCreator.MapSimulator.Pools
             error = null;
             if (!TryParseOptionalItemPacket(payload, "item-effect", out int characterId, out int? itemId, out error, out int? pairCharacterId))
             {
-                return false;
+                if (!TryParseTypedItemEffectPacket(payload, out packet, out error))
+                {
+                    return false;
+                }
+
+                return true;
             }
 
-            packet = new RemoteUserItemEffectPacket(characterId, itemId, pairCharacterId);
+            packet = new RemoteUserItemEffectPacket(
+                characterId,
+                itemId,
+                pairCharacterId,
+                RemoteRelationshipOverlayType.Generic);
             return true;
         }
 
@@ -1052,6 +1065,59 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return true;
+        }
+
+        private static bool TryParseTypedItemEffectPacket(
+            ReadOnlySpan<byte> payload,
+            out RemoteUserItemEffectPacket packet,
+            out string error)
+        {
+            packet = default;
+            error = null;
+            if (payload.Length != (sizeof(int) * 2) + sizeof(byte)
+                && payload.Length != (sizeof(int) * 3) + sizeof(byte))
+            {
+                error = $"Remote user item-effect packet expects 8, 9, 12, or 13 bytes but received {payload.Length}.";
+                return false;
+            }
+
+            if (!TryParseOptionalItemPacket(
+                    payload[..^1],
+                    "item-effect",
+                    out int characterId,
+                    out int? itemId,
+                    out error,
+                    out int? pairCharacterId))
+            {
+                return false;
+            }
+
+            if (!TryParseRelationshipOverlayType(payload[^1], out RemoteRelationshipOverlayType relationshipType))
+            {
+                error = $"Remote user item-effect relationship type {payload[^1]} is not recognized.";
+                return false;
+            }
+
+            packet = new RemoteUserItemEffectPacket(
+                characterId,
+                itemId,
+                pairCharacterId,
+                relationshipType);
+            return true;
+        }
+
+        private static bool TryParseRelationshipOverlayType(byte value, out RemoteRelationshipOverlayType relationshipType)
+        {
+            relationshipType = value switch
+            {
+                0 => RemoteRelationshipOverlayType.Generic,
+                1 => RemoteRelationshipOverlayType.Couple,
+                2 => RemoteRelationshipOverlayType.Friendship,
+                3 => RemoteRelationshipOverlayType.NewYearCard,
+                4 => RemoteRelationshipOverlayType.Marriage,
+                _ => RemoteRelationshipOverlayType.Generic
+            };
+            return value <= (byte)RemoteRelationshipOverlayType.Marriage;
         }
 
         private const int OfficialEnterFieldSuffixLength = (sizeof(int) * 6) + (sizeof(short) * 2) + sizeof(byte);

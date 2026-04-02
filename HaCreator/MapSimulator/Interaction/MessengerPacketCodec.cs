@@ -24,6 +24,8 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal readonly record struct MessengerChatPacket(string ContactName, string Message);
 
+    internal readonly record struct MessengerClientChatPacket(string ContactName, string Message, bool IsWhisper);
+
     internal readonly record struct MessengerMemberInfoPacket(
         string ContactName,
         bool IsOnline,
@@ -50,6 +52,8 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal readonly record struct MessengerInviteResultPacket(string ContactName, bool Accepted);
 
+    internal readonly record struct MessengerLeaveSlotPacket(int SlotIndex);
+
     internal readonly record struct MessengerSelfEnterResultPacket(int SlotIndex)
     {
         public bool Succeeded => SlotIndex >= 0;
@@ -71,6 +75,25 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal static class MessengerPacketCodec
     {
+        private const string ChatSeparator = " : ";
+
+        public static bool TryParseClientDispatch(ReadOnlySpan<byte> payload, out byte packetType, out byte[] body, out string error)
+        {
+            packetType = 0;
+            body = Array.Empty<byte>();
+            error = null;
+
+            if (payload.Length == 0)
+            {
+                error = "Messenger client packet payload is empty.";
+                return false;
+            }
+
+            packetType = payload[0];
+            body = payload[1..].ToArray();
+            return true;
+        }
+
         public static bool TryParseInvite(ReadOnlySpan<byte> payload, out MessengerInvitePacket packet, out string error)
         {
             packet = default;
@@ -288,6 +311,70 @@ namespace HaCreator.MapSimulator.Interaction
                 }
 
                 packet = new MessengerInviteResultPacket(contactName.Trim(), accepted);
+                return true;
+            }
+            catch (InvalidOperationException ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+        }
+
+        public static bool TryParseLeaveSlot(ReadOnlySpan<byte> payload, out MessengerLeaveSlotPacket packet, out string error)
+        {
+            packet = default;
+            error = null;
+
+            try
+            {
+                PacketReader reader = new(payload);
+                packet = new MessengerLeaveSlotPacket(reader.ReadByte());
+                return true;
+            }
+            catch (InvalidOperationException ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+        }
+
+        public static bool TryParseClientChat(ReadOnlySpan<byte> payload, out MessengerClientChatPacket packet, out string error)
+        {
+            packet = default;
+            error = null;
+
+            try
+            {
+                PacketReader reader = new(payload);
+                string chatText = reader.ReadString16();
+                if (string.IsNullOrWhiteSpace(chatText))
+                {
+                    error = "Messenger client chat packet text is empty.";
+                    return false;
+                }
+
+                int separatorIndex = chatText.IndexOf(ChatSeparator, StringComparison.Ordinal);
+                if (separatorIndex <= 0 || separatorIndex >= chatText.Length - ChatSeparator.Length)
+                {
+                    error = "Messenger client chat packet is missing the MapleStory 'name : message' separator.";
+                    return false;
+                }
+
+                string contactName = chatText[..separatorIndex].Trim();
+                string message = chatText[(separatorIndex + ChatSeparator.Length)..].Trim();
+                if (string.IsNullOrWhiteSpace(contactName))
+                {
+                    error = "Messenger client chat packet speaker name is empty.";
+                    return false;
+                }
+
+                if (string.IsNullOrWhiteSpace(message))
+                {
+                    error = "Messenger client chat packet message is empty.";
+                    return false;
+                }
+
+                packet = new MessengerClientChatPacket(contactName, message, IsWhisper: false);
                 return true;
             }
             catch (InvalidOperationException ex)

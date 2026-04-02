@@ -379,7 +379,8 @@ namespace HaCreator.MapSimulator.Loaders
             formattedDescription = NormalizeSkillText(description, preserveFormatting: true);
             description = NormalizeSkillText(description);
             int requiredCharacterLevel = ResolveRequiredCharacterLevel(skillEntry);
-            ResolveRequiredSkill(skillEntry, out int requiredSkillId, out int requiredSkillLevel);
+            List<SkillRequirementDisplayData> requiredSkills = BuildRequiredSkills(skillEntry, stringImage, device);
+            ResolveRequiredSkill(requiredSkills, out int requiredSkillId, out int requiredSkillLevel);
 
             var displayData = new SkillDisplayData
             {
@@ -396,6 +397,9 @@ namespace HaCreator.MapSimulator.Loaders
                 RequiredSkillId = requiredSkillId,
                 RequiredSkillLevel = requiredSkillLevel
             };
+
+            for (int i = 0; i < requiredSkills.Count; i++)
+                displayData.Requirements.Add(requiredSkills[i]);
 
             string requiredGuildLevelFormula = GetStringValue(skillEntry["common"], "reqGuildLevel");
             if (!string.IsNullOrWhiteSpace(requiredGuildLevelFormula))
@@ -471,25 +475,77 @@ namespace HaCreator.MapSimulator.Loaders
             return 0;
         }
 
-        private static void ResolveRequiredSkill(WzSubProperty skillEntry, out int requiredSkillId, out int requiredSkillLevel)
+        private static void ResolveRequiredSkill(
+            IReadOnlyList<SkillRequirementDisplayData> requirements,
+            out int requiredSkillId,
+            out int requiredSkillLevel)
         {
             requiredSkillId = 0;
             requiredSkillLevel = 0;
-            if (skillEntry?["req"] is not WzSubProperty requirementNode)
+            if (requirements == null || requirements.Count == 0)
                 return;
+
+            requiredSkillId = requirements[0].SkillId;
+            requiredSkillLevel = Math.Max(0, requirements[0].RequiredLevel);
+        }
+
+        private static List<SkillRequirementDisplayData> BuildRequiredSkills(
+            WzSubProperty skillEntry,
+            WzImage stringImage,
+            GraphicsDevice device)
+        {
+            var requirements = new List<SkillRequirementDisplayData>();
+            if (skillEntry?["req"] is not WzSubProperty requirementNode)
+                return requirements;
 
             foreach (WzImageProperty requirementEntry in requirementNode.WzProperties)
             {
-                if (!int.TryParse(requirementEntry?.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int skillId))
+                if (!int.TryParse(requirementEntry?.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int skillId) ||
+                    !TryGetNumericValue(requirementEntry, out int skillLevel) ||
+                    skillLevel <= 0)
+                {
                     continue;
+                }
 
-                if (!TryGetNumericValue(requirementEntry, out int skillLevel) || skillLevel <= 0)
-                    continue;
-
-                requiredSkillId = skillId;
-                requiredSkillLevel = skillLevel;
-                return;
+                requirements.Add(new SkillRequirementDisplayData
+                {
+                    SkillId = skillId,
+                    SkillName = ResolveSkillName(skillId, stringImage),
+                    RequiredLevel = skillLevel,
+                    IconTexture = LoadSkillIcon(skillId, device)
+                });
             }
+
+            return requirements;
+        }
+
+        private static string ResolveSkillName(int skillId, WzImage stringImage)
+        {
+            if (stringImage?[skillId.ToString(CultureInfo.InvariantCulture)] is WzSubProperty stringEntry &&
+                stringEntry["name"] is WzStringProperty nameProp &&
+                !string.IsNullOrWhiteSpace(nameProp.Value))
+            {
+                return nameProp.Value;
+            }
+
+            return $"Skill {skillId}";
+        }
+
+        private static Texture2D LoadSkillIcon(int skillId, GraphicsDevice device)
+        {
+            if (skillId <= 0 || device == null)
+                return null;
+
+            string skillImageName = GetSkillImageName(skillId / 10000);
+            if (string.IsNullOrWhiteSpace(skillImageName))
+                return null;
+
+            WzImage skillImage = Program.FindImage("Skill", skillImageName);
+            if (skillImage?["skill"]?[skillId.ToString(CultureInfo.InvariantCulture)]?["icon"] is not WzCanvasProperty iconProp)
+                return null;
+
+            System.Drawing.Bitmap iconBitmap = iconProp.GetLinkedWzCanvasBitmap();
+            return iconBitmap?.ToTexture2DAndDispose(device);
         }
 
         private static Dictionary<int, string> BuildLevelDescriptions(

@@ -37,8 +37,9 @@ namespace HaCreator.MapSimulator.Interaction
             return false;
         }
 
-        public void ShowAvatar(string text, int requestedWidth, int lifetimeMs, int currentTickCount)
+        public LocalOverlayBalloonMessage ShowAvatar(string text, int requestedWidth, int lifetimeMs, int currentTickCount)
         {
+            DisposeMessage(_avatarMessage);
             _avatarMessage = CreateMessage(
                 text,
                 requestedWidth,
@@ -46,9 +47,10 @@ namespace HaCreator.MapSimulator.Interaction
                 currentTickCount,
                 LocalOverlayBalloonAnchorMode.Avatar,
                 Point.Zero);
+            return _avatarMessage;
         }
 
-        public void ShowWorld(string text, int requestedWidth, int lifetimeMs, Point worldAnchor, int currentTickCount)
+        public LocalOverlayBalloonMessage ShowWorld(string text, int requestedWidth, int lifetimeMs, Point worldAnchor, int currentTickCount)
         {
             LocalOverlayBalloonMessage message = CreateMessage(
                 text,
@@ -59,16 +61,18 @@ namespace HaCreator.MapSimulator.Interaction
                 worldAnchor);
             if (message == null)
             {
-                return;
+                return null;
             }
 
             _fieldMessages.Add(message);
+            return message;
         }
 
         public void Update(int currentTickCount)
         {
             if (_avatarMessage?.IsActive(currentTickCount) != true)
             {
+                DisposeMessage(_avatarMessage);
                 _avatarMessage = null;
             }
 
@@ -76,6 +80,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 if (!_fieldMessages[i].IsActive(currentTickCount))
                 {
+                    DisposeMessage(_fieldMessages[i]);
                     _fieldMessages.RemoveAt(i);
                 }
             }
@@ -83,7 +88,13 @@ namespace HaCreator.MapSimulator.Interaction
 
         public void Clear()
         {
+            DisposeMessage(_avatarMessage);
             _avatarMessage = null;
+            for (int i = 0; i < _fieldMessages.Count; i++)
+            {
+                DisposeMessage(_fieldMessages[i]);
+            }
+
             _fieldMessages.Clear();
         }
 
@@ -140,6 +151,11 @@ namespace HaCreator.MapSimulator.Interaction
                 ? string.Empty
                 : text.Replace("\r", string.Empty);
         }
+
+        private static void DisposeMessage(LocalOverlayBalloonMessage message)
+        {
+            message?.DisposeVisual();
+        }
     }
 
     internal sealed class LocalOverlayBalloonMessage
@@ -158,10 +174,38 @@ namespace HaCreator.MapSimulator.Interaction
         public int ExpiresAt { get; }
         public LocalOverlayBalloonAnchorMode AnchorMode { get; }
         public Point WorldAnchor { get; }
+        public Texture2D CachedBodyTexture { get; private set; }
+        public Point CachedBodySize { get; private set; }
 
         public bool IsActive(int currentTickCount) =>
             !string.IsNullOrWhiteSpace(Text) &&
             unchecked(currentTickCount - ExpiresAt) < 0;
+
+        public bool HasCachedBodyTexture(int width, int height) =>
+            CachedBodyTexture != null &&
+            !CachedBodyTexture.IsDisposed &&
+            CachedBodySize.X == width &&
+            CachedBodySize.Y == height;
+
+        public void SetCachedBodyTexture(Texture2D texture)
+        {
+            DisposeVisual();
+            CachedBodyTexture = texture;
+            CachedBodySize = texture == null || texture.IsDisposed
+                ? Point.Zero
+                : new Point(texture.Width, texture.Height);
+        }
+
+        public void DisposeVisual()
+        {
+            if (CachedBodyTexture != null && !CachedBodyTexture.IsDisposed)
+            {
+                CachedBodyTexture.Dispose();
+            }
+
+            CachedBodyTexture = null;
+            CachedBodySize = Point.Zero;
+        }
     }
 
     internal sealed class LocalOverlayBalloonSkin

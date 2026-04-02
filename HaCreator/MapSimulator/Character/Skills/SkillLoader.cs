@@ -1038,6 +1038,134 @@ namespace HaCreator.MapSimulator.Character.Skills
             return false;
         }
 
+        internal bool TryResolveRenderableMeleeAfterImageActionName(
+            SkillData skill,
+            WeaponPart weapon,
+            IEnumerable<string> actionNames,
+            int characterLevel,
+            int masteryPercent,
+            int chargeElement,
+            Func<string, bool> canRenderAction,
+            out string actionName)
+        {
+            actionName = null;
+            if (canRenderAction == null)
+            {
+                return false;
+            }
+
+            HashSet<string> matchedActionNames = CollectRelevantMeleeAfterImageActionNames(
+                skill,
+                weapon,
+                actionNames,
+                characterLevel,
+                masteryPercent,
+                chargeElement,
+                matchedOnly: true);
+            if (TrySelectSingleRenderableActionName(matchedActionNames, canRenderAction, out actionName))
+            {
+                return true;
+            }
+
+            HashSet<string> catalogActionNames = matchedActionNames.Count > 0
+                ? matchedActionNames
+                : CollectRelevantMeleeAfterImageActionNames(
+                    skill,
+                    weapon,
+                    actionNames,
+                    characterLevel,
+                    masteryPercent,
+                    chargeElement,
+                    matchedOnly: false);
+            return TrySelectSingleRenderableActionName(catalogActionNames, canRenderAction, out actionName);
+        }
+
+        private HashSet<string> CollectRelevantMeleeAfterImageActionNames(
+            SkillData skill,
+            WeaponPart weapon,
+            IEnumerable<string> actionNames,
+            int characterLevel,
+            int masteryPercent,
+            int chargeElement,
+            bool matchedOnly)
+        {
+            var collectedActionNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            string[] distinctActionNames = EnumerateDistinctActionNames(actionNames ?? Array.Empty<string>()).ToArray();
+
+            foreach (MeleeAfterImageCatalog catalog in EnumerateRelevantMeleeAfterImageCatalogs(
+                         skill,
+                         weapon,
+                         characterLevel,
+                         masteryPercent,
+                         chargeElement))
+            {
+                if (catalog?.Actions == null || catalog.Actions.Count == 0)
+                {
+                    continue;
+                }
+
+                if (!matchedOnly)
+                {
+                    foreach (string catalogActionName in catalog.Actions.Keys)
+                    {
+                        collectedActionNames.Add(catalogActionName);
+                    }
+
+                    continue;
+                }
+
+                foreach (string requestedActionName in distinctActionNames)
+                {
+                    foreach (string candidate in EnumerateMeleeAfterImageActionCandidates(skill?.SkillId ?? 0, requestedActionName))
+                    {
+                        if (catalog.Actions.ContainsKey(candidate))
+                        {
+                            collectedActionNames.Add(candidate);
+                        }
+                    }
+                }
+            }
+
+            return collectedActionNames;
+        }
+
+        internal static bool TrySelectSingleRenderableActionName(
+            IEnumerable<string> actionNames,
+            Func<string, bool> canRenderAction,
+            out string actionName)
+        {
+            actionName = null;
+            if (actionNames == null)
+            {
+                return false;
+            }
+
+            string renderableActionName = null;
+            int renderableCount = 0;
+            foreach (string candidate in actionNames)
+            {
+                if (string.IsNullOrWhiteSpace(candidate) || !canRenderAction(candidate))
+                {
+                    continue;
+                }
+
+                renderableActionName = candidate;
+                renderableCount++;
+                if (renderableCount > 1)
+                {
+                    return false;
+                }
+            }
+
+            if (renderableCount != 1)
+            {
+                return false;
+            }
+
+            actionName = renderableActionName;
+            return true;
+        }
+
         private static bool TryResolveMeleeAfterImageCatalogAction(
             MeleeAfterImageCatalog catalog,
             int skillId,

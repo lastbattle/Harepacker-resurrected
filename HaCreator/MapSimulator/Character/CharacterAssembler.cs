@@ -24,6 +24,7 @@ namespace HaCreator.MapSimulator.Character
     public class AssembledFrame
     {
         public List<AssembledPart> Parts { get; set; } = new();
+        public IReadOnlyList<AssembledPart>[] AvatarRenderLayers { get; set; } = CreateEmptyAvatarRenderLayers();
         public Rectangle Bounds { get; set; }
         public Point Origin { get; set; }
         public int Duration { get; set; }
@@ -72,6 +73,18 @@ namespace HaCreator.MapSimulator.Character
                 part.Texture.DrawBackground(spriteBatch, skeletonRenderer, null,
                     partX, partY, partColor, flip, null);
             }
+        }
+
+        internal static IReadOnlyList<AssembledPart>[] CreateEmptyAvatarRenderLayers()
+        {
+            return new IReadOnlyList<AssembledPart>[5]
+            {
+                Array.Empty<AssembledPart>(),
+                Array.Empty<AssembledPart>(),
+                Array.Empty<AssembledPart>(),
+                Array.Empty<AssembledPart>(),
+                Array.Empty<AssembledPart>()
+            };
         }
     }
 
@@ -454,6 +467,7 @@ namespace HaCreator.MapSimulator.Character
             return new AssembledFrame
             {
                 Parts = resolvedParts,
+                AvatarRenderLayers = BuildAvatarRenderLayers(resolvedParts),
                 Bounds = frame.Bounds,
                 Origin = frame.Origin,
                 Duration = frame.Duration,
@@ -549,6 +563,7 @@ namespace HaCreator.MapSimulator.Character
             parts.Sort((a, b) => a.ZIndex.CompareTo(b.ZIndex));
             ApplyVisibility(parts);
             assembled.Parts = parts;
+            assembled.AvatarRenderLayers = BuildAvatarRenderLayers(parts);
             CalculateBounds(assembled);
             return assembled;
         }
@@ -687,6 +702,7 @@ namespace HaCreator.MapSimulator.Character
             parts.Sort((a, b) => a.ZIndex.CompareTo(b.ZIndex));
             ApplyVisibility(parts);
             assembled.Parts = parts;
+            assembled.AvatarRenderLayers = BuildAvatarRenderLayers(parts);
 
             // Calculate bounds
             CalculateBounds(assembled);
@@ -1374,6 +1390,38 @@ namespace HaCreator.MapSimulator.Character
                     owners.Remove(token);
                 }
             }
+        }
+
+        private static IReadOnlyList<AssembledPart>[] BuildAvatarRenderLayers(List<AssembledPart> parts)
+        {
+            if (parts == null || parts.Count == 0)
+            {
+                return AssembledFrame.CreateEmptyAvatarRenderLayers();
+            }
+
+            var layeredParts = new List<AssembledPart>[5];
+            for (int i = 0; i < parts.Count; i++)
+            {
+                AssembledPart part = parts[i];
+                if (part?.Texture == null || !part.IsVisible)
+                {
+                    continue;
+                }
+
+                int layerIndex = (int)part.RenderLayer;
+                layeredParts[layerIndex] ??= new List<AssembledPart>();
+                layeredParts[layerIndex].Add(part);
+            }
+
+            var finalizedLayers = new IReadOnlyList<AssembledPart>[5];
+            for (int i = 0; i < finalizedLayers.Length; i++)
+            {
+                finalizedLayers[i] = layeredParts[i] is { } layerParts
+                    ? layerParts
+                    : Array.Empty<AssembledPart>();
+            }
+
+            return finalizedLayers;
         }
 
         private void CalculateBounds(AssembledFrame frame)

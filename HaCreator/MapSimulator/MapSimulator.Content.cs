@@ -616,11 +616,13 @@ namespace HaCreator.MapSimulator
             }
             SetCookieHouseContextPoint(0);
             BindRemoteAffectedAreaPacketField();
+            BindRemoteDropPacketField();
             _specialFieldRuntime.BindMap(_mapBoard);
             ApplyClientOwnedFieldWrappers();
             _packetFieldStateRuntime.Initialize(GraphicsDevice, _mapBoard?.MapInfo);
             BindPacketOwnedStageTransitionMapState();
             SyncWeddingPacketInboxState();
+            SyncSnowBallPacketInboxState();
             SyncCoconutPacketInboxState();
             SyncMemoryGamePacketInboxState();
             SyncAriantArenaPacketInboxState();
@@ -834,10 +836,8 @@ namespace HaCreator.MapSimulator
             {
                 bookCollectionWindow.CharacterBuild = _playerManager.Player.Build;
                 bookCollectionWindow.SetFont(_fontDebugValues);
-                bookCollectionWindow.SetCollectionSnapshotProvider(() => CollectionBookSnapshotFactory.Create(
-                    _playerManager?.Player?.Build ?? _loginCharacterRoster.SelectedEntry?.Build,
-                    GetActiveItemMakerProgression(),
-                    GetActiveMonsterBookSnapshot()));
+                bookCollectionWindow.SetCollectionSnapshotProvider(BuildActiveCollectionBookSnapshot);
+                bookCollectionWindow.CloseRequested = HandleBookCollectionClosed;
 
             }
 
@@ -1166,6 +1166,7 @@ namespace HaCreator.MapSimulator
             {
                 _packetOwnedTeleportRequestActive = false;
                 _packetOwnedTeleportRequestCompletedAt = int.MinValue;
+                _lastPacketOwnedTeleportPortalRequestTick = int.MinValue;
                 _lastPacketOwnedTeleportPortalIndex = -1;
                 _lastPacketOwnedTeleportSourcePortalName = null;
                 _lastPacketOwnedTeleportTargetPortalName = null;
@@ -1737,10 +1738,12 @@ namespace HaCreator.MapSimulator
             SetCookieHouseContextPoint(0);
 
             BindRemoteAffectedAreaPacketField();
+            BindRemoteDropPacketField();
             _specialFieldRuntime.BindMap(_mapBoard);
             ApplyClientOwnedFieldWrappers();
             _packetFieldStateRuntime.Initialize(GraphicsDevice, _mapBoard?.MapInfo);
             BindPacketOwnedStageTransitionMapState();
+            SyncSnowBallPacketInboxState();
             SyncCoconutPacketInboxState();
             SyncMemoryGamePacketInboxState();
             SyncAriantArenaPacketInboxState();

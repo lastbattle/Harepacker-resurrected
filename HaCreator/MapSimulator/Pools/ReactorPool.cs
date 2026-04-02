@@ -13,6 +13,7 @@ using MapleLib.WzLib.WzStructure.Data;
 using MapleLib.WzLib.WzStructure.Data.QuestStructure;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using HaCreator.MapSimulator.Interaction;
 
 namespace HaCreator.MapSimulator.Pools
 {
@@ -99,7 +100,7 @@ namespace HaCreator.MapSimulator.Pools
         public int? RequiredItemId { get; set; }
         public int? RequiredQuestId { get; set; }
         public QuestStateType? RequiredQuestState { get; set; }
-        public string ScriptName { get; set; }
+        public IReadOnlyList<string> ScriptNames { get; set; } = Array.Empty<string>();
         public bool ScriptStatePublished { get; set; }
     }
 
@@ -111,7 +112,7 @@ namespace HaCreator.MapSimulator.Pools
         public int? RequiredItemId { get; init; }
         public int? RequiredQuestId { get; init; }
         public QuestStateType? RequiredQuestState { get; init; }
-        public string ScriptName { get; init; }
+        public IReadOnlyList<string> ScriptNames { get; init; } = Array.Empty<string>();
     }
 
     /// <summary>
@@ -146,7 +147,7 @@ namespace HaCreator.MapSimulator.Pools
         private Action<ReactorItem> _onReactorSpawned;
         private Action<ReactorItem, int> _onReactorTouched;  // (reactor, playerId)
         private Action<ReactorItem, int> _onReactorHit;      // (reactor, playerId)
-        private Action<ReactorItem, string, bool, int> _onReactorScriptStateChanged;
+        private Action<ReactorItem, IReadOnlyList<string>, bool, int> _onReactorScriptStateChanged;
 
         // Factory for creating new reactor items
         private Func<ReactorSpawnPoint, GraphicsDevice, ReactorItem> _reactorFactory;
@@ -166,7 +167,7 @@ namespace HaCreator.MapSimulator.Pools
         public void SetOnReactorSpawned(Action<ReactorItem> callback) => _onReactorSpawned = callback;
         public void SetOnReactorTouched(Action<ReactorItem, int> callback) => _onReactorTouched = callback;
         public void SetOnReactorHit(Action<ReactorItem, int> callback) => _onReactorHit = callback;
-        public void SetOnReactorScriptStateChanged(Action<ReactorItem, string, bool, int> callback) => _onReactorScriptStateChanged = callback;
+        public void SetOnReactorScriptStateChanged(Action<ReactorItem, IReadOnlyList<string>, bool, int> callback) => _onReactorScriptStateChanged = callback;
         #endregion
 
         #region Initialization
@@ -217,7 +218,7 @@ namespace HaCreator.MapSimulator.Pools
                     RequiredItemId = interactionMetadata.RequiredItemId,
                     RequiredQuestId = interactionMetadata.RequiredQuestId,
                     RequiredQuestState = interactionMetadata.RequiredQuestState,
-                    ScriptName = interactionMetadata.ScriptName,
+                    ScriptNames = interactionMetadata.ScriptNames,
                     ScriptStatePublished = false
                 };
                 _reactorData[i] = data;
@@ -920,7 +921,7 @@ namespace HaCreator.MapSimulator.Pools
                 ?? TryInferRequiredQuestIdFromStateEvents(reactorInfo?.LinkedWzImage);
             QuestStateType? requiredQuestState = TryGetOptionalQuestState(infoProperty?["state"])
                 ?? TryGetOptionalQuestState(infoProperty?["questState"]);
-            string scriptName = TryGetOptionalString(infoProperty?["script"]);
+            IReadOnlyList<string> scriptNames = QuestRuntimeManager.ParseScriptNames(infoProperty?["script"]);
             ReactorType reactorType = TryGetOptionalReactorType(infoProperty?["reactorType"])
                 ?? TryGetOptionalReactorType(infoProperty?["type"])
                 ?? ReactorType.UNKNOWN;
@@ -961,7 +962,7 @@ namespace HaCreator.MapSimulator.Pools
                 RequiredItemId = requiredItemId,
                 RequiredQuestId = requiredQuestId,
                 RequiredQuestState = requiredQuestState,
-                ScriptName = scriptName
+                ScriptNames = scriptNames
             };
         }
 
@@ -1448,7 +1449,7 @@ namespace HaCreator.MapSimulator.Pools
             data.RequiredItemId = interactionMetadata.RequiredItemId;
             data.RequiredQuestId = interactionMetadata.RequiredQuestId;
             data.RequiredQuestState = interactionMetadata.RequiredQuestState;
-            data.ScriptName = interactionMetadata.ScriptName;
+            data.ScriptNames = interactionMetadata.ScriptNames;
         }
 
         private static bool SupportsActivationType(ReactorRuntimeData data, ReactorActivationType activationType)
@@ -1730,7 +1731,10 @@ namespace HaCreator.MapSimulator.Pools
 
         private void PublishScriptState(ReactorItem reactor, ReactorRuntimeData data, bool isEnabled, int currentTick)
         {
-            if (reactor == null || data == null || string.IsNullOrWhiteSpace(data.ScriptName))
+            if (reactor == null
+                || data == null
+                || data.ScriptNames == null
+                || data.ScriptNames.Count == 0)
             {
                 return;
             }
@@ -1741,7 +1745,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             data.ScriptStatePublished = isEnabled;
-            _onReactorScriptStateChanged?.Invoke(reactor, data.ScriptName, isEnabled, currentTick);
+            _onReactorScriptStateChanged?.Invoke(reactor, data.ScriptNames, isEnabled, currentTick);
         }
 
         private static Rectangle GetReactorBounds(ReactorInstance instance)

@@ -66,6 +66,7 @@ namespace HaCreator.MapSimulator.Interaction
         public int TotalProgress { get; init; }
         public QuestWindowActionKind PrimaryAction { get; init; }
         public bool PrimaryActionEnabled { get; init; }
+        public bool PrimaryActionSelected { get; init; }
         public string PrimaryActionLabel { get; init; } = string.Empty;
         public QuestWindowActionKind SecondaryAction { get; init; }
         public bool SecondaryActionEnabled { get; init; }

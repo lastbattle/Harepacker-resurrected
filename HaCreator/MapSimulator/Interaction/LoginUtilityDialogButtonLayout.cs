@@ -8,5 +8,6 @@ namespace HaCreator.MapSimulator
         NowLater = 3,
         RestartExit = 4,
         Nexon = 5,
+        EnableDisableSpw = 6,
     }
 }

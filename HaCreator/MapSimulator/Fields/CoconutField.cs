@@ -11,6 +11,7 @@ using MapleLib.Converters;
 using MapleLib.PacketLib;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
+using MapleLib.WzLib.WzStructure;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Spine;
@@ -47,6 +48,9 @@ namespace HaCreator.MapSimulator.Fields
         public const int PacketTypeHit = 342;
         public const int PacketTypeScore = 343;
         private const int LocalNormalAttackDelayMs = 120;
+        private const int DefaultPreviewTreeHitCount = 1;
+        private const int DefaultRoundDurationSecondsValue = 120;
+        private const int DefaultMessageDurationMs = 3000;
         private const int ResultBannerTopY = 145;
         private const int BoardWidth = 258;
         private const int BoardHeight = 101;
@@ -190,6 +194,11 @@ namespace HaCreator.MapSimulator.Fields
         private readonly List<AttackPacketRequest> _pendingAttackPacketRequests = new();
         private int? _lastPacketType;
         private int? _lastScorePacketTick;
+        private int _previewTreeHitCount = DefaultPreviewTreeHitCount;
+        private int _defaultRoundDurationSeconds = DefaultRoundDurationSecondsValue;
+        private int _messageDurationMs = DefaultMessageDurationMs;
+        private int _finalScoreMessageDurationMs = DefaultMessageDurationMs;
+        private string _eventName = "Coconut harvest begins!";
         // UI
         private string _currentMessage;
         private int _messageEndTime;
@@ -210,6 +219,11 @@ namespace HaCreator.MapSimulator.Fields
         internal string CurrentMessage => _currentMessage;
         internal int MessageExpiresAtTick => _messageEndTime;
         internal int ResultExpiresAtTick => _resultExpireTime;
+        internal int PreviewTreeHitCount => _previewTreeHitCount;
+        internal int DefaultRoundDurationSeconds => _defaultRoundDurationSeconds;
+        internal int MessageDurationMs => _messageDurationMs;
+        internal int FinalScoreMessageDurationMs => _finalScoreMessageDurationMs;
+        internal string EventName => _eventName;
         #endregion
         #region Initialization
         public void Initialize(GraphicsDevice graphicsDevice, SoundManager soundManager = null)
@@ -226,6 +240,7 @@ namespace HaCreator.MapSimulator.Fields
             _runtimeActive = true;
             _treeArea = ResolveFallbackTreeArea(board);
             _groundY = ResolveGroundY(board, Array.Empty<ObjectInstance>());
+            LoadAuthoredConfig(board?.MapInfo?.Image);
             List<ObjectInstance> coconutObjects = board.BoardItems.TileObjs
                 .OfType<ObjectInstance>()
                 .Where(IsCoconutObject)
@@ -434,7 +449,7 @@ namespace HaCreator.MapSimulator.Fields
             _lastScorePacketTick = null;
             _pendingAttackPacketRequests.Clear();
             ClearRoundResult();
-            ShowMessage("Coconut harvest begins!", 3000, _lastUpdateTime);
+            ShowMessage(_eventName, _messageDurationMs, _lastUpdateTime);
         }
         public void SimulateHit(int coconutId, int byTeam)
         {
@@ -481,9 +496,10 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
             QueueAttackPacketRequest(target.Id, LocalNormalAttackDelayMs, currentTick);
-            if (allowLocalPreview)
+            if (allowLocalPreview
+                && TryResolveLocalPreviewState(target, _localTeam, out CoconutState previewState))
             {
-                QueueHit(target.Id, ResolveLocalAttackState(target, _localTeam), currentTick + LocalNormalAttackDelayMs);
+                QueueHit(target.Id, previewState, currentTick + LocalNormalAttackDelayMs);
             }
             return true;
         }
@@ -550,7 +566,7 @@ namespace HaCreator.MapSimulator.Fields
             _finishTick = 0;
             _timeRemaining = 0;
             _awaitingFinalScore = true;
-            ShowMessage("Waiting for final score packet...", 3000, currentTick);
+            ShowMessage("Waiting for final score packet...", _finalScoreMessageDurationMs, currentTick);
         }
         private void ResolveRoundResult(int currentTick)
         {
@@ -664,28 +680,34 @@ namespace HaCreator.MapSimulator.Fields
             {
                 case CoconutState.OnTree:
                     coconut.Team = -1;
+                    coconut.HitCount = 0;
                     coconut.Velocity = Vector2.Zero;
                     coconut.IsActive = true;
                     coconut.Rotation = 0f;
                     break;
                 case CoconutState.Falling:
+                    coconut.HitCount = 0;
                     coconut.IsActive = true;
                     break;
                 case CoconutState.Team0Claimed:
                     coconut.Team = 0;
+                    coconut.HitCount = 0;
                     coconut.Velocity = Vector2.Zero;
                     coconut.IsActive = true;
                     break;
                 case CoconutState.Team1Claimed:
                     coconut.Team = 1;
+                    coconut.HitCount = 0;
                     coconut.Velocity = Vector2.Zero;
                     coconut.IsActive = true;
                     break;
                 case CoconutState.Scored:
+                    coconut.HitCount = 0;
                     coconut.Velocity = Vector2.Zero;
                     coconut.IsActive = true;
                     break;
                 case CoconutState.Destroyed:
+                    coconut.HitCount = 0;
                     coconut.Velocity = Vector2.Zero;
                     coconut.IsActive = false;
                     break;
@@ -744,11 +766,40 @@ namespace HaCreator.MapSimulator.Fields
                 return;
             }
             bool localWon = _localTeam == 0 ? _team0Score > _team1Score : _team1Score > _team0Score;
-            _lastRoundResult = localWon ? RoundResult.Victory : RoundResult.Lose;
+                _lastRoundResult = localWon ? RoundResult.Victory : RoundResult.Lose;
             _activeResultFrames = localWon ? _victoryFrames : _loseFrames;
             _resultFrameIndex = 0;
             _resultFrameStartTime = currentTick;
             _resultExpireTime = currentTick + GetAnimationDuration(_activeResultFrames);
+        }
+        private bool TryResolveLocalPreviewState(Coconut coconut, int localTeam, out CoconutState previewState)
+        {
+            previewState = coconut?.State ?? CoconutState.OnTree;
+            if (coconut == null)
+            {
+                return false;
+            }
+
+            if (coconut.State == CoconutState.OnTree)
+            {
+                if (coconut.HitCount < 0)
+                {
+                    return false;
+                }
+
+                coconut.HitCount++;
+                if (coconut.HitCount < Math.Max(1, _previewTreeHitCount))
+                {
+                    return false;
+                }
+
+                coconut.HitCount = -1;
+                previewState = CoconutState.Falling;
+                return true;
+            }
+
+            previewState = ResolveLocalAttackState(coconut, localTeam);
+            return previewState != coconut.State;
         }
         private void ClearRoundResult()
         {
@@ -1100,6 +1151,46 @@ namespace HaCreator.MapSimulator.Fields
                 || string.Equals(objectInfo.l0, "coconut2", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(objectInfo.l1, "coconut", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(objectInfo.l1, "coconut2", StringComparison.OrdinalIgnoreCase);
+        }
+        private void LoadAuthoredConfig(WzImage mapImage)
+        {
+            _previewTreeHitCount = DefaultPreviewTreeHitCount;
+            _defaultRoundDurationSeconds = DefaultRoundDurationSecondsValue;
+            _messageDurationMs = DefaultMessageDurationMs;
+            _finalScoreMessageDurationMs = DefaultMessageDurationMs;
+            _eventName = "Coconut harvest begins!";
+
+            if (mapImage?["coconut"] is not WzImageProperty coconutConfig)
+            {
+                return;
+            }
+
+            _previewTreeHitCount = Math.Max(1, InfoTool.GetOptionalInt(coconutConfig["countHit"], DefaultPreviewTreeHitCount) ?? DefaultPreviewTreeHitCount);
+            _defaultRoundDurationSeconds = Math.Max(0, InfoTool.GetOptionalInt(coconutConfig["timeDefault"], DefaultRoundDurationSecondsValue) ?? DefaultRoundDurationSecondsValue);
+
+            int messageSeconds = Math.Max(1, InfoTool.GetOptionalInt(coconutConfig["timeMessage"], DefaultMessageDurationMs / 1000) ?? (DefaultMessageDurationMs / 1000));
+            int finalScoreSeconds = Math.Max(1, InfoTool.GetOptionalInt(coconutConfig["timeFinish"], DefaultMessageDurationMs / 1000) ?? (DefaultMessageDurationMs / 1000));
+            _messageDurationMs = checked(messageSeconds * 1000);
+            _finalScoreMessageDurationMs = checked(finalScoreSeconds * 1000);
+
+            string authoredEventName = InfoTool.GetOptionalString(coconutConfig["eventName"]);
+            if (!string.IsNullOrWhiteSpace(authoredEventName))
+            {
+                _eventName = authoredEventName.Trim();
+            }
+        }
+        internal void ConfigureAuthoredPreviewForTesting(
+            int previewTreeHitCount,
+            int defaultRoundDurationSeconds,
+            int messageDurationMs,
+            int finalScoreMessageDurationMs,
+            string eventName)
+        {
+            _previewTreeHitCount = Math.Max(1, previewTreeHitCount);
+            _defaultRoundDurationSeconds = Math.Max(0, defaultRoundDurationSeconds);
+            _messageDurationMs = Math.Max(1, messageDurationMs);
+            _finalScoreMessageDurationMs = Math.Max(1, finalScoreMessageDurationMs);
+            _eventName = string.IsNullOrWhiteSpace(eventName) ? "Coconut harvest begins!" : eventName.Trim();
         }
         private List<IDXObject> CreateFramesForObject(ObjectInstance instance)
         {

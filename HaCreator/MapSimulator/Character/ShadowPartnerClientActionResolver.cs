@@ -5,6 +5,58 @@ namespace HaCreator.MapSimulator.Character
 {
     internal static class ShadowPartnerClientActionResolver
     {
+        private static readonly string[] SwingHeuristicFragments =
+        {
+            "swing",
+            "doubleswing",
+            "tripleswing",
+            "smash",
+            "panic",
+            "chop",
+            "tempest",
+            "strike",
+            "wave",
+            "upper",
+            "spin",
+            "demolition",
+            "snatch",
+            "shockwave",
+            "dragonstrike",
+            "backspin",
+            "doubleupper",
+            "screw",
+            "straight",
+            "somersault",
+            "fist"
+        };
+
+        private static readonly string[] StabHeuristicFragments =
+        {
+            "stab",
+            "pierce",
+            "thrust"
+        };
+
+        private static readonly string[] RangedHeuristicFragments =
+        {
+            "shoot",
+            "shot",
+            "arrow",
+            "rain",
+            "orb",
+            "fire",
+            "burst",
+            "drain",
+            "spear",
+            "windshot",
+            "windspear",
+            "stormbreak",
+            "arrowrain",
+            "eburster",
+            "edrain",
+            "eorb"
+        };
+
         private static readonly IReadOnlyDictionary<string, string[]> SharedAliasMap =
             new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
             {
@@ -50,11 +102,17 @@ namespace HaCreator.MapSimulator.Character
         public static IEnumerable<string> EnumerateClientMappedCandidates(
             string playerActionName,
             PlayerState state,
-            string fallbackActionName)
+            string fallbackActionName,
+            string weaponType = null)
         {
             if (!string.IsNullOrWhiteSpace(playerActionName))
             {
                 foreach (string candidate in EnumerateAliasCandidates(playerActionName))
+                {
+                    yield return candidate;
+                }
+
+                foreach (string candidate in EnumerateHeuristicAttackAliases(playerActionName, state, weaponType))
                 {
                     yield return candidate;
                 }
@@ -178,6 +236,214 @@ namespace HaCreator.MapSimulator.Character
                     yield return alias;
                 }
             }
+        }
+
+        private static IEnumerable<string> EnumerateHeuristicAttackAliases(
+            string playerActionName,
+            PlayerState state,
+            string weaponType)
+        {
+            if (!IsHeuristicAttackAction(playerActionName))
+            {
+                yield break;
+            }
+
+            bool floating = state is PlayerState.Jumping or PlayerState.Falling or PlayerState.Swimming or PlayerState.Flying;
+            string normalizedWeaponType = weaponType?.Trim().ToLowerInvariant();
+
+            if (playerActionName.IndexOf("prone", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                yield return "proneStab";
+            }
+
+            bool useRangedShootFamily = IsRangedWeaponType(normalizedWeaponType)
+                                        || ContainsAnyFragment(playerActionName, RangedHeuristicFragments);
+            bool usePolearmSwingFamily = IsPolearmWeaponType(normalizedWeaponType);
+            bool useTwoHandedMeleeFamily = IsTwoHandedMeleeWeaponType(normalizedWeaponType);
+            bool preferStabFamily = ContainsAnyFragment(playerActionName, StabHeuristicFragments);
+
+            if (useRangedShootFamily)
+            {
+                foreach (string candidate in EnumerateRangedAttackCandidates(playerActionName, floating))
+                {
+                    yield return candidate;
+                }
+
+                yield break;
+            }
+
+            if (preferStabFamily)
+            {
+                foreach (string candidate in EnumerateStabCandidates(useTwoHandedMeleeFamily, floating))
+                {
+                    yield return candidate;
+                }
+
+                yield break;
+            }
+
+            if (usePolearmSwingFamily)
+            {
+                foreach (string candidate in EnumerateSwingCandidates("swingP", "swingT", floating))
+                {
+                    yield return candidate;
+                }
+
+                yield break;
+            }
+
+            if (ContainsAnyFragment(playerActionName, SwingHeuristicFragments)
+                || playerActionName.IndexOf("attack", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                foreach (string candidate in EnumerateSwingCandidates(
+                             useTwoHandedMeleeFamily ? "swingT" : "swingO",
+                             useTwoHandedMeleeFamily ? "swingO" : "swingT",
+                             floating))
+                {
+                    yield return candidate;
+                }
+            }
+        }
+
+        private static IEnumerable<string> EnumerateRangedAttackCandidates(string playerActionName, bool floating)
+        {
+            if (floating)
+            {
+                yield return "shootF";
+            }
+
+            if (string.Equals(playerActionName, "attack2", StringComparison.OrdinalIgnoreCase))
+            {
+                yield return "shoot2";
+                yield return "shoot1";
+            }
+            else
+            {
+                yield return "shoot1";
+                yield return "shoot2";
+            }
+
+            if (!floating)
+            {
+                yield return "shootF";
+            }
+        }
+
+        private static IEnumerable<string> EnumerateStabCandidates(bool preferTwoHandedFamily, bool floating)
+        {
+            foreach (string candidate in EnumerateAttackFamilyCandidates(
+                         preferTwoHandedFamily ? "stabT" : "stabO",
+                         preferTwoHandedFamily ? "stabO" : "stabT",
+                         floating,
+                         includeThirdGroundFrame: false))
+            {
+                yield return candidate;
+            }
+        }
+
+        private static IEnumerable<string> EnumerateSwingCandidates(
+            string primaryPrefix,
+            string secondaryPrefix,
+            bool floating)
+        {
+            foreach (string candidate in EnumerateAttackFamilyCandidates(
+                         primaryPrefix,
+                         secondaryPrefix,
+                         floating,
+                         includeThirdGroundFrame: true))
+            {
+                yield return candidate;
+            }
+        }
+
+        private static IEnumerable<string> EnumerateAttackFamilyCandidates(
+            string primaryPrefix,
+            string secondaryPrefix,
+            bool floating,
+            bool includeThirdGroundFrame)
+        {
+            if (floating)
+            {
+                yield return primaryPrefix + "F";
+            }
+
+            yield return primaryPrefix + "1";
+            yield return primaryPrefix + "2";
+
+            if (includeThirdGroundFrame)
+            {
+                yield return primaryPrefix + "3";
+            }
+
+            if (!floating)
+            {
+                yield return primaryPrefix + "F";
+            }
+
+            if (floating)
+            {
+                yield return secondaryPrefix + "F";
+            }
+
+            yield return secondaryPrefix + "1";
+            yield return secondaryPrefix + "2";
+
+            if (includeThirdGroundFrame)
+            {
+                yield return secondaryPrefix + "3";
+            }
+
+            if (!floating)
+            {
+                yield return secondaryPrefix + "F";
+            }
+        }
+
+        private static bool IsHeuristicAttackAction(string playerActionName)
+        {
+            if (string.IsNullOrWhiteSpace(playerActionName))
+            {
+                return false;
+            }
+
+            return playerActionName.IndexOf("attack", StringComparison.OrdinalIgnoreCase) >= 0
+                   || ContainsAnyFragment(playerActionName, SwingHeuristicFragments)
+                   || ContainsAnyFragment(playerActionName, StabHeuristicFragments)
+                   || ContainsAnyFragment(playerActionName, RangedHeuristicFragments);
+        }
+
+        private static bool ContainsAnyFragment(string actionName, IEnumerable<string> fragments)
+        {
+            if (string.IsNullOrWhiteSpace(actionName) || fragments == null)
+            {
+                return false;
+            }
+
+            foreach (string fragment in fragments)
+            {
+                if (!string.IsNullOrWhiteSpace(fragment)
+                    && actionName.IndexOf(fragment, StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool IsRangedWeaponType(string weaponType)
+        {
+            return weaponType is "bow" or "crossbow" or "claw" or "gun" or "double bowgun" or "cannon";
+        }
+
+        private static bool IsPolearmWeaponType(string weaponType)
+        {
+            return weaponType is "spear" or "polearm";
+        }
+
+        private static bool IsTwoHandedMeleeWeaponType(string weaponType)
+        {
+            return weaponType is "2h sword" or "2h axe" or "2h blunt";
         }
     }
 }

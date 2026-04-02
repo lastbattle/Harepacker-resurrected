@@ -37,6 +37,7 @@ namespace HaCreator.MapSimulator
             FieldHazardHpPotionCandidate Candidate,
             FieldHazardSharedPetConsumeSource SharedSource);
         private readonly record struct FieldHazardPetAutoConsumeRequest(
+            int RequestId,
             int PetSlotIndex,
             string PetName,
             FieldHazardHpPotionCandidate Candidate,
@@ -45,7 +46,9 @@ namespace HaCreator.MapSimulator
             bool BuffSkillRequest,
             int InventorySlotIndex,
             int RequestedAt,
-            int AckAt);
+            int AckAt,
+            int ResultAt,
+            bool Acknowledged);
 
         private const int PacketOwnedBalloonHorizontalPadding = 10;
         private const int PacketOwnedBalloonVerticalPadding = 10;
@@ -77,9 +80,11 @@ namespace HaCreator.MapSimulator
         private InventoryType _fieldHazardSharedPetConsumeInventoryType = InventoryType.NONE;
         private FieldHazardSharedPetConsumeSource _fieldHazardSharedPetConsumeSource = FieldHazardSharedPetConsumeSource.None;
         private int _lastFieldHazardPetAutoConsumeRequestTick = int.MinValue;
+        private int _nextFieldHazardPetAutoConsumeRequestId = 1;
 
         private const int FieldHazardPetAutoConsumeRequestThrottleMs = 200;
         private const int FieldHazardPetAutoConsumeSyntheticAckDelayMs = 120;
+        private const int FieldHazardPetAutoConsumeSyntheticResultDelayMs = 90;
 
         private void LoadPacketOwnedLocalOverlayAssets()
         {
@@ -231,6 +236,11 @@ namespace HaCreator.MapSimulator
 
         private void DrawPacketOwnedBalloonNineSlice(Rectangle bodyBounds, Color tint)
         {
+            DrawPacketOwnedBalloonNineSlice(_spriteBatch, bodyBounds, tint);
+        }
+
+        private void DrawPacketOwnedBalloonNineSlice(SpriteBatch spriteBatch, Rectangle bodyBounds, Color tint)
+        {
             Texture2D northWest = _packetOwnedBalloonSkin.NorthWest;
             Texture2D northEast = _packetOwnedBalloonSkin.NorthEast;
             Texture2D southWest = _packetOwnedBalloonSkin.SouthWest;
@@ -248,15 +258,15 @@ namespace HaCreator.MapSimulator
             int innerWidth = Math.Max(0, bodyBounds.Width - leftWidth - rightWidth);
             int innerHeight = Math.Max(0, bodyBounds.Height - topHeight - bottomHeight);
 
-            _spriteBatch.Draw(center, new Rectangle(bodyBounds.X + leftWidth, bodyBounds.Y + topHeight, innerWidth, innerHeight), tint);
-            _spriteBatch.Draw(north, new Rectangle(bodyBounds.X + leftWidth, bodyBounds.Y, innerWidth, topHeight), tint);
-            _spriteBatch.Draw(south, new Rectangle(bodyBounds.X + leftWidth, bodyBounds.Bottom - bottomHeight, innerWidth, bottomHeight), tint);
-            _spriteBatch.Draw(west, new Rectangle(bodyBounds.X, bodyBounds.Y + topHeight, leftWidth, innerHeight), tint);
-            _spriteBatch.Draw(east, new Rectangle(bodyBounds.Right - rightWidth, bodyBounds.Y + topHeight, rightWidth, innerHeight), tint);
-            _spriteBatch.Draw(northWest, new Vector2(bodyBounds.X, bodyBounds.Y), tint);
-            _spriteBatch.Draw(northEast, new Vector2(bodyBounds.Right - rightWidth, bodyBounds.Y), tint);
-            _spriteBatch.Draw(southWest, new Vector2(bodyBounds.X, bodyBounds.Bottom - bottomHeight), tint);
-            _spriteBatch.Draw(southEast, new Vector2(bodyBounds.Right - rightWidth, bodyBounds.Bottom - bottomHeight), tint);
+            spriteBatch.Draw(center, new Rectangle(bodyBounds.X + leftWidth, bodyBounds.Y + topHeight, innerWidth, innerHeight), tint);
+            spriteBatch.Draw(north, new Rectangle(bodyBounds.X + leftWidth, bodyBounds.Y, innerWidth, topHeight), tint);
+            spriteBatch.Draw(south, new Rectangle(bodyBounds.X + leftWidth, bodyBounds.Bottom - bottomHeight, innerWidth, bottomHeight), tint);
+            spriteBatch.Draw(west, new Rectangle(bodyBounds.X, bodyBounds.Y + topHeight, leftWidth, innerHeight), tint);
+            spriteBatch.Draw(east, new Rectangle(bodyBounds.Right - rightWidth, bodyBounds.Y + topHeight, rightWidth, innerHeight), tint);
+            spriteBatch.Draw(northWest, new Vector2(bodyBounds.X, bodyBounds.Y), tint);
+            spriteBatch.Draw(northEast, new Vector2(bodyBounds.Right - rightWidth, bodyBounds.Y), tint);
+            spriteBatch.Draw(southWest, new Vector2(bodyBounds.X, bodyBounds.Bottom - bottomHeight), tint);
+            spriteBatch.Draw(southEast, new Vector2(bodyBounds.Right - rightWidth, bodyBounds.Bottom - bottomHeight), tint);
         }
 
         private void DrawPacketOwnedBalloonArrow(in PacketOwnedBalloonLayout layout, Color tint)
@@ -677,12 +687,135 @@ namespace HaCreator.MapSimulator
 
         private void DrawPacketOwnedBalloonRun(in PacketOwnedBalloonTextRun run, Vector2 position, float alpha)
         {
+            DrawPacketOwnedBalloonRun(_spriteBatch, run, position, alpha);
+        }
+
+        private void DrawPacketOwnedBalloonRun(SpriteBatch spriteBatch, in PacketOwnedBalloonTextRun run, Vector2 position, float alpha)
+        {
             Color drawColor = run.Style.Color * alpha;
-            DrawChatTextWithFallback(run.Text, position, drawColor);
+            DrawChatTextWithFallback(spriteBatch, run.Text, position, drawColor);
             if (run.Style.Emphasis)
             {
-                DrawChatTextWithFallback(run.Text, new Vector2(position.X + PacketOwnedBalloonEmphasisOffsetX, position.Y), drawColor);
+                DrawChatTextWithFallback(spriteBatch, run.Text, new Vector2(position.X + PacketOwnedBalloonEmphasisOffsetX, position.Y), drawColor);
             }
+        }
+
+        private void PreparePacketOwnedBalloonVisual(LocalOverlayBalloonMessage message)
+        {
+            if (message == null || _fontChat == null || GraphicsDevice == null)
+            {
+                return;
+            }
+
+            PacketOwnedBalloonWrappedLine[] lines = WrapPacketOwnedBalloonText(message.Text, ResolvePacketOwnedBalloonWrapWidth(message.RequestedWidth));
+            if (lines.Length == 0)
+            {
+                return;
+            }
+
+            Vector2 lineMeasure = MeasureChatTextWithFallback("Ay");
+            int lineHeight = Math.Max(14, (int)Math.Ceiling(lineMeasure.Y));
+            int contentWidth = ResolvePacketOwnedBalloonWrapWidth(message.RequestedWidth);
+            int bodyWidth = contentWidth + PacketOwnedBalloonBodyExtraWidth;
+            int bodyHeight = Math.Max(26, (lines.Length * lineHeight) + (PacketOwnedBalloonVerticalPadding * 2));
+            if (message.HasCachedBodyTexture(bodyWidth, bodyHeight))
+            {
+                return;
+            }
+
+            Rectangle contentBounds = new(
+                PacketOwnedBalloonHorizontalPadding,
+                PacketOwnedBalloonVerticalPadding,
+                contentWidth,
+                Math.Max(0, bodyHeight - (PacketOwnedBalloonVerticalPadding * 2)));
+            if (TryCreatePacketOwnedBalloonBodyTexture(lines, lineHeight, bodyWidth, bodyHeight, contentBounds, out Texture2D bodyTexture))
+            {
+                message.SetCachedBodyTexture(bodyTexture);
+            }
+        }
+
+        private bool TryCreatePacketOwnedBalloonBodyTexture(
+            PacketOwnedBalloonWrappedLine[] lines,
+            int lineHeight,
+            int bodyWidth,
+            int bodyHeight,
+            Rectangle contentBounds,
+            out Texture2D bodyTexture)
+        {
+            bodyTexture = null;
+            if (GraphicsDevice == null || bodyWidth <= 0 || bodyHeight <= 0)
+            {
+                return false;
+            }
+
+            RenderTargetBinding[] previousTargets = GraphicsDevice.GetRenderTargets();
+            Viewport previousViewport = GraphicsDevice.Viewport;
+            var renderTarget = new RenderTarget2D(
+                GraphicsDevice,
+                bodyWidth,
+                bodyHeight,
+                false,
+                SurfaceFormat.Color,
+                DepthFormat.None);
+
+            try
+            {
+                GraphicsDevice.SetRenderTarget(renderTarget);
+                GraphicsDevice.Clear(Color.Transparent);
+
+                using var spriteBatch = new SpriteBatch(GraphicsDevice);
+                spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone);
+                if (_packetOwnedBalloonSkin?.IsLoaded == true)
+                {
+                    DrawPacketOwnedBalloonNineSlice(spriteBatch, new Rectangle(0, 0, bodyWidth, bodyHeight), Color.White);
+                }
+                else if (_debugBoundaryTexture != null)
+                {
+                    spriteBatch.Draw(_debugBoundaryTexture, new Rectangle(0, 0, bodyWidth, bodyHeight), new Color(255, 255, 255, 245));
+                    spriteBatch.Draw(_debugBoundaryTexture, new Rectangle(0, 0, bodyWidth, 1), new Color(66, 66, 66));
+                    spriteBatch.Draw(_debugBoundaryTexture, new Rectangle(0, bodyHeight - 1, bodyWidth, 1), new Color(66, 66, 66));
+                    spriteBatch.Draw(_debugBoundaryTexture, new Rectangle(0, 0, 1, bodyHeight), new Color(66, 66, 66));
+                    spriteBatch.Draw(_debugBoundaryTexture, new Rectangle(bodyWidth - 1, 0, 1, bodyHeight), new Color(66, 66, 66));
+                }
+
+                float drawY = contentBounds.Y;
+                for (int i = 0; i < lines.Length; i++)
+                {
+                    PacketOwnedBalloonWrappedLine line = lines[i];
+                    float drawX = contentBounds.X + Math.Max(0f, (contentBounds.Width - line.Width) / 2f);
+                    for (int runIndex = 0; runIndex < line.Runs.Length; runIndex++)
+                    {
+                        PacketOwnedBalloonTextRun run = line.Runs[runIndex];
+                        DrawPacketOwnedBalloonRun(spriteBatch, run, new Vector2(drawX, drawY), 1f);
+                        drawX += MeasurePacketOwnedBalloonRun(run);
+                    }
+
+                    drawY += lineHeight;
+                }
+
+                spriteBatch.End();
+            }
+            catch
+            {
+                renderTarget.Dispose();
+                throw;
+            }
+            finally
+            {
+                if (previousTargets.Length > 0)
+                {
+                    GraphicsDevice.SetRenderTargets(previousTargets);
+                }
+                else
+                {
+                    GraphicsDevice.SetRenderTarget(null);
+                }
+
+                GraphicsDevice.Viewport = previousViewport;
+            }
+
+            bodyTexture = renderTarget;
+            return true;
         }
 
         private bool TryBuildPacketOwnedBalloonLayout(
@@ -803,6 +936,14 @@ namespace HaCreator.MapSimulator
             }
 
             Color tint = Color.White * alpha;
+            if (layout.Message.CachedBodyTexture != null &&
+                !layout.Message.CachedBodyTexture.IsDisposed)
+            {
+                _spriteBatch.Draw(layout.Message.CachedBodyTexture, new Vector2(layout.BodyBounds.X, layout.BodyBounds.Y), tint);
+                DrawPacketOwnedBalloonArrow(layout, tint);
+                return;
+            }
+
             if (_packetOwnedBalloonSkin?.IsLoaded == true)
             {
                 DrawPacketOwnedBalloonNineSlice(layout.BodyBounds, tint);
@@ -893,7 +1034,7 @@ namespace HaCreator.MapSimulator
 
         private string ApplyPacketOwnedFieldFade(int fadeInMs, int holdMs, int fadeOutMs, int startingAlpha, int currentTickCount)
         {
-            int layerZ = ResolvePacketOwnedFieldFadeLayer();
+            int layerZ = ResolvePacketOwnedFieldFadeLayer(currentTickCount);
             if (fadeInMs <= 0 && holdMs <= 0 && fadeOutMs <= 0)
             {
                 _packetOwnedFieldFadeOverlay.Clear();
@@ -911,20 +1052,27 @@ namespace HaCreator.MapSimulator
                 layerZ);
         }
 
-        private int ResolvePacketOwnedFieldFadeLayer()
+        private int ResolvePacketOwnedFieldFadeLayer(int currentTickCount)
         {
-            return -2;
+            int avatarLayerZ = _playerManager?.Player?.GetCurrentUnderFaceLayerZ(currentTickCount) ?? 0;
+            return avatarLayerZ - 2;
         }
 
         private string ShowPacketOwnedBalloon(string text, int requestedWidth, int lifetimeMs, bool attachToAvatar, Point worldAnchor, int currentTickCount)
         {
+            LocalOverlayBalloonMessage message;
             if (attachToAvatar)
             {
-                _packetOwnedBalloonState.ShowAvatar(text, requestedWidth, lifetimeMs, currentTickCount);
+                message = _packetOwnedBalloonState.ShowAvatar(text, requestedWidth, lifetimeMs, currentTickCount);
             }
             else
             {
-                _packetOwnedBalloonState.ShowWorld(text, requestedWidth, lifetimeMs, worldAnchor, currentTickCount);
+                message = _packetOwnedBalloonState.ShowWorld(text, requestedWidth, lifetimeMs, worldAnchor, currentTickCount);
+            }
+
+            if (message != null)
+            {
+                PreparePacketOwnedBalloonVisual(message);
             }
 
             if (!_packetOwnedBalloonState.IsActive(currentTickCount))
@@ -978,6 +1126,7 @@ namespace HaCreator.MapSimulator
 
         private string ClearFieldHazardNotice()
         {
+            ClearFieldHazardPendingInventoryRequest();
             _pendingFieldHazardPetAutoConsumeRequest = null;
             _localOverlayRuntime.ClearFieldHazardNotice();
             return "Cleared the packet-authored field hazard notice.";
@@ -1035,6 +1184,7 @@ namespace HaCreator.MapSimulator
 
             string petLabel = DescribeFieldHazardAutoConsumePet(target.PetSlotIndex, target.PetName);
             string requestMode = DescribeFieldHazardSharedPetConsumeMode(target.SharedSource);
+            int requestId = GetNextFieldHazardPetAutoConsumeRequestId();
             if (!TryResolveFieldHazardItemSlotIndex(
                     uiWindowManager?.InventoryWindow as IInventoryRuntime,
                     target.Candidate.InventoryType,
@@ -1063,7 +1213,14 @@ namespace HaCreator.MapSimulator
                 return throttledDetail;
             }
 
+            TrySetFieldHazardPendingInventoryRequestState(
+                target.Candidate.InventoryType,
+                inventorySlotIndex,
+                requestId,
+                isPending: true);
+
             _pendingFieldHazardPetAutoConsumeRequest = new FieldHazardPetAutoConsumeRequest(
+                requestId,
                 target.PetSlotIndex,
                 target.PetName,
                 target.Candidate,
@@ -1072,11 +1229,13 @@ namespace HaCreator.MapSimulator
                 BuffSkillRequest: false,
                 InventorySlotIndex: inventorySlotIndex,
                 RequestedAt: currentTickCount,
-                AckAt: currentTickCount + FieldHazardPetAutoConsumeSyntheticAckDelayMs);
+                AckAt: currentTickCount + FieldHazardPetAutoConsumeSyntheticAckDelayMs,
+                ResultAt: currentTickCount + FieldHazardPetAutoConsumeSyntheticAckDelayMs + FieldHazardPetAutoConsumeSyntheticResultDelayMs,
+                Acknowledged: false);
             _lastFieldHazardPetAutoConsumeRequestTick = currentTickCount;
             _petHpPotionFailureSpeechCount = 0;
 
-            string requestDetail = $"{petLabel} {requestMode} queued {target.Candidate.ItemName} from {target.Candidate.InventoryType} slot {inventorySlotIndex}.";
+            string requestDetail = $"{petLabel} {requestMode} sent pet item-use request #{requestId} for {target.Candidate.ItemName} on {target.Candidate.InventoryType} slot {inventorySlotIndex}.";
             _localOverlayRuntime.SetFieldHazardFollowUp(requestDetail, FieldHazardFollowUpKind.Pending, currentTickCount);
             return requestDetail;
         }
@@ -1094,50 +1253,70 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            _pendingFieldHazardPetAutoConsumeRequest = null;
-
             string petLabel = DescribeFieldHazardAutoConsumePet(request.PetSlotIndex, request.PetName);
             string requestMode = DescribeFieldHazardSharedPetConsumeMode(request.SharedSource);
             PlayerCharacter player = _playerManager?.Player;
             if (player?.Build == null || !player.IsAlive)
             {
-                string cancelledDetail = $"{petLabel} {requestMode} request for {request.Candidate.ItemName} expired before the client could acknowledge it.";
+                ClearFieldHazardPendingInventoryRequest();
+                _pendingFieldHazardPetAutoConsumeRequest = null;
+                string cancelledDetail = $"{petLabel} {requestMode} request #{request.RequestId} for {request.Candidate.ItemName} expired before the client could acknowledge it.";
                 _localOverlayRuntime.SetFieldHazardFollowUp(cancelledDetail, FieldHazardFollowUpKind.Failure, currentTickCount);
                 return;
             }
 
-            if (!TryResolveFieldHazardItemSlotIndex(
+            if (!TryGetFieldHazardInventorySlot(
                     uiWindowManager?.InventoryWindow as IInventoryRuntime,
                     request.Candidate.InventoryType,
-                    request.Candidate.ItemId,
-                    out int resolvedInventorySlotIndex)
-                || resolvedInventorySlotIndex != request.InventorySlotIndex)
+                    request.InventorySlotIndex,
+                    out InventorySlotData requestSlot)
+                || requestSlot.ItemId != request.Candidate.ItemId)
             {
+                ClearFieldHazardPendingInventoryRequest();
+                _pendingFieldHazardPetAutoConsumeRequest = null;
                 TryTriggerLimitedPetSpeechEvent(PetAutoSpeechEvent.NoHpPotion, ref _petHpPotionFailureSpeechCount, currentTickCount);
                 _chat?.AddSystemMessage(FieldHazardNoHpPotionNoticeText, currentTickCount);
-                string slotExpiredDetail = $"{petLabel} {requestMode} request for {request.Candidate.ItemName} lost {request.Candidate.InventoryType} slot {request.InventorySlotIndex} before the synthetic ack arrived.";
+                string slotExpiredDetail = $"{petLabel} {requestMode} request #{request.RequestId} for {request.Candidate.ItemName} lost {request.Candidate.InventoryType} slot {request.InventorySlotIndex} before the synthetic ack arrived.";
                 _localOverlayRuntime.SetFieldHazardFollowUp(slotExpiredDetail, FieldHazardFollowUpKind.Failure, currentTickCount);
                 return;
             }
 
-            if (player.HP < player.MaxHP
-                && TryUseConsumableInventoryItem(request.Candidate.ItemId, request.Candidate.InventoryType, currentTickCount))
+            if (!request.Acknowledged)
             {
-                string successDetail = $"{petLabel} {requestMode} acknowledged {request.Candidate.ItemName} from {request.Candidate.InventoryType} slot {request.InventorySlotIndex} and consumed it.";
-                _localOverlayRuntime.SetFieldHazardFollowUp(successDetail, FieldHazardFollowUpKind.Consumed, currentTickCount);
-                return;
+                string ackDetail = $"{petLabel} {requestMode} request #{request.RequestId} was acknowledged on {request.Candidate.InventoryType} slot {request.InventorySlotIndex}.";
+                _localOverlayRuntime.SetFieldHazardFollowUp(ackDetail, FieldHazardFollowUpKind.Acknowledged, currentTickCount);
+                request = request with { Acknowledged = true };
+                _pendingFieldHazardPetAutoConsumeRequest = request;
+                if (unchecked(currentTickCount - request.ResultAt) < 0)
+                {
+                    return;
+                }
             }
+
+            ClearFieldHazardPendingInventoryRequest();
+            _pendingFieldHazardPetAutoConsumeRequest = null;
 
             if (player.HP >= player.MaxHP)
             {
-                string ackDetail = $"{petLabel} {requestMode} request for {request.Candidate.ItemName} was acknowledged on {request.Candidate.InventoryType} slot {request.InventorySlotIndex} without consuming it.";
-                _localOverlayRuntime.SetFieldHazardFollowUp(ackDetail, FieldHazardFollowUpKind.Acknowledged, currentTickCount);
+                string ackOnlyDetail = $"{petLabel} {requestMode} request #{request.RequestId} was acknowledged on {request.Candidate.InventoryType} slot {request.InventorySlotIndex} without consuming {request.Candidate.ItemName}.";
+                _localOverlayRuntime.SetFieldHazardFollowUp(ackOnlyDetail, FieldHazardFollowUpKind.Acknowledged, currentTickCount);
+                return;
+            }
+
+            if (TryUseConsumableInventoryItemAtSlot(
+                    request.Candidate.ItemId,
+                    request.Candidate.InventoryType,
+                    request.InventorySlotIndex,
+                    currentTickCount))
+            {
+                string successDetail = $"{petLabel} {requestMode} request #{request.RequestId} acknowledged {request.Candidate.ItemName} on {request.Candidate.InventoryType} slot {request.InventorySlotIndex} and consumed it.";
+                _localOverlayRuntime.SetFieldHazardFollowUp(successDetail, FieldHazardFollowUpKind.Consumed, currentTickCount);
                 return;
             }
 
             TryTriggerLimitedPetSpeechEvent(PetAutoSpeechEvent.NoHpPotion, ref _petHpPotionFailureSpeechCount, currentTickCount);
             _chat?.AddSystemMessage(FieldHazardNoHpPotionNoticeText, currentTickCount);
-            string failureDetail = $"{petLabel} {requestMode} request for {request.Candidate.ItemName} failed before the client could consume it.";
+            string failureDetail = $"{petLabel} {requestMode} request #{request.RequestId} for {request.Candidate.ItemName} failed after the synthetic ack arrived but before the client could consume the locked slot.";
             _localOverlayRuntime.SetFieldHazardFollowUp(failureDetail, FieldHazardFollowUpKind.Failure, currentTickCount);
         }
 
@@ -1475,17 +1654,85 @@ namespace HaCreator.MapSimulator
 
             FieldHazardPetAutoConsumeRequest request = _pendingFieldHazardPetAutoConsumeRequest.Value;
             int remainingMs = Math.Max(0, request.AckAt - currentTickCount);
+            int resultRemainingMs = Math.Max(0, request.ResultAt - currentTickCount);
             return string.Format(
                 CultureInfo.InvariantCulture,
-                "Field hazard pet transport: {0}, requester={1}, pending={2} [{3}] slot={4} ackIn={5}ms force={6} buffSkill={7}.",
+                "Field hazard pet transport: {0}, requester={1}, requestId={2}, pending={3} [{4}] slot={5} state={6} ackIn={7}ms resultIn={8}ms force={9} buffSkill={10}.",
                 sharedItemStatus,
                 DescribeFieldHazardAutoConsumePet(request.PetSlotIndex, request.PetName),
+                request.RequestId,
                 request.Candidate.ItemId,
                 request.Candidate.InventoryType,
                 request.InventorySlotIndex,
+                request.Acknowledged ? "acknowledged" : "queued",
                 remainingMs,
+                resultRemainingMs,
                 request.ForceRequest ? 1 : 0,
                 request.BuffSkillRequest ? 1 : 0);
+        }
+
+        private int GetNextFieldHazardPetAutoConsumeRequestId()
+        {
+            int requestId = _nextFieldHazardPetAutoConsumeRequestId++;
+            if (requestId <= 0)
+            {
+                _nextFieldHazardPetAutoConsumeRequestId = 2;
+                requestId = 1;
+            }
+
+            return requestId;
+        }
+
+        private bool TrySetFieldHazardPendingInventoryRequestState(
+            InventoryType inventoryType,
+            int slotIndex,
+            int requestId,
+            bool isPending)
+        {
+            if (requestId <= 0
+                || inventoryType == InventoryType.NONE
+                || slotIndex < 0
+                || uiWindowManager?.InventoryWindow is not InventoryUI inventoryWindow)
+            {
+                return false;
+            }
+
+            return inventoryWindow.TrySetPendingRequestState(inventoryType, slotIndex, requestId, isPending);
+        }
+
+        private void ClearFieldHazardPendingInventoryRequest()
+        {
+            if (!_pendingFieldHazardPetAutoConsumeRequest.HasValue
+                || uiWindowManager?.InventoryWindow is not InventoryUI inventoryWindow)
+            {
+                return;
+            }
+
+            inventoryWindow.TryClearPendingRequestState(_pendingFieldHazardPetAutoConsumeRequest.Value.RequestId);
+        }
+
+        private static bool TryGetFieldHazardInventorySlot(
+            IInventoryRuntime inventoryWindow,
+            InventoryType inventoryType,
+            int slotIndex,
+            out InventorySlotData slot)
+        {
+            slot = null;
+            if (inventoryWindow == null
+                || inventoryType == InventoryType.NONE
+                || slotIndex < 0)
+            {
+                return false;
+            }
+
+            IReadOnlyList<InventorySlotData> slots = inventoryWindow.GetSlots(inventoryType);
+            if (slots == null || slotIndex >= slots.Count)
+            {
+                return false;
+            }
+
+            slot = slots[slotIndex];
+            return slot != null && slot.ItemId > 0 && Math.Max(1, slot.Quantity) > 0;
         }
 
         private static bool IsPersistentFieldHazardSharedPetConsumeSource(FieldHazardSharedPetConsumeSource source)

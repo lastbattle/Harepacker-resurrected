@@ -74,6 +74,8 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         public static bool UsesReleaseTriggeredExecution(int skillId) => ReleaseTriggeredSkillIds.Contains(skillId);
 
+        public static bool UsesChargeDamageScaling(int skillId) => skillId is 22121000 or 22151001 or 5311002;
+
         public static bool IsDragonOverlaySkill(int skillId) => skillId is 22121000 or 22151001;
 
         internal readonly struct PreparedSkillHudProfile

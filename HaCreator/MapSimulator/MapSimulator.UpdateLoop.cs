@@ -219,6 +219,7 @@ namespace HaCreator.MapSimulator
             SyncPacketOwnedApspContextLifecycle();
             EnsureLocalUtilityPacketInboxState(shouldRun: true);
             DrainLocalUtilityPacketInbox();
+            DrainLocalUtilityOfficialSessionBridge();
             UpdatePacketOwnedTutorRuntime(currTickCount);
             UpdatePacketOwnedRadioSchedule(currTickCount);
 

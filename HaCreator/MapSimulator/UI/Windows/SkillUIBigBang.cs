@@ -90,6 +90,17 @@ namespace HaCreator.MapSimulator.UI
         private const int CLIENT_TOOLTIP_TEXT_X = 87;
         private const int CLIENT_TOOLTIP_TEXT_Y = 32;
         private const int CLIENT_TOOLTIP_RIGHT_PADDING = 20;
+        private const int CLIENT_TOOLTIP_REQUIREMENT_HEADER_X = 16;
+        private const int CLIENT_TOOLTIP_REQUIREMENT_HEADER_Y_OFFSET = -3;
+        private const int CLIENT_TOOLTIP_REQUIREMENT_ICON_X = 10;
+        private const int CLIENT_TOOLTIP_REQUIREMENT_FIRST_ROW_Y = 15;
+        private const int CLIENT_TOOLTIP_REQUIREMENT_ROW_HEIGHT = 34;
+        private const int CLIENT_TOOLTIP_REQUIREMENT_NAME_X = 50;
+        private const int CLIENT_TOOLTIP_REQUIREMENT_NAME_Y = 2;
+        private const int CLIENT_TOOLTIP_REQUIREMENT_LEVEL_X = 50;
+        private const int CLIENT_TOOLTIP_REQUIREMENT_LEVEL_Y = 14;
+        private const int CLIENT_TOOLTIP_REQUIREMENT_ICON_SIZE = 34;
+        private const int CLIENT_TOOLTIP_REQUIREMENT_SECTION_BASE_HEIGHT = 20;
         private static readonly Color TOOLTIP_BACKGROUND_COLOR = new Color(28, 28, 28, 228);
         private static readonly Color TOOLTIP_BORDER_COLOR = new Color(112, 112, 112, 235);
         private static readonly Color TOOLTIP_INLINE_HIGHLIGHT_COLOR = new Color(255, 214, 140);
@@ -1240,12 +1251,14 @@ namespace HaCreator.MapSimulator.UI
             float currentDescriptionHeight = MeasureLinesHeight(wrappedCurrentDescription);
             float nextHeaderHeight = MeasureLinesHeight(wrappedNextHeader);
             float nextDescriptionHeight = MeasureLinesHeight(wrappedNextDescription);
+            int requirementSectionHeight = GetRequirementSectionHeight(skill);
             float sectionHeight = CalculateTooltipSectionHeight(
                 descriptionHeight,
                 currentHeaderHeight,
                 currentDescriptionHeight,
                 nextHeaderHeight,
-                nextDescriptionHeight);
+                nextDescriptionHeight,
+                requirementSectionHeight);
             float contentY = Math.Max(
                 CLIENT_TOOLTIP_TEXT_Y,
                 CLIENT_TOOLTIP_TITLE_Y + titleHeight + 2f);
@@ -1309,7 +1322,10 @@ namespace HaCreator.MapSimulator.UI
             {
                 sectionY += 2f;
                 DrawTooltipLines(sprite, wrappedNextDescription, textX, sectionY);
+                sectionY += nextDescriptionHeight;
             }
+
+            DrawSkillRequirementSection(sprite, skill, backgroundRect.X, sectionY + TOOLTIP_SECTION_GAP);
         }
 
         private static float CalculateTooltipSectionHeight(
@@ -1317,7 +1333,8 @@ namespace HaCreator.MapSimulator.UI
             float currentHeaderHeight,
             float currentDescriptionHeight,
             float nextHeaderHeight,
-            float nextDescriptionHeight)
+            float nextDescriptionHeight,
+            float requirementSectionHeight)
         {
             float height = 0f;
             if (descriptionHeight > 0f)
@@ -1330,8 +1347,60 @@ namespace HaCreator.MapSimulator.UI
                 height += (height > 0f ? TOOLTIP_SECTION_GAP : 0f) + nextHeaderHeight;
             if (nextDescriptionHeight > 0f)
                 height += 2f + nextDescriptionHeight;
+            if (requirementSectionHeight > 0f)
+                height += (height > 0f ? TOOLTIP_SECTION_GAP : 0f) + requirementSectionHeight;
 
             return height;
+        }
+
+        private int GetRequirementSectionHeight(SkillDisplayData skill)
+        {
+            int requirementCount = skill?.Requirements?.Count ?? 0;
+            if (requirementCount <= 0)
+                return 0;
+
+            return CLIENT_TOOLTIP_REQUIREMENT_SECTION_BASE_HEIGHT + (requirementCount * CLIENT_TOOLTIP_REQUIREMENT_ROW_HEIGHT);
+        }
+
+        private void DrawSkillRequirementSection(SpriteBatch sprite, SkillDisplayData skill, int tooltipX, float sectionY)
+        {
+            if (_font == null || skill?.Requirements == null || skill.Requirements.Count == 0)
+                return;
+
+            DrawTooltipText(
+                sprite,
+                skill.Requirements.Count == 1 ? "Required Skill" : "Required Skills",
+                new Vector2(tooltipX + CLIENT_TOOLTIP_REQUIREMENT_HEADER_X, sectionY + CLIENT_TOOLTIP_REQUIREMENT_HEADER_Y_OFFSET),
+                new Color(255, 204, 120));
+
+            for (int i = 0; i < skill.Requirements.Count; i++)
+            {
+                SkillRequirementDisplayData requirement = skill.Requirements[i];
+                float rowY = sectionY + CLIENT_TOOLTIP_REQUIREMENT_FIRST_ROW_Y + (i * CLIENT_TOOLTIP_REQUIREMENT_ROW_HEIGHT);
+
+                if (requirement.IconTexture != null)
+                {
+                    sprite.Draw(
+                        requirement.IconTexture,
+                        new Rectangle(
+                            tooltipX + CLIENT_TOOLTIP_REQUIREMENT_ICON_X,
+                            (int)Math.Round(rowY),
+                            CLIENT_TOOLTIP_REQUIREMENT_ICON_SIZE,
+                            CLIENT_TOOLTIP_REQUIREMENT_ICON_SIZE),
+                        Color.White);
+                }
+
+                DrawTooltipText(
+                    sprite,
+                    SanitizeFontText(requirement.SkillName),
+                    new Vector2(tooltipX + CLIENT_TOOLTIP_REQUIREMENT_NAME_X, rowY + CLIENT_TOOLTIP_REQUIREMENT_NAME_Y),
+                    Color.White);
+                DrawTooltipText(
+                    sprite,
+                    $"Level {Math.Max(1, requirement.RequiredLevel)}+",
+                    new Vector2(tooltipX + CLIENT_TOOLTIP_REQUIREMENT_LEVEL_X, rowY + CLIENT_TOOLTIP_REQUIREMENT_LEVEL_Y),
+                    new Color(210, 210, 210));
+            }
         }
 
         private int ResolveHoveredTooltipWidth()

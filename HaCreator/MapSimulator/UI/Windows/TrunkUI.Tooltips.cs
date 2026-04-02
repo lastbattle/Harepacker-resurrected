@@ -1283,6 +1283,26 @@ namespace HaCreator.MapSimulator.UI
                 segments.Add("One-of-a-kind item");
             }
 
+            if (part.IsEquipTradeBlocked)
+            {
+                segments.Add("Untradeable after equip");
+            }
+
+            if (part.IsNotForSale)
+            {
+                segments.Add("Not for sale");
+            }
+
+            if (part.IsAccountSharable)
+            {
+                segments.Add("Account-sharable");
+            }
+
+            if (part.HasAccountShareTag)
+            {
+                segments.Add("Account-share tagged");
+            }
+
             if (part.KnockbackRate > 0)
             {
                 segments.Add($"Knockback resistance {part.KnockbackRate}%");

@@ -66,7 +66,7 @@ namespace HaCreator.MapSimulator.Interaction
                     9 => DecodeAskAvatar(reader, speaker, param, true),
                     10 => DecodeAskPet(reader, speaker, param, false),
                     11 => DecodeAskPet(reader, speaker, param, true),
-                    12 => DecodeAskSlideMenu(reader, speaker, param),
+                    12 => DecodeUnsupported(reader, speaker, messageType, param),
                     13 => DecodeAskYesNo(reader, speaker, param, true),
                     14 => DecodeAskBoxText(reader, speaker, param),
                     15 => DecodeAskSlideMenu(reader, speaker, param),

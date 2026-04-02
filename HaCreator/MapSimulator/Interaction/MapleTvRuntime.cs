@@ -680,9 +680,32 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static string BuildClientSendResultFeedbackText(MapleTvSendResultDefinition definition)
         {
+            if (MapleTvSendResultText.TryResolve(definition.StringPoolId, out string resolvedText))
+            {
+                return $"{resolvedText} [StringPool 0x{definition.StringPoolId:X}]";
+            }
+
             return definition.StringPoolId >= 0
                 ? $"MapleTV send result ({definition.StatusLabel}, code {definition.ResultCode}, StringPool 0x{definition.StringPoolId:X}; localized client text unresolved)."
                 : $"MapleTV send result failed (code {definition.ResultCode}).";
+        }
+    }
+
+    internal static class MapleTvSendResultText
+    {
+        // CMapleTVMan::OnSendMessageResult routes result codes 1/2/3 straight to
+        // StringPool 0xF9E/0xFA0/0xF9F and emits them as chat-log type 12 notices.
+        public static bool TryResolve(int stringPoolId, out string text)
+        {
+            text = stringPoolId switch
+            {
+                0xF9E => "The MapleTV message has been sent.",
+                0xFA0 => "The MapleTV request could not be completed because the server is busy.",
+                0xF9F => "The MapleTV request could not be completed because the recipient is offline.",
+                _ => null,
+            };
+
+            return text != null;
         }
     }
 

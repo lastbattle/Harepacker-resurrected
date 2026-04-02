@@ -228,6 +228,12 @@ namespace HaCreator.MapSimulator.UI
             public Func<AdminShopEntry, bool> Matches { get; init; }
         }
 
+        private sealed class WishlistSearchIndexEntry
+        {
+            public string CombinedText { get; init; } = string.Empty;
+            public IReadOnlyList<string> Terms { get; init; } = Array.Empty<string>();
+        }
+
         private const int MaxVisibleRows = 5;
         private const int PacketOwnedStorageExpansionTimeoutMs = 4000;
         private const int LeftPaneX = 17;
@@ -242,6 +248,8 @@ namespace HaCreator.MapSimulator.UI
         private static readonly IReadOnlyList<WishlistCategoryNode> s_wishlistCategoryTree = BuildWishlistCategoryTree();
         private static readonly Dictionary<string, WishlistCategoryNode> s_wishlistCategoryNodesByKey = BuildWishlistCategoryNodeLookup(s_wishlistCategoryTree);
         private static readonly IReadOnlyDictionary<string, WishlistCategoryLeafDefinition> s_wishlistCategoryLeaves = BuildWishlistCategoryLeaves();
+        private static readonly object WishlistSearchIndexLock = new();
+        private static IReadOnlyDictionary<int, WishlistSearchIndexEntry> _wishlistSearchIndexByItemId;
         private const int RowIconY = 1;
         private const int RowIconSize = 32;
         private const int RowTextX = 40;
@@ -2459,42 +2467,171 @@ namespace HaCreator.MapSimulator.UI
                 return 0;
             }
 
-            if (string.Equals(entry.Title, query, StringComparison.OrdinalIgnoreCase))
+            string normalizedQuery = NormalizeWishlistSearchText(query);
+            if (string.IsNullOrWhiteSpace(normalizedQuery))
             {
-                return 500;
+                return 0;
             }
 
-            if (entry.Title.StartsWith(query, StringComparison.OrdinalIgnoreCase))
+            int score = 0;
+            score = Math.Max(score, ScoreWishlistField(entry.Title, query, normalizedQuery, 500, 400, 300));
+            score = Math.Max(score, ScoreWishlistField(entry.Detail, query, normalizedQuery, 220, 200, 180));
+            score = Math.Max(score, ScoreWishlistField(entry.Seller, query, normalizedQuery, 120, 110, 90));
+
+            if (TryGetWishlistSearchIndexEntry(entry, out WishlistSearchIndexEntry searchIndexEntry))
             {
-                return 400;
+                score = Math.Max(score, ScoreWishlistField(searchIndexEntry.CombinedText, query, normalizedQuery, 480, 360, 280));
             }
 
-            if (entry.Title.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0)
+            string aggregateSearchText = BuildWishlistAggregateSearchText(entry, out IReadOnlyList<string> indexTerms);
+            score += ScoreWishlistTokenCoverage(aggregateSearchText, normalizedQuery);
+            score += ScoreWishlistIndexTermCoverage(indexTerms, normalizedQuery);
+            return score;
+        }
+
+        private static int ScoreWishlistField(string fieldValue, string rawQuery, string normalizedQuery, int exactScore, int startsWithScore, int containsScore)
+        {
+            if (string.IsNullOrWhiteSpace(fieldValue))
             {
-                return 300;
+                return 0;
             }
 
-            if (entry.Detail.StartsWith(query, StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(fieldValue.Trim(), rawQuery, StringComparison.OrdinalIgnoreCase))
             {
-                return 220;
+                return exactScore;
             }
 
-            if (entry.Detail.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0)
+            if (fieldValue.StartsWith(rawQuery, StringComparison.OrdinalIgnoreCase))
             {
-                return 180;
+                return startsWithScore;
             }
 
-            if (entry.Seller.StartsWith(query, StringComparison.OrdinalIgnoreCase))
+            if (fieldValue.IndexOf(rawQuery, StringComparison.OrdinalIgnoreCase) >= 0)
             {
-                return 120;
+                return containsScore;
             }
 
-            if (entry.Seller.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0)
+            string normalizedFieldValue = NormalizeWishlistSearchText(fieldValue);
+            if (string.IsNullOrWhiteSpace(normalizedFieldValue))
             {
-                return 90;
+                return 0;
             }
 
-            return 0;
+            if (string.Equals(normalizedFieldValue, normalizedQuery, StringComparison.Ordinal))
+            {
+                return exactScore - 10;
+            }
+
+            if (normalizedFieldValue.StartsWith(normalizedQuery, StringComparison.Ordinal))
+            {
+                return startsWithScore - 10;
+            }
+
+            return normalizedFieldValue.Contains(normalizedQuery, StringComparison.Ordinal)
+                ? containsScore - 10
+                : 0;
+        }
+
+        private static int ScoreWishlistTokenCoverage(string aggregateSearchText, string normalizedQuery)
+        {
+            string[] tokens = SplitWishlistSearchTokens(normalizedQuery);
+            if (tokens.Length <= 1 || string.IsNullOrWhiteSpace(aggregateSearchText))
+            {
+                return 0;
+            }
+
+            int matchedTokens = tokens.Count(token => aggregateSearchText.Contains(token, StringComparison.Ordinal));
+            if (matchedTokens == 0)
+            {
+                return 0;
+            }
+
+            int coverageScore = matchedTokens * 30;
+            if (matchedTokens == tokens.Length)
+            {
+                coverageScore += 40;
+            }
+
+            return coverageScore;
+        }
+
+        private static int ScoreWishlistIndexTermCoverage(IReadOnlyList<string> indexTerms, string normalizedQuery)
+        {
+            string[] tokens = SplitWishlistSearchTokens(normalizedQuery);
+            if (tokens.Length == 0 || indexTerms == null || indexTerms.Count == 0)
+            {
+                return 0;
+            }
+
+            int bestScore = 0;
+            foreach (string term in indexTerms)
+            {
+                if (string.IsNullOrWhiteSpace(term))
+                {
+                    continue;
+                }
+
+                int matchedTokens = tokens.Count(token => term.Contains(token, StringComparison.Ordinal));
+                if (matchedTokens == 0)
+                {
+                    continue;
+                }
+
+                int score = matchedTokens * 25;
+                if (matchedTokens == tokens.Length)
+                {
+                    score += 35;
+                }
+
+                bestScore = Math.Max(bestScore, score);
+            }
+
+            return bestScore;
+        }
+
+        private static string BuildWishlistAggregateSearchText(AdminShopEntry entry, out IReadOnlyList<string> indexTerms)
+        {
+            indexTerms = Array.Empty<string>();
+            List<string> components = new()
+            {
+                NormalizeWishlistSearchText(entry?.Title),
+                NormalizeWishlistSearchText(entry?.Detail),
+                NormalizeWishlistSearchText(entry?.Seller)
+            };
+
+            if (TryGetWishlistSearchIndexEntry(entry, out WishlistSearchIndexEntry searchIndexEntry))
+            {
+                indexTerms = searchIndexEntry.Terms;
+                components.Add(searchIndexEntry.CombinedText);
+            }
+
+            return string.Join(" ", components.Where(component => !string.IsNullOrWhiteSpace(component)));
+        }
+
+        private static string NormalizeWishlistSearchText(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return string.Empty;
+            }
+
+            char[] buffer = value.Trim().ToLowerInvariant().ToCharArray();
+            for (int i = 0; i < buffer.Length; i++)
+            {
+                if (!char.IsLetterOrDigit(buffer[i]))
+                {
+                    buffer[i] = ' ';
+                }
+            }
+
+            return string.Join(" ", new string(buffer).Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries));
+        }
+
+        private static string[] SplitWishlistSearchTokens(string normalizedQuery)
+        {
+            return string.IsNullOrWhiteSpace(normalizedQuery)
+                ? Array.Empty<string>()
+                : normalizedQuery.Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries);
         }
 
         private string BuildSelectionMessage(AdminShopEntry entry, AdminShopPane pane)
@@ -4168,6 +4305,91 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return false;
+        }
+
+        private static bool TryGetWishlistSearchIndexEntry(AdminShopEntry entry, out WishlistSearchIndexEntry searchIndexEntry)
+        {
+            searchIndexEntry = null;
+            if (entry?.RewardItemId <= 0)
+            {
+                return false;
+            }
+
+            return GetWishlistSearchIndexByItemId().TryGetValue(entry.RewardItemId, out searchIndexEntry);
+        }
+
+        private static IReadOnlyDictionary<int, WishlistSearchIndexEntry> GetWishlistSearchIndexByItemId()
+        {
+            if (_wishlistSearchIndexByItemId != null)
+            {
+                return _wishlistSearchIndexByItemId;
+            }
+
+            lock (WishlistSearchIndexLock)
+            {
+                if (_wishlistSearchIndexByItemId != null)
+                {
+                    return _wishlistSearchIndexByItemId;
+                }
+
+                Dictionary<int, WishlistSearchIndexEntry> searchIndex = new();
+                WzImage searchImage = global::HaCreator.Program.FindImage("String", "CashItemSearch.img");
+                foreach (WzSubProperty itemSearchProperty in searchImage?.WzProperties?.OfType<WzSubProperty>() ?? Enumerable.Empty<WzSubProperty>())
+                {
+                    if (!int.TryParse(itemSearchProperty.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int itemId) || itemId <= 0)
+                    {
+                        continue;
+                    }
+
+                    HashSet<string> normalizedTerms = new(StringComparer.Ordinal);
+                    foreach (WzImageProperty property in itemSearchProperty.WzProperties)
+                    {
+                        string searchTerm = ResolveWishlistSearchIndexTerm(property);
+                        if (string.IsNullOrWhiteSpace(searchTerm))
+                        {
+                            continue;
+                        }
+
+                        string normalizedTerm = NormalizeWishlistSearchText(searchTerm);
+                        if (!string.IsNullOrWhiteSpace(normalizedTerm))
+                        {
+                            normalizedTerms.Add(normalizedTerm);
+                        }
+                    }
+
+                    if (normalizedTerms.Count == 0)
+                    {
+                        continue;
+                    }
+
+                    string[] orderedTerms = normalizedTerms
+                        .OrderBy(term => term.Length)
+                        .ThenBy(term => term, StringComparer.Ordinal)
+                        .ToArray();
+                    searchIndex[itemId] = new WishlistSearchIndexEntry
+                    {
+                        CombinedText = string.Join(" ", orderedTerms),
+                        Terms = orderedTerms
+                    };
+                }
+
+                _wishlistSearchIndexByItemId = searchIndex;
+                return _wishlistSearchIndexByItemId;
+            }
+        }
+
+        private static string ResolveWishlistSearchIndexTerm(WzImageProperty property)
+        {
+            return property switch
+            {
+                WzStringProperty stringProperty => stringProperty.GetString(),
+                WzSubProperty subProperty => string.Join(
+                    " ",
+                    subProperty.WzProperties
+                        .Select(ResolveWishlistSearchIndexTerm)
+                        .Where(value => !string.IsNullOrWhiteSpace(value))),
+                _ => property?.GetString()
+            };
         }
 
         private string BuildBrowseModeMessage(AdminShopBrowseMode browseMode)

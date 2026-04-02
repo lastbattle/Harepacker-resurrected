@@ -35,6 +35,25 @@ namespace HaCreator.MapSimulator.UI
             "dotum.ttc",
             "gulim.ttc"
         };
+        private static readonly string[] DefaultPrivateFontFamilyCandidates =
+        {
+            "DotumChe",
+            "Dotum",
+            "DOTOOMCHE",
+            "DOTOOM",
+            "DODUMCHE",
+            "DODUM",
+            "돋움체",
+            "돋움",
+            "GulimChe",
+            "Gulim",
+            "굴림체",
+            "굴림",
+            "BatangChe",
+            "Batang",
+            "바탕체",
+            "바탕"
+        };
         private static readonly string[] DefaultPrivateFontSearchDirectorySuffixes =
         {
             string.Empty,
@@ -56,6 +75,10 @@ namespace HaCreator.MapSimulator.UI
             "Gulim",
             "굴림체",
             "굴림",
+            "BatangChe",
+            "Batang",
+            "・被ヵ・ｴ",
+            "・被ヵ",
             "Tahoma",
             SD.SystemFonts.MessageBoxFont?.FontFamily?.Name,
             SD.FontFamily.GenericSansSerif.Name
@@ -242,8 +265,8 @@ namespace HaCreator.MapSimulator.UI
             using SD.Bitmap croppedBitmap = bitmap.Clone(bounds, bitmap.PixelFormat);
             Texture2D texture = croppedBitmap.ToTexture2D(_graphicsDevice);
             Vector2 measurement = new Vector2(
-                Math.Max(1, bounds.Right - RasterPadding),
-                Math.Max(1, bounds.Bottom - RasterPadding));
+                Math.Max(Math.Max(1, measuredSize.Width), bounds.Right - RasterPadding),
+                Math.Max(Math.Max(1, measuredSize.Height), bounds.Bottom - RasterPadding));
 
             return new RasterTextTexture(
                 texture,
@@ -350,7 +373,12 @@ namespace HaCreator.MapSimulator.UI
             }
 
             string configuredFontFace = Environment.GetEnvironmentVariable(ClientTextFontFaceEnvironmentVariable);
-            return PrivateFontRegistry.TryRegister(resolvedFontPath, configuredFontFace, out fontFamilyName);
+            if (!string.IsNullOrWhiteSpace(configuredFontFace))
+            {
+                return PrivateFontRegistry.TryRegister(resolvedFontPath, configuredFontFace, out fontFamilyName);
+            }
+
+            return PrivateFontRegistry.TryRegister(resolvedFontPath, DefaultPrivateFontFamilyCandidates, out fontFamilyName);
         }
 
         private static string ResolveInstalledFontFamilyName(params string[] candidates)
@@ -381,7 +409,7 @@ namespace HaCreator.MapSimulator.UI
 
             foreach (string candidatePath in EnumerateDefaultPrivateFontCandidatePaths())
             {
-                if (PrivateFontRegistry.TryRegister(candidatePath, preferredFamilyName: null, out fontFamilyName))
+                if (PrivateFontRegistry.TryRegister(candidatePath, DefaultPrivateFontFamilyCandidates, out fontFamilyName))
                 {
                     return !string.IsNullOrWhiteSpace(fontFamilyName);
                 }
@@ -508,6 +536,7 @@ namespace HaCreator.MapSimulator.UI
                      {
                          AppContext.BaseDirectory,
                          Environment.CurrentDirectory,
+                         AppDomain.CurrentDomain.BaseDirectory,
                          windowsFontsDirectory
                      })
             {
@@ -516,29 +545,51 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
-                foreach (string suffix in DefaultPrivateFontSearchDirectorySuffixes)
+                foreach (string rootDirectory in EnumerateSearchRootAncestors(baseDirectory))
                 {
-                    string candidate = string.IsNullOrEmpty(suffix)
-                        ? baseDirectory
-                        : Path.Combine(baseDirectory, suffix);
-
-                    string fullPath;
-                    try
+                    foreach (string suffix in DefaultPrivateFontSearchDirectorySuffixes)
                     {
-                        fullPath = Path.GetFullPath(candidate);
-                    }
-                    catch
-                    {
-                        continue;
-                    }
+                        string candidate = string.IsNullOrEmpty(suffix)
+                            ? rootDirectory
+                            : Path.Combine(rootDirectory, suffix);
 
-                    if (!Directory.Exists(fullPath) || !seenPaths.Add(fullPath))
-                    {
-                        continue;
-                    }
+                        string fullPath;
+                        try
+                        {
+                            fullPath = Path.GetFullPath(candidate);
+                        }
+                        catch
+                        {
+                            continue;
+                        }
 
-                    yield return fullPath;
+                        if (!Directory.Exists(fullPath) || !seenPaths.Add(fullPath))
+                        {
+                            continue;
+                        }
+
+                        yield return fullPath;
+                    }
                 }
+            }
+        }
+
+        private static IEnumerable<string> EnumerateSearchRootAncestors(string baseDirectory)
+        {
+            string fullPath;
+            try
+            {
+                fullPath = Path.GetFullPath(baseDirectory);
+            }
+            catch
+            {
+                yield break;
+            }
+
+            DirectoryInfo current = new DirectoryInfo(fullPath);
+            for (int depth = 0; current != null && depth < 4; depth++, current = current.Parent)
+            {
+                yield return current.FullName;
             }
         }
 
@@ -585,11 +636,19 @@ namespace HaCreator.MapSimulator.UI
 
             public static bool TryRegister(string fontPath, string preferredFamilyName, out string resolvedFamilyName)
             {
+                return TryRegister(
+                    fontPath,
+                    string.IsNullOrWhiteSpace(preferredFamilyName) ? null : new[] { preferredFamilyName },
+                    out resolvedFamilyName);
+            }
+
+            public static bool TryRegister(string fontPath, IEnumerable<string> preferredFamilyNames, out string resolvedFamilyName)
+            {
                 lock (Sync)
                 {
                     if (RegisteredFonts.TryGetValue(fontPath, out RegisteredPrivateFont cachedFont))
                     {
-                        resolvedFamilyName = cachedFont.ResolveFamilyName(preferredFamilyName);
+                        resolvedFamilyName = cachedFont.ResolveFamilyName(preferredFamilyNames);
                         return !string.IsNullOrWhiteSpace(resolvedFamilyName);
                     }
 
@@ -613,7 +672,7 @@ namespace HaCreator.MapSimulator.UI
                         RegisteredPrivateFont registeredFont = new RegisteredPrivateFont(fontData, privateFonts, gdiHandle);
                         RegisteredFonts[fontPath] = registeredFont;
 
-                        resolvedFamilyName = registeredFont.ResolveFamilyName(preferredFamilyName);
+                        resolvedFamilyName = registeredFont.ResolveFamilyName(preferredFamilyNames);
                         return !string.IsNullOrWhiteSpace(resolvedFamilyName);
                     }
                     catch
@@ -641,7 +700,7 @@ namespace HaCreator.MapSimulator.UI
             public SDText.PrivateFontCollection Collection { get; }
             public IntPtr GdiHandle { get; }
 
-            public string ResolveFamilyName(string preferredFamilyName)
+            public string ResolveFamilyName(IEnumerable<string> preferredFamilyNames)
             {
                 SD.FontFamily[] families = Collection?.Families;
                 if (families == null || families.Length == 0)
@@ -649,13 +708,21 @@ namespace HaCreator.MapSimulator.UI
                     return null;
                 }
 
-                if (!string.IsNullOrWhiteSpace(preferredFamilyName))
+                if (preferredFamilyNames != null)
                 {
-                    SD.FontFamily preferredFamily = families.FirstOrDefault(
-                        family => string.Equals(family.Name, preferredFamilyName, StringComparison.OrdinalIgnoreCase));
-                    if (preferredFamily != null)
+                    foreach (string preferredFamilyName in preferredFamilyNames)
                     {
-                        return preferredFamily.Name;
+                        if (string.IsNullOrWhiteSpace(preferredFamilyName))
+                        {
+                            continue;
+                        }
+
+                        SD.FontFamily preferredFamily = families.FirstOrDefault(
+                            family => string.Equals(family.Name, preferredFamilyName, StringComparison.OrdinalIgnoreCase));
+                        if (preferredFamily != null)
+                        {
+                            return preferredFamily.Name;
+                        }
                     }
                 }
 

@@ -39,6 +39,14 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly string[] ChalkboardClientVisualCandidatePaths =
         {
             ClientMessageBoxPropertyName,
+            UiPropertyName,
+            $"{InfoPropertyName}/{ChalkboardSamplePropertyName}"
+        };
+        private static readonly string[] ChalkboardSharedVisualCandidatePaths =
+        {
+            ClientMessageBoxPropertyName,
+            UiPropertyName,
+            ChalkboardSamplePropertyName,
             $"{InfoPropertyName}/{ChalkboardSamplePropertyName}"
         };
         private const int ClientLeaveStartAlpha = 255;
@@ -454,13 +462,14 @@ namespace HaCreator.MapSimulator.Interaction
             iconTexture ??= LoadCanvasTexture(resolvedInfoProperty?["iconRaw"] as WzCanvasProperty)
                             ?? LoadCanvasTexture(resolvedInfoProperty?["icon"] as WzCanvasProperty);
 
-            if (TryLoadClientMessageBoxVisual(resolvedItemProperty, itemId, iconTexture, out MessageBoxVisual visual))
+            bool usingResolvedSharedProperty = !ReferenceEquals(resolvedItemProperty, itemProperty);
+            if (TryLoadClientMessageBoxVisual(resolvedItemProperty, itemId, iconTexture, usingResolvedSharedProperty, out MessageBoxVisual visual))
             {
                 return visual;
             }
 
             if (!ReferenceEquals(resolvedItemProperty, itemProperty) &&
-                TryLoadClientMessageBoxVisual(itemProperty, itemId, iconTexture, out visual))
+                TryLoadClientMessageBoxVisual(itemProperty, itemId, iconTexture, includeSharedPropertyCandidates: false, out visual))
             {
                 return visual;
             }
@@ -474,11 +483,12 @@ namespace HaCreator.MapSimulator.Interaction
             WzSubProperty itemProperty,
             int itemId,
             Texture2D iconTexture,
+            bool includeSharedPropertyCandidates,
             out MessageBoxVisual visual)
         {
             visual = null;
 
-            foreach (string candidatePath in GetPreferredVisualPropertyPaths(itemId))
+            foreach (string candidatePath in GetPreferredVisualPropertyPaths(itemId, includeSharedPropertyCandidates))
             {
                 if (!TryLoadVisualAtPath(itemProperty, candidatePath, out visual))
                 {
@@ -500,9 +510,19 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal static IReadOnlyList<string> GetPreferredVisualPropertyPaths(int itemId)
         {
-            return IsKnownChalkboardItem(itemId)
-                ? ChalkboardClientVisualCandidatePaths
-                : DefaultClientVisualCandidatePaths;
+            return GetPreferredVisualPropertyPaths(itemId, includeSharedPropertyCandidates: false);
+        }
+
+        private static IReadOnlyList<string> GetPreferredVisualPropertyPaths(int itemId, bool includeSharedPropertyCandidates)
+        {
+            if (!IsKnownChalkboardItem(itemId))
+            {
+                return DefaultClientVisualCandidatePaths;
+            }
+
+            return includeSharedPropertyCandidates
+                ? ChalkboardSharedVisualCandidatePaths
+                : ChalkboardClientVisualCandidatePaths;
         }
 
         internal static string ResolveCreateFailedNoticeText()
@@ -954,10 +974,10 @@ namespace HaCreator.MapSimulator.Interaction
                 name.IndexOf("board", StringComparison.OrdinalIgnoreCase) >= 0 ||
                 name.IndexOf("chalk", StringComparison.OrdinalIgnoreCase) >= 0)
             {
-                int paddingLeft = texture?.Width >= 72 ? 8 : 6;
+                int paddingLeft = texture?.Width >= 72 ? 6 : 5;
                 int paddingRight = paddingLeft;
-                int paddingTop = texture?.Height >= 56 ? 10 : 8;
-                int paddingBottom = texture?.Height >= 56 ? 14 : 10;
+                int paddingTop = texture?.Height >= 64 ? 8 : 6;
+                int paddingBottom = texture?.Height >= 64 ? 10 : 8;
                 return new MessageBoxTextLayout(
                     paddingLeft,
                     paddingTop,
@@ -965,7 +985,7 @@ namespace HaCreator.MapSimulator.Interaction
                     paddingBottom,
                     CenterHorizontally: true,
                     CenterVertically: true,
-                    MaxLineCount: 3,
+                    MaxLineCount: texture?.Height >= 68 ? MaxBodyLineCount : 3,
                     TextColor: new Color(244, 246, 232));
             }
 
@@ -1019,6 +1039,11 @@ namespace HaCreator.MapSimulator.Interaction
         internal static IReadOnlyList<string> GetPreferredVisualPropertyPathsForTest(int itemId)
         {
             return GetPreferredVisualPropertyPaths(itemId);
+        }
+
+        internal static IReadOnlyList<string> GetSharedVisualPropertyPathsForTest(int itemId)
+        {
+            return GetPreferredVisualPropertyPaths(itemId, includeSharedPropertyCandidates: true);
         }
 
         internal static bool TryParseWzPropertyPathForTest(string path, out string category, out string imagePath, out string propertyPath)

@@ -6,10 +6,17 @@ namespace HaCreator.MapSimulator.Interaction
 {
     internal sealed class WeddingInvitationRuntime
     {
+        internal const string ClientOwnerTypeName = "CUIWeddingInvitation";
+        internal const string ClientOwnerEntryPoint = "CWvsContext::OnMarriageResult";
+        internal const int ClientOpenResultSubtype = 15;
+        internal const string ClientPresentationMode = "DoModal";
         internal const string PrimaryInvitationAssetPath = "UIWindow2.img/Wedding/Invitation";
         internal const string FallbackInvitationAssetPath = "UIWindow.img/Wedding/Invitation";
         internal const string AcceptButtonAssetName = "BtOK";
         internal const int AcceptStringPoolId = 0x19CE;
+        internal const int DefaultDialogTitleStringPoolId = 0xEAF;
+        internal const int TypeTwoDialogTitleStringPoolId = 0xEB0;
+        internal const string NameFontToken = "FONT_BASIC_BLACK";
         internal const int GroomNameX = 50;
         internal const int BrideNameX = 131;
         internal const int ParticipantNameY = 105;
@@ -27,6 +34,7 @@ namespace HaCreator.MapSimulator.Interaction
         private string _statusMessage = "No wedding invitation is active.";
         private string _sourceDescription = DefaultSourceDescription;
         private WeddingInvitationStyle _style = WeddingInvitationStyle.Neat;
+        private int? _clientDialogType;
         private bool _isOpen;
         private bool _lastAccepted;
 
@@ -38,15 +46,23 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
-        internal string OpenInvitation(string groomName, string brideName, WeddingInvitationStyle style)
+        internal string OpenInvitation(
+            string groomName,
+            string brideName,
+            WeddingInvitationStyle style,
+            int? clientDialogType = null,
+            string sourceDescription = null)
         {
             _groomName = NormalizeName(groomName, string.IsNullOrWhiteSpace(_localCharacterName) ? DefaultGroomName : _localCharacterName);
             _brideName = NormalizeName(brideName, DefaultBrideName);
             _style = style;
+            _clientDialogType = clientDialogType;
             _isOpen = true;
             _lastAccepted = false;
-            _sourceDescription = DefaultSourceDescription;
-            _statusMessage = $"Opened CUIWeddingInvitation-style dialog for {_groomName} and {_brideName} using the {ResolveBackgroundAssetPath(style)} surface.";
+            _sourceDescription = string.IsNullOrWhiteSpace(sourceDescription)
+                ? DefaultSourceDescription
+                : sourceDescription.Trim();
+            _statusMessage = $"Opened {ClientOwnerTypeName}-style dialog for {_groomName} and {_brideName} using the {ResolveBackgroundAssetPath(style)} surface. Client owner path={ClientOwnerEntryPoint} subtype {ClientOpenResultSubtype} -> {ClientPresentationMode}; title StringPool 0x{ResolveDialogTitleStringPoolId(_clientDialogType):X}.";
             return _statusMessage;
         }
 
@@ -83,6 +99,7 @@ namespace HaCreator.MapSimulator.Interaction
             _groomName = DefaultGroomName;
             _brideName = DefaultBrideName;
             _style = WeddingInvitationStyle.Neat;
+            _clientDialogType = null;
             _sourceDescription = DefaultSourceDescription;
             _statusMessage = "Cleared wedding invitation state.";
             return _statusMessage;
@@ -100,7 +117,16 @@ namespace HaCreator.MapSimulator.Interaction
                 Style = _style,
                 AcceptButtonLabel = DefaultAcceptLabel,
                 HasAcceptFocus = _isOpen,
+                ClientOwnerTypeName = ClientOwnerTypeName,
+                ClientOwnerEntryPoint = ClientOwnerEntryPoint,
+                ClientOpenResultSubtype = ClientOpenResultSubtype,
+                ClientPresentationMode = ClientPresentationMode,
+                ClientDialogType = _clientDialogType,
+                DialogTitleStringPoolId = ResolveDialogTitleStringPoolId(_clientDialogType),
+                DefaultDialogTitleStringPoolId = DefaultDialogTitleStringPoolId,
+                AlternateDialogTitleStringPoolId = TypeTwoDialogTitleStringPoolId,
                 AcceptStringPoolId = AcceptStringPoolId,
+                NameFontToken = NameFontToken,
                 InvitationAssetPath = ResolveBackgroundAssetPath(_style),
                 AcceptButtonAssetPath = $"{PrimaryInvitationAssetPath}/{AcceptButtonAssetName}",
                 FallbackInvitationAssetPath = ResolveFallbackBackgroundAssetPath(_style),
@@ -140,6 +166,13 @@ namespace HaCreator.MapSimulator.Interaction
         {
             return $"{FallbackInvitationAssetPath}/{style.ToString().ToLowerInvariant()}";
         }
+
+        private static int ResolveDialogTitleStringPoolId(int? clientDialogType)
+        {
+            return clientDialogType == 2
+                ? TypeTwoDialogTitleStringPoolId
+                : DefaultDialogTitleStringPoolId;
+        }
     }
 
     internal enum WeddingInvitationStyle
@@ -155,13 +188,22 @@ namespace HaCreator.MapSimulator.Interaction
         public bool CanAccept { get; init; }
         public bool LastAccepted { get; init; }
         public bool HasAcceptFocus { get; init; }
+        public int? ClientDialogType { get; init; }
+        public int ClientOpenResultSubtype { get; init; }
+        public int DialogTitleStringPoolId { get; init; }
+        public int DefaultDialogTitleStringPoolId { get; init; }
+        public int AlternateDialogTitleStringPoolId { get; init; }
         public int AcceptStringPoolId { get; init; }
         public string GroomName { get; init; } = string.Empty;
         public string BrideName { get; init; } = string.Empty;
         public string AcceptButtonLabel { get; init; } = string.Empty;
+        public string ClientOwnerTypeName { get; init; } = string.Empty;
+        public string ClientOwnerEntryPoint { get; init; } = string.Empty;
+        public string ClientPresentationMode { get; init; } = string.Empty;
         public string InvitationAssetPath { get; init; } = string.Empty;
         public string AcceptButtonAssetPath { get; init; } = string.Empty;
         public string FallbackInvitationAssetPath { get; init; } = string.Empty;
+        public string NameFontToken { get; init; } = string.Empty;
         public string SourceDescription { get; init; } = string.Empty;
         public string StatusMessage { get; init; } = string.Empty;
         public WeddingInvitationStyle Style { get; init; }

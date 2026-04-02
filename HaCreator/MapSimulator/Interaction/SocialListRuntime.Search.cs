@@ -676,6 +676,7 @@ namespace HaCreator.MapSimulator.Interaction
             public string LocationSummary { get; }
             public int Channel { get; }
             public string StatusText { get; }
+            public bool IsIntermediaryOwned { get; init; }
         }
 
         private sealed class GuildSearchEntryState

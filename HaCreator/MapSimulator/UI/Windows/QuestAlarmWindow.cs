@@ -447,6 +447,17 @@ namespace HaCreator.MapSimulator.UI
             SavePersistedState();
         }
 
+        internal bool IsQuestTracked(int questId)
+        {
+            if (questId <= 0)
+            {
+                return false;
+            }
+
+            EnsurePersistedStateLoaded();
+            return _trackedQuestIds.Contains(questId);
+        }
+
         private void HandleRowSelection(int mouseX, int mouseY)
         {
             for (int i = 0; i < _rowLayouts.Count; i++)

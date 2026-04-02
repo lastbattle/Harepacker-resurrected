@@ -1,5 +1,8 @@
 using HaCreator.MapEditor.Instance;
+using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Entities;
+using HaCreator.MapSimulator.Interaction;
+using Microsoft.Xna.Framework;
 using System;
 using System.IO;
 using System.Text;
@@ -11,14 +14,18 @@ namespace HaCreator.MapSimulator
         private bool TryApplyPacketOwnedTeleportResult(float targetX, float targetY, out string message)
         {
             _packetOwnedTeleportRequestActive = false;
-            _packetOwnedTeleportRequestCompletedAt = Environment.TickCount;
+            int currentTime = Environment.TickCount;
+            _packetOwnedTeleportRequestCompletedAt = currentTime;
 
             if (TryResolvePacketOwnedTeleportPortalByPosition(targetX, targetY, out int portalIndex, out PortalInstance portalInstance))
             {
                 _lastPacketOwnedTeleportPortalIndex = portalIndex;
                 RegisterPacketOwnedTeleportHandoff(portalInstance);
+                string registrationMessage = ApplyPacketOwnedTeleportRegistrationSideEffects(portalInstance, currentTime);
                 ApplySameMapTeleportPosition(portalInstance.X, portalInstance.Y);
-                message = $"Applied packet-owned teleport result through resolved portal index {portalIndex} ({portalInstance.pn} -> {portalInstance.tn}).";
+                message = string.IsNullOrWhiteSpace(registrationMessage)
+                    ? $"Applied packet-owned teleport result through resolved portal index {portalIndex} ({portalInstance.pn} -> {portalInstance.tn})."
+                    : $"Applied packet-owned teleport result through resolved portal index {portalIndex} ({portalInstance.pn} -> {portalInstance.tn}). {registrationMessage}";
                 return true;
             }
 
@@ -57,7 +64,8 @@ namespace HaCreator.MapSimulator
             }
 
             _packetOwnedTeleportRequestActive = false;
-            _packetOwnedTeleportRequestCompletedAt = Environment.TickCount;
+            int currentTime = Environment.TickCount;
+            _packetOwnedTeleportRequestCompletedAt = currentTime;
 
             PortalItem portal = _portalPool?.GetPortal(portalIndex);
             PortalInstance portalInstance = portal?.PortalInstance;
@@ -68,8 +76,11 @@ namespace HaCreator.MapSimulator
             }
 
             RegisterPacketOwnedTeleportHandoff(portalInstance);
+            string registrationMessage = ApplyPacketOwnedTeleportRegistrationSideEffects(portalInstance, currentTime);
             ApplySameMapTeleportPosition(portalInstance.X, portalInstance.Y);
-            message = $"Applied packet-owned teleport result for portal index {portalIndex} ({portalInstance.pn} -> {portalInstance.tn}).";
+            message = string.IsNullOrWhiteSpace(registrationMessage)
+                ? $"Applied packet-owned teleport result for portal index {portalIndex} ({portalInstance.pn} -> {portalInstance.tn})."
+                : $"Applied packet-owned teleport result for portal index {portalIndex} ({portalInstance.pn} -> {portalInstance.tn}). {registrationMessage}";
             return true;
         }
 
@@ -119,6 +130,79 @@ namespace HaCreator.MapSimulator
         {
             _lastPacketOwnedTeleportSourcePortalName = sourcePortalName;
             _lastPacketOwnedTeleportTargetPortalName = targetPortalName;
+        }
+
+        private void RecordPacketOwnedTeleportPortalRequest(PortalInstance sourcePortal)
+        {
+            if (sourcePortal == null)
+            {
+                return;
+            }
+
+            _lastPacketOwnedTeleportPortalRequestTick = Environment.TickCount;
+            _lastPacketOwnedTeleportSourcePortalName = sourcePortal.pn;
+            _lastPacketOwnedTeleportTargetPortalName = sourcePortal.tn;
+        }
+
+        private bool IsPacketOwnedTeleportRegistrationCoolingDown(int currentTime)
+        {
+            if (_packetOwnedTeleportRequestCompletedAt == int.MinValue)
+            {
+                return false;
+            }
+
+            int elapsed = Math.Max(0, unchecked(currentTime - _packetOwnedTeleportRequestCompletedAt));
+            return elapsed < PACKET_OWNED_TELEPORT_REGISTRATION_COOLDOWN_MS;
+        }
+
+        private string ApplyPacketOwnedTeleportRegistrationSideEffects(PortalInstance portalInstance, int currentTime)
+        {
+            if (portalInstance == null)
+            {
+                return null;
+            }
+
+            // `CUserLocal::OnTeleport` re-enters `TryRegisterTeleport(..., bForced = 1)`,
+            // so the packet-owned apply seam owns the post-ack portal cooldown and passenger cleanup.
+            _packetOwnedTeleportRequestCompletedAt = currentTime;
+            _playerManager?.ForceStand();
+
+            string detachedPassengerMessage = ClearPacketOwnedTeleportPassengerLink();
+            return string.IsNullOrWhiteSpace(detachedPassengerMessage)
+                ? null
+                : detachedPassengerMessage;
+        }
+
+        private string ClearPacketOwnedTeleportPassengerLink()
+        {
+            PlayerCharacter player = _playerManager?.Player;
+            if (player?.Build == null)
+            {
+                return null;
+            }
+
+            int passengerId = _localFollowRuntime.AttachedPassengerId;
+            if (passengerId <= 0)
+            {
+                return null;
+            }
+
+            TryResolvePacketOwnedRemoteCharacterSnapshot(passengerId, out LocalFollowUserSnapshot passenger);
+            string detachMessage = _localFollowRuntime.ClearAttachedPassenger(
+                passenger.Exists
+                    ? passenger
+                    : LocalFollowUserSnapshot.Missing(passengerId, ResolvePacketOwnedRemoteCharacterName(passengerId)),
+                transferField: false,
+                transferPosition: null);
+            _remoteUserPool?.TryApplyFollowCharacter(
+                passengerId,
+                driverId: 0,
+                transferField: false,
+                transferPosition: null,
+                localCharacterId: player.Build.Id,
+                localCharacterPosition: new Vector2(player.X, player.Y),
+                out _);
+            return detachMessage;
         }
 
         private bool TryResolvePacketOwnedTeleportPortalByPosition(float targetX, float targetY, out int portalIndex, out PortalInstance portalInstance)

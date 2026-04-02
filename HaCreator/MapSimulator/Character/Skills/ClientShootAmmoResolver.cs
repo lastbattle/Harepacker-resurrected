@@ -12,6 +12,17 @@ public sealed class ShootAmmoSelection
 
     public bool HasUseAmmo => UseSlotIndex >= 0 && UseItemId > 0;
     public bool HasCashAmmo => CashSlotIndex >= 0 && CashItemId > 0;
+
+    public ShootAmmoSelection Snapshot()
+    {
+        return new ShootAmmoSelection
+        {
+            UseSlotIndex = UseSlotIndex,
+            UseItemId = UseItemId,
+            CashSlotIndex = CashSlotIndex,
+            CashItemId = CashItemId
+        };
+    }
 }
 
 public static class ClientShootAmmoResolver

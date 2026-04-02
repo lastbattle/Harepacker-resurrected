@@ -235,6 +235,9 @@ namespace HaCreator.MapSimulator.Managers
                 19 => EquipSlot.Saddle,
                 49 => EquipSlot.Medal,
                 50 => EquipSlot.Belt,
+                51 => EquipSlot.Shoulder,
+                52 => EquipSlot.Pocket,
+                53 => EquipSlot.Badge,
                 _ => EquipSlot.None
             };
 
@@ -338,7 +341,7 @@ namespace HaCreator.MapSimulator.Managers
                 : SkinColor.Light;
         }
 
-        private static bool TryGetBodyPart(EquipSlot slot, int itemId, out byte bodyPart)
+        internal static bool TryGetBodyPart(EquipSlot slot, int itemId, out byte bodyPart)
         {
             bodyPart = 0;
             if (itemId <= 0)
@@ -370,6 +373,9 @@ namespace HaCreator.MapSimulator.Managers
                 112 => slot == EquipSlot.Pendant2 ? (byte)59 : (byte)17,
                 113 => 50,
                 114 => 49,
+                115 => 51,
+                116 => 52,
+                118 => 53,
                 190 => 18,
                 191 => 19,
                 _ when IsWeaponCategory(category) => 11,
@@ -403,6 +409,9 @@ namespace HaCreator.MapSimulator.Managers
                 112 => bodyPart is 17 or 59,
                 113 => bodyPart == 50,
                 114 => bodyPart == 49,
+                115 => bodyPart == 51,
+                116 => bodyPart == 52,
+                118 => bodyPart == 53,
                 190 => bodyPart == 18,
                 191 => bodyPart == 19,
                 _ => IsWeaponCategory(category) && bodyPart == 11

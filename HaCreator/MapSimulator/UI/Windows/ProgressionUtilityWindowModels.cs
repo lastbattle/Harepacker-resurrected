@@ -108,6 +108,14 @@ namespace HaCreator.MapSimulator.UI
         public IReadOnlyList<CollectionBookPageSnapshot> Pages { get; init; } = Array.Empty<CollectionBookPageSnapshot>();
     }
 
+    public sealed class CollectionBookOwnerContextSnapshot
+    {
+        public bool IsRemoteTarget { get; init; }
+        public string CharacterName { get; init; } = string.Empty;
+        public string LocationSummary { get; init; } = string.Empty;
+        public int Channel { get; init; } = 1;
+    }
+
     internal static class CollectionBookSnapshotFactory
     {
         private const int EntriesPerPage = 6;
@@ -141,14 +149,15 @@ namespace HaCreator.MapSimulator.UI
             ("Android Heart", EquipSlot.AndroidHeart),
         };
 
-        public static CollectionBookSnapshot Create(CharacterBuild build, ItemMakerProgressionSnapshot progression, MonsterBookSnapshot monsterBook)
+        public static CollectionBookSnapshot Create(CharacterBuild build, ItemMakerProgressionSnapshot progression, MonsterBookSnapshot monsterBook, CollectionBookOwnerContextSnapshot ownerContext = null)
         {
             progression ??= ItemMakerProgressionSnapshot.Default;
             monsterBook ??= new MonsterBookSnapshot();
+            ownerContext ??= CreateDefaultOwnerContext(build);
 
             List<CollectionBookPageSnapshot> pages = new()
             {
-                CreateOverviewPage(build, progression, monsterBook),
+                CreateOverviewPage(build, progression, monsterBook, ownerContext),
                 CreateCraftingPage(progression),
                 CreateTraitsPage(build),
             };
@@ -171,28 +180,29 @@ namespace HaCreator.MapSimulator.UI
             return new CollectionBookSnapshot
             {
                 Title = "Collection Book",
-                Subtitle = "Collect ledger composed from the active build, maker progression, traits, equipment, and discovered recipes.",
-                StatusText = $"Local collection ledger ready across {pages.Count} page(s). Server-authored collection data and the packet close lifecycle remain outside this owner.",
+                Subtitle = BuildCollectionSubtitle(build, ownerContext),
+                StatusText = BuildCollectionStatusText(pages.Count, ownerContext),
                 Pages = pages
             };
         }
 
-        private static CollectionBookPageSnapshot CreateOverviewPage(CharacterBuild build, ItemMakerProgressionSnapshot progression, MonsterBookSnapshot monsterBook)
+        private static CollectionBookPageSnapshot CreateOverviewPage(CharacterBuild build, ItemMakerProgressionSnapshot progression, MonsterBookSnapshot monsterBook, CollectionBookOwnerContextSnapshot ownerContext)
         {
-            int totalRecipes = progression.DiscoveredRecipeIds.Count + progression.UnlockedHiddenRecipeIds.Count;
+            int totalRecipes = progression.DiscoveredRecipeCount + progression.UnlockedHiddenRecipeCount;
             return new CollectionBookPageSnapshot
             {
                 Title = "Overview",
                 Subtitle = "Live collection summary",
-                Footer = "Mirrors the collect ledger using simulator runtime data.",
+                Footer = BuildOverviewFooter(ownerContext),
                 Entries = new[]
                 {
                     CreateEntry("Character", BuildCharacterHeadline(build), BuildCharacterDetail(build), CollectionBookEntryTone.Accent),
+                    CreateEntry("Target", BuildOwnerTargetValue(ownerContext), BuildOwnerTargetDetail(ownerContext), ownerContext.IsRemoteTarget ? CollectionBookEntryTone.Accent : CollectionBookEntryTone.Success),
                     CreateEntry("Monster Book", $"{monsterBook.OwnedCardTypes}/{monsterBook.TotalCardTypes}", $"{monsterBook.CompletedCardTypes} complete, {monsterBook.TotalOwnedCopies} copies", monsterBook.OwnedCardTypes > 0 ? CollectionBookEntryTone.Success : CollectionBookEntryTone.Muted),
                     CreateEntry("Crafting", progression.SuccessfulCrafts.ToString(CultureInfo.InvariantCulture), $"Trait Craft {Math.Max(0, build?.TraitCraft ?? progression.TraitCraft)}", progression.SuccessfulCrafts > 0 ? CollectionBookEntryTone.Success : CollectionBookEntryTone.Muted),
-                    CreateEntry("Recipes", totalRecipes.ToString(CultureInfo.InvariantCulture), $"{progression.DiscoveredRecipeIds.Count} discovered, {progression.UnlockedHiddenRecipeIds.Count} hidden", totalRecipes > 0 ? CollectionBookEntryTone.Accent : CollectionBookEntryTone.Muted),
+                    CreateEntry("Recipes", totalRecipes.ToString(CultureInfo.InvariantCulture), $"{progression.DiscoveredRecipeCount} discovered, {progression.UnlockedHiddenRecipeCount} hidden", totalRecipes > 0 ? CollectionBookEntryTone.Accent : CollectionBookEntryTone.Muted),
+                    CreateEntry("Equipment", CountCollectedEquipmentEntries(build).ToString(CultureInfo.InvariantCulture), "Displayed slot ledger entries currently populated on the active build", CountCollectedEquipmentEntries(build) > 0 ? CollectionBookEntryTone.Success : CollectionBookEntryTone.Muted),
                     CreateEntry("Pocket", BuildPocketSummary(build), string.Empty, build?.IsPocketSlotAvailable == true ? CollectionBookEntryTone.Success : CollectionBookEntryTone.Warning),
-                    CreateEntry("Medal", ResolveEquippedItemName(build, EquipSlot.Medal), string.Empty, HasEquippedItem(build, EquipSlot.Medal) ? CollectionBookEntryTone.Success : CollectionBookEntryTone.Muted),
                 }
             };
         }
@@ -211,7 +221,7 @@ namespace HaCreator.MapSimulator.UI
                     CreateFamilyEntry(progression, ItemMakerRecipeFamily.Shoes),
                     CreateFamilyEntry(progression, ItemMakerRecipeFamily.Toys),
                     CreateEntry("Successful Crafts", progression.SuccessfulCrafts.ToString(CultureInfo.InvariantCulture), "Local maker history", progression.SuccessfulCrafts > 0 ? CollectionBookEntryTone.Success : CollectionBookEntryTone.Muted),
-                    CreateEntry("Recipe Ledger", $"{progression.DiscoveredRecipeIds.Count} + {progression.UnlockedHiddenRecipeIds.Count}", "Discovered plus hidden recipe pages", (progression.DiscoveredRecipeIds.Count + progression.UnlockedHiddenRecipeIds.Count) > 0 ? CollectionBookEntryTone.Accent : CollectionBookEntryTone.Muted),
+                    CreateEntry("Recipe Ledger", $"{progression.DiscoveredRecipeCount} + {progression.UnlockedHiddenRecipeCount}", "Discovered plus hidden recipe pages", (progression.DiscoveredRecipeCount + progression.UnlockedHiddenRecipeCount) > 0 ? CollectionBookEntryTone.Accent : CollectionBookEntryTone.Muted),
                 }
             };
         }
@@ -292,8 +302,16 @@ namespace HaCreator.MapSimulator.UI
         private static IEnumerable<CollectionBookPageSnapshot> CreateRecipePages(ItemMakerProgressionSnapshot progression)
         {
             List<CollectionBookEntrySnapshot> recipeEntries = new();
-            recipeEntries.AddRange(progression.DiscoveredRecipeIds.OrderBy(id => id).Select(id => CreateEntry("Recipe", ResolveItemName(id), $"Output #{id}", CollectionBookEntryTone.Normal)));
-            recipeEntries.AddRange(progression.UnlockedHiddenRecipeIds.OrderBy(id => id).Select(id => CreateEntry("Hidden", ResolveItemName(id), $"Output #{id}", CollectionBookEntryTone.Accent)));
+            recipeEntries.AddRange(
+                progression.DiscoveredRecipeEntries
+                    .OrderBy(entry => entry.OutputItemId)
+                    .ThenBy(entry => entry.RecipeKey, StringComparer.Ordinal)
+                    .Select(entry => CreateEntry("Recipe", ResolveItemName(entry.OutputItemId), BuildRecipeEntryDetail(entry), CollectionBookEntryTone.Normal)));
+            recipeEntries.AddRange(
+                progression.UnlockedHiddenRecipeEntries
+                    .OrderBy(entry => entry.OutputItemId)
+                    .ThenBy(entry => entry.RecipeKey, StringComparer.Ordinal)
+                    .Select(entry => CreateEntry("Hidden", ResolveItemName(entry.OutputItemId), BuildRecipeEntryDetail(entry), CollectionBookEntryTone.Accent)));
 
             if (recipeEntries.Count == 0)
             {
@@ -335,6 +353,18 @@ namespace HaCreator.MapSimulator.UI
                 level > 1 || progress > 0 ? CollectionBookEntryTone.Success : CollectionBookEntryTone.Muted);
         }
 
+        private static string BuildRecipeEntryDetail(ItemMakerRecipeProgressionEntry entry)
+        {
+            if (entry == null)
+            {
+                return "Output #0";
+            }
+
+            return string.IsNullOrWhiteSpace(entry.RecipeKey)
+                ? $"Output #{entry.OutputItemId}"
+                : $"Row {entry.RecipeKey}  Output #{entry.OutputItemId}";
+        }
+
         private static CollectionBookEntrySnapshot CreateEntry(string label, string value, string detail, CollectionBookEntryTone tone)
         {
             return new CollectionBookEntrySnapshot
@@ -343,6 +373,14 @@ namespace HaCreator.MapSimulator.UI
                 Value = value ?? string.Empty,
                 Detail = detail ?? string.Empty,
                 Tone = tone
+            };
+        }
+
+        private static CollectionBookOwnerContextSnapshot CreateDefaultOwnerContext(CharacterBuild build)
+        {
+            return new CollectionBookOwnerContextSnapshot
+            {
+                CharacterName = string.IsNullOrWhiteSpace(build?.Name) ? "Simulator Character" : build.Name.Trim()
             };
         }
 
@@ -366,6 +404,59 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return $"Fame {build.Fame}, World Rank {FormatRank(build.WorldRank)}, Job Rank {FormatRank(build.JobRank)}";
+        }
+
+        private static string BuildCollectionSubtitle(CharacterBuild build, CollectionBookOwnerContextSnapshot ownerContext)
+        {
+            string characterName = string.IsNullOrWhiteSpace(ownerContext?.CharacterName)
+                ? (string.IsNullOrWhiteSpace(build?.Name) ? "Simulator Character" : build.Name.Trim())
+                : ownerContext.CharacterName.Trim();
+            string location = string.IsNullOrWhiteSpace(ownerContext?.LocationSummary)
+                ? "current field context"
+                : ownerContext.LocationSummary.Trim();
+            int channel = Math.Max(1, ownerContext?.Channel ?? 1);
+
+            return ownerContext?.IsRemoteTarget == true
+                ? $"Inspection ledger for {characterName} at {location}, channel {channel}, using the same live item-maker, trait, equipment, and Monster Book seams as the local owner."
+                : $"Live collection ledger for {characterName} at {location}, channel {channel}, using the active build plus the existing item-maker and Monster Book seams.";
+        }
+
+        private static string BuildCollectionStatusText(int pageCount, CollectionBookOwnerContextSnapshot ownerContext)
+        {
+            return ownerContext?.IsRemoteTarget == true
+                ? $"Inspection collection ledger ready across {pageCount} page(s). Closing the owner now clears the inspected-target context so the next open falls back to the active local build. Server-authored collection data and packet-owned close flow still remain outside this owner."
+                : $"Local collection ledger ready across {pageCount} page(s). Closing the owner now clears the owner-local action context before the next open. Server-authored collection data and packet-owned close flow still remain outside this owner.";
+        }
+
+        private static string BuildOverviewFooter(CollectionBookOwnerContextSnapshot ownerContext)
+        {
+            return ownerContext?.IsRemoteTarget == true
+                ? "Mirrors the inspected target through simulator runtime data and clears that inspection context on close."
+                : "Mirrors the local collect ledger through simulator runtime data and clears stale owner context on close.";
+        }
+
+        private static string BuildOwnerTargetValue(CollectionBookOwnerContextSnapshot ownerContext)
+        {
+            if (ownerContext?.IsRemoteTarget == true)
+            {
+                return string.IsNullOrWhiteSpace(ownerContext.CharacterName)
+                    ? "Inspected target"
+                    : ownerContext.CharacterName.Trim();
+            }
+
+            return "Active local build";
+        }
+
+        private static string BuildOwnerTargetDetail(CollectionBookOwnerContextSnapshot ownerContext)
+        {
+            string location = string.IsNullOrWhiteSpace(ownerContext?.LocationSummary)
+                ? "Current field"
+                : ownerContext.LocationSummary.Trim();
+            int channel = Math.Max(1, ownerContext?.Channel ?? 1);
+            string scope = ownerContext?.IsRemoteTarget == true
+                ? "Opened from the UserInfo collect action."
+                : "Opened from the local character context.";
+            return $"{location}, channel {channel}. {scope}";
         }
 
         private static string BuildPocketSummary(CharacterBuild build)
@@ -398,6 +489,20 @@ namespace HaCreator.MapSimulator.UI
         private static bool HasEquippedItem(CharacterBuild build, EquipSlot slot)
         {
             return !string.Equals(ResolveEquippedItemName(build, slot), "-", StringComparison.Ordinal);
+        }
+
+        private static int CountCollectedEquipmentEntries(CharacterBuild build)
+        {
+            return EquipmentLedgerRows.Count(row =>
+            {
+                CharacterPart displayedPart = EquipSlotStateResolver.ResolveDisplayedPart(build, row.Slot);
+                EquipSlotVisualState visualState = EquipSlotStateResolver.ResolveVisualState(build, row.Slot);
+                string value = ResolveEquipmentLedgerValue(build, row.Slot, displayedPart, visualState);
+                return !string.Equals(value, "-", StringComparison.Ordinal)
+                    && !string.Equals(value, "Locked", StringComparison.Ordinal)
+                    && !string.Equals(value, "Disabled", StringComparison.Ordinal)
+                    && !string.Equals(value, "Covered", StringComparison.Ordinal);
+            });
         }
 
         private static string ResolveEquipmentLedgerValue(CharacterBuild build, EquipSlot slot, CharacterPart displayedPart, EquipSlotVisualState visualState)

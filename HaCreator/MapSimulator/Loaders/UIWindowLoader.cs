@@ -16,6 +16,8 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
 
+using CashServiceWindowStageKind = HaCreator.MapSimulator.UI.CashServiceStageKind;
+
 
 
 namespace HaCreator.MapSimulator.Loaders
@@ -1551,10 +1553,14 @@ namespace HaCreator.MapSimulator.Loaders
                 MapSimulatorWindowNames.CashShop, AdminShopServiceMode.CashShop,
                 new Point(x + cascade, y + cascade),
                 storageRuntime);
+            RegisterCashServiceStageWindow(manager, device, MapSimulatorWindowNames.CashShopStatus, CashServiceWindowStageKind.CashShop,
+                new Point(x + cascade, y + cascade));
             RegisterAdminShopWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
                 MapSimulatorWindowNames.Mts, AdminShopServiceMode.Mts,
                 new Point(x + (cascade * 2), y + (cascade * 2)),
                 storageRuntime);
+            RegisterCashServiceStageWindow(manager, device, MapSimulatorWindowNames.MtsStatus, CashServiceWindowStageKind.ItemTradingCenter,
+                new Point(x + (cascade * 2), y + (cascade * 2)));
             RegisterSocialListWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
                 new Point(x + (cascade * 2), y + (cascade * 5)));
             RegisterFamilyChartWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
@@ -2258,6 +2264,68 @@ namespace HaCreator.MapSimulator.Loaders
 
             manager.RegisterCustomWindow(window);
 
+        }
+
+        private static void RegisterCashServiceStageWindow(
+            UIWindowManager manager,
+            GraphicsDevice device,
+            string windowName,
+            CashServiceWindowStageKind stageKind,
+            Point position)
+        {
+            if (manager == null || device == null || manager.GetWindow(windowName) != null)
+            {
+                return;
+            }
+
+            UIWindowBase window = CreateCashServiceStageWindow(device, windowName, stageKind, position);
+            if (window != null)
+            {
+                manager.RegisterCustomWindow(window);
+            }
+        }
+
+        private static UIWindowBase CreateCashServiceStageWindow(
+            GraphicsDevice device,
+            string windowName,
+            CashServiceWindowStageKind stageKind,
+            Point position)
+        {
+            WzImage cashShopImage = global::HaCreator.Program.FindImage("ui", "CashShop.img");
+            WzSubProperty cashShopBaseProperty = cashShopImage?["Base"] as WzSubProperty;
+
+            Texture2D frameTexture = LoadCanvasTexture(cashShopBaseProperty, "backgrnd", device);
+            if (frameTexture == null)
+            {
+                Color fallback = stageKind == CashServiceWindowStageKind.CashShop
+                    ? new Color(41, 31, 18, 255)
+                    : new Color(17, 31, 49, 255);
+                frameTexture = CreateFilledTexture(device, 800, 600, fallback, fallback);
+            }
+
+            CashServiceStageWindow window = new(
+                new DXObject(0, 0, frameTexture, 0),
+                windowName,
+                stageKind,
+                device)
+            {
+                Position = position
+            };
+
+            if (cashShopBaseProperty != null)
+            {
+                for (int i = 0; i <= 5; i++)
+                {
+                    string backdropName = i == 0 ? "backgrnd" : $"backgrnd{i}";
+                    Texture2D backdropTexture = LoadCanvasTexture(cashShopBaseProperty, backdropName, device);
+                    if (backdropTexture != null)
+                    {
+                        window.AddBackdropVariant(i, backdropTexture);
+                    }
+                }
+            }
+
+            return window;
         }
 
         private static WzSubProperty ResolveCreateCharacterRaceProperty(
@@ -3284,8 +3352,8 @@ namespace HaCreator.MapSimulator.Loaders
             GraphicsDevice device,
             Point position)
         {
-            WzSubProperty sourceProperty = uiWindow2Image?["Book"] as WzSubProperty
-                ?? uiWindow1Image?["Book"] as WzSubProperty;
+            WzSubProperty sourceProperty = uiWindow2Image?["MonsterBook"] as WzSubProperty
+                ?? uiWindow1Image?["MonsterBook"] as WzSubProperty;
             if (sourceProperty == null)
             {
                 return CreatePlaceholderUtilityWindow(
@@ -3293,8 +3361,8 @@ namespace HaCreator.MapSimulator.Loaders
                     soundUIImage,
                     device,
                     MapSimulatorWindowNames.BookCollection,
-                    "Collection Book",
-                    "Fallback owner for the dedicated collection ledger surface.",
+                    "Monster Book",
+                    "Fallback owner for the dedicated Monster Book surface.",
                     position);
             }
 
@@ -3307,8 +3375,8 @@ namespace HaCreator.MapSimulator.Loaders
                     soundUIImage,
                     device,
                     MapSimulatorWindowNames.BookCollection,
-                    "Collection Book",
-                    "Fallback owner for the dedicated collection ledger surface.",
+                    "Monster Book",
+                    "Fallback owner for the dedicated Monster Book surface.",
                     position);
             }
 
@@ -3339,9 +3407,42 @@ namespace HaCreator.MapSimulator.Loaders
             WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
             WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
 
-            UIObject prevButton = LoadButton(sourceProperty, "BtPrev", btClickSound, btOverSound, device);
-            UIObject nextButton = LoadButton(sourceProperty, "BtNext", btClickSound, btOverSound, device);
+            bookCollection.SetMonsterBookArt(
+                LoadCanvasTexture(sourceProperty, "cardSlot", device),
+                LoadCanvasTexture(sourceProperty, "infoPage", device),
+                LoadCanvasTexture(sourceProperty, "cover", device),
+                LoadCanvasTexture(sourceProperty, "select", device),
+                LoadCanvasTexture(sourceProperty, "fullMark", device));
+
+            WzSubProperty leftTabInfoProperty = sourceProperty["LeftTabInfo"]?["0"] as WzSubProperty;
+            WzSubProperty leftTabProperty = sourceProperty["LeftTab"] as WzSubProperty;
+            WzSubProperty rightTabProperty = sourceProperty["RightTab"] as WzSubProperty;
+            WzSubProperty iconProperty = sourceProperty["icon"] as WzSubProperty;
+            bookCollection.SetMonsterBookTabArt(
+                LoadButtonStateTexture(leftTabInfoProperty, "normal", device),
+                LoadButtonStateTexture(leftTabInfoProperty, "selected", device),
+                LoadIndexedMonsterBookTabTextures(leftTabProperty, "normal", device),
+                LoadIndexedMonsterBookTabTextures(leftTabProperty, "selected", device),
+                LoadIndexedMonsterBookTabTextures(leftTabProperty, "mouseOver", device),
+                LoadIndexedCanvasTextureList(iconProperty, device),
+                LoadIndexedMonsterBookTabTextures(rightTabProperty, "normal", device),
+                LoadIndexedMonsterBookTabTextures(rightTabProperty, "selected", device),
+                LoadIndexedMonsterBookTabTextures(rightTabProperty, "mouseOver", device),
+                LoadIndexedMonsterBookTabTextures(rightTabProperty, "disabled", device),
+                LoadMonsterBookRightTabOrder(rightTabProperty));
+
+            WzSubProperty contextMenuProperty = sourceProperty["ContextMenu"] as WzSubProperty;
+            bookCollection.SetMonsterBookContextMenuArt(
+                LoadCanvasTexture(contextMenuProperty, "t", device),
+                LoadCanvasTexture(contextMenuProperty, "c", device),
+                LoadCanvasTexture(contextMenuProperty, "s", device));
+
+            UIObject prevButton = LoadButton(sourceProperty, "arrowLeft", btClickSound, btOverSound, device);
+            UIObject nextButton = LoadButton(sourceProperty, "arrowRight", btClickSound, btOverSound, device);
             UIObject closeButton = LoadButton(sourceProperty, "BtClose", btClickSound, btOverSound, device);
+            UIObject searchButton = LoadButton(sourceProperty, "BtSearch", btClickSound, btOverSound, device);
+            UIObject registerButton = LoadButton(contextMenuProperty, "BtRegister", btClickSound, btOverSound, device);
+            UIObject releaseButton = LoadButton(contextMenuProperty, "BtRelease", btClickSound, btOverSound, device);
 
             if (prevButton != null)
 
@@ -3361,10 +3462,77 @@ namespace HaCreator.MapSimulator.Loaders
                 closeButton.Y = 10;
 
             }
+            if (searchButton != null)
+            {
+                searchButton.X = 425;
+                searchButton.Y = 299;
+            }
 
-            bookCollection.InitializeButtons(prevButton, nextButton, closeButton);
+            bookCollection.InitializeButtons(prevButton, nextButton, closeButton, searchButton);
+            bookCollection.InitializeContextMenuButtons(registerButton, releaseButton);
             return bookCollection;
 
+        }
+
+        private static IReadOnlyList<Texture2D> LoadIndexedMonsterBookTabTextures(
+            WzSubProperty tabContainer,
+            string stateName,
+            GraphicsDevice device)
+        {
+            if (tabContainer == null)
+            {
+                return Array.Empty<Texture2D>();
+            }
+
+            List<Texture2D> textures = new();
+            foreach (WzImageProperty property in tabContainer.WzProperties)
+            {
+                if (property is not WzSubProperty tabProperty)
+                {
+                    continue;
+                }
+
+                textures.Add(LoadButtonStateTexture(tabProperty, stateName, device));
+            }
+
+            return textures;
+        }
+
+        private static IReadOnlyList<MonsterBookDetailTab> LoadMonsterBookRightTabOrder(WzSubProperty rightTabProperty)
+        {
+            if (rightTabProperty == null)
+            {
+                return new[]
+                {
+                    MonsterBookDetailTab.BasicInfo,
+                    MonsterBookDetailTab.Episode,
+                    MonsterBookDetailTab.Rewards,
+                    MonsterBookDetailTab.Habitat
+                };
+            }
+
+            List<MonsterBookDetailTab> tabs = new();
+            foreach (WzImageProperty property in rightTabProperty.WzProperties)
+            {
+                tabs.Add(property.Name switch
+                {
+                    "0" => MonsterBookDetailTab.BasicInfo,
+                    "3" => MonsterBookDetailTab.Episode,
+                    "2" => MonsterBookDetailTab.Rewards,
+                    "1" => MonsterBookDetailTab.Habitat,
+                    _ => MonsterBookDetailTab.BasicInfo
+                });
+            }
+
+            return tabs.Count > 0
+                ? tabs
+                : new[]
+                {
+                    MonsterBookDetailTab.BasicInfo,
+                    MonsterBookDetailTab.Episode,
+                    MonsterBookDetailTab.Rewards,
+                    MonsterBookDetailTab.Habitat
+                };
         }
 
 
@@ -5550,7 +5718,9 @@ namespace HaCreator.MapSimulator.Loaders
                 frames.Add(new MapleTvAnimationFrame(
                     new DXObject(0, 0, texture, 0),
                     new Point(-(int)origin.X, -(int)origin.Y),
-                    delayMs));
+                    delayMs,
+                    texture.Width,
+                    texture.Height));
             }
 
 
@@ -6011,13 +6181,15 @@ namespace HaCreator.MapSimulator.Loaders
 
             WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
             WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
+            Dictionary<int, Texture2D> mainKeyTextures = LoadIndexedCanvasTextures(sourceProperty["key"] as WzSubProperty, device);
+            Texture2D[] noticeTextures = LoadIndexedCanvasArray(sourceProperty["notice"] as WzSubProperty, 3, device);
             KeyConfigWindow window = new KeyConfigWindow(
                 new DXObject(0, 0, frameTexture, 0),
                 MapSimulatorWindowNames.KeyConfig,
                 CreateFilledTexture(device, 1, 1, Color.White, Color.White),
-                new Dictionary<int, Texture2D>(),
-                new Dictionary<int, Texture2D>(),
-                Array.Empty<Texture2D>())
+                mainKeyTextures,
+                mainKeyTextures,
+                noticeTextures)
             {
                 Position = position
             };
@@ -6038,6 +6210,30 @@ namespace HaCreator.MapSimulator.Loaders
             Texture2D quickSlotFrameTexture = LoadCanvasTexture(quickSlotProperty, "backgrnd", device);
             if (quickSlotProperty != null && quickSlotFrameTexture != null)
             {
+                Dictionary<int, Texture2D> quickSlotKeyTextures = LoadIndexedCanvasTextures(quickSlotProperty["key"] as WzSubProperty, device);
+                if (quickSlotKeyTextures.Count > 0)
+                {
+                    window = new KeyConfigWindow(
+                        new DXObject(0, 0, frameTexture, 0),
+                        MapSimulatorWindowNames.KeyConfig,
+                        CreateFilledTexture(device, 1, 1, Color.White, Color.White),
+                        mainKeyTextures,
+                        quickSlotKeyTextures,
+                        noticeTextures)
+                    {
+                        Position = position
+                    };
+
+                    window.AddLayer(overlay, overlayOffset);
+                    window.AddLayer(content, contentOffset);
+                    window.InitializeButtons(
+                        LoadButton(sourceProperty, "BtOK", btClickSound, btOverSound, device),
+                        LoadButton(sourceProperty, "BtCancel", btClickSound, btOverSound, device),
+                        LoadButton(sourceProperty, "BtDefault", btClickSound, btOverSound, device),
+                        LoadButton(sourceProperty, "BtDelete", btClickSound, btOverSound, device),
+                        LoadButton(sourceProperty, "BtQuickSlot", btClickSound, btOverSound, device));
+                }
+
                 window.ConfigureQuickSlotPage(
                     new DXObject(0, 0, quickSlotFrameTexture, 0),
                     LoadButton(quickSlotProperty, "BtQuickSetting", btClickSound, btOverSound, device),
@@ -6045,6 +6241,22 @@ namespace HaCreator.MapSimulator.Loaders
                     LoadButton(quickSlotProperty, "BtCancel", btClickSound, btOverSound, device));
             }
             return window;
+        }
+
+        private static Texture2D[] LoadIndexedCanvasArray(WzSubProperty parent, int count, GraphicsDevice device)
+        {
+            Texture2D[] textures = new Texture2D[Math.Max(0, count)];
+            if (parent == null)
+            {
+                return textures;
+            }
+
+            for (int i = 0; i < textures.Length; i++)
+            {
+                textures[i] = LoadCanvasTexture(parent, i.ToString(CultureInfo.InvariantCulture), device);
+            }
+
+            return textures;
         }
         private static UIWindowBase CreateOptionMenuWindow(
             WzImage uiWindow2Image,
@@ -6278,7 +6490,9 @@ namespace HaCreator.MapSimulator.Loaders
             GraphicsDevice device,
             Point position)
         {
-            WzSubProperty sourceProperty = uiWindow2Image?["Radio"] as WzSubProperty
+            WzImage uiWindowImage = Program.FindImage("UI", "UIWindow.img");
+            WzSubProperty sourceProperty = uiWindowImage?["Radio"] as WzSubProperty
+                ?? uiWindow2Image?["Radio"] as WzSubProperty
                 ?? uiWindow2Image?["MapleRadio"] as WzSubProperty
                 ?? uiWindow2Image?["RadioSchedule"] as WzSubProperty;
 

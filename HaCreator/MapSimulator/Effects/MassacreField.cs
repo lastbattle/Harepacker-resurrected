@@ -100,6 +100,7 @@ namespace HaCreator.MapSimulator.Effects
         private const int KeyAnimationX = 7;
         private const int KeyAnimationY = 135;
         private const int ClearEffectDurationMs = 2200;
+        private const int ResultPresentationDurationMs = 5000;
         private const float DangerDepletionThreshold = 0.65f;
         private const int BonusEffectY = 190;
         private const int CountEffectY = 190;
@@ -501,6 +502,12 @@ namespace HaCreator.MapSimulator.Effects
             {
                 _countEffectPresentationStartTick = int.MinValue;
                 _countEffectPresentationStage = 0;
+            }
+            if (_resultPresentationStartTick != int.MinValue
+                && (currentTimeMs - _resultPresentationStartTick >= ResultPresentationDurationMs || currentTimeMs < _resultPresentationStartTick))
+            {
+                _resultPresentation = MassacreResultPresentation.None;
+                _resultPresentationStartTick = int.MinValue;
             }
         }
         public void Draw(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font)
@@ -1039,6 +1046,9 @@ namespace HaCreator.MapSimulator.Effects
             {
                 return;
             }
+
+            bool repeatResultLayer = currentTimeMs >= _resultPresentationStartTick
+                && currentTimeMs - _resultPresentationStartTick < ResultPresentationDurationMs;
             Vector2 center = new(viewport.Width / 2f, viewport.Height / 2f);
             DrawAnimation(
                 spriteBatch,
@@ -1047,13 +1057,13 @@ namespace HaCreator.MapSimulator.Effects
                 _resultPresentationStartTick,
                 center,
                 repeat: false);
-            DrawAnimation(spriteBatch, GetResultRankEffectFrames(_resultRank), currentTimeMs, _resultPresentationStartTick, center, repeat: false);
+            DrawAnimation(spriteBatch, GetResultRankEffectFrames(_resultRank), currentTimeMs, _resultPresentationStartTick, center, repeat: repeatResultLayer);
             if (_resultBoardTexture != null)
             {
                 Vector2 boardPos = new(viewport.Width / 2f + ResultBoardOffsetX, viewport.Height / 2f + ResultBoardOffsetY);
                 Vector2 resultStatusAnchor = new(viewport.Width / 2f + ResultStatusOffsetX, viewport.Height / 2f + ResultStatusOffsetY);
                 spriteBatch.Draw(_resultBoardTexture, boardPos, Color.White);
-                DrawAnimation(spriteBatch, _resultBoardPulseFrames, currentTimeMs, _resultPresentationStartTick, resultStatusAnchor, repeat: false);
+                DrawAnimation(spriteBatch, _resultBoardPulseFrames, currentTimeMs, _resultPresentationStartTick, resultStatusAnchor, repeat: repeatResultLayer);
                 DrawResultRank(spriteBatch, resultStatusAnchor);
                 DrawResultRate(spriteBatch, font, _resultKillRate, boardPos + new Vector2(ResultKillRateX, ResultKillRateY));
                 DrawResultRate(spriteBatch, font, _resultCoolRate, boardPos + new Vector2(ResultCoolRateX, ResultCoolRateY));
@@ -1454,7 +1464,7 @@ namespace HaCreator.MapSimulator.Effects
                 return 0;
             }
 
-            return Math.Clamp((int)MathF.Round((value * 100f) / total), 0, 100);
+            return Math.Clamp((value * 100) / total, 0, 100);
         }
         private static char NormalizeRank(char rank)
         {

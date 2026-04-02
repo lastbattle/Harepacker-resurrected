@@ -276,6 +276,7 @@ namespace HaCreator.MapSimulator.Interaction
         private Func<IReadOnlyCollection<int>, int?, bool> _hasCompatibleActivePetProvider;
         private Func<IReadOnlyCollection<int>, int?, int, bool> _grantPetSkillProvider;
         private Func<IReadOnlyCollection<int>, int?, int, bool> _grantPetTamenessProvider;
+        private Func<IReadOnlyCollection<int>, int?, int, bool> _grantPetSpeedProvider;
         private Func<int, bool> _applyQuestBuffItem;
         private Func<int> _currentMapIdProvider;
         private Func<int, string> _mapNameProvider;
@@ -331,11 +332,13 @@ namespace HaCreator.MapSimulator.Interaction
         public void ConfigurePetRuntime(
             Func<IReadOnlyCollection<int>, int?, bool> hasCompatibleActivePetProvider,
             Func<IReadOnlyCollection<int>, int?, int, bool> grantPetSkillProvider,
-            Func<IReadOnlyCollection<int>, int?, int, bool> grantPetTamenessProvider)
+            Func<IReadOnlyCollection<int>, int?, int, bool> grantPetTamenessProvider,
+            Func<IReadOnlyCollection<int>, int?, int, bool> grantPetSpeedProvider)
         {
             _hasCompatibleActivePetProvider = hasCompatibleActivePetProvider;
             _grantPetSkillProvider = grantPetSkillProvider;
             _grantPetTamenessProvider = grantPetTamenessProvider;
+            _grantPetSpeedProvider = grantPetSpeedProvider;
         }
 
         public void ConfigureQuestActionRuntime(
@@ -1307,6 +1310,11 @@ namespace HaCreator.MapSimulator.Interaction
             return false;
         }
 
+        internal bool HasQuestRecord(int questId)
+        {
+            return GetQuestState(questId) != QuestStateType.Not_Started;
+        }
+
         internal bool TryBuildPacketQuestResultPresentation(
             int questId,
             CharacterBuild build,
@@ -1324,6 +1332,33 @@ namespace HaCreator.MapSimulator.Interaction
             NpcDialogueFormattingContext formattingContext = CreateDialogueFormattingContext();
             string noticeText = BuildPacketQuestResultNoticeText(definition, build, state, textKind, formattingContext);
             IReadOnlyList<NpcInteractionPage> modalPages = BuildPacketQuestResultModalPages(definition, state, textKind, formattingContext);
+            presentation = new PacketQuestResultPresentation
+            {
+                QuestId = definition.QuestId,
+                QuestName = definition.Name,
+                NoticeText = noticeText,
+                ModalPages = modalPages
+            };
+            return true;
+        }
+
+        internal bool TryBuildClientPacketQuestResultPresentation(
+            int questId,
+            CharacterBuild build,
+            bool hasQuestRecord,
+            out PacketQuestResultPresentation presentation)
+        {
+            EnsureDefinitionsLoaded();
+            if (!_definitions.TryGetValue(questId, out QuestDefinition definition))
+            {
+                presentation = null;
+                return false;
+            }
+
+            QuestStateType clientState = hasQuestRecord ? QuestStateType.Started : QuestStateType.Not_Started;
+            NpcDialogueFormattingContext formattingContext = CreateDialogueFormattingContext();
+            string noticeText = BuildPacketQuestResultNoticeText(definition, build, clientState, PacketQuestResultTextKind.Auto, formattingContext);
+            IReadOnlyList<NpcInteractionPage> modalPages = BuildPacketQuestResultModalPages(definition, clientState, PacketQuestResultTextKind.Auto, formattingContext);
             presentation = new PacketQuestResultPresentation
             {
                 QuestId = definition.QuestId,
@@ -1353,6 +1388,31 @@ namespace HaCreator.MapSimulator.Interaction
                 ? PacketQuestResultTextKind.StartDescription
                 : PacketQuestResultTextKind.RewardSummary;
             IReadOnlyList<string> actionLines = BuildPacketQuestResultActionLines(definition, build, state, textKind);
+
+            questName = definition.Name;
+            noticeText = actionLines.Count == 0
+                ? definition.Name
+                : $"{definition.Name}\n\n{string.Join("\n", actionLines)}";
+            return true;
+        }
+
+        internal bool TryBuildClientPacketQuestResultActionNotice(
+            int questId,
+            CharacterBuild build,
+            bool hasQuestRecord,
+            out string questName,
+            out string noticeText)
+        {
+            EnsureDefinitionsLoaded();
+            if (!_definitions.TryGetValue(questId, out QuestDefinition definition))
+            {
+                questName = $"Quest #{questId}";
+                noticeText = string.Empty;
+                return false;
+            }
+
+            QuestStateType clientState = hasQuestRecord ? QuestStateType.Started : QuestStateType.Not_Started;
+            IReadOnlyList<string> actionLines = BuildPacketQuestResultActionLines(definition, build, clientState, PacketQuestResultTextKind.Auto);
 
             questName = definition.Name;
             noticeText = actionLines.Count == 0
@@ -2129,7 +2189,7 @@ namespace HaCreator.MapSimulator.Interaction
                 : definition.EndSayPages;
             IReadOnlyList<NpcInteractionPage> issueConversationPages =
                 issues != null && issues.Count > 0
-                    ? SelectIssueConversationPages(definition, state, isCompletionNpc)
+                    ? SelectIssueConversationPages(definition, state, build, isCompletionNpc)
                     : Array.Empty<NpcInteractionPage>();
             if (issueConversationPages.Count > 0)
             {
@@ -2232,6 +2292,7 @@ namespace HaCreator.MapSimulator.Interaction
         private IReadOnlyList<NpcInteractionPage> SelectIssueConversationPages(
             QuestDefinition definition,
             QuestStateType state,
+            CharacterBuild build,
             bool isCompletionNpc)
         {
             IReadOnlyDictionary<string, IReadOnlyList<NpcInteractionPage>> stopPages = state == QuestStateType.Not_Started
@@ -2247,6 +2308,8 @@ namespace HaCreator.MapSimulator.Interaction
             IReadOnlyList<QuestStateRequirement> questRequirements = state == QuestStateType.Not_Started
                 ? definition.StartQuestRequirements
                 : definition.EndQuestRequirements;
+            bool hasUnmetJobRequirement = state == QuestStateType.Not_Started &&
+                HasUnmetStartJobRequirement(definition, build);
 
             return SelectIssueConversationPagesCore(
                 state,
@@ -2255,6 +2318,7 @@ namespace HaCreator.MapSimulator.Interaction
                 AreAllRequiredItemsMissing(itemRequirements),
                 HasMissingMobs(definition),
                 HasUnmetQuestRequirements(questRequirements),
+                hasUnmetJobRequirement,
                 stopPages,
                 lostPages);
         }
@@ -2266,6 +2330,7 @@ namespace HaCreator.MapSimulator.Interaction
             bool areAllRequiredItemsMissing,
             bool hasMissingMobs,
             bool hasUnmetQuestRequirements,
+            bool hasUnmetJobRequirement,
             IReadOnlyDictionary<string, IReadOnlyList<NpcInteractionPage>> stopPages,
             IReadOnlyList<NpcInteractionPage> lostPages)
         {
@@ -2314,6 +2379,13 @@ namespace HaCreator.MapSimulator.Interaction
                 return questPages;
             }
 
+            if (state == QuestStateType.Not_Started &&
+                hasUnmetJobRequirement &&
+                TryGetStopPages(stopPages, "job", out IReadOnlyList<NpcInteractionPage> jobPages))
+            {
+                return jobPages;
+            }
+
             if (TryGetStopPages(stopPages, "default", out IReadOnlyList<NpcInteractionPage> defaultPages))
             {
                 return defaultPages;
@@ -2325,6 +2397,18 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return Array.Empty<NpcInteractionPage>();
+        }
+
+        private static bool HasUnmetStartJobRequirement(QuestDefinition definition, CharacterBuild build)
+        {
+            if (definition == null || build == null)
+            {
+                return false;
+            }
+
+            return (definition.AllowedJobs.Count > 0 && !MatchesAllowedJobs(build.Job, definition.AllowedJobs))
+                || (definition.StartSubJobFlagsRequirement > 0 &&
+                    !MatchesQuestSubJobFlags(build.Job, build.SubJob, definition.StartSubJobFlagsRequirement));
         }
 
         private void AppendRequirementSummary(QuestDefinition definition, ICollection<string> details, CharacterBuild build)
@@ -3624,6 +3708,33 @@ namespace HaCreator.MapSimulator.Interaction
             messages.Add($"{GetPetTamenessRewardText(amount)} (no compatible active pet)");
         }
 
+        private void ApplyPetSpeedReward(
+            int amount,
+            IReadOnlyList<QuestPetRequirement> petRequirements,
+            int? petRecallLimit,
+            ICollection<string> messages)
+        {
+            if (amount == 0)
+            {
+                return;
+            }
+
+            int[] supportedPetItemIds = petRequirements?
+                .Select(static requirement => requirement.ItemId)
+                .Where(static itemId => itemId > 0)
+                .Distinct()
+                .ToArray()
+                ?? Array.Empty<int>();
+
+            if (_grantPetSpeedProvider?.Invoke(supportedPetItemIds, petRecallLimit, amount) == true)
+            {
+                messages.Add(GetPetSpeedRewardText(amount));
+                return;
+            }
+
+            messages.Add($"{GetPetSpeedRewardText(amount)} (no compatible active pet)");
+        }
+
         private void ApplySpReward(QuestSpReward reward, CharacterBuild build, ICollection<string> messages)
         {
             if (reward == null || reward.Amount <= 0)
@@ -3757,11 +3868,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             ApplyPetSkillReward(actions.PetSkillRewardMask, petRequirements, petRecallLimit, messages);
             ApplyPetTamenessReward(actions.PetTamenessReward, petRequirements, petRecallLimit, messages);
-
-            if (actions.PetSpeedReward != 0)
-            {
-                messages.Add($"{GetPetSpeedRewardText(actions.PetSpeedReward)} (pet speed runtime unavailable)");
-            }
+            ApplyPetSpeedReward(actions.PetSpeedReward, petRequirements, petRecallLimit, messages);
 
             for (int i = 0; i < actions.SpRewards.Count; i++)
             {

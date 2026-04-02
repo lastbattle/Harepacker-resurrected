@@ -55,6 +55,7 @@ namespace HaCreator.MapSimulator
             string launchSource = string.IsNullOrWhiteSpace(_lastRankingLaunchSource) ? "status-bar owner" : _lastRankingLaunchSource;
             bool hasActiveRequest = _lastRankingOpenTick != int.MinValue;
             bool requestPending = hasActiveRequest && _lastRankingNavigateTick == int.MinValue;
+            bool isLoading = build != null && requestPending;
             string requestValue = build == null
                 ? "No active character"
                 : requestPending
@@ -71,7 +72,7 @@ namespace HaCreator.MapSimulator
                     Detail = $"CUIRanking stays a CWebWnd owner with a loading layer plus close-only dismissal. No active character build is bound, so the recovered seed shape remains {webSeedText}."
                 });
             }
-            else
+            else if (requestPending)
             {
                 entries.Add(new RankingEntrySnapshot
                 {
@@ -81,17 +82,44 @@ namespace HaCreator.MapSimulator
                 });
                 entries.Add(new RankingEntrySnapshot
                 {
-                    Label = "Ladder Snapshot",
-                    Value = $"World {FormatRank(build.WorldRank)} / Job {FormatRank(build.JobRank)}",
-                    Detail = $"Previous world {FormatRank(rankDelta.PreviousWorldRank)} ({FormatSignedDelta(rankDelta.PreviousWorldRank - build.WorldRank)}), previous job {FormatRank(rankDelta.PreviousJobRank)} ({FormatSignedDelta(rankDelta.PreviousJobRank - build.JobRank)})."
+                    Label = "Client Phase",
+                    Value = "Loading layer armed",
+                    Detail = "Local ladder cards stay hidden until the recovered CWebWnd landing request clears the loading layer."
                 });
                 entries.Add(new RankingEntrySnapshot
                 {
-                    Label = "Character Context",
-                    Value = $"Fame {build.Fame} / PAD {build.TotalAttack} / MAD {build.TotalMagicAttack}",
+                    Label = "Pending Summary",
+                    Value = $"World {FormatRank(build.WorldRank)} / Job {FormatRank(build.JobRank)}",
+                    Detail = $"Local ranking data is ready for {build.Name}, but it does not surface until the navigated owner phase."
+                });
+            }
+            else
+            {
+                entries.Add(new RankingEntrySnapshot
+                {
+                    Label = "World Rank",
+                    Value = FormatRank(build.WorldRank),
+                    Detail = $"Previous {FormatRank(rankDelta.PreviousWorldRank)} ({FormatSignedDelta(rankDelta.PreviousWorldRank - build.WorldRank)})."
+                });
+                entries.Add(new RankingEntrySnapshot
+                {
+                    Label = "Job Rank",
+                    Value = FormatRank(build.JobRank),
+                    Detail = $"Previous {FormatRank(rankDelta.PreviousJobRank)} ({FormatSignedDelta(rankDelta.PreviousJobRank - build.JobRank)})."
+                });
+                entries.Add(new RankingEntrySnapshot
+                {
+                    Label = "Popularity",
+                    Value = build.Fame.ToString(CultureInfo.InvariantCulture),
+                    Detail = $"Lv. {build.Level} {build.JobName} in {mapName} (map {currentMapId})."
+                });
+                entries.Add(new RankingEntrySnapshot
+                {
+                    Label = "Combat Context",
+                    Value = $"PAD {build.TotalAttack} / MAD {build.TotalMagicAttack}",
                     Detail = readyQuestCount > 0
-                        ? $"Lv. {build.Level} {build.JobName}, EXP {build.ExpPercent}% in {mapName} (map {currentMapId}), AP {build.AP.ToString(CultureInfo.InvariantCulture)}, ACC {build.TotalAccuracy.ToString(CultureInfo.InvariantCulture)}, EVA {build.TotalAvoidability.ToString(CultureInfo.InvariantCulture)}, and {readyQuestCount} tracked turn-in candidate{(readyQuestCount == 1 ? string.Empty : "s")}."
-                        : $"Lv. {build.Level} {build.JobName}, EXP {build.ExpPercent}% in {mapName} (map {currentMapId}), AP {build.AP.ToString(CultureInfo.InvariantCulture)}, ACC {build.TotalAccuracy.ToString(CultureInfo.InvariantCulture)}, EVA {build.TotalAvoidability.ToString(CultureInfo.InvariantCulture)}."
+                        ? $"EXP {build.ExpPercent}%, AP {build.AP.ToString(CultureInfo.InvariantCulture)}, ACC {build.TotalAccuracy.ToString(CultureInfo.InvariantCulture)}, EVA {build.TotalAvoidability.ToString(CultureInfo.InvariantCulture)}, and {readyQuestCount} tracked turn-in candidate{(readyQuestCount == 1 ? string.Empty : "s")}."
+                        : $"EXP {build.ExpPercent}%, AP {build.AP.ToString(CultureInfo.InvariantCulture)}, ACC {build.TotalAccuracy.ToString(CultureInfo.InvariantCulture)}, EVA {build.TotalAvoidability.ToString(CultureInfo.InvariantCulture)}."
                 });
             }
 
@@ -103,7 +131,11 @@ namespace HaCreator.MapSimulator
             {
                 Title = "Ranking",
                 Subtitle = subtitle,
-                StatusText = "BtRank now mirrors the client owner lifecycle more closely: loading-layer request first, navigated local summary second, and no hidden popularity or combat cards. The recovered host now resolves to gamerank.maplestory through StringPool[0xAA2], but the full live URL template, remote ladders, and packet-fed ranking pages are still outside this board.",
+                StatusText = "BtRank now mirrors the client owner lifecycle more closely: loading-layer request first, navigated local world/job/popularity/combat cards second. The recovered host now resolves to gamerank.maplestory through StringPool[0xAA2], but the full live URL template, remote ladders, and packet-fed ranking pages are still outside this board.",
+                NavigationCaption = "CWebWnd landing request",
+                NavigationSeedText = webSeedText,
+                NavigationStateText = BuildRankingOwnerLifecycleDetail(build, launchSource, webSeedText),
+                IsLoading = isLoading,
                 Entries = entries
             };
         }
@@ -402,62 +434,74 @@ namespace HaCreator.MapSimulator
 
         private IReadOnlyList<EventAlarmLineSnapshot> BuildEventAlarmOwnerLines(int currentTick)
         {
-            List<string> lines = new();
+            List<EventAlarmLineSnapshot> lines = new();
 
             if (!string.IsNullOrWhiteSpace(_lastPacketOwnedNoticeMessage))
             {
-                lines.Add($"Notice: {TruncatePacketOwnedUtilityText(_lastPacketOwnedNoticeMessage, 72)}");
+                lines.Add(CreateEventAlarmLine($"Notice: {TruncatePacketOwnedUtilityText(_lastPacketOwnedNoticeMessage, 64)}", lines.Count, highlight: true));
             }
 
             if (!string.IsNullOrWhiteSpace(_lastPacketOwnedBuffzoneMessage))
             {
-                lines.Add($"Buff zone: {TruncatePacketOwnedUtilityText(_lastPacketOwnedBuffzoneMessage, 68)}");
+                lines.Add(CreateEventAlarmLine($"Buff zone: {TruncatePacketOwnedUtilityText(_lastPacketOwnedBuffzoneMessage, 60)}", lines.Count));
             }
 
             if (!string.IsNullOrWhiteSpace(_lastPacketOwnedAskApspMessage))
             {
                 string apspPrefix = _packetOwnedApspPromptActive ? "AP/SP prompt" : "AP/SP event";
-                lines.Add($"{apspPrefix}: {TruncatePacketOwnedUtilityText(_lastPacketOwnedAskApspMessage, 64)}");
+                lines.Add(CreateEventAlarmLine($"{apspPrefix}: {TruncatePacketOwnedUtilityText(_lastPacketOwnedAskApspMessage, 58)}", lines.Count));
             }
 
             if (!string.IsNullOrWhiteSpace(_lastPacketOwnedSkillGuideMessage))
             {
-                lines.Add(_lastPacketOwnedSkillGuideGrade > 0
-                    ? $"Skill guide G{_lastPacketOwnedSkillGuideGrade}: {TruncatePacketOwnedUtilityText(_lastPacketOwnedSkillGuideMessage, 60)}"
-                    : $"Skill guide: {TruncatePacketOwnedUtilityText(_lastPacketOwnedSkillGuideMessage, 66)}");
+                lines.Add(CreateEventAlarmLine(
+                    _lastPacketOwnedSkillGuideGrade > 0
+                        ? $"Skill guide G{_lastPacketOwnedSkillGuideGrade}: {TruncatePacketOwnedUtilityText(_lastPacketOwnedSkillGuideMessage, 53)}"
+                        : $"Skill guide: {TruncatePacketOwnedUtilityText(_lastPacketOwnedSkillGuideMessage, 60)}",
+                    lines.Count));
             }
 
             if (_packetOwnedTutorRuntime.IsActive)
             {
-                lines.Add(TruncatePacketOwnedUtilityText(DescribePacketOwnedTutorStatus(currentTick), 78));
+                lines.Add(CreateEventAlarmLine(TruncatePacketOwnedUtilityText(DescribePacketOwnedTutorStatus(currentTick), 70), lines.Count));
             }
 
             if (!string.IsNullOrWhiteSpace(_lastPacketOwnedRadioStatusMessage)
                 && (!string.Equals(_lastPacketOwnedRadioStatusMessage, "Packet-owned radio idle.", StringComparison.OrdinalIgnoreCase)
                     || IsPacketOwnedRadioPlaying()))
             {
-                lines.Add(IsPacketOwnedRadioPlaying()
-                    ? $"Radio: {TruncatePacketOwnedUtilityText(_lastPacketOwnedRadioDisplayName ?? _lastPacketOwnedRadioTrackDescriptor, 68)}"
-                    : $"Radio: {TruncatePacketOwnedUtilityText(_lastPacketOwnedRadioStatusMessage, 68)}");
+                lines.Add(CreateEventAlarmLine(
+                    IsPacketOwnedRadioPlaying()
+                        ? $"Radio: {TruncatePacketOwnedUtilityText(_lastPacketOwnedRadioDisplayName ?? _lastPacketOwnedRadioTrackDescriptor, 60)}"
+                        : $"Radio: {TruncatePacketOwnedUtilityText(_lastPacketOwnedRadioStatusMessage, 60)}",
+                    lines.Count));
             }
 
             if (!string.IsNullOrWhiteSpace(_lastPacketOwnedFollowFailureMessage))
             {
-                lines.Add($"Follow: {TruncatePacketOwnedUtilityText(_lastPacketOwnedFollowFailureMessage, 70)}");
+                lines.Add(CreateEventAlarmLine($"Follow: {TruncatePacketOwnedUtilityText(_lastPacketOwnedFollowFailureMessage, 62)}", lines.Count));
             }
 
             if (lines.Count == 0)
             {
-                lines.Add("No packet-authored event alarm text is active.");
+                lines.Add(CreateEventAlarmLine("No packet-authored event alarm text is active.", 0));
             }
 
             return lines
                 .Take(3)
-                .Select(static line => new EventAlarmLineSnapshot
-                {
-                    Text = line
-                })
                 .ToArray();
+        }
+
+        private static EventAlarmLineSnapshot CreateEventAlarmLine(string text, int index, bool highlight = false)
+        {
+            int clampedIndex = Math.Max(0, index);
+            return new EventAlarmLineSnapshot
+            {
+                Text = text ?? string.Empty,
+                Left = 0,
+                Top = clampedIndex * 13,
+                IsHighlighted = highlight
+            };
         }
 
         private static string FormatRank(int rank)

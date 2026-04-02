@@ -70,7 +70,10 @@ namespace HaCreator.MapSimulator.Managers
         public const int QuestGuideResultPacketType = 274;
         public const int DeliveryQuestPacketType = 275;
         public const int DamageMeterPacketType = 267;
+        public const int TimeBombAttackPacketType = 268;
         public const int FollowCharacterFailedClientPacketType = 270;
+        public const int VengeanceSkillApplyPacketType = 271;
+        public const int ExJablinApplyPacketType = 272;
         public const int AskApspEventClientPacketType = 273;
         public const int SkillCooltimeSetPacketType = 276;
         public const int FuncKeyMapInitPacketType = 398;
@@ -237,6 +240,23 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
+            if (trimmed.StartsWith("packetclientraw", StringComparison.OrdinalIgnoreCase))
+            {
+                string rawHex = trimmed["packetclientraw".Length..].Trim();
+                if (!TryParsePayload(rawHex, out byte[] rawPacket, out error))
+                {
+                    return false;
+                }
+
+                if (!TryDecodeOpcodeFramedPacket(rawPacket, out int clientPacketType, out byte[] clientPayload, out error))
+                {
+                    return false;
+                }
+
+                message = new LocalUtilityPacketInboxMessage(clientPacketType, clientPayload, "local-utility-inbox", text);
+                return true;
+            }
+
             int splitIndex = FindTokenSeparatorIndex(trimmed);
             string packetToken = splitIndex >= 0 ? trimmed[..splitIndex].Trim() : trimmed;
             string payloadToken = splitIndex >= 0 ? trimmed[(splitIndex + 1)..].Trim() : string.Empty;
@@ -270,49 +290,7 @@ namespace HaCreator.MapSimulator.Managers
 
             if (int.TryParse(token, out packetType))
             {
-                return packetType == OpenUiPacketType
-                    || packetType == OpenUiClientPacketType
-                    || packetType == OpenUiWithOptionPacketType
-                    || packetType == OpenUiWithOptionClientPacketType
-                    || packetType == HireTutorClientPacketType
-                    || packetType == TutorMsgClientPacketType
-                    || packetType == GoToCommoditySnPacketType
-                    || packetType == GoToCommoditySnClientPacketType
-                    || packetType == NoticeMsgPacketType
-                    || packetType == NoticeMsgClientPacketType
-                    || packetType == ChatMsgPacketType
-                    || packetType == ChatMsgClientPacketType
-                    || packetType == BuffzoneEffectPacketType
-                    || packetType == BuffzoneEffectClientPacketType
-                    || packetType == PlayEventSoundPacketType
-                    || packetType == PlayEventSoundClientPacketType
-                    || packetType == PlayMinigameSoundPacketType
-                    || packetType == PlayMinigameSoundClientPacketType
-                    || packetType == AskApspEventPacketType
-                    || packetType == AskApspEventClientPacketType
-                    || packetType == FollowCharacterFailedPacketType
-                    || packetType == FollowCharacterFailedClientPacketType
-                    || packetType == FollowCharacterPacketType
-                    || packetType == SetDirectionModePacketType
-                    || packetType == SetStandAloneModePacketType
-                    || packetType == SetDirectionModeClientPacketType
-                    || packetType == SetStandAloneModeClientPacketType
-                    || packetType == FollowCharacterClientPacketType
-                    || packetType == SitResultPacketType
-                    || packetType == RadioSchedulePacketType
-                    || packetType == RadioScheduleClientPacketType
-                    || packetType == AntiMacroResultPacketType
-                    || packetType == OpenSkillGuideClientPacketType
-                    || packetType == QuestResultPacketType
-                    || packetType == NotifyHpDecByFieldPacketType
-                    || packetType == OpenClassCompetitionPagePacketType
-                    || packetType == DamageMeterPacketType
-                    || packetType == QuestGuideResultPacketType
-                    || packetType == DeliveryQuestPacketType
-                    || packetType == SkillCooltimeSetPacketType
-                    || packetType == FuncKeyMapInitPacketType
-                    || packetType == PetConsumeItemInitPacketType
-                    || packetType == PetConsumeMpItemInitPacketType;
+                return IsSupportedPacketType(packetType);
             }
 
             if (token.Equals("openui", StringComparison.OrdinalIgnoreCase))
@@ -498,6 +476,29 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
+            if (token.Equals("timebomb", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("timebombattack", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("ontimebombattack", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = TimeBombAttackPacketType;
+                return true;
+            }
+
+            if (token.Equals("vengeance", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("vengeanceskillapply", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onvengeanceskillapply", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = VengeanceSkillApplyPacketType;
+                return true;
+            }
+
+            if (token.Equals("exjablin", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onexjablinapply", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = ExJablinApplyPacketType;
+                return true;
+            }
+
             if (token.Equals("skillcooltime", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("skillcooltimeset", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("cooltime", StringComparison.OrdinalIgnoreCase))
@@ -530,6 +531,81 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return false;
+        }
+
+        public static bool IsSupportedPacketType(int packetType)
+        {
+            return packetType == OpenUiPacketType
+                || packetType == OpenUiClientPacketType
+                || packetType == OpenUiWithOptionPacketType
+                || packetType == OpenUiWithOptionClientPacketType
+                || packetType == HireTutorClientPacketType
+                || packetType == TutorMsgClientPacketType
+                || packetType == GoToCommoditySnPacketType
+                || packetType == GoToCommoditySnClientPacketType
+                || packetType == NoticeMsgPacketType
+                || packetType == NoticeMsgClientPacketType
+                || packetType == ChatMsgPacketType
+                || packetType == ChatMsgClientPacketType
+                || packetType == BuffzoneEffectPacketType
+                || packetType == BuffzoneEffectClientPacketType
+                || packetType == PlayEventSoundPacketType
+                || packetType == PlayEventSoundClientPacketType
+                || packetType == PlayMinigameSoundPacketType
+                || packetType == PlayMinigameSoundClientPacketType
+                || packetType == AskApspEventPacketType
+                || packetType == AskApspEventClientPacketType
+                || packetType == FollowCharacterFailedPacketType
+                || packetType == FollowCharacterFailedClientPacketType
+                || packetType == FollowCharacterPacketType
+                || packetType == SetDirectionModePacketType
+                || packetType == SetStandAloneModePacketType
+                || packetType == SetDirectionModeClientPacketType
+                || packetType == SetStandAloneModeClientPacketType
+                || packetType == FollowCharacterClientPacketType
+                || packetType == SitResultPacketType
+                || packetType == RadioSchedulePacketType
+                || packetType == RadioScheduleClientPacketType
+                || packetType == AntiMacroResultPacketType
+                || packetType == OpenSkillGuideClientPacketType
+                || packetType == QuestResultPacketType
+                || packetType == NotifyHpDecByFieldPacketType
+                || packetType == OpenClassCompetitionPagePacketType
+                || packetType == DamageMeterPacketType
+                || packetType == TimeBombAttackPacketType
+                || packetType == VengeanceSkillApplyPacketType
+                || packetType == ExJablinApplyPacketType
+                || packetType == QuestGuideResultPacketType
+                || packetType == DeliveryQuestPacketType
+                || packetType == SkillCooltimeSetPacketType
+                || packetType == FuncKeyMapInitPacketType
+                || packetType == PetConsumeItemInitPacketType
+                || packetType == PetConsumeMpItemInitPacketType;
+        }
+
+        public static bool TryDecodeOpcodeFramedPacket(byte[] rawPacket, out int packetType, out byte[] payload, out string error)
+        {
+            packetType = 0;
+            payload = Array.Empty<byte>();
+            error = null;
+
+            if (rawPacket == null || rawPacket.Length < sizeof(ushort))
+            {
+                error = "Local utility client packet must include a 2-byte opcode.";
+                return false;
+            }
+
+            packetType = BitConverter.ToUInt16(rawPacket, 0);
+            if (!IsSupportedPacketType(packetType))
+            {
+                error = $"Unsupported local utility client opcode {packetType}.";
+                return false;
+            }
+
+            payload = rawPacket.Length == sizeof(ushort)
+                ? Array.Empty<byte>()
+                : rawPacket[sizeof(ushort)..];
+            return true;
         }
 
         private static bool TryParsePayload(string text, out byte[] payload, out string error)
@@ -650,7 +726,10 @@ namespace HaCreator.MapSimulator.Managers
                 RadioScheduleClientPacketType => "RadioSchedule(261)",
                 OpenSkillGuideClientPacketType => "OpenSkillGuide(262)",
                 DamageMeterPacketType => "DamageMeter(267)",
+                TimeBombAttackPacketType => "OnTimeBombAttack(268)",
                 FollowCharacterFailedClientPacketType => "FollowCharacterFailed(270)",
+                VengeanceSkillApplyPacketType => "OnVengeanceSkillApply(271)",
+                ExJablinApplyPacketType => "OnExJablinApply(272)",
                 AskApspEventClientPacketType => "AskAPSPEvent(273)",
                 QuestGuideResultPacketType => "QuestGuideResult(274)",
                 DeliveryQuestPacketType => "DeliveryQuest(275)",

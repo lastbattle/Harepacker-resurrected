@@ -430,6 +430,8 @@ namespace HaCreator.MapSimulator.Character
         public bool IsEquipTradeBlocked { get; set; }
         public bool IsOneOfAKind { get; set; }
         public bool IsNotForSale { get; set; }
+        public bool IsAccountSharable { get; set; }
+        public bool HasAccountShareTag { get; set; }
         public bool IsTimeLimited { get; set; }
         public string PotentialTierText { get; set; }
         public List<string> PotentialLines { get; set; } = new();
@@ -494,6 +496,8 @@ namespace HaCreator.MapSimulator.Character
                 IsEquipTradeBlocked = IsEquipTradeBlocked,
                 IsOneOfAKind = IsOneOfAKind,
                 IsNotForSale = IsNotForSale,
+                IsAccountSharable = IsAccountSharable,
+                HasAccountShareTag = HasAccountShareTag,
                 IsTimeLimited = IsTimeLimited,
                 PotentialTierText = PotentialTierText,
                 PotentialLines = PotentialLines != null ? new List<string>(PotentialLines) : new List<string>(),
@@ -814,6 +818,8 @@ namespace HaCreator.MapSimulator.Character
                 IsEquipTradeBlocked = IsEquipTradeBlocked,
                 IsOneOfAKind = IsOneOfAKind,
                 IsNotForSale = IsNotForSale,
+                IsAccountSharable = IsAccountSharable,
+                HasAccountShareTag = HasAccountShareTag,
                 IsTimeLimited = IsTimeLimited,
                 PotentialTierText = PotentialTierText,
                 PotentialLines = PotentialLines != null ? new List<string>(PotentialLines) : new List<string>(),
@@ -1374,6 +1380,8 @@ namespace HaCreator.MapSimulator.Character
                 hash = (hash * 31) + (part.IsEquipTradeBlocked ? 1 : 0);
                 hash = (hash * 31) + (part.IsOneOfAKind ? 1 : 0);
                 hash = (hash * 31) + (part.IsNotForSale ? 1 : 0);
+                hash = (hash * 31) + (part.IsAccountSharable ? 1 : 0);
+                hash = (hash * 31) + (part.HasAccountShareTag ? 1 : 0);
                 hash = (hash * 31) + (part.ExpirationDateUtc?.ToBinary().GetHashCode() ?? 0);
                 return hash;
             }

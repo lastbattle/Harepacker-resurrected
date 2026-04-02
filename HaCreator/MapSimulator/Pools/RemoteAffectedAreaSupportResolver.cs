@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using HaCreator.MapSimulator.Character.Skills;
 
 namespace HaCreator.MapSimulator.Pools
@@ -217,6 +218,7 @@ namespace HaCreator.MapSimulator.Pools
 
         public static bool CanAffectLocalPlayer(
             SkillData skill,
+            IEnumerable<SkillData> supportSkills,
             int localPlayerId,
             int ownerId,
             bool ownerIsPartyMember,
@@ -227,12 +229,33 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
+            if (!IsFriendlyPlayerAreaSkill(skill, levelData))
+            {
+                return false;
+            }
+
             if (ownerId == localPlayerId)
             {
                 return true;
             }
 
-            return ownerIsPartyMember && IsFriendlyPlayerAreaSkill(skill, levelData);
+            return ownerIsPartyMember && SupportsPartyMembers(skill, supportSkills);
+        }
+
+        public static bool CanAffectLocalPlayer(
+            SkillData skill,
+            int localPlayerId,
+            int ownerId,
+            bool ownerIsPartyMember,
+            SkillLevelData levelData = null)
+        {
+            return CanAffectLocalPlayer(
+                skill,
+                supportSkills: null,
+                localPlayerId,
+                ownerId,
+                ownerIsPartyMember,
+                levelData);
         }
 
         public static bool IsHostilePlayerAreaSkill(SkillData skill, SkillLevelData levelData = null)
@@ -294,6 +317,34 @@ namespace HaCreator.MapSimulator.Pools
                    && ContainsToken(skill.Description, FriendlyAreaSupportTokens);
         }
 
+        public static bool SupportsPartyMembers(SkillData skill, IEnumerable<SkillData> supportSkills = null)
+        {
+            if (SupportsPartyMembers(skill))
+            {
+                return true;
+            }
+
+            if (supportSkills == null)
+            {
+                return false;
+            }
+
+            foreach (SkillData supportSkill in supportSkills)
+            {
+                if (supportSkill == null || ReferenceEquals(supportSkill, skill))
+                {
+                    continue;
+                }
+
+                if (SupportsPartyMembers(supportSkill))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         private static bool HasPositiveSupportMetadata(SkillLevelData levelData)
         {
             if (levelData == null)
@@ -329,6 +380,15 @@ namespace HaCreator.MapSimulator.Pools
                    || levelData.MesoRate > 0
                    || levelData.AbnormalStatusResistance > 0
                    || levelData.ElementalResistance > 0;
+        }
+
+        private static bool SupportsPartyMembers(SkillData skill)
+        {
+            return skill != null
+                   && (skill.IsMassSpell
+                       || skill.Type == SkillType.PartyBuff
+                       || skill.Target == SkillTarget.Party
+                       || ContainsToken(skill.Description, FriendlyAreaDescriptionTokens));
         }
 
         private static void MergeProjectableSupportStats(SkillLevelData target, SkillLevelData source)

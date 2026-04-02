@@ -5,8 +5,39 @@ namespace HaCreator.MapSimulator.Character
 {
     public static class ClientOwnedAvatarEffectParity
     {
+        private static readonly HashSet<int> RotateSensitiveRawActionCodes = new()
+        {
+            101,
+            82,
+            114,
+            149,
+            151,
+            193
+        };
+
+        private static readonly HashSet<string> RotateSensitiveActionNames = new(StringComparer.OrdinalIgnoreCase)
+        {
+            "doubleJump",
+            "backspin",
+            "rollingSpin",
+            "darkSpin",
+            "screw",
+            "somersault",
+            "finalCut"
+        };
+
         public static bool ShouldHideDuringPlayerAction(params string[] actionNames)
         {
+            return ShouldHideDuringPlayerAction(null, actionNames);
+        }
+
+        public static bool ShouldHideDuringPlayerAction(int? rawActionCode, params string[] actionNames)
+        {
+            if (rawActionCode.HasValue && RotateSensitiveRawActionCodes.Contains(rawActionCode.Value))
+            {
+                return true;
+            }
+
             if (actionNames == null || actionNames.Length == 0)
             {
                 return false;
@@ -21,12 +52,7 @@ namespace HaCreator.MapSimulator.Character
                     continue;
                 }
 
-                if (actionName.IndexOf("doublejump", StringComparison.OrdinalIgnoreCase) >= 0
-                    || actionName.IndexOf("backspin", StringComparison.OrdinalIgnoreCase) >= 0
-                    || actionName.IndexOf("spin", StringComparison.OrdinalIgnoreCase) >= 0
-                    || string.Equals(actionName, "screw", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(actionName, "somersault", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(actionName, "finalCut", StringComparison.OrdinalIgnoreCase))
+                if (RotateSensitiveActionNames.Contains(actionName))
                 {
                     return true;
                 }

@@ -69,6 +69,8 @@ namespace HaCreator.MapSimulator.UI
 
         public int CanvasSnapshotWidth => _canvasSnapshotWidth;
 
+        public UIObjectState CurrentState => _currentState;
+
         private int _X;
         /// <summary>
         /// The additional relative position of the image (used primarily for UI overlay)

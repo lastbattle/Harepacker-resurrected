@@ -1,5 +1,6 @@
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.UI;
+using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -21,8 +22,11 @@ namespace HaCreator.MapSimulator.Interaction
         private const string DefaultPartnerName = "Partner";
         private const string DefaultOutgoingDialogText = "Waiting for a reply to the engagement request.";
         private const string DefaultIncomingDialogText = "A pre-ceremony engagement proposal is pending.";
+        private const string OutgoingEtcSlotRequirementMessage = "Requester-side engagement flow blocked: CWvsContext::SendEngagementRequest requires at least one free ETC slot before packet 161 [00] can be sent.";
+        private const string OutgoingGenderRequirementMessage = "Requester-side engagement flow blocked: the local client only opens the engagement request owner for a male requester. Use the explicit proposer override to simulate other owners.";
 
         private string _localCharacterName = DefaultPlayerName;
+        private CharacterGender _localCharacterGender = CharacterGender.Male;
         private string _proposerName = DefaultPlayerName;
         private string _partnerName = DefaultPartnerName;
         private string _ringItemName = "Engagement Ring Box";
@@ -49,6 +53,36 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 _localCharacterName = build.Name.Trim();
             }
+
+            if (build != null)
+            {
+                _localCharacterGender = build.Gender;
+            }
+        }
+
+        internal bool TryValidateOutgoingOpen(
+            string proposerName,
+            bool enforceLocalRequesterChecks,
+            IInventoryRuntime inventory,
+            out string message)
+        {
+            if (enforceLocalRequesterChecks && _localCharacterGender != CharacterGender.Male)
+            {
+                message = OutgoingGenderRequirementMessage;
+                return false;
+            }
+
+            if (enforceLocalRequesterChecks && inventory != null && !inventory.CanAcceptItem(
+                    InventoryType.ETC,
+                    DefaultSealItemId,
+                    1))
+            {
+                message = OutgoingEtcSlotRequirementMessage;
+                return false;
+            }
+
+            message = null;
+            return true;
         }
 
         internal string OpenOutgoingRequest(

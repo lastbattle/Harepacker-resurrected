@@ -134,11 +134,11 @@ namespace HaCreator.MapSimulator.Character
             }
 
             var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-            bool prefersShootAliases = actionName.IndexOf("shoot", StringComparison.OrdinalIgnoreCase) >= 0;
+            bool prefersArcherAliases = PrefersArcherAttackAliases(actionName);
 
             foreach (string authoredAlias in EnumeratePresentAliases(
                          morphPart,
-                         prefersShootAliases ? ArcherMorphAuthoredAttackAliases : PirateMorphAuthoredAttackAliases))
+                         prefersArcherAliases ? ArcherMorphAuthoredAttackAliases : PirateMorphAuthoredAttackAliases))
             {
                 if (yielded.Add(authoredAlias))
                 {
@@ -148,7 +148,7 @@ namespace HaCreator.MapSimulator.Character
 
             foreach (string authoredAlias in EnumeratePresentAliases(
                          morphPart,
-                         prefersShootAliases ? PirateMorphAuthoredAttackAliases : ArcherMorphAuthoredAttackAliases))
+                         prefersArcherAliases ? PirateMorphAuthoredAttackAliases : ArcherMorphAuthoredAttackAliases))
             {
                 if (yielded.Add(authoredAlias))
                 {
@@ -179,6 +179,20 @@ namespace HaCreator.MapSimulator.Character
                     yield return authoredAlias;
                 }
             }
+        }
+
+        private static bool PrefersArcherAttackAliases(string actionName)
+        {
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            return actionName.IndexOf("shoot", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("shot", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("spear", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("rain", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("break", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private static IEnumerable<string> EnumerateGenericAttackAliases(CharacterPart morphPart, string actionName)

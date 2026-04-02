@@ -39,6 +39,7 @@ namespace HaCreator.MapSimulator
                     11 => TryApplyPacketOwnedQuestResultFixedNotice(resultType, out message),
                     12 => TryApplyPacketOwnedQuestResultActionNotice(reader, out message),
                     13 => TryApplyPacketOwnedQuestResultFixedNotice(resultType, out message),
+                    14 => TryApplyPacketOwnedQuestResultNoOp(out message),
                     15 => TryApplyPacketOwnedQuestResultFixedNotice(resultType, out message),
                     16 => TryApplyPacketOwnedQuestResultFixedNotice(resultType, out message),
                     17 => TryApplyPacketOwnedQuestTimerExpiry(reader, out message),
@@ -130,42 +131,17 @@ namespace HaCreator.MapSimulator
         {
             int questId = reader.ReadUInt16();
             int speakerNpcId = reader.ReadInt32();
-            PacketQuestResultTextKind textKind = PacketQuestResultTextKind.Auto;
-            PacketQuestResultViewMode viewMode = PacketQuestResultViewMode.NoticeAndModal;
-            int followUpQuestId = 0;
-
-            if (reader.BaseStream.Position < reader.BaseStream.Length)
+            if (reader.BaseStream.Length - reader.BaseStream.Position < sizeof(ushort))
             {
-                byte encodedTextKind = reader.ReadByte();
-                if (Enum.IsDefined(typeof(PacketQuestResultTextKind), encodedTextKind))
-                {
-                    textKind = (PacketQuestResultTextKind)encodedTextKind;
-                }
+                throw new InvalidDataException("Quest-result subtype 10 requires a trailing follow-up quest id.");
             }
 
-            if (reader.BaseStream.Position < reader.BaseStream.Length)
-            {
-                byte encodedViewMode = reader.ReadByte();
-                if (Enum.IsDefined(typeof(PacketQuestResultViewMode), encodedViewMode))
-                {
-                    viewMode = (PacketQuestResultViewMode)encodedViewMode;
-                }
-            }
-
-            if (reader.BaseStream.Position < reader.BaseStream.Length)
-            {
-                if (reader.BaseStream.Length - reader.BaseStream.Position < sizeof(ushort))
-                {
-                    throw new InvalidDataException("Quest-result follow-up quest id must be a UInt16 value.");
-                }
-
-                followUpQuestId = reader.ReadUInt16();
-            }
-
-            if (!_questRuntime.TryBuildPacketQuestResultPresentation(
+            int followUpQuestId = reader.ReadUInt16();
+            bool hasQuestRecord = _questRuntime.HasQuestRecord(questId);
+            if (!_questRuntime.TryBuildClientPacketQuestResultPresentation(
                     questId,
                     _playerManager?.Player?.Build,
-                    textKind,
+                    hasQuestRecord,
                     out PacketQuestResultPresentation presentation))
             {
                 message = $"Quest-result packet references unknown quest #{questId}.";
@@ -174,15 +150,13 @@ namespace HaCreator.MapSimulator
 
             bool showedNotice = false;
             bool openedModal = false;
-            if (viewMode != PacketQuestResultViewMode.ModalOnly &&
-                !string.IsNullOrWhiteSpace(presentation.NoticeText))
+            if (!string.IsNullOrWhiteSpace(presentation.NoticeText))
             {
                 _chat?.AddMessage(presentation.NoticeText, new Color(255, 228, 151), currTickCount);
                 showedNotice = true;
             }
 
-            if (viewMode != PacketQuestResultViewMode.NoticeOnly &&
-                presentation.ModalPages.Count > 0 &&
+            if (presentation.ModalPages.Count > 0 &&
                 _npcInteractionOverlay != null)
             {
                 OpenPacketOwnedQuestResultModal(speakerNpcId, presentation);
@@ -235,9 +209,11 @@ namespace HaCreator.MapSimulator
         private bool TryApplyPacketOwnedQuestResultActionNotice(BinaryReader reader, out string message)
         {
             int questId = reader.ReadUInt16();
-            if (!_questRuntime.TryBuildPacketQuestResultActionNotice(
+            bool hasQuestRecord = _questRuntime.HasQuestRecord(questId);
+            if (!_questRuntime.TryBuildClientPacketQuestResultActionNotice(
                     questId,
                     _playerManager?.Player?.Build,
+                    hasQuestRecord,
                     out string questName,
                     out string noticeText))
             {
@@ -256,25 +232,22 @@ namespace HaCreator.MapSimulator
             return !string.IsNullOrWhiteSpace(noticeText);
         }
 
+        private bool TryApplyPacketOwnedQuestResultNoOp(out string message)
+        {
+            message = "Ignored packet-owned quest-result subtype 14; the client only refreshes quest availability after this branch.";
+            return true;
+        }
+
         private bool TryApplyPacketOwnedQuestResultFixedNotice(int resultType, out string message)
         {
-            string noticeText = resultType switch
-            {
-                11 => "Quest-result fixed notice received from the client packet seam (subtype 11).",
-                13 => "Quest-result fixed notice received from the client packet seam (subtype 13).",
-                15 => "Quest-result fixed notice received from the client packet seam (subtype 15).",
-                16 => "Quest-result fixed notice received from the client packet seam (subtype 16).",
-                _ => null
-            };
-
-            if (string.IsNullOrWhiteSpace(noticeText))
+            if (!QuestClientDirectNoticeText.TryResolve(resultType, out string noticeText, out int stringPoolId))
             {
                 message = $"Quest-result subtype {resultType} is not modeled by the simulator yet.";
                 return false;
             }
 
             _chat?.AddMessage(noticeText, new Color(255, 228, 151), currTickCount);
-            message = $"Displayed the packet-owned fixed quest-result notice for subtype {resultType}.";
+            message = $"Displayed the packet-owned fixed quest-result notice for subtype {resultType} (StringPool 0x{stringPoolId:X}).";
             return true;
         }
 

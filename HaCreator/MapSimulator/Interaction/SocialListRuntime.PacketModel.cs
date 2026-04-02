@@ -8,6 +8,7 @@ namespace HaCreator.MapSimulator.Interaction
     {
         private PacketGuildAuthorityState? _packetGuildAuthority;
         private PacketAllianceAuthorityState? _packetAllianceAuthority;
+        private PacketGuildUiState? _packetGuildUiState;
 
         internal string DescribeStatus()
         {
@@ -25,11 +26,14 @@ namespace HaCreator.MapSimulator.Interaction
             string guildAuthority = _packetGuildAuthority.HasValue
                 ? $"Guild authority packet-owned ({_packetGuildAuthority.Value.RoleLabel}: rank={FormatOnOff(_packetGuildAuthority.Value.CanManageRanks)}, admit={FormatOnOff(_packetGuildAuthority.Value.CanToggleAdmission)}, notice={FormatOnOff(_packetGuildAuthority.Value.CanEditNotice)})"
                 : $"Guild authority local-role ({GetLocalGuildRoleLabel()})";
+            string guildUiContext = _packetGuildUiState.HasValue
+                ? $"Guild UI packet-owned (member={FormatOnOff(_packetGuildUiState.Value.HasGuildMembership)}, name={_packetGuildUiState.Value.GuildName}, level={_packetGuildUiState.Value.GuildLevel})"
+                : "Guild UI local-build";
             string allianceAuthority = _packetAllianceAuthority.HasValue
                 ? $"Alliance authority packet-owned ({_packetAllianceAuthority.Value.RoleLabel}: rank={FormatOnOff(_packetAllianceAuthority.Value.CanEditRanks)}, notice={FormatOnOff(_packetAllianceAuthority.Value.CanEditNotice)})"
                 : $"Alliance authority local-role ({GetLocalAllianceRoleLabel()})";
 
-            return string.Join(Environment.NewLine, tabLines.Concat(new[] { guildAuthority, allianceAuthority }));
+            return string.Join(Environment.NewLine, tabLines.Concat(new[] { guildAuthority, guildUiContext, allianceAuthority }));
         }
 
         internal string SetPacketRosterOwnership(SocialListTab tab, bool packetOwned, string summary = null)
@@ -43,6 +47,10 @@ namespace HaCreator.MapSimulator.Interaction
             if (!packetOwned)
             {
                 _lastPendingRequestByTab[tab] = null;
+                if (tab == SocialListTab.Guild)
+                {
+                    _packetGuildUiState = null;
+                }
             }
 
             ResetSelectionAfterMutation(tab);
@@ -56,6 +64,7 @@ namespace HaCreator.MapSimulator.Interaction
             _packetOwnedRosterByTab[tab] = true;
             _lastPacketSyncSummaryByTab[tab] = $"Packet seed captured {_entriesByTab[tab].Count} roster entr{(_entriesByTab[tab].Count == 1 ? "y" : "ies")}.";
             _lastPendingRequestByTab[tab] = null;
+            SyncPacketGuildUiStateFromRoster(tab);
             ResetSelectionAfterMutation(tab);
             return $"{GetHeaderTitle(tab)} packet seed now owns {_entriesByTab[tab].Count} roster entr{(_entriesByTab[tab].Count == 1 ? "y" : "ies")}.";
         }
@@ -68,6 +77,7 @@ namespace HaCreator.MapSimulator.Interaction
             _lastPendingRequestByTab[tab] = null;
             _selectedIndexByTab[tab] = -1;
             _firstVisibleIndexByTab[tab] = 0;
+            SyncPacketGuildUiStateFromRoster(tab);
             return $"{GetHeaderTitle(tab)} packet clear removed every roster entry.";
         }
 
@@ -84,6 +94,7 @@ namespace HaCreator.MapSimulator.Interaction
             _lastPacketSyncSummaryByTab[tab] = removed > 0
                 ? $"Packet remove deleted {removed} entr{(removed == 1 ? "y" : "ies")} named {entryName.Trim()}."
                 : $"Packet remove for {entryName.Trim()} did not match any current roster row.";
+            SyncPacketGuildUiStateFromRoster(tab);
             ResetSelectionAfterMutation(tab);
             return removed > 0
                 ? $"{entryName.Trim()} was removed from the packet-owned {GetHeaderTitle(tab)} roster."
@@ -154,6 +165,7 @@ namespace HaCreator.MapSimulator.Interaction
                 }
             }
 
+            SyncPacketGuildUiStateFromRoster(tab);
             SelectEntryByName(tab, resolvedName);
             return $"{resolvedName} was upserted into the packet-owned {GetHeaderTitle(tab)} roster.";
         }
@@ -223,6 +235,26 @@ namespace HaCreator.MapSimulator.Interaction
             return $"Guild authority returned to the local-role seam ({GetLocalGuildRoleLabel()}).";
         }
 
+        internal string SetPacketGuildUiContext(bool hasGuildMembership, string guildName, int guildLevel)
+        {
+            string normalizedGuildName = hasGuildMembership
+                ? (string.IsNullOrWhiteSpace(guildName) ? _guildName : guildName.Trim())
+                : "No Guild";
+            _packetGuildUiState = new PacketGuildUiState(
+                hasGuildMembership && GuildSkillRuntime.HasGuildMembership(normalizedGuildName),
+                normalizedGuildName,
+                Math.Max(0, guildLevel));
+            return _packetGuildUiState.Value.HasGuildMembership
+                ? $"Guild UI now follows packet-owned membership for {normalizedGuildName} (Guild Lv. {_packetGuildUiState.Value.GuildLevel})."
+                : "Guild UI now follows packet-owned no-guild membership.";
+        }
+
+        internal string ClearPacketGuildUiContext()
+        {
+            _packetGuildUiState = null;
+            return "Guild UI returned to the local build seam.";
+        }
+
         internal string SetPacketGuildAuthority(string roleLabel, bool canManageRanks, bool canToggleAdmission, bool canEditNotice)
         {
             string resolvedRole = string.IsNullOrWhiteSpace(roleLabel) ? GetLocalGuildRoleLabel() : roleLabel.Trim();
@@ -250,7 +282,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal bool CanManageGuildSkills()
         {
-            if (!_hasGuildMembership)
+            if (!(ResolveEffectiveGuildMembership(null)))
             {
                 return false;
             }
@@ -264,6 +296,43 @@ namespace HaCreator.MapSimulator.Interaction
             return _packetGuildAuthority?.CanManageRanks == true ||
                    _packetGuildAuthority?.CanToggleAdmission == true ||
                    _packetGuildAuthority?.CanEditNotice == true;
+        }
+
+        private void SyncPacketGuildUiStateFromRoster(SocialListTab tab)
+        {
+            if (tab != SocialListTab.Guild || !IsPacketOwned(tab))
+            {
+                return;
+            }
+
+            SocialEntryState localGuildEntry = _entriesByTab[SocialListTab.Guild].FirstOrDefault(entry => entry.IsLocalPlayer);
+            if (localGuildEntry == null)
+            {
+                _packetGuildUiState = new PacketGuildUiState(false, "No Guild", 0);
+                return;
+            }
+
+            string guildName = string.IsNullOrWhiteSpace(localGuildEntry.SecondaryText)
+                ? _guildName
+                : localGuildEntry.SecondaryText.Trim();
+            bool hasGuildMembership = GuildSkillRuntime.HasGuildMembership(guildName);
+            _packetGuildUiState = new PacketGuildUiState(
+                hasGuildMembership,
+                hasGuildMembership ? guildName : "No Guild",
+                _packetGuildUiState?.GuildLevel ?? 0);
+        }
+
+        private bool HasGuildAdministrativeAuthority()
+        {
+            return ResolveEffectiveGuildMembership(null)
+                   && (CanManageGuildRanks()
+                       || CanToggleGuildAdmission()
+                       || CanEditGuildNotice());
+        }
+
+        private bool HasAllianceAdministrativeAuthority()
+        {
+            return CanEditAllianceRanks() || CanEditAllianceNotice();
         }
 
         private string GetHeaderTitle(SocialListTab tab)
@@ -357,6 +426,11 @@ namespace HaCreator.MapSimulator.Interaction
             bool CanManageRanks,
             bool CanToggleAdmission,
             bool CanEditNotice);
+
+        private readonly record struct PacketGuildUiState(
+            bool HasGuildMembership,
+            string GuildName,
+            int GuildLevel);
 
         private readonly record struct PacketAllianceAuthorityState(
             string RoleLabel,

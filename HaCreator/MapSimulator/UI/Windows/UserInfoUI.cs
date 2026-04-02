@@ -926,7 +926,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (_productSkillRecipeIcon != null)
             {
-                bool active = snapshot.DiscoveredRecipeIds.Count > 0 || snapshot.UnlockedHiddenRecipeIds.Count > 0;
+                bool active = snapshot.DiscoveredRecipeCount > 0 || snapshot.UnlockedHiddenRecipeCount > 0;
                 Color tint = active ? Color.White : new Color(255, 255, 255, 96);
                 _productSkillRecipeIcon.DrawBackground(sprite, null, null, Position.X + 98, Position.Y + 130, tint, false, null);
             }
@@ -1787,8 +1787,8 @@ namespace HaCreator.MapSimulator.UI
             ItemMakerProgressionSnapshot progression = GetCollectionSnapshot();
             MonsterBookSnapshot snapshot = GetMonsterBookSnapshot();
             return progression.SuccessfulCrafts > 0
-                || progression.DiscoveredRecipeIds.Count > 0
-                || progression.UnlockedHiddenRecipeIds.Count > 0
+                || progression.DiscoveredRecipeCount > 0
+                || progression.UnlockedHiddenRecipeCount > 0
                 || snapshot.OwnedCardTypes > 0;
         }
 
@@ -1843,8 +1843,8 @@ namespace HaCreator.MapSimulator.UI
                 return "-";
             }
 
-            int discovered = snapshot.DiscoveredRecipeIds.Count;
-            int hidden = snapshot.UnlockedHiddenRecipeIds.Count;
+            int discovered = snapshot.DiscoveredRecipeCount;
+            int hidden = snapshot.UnlockedHiddenRecipeCount;
             if (hidden <= 0)
             {
                 return discovered.ToString();
@@ -1858,8 +1858,8 @@ namespace HaCreator.MapSimulator.UI
             string bookText = snapshot.TotalCardTypes > 0
                 ? $"Monster Book {snapshot.OwnedCardTypes}/{snapshot.TotalCardTypes}"
                 : "Monster Book local only";
-            string recipeText = progression.DiscoveredRecipeIds.Count > 0 || progression.UnlockedHiddenRecipeIds.Count > 0
-                ? $"{progression.DiscoveredRecipeIds.Count} recipes, {progression.UnlockedHiddenRecipeIds.Count} hidden"
+            string recipeText = progression.DiscoveredRecipeCount > 0 || progression.UnlockedHiddenRecipeCount > 0
+                ? $"{progression.DiscoveredRecipeCount} recipes, {progression.UnlockedHiddenRecipeCount} hidden"
                 : "No recipes discovered yet";
             return $"{bookText}. {recipeText}.";
         }

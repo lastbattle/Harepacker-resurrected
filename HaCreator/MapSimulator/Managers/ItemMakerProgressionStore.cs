@@ -7,6 +7,12 @@ using System.Text.Json;
 
 namespace HaCreator.MapSimulator.Managers
 {
+    public sealed class ItemMakerRecipeProgressionEntry
+    {
+        public string RecipeKey { get; init; } = string.Empty;
+        public int OutputItemId { get; init; }
+    }
+
     public enum ItemMakerRecipeFamily
     {
         Generic,
@@ -38,6 +44,8 @@ namespace HaCreator.MapSimulator.Managers
             int toyProgress,
             int successfulCrafts,
             int traitCraft,
+            IReadOnlyCollection<ItemMakerRecipeProgressionEntry> discoveredRecipeEntries,
+            IReadOnlyCollection<ItemMakerRecipeProgressionEntry> unlockedHiddenRecipeEntries,
             IReadOnlyCollection<string> discoveredRecipeKeys,
             IReadOnlyCollection<string> unlockedHiddenRecipeKeys,
             IReadOnlyCollection<int> legacyDiscoveredRecipeIds,
@@ -53,6 +61,8 @@ namespace HaCreator.MapSimulator.Managers
             ToyProgress = toyProgress;
             SuccessfulCrafts = successfulCrafts;
             TraitCraft = Math.Max(0, traitCraft);
+            DiscoveredRecipeEntries = NormalizeEntries(discoveredRecipeEntries);
+            UnlockedHiddenRecipeEntries = NormalizeEntries(unlockedHiddenRecipeEntries);
             DiscoveredRecipeKeys = new HashSet<string>((discoveredRecipeKeys ?? Array.Empty<string>())
                 .Where(static key => !string.IsNullOrWhiteSpace(key)), StringComparer.Ordinal);
             UnlockedHiddenRecipeKeys = new HashSet<string>((unlockedHiddenRecipeKeys ?? Array.Empty<string>())
@@ -63,6 +73,8 @@ namespace HaCreator.MapSimulator.Managers
 
         public static ItemMakerProgressionSnapshot Default { get; } = new(
             1, 1, 1, 1, 0, 0, 0, 0, 0, 0,
+            Array.Empty<ItemMakerRecipeProgressionEntry>(),
+            Array.Empty<ItemMakerRecipeProgressionEntry>(),
             Array.Empty<string>(), Array.Empty<string>(),
             Array.Empty<int>(), Array.Empty<int>());
 
@@ -76,12 +88,16 @@ namespace HaCreator.MapSimulator.Managers
         public int ToyProgress { get; }
         public int SuccessfulCrafts { get; }
         public int TraitCraft { get; }
+        public IReadOnlyCollection<ItemMakerRecipeProgressionEntry> DiscoveredRecipeEntries { get; }
+        public IReadOnlyCollection<ItemMakerRecipeProgressionEntry> UnlockedHiddenRecipeEntries { get; }
         public IReadOnlySet<string> DiscoveredRecipeKeys { get; }
         public IReadOnlySet<string> UnlockedHiddenRecipeKeys { get; }
         public IReadOnlySet<int> LegacyDiscoveredRecipeIds { get; }
         public IReadOnlySet<int> LegacyUnlockedHiddenRecipeIds { get; }
         public IReadOnlySet<int> DiscoveredRecipeIds => LegacyDiscoveredRecipeIds;
         public IReadOnlySet<int> UnlockedHiddenRecipeIds => LegacyUnlockedHiddenRecipeIds;
+        public int DiscoveredRecipeCount => DiscoveredRecipeEntries.Count;
+        public int UnlockedHiddenRecipeCount => UnlockedHiddenRecipeEntries.Count;
 
         public int GetLevel(ItemMakerRecipeFamily family)
         {
@@ -132,6 +148,47 @@ namespace HaCreator.MapSimulator.Managers
             return (!string.IsNullOrWhiteSpace(recipeKey) && UnlockedHiddenRecipeKeys.Contains(recipeKey))
                 || (outputItemId > 0 && LegacyUnlockedHiddenRecipeIds.Contains(outputItemId));
         }
+
+        private static IReadOnlyCollection<ItemMakerRecipeProgressionEntry> NormalizeEntries(
+            IReadOnlyCollection<ItemMakerRecipeProgressionEntry> entries)
+        {
+            List<ItemMakerRecipeProgressionEntry> normalized = new();
+            HashSet<string> seenKeys = new(StringComparer.Ordinal);
+            HashSet<int> seenLegacyIds = new();
+            foreach (ItemMakerRecipeProgressionEntry entry in entries ?? Array.Empty<ItemMakerRecipeProgressionEntry>())
+            {
+                if (entry == null)
+                {
+                    continue;
+                }
+
+                string recipeKey = entry.RecipeKey?.Trim() ?? string.Empty;
+                if (!string.IsNullOrWhiteSpace(recipeKey))
+                {
+                    if (!seenKeys.Add(recipeKey))
+                    {
+                        continue;
+                    }
+
+                    normalized.Add(new ItemMakerRecipeProgressionEntry
+                    {
+                        RecipeKey = recipeKey,
+                        OutputItemId = Math.Max(0, entry.OutputItemId)
+                    });
+                    continue;
+                }
+
+                if (entry.OutputItemId > 0 && seenLegacyIds.Add(entry.OutputItemId))
+                {
+                    normalized.Add(new ItemMakerRecipeProgressionEntry
+                    {
+                        OutputItemId = entry.OutputItemId
+                    });
+                }
+            }
+
+            return normalized;
+        }
     }
 
     public sealed class ItemMakerProgressionStore
@@ -152,6 +209,8 @@ namespace HaCreator.MapSimulator.Managers
             public int ShoeProgress { get; set; }
             public int ToyProgress { get; set; }
             public int SuccessfulCrafts { get; set; }
+            public Dictionary<string, int> DiscoveredRecipeOutputIdsByKey { get; set; } = new(StringComparer.Ordinal);
+            public Dictionary<string, int> UnlockedHiddenRecipeOutputIdsByKey { get; set; } = new(StringComparer.Ordinal);
             public HashSet<string> DiscoveredRecipeKeys { get; set; } = new(StringComparer.Ordinal);
             public HashSet<string> UnlockedHiddenRecipeKeys { get; set; } = new(StringComparer.Ordinal);
             public HashSet<int> LegacyDiscoveredRecipeIds { get; set; } = new();
@@ -191,10 +250,14 @@ namespace HaCreator.MapSimulator.Managers
             {
                 return new ItemMakerProgressionSnapshot(
                     1, 1, 1, 1, 0, 0, 0, 0, 0, build?.TraitCraft ?? 0,
+                    Array.Empty<ItemMakerRecipeProgressionEntry>(),
+                    Array.Empty<ItemMakerRecipeProgressionEntry>(),
                     Array.Empty<string>(), Array.Empty<string>(),
                     Array.Empty<int>(), Array.Empty<int>());
             }
 
+            record.DiscoveredRecipeOutputIdsByKey ??= new Dictionary<string, int>(StringComparer.Ordinal);
+            record.UnlockedHiddenRecipeOutputIdsByKey ??= new Dictionary<string, int>(StringComparer.Ordinal);
             record.DiscoveredRecipeKeys ??= new HashSet<string>(StringComparer.Ordinal);
             record.UnlockedHiddenRecipeKeys ??= new HashSet<string>(StringComparer.Ordinal);
             record.LegacyDiscoveredRecipeIds ??= new HashSet<int>();
@@ -202,17 +265,28 @@ namespace HaCreator.MapSimulator.Managers
             return CreateSnapshot(record, build?.TraitCraft ?? 0);
         }
 
-        public ItemMakerProgressionSnapshot RecordDiscoveredRecipes(CharacterBuild build, IEnumerable<string> recipeKeys)
+        public ItemMakerProgressionSnapshot RecordDiscoveredRecipes(CharacterBuild build, IEnumerable<ItemMakerRecipeProgressionEntry> recipeEntries)
         {
             string key = ResolveCharacterKey(build);
             ProgressionRecord record = GetOrCreateRecord(key);
 
             bool changed = false;
-            foreach (string recipeKey in recipeKeys ?? Enumerable.Empty<string>())
+            foreach (ItemMakerRecipeProgressionEntry entry in recipeEntries ?? Enumerable.Empty<ItemMakerRecipeProgressionEntry>())
             {
+                string recipeKey = entry?.RecipeKey?.Trim();
                 if (!string.IsNullOrWhiteSpace(recipeKey) && record.DiscoveredRecipeKeys.Add(recipeKey))
                 {
                     changed = true;
+                }
+
+                if (!string.IsNullOrWhiteSpace(recipeKey) && entry.OutputItemId > 0)
+                {
+                    if (!record.DiscoveredRecipeOutputIdsByKey.TryGetValue(recipeKey, out int existingOutputItemId) ||
+                        existingOutputItemId != entry.OutputItemId)
+                    {
+                        record.DiscoveredRecipeOutputIdsByKey[recipeKey] = entry.OutputItemId;
+                        changed = true;
+                    }
                 }
             }
 
@@ -246,17 +320,28 @@ namespace HaCreator.MapSimulator.Managers
             return CreateSnapshot(record, build?.TraitCraft ?? 0);
         }
 
-        public ItemMakerProgressionSnapshot RecordUnlockedHiddenRecipes(CharacterBuild build, IEnumerable<string> recipeKeys)
+        public ItemMakerProgressionSnapshot RecordUnlockedHiddenRecipes(CharacterBuild build, IEnumerable<ItemMakerRecipeProgressionEntry> recipeEntries)
         {
             string key = ResolveCharacterKey(build);
             ProgressionRecord record = GetOrCreateRecord(key);
 
             bool changed = false;
-            foreach (string recipeKey in recipeKeys ?? Enumerable.Empty<string>())
+            foreach (ItemMakerRecipeProgressionEntry entry in recipeEntries ?? Enumerable.Empty<ItemMakerRecipeProgressionEntry>())
             {
+                string recipeKey = entry?.RecipeKey?.Trim();
                 if (!string.IsNullOrWhiteSpace(recipeKey) && record.UnlockedHiddenRecipeKeys.Add(recipeKey))
                 {
                     changed = true;
+                }
+
+                if (!string.IsNullOrWhiteSpace(recipeKey) && entry.OutputItemId > 0)
+                {
+                    if (!record.UnlockedHiddenRecipeOutputIdsByKey.TryGetValue(recipeKey, out int existingOutputItemId) ||
+                        existingOutputItemId != entry.OutputItemId)
+                    {
+                        record.UnlockedHiddenRecipeOutputIdsByKey[recipeKey] = entry.OutputItemId;
+                        changed = true;
+                    }
                 }
             }
 
@@ -303,14 +388,21 @@ namespace HaCreator.MapSimulator.Managers
                 if (result.IsHiddenRecipe)
                 {
                     record.UnlockedHiddenRecipeKeys.Add(recipeKey);
+                    if (recipeOutputItemId > 0)
+                    {
+                        record.UnlockedHiddenRecipeOutputIdsByKey[recipeKey] = recipeOutputItemId;
+                    }
                 }
                 else
                 {
                     record.DiscoveredRecipeKeys.Add(recipeKey);
+                    if (recipeOutputItemId > 0)
+                    {
+                        record.DiscoveredRecipeOutputIdsByKey[recipeKey] = recipeOutputItemId;
+                    }
                 }
             }
-
-            if (recipeOutputItemId > 0)
+            else if (recipeOutputItemId > 0)
             {
                 if (result.IsHiddenRecipe)
                 {
@@ -368,10 +460,47 @@ namespace HaCreator.MapSimulator.Managers
                 Math.Max(0, record.ToyProgress),
                 Math.Max(0, record.SuccessfulCrafts),
                 traitCraft,
+                CreateRecipeEntries(record.DiscoveredRecipeOutputIdsByKey, record.LegacyDiscoveredRecipeIds),
+                CreateRecipeEntries(record.UnlockedHiddenRecipeOutputIdsByKey, record.LegacyUnlockedHiddenRecipeIds),
                 record.DiscoveredRecipeKeys != null ? record.DiscoveredRecipeKeys : Array.Empty<string>(),
                 record.UnlockedHiddenRecipeKeys != null ? record.UnlockedHiddenRecipeKeys : Array.Empty<string>(),
                 record.LegacyDiscoveredRecipeIds != null ? record.LegacyDiscoveredRecipeIds : Array.Empty<int>(),
                 record.LegacyUnlockedHiddenRecipeIds != null ? record.LegacyUnlockedHiddenRecipeIds : Array.Empty<int>());
+        }
+
+        private static IReadOnlyCollection<ItemMakerRecipeProgressionEntry> CreateRecipeEntries(
+            IReadOnlyDictionary<string, int> keyedOutputIds,
+            IReadOnlyCollection<int> legacyOutputIds)
+        {
+            List<ItemMakerRecipeProgressionEntry> entries = new();
+            foreach (KeyValuePair<string, int> entry in keyedOutputIds ?? new Dictionary<string, int>(StringComparer.Ordinal))
+            {
+                if (string.IsNullOrWhiteSpace(entry.Key))
+                {
+                    continue;
+                }
+
+                entries.Add(new ItemMakerRecipeProgressionEntry
+                {
+                    RecipeKey = entry.Key,
+                    OutputItemId = Math.Max(0, entry.Value)
+                });
+            }
+
+            foreach (int outputItemId in legacyOutputIds ?? Array.Empty<int>())
+            {
+                if (outputItemId <= 0)
+                {
+                    continue;
+                }
+
+                entries.Add(new ItemMakerRecipeProgressionEntry
+                {
+                    OutputItemId = outputItemId
+                });
+            }
+
+            return entries;
         }
 
         private static int ClampLevel(int level)
@@ -391,6 +520,8 @@ namespace HaCreator.MapSimulator.Managers
             record.GloveLevel = ClampLevel(record.GloveLevel);
             record.ShoeLevel = ClampLevel(record.ShoeLevel);
             record.ToyLevel = ClampLevel(record.ToyLevel);
+            record.DiscoveredRecipeOutputIdsByKey ??= new Dictionary<string, int>(StringComparer.Ordinal);
+            record.UnlockedHiddenRecipeOutputIdsByKey ??= new Dictionary<string, int>(StringComparer.Ordinal);
             record.DiscoveredRecipeKeys ??= new HashSet<string>(StringComparer.Ordinal);
             record.UnlockedHiddenRecipeKeys ??= new HashSet<string>(StringComparer.Ordinal);
             record.LegacyDiscoveredRecipeIds ??= new HashSet<int>();
@@ -515,6 +646,20 @@ namespace HaCreator.MapSimulator.Managers
                         ShoeProgress = Math.Max(0, entry.Value.ShoeProgress),
                         ToyProgress = Math.Max(0, entry.Value.ToyProgress),
                         SuccessfulCrafts = Math.Max(0, entry.Value.SuccessfulCrafts),
+                        DiscoveredRecipeOutputIdsByKey = entry.Value.DiscoveredRecipeOutputIdsByKey != null
+                            ? new Dictionary<string, int>(
+                                entry.Value.DiscoveredRecipeOutputIdsByKey
+                                    .Where(static pair => !string.IsNullOrWhiteSpace(pair.Key))
+                                    .ToDictionary(static pair => pair.Key.Trim(), static pair => Math.Max(0, pair.Value)),
+                                StringComparer.Ordinal)
+                            : new Dictionary<string, int>(StringComparer.Ordinal),
+                        UnlockedHiddenRecipeOutputIdsByKey = entry.Value.UnlockedHiddenRecipeOutputIdsByKey != null
+                            ? new Dictionary<string, int>(
+                                entry.Value.UnlockedHiddenRecipeOutputIdsByKey
+                                    .Where(static pair => !string.IsNullOrWhiteSpace(pair.Key))
+                                    .ToDictionary(static pair => pair.Key.Trim(), static pair => Math.Max(0, pair.Value)),
+                                StringComparer.Ordinal)
+                            : new Dictionary<string, int>(StringComparer.Ordinal),
                         DiscoveredRecipeKeys = entry.Value.DiscoveredRecipeKeys != null
                             ? new HashSet<string>(
                                 entry.Value.DiscoveredRecipeKeys.Where(static key => !string.IsNullOrWhiteSpace(key)),

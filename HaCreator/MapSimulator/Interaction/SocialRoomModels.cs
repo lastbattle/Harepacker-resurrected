@@ -1886,13 +1886,13 @@ namespace HaCreator.MapSimulator.Interaction
             switch (packetSubType)
             {
                 case MiniRoomBaseInvitePacketSubType:
-                    return ApplyMiniRoomBaseStaticMessage("Mini-room base invite packet reached the shared dialog seam.", out message);
+                    return TryApplyMiniRoomBaseInvitePacket(reader, out message);
                 case MiniRoomBaseInviteResultPacketSubType:
-                    return ApplyMiniRoomBaseStaticMessage("Mini-room base invite-result packet reached the shared dialog seam.", out message);
+                    return TryApplyMiniRoomBaseInviteResultPacket(reader, out message);
                 case MiniRoomBaseEnterPacketSubType:
                     return TryApplyMiniRoomBaseEnterPacket(reader, out message);
                 case MiniRoomBaseEnterResultPacketSubType:
-                    return ApplyMiniRoomBaseStaticMessage("Mini-room base enter-result packet reached the shared dialog seam.", out message);
+                    return TryApplyMiniRoomBaseEnterResultPacket(reader, out message);
                 case MiniRoomBaseUpdatePacketSubType:
                     return ApplyMiniRoomBaseStaticMessage("Mini-room base update packet reached the shared dialog seam. Type-specific room payload is still handled only partially.", out message);
                 case MiniRoomBaseAvatarPacketSubType:
@@ -1900,11 +1900,137 @@ namespace HaCreator.MapSimulator.Interaction
                 case MiniRoomBaseLeavePacketSubType:
                     return TryApplyMiniRoomBaseLeavePacket(reader, out message);
                 case MiniRoomBaseCheckSsnPacketSubType:
-                    return ApplyMiniRoomBaseStaticMessage("Mini-room base SSN-check packet reached the shared dialog seam.", out message);
+                    return TryApplyMiniRoomBaseCheckSsnPacket(reader, out message);
                 default:
                     message = $"Mini-room base packet subtype {packetSubType} is not modeled for this room.";
                     return false;
             }
+        }
+
+        private bool TryApplyMiniRoomBaseInvitePacket(PacketReader reader, out string message)
+        {
+            int roomType = reader.ReadByte();
+            string inviterName = NormalizeName(reader.ReadMapleString());
+            int invitationSerial = reader.ReadInt();
+            RoomState = "Invite received";
+            StatusMessage = $"{inviterName} sent a {ResolveMiniRoomTypeLabel(roomType)} invite (serial {invitationSerial}) through CMiniRoomBaseDlg::OnInviteStatic.";
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        private bool TryApplyMiniRoomBaseInviteResultPacket(PacketReader reader, out string message)
+        {
+            int resultCode = reader.ReadByte();
+            string targetName = resultCode is 2 or 3 or 4
+                ? NormalizeName(reader.ReadMapleString())
+                : null;
+
+            RoomState = "Invite result";
+            StatusMessage = resultCode switch
+            {
+                1 => "Mini-room invite result code 1 followed the client status-bar branch for StringPool id 0x17B.",
+                2 => $"{targetName} followed the client invite-result branch for StringPool id 0x1A2.",
+                3 => $"{targetName} followed the client invite-result branch for StringPool id 0x1A3.",
+                4 => $"{targetName} followed the client invite-result branch for StringPool id 0x1A4.",
+                _ => $"Mini-room invite result code {resultCode} reached the shared invite-result seam without a named client notice branch."
+            };
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        private bool TryApplyMiniRoomBaseEnterResultPacket(PacketReader reader, out string message)
+        {
+            int roomType = reader.ReadByte();
+            if (roomType <= 0)
+            {
+                int resultCode = reader.ReadByte();
+                RoomState = "Enter result";
+                StatusMessage = resultCode switch
+                {
+                    1 => "Mini-room enter result code 1 followed the client notice branch for StringPool id 0x199.",
+                    2 => "Mini-room enter result code 2 followed the client notice branch for StringPool id 0x19A.",
+                    3 => "Mini-room enter result code 3 followed the client notice branch for StringPool id 0x19B.",
+                    4 => "Mini-room enter result code 4 followed the client notice branch for StringPool id 0x19C.",
+                    5 => "Mini-room enter result code 5 followed the client notice branch for StringPool id 0x19D.",
+                    6 => "Mini-room enter result code 6 followed the client notice branch for StringPool id 0x19E.",
+                    7 => "Mini-room enter result code 7 followed the client notice branch for StringPool id 0x19F.",
+                    9 => "Mini-room enter result code 9 followed the client notice branch for StringPool id 0x1A1.",
+                    10 => "Mini-room enter result code 10 followed the client notice branch for StringPool id 0xDB5.",
+                    11 => "Mini-room enter result code 11 followed the client notice branch for StringPool id 0x1C1.",
+                    12 => "Mini-room enter result code 12 followed the client notice branch for StringPool id 0x14A2.",
+                    13 => "Mini-room enter result code 13 followed the client notice branch for StringPool id 0x1A0.",
+                    14 => "Mini-room enter result code 14 followed the client notice branch for StringPool id 0x1C1.",
+                    15 => "Mini-room enter result code 15 followed the client notice branch for StringPool id 0x1C2.",
+                    16 => "Mini-room enter result code 16 followed the client notice branch for StringPool id 0x1C3.",
+                    17 => "Mini-room enter result code 17 followed the client notice branch for StringPool id 0x1BB.",
+                    18 => "Mini-room enter result code 18 followed the client notice branch for StringPool id 0xDAE.",
+                    19 => "Mini-room enter result code 19 followed the client notice branch for StringPool id 0x1E7.",
+                    20 => "Mini-room enter result code 20 followed the client notice branch for StringPool id 0x19F.",
+                    21 => "Mini-room enter result code 21 followed the client notice branch for StringPool id 0x1C0.",
+                    22 => "Mini-room enter result code 22 followed the client notice branch for StringPool id 0x1A68.",
+                    24 => "Mini-room enter result code 24 followed the client notice branch for StringPool id 0x14DB.",
+                    25 => "Mini-room enter result code 25 followed the client notice branch for StringPool id 0x116.",
+                    _ => $"Mini-room enter result code {resultCode} reached the shared enter-result seam without a named client notice branch."
+                };
+                PersistState();
+                message = StatusMessage;
+                return true;
+            }
+
+            int maxUsers = reader.ReadByte();
+            int myPosition = reader.ReadByte();
+            _occupants.Clear();
+            _savedVisitors.Clear();
+
+            int occupantCount = 0;
+            while (true)
+            {
+                int seatIndex = (sbyte)reader.ReadByte();
+                if (seatIndex < 0)
+                {
+                    break;
+                }
+
+                if (RequiresMerchantSeatEnterResultStub(seatIndex))
+                {
+                    int merchantId = reader.ReadInt();
+                    string merchantName = NormalizeName(reader.ReadMapleString());
+                    ApplyMiniRoomBaseEnterResultMerchantSeat(seatIndex, merchantId, merchantName);
+                    occupantCount++;
+                    continue;
+                }
+
+                if (!TryReadPacketOwnedAvatarLook(reader, out LoginAvatarLook avatarLook, out string error))
+                {
+                    message = error;
+                    return false;
+                }
+
+                string occupantName = NormalizeName(reader.ReadMapleString());
+                int jobCode = reader.ReadShort();
+                ApplyMiniRoomBaseEnterResultSeat(seatIndex, occupantName, jobCode, avatarLook);
+                occupantCount++;
+            }
+
+            RoomState = Kind == SocialRoomKind.MiniRoom ? "Enter result" : "Visitor update";
+            StatusMessage = $"Mini-room enter-result synchronized {occupantCount} occupant entr{(occupantCount == 1 ? "y" : "ies")} for {ResolveMiniRoomTypeLabel(roomType)}. Local seat {Math.Max(0, myPosition)} with client max-users {Math.Max(0, maxUsers)}.";
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        private bool TryApplyMiniRoomBaseCheckSsnPacket(PacketReader reader, out string message)
+        {
+            int checkType = reader.ReadByte();
+            int roomType = reader.ReadByte();
+            bool hasStoredPassword = reader.ReadByte() != 0;
+            RoomState = "SSN check";
+            StatusMessage = $"Mini-room base SSN-check packet reached the shared dialog seam for {ResolveMiniRoomTypeLabel(roomType)} (checkType={checkType}, hasStoredPassword={hasStoredPassword.ToString().ToLowerInvariant()}).";
+            PersistState();
+            message = StatusMessage;
+            return true;
         }
 
         private bool ApplyMiniRoomBaseStaticMessage(string statusMessage, out string message)
@@ -2000,6 +2126,57 @@ namespace HaCreator.MapSimulator.Interaction
             RoomState = Kind == SocialRoomKind.MiniRoom ? "Avatar refresh" : "Visitor avatar refresh";
             StatusMessage = $"{occupantName} refreshed seat {normalizedSeatIndex} through CMiniRoomBaseDlg::OnAvatar.";
             PersistState();
+        }
+
+        private void ApplyMiniRoomBaseEnterResultMerchantSeat(int seatIndex, int merchantId, string merchantName)
+        {
+            int normalizedSeatIndex = Math.Max(0, seatIndex);
+            string seatLabel = ResolveBasePacketSeatLabel(normalizedSeatIndex);
+            string detail = $"{seatLabel} | Merchant id {merchantId}";
+            if (normalizedSeatIndex == 0)
+            {
+                OwnerName = merchantName;
+                _employeePacketEmployerId = Math.Max(0, merchantId);
+            }
+
+            EnsureOccupantSlot(normalizedSeatIndex, merchantName, ResolveBasePacketOccupantRole(normalizedSeatIndex), detail, isReady: false, avatarBuild: null);
+        }
+
+        private void ApplyMiniRoomBaseEnterResultSeat(int seatIndex, string occupantName, int jobCode, LoginAvatarLook avatarLook)
+        {
+            int normalizedSeatIndex = Math.Max(0, seatIndex);
+            SocialRoomOccupantRole role = ResolveBasePacketOccupantRole(normalizedSeatIndex);
+            string seatLabel = ResolveBasePacketSeatLabel(normalizedSeatIndex);
+            string detail = BuildBasePacketOccupantDetail(normalizedSeatIndex, seatLabel, jobCode, avatarLook);
+            if (normalizedSeatIndex == 0)
+            {
+                OwnerName = occupantName;
+            }
+            else if (!_savedVisitors.Contains(occupantName, StringComparer.OrdinalIgnoreCase))
+            {
+                _savedVisitors.Add(occupantName);
+            }
+
+            EnsureOccupantSlot(normalizedSeatIndex, occupantName, role, detail, isReady: false, avatarBuild: GetExistingAvatarBuild(normalizedSeatIndex));
+        }
+
+        private bool RequiresMerchantSeatEnterResultStub(int seatIndex)
+        {
+            return Kind == SocialRoomKind.EntrustedShop && seatIndex == 0;
+        }
+
+        private string ResolveMiniRoomTypeLabel(int roomType)
+        {
+            return roomType switch
+            {
+                1 => "mini-room",
+                2 => "trade room",
+                3 => "personal shop",
+                4 => "entrusted shop",
+                5 => "store bank",
+                6 => "cash trade",
+                _ => $"room type {roomType}"
+            };
         }
 
         private void ApplyMiniRoomBaseSeatLeavePacket(int seatIndex)

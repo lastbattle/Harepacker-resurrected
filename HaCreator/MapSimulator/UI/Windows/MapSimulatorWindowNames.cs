@@ -25,6 +25,7 @@ namespace HaCreator.MapSimulator.UI
         public const string CashShopList = "CashShopList";
         public const string CashShopStatus = "CashShopStatus";
         public const string Mts = "MTS";
+        public const string MtsStatus = "MtsStatus";
         public const string Menu = "Menu";
         public const string System = "System";
         public const string WorldSelect = "WorldSelect";
@@ -78,6 +79,7 @@ namespace HaCreator.MapSimulator.UI
         public const string MemoGet = "MemoGet";
         public const string RepairDurability = "RepairDurability";
         public const string QuestDelivery = "QuestDelivery";
+        public const string QuestRewardRaise = "QuestRewardRaise";
         public const string QuestDetail = "QuestDetail";
         public const string QuestAlarm = "QuestAlarm";
         public const string ClassCompetition = "ClassCompetition";

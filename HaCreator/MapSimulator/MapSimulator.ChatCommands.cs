@@ -240,7 +240,7 @@ namespace HaCreator.MapSimulator
                         return ChatCommandHandler.CommandResult.Error(sessionUsage);
                     }
 
-                    _socialRoomEmployeeOfficialSessionBridge.Start(listenPort, args[actionIndex + 4], remotePort);
+                    _socialRoomEmployeeOfficialSessionBridge.Start(listenPort, args[actionIndex + 4], remotePort, kind);
                     return ChatCommandHandler.CommandResult.Ok(_socialRoomEmployeeOfficialSessionBridge.LastStatus);
 
                 case "startauto":
@@ -270,7 +270,7 @@ namespace HaCreator.MapSimulator
                         autoRemotePort,
                         autoProcessSelector,
                         autoLocalPortFilter,
-                        preferredKind: null,
+                        preferredKind: kind,
                         out string startStatus)
                         ? ChatCommandHandler.CommandResult.Ok(startStatus)
                         : ChatCommandHandler.CommandResult.Error(startStatus);
@@ -6761,7 +6761,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "localutility",
                 "Inspect or drive packet-authored local utility and event dispatch handlers",
-                    "/localutility [status|inbox [status|start [port]|stop|packet <sitresult|questresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|follow|followfail|directionmode|standalone|damagemeter|hpdec|skillcooltime|193|231|242|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|1012|1013|1014|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]]|directionmode <on|off|1|0> [delayMs]|standalone <on|off|1|0>|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv]|classcompetition|skillguide|antimacro [status|launch <normal|admin> [first|retry]|notice <noticeType> [antiMacroType]|result <mode> [antiMacroType] [userName]|clear]|apsp [status|seed [characterId]|receive <token>|send <token>|context <receiveToken> [sendToken]|<contextToken> <11|12|13>|text]|follow <status|request <driverId|name> [auto|manual] [keyinput]|ask <requesterId|name>|accept|decline|attach <driverId|name>|detach [transferX transferY]|passengerdetach [requesterId|name] [transferX transferY]>|followfail [reasonCode [driverId]|text]|packet <sitresult|questresult|openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|skillguide|antimacro|apspevent|directionmode|standalone|follow|followfail|193|231|242|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|1012|1013|1014> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>]",
+                "/localutility [status|inbox [status|start [port]|stop|packet <sitresult|questresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|follow|followfail|directionmode|standalone|damagemeter|hpdec|skillcooltime|193|231|242|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|1012|1013|1014|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]|packetclientraw <hex>]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|directionmode <on|off|1|0> [delayMs]|standalone <on|off|1|0>|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv]|classcompetition|skillguide|antimacro [status|launch <normal|admin> [first|retry]|notice <noticeType> [antiMacroType]|result <mode> [antiMacroType] [userName]|clear]|apsp [status|seed [characterId]|receive <token>|send <token>|context <receiveToken> [sendToken]|<contextToken> <11|12|13>|text]|follow <status|request <driverId|name> [auto|manual] [keyinput]|ask <requesterId|name>|accept|decline|attach <driverId|name>|detach [transferX transferY]|passengerdetach [requesterId|name] [transferX transferY]>|followfail [reasonCode [driverId]|text]|packet <sitresult|questresult|openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|skillguide|antimacro|apspevent|directionmode|standalone|follow|followfail|193|231|242|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|1012|1013|1014> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]",
                 HandlePacketOwnedUtilityCommand);
 
             _chat.CommandHandler.RegisterCommand(
@@ -6774,7 +6774,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "localutilitypacket",
                 "Inspect or inject packet-owned local utility and event dispatch payloads through the loopback inbox",
-                    "/localutilitypacket [status|start [port]|stop|packet <sitresult|questresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|follow|followfail|directionmode|standalone|damagemeter|hpdec|skillcooltime|193|231|242|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|1012|1013|1014|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]]",
+                "/localutilitypacket [status|start [port]|stop|packet <sitresult|questresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|follow|followfail|directionmode|standalone|damagemeter|hpdec|skillcooltime|193|231|242|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|1012|1013|1014|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]|packetclientraw <hex>]",
                 HandlePacketOwnedUtilityCommand);
 
 
@@ -8397,6 +8397,169 @@ namespace HaCreator.MapSimulator
 
                 });
 
+
+
+            _chat.CommandHandler.RegisterCommand(
+                "droppacket",
+                "Drive packet-owned drop enter/leave flow",
+                "/droppacket <status|clear|packet <322|324> <payloadhex>|create <dropId> <enterType> <meso|item> <info> <ownerId> <ownerType> <x> <y> [sourceId] [startX startY delayMs] [petPickup]|leave <dropId> <remove|playerpickup|petpickup|mobpickup|explode> [actorId|delayMs] [secondaryActorId]>",
+                args =>
+                {
+                    if (_dropPool == null || _mapBoard?.MapInfo == null)
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Drop pool is unavailable until a field is loaded.");
+                    }
+
+                    if (args.Length == 0)
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /droppacket <status|clear|packet <322|324> <payloadhex>|create <dropId> <enterType> <meso|item> <info> <ownerId> <ownerType> <x> <y> [sourceId] [startX startY delayMs] [petPickup]|leave <dropId> <remove|playerpickup|petpickup|mobpickup|explode> [actorId|delayMs] [secondaryActorId]>");
+                    }
+
+                    string action = args[0];
+                    if (string.Equals(action, "status", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return ChatCommandHandler.CommandResult.Info(DescribeRemoteDropStatus());
+                    }
+
+                    if (string.Equals(action, "clear", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _dropPool.ClearPacketDrops();
+                        return ChatCommandHandler.CommandResult.Ok($"Cleared packet-authored drops. {DescribeRemoteDropStatus()}");
+                    }
+
+                    if (string.Equals(action, "packet", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (args.Length < 3 || !int.TryParse(args[1], out int packetType))
+                        {
+                            return ChatCommandHandler.CommandResult.Error("Usage: /droppacket packet <322|324> <payloadhex>");
+                        }
+
+                        byte[] payload;
+                        try
+                        {
+                            payload = ByteUtils.HexToBytes(string.Join(string.Empty, args.Skip(2)));
+                        }
+                        catch (Exception ex)
+                        {
+                            return ChatCommandHandler.CommandResult.Error($"Invalid drop packet payload: {ex.Message}");
+                        }
+
+                        return ApplyRemoteDropPacketCommand(packetType, payload);
+                    }
+
+                    if (string.Equals(action, "create", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (args.Length < 9
+                            || !int.TryParse(args[1], out int dropId)
+                            || !byte.TryParse(args[2], out byte enterType)
+                            || !int.TryParse(args[4], out int info)
+                            || !int.TryParse(args[5], out int ownerId)
+                            || !byte.TryParse(args[6], out byte ownerTypeValue)
+                            || !short.TryParse(args[7], out short x)
+                            || !short.TryParse(args[8], out short y))
+                        {
+                            return ChatCommandHandler.CommandResult.Error("Usage: /droppacket create <dropId> <enterType> <meso|item> <info> <ownerId> <ownerType> <x> <y> [sourceId] [startX startY delayMs] [petPickup]");
+                        }
+
+                        bool isMoney = string.Equals(args[3], "meso", StringComparison.OrdinalIgnoreCase);
+                        if (!isMoney && !string.Equals(args[3], "item", StringComparison.OrdinalIgnoreCase))
+                        {
+                            return ChatCommandHandler.CommandResult.Error("drop type must be meso or item");
+                        }
+
+                        int sourceId = 0;
+                        if (args.Length >= 10 && !int.TryParse(args[9], out sourceId))
+                        {
+                            return ChatCommandHandler.CommandResult.Error("sourceId must be an integer");
+                        }
+
+                        short? startX = null;
+                        short? startY = null;
+                        short delayMs = 0;
+                        if (args.Length >= 13)
+                        {
+                            if (!short.TryParse(args[10], out short parsedStartX)
+                                || !short.TryParse(args[11], out short parsedStartY)
+                                || !short.TryParse(args[12], out delayMs))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("startX, startY, and delayMs must be signed shorts");
+                            }
+
+                            startX = parsedStartX;
+                            startY = parsedStartY;
+                        }
+
+                        bool petPickup = true;
+                        if (args.Length >= 14 && !bool.TryParse(args[13], out petPickup))
+                        {
+                            return ChatCommandHandler.CommandResult.Error("petPickup must be true or false");
+                        }
+
+                        byte[] payload = RemoteDropPacketCodec.BuildEnterPayload(
+                            enterType,
+                            dropId,
+                            isMoney,
+                            info,
+                            ownerId,
+                            (DropOwnershipType)ownerTypeValue,
+                            x,
+                            y,
+                            sourceId,
+                            startX,
+                            startY,
+                            delayMs,
+                            expireRaw: 0,
+                            allowPetPickup: petPickup);
+                        return ApplyRemoteDropPacketCommand((int)RemoteDropPacketType.Enter, payload);
+                    }
+
+                    if (string.Equals(action, "leave", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (args.Length < 3 || !int.TryParse(args[1], out int dropId))
+                        {
+                            return ChatCommandHandler.CommandResult.Error("Usage: /droppacket leave <dropId> <remove|playerpickup|petpickup|mobpickup|explode> [actorId|delayMs] [secondaryActorId]");
+                        }
+
+                        PacketDropLeaveReason reason = args[2].ToLowerInvariant() switch
+                        {
+                            "playerpickup" => PacketDropLeaveReason.PlayerPickup,
+                            "petpickup" => PacketDropLeaveReason.PetPickup,
+                            "mobpickup" => PacketDropLeaveReason.MobPickup,
+                            "explode" => PacketDropLeaveReason.Explode,
+                            _ => PacketDropLeaveReason.Remove
+                        };
+
+                        int actorId = 0;
+                        short delayMs = 0;
+                        int secondaryActorId = 0;
+                        if (reason == PacketDropLeaveReason.Explode)
+                        {
+                            if (args.Length >= 4 && !short.TryParse(args[3], out delayMs))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("delayMs must be a signed short");
+                            }
+                        }
+                        else
+                        {
+                            if (args.Length >= 4 && !int.TryParse(args[3], out actorId))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("actorId must be an integer");
+                            }
+
+                            if (reason == PacketDropLeaveReason.PetPickup
+                                && args.Length >= 5
+                                && !int.TryParse(args[4], out secondaryActorId))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("secondaryActorId must be an integer");
+                            }
+                        }
+
+                        byte[] payload = RemoteDropPacketCodec.BuildLeavePayload(reason, dropId, actorId, delayMs, secondaryActorId);
+                        return ApplyRemoteDropPacketCommand((int)RemoteDropPacketType.Leave, payload);
+                    }
+
+                    return ChatCommandHandler.CommandResult.Error("Usage: /droppacket <status|clear|packet <322|324> <payloadhex>|create <dropId> <enterType> <meso|item> <info> <ownerId> <ownerType> <x> <y> [sourceId] [startX startY delayMs] [petPickup]|leave <dropId> <remove|playerpickup|petpickup|mobpickup|explode> [actorId|delayMs] [secondaryActorId]>");
+                });
 
 
             _chat.CommandHandler.RegisterCommand(
