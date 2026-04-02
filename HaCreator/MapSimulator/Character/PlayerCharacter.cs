@@ -192,6 +192,10 @@ namespace HaCreator.MapSimulator.Character
             public PlayerState ObservedPlayerState { get; set; }
             public Point CurrentOffsetPx { get; set; }
             public bool Visible { get; set; }
+            public string PreparedActionName { get; set; }
+            public int PreparedFrameIndex { get; set; } = -1;
+            public int PreparedFeetOffset { get; set; }
+            public IReadOnlyList<AssembledPart>[] PreparedSourceLayers { get; set; } = AssembledFrame.CreateEmptyAvatarRenderLayers();
         }
 
         private readonly struct AvatarEffectRenderable
@@ -2602,7 +2606,12 @@ namespace HaCreator.MapSimulator.Character
             Physics.Impact(knockbackX, knockbackY);
         }
 
-        public void ApplyPacketDamageReaction(int damage, int hitDurationMs, float knockbackX = 0, float knockbackY = 0)
+        public void ApplyPacketDamageReaction(
+            int damage,
+            int hitDurationMs,
+            float knockbackX = 0,
+            float knockbackY = 0,
+            bool useQueuedImpact = false)
         {
             if (!IsAlive || GodMode)
                 return;
@@ -2621,7 +2630,14 @@ namespace HaCreator.MapSimulator.Character
             EnterHitState(Environment.TickCount, hitDurationMs);
             if (knockbackX != 0 || knockbackY != 0)
             {
-                Physics.Impact(knockbackX, knockbackY);
+                if (useQueuedImpact)
+                {
+                    Physics.SetImpactNext(knockbackX, knockbackY);
+                }
+                else
+                {
+                    Physics.Impact(knockbackX, knockbackY);
+                }
             }
         }
 
@@ -2903,6 +2919,7 @@ namespace HaCreator.MapSimulator.Character
             int animTime = GetRenderAnimationTime(currentTime);
 
             var frame = Assembler.GetFrameAtTime(CurrentActionName, animTime);
+            int currentFrameIndex = Assembler?.GetFrameIndexAtTime(CurrentActionName, animTime) ?? -1;
 
             if (frame != null)
             {
@@ -2945,6 +2962,7 @@ namespace HaCreator.MapSimulator.Character
                     spriteBatch,
                     skeletonRenderer,
                     frame,
+                    currentFrameIndex,
                     screenX,
                     screenY,
                     tint,
@@ -3244,6 +3262,7 @@ namespace HaCreator.MapSimulator.Character
             SpriteBatch spriteBatch,
             SkeletonMeshRenderer skeletonRenderer,
             AssembledFrame frame,
+            int currentFrameIndex,
             int screenX,
             int screenY,
             Color tint,
@@ -3259,7 +3278,7 @@ namespace HaCreator.MapSimulator.Character
             List<AvatarEffectRenderable> avatarEffects = GetCurrentAvatarEffectRenderables(currentTime);
             int adjustedY = screenY - frame.FeetOffset;
 
-            DrawMirrorImage(spriteBatch, skeletonRenderer, frame, screenX, screenY, currentTime);
+            DrawMirrorImage(spriteBatch, skeletonRenderer, frame, currentFrameIndex, screenX, screenY, currentTime);
             DrawAvatarEffectPlane(spriteBatch, skeletonRenderer, avatarEffects, SkillAvatarEffectPlane.BehindCharacter, screenX, screenY, tint);
             DrawMeleeAfterImage(spriteBatch, skeletonRenderer, screenX, screenY, tint, currentTime);
 
@@ -3494,6 +3513,7 @@ namespace HaCreator.MapSimulator.Character
             SpriteBatch spriteBatch,
             SkeletonMeshRenderer skeletonRenderer,
             AssembledFrame frame,
+            int currentFrameIndex,
             int screenX,
             int screenY,
             int currentTime)
@@ -3515,10 +3535,10 @@ namespace HaCreator.MapSimulator.Character
                 return;
             }
 
+            PrepareMirrorImageSourceLayers(frame, currentFrameIndex);
             DrawMirrorImageSourceLayers(
                 spriteBatch,
                 skeletonRenderer,
-                frame,
                 screenX + _activeMirrorImage.CurrentOffsetPx.X,
                 screenY + _activeMirrorImage.CurrentOffsetPx.Y,
                 FacingRight,
@@ -3528,20 +3548,19 @@ namespace HaCreator.MapSimulator.Character
         private void DrawMirrorImageSourceLayers(
             SpriteBatch spriteBatch,
             SkeletonMeshRenderer skeletonRenderer,
-            AssembledFrame frame,
             int screenX,
             int screenY,
             bool flip,
             Color tint)
         {
-            if (frame?.Parts == null || frame.Parts.Count == 0)
+            if (_activeMirrorImage?.PreparedSourceLayers == null)
             {
                 return;
             }
 
-            int adjustedY = screenY - frame.FeetOffset;
-            IReadOnlyList<AssembledPart>[] layeredParts = GetMirrorImageSourceLayers(frame);
-            if (layeredParts == null)
+            int adjustedY = screenY - _activeMirrorImage.PreparedFeetOffset;
+            IReadOnlyList<AssembledPart>[] layeredParts = _activeMirrorImage.PreparedSourceLayers;
+            if (layeredParts.Length == 0)
             {
                 return;
             }
@@ -3561,14 +3580,91 @@ namespace HaCreator.MapSimulator.Character
             }
         }
 
-        private static IReadOnlyList<AssembledPart>[] GetMirrorImageSourceLayers(AssembledFrame frame)
+        private void PrepareMirrorImageSourceLayers(AssembledFrame frame, int currentFrameIndex)
         {
-            if (frame?.AvatarRenderLayers == null || frame.AvatarRenderLayers.Length == 0)
+            if (_activeMirrorImage == null)
             {
-                return null;
+                return;
             }
 
-            return frame.AvatarRenderLayers;
+            if (frame?.AvatarRenderLayers == null || frame.AvatarRenderLayers.Length == 0)
+            {
+                ResetMirrorImagePreparedSourceLayers();
+                return;
+            }
+
+            string actionName = CurrentActionName ?? string.Empty;
+            if (_activeMirrorImage.PreparedFrameIndex == currentFrameIndex
+                && _activeMirrorImage.PreparedFeetOffset == frame.FeetOffset
+                && string.Equals(_activeMirrorImage.PreparedActionName, actionName, StringComparison.OrdinalIgnoreCase))
+            {
+                return;
+            }
+
+            _activeMirrorImage.PreparedActionName = actionName;
+            _activeMirrorImage.PreparedFrameIndex = currentFrameIndex;
+            _activeMirrorImage.PreparedFeetOffset = frame.FeetOffset;
+            _activeMirrorImage.PreparedSourceLayers = CloneMirrorImageSourceLayers(frame.AvatarRenderLayers);
+        }
+
+        private void ResetMirrorImagePreparedSourceLayers()
+        {
+            if (_activeMirrorImage == null)
+            {
+                return;
+            }
+
+            _activeMirrorImage.PreparedActionName = null;
+            _activeMirrorImage.PreparedFrameIndex = -1;
+            _activeMirrorImage.PreparedFeetOffset = 0;
+            _activeMirrorImage.PreparedSourceLayers = AssembledFrame.CreateEmptyAvatarRenderLayers();
+        }
+
+        private static IReadOnlyList<AssembledPart>[] CloneMirrorImageSourceLayers(IReadOnlyList<AssembledPart>[] sourceLayers)
+        {
+            if (sourceLayers == null || sourceLayers.Length == 0)
+            {
+                return AssembledFrame.CreateEmptyAvatarRenderLayers();
+            }
+
+            var clonedLayers = new IReadOnlyList<AssembledPart>[sourceLayers.Length];
+            for (int layerIndex = 0; layerIndex < sourceLayers.Length; layerIndex++)
+            {
+                IReadOnlyList<AssembledPart> sourceParts = sourceLayers[layerIndex];
+                if (sourceParts == null || sourceParts.Count == 0)
+                {
+                    clonedLayers[layerIndex] = Array.Empty<AssembledPart>();
+                    continue;
+                }
+
+                var clonedParts = new AssembledPart[sourceParts.Count];
+                for (int partIndex = 0; partIndex < sourceParts.Count; partIndex++)
+                {
+                    AssembledPart part = sourceParts[partIndex];
+                    clonedParts[partIndex] = part == null
+                        ? null
+                        : new AssembledPart
+                        {
+                            Texture = part.Texture,
+                            OffsetX = part.OffsetX,
+                            OffsetY = part.OffsetY,
+                            ZLayer = part.ZLayer,
+                            ZIndex = part.ZIndex,
+                            VisibilityTokens = part.VisibilityTokens,
+                            VisibilityPriority = part.VisibilityPriority,
+                            IsVisible = part.IsVisible,
+                            SourcePart = part.SourcePart,
+                            Tint = part.Tint,
+                            PartType = part.PartType,
+                            SourcePortableChairLayer = part.SourcePortableChairLayer,
+                            RenderLayer = part.RenderLayer
+                        };
+                }
+
+                clonedLayers[layerIndex] = clonedParts;
+            }
+
+            return clonedLayers;
         }
 
         private bool TryGetShadowPartnerAnimation(
@@ -3841,6 +3937,7 @@ namespace HaCreator.MapSimulator.Character
             {
                 _activeMirrorImage.Visible = false;
                 _activeMirrorImage.CurrentOffsetPx = Point.Zero;
+                ResetMirrorImagePreparedSourceLayers();
                 return;
             }
 
@@ -3979,12 +4076,16 @@ namespace HaCreator.MapSimulator.Character
         {
             var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             string normalizedWeaponType = Build?.GetWeapon()?.WeaponType;
+            int? rawActionCode = TryGetCurrentClientRawActionCode(out int currentRawActionCode)
+                ? currentRawActionCode
+                : null;
 
             foreach (string candidate in ShadowPartnerClientActionResolver.EnumerateClientMappedCandidates(
                          playerActionName,
                          State,
                          fallbackActionName,
-                         normalizedWeaponType))
+                         normalizedWeaponType,
+                         rawActionCode))
             {
                 if (!string.IsNullOrWhiteSpace(candidate) && yielded.Add(candidate))
                 {
@@ -3995,11 +4096,16 @@ namespace HaCreator.MapSimulator.Character
 
         private IEnumerable<string> GetShadowPartnerClientMappedCandidates(string playerActionName, string fallbackActionName)
         {
+            int? rawActionCode = TryGetCurrentClientRawActionCode(out int currentRawActionCode)
+                ? currentRawActionCode
+                : null;
+
             foreach (string candidate in ShadowPartnerClientActionResolver.EnumerateClientMappedCandidates(
                          playerActionName,
                          State,
                          fallbackActionName,
-                         Build?.GetWeapon()?.WeaponType))
+                         Build?.GetWeapon()?.WeaponType,
+                         rawActionCode))
             {
                 yield return candidate;
             }
@@ -5779,6 +5885,9 @@ namespace HaCreator.MapSimulator.Character
         {
             string normalizedAction = actionName?.Trim();
             bool isSuperManMorph = morphPart?.IsSuperManMorph == true;
+            string normalizedJumpAction = MorphClientActionResolver.IsJumpActionName(normalizedAction)
+                ? normalizedAction
+                : null;
             return new SkillAvatarTransformState
             {
                 SkillId = skillId,
@@ -5786,7 +5895,7 @@ namespace HaCreator.MapSimulator.Character
                 AvatarPart = morphPart,
                 StandActionNames = CreateMorphActionVariants(morphPart, normalizedAction, "stand", "stand1", "stand2"),
                 WalkActionNames = CreateMorphActionVariants(morphPart, "walk", "move", "walk1", "walk2", "stand"),
-                JumpActionNames = CreateMorphActionVariants(morphPart, "jump", "fly", "stand"),
+                JumpActionNames = CreateMorphActionVariants(morphPart, normalizedJumpAction, "jump", "fly", "stand"),
                 SitActionNames = CreateMorphActionVariants(morphPart, "sit", "stand"),
                 ProneActionNames = CreateMorphActionVariants(morphPart, "prone", "stand"),
                 AttackActionNames = CreateMorphAttackActionVariants(morphPart, normalizedAction),

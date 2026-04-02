@@ -61,14 +61,25 @@ namespace HaCreator.MapSimulator.Interaction
             string partnerName,
             int ringItemId,
             string requestMessage,
+            bool enforceLocalRequesterChecks,
+            IInventoryRuntime inventory,
             UIWindowManager windowManager,
             CharacterBuild build,
             SpriteFont font,
             Action<string> feedbackHandler,
-            Action showWindow)
+            Action showWindow,
+            out bool opened)
         {
+            _runtime.UpdateLocalContext(build);
+            if (!_runtime.TryValidateOutgoingOpen(proposerName, enforceLocalRequesterChecks, inventory, out string validationMessage))
+            {
+                opened = false;
+                return validationMessage;
+            }
+
             string message = _runtime.OpenOutgoingRequest(proposerName, partnerName, ringItemId, requestMessage);
             ShowWindow(windowManager, build, font, feedbackHandler, showWindow);
+            opened = true;
             return message;
         }
 
@@ -100,11 +111,12 @@ namespace HaCreator.MapSimulator.Interaction
         internal bool TryBuildWeddingInvitationHandoff(
             CharacterBuild build,
             WeddingInvitationStyle style,
+            int? clientDialogType,
             out WeddingInvitationHandoff handoff,
             out string message)
         {
             _runtime.UpdateLocalContext(build);
-            return _runtime.TryBuildWeddingInvitationHandoff(build, style, out handoff, out message);
+            return _runtime.TryBuildWeddingInvitationHandoff(build, style, clientDialogType, out handoff, out message);
         }
 
         internal bool TryOpenWeddingInvitationFromAcceptedProposal(
@@ -114,11 +126,12 @@ namespace HaCreator.MapSimulator.Interaction
             SpriteFont font,
             Action<string> feedbackHandler,
             WeddingInvitationStyle style,
+            int? clientDialogType,
             Action showWindow,
             out string message)
         {
             _runtime.UpdateLocalContext(build);
-            if (!_runtime.TryBuildWeddingInvitationHandoff(build, style, out WeddingInvitationHandoff handoff, out string handoffMessage))
+            if (!_runtime.TryBuildWeddingInvitationHandoff(build, style, clientDialogType, out WeddingInvitationHandoff handoff, out string handoffMessage))
             {
                 message = handoffMessage;
                 return false;
@@ -128,6 +141,8 @@ namespace HaCreator.MapSimulator.Interaction
                 handoff.GroomName,
                 handoff.BrideName,
                 handoff.Style,
+                handoff.ClientDialogType,
+                handoff.SourceDescription,
                 windowManager,
                 build,
                 font,

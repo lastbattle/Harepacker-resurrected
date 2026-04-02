@@ -16,19 +16,29 @@ namespace HaCreator.MapSimulator.Interaction
         QuickSend
     }
 
+    internal enum MemoDraftAttachmentKind
+    {
+        None,
+        Item,
+        Meso
+    }
+
     internal sealed class MemoMailboxDraftSnapshot
     {
         public string Recipient { get; init; } = string.Empty;
         public string Subject { get; init; } = string.Empty;
         public string Body { get; init; } = string.Empty;
         public string AttachmentSummary { get; init; } = string.Empty;
+        public string ItemAttachmentSummary { get; init; } = string.Empty;
         public string LastActionSummary { get; init; } = string.Empty;
         public bool HasAttachment { get; init; }
         public bool IsMesoAttachment { get; init; }
+        public int AttachedMeso { get; init; }
         public bool CanSend { get; init; }
         public bool CanQuickSend { get; init; }
         public ParcelComposeMode ActiveMode { get; init; }
         public ParcelDialogTab ActiveTab { get; init; }
+        public MemoDraftAttachmentKind AttachmentKind { get; init; }
         public bool ShowTaxInfo { get; init; }
         public string ModeSummary { get; init; } = string.Empty;
         public string TaxSummary { get; init; } = string.Empty;

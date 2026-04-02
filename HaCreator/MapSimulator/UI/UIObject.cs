@@ -70,6 +70,7 @@ namespace HaCreator.MapSimulator.UI
         public int CanvasSnapshotWidth => _canvasSnapshotWidth;
 
         public UIObjectState CurrentState => _currentState;
+        public bool Enabled => _currentState != UIObjectState.Disabled;
 
         private int _X;
         /// <summary>

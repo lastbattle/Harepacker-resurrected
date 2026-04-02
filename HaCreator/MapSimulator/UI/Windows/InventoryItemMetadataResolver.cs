@@ -45,6 +45,22 @@ namespace HaCreator.MapSimulator.UI
             ("mmpR", "Max MP"),
             ("asrR", "Status Resistance")
         };
+        private static readonly (string Key, string Label)[] IndependentFlatEffectKeys =
+        {
+            ("indieMhp", "Max HP"),
+            ("indieMmp", "Max MP"),
+            ("indiePad", "Weapon ATT"),
+            ("indieMad", "Magic ATT"),
+            ("indiePdd", "Weapon DEF"),
+            ("indieMdd", "Magic DEF"),
+            ("indieSpeed", "Speed"),
+            ("indieJump", "Jump")
+        };
+        private static readonly (string Key, string Label)[] IndependentPercentEffectKeys =
+        {
+            ("expBuff", "EXP"),
+            ("dropRate", "Item Drop Rate")
+        };
 
         public static InventoryType ResolveInventoryType(int itemId)
         {
@@ -361,10 +377,12 @@ namespace HaCreator.MapSimulator.UI
             AppendStatEffectLine(effectLines, "Speed", TryGetPositiveInt(specProperty["speed"]), false);
             AppendStatEffectLine(effectLines, "Jump", TryGetPositiveInt(specProperty["jump"]), false);
             AppendPercentEffectLines(effectLines, specProperty);
+            AppendIndependentFlatEffectLines(effectLines, specProperty);
+            AppendIndependentPercentEffectLines(effectLines, specProperty);
             AppendCureEffectLine(effectLines, specProperty);
             AppendMoveToEffectLine(effectLines, TryGetPositiveInt(specProperty["moveTo"]));
             AppendMorphEffectLine(effectLines, specProperty);
-            AppendBoosterEffectLine(effectLines, specProperty["booster"]);
+            AppendBoosterEffectLine(effectLines, specProperty["booster"], specProperty["indieBooster"]);
             AppendBerserkEffectLine(effectLines, specProperty["berserk"]);
             AppendThawEffectLine(effectLines, specProperty["thaw"]);
             AppendCrossContinentEffectLine(effectLines, specProperty["ignoreContinent"]);
@@ -477,6 +495,24 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private static void AppendIndependentFlatEffectLines(List<string> effectLines, WzSubProperty specProperty)
+        {
+            for (int i = 0; i < IndependentFlatEffectKeys.Length; i++)
+            {
+                (string key, string label) = IndependentFlatEffectKeys[i];
+                AppendStatEffectLine(effectLines, label, TryGetPositiveInt(specProperty[key]), isPercent: false);
+            }
+        }
+
+        private static void AppendIndependentPercentEffectLines(List<string> effectLines, WzSubProperty specProperty)
+        {
+            for (int i = 0; i < IndependentPercentEffectKeys.Length; i++)
+            {
+                (string key, string label) = IndependentPercentEffectKeys[i];
+                AppendStatEffectLine(effectLines, label, TryGetPositiveInt(specProperty[key]), isPercent: true);
+            }
+        }
+
         private static void AppendCureEffectLine(List<string> effectLines, WzSubProperty specProperty)
         {
             List<string> curedStatuses = new();
@@ -525,9 +561,17 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private static void AppendBoosterEffectLine(List<string> effectLines, WzImageProperty property)
+        private static void AppendBoosterEffectLine(
+            List<string> effectLines,
+            WzImageProperty property,
+            WzImageProperty independentProperty = null)
         {
             int booster = GetIntValue(property);
+            if (booster == 0)
+            {
+                booster = GetIntValue(independentProperty);
+            }
+
             if (booster == 0)
             {
                 return;

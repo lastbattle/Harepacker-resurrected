@@ -4,6 +4,7 @@ using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Util;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
 using System.Collections.Generic;
@@ -75,7 +76,9 @@ namespace HaCreator.MapSimulator.UI
         private readonly IReadOnlyList<AnimationFrame> _statusSparkleFrames;
         private readonly IReadOnlyList<AnimationFrame> _statusBeamFrames;
         private readonly IReadOnlyList<AnimationFrame> _statusAccentFrames;
-        private readonly IReadOnlyList<AnimationFrame> _enterFocusFrames;
+        private readonly IReadOnlyList<AnimationFrame> _selectFocusFrames;
+        private readonly IReadOnlyList<AnimationFrame> _newFocusFrames;
+        private readonly IReadOnlyList<AnimationFrame> _deleteFocusFrames;
         private readonly BalloonStyle _instructionBalloonStyle;
         private readonly OwnerCanvasFrame _eventBanner;
         private readonly Dictionary<TextRenderCacheKey, Texture2D> _textTextureCache = new();
@@ -88,9 +91,12 @@ namespace HaCreator.MapSimulator.UI
 
         private string _statusMessage = "Select a character.";
         private bool _canEnter;
+        private bool _hasKeyboardFocus;
         private int _showTick = -1;
         private int _selectedIndex = -1;
         private int _pageIndex;
+        private KeyboardState _previousKeyboardState;
+        private FocusedButton _focusedButton = FocusedButton.Select;
 
         public CharacterSelectWindow(
             IDXObject frame,
@@ -101,7 +107,9 @@ namespace HaCreator.MapSimulator.UI
             IReadOnlyList<AnimationFrame> statusSparkleFrames,
             IReadOnlyList<AnimationFrame> statusBeamFrames,
             IReadOnlyList<AnimationFrame> statusAccentFrames,
-            IReadOnlyList<AnimationFrame> enterFocusFrames,
+            IReadOnlyList<AnimationFrame> selectFocusFrames,
+            IReadOnlyList<AnimationFrame> newFocusFrames,
+            IReadOnlyList<AnimationFrame> deleteFocusFrames,
             BalloonStyle instructionBalloonStyle,
             OwnerCanvasFrame eventBanner)
             : base(frame)
@@ -113,7 +121,9 @@ namespace HaCreator.MapSimulator.UI
             _statusSparkleFrames = statusSparkleFrames ?? Array.Empty<AnimationFrame>();
             _statusBeamFrames = statusBeamFrames ?? Array.Empty<AnimationFrame>();
             _statusAccentFrames = statusAccentFrames ?? Array.Empty<AnimationFrame>();
-            _enterFocusFrames = enterFocusFrames ?? Array.Empty<AnimationFrame>();
+            _selectFocusFrames = selectFocusFrames ?? Array.Empty<AnimationFrame>();
+            _newFocusFrames = newFocusFrames ?? Array.Empty<AnimationFrame>();
+            _deleteFocusFrames = deleteFocusFrames ?? Array.Empty<AnimationFrame>();
             _instructionBalloonStyle = instructionBalloonStyle;
             _eventBanner = eventBanner;
             _graphicsDevice = frame?.Texture?.GraphicsDevice
@@ -126,29 +136,44 @@ namespace HaCreator.MapSimulator.UI
 
             if (_enterButton != null)
             {
-                _enterButton.ButtonClickReleased += _ => EnterRequested?.Invoke();
+                _enterButton.ButtonClickReleased += _ =>
+                {
+                    RequestKeyboardFocus(FocusedButton.Select);
+                    EnterRequested?.Invoke();
+                };
                 AddButton(_enterButton);
             }
 
             if (_newButton != null)
             {
-                _newButton.ButtonClickReleased += _ => NewCharacterRequested?.Invoke();
+                _newButton.ButtonClickReleased += _ =>
+                {
+                    RequestKeyboardFocus(FocusedButton.New);
+                    NewCharacterRequested?.Invoke();
+                };
                 AddButton(_newButton);
             }
 
             if (_deleteButton != null)
             {
-                _deleteButton.ButtonClickReleased += _ => DeleteRequested?.Invoke();
+                _deleteButton.ButtonClickReleased += _ =>
+                {
+                    RequestKeyboardFocus(FocusedButton.Delete);
+                    DeleteRequested?.Invoke();
+                };
                 AddButton(_deleteButton);
             }
         }
 
         public override string WindowName => MapSimulatorWindowNames.CharacterSelect;
+        public override bool CapturesKeyboardInput => IsVisible && _hasKeyboardFocus;
 
         public event Action<int> CharacterSelected;
         public event Action EnterRequested;
         public event Action NewCharacterRequested;
         public event Action DeleteRequested;
+        public event Action AvatarPreviewFocusRequested;
+        public event Action CancelRequested;
 
         public void NotifyCharacterSelected(int rowIndex)
         {
@@ -169,6 +194,17 @@ namespace HaCreator.MapSimulator.UI
             if (!wasVisible)
             {
                 _showTick = -1;
+                _previousKeyboardState = Keyboard.GetState();
+            }
+        }
+
+        public void SetKeyboardFocus(bool hasKeyboardFocus)
+        {
+            _hasKeyboardFocus = hasKeyboardFocus;
+            _previousKeyboardState = Keyboard.GetState();
+            if (_focusedButton == FocusedButton.Select && !_canEnter)
+            {
+                _focusedButton = ResolveFirstAvailableButton();
             }
         }
 
@@ -189,6 +225,50 @@ namespace HaCreator.MapSimulator.UI
             _pageIndex = Math.Max(0, pageIndex);
             _enterButton?.SetEnabled(canEnter);
             _deleteButton?.SetEnabled(canDelete);
+            if (_focusedButton == FocusedButton.Select && !canEnter)
+            {
+                _focusedButton = ResolveFirstAvailableButton();
+            }
+            else if (_focusedButton == FocusedButton.Delete && !canDelete)
+            {
+                _focusedButton = ResolveFirstAvailableButton();
+            }
+        }
+
+        public override void Update(GameTime gameTime)
+        {
+            base.Update(gameTime);
+
+            KeyboardState keyboardState = Keyboard.GetState();
+            if (!IsVisible || !_hasKeyboardFocus)
+            {
+                _previousKeyboardState = keyboardState;
+                return;
+            }
+
+            if (Pressed(keyboardState, Keys.Tab))
+            {
+                _hasKeyboardFocus = false;
+                AvatarPreviewFocusRequested?.Invoke();
+            }
+            else if (Pressed(keyboardState, Keys.Up))
+            {
+                MoveFocusedButton(-1);
+            }
+            else if (Pressed(keyboardState, Keys.Down))
+            {
+                MoveFocusedButton(1);
+            }
+            else if (Pressed(keyboardState, Keys.Enter))
+            {
+                ActivateFocusedButton();
+            }
+            else if (Pressed(keyboardState, Keys.Escape))
+            {
+                CancelRequested?.Invoke();
+            }
+
+            _previousKeyboardState = keyboardState;
         }
 
         protected override void DrawContents(
@@ -221,10 +301,7 @@ namespace HaCreator.MapSimulator.UI
             DrawAnimation(sprite, _statusScrollFrames, tickCount, false, ClientStatusScrollPosition, true);
             DrawAnimation(sprite, _statusAccentFrames, tickCount, true, ClientStatusAccentPosition, false);
 
-            if (_canEnter)
-            {
-                DrawAnimation(sprite, _enterFocusFrames, tickCount, true, ClientEnterFocusAnchor, false);
-            }
+            DrawFocusedButtonAnimation(sprite, tickCount);
         }
 
         private void DrawStatusText(SpriteBatch sprite)
@@ -376,6 +453,108 @@ namespace HaCreator.MapSimulator.UI
 
             Vector2 drawPosition = new(Position.X + anchor.X + frame.Offset.X, Position.Y + anchor.Y + frame.Offset.Y);
             sprite.Draw(frame.Texture, drawPosition, Color.White);
+        }
+
+        private void DrawFocusedButtonAnimation(SpriteBatch sprite, int tickCount)
+        {
+            if (!_hasKeyboardFocus)
+            {
+                return;
+            }
+
+            switch (_focusedButton)
+            {
+                case FocusedButton.Select when _canEnter:
+                    DrawAnimation(sprite, _selectFocusFrames, tickCount, true, ClientEnterFocusAnchor, false);
+                    break;
+                case FocusedButton.New:
+                    DrawAnimation(sprite, _newFocusFrames, tickCount, true, new Point(_newButton?.X ?? 0, _newButton?.Y ?? 0), false);
+                    break;
+                case FocusedButton.Delete when _deleteButton?.Enabled != false:
+                    DrawAnimation(sprite, _deleteFocusFrames, tickCount, true, new Point(_deleteButton?.X ?? 0, _deleteButton?.Y ?? 0), false);
+                    break;
+            }
+        }
+
+        private void RequestKeyboardFocus(FocusedButton focusedButton)
+        {
+            _hasKeyboardFocus = true;
+            _focusedButton = focusedButton;
+            _previousKeyboardState = Keyboard.GetState();
+        }
+
+        private void MoveFocusedButton(int direction)
+        {
+            FocusedButton[] order = { FocusedButton.Select, FocusedButton.New, FocusedButton.Delete };
+            int currentIndex = Array.IndexOf(order, _focusedButton);
+            if (currentIndex < 0)
+            {
+                _focusedButton = ResolveFirstAvailableButton();
+                return;
+            }
+
+            for (int offset = 1; offset <= order.Length; offset++)
+            {
+                int candidateIndex = (currentIndex + (direction * offset) + order.Length * 2) % order.Length;
+                FocusedButton candidate = order[candidateIndex];
+                if (IsButtonAvailable(candidate))
+                {
+                    _focusedButton = candidate;
+                    return;
+                }
+            }
+        }
+
+        private void ActivateFocusedButton()
+        {
+            switch (_focusedButton)
+            {
+                case FocusedButton.Select when _canEnter:
+                    EnterRequested?.Invoke();
+                    break;
+                case FocusedButton.New:
+                    NewCharacterRequested?.Invoke();
+                    break;
+                case FocusedButton.Delete when _deleteButton?.Enabled != false:
+                    DeleteRequested?.Invoke();
+                    break;
+            }
+        }
+
+        private FocusedButton ResolveFirstAvailableButton()
+        {
+            if (_canEnter)
+            {
+                return FocusedButton.Select;
+            }
+
+            if (IsButtonAvailable(FocusedButton.New))
+            {
+                return FocusedButton.New;
+            }
+
+            if (IsButtonAvailable(FocusedButton.Delete))
+            {
+                return FocusedButton.Delete;
+            }
+
+            return FocusedButton.Select;
+        }
+
+        private bool IsButtonAvailable(FocusedButton button)
+        {
+            return button switch
+            {
+                FocusedButton.Select => _canEnter,
+                FocusedButton.New => _newButton?.Enabled != false,
+                FocusedButton.Delete => _deleteButton?.Enabled != false,
+                _ => false
+            };
+        }
+
+        private bool Pressed(KeyboardState keyboardState, Keys key)
+        {
+            return keyboardState.IsKeyDown(key) && !_previousKeyboardState.IsKeyDown(key);
         }
 
         private AnimationFrame ResolveAnimationFrame(
@@ -719,6 +898,13 @@ namespace HaCreator.MapSimulator.UI
                 SouthWest != null &&
                 South != null &&
                 SouthEast != null;
+        }
+
+        private enum FocusedButton
+        {
+            Select,
+            New,
+            Delete
         }
 
         public readonly struct OwnerCanvasFrame

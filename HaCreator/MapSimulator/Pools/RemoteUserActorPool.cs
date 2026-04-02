@@ -40,6 +40,11 @@ namespace HaCreator.MapSimulator.Pools
             bool IsVisibleInWorld,
             bool IsRelationshipOverlaySuppressed);
 
+        internal readonly record struct PortableChairPairRecord(
+            int CharacterId,
+            int ItemId,
+            int? PreferredPairCharacterId);
+
         private readonly record struct PortableChairPairCandidate(
             PortableChairPairParticipant Left,
             PortableChairPairParticipant Right,
@@ -53,6 +58,12 @@ namespace HaCreator.MapSimulator.Pools
         private const float RemoteDragonGroundVerticalOffset = -12f;
         private const float RemoteDragonKeyDownBarHalfWidth = 36f;
         private const float RemoteDragonKeyDownBarVerticalGap = 30f;
+        private const float CarryItemEffectOrbitRadiusX = 26f;
+        private const float CarryItemEffectOrbitRadiusY = 16f;
+        private const float CarryItemEffectBaseVerticalOffset = -46f;
+        private const int CarryItemEffectOrbitDurationMs = 2000;
+        private const int CarryItemEffectMaximumCount = 99;
+        private const int CarryItemEffectAnimationOffsetMs = 120;
         private const int RelationshipOverlayVisibleRangeX = 700;
         private const int RelationshipOverlayVisibleRangeY = 500;
         private const int RelationshipOverlayNearRangeX = 100;
@@ -99,6 +110,7 @@ namespace HaCreator.MapSimulator.Pools
 
         private readonly Dictionary<int, RemoteUserActor> _actorsById = new();
         private readonly Dictionary<string, int> _actorIdsByName = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<int, PortableChairPairRecord> _portableChairPairRecordsByCharacterId = new();
         private readonly List<RemoteUserActor> _visibleWorldActorsBuffer = new();
         private readonly List<StatusBarPreparedSkillRenderData> _preparedSkillWorldOverlayBuffer = new();
         private readonly List<MinimapUI.TrackedUserMarker> _helperMarkerBuffer = new();
@@ -131,6 +143,7 @@ namespace HaCreator.MapSimulator.Pools
 
             _actorsById.Clear();
             _actorIdsByName.Clear();
+            _portableChairPairRecordsByCharacterId.Clear();
         }
 
         public void RemoveBySourceTag(string sourceTag)
@@ -148,6 +161,7 @@ namespace HaCreator.MapSimulator.Pools
                 if (_actorsById.TryGetValue(characterId, out RemoteUserActor actor))
                 {
                     ClearActorFollowLinks(actor);
+                    ClearPortableChairPairRecord(characterId);
                     NotifyActorRemoved(actor.CharacterId, actor.Name);
                     _actorIdsByName.Remove(actor.Name);
                     _actorsById.Remove(characterId);
@@ -172,6 +186,7 @@ namespace HaCreator.MapSimulator.Pools
                 if (_actorsById.TryGetValue(characterId, out RemoteUserActor actor))
                 {
                     ClearActorFollowLinks(actor);
+                    ClearPortableChairPairRecord(characterId);
                     NotifyActorRemoved(actor.CharacterId, actor.Name);
                     _actorIdsByName.Remove(actor.Name);
                     _actorsById.Remove(characterId);
@@ -245,6 +260,10 @@ namespace HaCreator.MapSimulator.Pools
                 actor.ActionName = NormalizeActionName(actionName, actor.Build.ActivePortableChair != null);
                 actor.SourceTag = string.IsNullOrWhiteSpace(sourceTag) ? actor.SourceTag : sourceTag.Trim();
                 actor.IsVisibleInWorld = isVisibleInWorld;
+                SyncPortableChairPairRecord(
+                    characterId,
+                    actor.Build.ActivePortableChair,
+                    actor.PreferredPortableChairPairCharacterId);
                 actor.RefreshAssembler();
                 RegisterMeleeAfterImage(actor, 0, actor.ActionName, Environment.TickCount, 10, 0);
                 UpdateNameLookup(previousName, actor.Name, characterId);
@@ -263,6 +282,10 @@ namespace HaCreator.MapSimulator.Pools
             RegisterMeleeAfterImage(created, 0, created.ActionName, Environment.TickCount, 10, 0);
             _actorsById[characterId] = created;
             _actorIdsByName[created.Name] = characterId;
+            SyncPortableChairPairRecord(
+                characterId,
+                created.Build?.ActivePortableChair,
+                created.PreferredPortableChairPairCharacterId);
             return true;
         }
 
@@ -503,9 +526,7 @@ namespace HaCreator.MapSimulator.Pools
                 skill = _skillLoader.LoadSkill(skillId);
             }
 
-            int chargeElement = AfterImageChargeSkillResolver.TryGetChargeElement(chargeSkillId, out int resolvedChargeElement)
-                ? resolvedChargeElement
-                : 0;
+            int chargeElement = ResolveRemoteAfterImageChargeElement(actor, chargeSkillId);
             string resolvedActionName = ResolveRemoteMeleeActionName(
                 actor,
                 skill,
@@ -618,6 +639,7 @@ namespace HaCreator.MapSimulator.Pools
             {
                 actor.Build.ActivePortableChair = null;
                 actor.PreferredPortableChairPairCharacterId = null;
+                ClearPortableChairPairRecord(characterId);
                 actor.ActionName = CharacterPart.GetActionString(CharacterAction.Stand1);
                 actor.RefreshAssembler();
                 actor.ClearMeleeAfterImage();
@@ -633,6 +655,7 @@ namespace HaCreator.MapSimulator.Pools
 
             actor.Build.ActivePortableChair = chair;
             actor.PreferredPortableChairPairCharacterId = pairCharacterId;
+            SyncPortableChairPairRecord(characterId, chair, pairCharacterId);
             ApplyPortableChairMount(actor, chair);
             actor.ActionName = NormalizeActionName("sit", allowSitFallback: true);
             actor.RefreshAssembler();
@@ -781,10 +804,15 @@ namespace HaCreator.MapSimulator.Pools
                 actor.ActionName = NormalizeActionName(actor.ActionName, actor.Build.ActivePortableChair != null);
                 if (actor.Build.ActivePortableChair != null)
                 {
+                    SyncPortableChairPairRecord(
+                        actor.CharacterId,
+                        actor.Build.ActivePortableChair,
+                        actor.PreferredPortableChairPairCharacterId);
                     ApplyPortableChairMount(actor, actor.Build.ActivePortableChair);
                 }
                 else
                 {
+                    ClearPortableChairPairRecord(actor.CharacterId);
                     ClearPortableChairMountState(actor);
                 }
 
@@ -1000,6 +1028,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             ClearActorFollowLinks(actor);
+            ClearPortableChairPairRecord(characterId);
             NotifyActorRemoved(actor.CharacterId, actor.Name);
             _actorsById.Remove(characterId);
             _actorIdsByName.Remove(actor.Name);
@@ -1450,6 +1479,14 @@ namespace HaCreator.MapSimulator.Pools
                     tickCount,
                     drawFrontLayers: false);
                 DrawMeleeAfterImage(spriteBatch, skeletonMeshRenderer, actor, screenX, screenY, tickCount);
+                DrawCarryItemEffect(
+                    spriteBatch,
+                    skeletonMeshRenderer,
+                    actor,
+                    screenX,
+                    screenY,
+                    tickCount,
+                    drawFrontLayers: false);
                 DrawCompletedSetItemEffect(
                     spriteBatch,
                     skeletonMeshRenderer,
@@ -1512,6 +1549,14 @@ namespace HaCreator.MapSimulator.Pools
                     tickCount,
                     drawFrontLayers: true,
                     _renderedCouplePairsBuffer);
+                DrawCarryItemEffect(
+                    spriteBatch,
+                    skeletonMeshRenderer,
+                    actor,
+                    screenX,
+                    screenY,
+                    tickCount,
+                    drawFrontLayers: true);
                 DrawCompletedSetItemEffect(
                     spriteBatch,
                     skeletonMeshRenderer,
@@ -1774,6 +1819,71 @@ namespace HaCreator.MapSimulator.Pools
             }
         }
 
+        private void DrawCarryItemEffect(
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            RemoteUserActor actor,
+            int screenX,
+            int screenY,
+            int currentTime,
+            bool drawFrontLayers)
+        {
+            if (_loader == null
+                || actor?.CarryItemEffectId is not int carryCount
+                || carryCount <= 0)
+            {
+                return;
+            }
+
+            CarryItemEffectDefinition effect = _loader.LoadCarryItemEffectDefinition();
+            if (effect?.IsReady != true)
+            {
+                return;
+            }
+
+            (int totalTokenCount, int tensTokenCount) = ResolveCarryItemEffectTokenCounts(carryCount);
+            if (totalTokenCount <= 0)
+            {
+                return;
+            }
+
+            for (int index = 0; index < totalTokenCount; index++)
+            {
+                PortableChairLayer layer = ResolveCarryItemEffectLayer(effect, index, tensTokenCount);
+                if (layer?.Animation == null)
+                {
+                    continue;
+                }
+
+                float phase = ((currentTime % CarryItemEffectOrbitDurationMs) / (float)CarryItemEffectOrbitDurationMs)
+                    + (index / (float)Math.Max(1, totalTokenCount));
+                float angle = MathHelper.TwoPi * (phase - (float)Math.Floor(phase));
+                bool isFrontLayer = Math.Sin(angle) >= 0f;
+                if (isFrontLayer != drawFrontLayers)
+                {
+                    continue;
+                }
+
+                float orbitX = (float)Math.Cos(angle) * CarryItemEffectOrbitRadiusX;
+                float orbitY = CarryItemEffectBaseVerticalOffset + ((float)Math.Sin(angle) * CarryItemEffectOrbitRadiusY);
+                if (!actor.FacingRight)
+                {
+                    orbitX = -orbitX;
+                }
+
+                CharacterFrame frame = PlayerCharacter.GetPortableChairLayerFrameAtTime(
+                    layer,
+                    currentTime + (index * CarryItemEffectAnimationOffsetMs));
+                PlayerCharacter.DrawPortableChairLayerFrame(
+                    spriteBatch,
+                    skeletonMeshRenderer,
+                    frame,
+                    screenX + (int)Math.Round(orbitX),
+                    screenY + (int)Math.Round(orbitY),
+                    actor.FacingRight);
+            }
+        }
+
         private void DrawRelationshipOverlay(
             SpriteBatch spriteBatch,
             SkeletonMeshRenderer skeletonMeshRenderer,
@@ -1924,6 +2034,14 @@ namespace HaCreator.MapSimulator.Pools
             return status;
         }
 
+        internal static (int TotalTokenCount, int TensTokenCount) ResolveCarryItemEffectTokenCounts(int carryCount)
+        {
+            int clampedCount = Math.Clamp(carryCount, 0, CarryItemEffectMaximumCount);
+            int tensTokenCount = clampedCount / 10;
+            int totalTokenCount = tensTokenCount + (clampedCount % 10);
+            return (totalTokenCount, tensTokenCount);
+        }
+
         private bool TryResolveRelationshipOverlayPair(
             RemoteUserActor ownerActor,
             RemoteRelationshipOverlayState overlay,
@@ -2049,6 +2167,25 @@ namespace HaCreator.MapSimulator.Pools
                 actionName,
                 CharacterPart.GetActionString(CharacterAction.Ghost),
                 StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static PortableChairLayer ResolveCarryItemEffectLayer(
+            CarryItemEffectDefinition effect,
+            int index,
+            int tensTokenCount)
+        {
+            if (index < tensTokenCount)
+            {
+                return effect.BundleLayer ?? effect.SingleLayerA ?? effect.SingleLayerB;
+            }
+
+            int singleIndex = index - tensTokenCount;
+            if ((singleIndex & 1) == 0)
+            {
+                return effect.SingleLayerA ?? effect.SingleLayerB ?? effect.BundleLayer;
+            }
+
+            return effect.SingleLayerB ?? effect.SingleLayerA ?? effect.BundleLayer;
         }
 
         private static ItemEffectAnimationSet NormalizeRelationshipOverlayEffect(
@@ -2269,8 +2406,44 @@ namespace HaCreator.MapSimulator.Pools
             IEnumerable<PortableChairPairParticipant> participants,
             bool preferVisibleOnly)
         {
+            IEnumerable<PortableChairPairRecord> pairRecords = participants?
+                .Select(static participant => new PortableChairPairRecord(
+                    participant.CharacterId,
+                    participant.Chair?.ItemId ?? 0,
+                    participant.PreferredPairCharacterId));
+            return ResolvePortableChairPairings(participants, pairRecords, preferVisibleOnly);
+        }
+
+        internal static IReadOnlyDictionary<int, int> ResolvePortableChairPairings(
+            IEnumerable<PortableChairPairParticipant> participants,
+            IEnumerable<PortableChairPairRecord> pairRecords,
+            bool preferVisibleOnly)
+        {
+            IReadOnlyDictionary<int, PortableChairPairRecord> recordMap = pairRecords?
+                .Where(static record => record.CharacterId > 0 && record.ItemId > 0)
+                .GroupBy(static record => record.CharacterId)
+                .ToDictionary(
+                    static group => group.Key,
+                    static group => group.Last())
+                ?? new Dictionary<int, PortableChairPairRecord>();
             List<PortableChairPairParticipant> resolvedParticipants = participants?
-                .Where(static participant => participant.CharacterId > 0 && participant.Chair?.IsCoupleChair == true)
+                .Where(participant =>
+                    participant.CharacterId > 0
+                    && participant.Chair?.IsCoupleChair == true
+                    && recordMap.TryGetValue(participant.CharacterId, out PortableChairPairRecord record)
+                    && participant.Chair.ItemId == record.ItemId)
+                .Select(participant =>
+                {
+                    PortableChairPairRecord record = recordMap[participant.CharacterId];
+                    return new PortableChairPairParticipant(
+                        participant.CharacterId,
+                        participant.Chair,
+                        participant.Position,
+                        participant.FacingRight,
+                        record.PreferredPairCharacterId,
+                        participant.IsVisibleInWorld,
+                        participant.IsRelationshipOverlaySuppressed);
+                })
                 .OrderBy(static participant => participant.CharacterId)
                 .ToList()
                 ?? new List<PortableChairPairParticipant>();
@@ -2352,7 +2525,50 @@ namespace HaCreator.MapSimulator.Pools
                     IsRelationshipOverlaySuppressed(localPlayer, localCharacterId, ownerCharacterId: 0)));
             }
 
-            return new Dictionary<int, int>(ResolvePortableChairPairings(participants, preferVisibleOnly));
+            return new Dictionary<int, int>(ResolvePortableChairPairings(
+                participants,
+                BuildPortableChairPairRecords(localPlayer),
+                preferVisibleOnly));
+        }
+
+        private IEnumerable<PortableChairPairRecord> BuildPortableChairPairRecords(PlayerCharacter localPlayer)
+        {
+            foreach (PortableChairPairRecord record in _portableChairPairRecordsByCharacterId.Values)
+            {
+                yield return record;
+            }
+
+            PortableChair localChair = localPlayer?.Build?.ActivePortableChair;
+            int localCharacterId = localPlayer?.Build?.Id ?? 0;
+            if (localChair?.IsCoupleChair == true && localCharacterId > 0)
+            {
+                yield return new PortableChairPairRecord(
+                    localCharacterId,
+                    localChair.ItemId,
+                    PreferredPairCharacterId: null);
+            }
+        }
+
+        private void SyncPortableChairPairRecord(int characterId, PortableChair chair, int? preferredPairCharacterId)
+        {
+            if (characterId <= 0 || chair?.IsCoupleChair != true || chair.ItemId <= 0)
+            {
+                ClearPortableChairPairRecord(characterId);
+                return;
+            }
+
+            _portableChairPairRecordsByCharacterId[characterId] = new PortableChairPairRecord(
+                characterId,
+                chair.ItemId,
+                preferredPairCharacterId);
+        }
+
+        private void ClearPortableChairPairRecord(int characterId)
+        {
+            if (characterId > 0)
+            {
+                _portableChairPairRecordsByCharacterId.Remove(characterId);
+            }
         }
 
         private static bool TryBuildPortableChairPairCandidate(
@@ -2897,6 +3113,20 @@ namespace HaCreator.MapSimulator.Pools
             {
                 yield return actor.ActionName.Trim();
             }
+        }
+
+        private static int ResolveRemoteAfterImageChargeElement(RemoteUserActor actor, int chargeSkillId)
+        {
+            if (AfterImageChargeSkillResolver.TryGetChargeElement(chargeSkillId, out int explicitChargeElement))
+            {
+                return explicitChargeElement;
+            }
+
+            byte[] temporaryStatPayload = actor?.TemporaryStats.RawPayload;
+            return temporaryStatPayload != null
+                && AfterImageChargeSkillResolver.TryResolveChargeElementFromTemporaryStatPayload(temporaryStatPayload, out int payloadChargeElement)
+                ? payloadChargeElement
+                : 0;
         }
 
         private static int GetActionDuration(CharacterAssembler assembler, string actionName)

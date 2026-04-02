@@ -98,6 +98,24 @@ namespace HaCreator.MapSimulator.UI
             "InstallLocation",
             "DisplayIcon"
         };
+        private static readonly string[] WindowsFontRegistrySubKeys =
+        {
+            @"SOFTWARE\Microsoft\Windows NT\CurrentVersion\Fonts",
+            @"SOFTWARE\WOW6432Node\Microsoft\Windows NT\CurrentVersion\Fonts"
+        };
+        private static readonly string[] BasicBlackFontRegistryNameCandidates =
+        {
+            "DotumChe",
+            "Dotum",
+            "DOTOOMCHE",
+            "DOTOOM",
+            "DODUMCHE",
+            "DODUM",
+            "GulimChe",
+            "Gulim",
+            "BatangChe",
+            "Batang"
+        };
         private static readonly string[] BasicBlackFontFamilyCandidates =
         {
             "DotumChe",
@@ -572,6 +590,14 @@ namespace HaCreator.MapSimulator.UI
                     }
                 }
             }
+
+            foreach (string registryFontPath in EnumerateRegisteredBasicBlackFontPaths())
+            {
+                if (seenPaths.Add(registryFontPath))
+                {
+                    yield return registryFontPath;
+                }
+            }
         }
 
         private static readonly EnumerationOptions RecursiveFontSearchOptions = new()
@@ -771,6 +797,51 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private static IEnumerable<string> EnumerateRegisteredBasicBlackFontPaths()
+        {
+            HashSet<string> seenPaths = new(StringComparer.OrdinalIgnoreCase);
+
+            foreach (RegistryHive hive in new[] { RegistryHive.CurrentUser, RegistryHive.LocalMachine })
+            {
+                foreach (RegistryView view in new[] { RegistryView.Registry64, RegistryView.Registry32 })
+                {
+                    RegistryKey baseKey;
+                    try
+                    {
+                        baseKey = RegistryKey.OpenBaseKey(hive, view);
+                    }
+                    catch
+                    {
+                        continue;
+                    }
+
+                    using (baseKey)
+                    {
+                        foreach (string subKey in WindowsFontRegistrySubKeys)
+                        {
+                            using RegistryKey fontKey = baseKey.OpenSubKey(subKey);
+                            if (fontKey == null)
+                            {
+                                continue;
+                            }
+
+                            foreach (string valueName in fontKey.GetValueNames())
+                            {
+                                if (!IsBasicBlackFontRegistryEntry(valueName) ||
+                                    !TryNormalizeRegistryFontFile(fontKey.GetValue(valueName)?.ToString(), out string fontPath) ||
+                                    !seenPaths.Add(fontPath))
+                                {
+                                    continue;
+                                }
+
+                                yield return fontPath;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
         private static bool TryNormalizeRegistryDirectory(string rawValue, out string directory)
         {
             directory = null;
@@ -815,6 +886,66 @@ namespace HaCreator.MapSimulator.UI
 
             directory = parentDirectory;
             return true;
+        }
+
+        private static bool IsBasicBlackFontRegistryEntry(string valueName)
+        {
+            if (string.IsNullOrWhiteSpace(valueName))
+            {
+                return false;
+            }
+
+            foreach (string candidate in BasicBlackFontRegistryNameCandidates)
+            {
+                if (valueName.IndexOf(candidate, StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryNormalizeRegistryFontFile(string rawValue, out string fontPath)
+        {
+            fontPath = null;
+            if (string.IsNullOrWhiteSpace(rawValue))
+            {
+                return false;
+            }
+
+            string normalizedValue = rawValue.Trim().Trim('"');
+            string[] candidateValues =
+            {
+                normalizedValue,
+                Path.Combine(
+                    Environment.GetFolderPath(Environment.SpecialFolder.Windows),
+                    "Fonts",
+                    normalizedValue)
+            };
+
+            foreach (string candidateValue in candidateValues)
+            {
+                string fullPath;
+                try
+                {
+                    fullPath = Path.GetFullPath(candidateValue);
+                }
+                catch
+                {
+                    continue;
+                }
+
+                if (!File.Exists(fullPath))
+                {
+                    continue;
+                }
+
+                fontPath = fullPath;
+                return true;
+            }
+
+            return false;
         }
 
         private static IEnumerable<string> CreatePreferredBasicBlackFamilyNames(string configuredFontFace)

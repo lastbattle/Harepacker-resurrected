@@ -6,6 +6,10 @@ namespace HaCreator.MapSimulator.Interaction
         internal const int MedalQuestNoticeStringPoolId = 0x1A8B;
         internal const int QuestTimerWarningStringPoolId = 0xD97;
         internal const int QuestTimerExpiredStringPoolId = 0xD98;
+        private const string PartyQuestInvitationNotice = "A party quest invitation has arrived.";
+        private const string MedalQuestNotice = "A medal quest notice has arrived.";
+        private const string QuestTimerWarningNotice = "The quest timer is almost out.";
+        private const string QuestTimerExpiredNotice = "The quest timer has expired.";
 
         public static bool TryResolve(int resultType, out string text, out int stringPoolId)
         {
@@ -20,10 +24,10 @@ namespace HaCreator.MapSimulator.Interaction
 
             text = stringPoolId switch
             {
-                PartyQuestInvitationStringPoolId => "Client quest-result notice branch (party-quest invitation text unresolved).",
-                MedalQuestNoticeStringPoolId => "Client quest-result notice branch (medal quest text unresolved).",
-                QuestTimerWarningStringPoolId => "Client quest-result notice branch (quest timer warning text unresolved).",
-                QuestTimerExpiredStringPoolId => "Client quest-result notice branch (quest timer expiry text unresolved).",
+                PartyQuestInvitationStringPoolId => PartyQuestInvitationNotice,
+                MedalQuestNoticeStringPoolId => MedalQuestNotice,
+                QuestTimerWarningStringPoolId => QuestTimerWarningNotice,
+                QuestTimerExpiredStringPoolId => QuestTimerExpiredNotice,
                 _ => null
             };
 

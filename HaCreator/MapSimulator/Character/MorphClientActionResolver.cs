@@ -70,7 +70,7 @@ namespace HaCreator.MapSimulator.Character
                 }
             }
 
-            if (string.Equals(actionName, "jump", StringComparison.OrdinalIgnoreCase))
+            if (ShouldEnumerateDoubleJumpAliases(actionName))
             {
                 foreach (string doubleJumpAlias in EnumerateDoubleJumpAliases(morphPart))
                 {
@@ -99,6 +99,17 @@ namespace HaCreator.MapSimulator.Character
                     yield return candidate;
                 }
             }
+        }
+
+        internal static bool IsJumpActionName(string actionName)
+        {
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            return string.Equals(actionName, "jump", StringComparison.OrdinalIgnoreCase)
+                   || actionName.IndexOf("doublejump", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private static IEnumerable<string> EnumerateAlertAliases(CharacterPart morphPart, string actionName)
@@ -230,6 +241,11 @@ namespace HaCreator.MapSimulator.Character
                     yield return alias;
                 }
             }
+        }
+
+        private static bool ShouldEnumerateDoubleJumpAliases(string actionName)
+        {
+            return IsJumpActionName(actionName);
         }
 
         private static IEnumerable<string> EnumerateDoubleJumpAliases(CharacterPart morphPart)

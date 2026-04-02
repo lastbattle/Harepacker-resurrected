@@ -98,6 +98,7 @@ namespace HaCreator.MapSimulator.UI
         public string Subtitle { get; init; } = string.Empty;
         public string Footer { get; init; } = string.Empty;
         public IReadOnlyList<CollectionBookEntrySnapshot> Entries { get; init; } = Array.Empty<CollectionBookEntrySnapshot>();
+        public IReadOnlyList<CollectionBookRecordSnapshot> Records { get; init; } = Array.Empty<CollectionBookRecordSnapshot>();
     }
 
     public sealed class CollectionBookSnapshot
@@ -114,6 +115,31 @@ namespace HaCreator.MapSimulator.UI
         public string CharacterName { get; init; } = string.Empty;
         public string LocationSummary { get; init; } = string.Empty;
         public int Channel { get; init; } = 1;
+    }
+
+    public enum CollectionBookRecordType
+    {
+        Text = 0,
+        Rule = 1,
+    }
+
+    public enum CollectionBookTextAlignment
+    {
+        Left = 0,
+        Center = 1,
+        Right = 2,
+    }
+
+    public sealed class CollectionBookRecordSnapshot
+    {
+        public CollectionBookRecordType Type { get; init; }
+        public string Text { get; init; } = string.Empty;
+        public int Left { get; init; }
+        public int Top { get; init; }
+        public int Width { get; init; }
+        public int Height { get; init; } = 1;
+        public int StyleIndex { get; init; }
+        public CollectionBookTextAlignment Alignment { get; init; }
     }
 
     internal static class CollectionBookSnapshotFactory
@@ -173,7 +199,8 @@ namespace HaCreator.MapSimulator.UI
                     Title = pages[i].Title,
                     Subtitle = pages[i].Subtitle,
                     Footer = pages[i].Footer,
-                    Entries = pages[i].Entries
+                    Entries = pages[i].Entries,
+                    Records = BuildPageRecords(pages[i])
                 };
             }
 
@@ -373,6 +400,75 @@ namespace HaCreator.MapSimulator.UI
                 Value = value ?? string.Empty,
                 Detail = detail ?? string.Empty,
                 Tone = tone
+            };
+        }
+
+        private static IReadOnlyList<CollectionBookRecordSnapshot> BuildPageRecords(CollectionBookPageSnapshot page)
+        {
+            List<CollectionBookRecordSnapshot> records = new()
+            {
+                CreateTextRecord(page?.Title, 16, 14, 164, 0, CollectionBookTextAlignment.Center),
+                CreateTextRecord(page?.Subtitle, 16, 34, 164, 10, CollectionBookTextAlignment.Center),
+                CreateRuleRecord(15, 56, 166),
+            };
+
+            IReadOnlyList<CollectionBookEntrySnapshot> entries = page?.Entries ?? Array.Empty<CollectionBookEntrySnapshot>();
+            for (int row = 0; row < EntriesPerPage; row++)
+            {
+                int rowTop = 68 + (row * 28);
+                CollectionBookEntrySnapshot entry = row < entries.Count ? entries[row] : null;
+                if (entry != null)
+                {
+                    records.Add(CreateTextRecord(entry.Label, 16, rowTop, 104, 2, CollectionBookTextAlignment.Left));
+                    records.Add(CreateTextRecord(entry.Value, 106, rowTop, 76, ResolveEntryStyleIndex(entry.Tone), CollectionBookTextAlignment.Right));
+                    records.Add(CreateTextRecord(entry.Detail, 22, rowTop + 12, 160, 10, CollectionBookTextAlignment.Left));
+                }
+
+                if (row < EntriesPerPage - 1)
+                {
+                    records.Add(CreateRuleRecord(15, rowTop + 24, 166));
+                }
+            }
+
+            records.Add(CreateRuleRecord(15, 220, 166));
+            records.Add(CreateTextRecord(page?.Footer, 16, 227, 164, 11, CollectionBookTextAlignment.Center));
+            return records;
+        }
+
+        private static CollectionBookRecordSnapshot CreateTextRecord(string text, int left, int top, int width, int styleIndex, CollectionBookTextAlignment alignment)
+        {
+            return new CollectionBookRecordSnapshot
+            {
+                Type = CollectionBookRecordType.Text,
+                Text = text ?? string.Empty,
+                Left = left,
+                Top = top,
+                Width = width,
+                StyleIndex = styleIndex,
+                Alignment = alignment
+            };
+        }
+
+        private static CollectionBookRecordSnapshot CreateRuleRecord(int left, int top, int width)
+        {
+            return new CollectionBookRecordSnapshot
+            {
+                Type = CollectionBookRecordType.Rule,
+                Left = left,
+                Top = top,
+                Width = width
+            };
+        }
+
+        private static int ResolveEntryStyleIndex(CollectionBookEntryTone tone)
+        {
+            return tone switch
+            {
+                CollectionBookEntryTone.Success => 6,
+                CollectionBookEntryTone.Warning => 4,
+                CollectionBookEntryTone.Accent => 8,
+                CollectionBookEntryTone.Muted => 10,
+                _ => 2
             };
         }
 

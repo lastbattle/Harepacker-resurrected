@@ -316,8 +316,12 @@ namespace HaCreator.MapSimulator.Character
                 [42] = "jump",
                 [43] = "sit",
                 [44] = "prone",
+                // CAvatar::MoveAction2RawAction also returns these base floating and dead raw codes.
+                [45] = "fly",
+                [46] = "swim",
                 [47] = "proneStab",
                 [48] = "heal",
+                [80] = "dead",
                 [270] = "ladder",
                 [271] = "rope",
             };
@@ -333,8 +337,11 @@ namespace HaCreator.MapSimulator.Character
                 ["jump"] = 42,
                 ["sit"] = 43,
                 ["prone"] = 44,
+                ["fly"] = 45,
+                ["swim"] = 46,
                 ["proneStab"] = 47,
                 ["heal"] = 48,
+                ["dead"] = 80,
                 ["ladder"] = 270,
                 ["rope"] = 271,
             };
@@ -892,6 +899,14 @@ namespace HaCreator.MapSimulator.Character
         }
     }
 
+    public sealed class CarryItemEffectDefinition
+    {
+        public PortableChairLayer BundleLayer { get; set; }
+        public PortableChairLayer SingleLayerA { get; set; }
+        public PortableChairLayer SingleLayerB { get; set; }
+        public bool IsReady => BundleLayer != null || SingleLayerA != null || SingleLayerB != null;
+    }
+
     public sealed class RelationshipTextTagStyle
     {
         public Texture2D Left { get; set; }
@@ -1066,6 +1081,56 @@ namespace HaCreator.MapSimulator.Character
         public bool CanIncreasePrimaryStat(int currentValue)
         {
             return AP > 0 && currentValue < MaxPrimaryStat;
+        }
+
+        public bool IncreasePrimaryStat(BuffStatType stat)
+        {
+            if (AP <= 0)
+            {
+                return false;
+            }
+
+            switch (stat)
+            {
+                case BuffStatType.Strength when CanIncreasePrimaryStat(STR):
+                    STR++;
+                    break;
+                case BuffStatType.Dexterity when CanIncreasePrimaryStat(DEX):
+                    DEX++;
+                    break;
+                case BuffStatType.Intelligence when CanIncreasePrimaryStat(INT):
+                    INT++;
+                    break;
+                case BuffStatType.Luck when CanIncreasePrimaryStat(LUK):
+                    LUK++;
+                    break;
+                default:
+                    return false;
+            }
+
+            AP--;
+            return true;
+        }
+
+        public void AutoAssignAbilityPoints()
+        {
+            while (AP > 0)
+            {
+                bool assigned = AutoAssignClass switch
+                {
+                    AutoAssignClassWarrior => TryAutoAssignWarriorPoint(),
+                    AutoAssignClassMagician => TryAutoAssignMagicianPoint(),
+                    AutoAssignClassBowman => TryAutoAssignBowmanPoint(),
+                    AutoAssignClassThief => TryAutoAssignThiefPoint(),
+                    AutoAssignClassPirate => TryAutoAssignPiratePoint(),
+                    _ => TryAutoAssignBeginnerPoint()
+                };
+
+                if (!assigned)
+                {
+                    break;
+                }
+            }
         }
 
         public int TotalSTR => STR + SumEquipmentBonus(part => part.BonusSTR) + GetSkillStatBonus(BuffStatType.Strength);
@@ -1415,6 +1480,74 @@ namespace HaCreator.MapSimulator.Character
         private static int DefaultRollInclusive(int min, int max)
         {
             return Random.Shared.Next(min, max + 1);
+        }
+
+        private bool TryAutoAssignWarriorPoint()
+        {
+            return STR % 5 == 0 && DEX < STR / 2
+                ? IncreasePrimaryStat(BuffStatType.Dexterity) || IncreasePrimaryStat(BuffStatType.Strength)
+                : IncreasePrimaryStat(BuffStatType.Strength) || IncreasePrimaryStat(BuffStatType.Dexterity);
+        }
+
+        private bool TryAutoAssignMagicianPoint()
+        {
+            return INT % 5 == 0 && LUK < INT / 2
+                ? IncreasePrimaryStat(BuffStatType.Luck) || IncreasePrimaryStat(BuffStatType.Intelligence)
+                : IncreasePrimaryStat(BuffStatType.Intelligence) || IncreasePrimaryStat(BuffStatType.Luck);
+        }
+
+        private bool TryAutoAssignBowmanPoint()
+        {
+            return DEX % 5 == 0 && STR < DEX / 2
+                ? IncreasePrimaryStat(BuffStatType.Strength) || IncreasePrimaryStat(BuffStatType.Dexterity)
+                : IncreasePrimaryStat(BuffStatType.Dexterity) || IncreasePrimaryStat(BuffStatType.Strength);
+        }
+
+        private bool TryAutoAssignThiefPoint()
+        {
+            return LUK % 5 == 0 && DEX < LUK / 2
+                ? IncreasePrimaryStat(BuffStatType.Dexterity) || IncreasePrimaryStat(BuffStatType.Luck)
+                : IncreasePrimaryStat(BuffStatType.Luck) || IncreasePrimaryStat(BuffStatType.Dexterity);
+        }
+
+        private bool TryAutoAssignPiratePoint()
+        {
+            return STR <= DEX
+                ? IncreasePrimaryStat(BuffStatType.Strength) || IncreasePrimaryStat(BuffStatType.Dexterity)
+                : IncreasePrimaryStat(BuffStatType.Dexterity) || IncreasePrimaryStat(BuffStatType.Strength);
+        }
+
+        private bool TryAutoAssignBeginnerPoint()
+        {
+            int minStat = Math.Min(Math.Min(STR, DEX), Math.Min(INT, LUK));
+            if (STR == minStat)
+            {
+                return IncreasePrimaryStat(BuffStatType.Strength)
+                       || IncreasePrimaryStat(BuffStatType.Dexterity)
+                       || IncreasePrimaryStat(BuffStatType.Intelligence)
+                       || IncreasePrimaryStat(BuffStatType.Luck);
+            }
+
+            if (DEX == minStat)
+            {
+                return IncreasePrimaryStat(BuffStatType.Dexterity)
+                       || IncreasePrimaryStat(BuffStatType.Intelligence)
+                       || IncreasePrimaryStat(BuffStatType.Luck)
+                       || IncreasePrimaryStat(BuffStatType.Strength);
+            }
+
+            if (INT == minStat)
+            {
+                return IncreasePrimaryStat(BuffStatType.Intelligence)
+                       || IncreasePrimaryStat(BuffStatType.Luck)
+                       || IncreasePrimaryStat(BuffStatType.Strength)
+                       || IncreasePrimaryStat(BuffStatType.Dexterity);
+            }
+
+            return IncreasePrimaryStat(BuffStatType.Luck)
+                   || IncreasePrimaryStat(BuffStatType.Strength)
+                   || IncreasePrimaryStat(BuffStatType.Dexterity)
+                   || IncreasePrimaryStat(BuffStatType.Intelligence);
         }
 
         private static int ApplyRateBonus(int value, int percent)

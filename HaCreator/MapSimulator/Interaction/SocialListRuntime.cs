@@ -843,6 +843,7 @@ namespace HaCreator.MapSimulator.Interaction
                     destination.Add("Party.Search");
                     break;
                 case SocialListTab.Guild:
+                    bool canManageGuildRoster = CanManageGuildRanks() || CanToggleGuildAdmission();
                     destination.Add("Guild.Search");
                     if (!ResolveEffectiveGuildMembership(null))
                     {
@@ -850,51 +851,74 @@ namespace HaCreator.MapSimulator.Interaction
                     }
 
                     destination.Add("Guild.Board");
-                    destination.Add("Guild.Invite");
+                    if (canManageGuildRoster)
+                    {
+                        destination.Add("Guild.Invite");
+                    }
+
                     if (selectedEntry != null)
                     {
-                        destination.Add("Guild.GradeUp");
-                        destination.Add("Guild.GradeDown");
                         destination.Add("Guild.Where");
                         destination.Add("Guild.Whisper");
                         destination.Add("Guild.Info");
                         destination.Add("Guild.Skill");
-                        if (CanManageGuild())
+                        if (CanManageGuildRanks())
+                        {
+                            destination.Add("Guild.GradeUp");
+                            destination.Add("Guild.GradeDown");
+                        }
+
+                        if (CanOpenGuildManageWindow())
                         {
                             destination.Add("Guild.Manage");
+                        }
+
+                        if (CanEditGuildNotice())
+                        {
                             destination.Add("Guild.Change");
                         }
-                        if (!selectedEntry.IsLocalPlayer)
+
+                        if (!selectedEntry.IsLocalPlayer && canManageGuildRoster)
                         {
                             destination.Add("Guild.PartyInvite");
                             destination.Add("Guild.Kick");
                         }
-                        else
+                        else if (selectedEntry.IsLocalPlayer)
                         {
                             destination.Add("Guild.Withdraw");
                         }
                     }
                     break;
                 case SocialListTab.Alliance:
-                    destination.Add("Alliance.Invite");
+                    bool canManageAllianceRanks = CanEditAllianceRanks();
+                    if (canManageAllianceRanks)
+                    {
+                        destination.Add("Alliance.Invite");
+                    }
+
                     if (selectedEntry != null)
                     {
                         destination.Add("Alliance.Chat");
                         destination.Add("Alliance.Whisper");
                         destination.Add("Alliance.Info");
-                        if (CanManageAlliance())
+                        if (canManageAllianceRanks)
                         {
                             destination.Add("Alliance.Change");
+                            destination.Add("Alliance.GradeUp");
+                            destination.Add("Alliance.GradeDown");
+                        }
+
+                        if (CanEditAllianceNotice())
+                        {
                             destination.Add("Alliance.Notice");
                         }
-                        destination.Add("Alliance.GradeUp");
-                        destination.Add("Alliance.GradeDown");
-                        if (!selectedEntry.IsLocalPlayer)
+
+                        if (!selectedEntry.IsLocalPlayer && canManageAllianceRanks)
                         {
                             destination.Add("Alliance.PartyInvite");
                             destination.Add("Alliance.Kick");
                         }
-                        else
+                        else if (selectedEntry.IsLocalPlayer)
                         {
                             destination.Add("Alliance.Withdraw");
                         }
@@ -1218,6 +1242,11 @@ namespace HaCreator.MapSimulator.Interaction
                 return requestMessage;
             }
 
+            if (!(CanManageGuildRanks() || CanToggleGuildAdmission()))
+            {
+                return $"Guild invite is read-only while the active authority role is {GetEffectiveGuildRoleLabel()}.";
+            }
+
             SocialEntryState recruit = DequeueNextUnique(_guildInviteSeeds, SocialListTab.Guild);
             if (recruit == null)
             {
@@ -1240,6 +1269,20 @@ namespace HaCreator.MapSimulator.Interaction
             if (selectedEntry == null)
             {
                 return $"Select a {owner} entry before removing it.";
+            }
+
+            if (!selectedEntry.IsLocalPlayer)
+            {
+                bool canRemoveRemoteEntry = tab == SocialListTab.Guild
+                    ? CanManageGuildRanks()
+                    : CanEditAllianceRanks();
+                if (!canRemoveRemoteEntry)
+                {
+                    string roleLabel = tab == SocialListTab.Guild
+                        ? GetEffectiveGuildRoleLabel()
+                        : GetEffectiveAllianceRoleLabel();
+                    return $"{owner} removal is read-only while the active authority role is {roleLabel}.";
+                }
             }
 
             if (selectedEntry.IsLocalPlayer)
@@ -1279,6 +1322,11 @@ namespace HaCreator.MapSimulator.Interaction
             if (TryStagePacketOwnedRequest(SocialListTab.Guild, delta > 0 ? "Guild grade up" : "Guild grade down", out string requestMessage))
             {
                 return requestMessage;
+            }
+
+            if (!CanManageGuildRanks())
+            {
+                return $"Guild grade changes are read-only while the active authority role is {GetEffectiveGuildRoleLabel()}.";
             }
 
             SocialEntryState selectedEntry = GetSelectedEntry(SocialListTab.Guild);
@@ -1331,6 +1379,11 @@ namespace HaCreator.MapSimulator.Interaction
             if (TryStagePacketOwnedRequest(SocialListTab.Alliance, "Alliance invite", out string requestMessage))
             {
                 return requestMessage;
+            }
+
+            if (!CanEditAllianceRanks())
+            {
+                return $"Alliance invite is read-only while the active authority role is {GetEffectiveAllianceRoleLabel()}.";
             }
 
             SocialEntryState recruit = DequeueNextUnique(_allianceInviteSeeds, SocialListTab.Alliance);

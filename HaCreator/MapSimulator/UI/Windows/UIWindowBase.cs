@@ -60,6 +60,12 @@ namespace HaCreator.MapSimulator.UI
         public virtual bool CapturesKeyboardInput => false;
 
         /// <summary>
+        /// Whether the window should be skipped when the manager hides the topmost or all windows.
+        /// Used for client-owned overlay hosts that should stay resident.
+        /// </summary>
+        public virtual bool ExcludeFromWindowManagerHide => false;
+
+        /// <summary>
         /// Optional callback invoked whenever the window is shown through any path.
         /// </summary>
         public Action<UIWindowBase> BeforeShow { get; set; }

@@ -10,12 +10,14 @@ namespace HaCreator.MapSimulator.Interaction
         internal const string ClientOwnerEntryPoint = "CWvsContext::OnMarriageResult";
         internal const int ClientOpenResultSubtype = 15;
         internal const string ClientPresentationMode = "DoModal";
+        internal const int DefaultClientDialogType = 1;
+        internal const int AlternateClientDialogType = 2;
         internal const string PrimaryInvitationAssetPath = "UIWindow2.img/Wedding/Invitation";
         internal const string FallbackInvitationAssetPath = "UIWindow.img/Wedding/Invitation";
         internal const string AcceptButtonAssetName = "BtOK";
         internal const int AcceptStringPoolId = 0x19CE;
-        internal const int DefaultDialogTitleStringPoolId = 0xEAF;
-        internal const int TypeTwoDialogTitleStringPoolId = 0xEB0;
+        internal const int DefaultDialogUolStringPoolId = 0xEAF;
+        internal const int AlternateDialogUolStringPoolId = 0xEB0;
         internal const string NameFontToken = "FONT_BASIC_BLACK";
         internal const int GroomNameX = 50;
         internal const int BrideNameX = 131;
@@ -56,7 +58,7 @@ namespace HaCreator.MapSimulator.Interaction
             _groomName = NormalizeName(groomName, string.IsNullOrWhiteSpace(_localCharacterName) ? DefaultGroomName : _localCharacterName);
             _brideName = NormalizeName(brideName, DefaultBrideName);
             _style = style;
-            _clientDialogType = clientDialogType;
+            _clientDialogType = NormalizeClientDialogType(clientDialogType);
             _isOpen = true;
             _lastAccepted = false;
             _sourceDescription = string.IsNullOrWhiteSpace(sourceDescription)
@@ -107,6 +109,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal WeddingInvitationSnapshot BuildSnapshot()
         {
+            int resolvedClientDialogType = NormalizeClientDialogType(_clientDialogType);
             return new WeddingInvitationSnapshot
             {
                 IsOpen = _isOpen,
@@ -121,10 +124,10 @@ namespace HaCreator.MapSimulator.Interaction
                 ClientOwnerEntryPoint = ClientOwnerEntryPoint,
                 ClientOpenResultSubtype = ClientOpenResultSubtype,
                 ClientPresentationMode = ClientPresentationMode,
-                ClientDialogType = _clientDialogType,
-                DialogTitleStringPoolId = ResolveDialogTitleStringPoolId(_clientDialogType),
-                DefaultDialogTitleStringPoolId = DefaultDialogTitleStringPoolId,
-                AlternateDialogTitleStringPoolId = TypeTwoDialogTitleStringPoolId,
+                ClientDialogType = resolvedClientDialogType,
+                DialogUolStringPoolId = ResolveDialogTitleStringPoolId(resolvedClientDialogType),
+                DefaultDialogUolStringPoolId = DefaultDialogUolStringPoolId,
+                AlternateDialogUolStringPoolId = AlternateDialogUolStringPoolId,
                 AcceptStringPoolId = AcceptStringPoolId,
                 NameFontToken = NameFontToken,
                 InvitationAssetPath = ResolveBackgroundAssetPath(_style),
@@ -169,9 +172,16 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static int ResolveDialogTitleStringPoolId(int? clientDialogType)
         {
-            return clientDialogType == 2
-                ? TypeTwoDialogTitleStringPoolId
-                : DefaultDialogTitleStringPoolId;
+            return NormalizeClientDialogType(clientDialogType) == AlternateClientDialogType
+                ? AlternateDialogUolStringPoolId
+                : DefaultDialogUolStringPoolId;
+        }
+
+        private static int NormalizeClientDialogType(int? clientDialogType)
+        {
+            return clientDialogType == AlternateClientDialogType
+                ? AlternateClientDialogType
+                : DefaultClientDialogType;
         }
     }
 
@@ -188,11 +198,11 @@ namespace HaCreator.MapSimulator.Interaction
         public bool CanAccept { get; init; }
         public bool LastAccepted { get; init; }
         public bool HasAcceptFocus { get; init; }
-        public int? ClientDialogType { get; init; }
+        public int ClientDialogType { get; init; } = WeddingInvitationRuntime.DefaultClientDialogType;
         public int ClientOpenResultSubtype { get; init; }
-        public int DialogTitleStringPoolId { get; init; }
-        public int DefaultDialogTitleStringPoolId { get; init; }
-        public int AlternateDialogTitleStringPoolId { get; init; }
+        public int DialogUolStringPoolId { get; init; }
+        public int DefaultDialogUolStringPoolId { get; init; }
+        public int AlternateDialogUolStringPoolId { get; init; }
         public int AcceptStringPoolId { get; init; }
         public string GroomName { get; init; } = string.Empty;
         public string BrideName { get; init; } = string.Empty;

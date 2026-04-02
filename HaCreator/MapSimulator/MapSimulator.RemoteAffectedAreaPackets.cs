@@ -240,6 +240,7 @@ namespace HaCreator.MapSimulator
                 && skillManager.ApplyOrRefreshExternalAreaSupportBuff(
                     area.ObjectId,
                     skill,
+                    supportSkills,
                     levelData,
                     currentTime,
                     RemoteAffectedAreaFallbackTickMs + 250))
@@ -285,23 +286,39 @@ namespace HaCreator.MapSimulator
                 return Array.Empty<SkillData>();
             }
 
-            var supportSkills = new System.Collections.Generic.List<SkillData> { skill };
-            int[] affectedSkillIds = skill.GetAffectedSkillIds();
-            if (affectedSkillIds.Length == 0)
+            var supportSkills = new System.Collections.Generic.List<SkillData>();
+            var visitedSkillIds = new System.Collections.Generic.HashSet<int>();
+            CollectRemoteAffectedAreaSupportSkills(skill, supportSkills, visitedSkillIds);
+            return supportSkills.ToArray();
+        }
+
+        private void CollectRemoteAffectedAreaSupportSkills(
+            SkillData skill,
+            System.Collections.Generic.ICollection<SkillData> supportSkills,
+            System.Collections.Generic.ISet<int> visitedSkillIds)
+        {
+            if (skill == null)
             {
-                return supportSkills.ToArray();
+                return;
             }
 
+            int skillId = skill.SkillId;
+            if (skillId > 0 && visitedSkillIds?.Add(skillId) != true)
+            {
+                return;
+            }
+
+            supportSkills?.Add(skill);
+
+            int[] affectedSkillIds = skill.GetAffectedSkillIds();
             for (int i = 0; i < affectedSkillIds.Length; i++)
             {
                 SkillData affectedSkill = _playerManager?.SkillLoader?.LoadSkill(affectedSkillIds[i]);
                 if (affectedSkill != null)
                 {
-                    supportSkills.Add(affectedSkill);
+                    CollectRemoteAffectedAreaSupportSkills(affectedSkill, supportSkills, visitedSkillIds);
                 }
             }
-
-            return supportSkills.ToArray();
         }
 
         private static SkillLevelData ResolveRemoteAffectedAreaSupportLevelData(

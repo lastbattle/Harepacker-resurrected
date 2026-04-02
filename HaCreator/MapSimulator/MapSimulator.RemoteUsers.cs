@@ -103,6 +103,7 @@ namespace HaCreator.MapSimulator
             }
 
             _remoteUserPool.Clear();
+            _animationEffects.ClearUserStates();
             return ChatCommandHandler.CommandResult.Ok("Remote user pool cleared.");
         }
 
@@ -541,8 +542,14 @@ namespace HaCreator.MapSimulator
             }
 
             return _remoteUserPool.TryRemove(characterId, out string message)
-                ? ChatCommandHandler.CommandResult.Ok($"Remote user {characterId} removed.")
+                ? HandleRemoteUserRemovalCommandResult(characterId)
                 : ChatCommandHandler.CommandResult.Error(message);
+        }
+
+        private ChatCommandHandler.CommandResult HandleRemoteUserRemovalCommandResult(int characterId)
+        {
+            _animationEffects.RemoveUserState(characterId, currTickCount);
+            return ChatCommandHandler.CommandResult.Ok($"Remote user {characterId} removed.");
         }
 
         private ChatCommandHandler.CommandResult HandleRemoteUserFollowCommand(string[] args)
@@ -692,6 +699,7 @@ namespace HaCreator.MapSimulator
                             enterPacket.TemporaryStats,
                             delay: 0,
                             out _);
+                        SyncAnimationDisplayerRemoteUserState(enterPacket.CharacterId);
                     }
 
                     result = created
@@ -718,6 +726,7 @@ namespace HaCreator.MapSimulator
                     if (removed)
                     {
                         _summonedPool.RemoveOwnerSummons(leavePacket.CharacterId, currentTime);
+                        _animationEffects.RemoveUserState(leavePacket.CharacterId, currentTime);
                     }
 
                     result = removed
@@ -969,6 +978,7 @@ namespace HaCreator.MapSimulator
 
                     bool itemEffectApplied = _remoteUserPool.TrySetItemEffect(
                         itemEffectPacket.CharacterId,
+                        itemEffectPacket.RelationshipType,
                         itemEffectPacket.ItemId,
                         itemEffectPacket.PairCharacterId,
                         currentTime,
@@ -1004,6 +1014,10 @@ namespace HaCreator.MapSimulator
                     bool temporaryStatSetApplied = _remoteUserPool.TryApplyTemporaryStatSet(
                         temporaryStatSetPacket,
                         out string temporaryStatSetMessage);
+                    if (temporaryStatSetApplied)
+                    {
+                        SyncAnimationDisplayerRemoteUserState(temporaryStatSetPacket.CharacterId);
+                    }
                     result = temporaryStatSetApplied
                         ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {temporaryStatSetPacket.CharacterId}."
                         : temporaryStatSetMessage;
@@ -1019,6 +1033,10 @@ namespace HaCreator.MapSimulator
                     bool temporaryStatResetApplied = _remoteUserPool.TryApplyTemporaryStatReset(
                         temporaryStatResetPacket,
                         out string temporaryStatResetMessage);
+                    if (temporaryStatResetApplied)
+                    {
+                        SyncAnimationDisplayerRemoteUserState(temporaryStatResetPacket.CharacterId);
+                    }
                     result = temporaryStatResetApplied
                         ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {temporaryStatResetPacket.CharacterId}."
                         : temporaryStatResetMessage;
@@ -1047,7 +1065,30 @@ namespace HaCreator.MapSimulator
             return 0x40000000 | (Math.Abs(hash) & 0x3FFFFFFF);
         }
 
-        private string ResolveRemotePickupActorName(DropPickupActorKind actorKind, int actorId, string actorName)
+        private string ResolveRemotePickupActorName(
+            DropPickupActorKind actorKind,
+            int actorId,
+            string actorName,
+            int fallbackOwnerId = 0)
+        {
+            return ResolveRemotePickupActorName(
+                actorKind,
+                actorId,
+                actorName,
+                _remoteUserPool,
+                ResolveMobPickupSourceName,
+                ResolvePickupItemName,
+                fallbackOwnerId);
+        }
+
+        internal static string ResolveRemotePickupActorName(
+            DropPickupActorKind actorKind,
+            int actorId,
+            string actorName,
+            RemoteUserActorPool remoteUserPool,
+            Func<int, string> mobNameResolver,
+            Func<int, string> itemNameResolver,
+            int fallbackOwnerId = 0)
         {
             if (!string.IsNullOrWhiteSpace(actorName))
             {
@@ -1056,12 +1097,85 @@ namespace HaCreator.MapSimulator
 
             return actorKind switch
             {
-                DropPickupActorKind.Player when actorId > 0 && _remoteUserPool.TryGetActor(actorId, out RemoteUserActor actor)
+                DropPickupActorKind.Player when actorId > 0 && remoteUserPool?.TryGetActor(actorId, out RemoteUserActor actor) == true
                     => actor.Name,
-                DropPickupActorKind.Mob when actorId > 0
-                    => ResolveMobPickupSourceName(actorId),
+                DropPickupActorKind.Pet
+                    => ResolveRemotePetPickupActorName(actorId, fallbackOwnerId, remoteUserPool, itemNameResolver),
+                DropPickupActorKind.Mob when actorId > 0 && mobNameResolver != null
+                    => mobNameResolver(actorId),
                 _ => null
             };
+        }
+
+        internal static string ResolveRemotePetPickupActorName(
+            int actorId,
+            int fallbackOwnerId,
+            RemoteUserActorPool remoteUserPool,
+            Func<int, string> itemNameResolver)
+        {
+            if (remoteUserPool == null)
+            {
+                return null;
+            }
+
+            if (TryDecodeRemotePetPickupActorId(actorId, out int ownerCharacterId, out int slotIndex)
+                && remoteUserPool.TryGetActor(ownerCharacterId, out RemoteUserActor ownerActor))
+            {
+                string petName = ResolveRemotePetPickupItemName(ownerActor, slotIndex, itemNameResolver);
+                if (!string.IsNullOrWhiteSpace(petName))
+                {
+                    return petName;
+                }
+
+                return FormatRemoteOwnerPetLabel(ownerActor.Name);
+            }
+
+            int resolvedOwnerId = fallbackOwnerId;
+            if (resolvedOwnerId <= 0 && actorId > 0 && remoteUserPool.TryGetActor(actorId, out _))
+            {
+                resolvedOwnerId = actorId;
+            }
+
+            if (resolvedOwnerId > 0 && remoteUserPool.TryGetActor(resolvedOwnerId, out RemoteUserActor fallbackOwner))
+            {
+                return FormatRemoteOwnerPetLabel(fallbackOwner.Name);
+            }
+
+            return null;
+        }
+
+        internal static string FormatRemoteOwnerPetLabel(string ownerName)
+        {
+            if (string.IsNullOrWhiteSpace(ownerName))
+            {
+                return null;
+            }
+
+            string trimmedOwnerName = ownerName.Trim();
+            return trimmedOwnerName.EndsWith("s", StringComparison.OrdinalIgnoreCase)
+                ? $"{trimmedOwnerName}' pet"
+                : $"{trimmedOwnerName}'s pet";
+        }
+
+        private static string ResolveRemotePetPickupItemName(
+            RemoteUserActor ownerActor,
+            int slotIndex,
+            Func<int, string> itemNameResolver)
+        {
+            if (ownerActor?.Build?.RemotePetItemIds == null
+                || slotIndex < 0
+                || slotIndex >= ownerActor.Build.RemotePetItemIds.Count)
+            {
+                return null;
+            }
+
+            int petItemId = ownerActor.Build.RemotePetItemIds[slotIndex];
+            if (petItemId <= 0)
+            {
+                return null;
+            }
+
+            return itemNameResolver?.Invoke(petItemId);
         }
 
         private static bool TryParseRemoteUserHelperMarker(string text, out MinimapUI.HelperMarkerType? markerType)

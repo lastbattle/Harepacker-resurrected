@@ -58,6 +58,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             public bool FacingRight { get; init; }
             public int RequiredWeaponCode { get; init; }
             public int ShootRange0 { get; init; }
+            public ShootAmmoSelection ResolvedShootAmmoSelection { get; init; }
         }
 
         private sealed class DeferredSkillPayload
@@ -76,6 +77,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             public string ActionName { get; init; }
             public float? StoredVerticalLaunchSpeed { get; init; }
             public int ShootRange0 { get; init; }
+            public ShootAmmoSelection ResolvedShootAmmoSelection { get; init; }
         }
 
         private sealed class DeferredMovingShootExecutionState
@@ -100,6 +102,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             public Vector2 SourcePosition { get; init; }
             public Vector2? PreferredTargetPosition { get; init; }
             public bool FacingRight { get; init; }
+            public ShootAmmoSelection ResolvedShootAmmoSelection { get; init; }
         }
 
         private sealed class QueuedSerialAttack
@@ -1375,8 +1378,28 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         public bool TryApplyPacketOwnedMeleeAttack(int skillId, int currentTime, out SkillData skill, out int level, out string errorMessage)
         {
+            return TryApplyPacketOwnedMeleeAttack(
+                skillId,
+                currentTime,
+                rawActionCode: null,
+                out skill,
+                out level,
+                out _,
+                out errorMessage);
+        }
+
+        public bool TryApplyPacketOwnedMeleeAttack(
+            int skillId,
+            int currentTime,
+            int? rawActionCode,
+            out SkillData skill,
+            out int level,
+            out string resolvedActionName,
+            out string errorMessage)
+        {
             skill = null;
             level = 0;
+            resolvedActionName = null;
             errorMessage = null;
 
             if (skillId <= 0)
@@ -1406,6 +1429,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
+            resolvedActionName = ResolvePacketOwnedMeleeAttackActionName(
+                skill,
+                rawActionCode,
+                _player?.CurrentActionName,
+                candidate => _player?.CanRenderAction(candidate) == true);
+            TriggerSkillAnimation(skill, currentTime, resolvedActionName);
             ProcessMeleeAttack(skill, level, currentTime, _player.FacingRight, queueFollowUps: false);
             return true;
         }
@@ -1573,6 +1602,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     return;
                 }
 
+                RecordPreparedSkillExclusiveRequest(currentTime);
                 ReleasePreparedSkill(currentTime);
             }
         }
@@ -2311,6 +2341,89 @@ namespace HaCreator.MapSimulator.Character.Skills
             };
         }
 
+        internal static string ResolvePacketOwnedMeleeAttackActionName(
+            SkillData skill,
+            int? rawActionCode,
+            string currentActionName,
+            Func<string, bool> canRenderAction = null)
+        {
+            string fallbackCandidate = null;
+            foreach (string candidate in EnumeratePacketOwnedMeleeAttackActionCandidates(skill, rawActionCode, currentActionName))
+            {
+                fallbackCandidate ??= candidate;
+                if (canRenderAction == null || canRenderAction(candidate))
+                {
+                    return candidate;
+                }
+            }
+
+            return fallbackCandidate;
+        }
+
+        internal static IEnumerable<string> EnumeratePacketOwnedMeleeAttackActionCandidates(
+            SkillData skill,
+            int? rawActionCode,
+            string currentActionName)
+        {
+            var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            if (rawActionCode.HasValue
+                && CharacterPart.TryGetActionStringFromCode(rawActionCode.Value, out string rawActionName)
+                && !string.IsNullOrWhiteSpace(rawActionName))
+            {
+                string normalizedRawActionName = rawActionName.Trim();
+                if (yielded.Add(normalizedRawActionName))
+                {
+                    yield return normalizedRawActionName;
+                }
+            }
+
+            if (skill?.ActionNames != null)
+            {
+                foreach (string actionName in skill.ActionNames)
+                {
+                    if (string.IsNullOrWhiteSpace(actionName))
+                    {
+                        continue;
+                    }
+
+                    string normalizedActionName = actionName.Trim();
+                    if (yielded.Add(normalizedActionName))
+                    {
+                        yield return normalizedActionName;
+                    }
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(skill?.ActionName))
+            {
+                string normalizedSkillActionName = skill.ActionName.Trim();
+                if (yielded.Add(normalizedSkillActionName))
+                {
+                    yield return normalizedSkillActionName;
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(currentActionName))
+            {
+                string normalizedCurrentActionName = currentActionName.Trim();
+                if (yielded.Add(normalizedCurrentActionName))
+                {
+                    yield return normalizedCurrentActionName;
+                }
+            }
+
+            string resolvedDefaultActionName = ResolveSkillActionName(skill);
+            if (!string.IsNullOrWhiteSpace(resolvedDefaultActionName))
+            {
+                string normalizedDefaultActionName = resolvedDefaultActionName.Trim();
+                if (yielded.Add(normalizedDefaultActionName))
+                {
+                    yield return normalizedDefaultActionName;
+                }
+            }
+        }
+
         private void ApplySkillMount(SkillData skill, SkillLevelData levelData)
         {
             int mountItemId = ResolveSkillMountItemId(skill, levelData);
@@ -2814,10 +2927,10 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             return mountItemId switch
             {
-                BATTLESHIP_TAMING_MOB_ID => ClientOwnedVehicleSkillClassifier.IsBattleshipVehicleActionName(
+                BATTLESHIP_TAMING_MOB_ID => ClientOwnedVehicleSkillClassifier.IsBattleshipVehicleOwnedCurrentActionName(
                     actionName,
                     includeSupportActions: true),
-                MECHANIC_TAMING_MOB_ID => ClientOwnedVehicleSkillClassifier.IsMechanicVehicleActionName(
+                MECHANIC_TAMING_MOB_ID => ClientOwnedVehicleSkillClassifier.IsMechanicVehicleOwnedCurrentActionName(
                     actionName,
                     includeTransformStates: true),
                 _ => false
@@ -4293,7 +4406,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 AttackOrigin = attackOrigin,
                 IsQueuedFinalAttack = isQueuedFinalAttack,
                 IsQueuedSparkAttack = isQueuedSparkAttack,
-                ShootRange0 = shootRange0Override
+                ShootRange0 = shootRange0Override,
+                ResolvedShootAmmoSelection = LastResolvedShootAmmoSelection?.Snapshot()
             });
             return true;
         }
@@ -4968,6 +5082,21 @@ namespace HaCreator.MapSimulator.Character.Skills
                 {
                     yield return "swallow_loop";
                 }
+            }
+
+            if (skill?.SkillId == 32121003)
+            {
+                yield return "cyclone";
+            }
+
+            if (skill?.SkillId == 5311002)
+            {
+                yield return "noiseWave_ing";
+            }
+
+            if (skill?.SkillId == 23121000)
+            {
+                yield return "dualVulcanLoop";
             }
         }
 
@@ -5739,20 +5868,29 @@ namespace HaCreator.MapSimulator.Character.Skills
                     RegisterDeferredMovingShootExecution(pending.Skill.SkillId, currentTime);
                 }
 
-                ExecuteSkillPayload(
-                    pending.Skill,
-                    pendingLevel,
-                    currentTime,
-                    pending.QueueFollowUps,
-                    preferredTargetMobId,
-                    pending.PreferredTargetPosition,
-                    allowDeferredExecution: false,
-                    revalidateDeferredExecutionSkillLevel: false,
-                    isQueuedFinalAttack: pending.IsQueuedFinalAttack,
-                    isQueuedSparkAttack: pending.IsQueuedSparkAttack,
-                    facingRightOverride: pending.FacingRight,
-                    attackOriginOverride: pending.AttackOrigin,
-                    shootRange0Override: pending.ShootRange0);
+                ShootAmmoSelection previousResolvedShootAmmoSelection = LastResolvedShootAmmoSelection?.Snapshot();
+                try
+                {
+                    LastResolvedShootAmmoSelection = pending.ResolvedShootAmmoSelection?.Snapshot();
+                    ExecuteSkillPayload(
+                        pending.Skill,
+                        pendingLevel,
+                        currentTime,
+                        pending.QueueFollowUps,
+                        preferredTargetMobId,
+                        pending.PreferredTargetPosition,
+                        allowDeferredExecution: false,
+                        revalidateDeferredExecutionSkillLevel: false,
+                        isQueuedFinalAttack: pending.IsQueuedFinalAttack,
+                        isQueuedSparkAttack: pending.IsQueuedSparkAttack,
+                        facingRightOverride: pending.FacingRight,
+                        attackOriginOverride: pending.AttackOrigin,
+                        shootRange0Override: pending.ShootRange0);
+                }
+                finally
+                {
+                    LastResolvedShootAmmoSelection = previousResolvedShootAmmoSelection;
+                }
             }
         }
 
@@ -11260,7 +11398,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return 0;
             }
 
-            int prepareDuration = GetSkillAnimationDuration(summon.SkillData.SummonAttackPrepareAnimation) ?? 0;
+            int prepareDuration = SummonRuntimeRules.ResolveSummonActionPrepareDurationMs(
+                summon.SkillData,
+                summon.CurrentAnimationBranchName);
             SkillAnimation actionAnimation = ResolveSummonPendingRemovalActionAnimation(summon);
             int actionDuration = GetSkillAnimationDuration(actionAnimation) ?? 0;
             return actionDuration > 0 ? prepareDuration + actionDuration : 0;
@@ -12382,7 +12522,13 @@ namespace HaCreator.MapSimulator.Character.Skills
             return true;
         }
 
-        public bool ApplyOrRefreshExternalAreaSupportBuff(int areaObjectId, SkillData sourceSkill, SkillLevelData levelData, int currentTime, int durationMs)
+        public bool ApplyOrRefreshExternalAreaSupportBuff(
+            int areaObjectId,
+            SkillData sourceSkill,
+            IReadOnlyCollection<SkillData> supportSkills,
+            SkillLevelData levelData,
+            int currentTime,
+            int durationMs)
         {
             SkillLevelData projectedLevelData = RemoteAffectedAreaSupportResolver.CreateProjectedSupportBuffLevelData(levelData);
             if (areaObjectId <= 0 || projectedLevelData == null)
@@ -12405,7 +12551,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 existingBuff.StartTime = currentTime;
                 existingBuff.Duration = normalizedDurationMs;
                 existingBuff.Level = Math.Max(1, projectedLevelData.Level);
-                existingBuff.SkillData = BuildExternalAreaSupportBuffSkillData(sourceSkill, syntheticBuffId);
+                existingBuff.SkillData = BuildExternalAreaSupportBuffSkillData(sourceSkill, supportSkills, syntheticBuffId);
                 _externalAreaSupportBuffIds.Add(syntheticBuffId);
                 RefreshBuffControlledFlyingAbility();
                 return true;
@@ -12417,7 +12563,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 Level = Math.Max(1, projectedLevelData.Level),
                 StartTime = currentTime,
                 Duration = normalizedDurationMs,
-                SkillData = BuildExternalAreaSupportBuffSkillData(sourceSkill, syntheticBuffId),
+                SkillData = BuildExternalAreaSupportBuffSkillData(sourceSkill, supportSkills, syntheticBuffId),
                 LevelData = projectedLevelData
             };
 
@@ -13148,7 +13294,32 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return null;
             }
 
-            return temporaryStats[0];
+            BuffTemporaryStatPresentation primaryTemporaryStat = null;
+            int bestPrimaryPriority = int.MaxValue;
+            int bestSortOrder = int.MaxValue;
+            for (int i = 0; i < temporaryStats.Count; i++)
+            {
+                BuffTemporaryStatPresentation candidate = temporaryStats[i];
+                if (candidate == null)
+                {
+                    continue;
+                }
+
+                int candidatePrimaryPriority = candidate.PrimaryPriority > 0
+                    ? candidate.PrimaryPriority
+                    : (candidate.SortOrder > 0 ? candidate.SortOrder : GenericBuffPrimaryPriority);
+                int candidateSortOrder = candidate.SortOrder > 0 ? candidate.SortOrder : int.MaxValue;
+                if (primaryTemporaryStat == null
+                    || candidatePrimaryPriority < bestPrimaryPriority
+                    || (candidatePrimaryPriority == bestPrimaryPriority && candidateSortOrder < bestSortOrder))
+                {
+                    primaryTemporaryStat = candidate;
+                    bestPrimaryPriority = candidatePrimaryPriority;
+                    bestSortOrder = candidateSortOrder;
+                }
+            }
+
+            return primaryTemporaryStat ?? temporaryStats[0];
         }
 
         private static int ResolveStatusBarBuffSortOrder(
@@ -13947,19 +14118,67 @@ namespace HaCreator.MapSimulator.Character.Skills
             return true;
         }
 
-        private static SkillData BuildExternalAreaSupportBuffSkillData(SkillData sourceSkill, int syntheticBuffId)
+        private static SkillData BuildExternalAreaSupportBuffSkillData(
+            SkillData sourceSkill,
+            IReadOnlyCollection<SkillData> supportSkills,
+            int syntheticBuffId)
         {
+            string mergedName = sourceSkill?.Name;
+            string mergedDescription = sourceSkill?.Description ?? string.Empty;
+            string mergedAffectedSkillEffect = sourceSkill?.AffectedSkillEffect;
+            bool redirectsDamageToMp = sourceSkill?.RedirectsDamageToMp == true;
+            bool reflectsIncomingDamage = sourceSkill?.ReflectsIncomingDamage == true;
+            bool hasInvincibleMetadata = sourceSkill?.HasInvincibleMetadata == true;
+            string zoneType = sourceSkill?.ZoneType;
+
+            if (supportSkills != null)
+            {
+                foreach (SkillData supportSkill in supportSkills)
+                {
+                    if (supportSkill == null)
+                    {
+                        continue;
+                    }
+
+                    if (string.IsNullOrWhiteSpace(mergedName) && !string.IsNullOrWhiteSpace(supportSkill.Name))
+                    {
+                        mergedName = supportSkill.Name;
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(supportSkill.Description)
+                        && mergedDescription.IndexOf(supportSkill.Description, StringComparison.OrdinalIgnoreCase) < 0)
+                    {
+                        mergedDescription = string.IsNullOrWhiteSpace(mergedDescription)
+                            ? supportSkill.Description
+                            : $"{mergedDescription} {supportSkill.Description}";
+                    }
+
+                    if (string.IsNullOrWhiteSpace(mergedAffectedSkillEffect) && !string.IsNullOrWhiteSpace(supportSkill.AffectedSkillEffect))
+                    {
+                        mergedAffectedSkillEffect = supportSkill.AffectedSkillEffect;
+                    }
+
+                    redirectsDamageToMp |= supportSkill.RedirectsDamageToMp;
+                    reflectsIncomingDamage |= supportSkill.ReflectsIncomingDamage;
+                    hasInvincibleMetadata |= supportSkill.HasInvincibleMetadata;
+                    if (string.IsNullOrWhiteSpace(zoneType) && !string.IsNullOrWhiteSpace(supportSkill.ZoneType))
+                    {
+                        zoneType = supportSkill.ZoneType;
+                    }
+                }
+            }
+
             return new SkillData
             {
                 SkillId = syntheticBuffId,
-                Name = sourceSkill?.Name ?? $"Remote support area {Math.Abs(syntheticBuffId)}",
-                Description = sourceSkill?.Description ?? string.Empty,
+                Name = mergedName ?? $"Remote support area {Math.Abs(syntheticBuffId)}",
+                Description = mergedDescription,
                 IconTexture = sourceSkill?.IconTexture,
-                RedirectsDamageToMp = sourceSkill?.RedirectsDamageToMp == true,
-                ReflectsIncomingDamage = sourceSkill?.ReflectsIncomingDamage == true,
-                HasInvincibleMetadata = sourceSkill?.HasInvincibleMetadata == true,
-                ZoneType = sourceSkill?.ZoneType,
-                AffectedSkillEffect = sourceSkill?.AffectedSkillEffect
+                RedirectsDamageToMp = redirectsDamageToMp,
+                ReflectsIncomingDamage = reflectsIncomingDamage,
+                HasInvincibleMetadata = hasInvincibleMetadata,
+                ZoneType = zoneType,
+                AffectedSkillEffect = mergedAffectedSkillEffect
             };
         }
 
@@ -14062,7 +14281,10 @@ namespace HaCreator.MapSimulator.Character.Skills
                    && left.DropRate == right.DropRate
                    && left.MesoRate == right.MesoRate
                    && left.BossDamageRate == right.BossDamageRate
-                   && left.IgnoreDefenseRate == right.IgnoreDefenseRate;
+                   && left.IgnoreDefenseRate == right.IgnoreDefenseRate
+                   && left.X == right.X
+                   && left.Y == right.Y
+                   && left.Z == right.Z;
         }
 
         private int ResolveEnhancedStatBonus(SkillData skill, int amount)
@@ -14782,23 +15004,26 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (queuedAttack.RequiredWeaponCode > 0 && GetEquippedWeaponCode() != queuedAttack.RequiredWeaponCode)
                 return;
 
-            BeginQueuedFollowUpCast(
-                skill,
-                level,
-                levelData,
-                currentTime,
-                queuedAttack.FacingRight);
-            ExecuteSkillPayload(
-                skill,
-                level,
-                currentTime,
-                queueFollowUps: false,
-                preferredTargetMobId: queuedAttack.TargetMobId,
-                preferredTargetPositionOverride: queuedAttack.TargetPosition,
-                revalidateDeferredExecutionSkillLevel: true,
-                isQueuedFinalAttack: true,
-                facingRightOverride: queuedAttack.FacingRight,
-                shootRange0Override: queuedAttack.ShootRange0);
+            ExecuteQueuedShootAttackPath(queuedAttack.ResolvedShootAmmoSelection, () =>
+            {
+                BeginQueuedFollowUpCast(
+                    skill,
+                    level,
+                    levelData,
+                    currentTime,
+                    queuedAttack.FacingRight);
+                ExecuteSkillPayload(
+                    skill,
+                    level,
+                    currentTime,
+                    queueFollowUps: false,
+                    preferredTargetMobId: queuedAttack.TargetMobId,
+                    preferredTargetPositionOverride: queuedAttack.TargetPosition,
+                    revalidateDeferredExecutionSkillLevel: true,
+                    isQueuedFinalAttack: true,
+                    facingRightOverride: queuedAttack.FacingRight,
+                    shootRange0Override: queuedAttack.ShootRange0);
+            });
         }
 
         private void ExecuteQueuedSparkAttack(QueuedSparkAttack queuedAttack, int currentTime)
@@ -14814,19 +15039,36 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return;
 
             Vector2 attackOrigin = ResolveQueuedSparkAttackOrigin(queuedAttack, currentTime);
-            BeginQueuedFollowUpCast(skill, level, levelData, currentTime, queuedAttack.FacingRight);
-            ExecuteAttackPayload(
-                skill,
-                level,
-                currentTime,
-                queueFollowUps: false,
-                preferredTargetMobId: queuedAttack.SourceMobId,
-                preferredTargetPositionOverride: queuedAttack.PreferredTargetPosition,
-                allowDeferredExecution: true,
-                revalidateDeferredExecutionSkillLevel: true,
-                isQueuedSparkAttack: true,
-                facingRightOverride: queuedAttack.FacingRight,
-                attackOriginOverride: attackOrigin);
+            ExecuteQueuedShootAttackPath(queuedAttack.ResolvedShootAmmoSelection, () =>
+            {
+                BeginQueuedFollowUpCast(skill, level, levelData, currentTime, queuedAttack.FacingRight);
+                ExecuteAttackPayload(
+                    skill,
+                    level,
+                    currentTime,
+                    queueFollowUps: false,
+                    preferredTargetMobId: queuedAttack.SourceMobId,
+                    preferredTargetPositionOverride: queuedAttack.PreferredTargetPosition,
+                    allowDeferredExecution: true,
+                    revalidateDeferredExecutionSkillLevel: true,
+                    isQueuedSparkAttack: true,
+                    facingRightOverride: queuedAttack.FacingRight,
+                    attackOriginOverride: attackOrigin);
+            });
+        }
+
+        private void ExecuteQueuedShootAttackPath(ShootAmmoSelection resolvedShootAmmoSelection, Action execute)
+        {
+            ShootAmmoSelection previousResolvedShootAmmoSelection = LastResolvedShootAmmoSelection?.Snapshot();
+            try
+            {
+                LastResolvedShootAmmoSelection = resolvedShootAmmoSelection?.Snapshot();
+                execute?.Invoke();
+            }
+            finally
+            {
+                LastResolvedShootAmmoSelection = previousResolvedShootAmmoSelection;
+            }
         }
 
         private void ResolveQueuedSummonAttack(QueuedSummonAttack queuedAttack, int currentTime)
@@ -15454,7 +15696,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                     RequiredWeaponCode = equippedWeaponCode,
                     // `CUserLocal::TryDoingFinalAttack` re-enters direct ranged final attacks
                     // through `TryDoingShootAttack(..., 65, ...)` instead of the generic shoot lane.
-                    ShootRange0 = ClientShootAttackFamilyResolver.ResolveQueuedFinalAttackShootRange0(followUpSkill)
+                    ShootRange0 = ClientShootAttackFamilyResolver.ResolveQueuedFinalAttackShootRange0(followUpSkill),
+                    ResolvedShootAmmoSelection = ResolveQueuedShootAmmoSelectionSnapshot(
+                        followUpSkill,
+                        followUpLevelData,
+                        equippedWeaponCode)
                 });
             }
         }
@@ -15513,6 +15759,31 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 _deferredSkillPayloads.Enqueue(payload);
             }
+        }
+
+        private ShootAmmoSelection ResolveQueuedShootAmmoSelectionSnapshot(
+            SkillData skill,
+            SkillLevelData levelData,
+            int weaponCode)
+        {
+            if (skill == null
+                || !RequiresClientShootAttackValidation(skill)
+                || IsShootSkillNotUsingShootingWeapon(skill.SkillId)
+                || IsShootSkillNotConsumingBullet(skill.SkillId)
+                || HasShootAmmoBypassTemporaryStat()
+                || weaponCode <= 0)
+            {
+                return null;
+            }
+
+            return TryResolveCompatibleShootAmmoSelection(
+                    skill.SkillId,
+                    levelData,
+                    weaponCode,
+                    ResolveRequiredShootAmmoCount(levelData),
+                    out ShootAmmoSelection selection)
+                ? selection?.Snapshot()
+                : null;
         }
 
         private void ClearPendingQueuedProjectileSpawns(bool isQueuedFinalAttack, bool isQueuedSparkAttack)
@@ -15577,7 +15848,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 SourceMobId = sourceMob.PoolId,
                 SourcePosition = new Vector2(GetMobImpactX(sourceMob), GetMobImpactY(sourceMob)),
                 PreferredTargetPosition = ResolveDeferredPreferredTargetPosition(sourceMob.PoolId, currentTime),
-                FacingRight = facingRight
+                FacingRight = facingRight,
+                ResolvedShootAmmoSelection = ResolveQueuedShootAmmoSelectionSnapshot(
+                    sparkBuff.SkillData,
+                    sparkBuff.SkillData?.GetLevel(sparkBuff.Level),
+                    GetEquippedWeaponCode())
             };
         }
 

@@ -36,6 +36,10 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Rectangle NameInputBounds = new(31, 79, 138, 24);
         private static readonly Rectangle PreviewBounds = new(260, 82, 160, 190);
         private static readonly Rectangle StatusBounds = new(232, 282, 252, 68);
+        private static readonly Point RaceConfirmDialogOffset = new(303, 204);
+        private static readonly Rectangle RaceConfirmDialogBounds = new(0, 0, 214, 112);
+        private static readonly Rectangle RaceConfirmOkBounds = new(42, 77, 50, 23);
+        private static readonly Rectangle RaceConfirmCancelBounds = new(114, 77, 50, 23);
         private static readonly Rectangle[] AvatarArrowOffsets =
         {
             new(0, 0, 15, 16),
@@ -55,6 +59,10 @@ namespace HaCreator.MapSimulator.UI
         private readonly IReadOnlyList<CharacterSelectWindow.AnimationFrame> _diceFrames;
         private readonly Texture2D _leftArrowTexture;
         private readonly Texture2D _rightArrowTexture;
+        private readonly Texture2D _raceConfirmBackgroundTexture;
+        private readonly Texture2D _raceConfirmOkTexture;
+        private readonly Texture2D _raceConfirmCancelTexture;
+        private readonly Dictionary<LoginCreateCharacterRaceKind, Texture2D> _raceConfirmLabelTexturesByRace;
         private readonly UIObject _confirmButton;
         private readonly UIObject _cancelButton;
         private readonly UIObject _checkButton;
@@ -74,6 +82,7 @@ namespace HaCreator.MapSimulator.UI
         private CharacterAssembler _previewAssembler;
         private int[] _avatarIndices = new int[8];
         private CharacterGender _gender = CharacterGender.Male;
+        private bool _isRaceConfirmationOpen;
         private KeyboardState _previousKeyboardState;
         private bool _softKeyboardActive;
         private string _compositionText = string.Empty;
@@ -91,6 +100,10 @@ namespace HaCreator.MapSimulator.UI
             IReadOnlyList<CharacterSelectWindow.AnimationFrame> diceFrames,
             Texture2D leftArrowTexture,
             Texture2D rightArrowTexture,
+            Texture2D raceConfirmBackgroundTexture,
+            Texture2D raceConfirmOkTexture,
+            Texture2D raceConfirmCancelTexture,
+            IReadOnlyDictionary<LoginCreateCharacterRaceKind, Texture2D> raceConfirmLabelTexturesByRace,
             UIObject confirmButton,
             UIObject cancelButton,
             UIObject checkButton)
@@ -112,6 +125,11 @@ namespace HaCreator.MapSimulator.UI
             _diceFrames = diceFrames ?? Array.Empty<AnimationFrame>();
             _leftArrowTexture = leftArrowTexture;
             _rightArrowTexture = rightArrowTexture;
+            _raceConfirmBackgroundTexture = raceConfirmBackgroundTexture;
+            _raceConfirmOkTexture = raceConfirmOkTexture;
+            _raceConfirmCancelTexture = raceConfirmCancelTexture;
+            _raceConfirmLabelTexturesByRace = raceConfirmLabelTexturesByRace?.ToDictionary(pair => pair.Key, pair => pair.Value)
+                ?? new Dictionary<LoginCreateCharacterRaceKind, Texture2D>();
             if (frame?.Texture?.GraphicsDevice != null)
             {
                 _pixelTexture = new Texture2D(frame.Texture.GraphicsDevice, 1, 1);
@@ -181,6 +199,7 @@ namespace HaCreator.MapSimulator.UI
             _checkedName = state?.CheckedName ?? string.Empty;
             _statusMessage = state?.StatusMessage ?? string.Empty;
             _gender = state?.SelectedGender ?? CharacterGender.Male;
+            _isRaceConfirmationOpen = state?.IsRaceConfirmationOpen == true;
             _avatarIndices = new[]
             {
                 state?.SelectedFaceIndex ?? 0,
@@ -281,6 +300,11 @@ namespace HaCreator.MapSimulator.UI
             {
                 DrawRaceOptions(sprite);
             }
+
+            if (_fixedStage == LoginCreateCharacterStage.RaceSelect && _isRaceConfirmationOpen)
+            {
+                DrawRaceConfirmDialog(sprite);
+            }
         }
 
         public override bool CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState, MouseCursorItem mouseCursor, int renderWidth, int renderHeight)
@@ -313,6 +337,11 @@ namespace HaCreator.MapSimulator.UI
             }
 
             Point localPoint = new(mouseState.X - Position.X, mouseState.Y - Position.Y);
+            if (_fixedStage == LoginCreateCharacterStage.RaceSelect && _isRaceConfirmationOpen)
+            {
+                return TryHandleRaceConfirmClick(localPoint, mouseCursor);
+            }
+
             if (_fixedStage == LoginCreateCharacterStage.RaceSelect)
             {
                 foreach (KeyValuePair<LoginCreateCharacterRaceKind, Rectangle> raceCard in RaceCardBoundsByRace)
@@ -435,6 +464,39 @@ namespace HaCreator.MapSimulator.UI
                 ? new Rectangle(Position.X + RaceStatusPosition.X, Position.Y + RaceStatusPosition.Y, RaceStatusBounds.Width, RaceStatusBounds.Height)
                 : new Rectangle(Position.X + stageOrigin.X + StatusBounds.X, Position.Y + stageOrigin.Y + StatusBounds.Y, StatusBounds.Width, StatusBounds.Height);
             DrawParagraph(sprite, _statusMessage, stageStatusBounds, StatusTextColor);
+        }
+
+        private void DrawRaceConfirmDialog(SpriteBatch sprite)
+        {
+            Rectangle dialogBounds = GetRaceConfirmDialogBounds();
+            if (_raceConfirmBackgroundTexture != null)
+            {
+                sprite.Draw(_raceConfirmBackgroundTexture, dialogBounds.Location.ToVector2(), Color.White);
+            }
+            else if (_pixelTexture != null)
+            {
+                sprite.Draw(_pixelTexture, dialogBounds, new Color(34, 24, 10, 220));
+            }
+
+            if (_raceConfirmLabelTexturesByRace.TryGetValue(_selectedRace, out Texture2D raceLabel) && raceLabel != null)
+            {
+                Vector2 labelPosition = new(
+                    dialogBounds.X + (dialogBounds.Width - raceLabel.Width) / 2f,
+                    dialogBounds.Y + 24f);
+                sprite.Draw(raceLabel, labelPosition, Color.White);
+            }
+            else
+            {
+                SelectorWindowDrawing.DrawShadowedText(
+                    sprite,
+                    _font,
+                    LoginCreateCharacterFlowState.GetRaceLabel(_selectedRace),
+                    new Vector2(dialogBounds.X + 24, dialogBounds.Y + 28),
+                    Color.White);
+            }
+
+            DrawRaceConfirmButton(sprite, _raceConfirmOkTexture, OffsetRectangle(dialogBounds.Location, RaceConfirmOkBounds));
+            DrawRaceConfirmButton(sprite, _raceConfirmCancelTexture, OffsetRectangle(dialogBounds.Location, RaceConfirmCancelBounds));
         }
 
         private void DrawRaceOptions(SpriteBatch sprite)
@@ -687,7 +749,9 @@ namespace HaCreator.MapSimulator.UI
         {
             if (_confirmButton != null)
             {
-                _confirmButton.SetVisible(_fixedStage != LoginCreateCharacterStage.NameSelect);
+                bool showConfirmButton = _fixedStage != LoginCreateCharacterStage.NameSelect &&
+                    !(_fixedStage == LoginCreateCharacterStage.RaceSelect && _isRaceConfirmationOpen);
+                _confirmButton.SetVisible(showConfirmButton);
                 _confirmButton.SetEnabled(_fixedStage != LoginCreateCharacterStage.AvatarSelect || !string.IsNullOrWhiteSpace(_checkedName));
                 Point stageOrigin = GetStageOrigin();
                 _confirmButton.X = stageOrigin.X + (_fixedStage == LoginCreateCharacterStage.RaceSelect ? 26 : 18);
@@ -696,7 +760,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (_cancelButton != null)
             {
-                _cancelButton.SetVisible(true);
+                _cancelButton.SetVisible(!(_fixedStage == LoginCreateCharacterStage.RaceSelect && _isRaceConfirmationOpen));
                 _cancelButton.SetEnabled(true);
                 Point stageOrigin = GetStageOrigin();
                 _cancelButton.X = stageOrigin.X + (_fixedStage == LoginCreateCharacterStage.RaceSelect ? 110 : 102);
@@ -1100,6 +1164,54 @@ namespace HaCreator.MapSimulator.UI
             return index >= 0 && index < itemCount ? index : -1;
         }
 
+        private bool TryHandleRaceConfirmClick(Point localPoint, MouseCursorItem mouseCursor)
+        {
+            Rectangle dialogBounds = GetRaceConfirmDialogBounds();
+            Rectangle okBounds = OffsetRectangle(dialogBounds.Location, RaceConfirmOkBounds);
+            Rectangle cancelBounds = OffsetRectangle(dialogBounds.Location, RaceConfirmCancelBounds);
+            if (okBounds.Contains(localPoint))
+            {
+                ConfirmRequested?.Invoke();
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+                return true;
+            }
+
+            if (cancelBounds.Contains(localPoint))
+            {
+                CancelRequested?.Invoke();
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+                return true;
+            }
+
+            return dialogBounds.Contains(localPoint);
+        }
+
+        private Rectangle GetRaceConfirmDialogBounds()
+        {
+            return new Rectangle(
+                RaceConfirmDialogOffset.X,
+                RaceConfirmDialogOffset.Y,
+                _raceConfirmBackgroundTexture?.Width ?? RaceConfirmDialogBounds.Width,
+                _raceConfirmBackgroundTexture?.Height ?? RaceConfirmDialogBounds.Height);
+        }
+
+        private void DrawRaceConfirmButton(SpriteBatch sprite, Texture2D texture, Rectangle bounds)
+        {
+            if (texture != null)
+            {
+                sprite.Draw(texture, bounds.Location.ToVector2(), Color.White);
+            }
+            else if (_pixelTexture != null)
+            {
+                sprite.Draw(_pixelTexture, bounds, new Color(255, 236, 176, 180));
+            }
+        }
+
+        private static Rectangle OffsetRectangle(Point origin, Rectangle rectangle)
+        {
+            return new Rectangle(origin.X + rectangle.X, origin.Y + rectangle.Y, rectangle.Width, rectangle.Height);
+        }
+
         private static CharacterSelectWindow.AnimationFrame ResolveAnimationFrame(IReadOnlyList<CharacterSelectWindow.AnimationFrame> frames, int tickCount)
         {
             if (frames == null || frames.Count == 0)
@@ -1140,6 +1252,10 @@ namespace HaCreator.MapSimulator.UI
             IReadOnlyList<CharacterSelectWindow.AnimationFrame> diceFrames,
             Texture2D leftArrowTexture,
             Texture2D rightArrowTexture,
+            Texture2D raceConfirmBackgroundTexture,
+            Texture2D raceConfirmOkTexture,
+            Texture2D raceConfirmCancelTexture,
+            IReadOnlyDictionary<LoginCreateCharacterRaceKind, Texture2D> raceConfirmLabelTexturesByRace,
             UIObject confirmButton,
             UIObject cancelButton,
             UIObject checkButton)
@@ -1155,6 +1271,10 @@ namespace HaCreator.MapSimulator.UI
                 diceFrames,
                 leftArrowTexture,
                 rightArrowTexture,
+                raceConfirmBackgroundTexture,
+                raceConfirmOkTexture,
+                raceConfirmCancelTexture,
+                raceConfirmLabelTexturesByRace,
                 confirmButton,
                 cancelButton,
                 checkButton)
@@ -1174,6 +1294,10 @@ namespace HaCreator.MapSimulator.UI
             IReadOnlyList<CharacterSelectWindow.AnimationFrame> diceFrames,
             Texture2D leftArrowTexture,
             Texture2D rightArrowTexture,
+            Texture2D raceConfirmBackgroundTexture,
+            Texture2D raceConfirmOkTexture,
+            Texture2D raceConfirmCancelTexture,
+            IReadOnlyDictionary<LoginCreateCharacterRaceKind, Texture2D> raceConfirmLabelTexturesByRace,
             UIObject confirmButton,
             UIObject cancelButton,
             UIObject checkButton)
@@ -1189,6 +1313,10 @@ namespace HaCreator.MapSimulator.UI
                 diceFrames,
                 leftArrowTexture,
                 rightArrowTexture,
+                raceConfirmBackgroundTexture,
+                raceConfirmOkTexture,
+                raceConfirmCancelTexture,
+                raceConfirmLabelTexturesByRace,
                 confirmButton,
                 cancelButton,
                 checkButton)
@@ -1208,6 +1336,10 @@ namespace HaCreator.MapSimulator.UI
             IReadOnlyList<CharacterSelectWindow.AnimationFrame> diceFrames,
             Texture2D leftArrowTexture,
             Texture2D rightArrowTexture,
+            Texture2D raceConfirmBackgroundTexture,
+            Texture2D raceConfirmOkTexture,
+            Texture2D raceConfirmCancelTexture,
+            IReadOnlyDictionary<LoginCreateCharacterRaceKind, Texture2D> raceConfirmLabelTexturesByRace,
             UIObject confirmButton,
             UIObject cancelButton,
             UIObject checkButton)
@@ -1223,6 +1355,10 @@ namespace HaCreator.MapSimulator.UI
                 diceFrames,
                 leftArrowTexture,
                 rightArrowTexture,
+                raceConfirmBackgroundTexture,
+                raceConfirmOkTexture,
+                raceConfirmCancelTexture,
+                raceConfirmLabelTexturesByRace,
                 confirmButton,
                 cancelButton,
                 checkButton)
@@ -1242,6 +1378,10 @@ namespace HaCreator.MapSimulator.UI
             IReadOnlyList<CharacterSelectWindow.AnimationFrame> diceFrames,
             Texture2D leftArrowTexture,
             Texture2D rightArrowTexture,
+            Texture2D raceConfirmBackgroundTexture,
+            Texture2D raceConfirmOkTexture,
+            Texture2D raceConfirmCancelTexture,
+            IReadOnlyDictionary<LoginCreateCharacterRaceKind, Texture2D> raceConfirmLabelTexturesByRace,
             UIObject confirmButton,
             UIObject cancelButton,
             UIObject checkButton)
@@ -1257,6 +1397,10 @@ namespace HaCreator.MapSimulator.UI
                 diceFrames,
                 leftArrowTexture,
                 rightArrowTexture,
+                raceConfirmBackgroundTexture,
+                raceConfirmOkTexture,
+                raceConfirmCancelTexture,
+                raceConfirmLabelTexturesByRace,
                 confirmButton,
                 cancelButton,
                 checkButton)

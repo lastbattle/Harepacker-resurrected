@@ -43,13 +43,15 @@ namespace HaCreator.MapSimulator.Interaction
             string groomName,
             string brideName,
             WeddingInvitationStyle style,
+            int? clientDialogType,
+            string sourceDescription,
             UIWindowManager windowManager,
             CharacterBuild build,
             SpriteFont font,
             Action<string> feedbackHandler,
             Action showWindow)
         {
-            string message = _runtime.OpenInvitation(groomName, brideName, style);
+            string message = _runtime.OpenInvitation(groomName, brideName, style, clientDialogType, sourceDescription);
             WireWindow(windowManager, build, font, feedbackHandler);
             showWindow?.Invoke();
             return message;

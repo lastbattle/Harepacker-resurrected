@@ -115,7 +115,7 @@ namespace HaCreator.MapSimulator
                 ? resolvedQuestName
                 : $"Quest #{questId}";
             string expiryMessage = $"Quest timer expired for {questName}.";
-            _chat?.AddMessage(expiryMessage, new Color(255, 228, 151), currTickCount);
+            _chat?.AddSystemMessage(expiryMessage, currTickCount);
             message = $"{timerMessage} {expiryMessage}";
             return true;
         }
@@ -152,7 +152,7 @@ namespace HaCreator.MapSimulator
             bool openedModal = false;
             if (!string.IsNullOrWhiteSpace(presentation.NoticeText))
             {
-                _chat?.AddMessage(presentation.NoticeText, new Color(255, 228, 151), currTickCount);
+                _chat?.AddSystemMessage(presentation.NoticeText, currTickCount);
                 showedNotice = true;
             }
 
@@ -223,7 +223,7 @@ namespace HaCreator.MapSimulator
 
             if (!string.IsNullOrWhiteSpace(noticeText))
             {
-                _chat?.AddMessage(noticeText, new Color(255, 228, 151), currTickCount);
+                _chat?.AddSystemMessage(noticeText, currTickCount);
             }
 
             message = string.IsNullOrWhiteSpace(noticeText)
@@ -246,7 +246,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            _chat?.AddMessage(noticeText, new Color(255, 228, 151), currTickCount);
+            _chat?.AddSystemMessage(noticeText, currTickCount);
             message = $"Displayed the packet-owned fixed quest-result notice for subtype {resultType} (StringPool 0x{stringPoolId:X}).";
             return true;
         }
@@ -322,7 +322,7 @@ namespace HaCreator.MapSimulator
             string followUpStatus = ApplyPacketOwnedQuestResultFollowUpQuest(followUpQuestId, speakerNpcId, followUpQuestName);
             if (!string.IsNullOrWhiteSpace(followUpStatus))
             {
-                _chat?.AddMessage(followUpStatus, new Color(255, 228, 151), currTickCount);
+                _chat?.AddSystemMessage(followUpStatus, currTickCount);
             }
         }
 

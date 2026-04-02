@@ -181,6 +181,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal bool TryBuildWeddingInvitationHandoff(
             CharacterBuild localBuild,
             WeddingInvitationStyle style,
+            int? clientDialogType,
             out WeddingInvitationHandoff handoff,
             out string message)
         {
@@ -195,6 +196,8 @@ namespace HaCreator.MapSimulator.Interaction
                 GroomName = partyHandoff.GroomName,
                 BrideName = partyHandoff.BrideName,
                 Style = style,
+                ClientDialogType = clientDialogType ?? WeddingInvitationRuntime.DefaultClientDialogType,
+                SourceDescription = "accepted engagement handoff",
                 Proposal = partyHandoff.Proposal
             };
             message = $"Prepared wedding invitation handoff for {handoff.GroomName} and {handoff.BrideName} from the accepted engagement proposal snapshot.";
@@ -528,6 +531,8 @@ namespace HaCreator.MapSimulator.Interaction
         public string GroomName { get; init; } = string.Empty;
         public string BrideName { get; init; } = string.Empty;
         public WeddingInvitationStyle Style { get; init; }
+        public int ClientDialogType { get; init; } = WeddingInvitationRuntime.DefaultClientDialogType;
+        public string SourceDescription { get; init; } = string.Empty;
         public EngagementProposalAcceptedSnapshot Proposal { get; init; }
     }
 

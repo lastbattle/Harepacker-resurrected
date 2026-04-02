@@ -354,52 +354,21 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string[] BuildSummaryLines(SkillDisplayData selectedSkill, int selectedRequiredGuildLevel, int selectedRemainingMinutes)
         {
-            if (!_isInGuild)
-            {
-                return new[]
-                {
-                    _guildName,
-                    "Guild Lv. 0  |  SP: 0",
-                    "Join a guild to use guild skills."
-                };
-            }
-
-            if (!CanManageSkills())
-            {
-                return new[]
-                {
-                    _guildName,
-                    $"Guild Lv. {_guildLevel}  |  {_guildRoleLabel}",
-                    "Guild skill management requires Jr. Master or Master."
-                };
-            }
-
             if (selectedSkill == null)
             {
                 return new[]
                 {
-                    _guildName,
-                    $"Guild Lv. {_guildLevel}  |  {_guildRoleLabel}",
-                    $"SP: {_availablePoints}"
-                };
-            }
-
-            string timedStateSummary = BuildTimedStateSummary(selectedSkill, selectedRemainingMinutes);
-            if (!string.IsNullOrWhiteSpace(timedStateSummary))
-            {
-                return new[]
-                {
-                    _guildName,
-                    $"Guild Lv. {_guildLevel}  |  SP: {_availablePoints}",
-                    timedStateSummary
+                    _isInGuild ? $"Guild: {_guildName}" : "Current: Join a guild to use guild skills.",
+                    _isInGuild ? $"Role: {_guildRoleLabel}  |  Guild Lv. {_guildLevel}" : "Next: Guild skills unlock with real guild membership.",
+                    _isInGuild ? $"SP: {_availablePoints}" : "State: No guild"
                 };
             }
 
             return new[]
             {
-                _guildName,
-                $"Guild Lv. {_guildLevel}  |  SP: {_availablePoints}",
-                BuildSelectedSkillSummary(selectedSkill, selectedRequiredGuildLevel)
+                BuildCurrentEffectSummary(selectedSkill),
+                BuildNextEffectSummary(selectedSkill, selectedRequiredGuildLevel),
+                BuildActivationDetailSummary(selectedSkill, selectedRequiredGuildLevel, selectedRemainingMinutes)
             };
         }
 
@@ -428,52 +397,97 @@ namespace HaCreator.MapSimulator.Interaction
             return skill.GetLevelDescription(nextLevel);
         }
 
-        private string BuildSelectedSkillSummary(SkillDisplayData selectedSkill, int selectedRequiredGuildLevel)
+        private string BuildCurrentEffectSummary(SkillDisplayData selectedSkill)
         {
             if (selectedSkill == null)
-                return $"SP: {_availablePoints}";
+                return string.Empty;
 
-            if (selectedRequiredGuildLevel > _guildLevel && selectedSkill.CurrentLevel < selectedSkill.MaxLevel)
-                return $"Next rank requires Guild Lv. {selectedRequiredGuildLevel}.";
+            if (!_isInGuild)
+                return "Current: Join a guild.";
+
+            if (selectedSkill.CurrentLevel <= 0)
+                return "Current: Not learned.";
 
             string effectText = GetCurrentEffectDescription(selectedSkill);
-            if (!string.IsNullOrWhiteSpace(effectText))
-                return effectText;
+            return string.IsNullOrWhiteSpace(effectText)
+                ? $"Current: Lv. {selectedSkill.CurrentLevel}/{selectedSkill.MaxLevel}"
+                : $"Current: {effectText}";
+        }
 
-            int previewLevel = Math.Max(1, selectedSkill.CurrentLevel + 1);
-            int activationCost = selectedSkill.GetGuildActivationCost(previewLevel);
-            int renewalCost = selectedSkill.GetGuildRenewalCost(Math.Max(1, selectedSkill.CurrentLevel));
-            int durationMinutes = selectedSkill.GetGuildDurationMinutes(Math.Max(1, selectedSkill.CurrentLevel));
+        private string BuildNextEffectSummary(SkillDisplayData selectedSkill, int selectedRequiredGuildLevel)
+        {
+            if (selectedSkill == null)
+                return string.Empty;
+
+            if (!_isInGuild)
+                return "Next: Requires guild membership.";
+
+            if (selectedSkill.CurrentLevel >= selectedSkill.MaxLevel)
+                return "Next: Max level reached.";
+
+            string nextEffect = GetNextEffectDescription(selectedSkill);
+            if (!string.IsNullOrWhiteSpace(nextEffect))
+                return $"Next: {nextEffect}";
+
+            if (selectedRequiredGuildLevel > _guildLevel)
+                return $"Next: Requires Guild Lv. {selectedRequiredGuildLevel}.";
+
+            return $"Next: Lv. {Math.Min(selectedSkill.MaxLevel, selectedSkill.CurrentLevel + 1)}/{selectedSkill.MaxLevel}";
+        }
+
+        private string BuildActivationDetailSummary(SkillDisplayData selectedSkill, int selectedRequiredGuildLevel, int remainingMinutes)
+        {
+            if (selectedSkill == null)
+                return string.Empty;
 
             List<string> parts = new();
-            if (durationMinutes > 0)
-                parts.Add(FormatDuration(durationMinutes));
+
+            if (_isInGuild && selectedRequiredGuildLevel > 0 && selectedSkill.CurrentLevel < selectedSkill.MaxLevel)
+            {
+                parts.Add($"Req Lv. {selectedRequiredGuildLevel}");
+            }
+
+            int previewLevel = Math.Max(1, Math.Min(selectedSkill.MaxLevel, selectedSkill.CurrentLevel + 1));
+            int activationCost = selectedSkill.GetGuildActivationCost(previewLevel);
             if (activationCost > 0)
+            {
                 parts.Add($"Learn {activationCost.ToString("N0", CultureInfo.InvariantCulture)}");
-            if (renewalCost > 0)
+            }
+
+            int renewalReferenceLevel = Math.Max(1, selectedSkill.CurrentLevel);
+            int renewalCost = selectedSkill.GetGuildRenewalCost(renewalReferenceLevel);
+            if (selectedSkill.CurrentLevel > 0 && renewalCost > 0)
+            {
                 parts.Add($"Renew {renewalCost.ToString("N0", CultureInfo.InvariantCulture)}");
+            }
+
+            int durationMinutes = selectedSkill.GetGuildDurationMinutes(renewalReferenceLevel);
+            if (durationMinutes > 0)
+            {
+                parts.Add($"Duration {FormatDuration(durationMinutes)}");
+            }
+
+            if (remainingMinutes > 0)
+            {
+                parts.Add($"Remain {FormatDuration(remainingMinutes)}");
+            }
+            else if (selectedSkill.CurrentLevel > 0 && durationMinutes > 0)
+            {
+                parts.Add(CanRenew(selectedSkill) ? "Inactive" : "View only");
+            }
+
+            if (_isInGuild)
+            {
+                parts.Add(CanManageSkills() ? $"SP {_availablePoints}" : "View only");
+            }
+            else
+            {
+                parts.Add("No guild");
+            }
 
             return parts.Count > 0
                 ? string.Join("  |  ", parts)
-                : selectedSkill.Description;
-        }
-
-        private string BuildTimedStateSummary(SkillDisplayData selectedSkill, int remainingMinutes)
-        {
-            if (selectedSkill == null || selectedSkill.CurrentLevel <= 0)
-                return string.Empty;
-
-            int durationMinutes = selectedSkill.GetGuildDurationMinutes(selectedSkill.CurrentLevel);
-            if (durationMinutes <= 0)
-                return string.Empty;
-
-            int renewalCost = selectedSkill.GetGuildRenewalCost(selectedSkill.CurrentLevel);
-            if (remainingMinutes > 0)
-                return $"Active: {FormatDuration(remainingMinutes)}  |  Renew {FormatMeso(renewalCost)}";
-
-            return renewalCost > 0
-                ? $"Inactive  |  Renew {FormatMeso(renewalCost)}  |  Duration {FormatDuration(durationMinutes)}"
-                : $"Inactive  |  Duration {FormatDuration(durationMinutes)}";
+                : (_isInGuild ? $"SP {_availablePoints}" : "No guild");
         }
 
         private static string FormatDuration(int durationMinutes)

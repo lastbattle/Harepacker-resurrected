@@ -160,6 +160,9 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal sealed class LocalOverlayBalloonMessage
     {
+        private readonly Dictionary<LocalOverlayBalloonVisualCacheKey, Texture2D> _cachedVisuals = new();
+        private Texture2D _cachedBodyTexture;
+
         public LocalOverlayBalloonMessage(string text, int requestedWidth, int expiresAt, LocalOverlayBalloonAnchorMode anchorMode, Point worldAnchor)
         {
             Text = text ?? string.Empty;
@@ -174,39 +177,81 @@ namespace HaCreator.MapSimulator.Interaction
         public int ExpiresAt { get; }
         public LocalOverlayBalloonAnchorMode AnchorMode { get; }
         public Point WorldAnchor { get; }
-        public Texture2D CachedBodyTexture { get; private set; }
-        public Point CachedBodySize { get; private set; }
+        public Texture2D CachedBodyTexture => _cachedBodyTexture != null && !_cachedBodyTexture.IsDisposed ? _cachedBodyTexture : null;
 
         public bool IsActive(int currentTickCount) =>
             !string.IsNullOrWhiteSpace(Text) &&
             unchecked(currentTickCount - ExpiresAt) < 0;
 
-        public bool HasCachedBodyTexture(int width, int height) =>
-            CachedBodyTexture != null &&
-            !CachedBodyTexture.IsDisposed &&
-            CachedBodySize.X == width &&
-            CachedBodySize.Y == height;
+        public bool TryGetCachedVisualTexture(int bodyWidth, int bodyHeight, int variantId, out Texture2D texture)
+        {
+            LocalOverlayBalloonVisualCacheKey key = new(bodyWidth, bodyHeight, variantId);
+            if (_cachedVisuals.TryGetValue(key, out texture) &&
+                texture != null &&
+                !texture.IsDisposed)
+            {
+                return true;
+            }
+
+            texture = null;
+            return false;
+        }
+
+        public void SetCachedVisualTexture(int bodyWidth, int bodyHeight, int variantId, Texture2D texture)
+        {
+            LocalOverlayBalloonVisualCacheKey key = new(bodyWidth, bodyHeight, variantId);
+            if (_cachedVisuals.TryGetValue(key, out Texture2D existingTexture) &&
+                existingTexture != null &&
+                !existingTexture.IsDisposed)
+            {
+                existingTexture.Dispose();
+            }
+
+            if (texture == null || texture.IsDisposed)
+            {
+                _cachedVisuals.Remove(key);
+                return;
+            }
+
+            _cachedVisuals[key] = texture;
+        }
+
+        public bool HasCachedBodyTexture(int bodyWidth, int bodyHeight)
+        {
+            return _cachedBodyTexture != null && !_cachedBodyTexture.IsDisposed;
+        }
 
         public void SetCachedBodyTexture(Texture2D texture)
         {
-            DisposeVisual();
-            CachedBodyTexture = texture;
-            CachedBodySize = texture == null || texture.IsDisposed
-                ? Point.Zero
-                : new Point(texture.Width, texture.Height);
+            if (_cachedBodyTexture != null && !_cachedBodyTexture.IsDisposed)
+            {
+                _cachedBodyTexture.Dispose();
+            }
+
+            _cachedBodyTexture = texture != null && !texture.IsDisposed ? texture : null;
         }
 
         public void DisposeVisual()
         {
-            if (CachedBodyTexture != null && !CachedBodyTexture.IsDisposed)
+            if (_cachedBodyTexture != null && !_cachedBodyTexture.IsDisposed)
             {
-                CachedBodyTexture.Dispose();
+                _cachedBodyTexture.Dispose();
             }
 
-            CachedBodyTexture = null;
-            CachedBodySize = Point.Zero;
+            _cachedBodyTexture = null;
+            foreach ((LocalOverlayBalloonVisualCacheKey _, Texture2D texture) in _cachedVisuals)
+            {
+                if (texture != null && !texture.IsDisposed)
+                {
+                    texture.Dispose();
+                }
+            }
+
+            _cachedVisuals.Clear();
         }
     }
+
+    internal readonly record struct LocalOverlayBalloonVisualCacheKey(int BodyWidth, int BodyHeight, int VariantId);
 
     internal sealed class LocalOverlayBalloonSkin
     {

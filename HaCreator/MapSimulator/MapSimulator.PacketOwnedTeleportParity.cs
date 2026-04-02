@@ -2,8 +2,10 @@ using HaCreator.MapEditor.Instance;
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Entities;
 using HaCreator.MapSimulator.Interaction;
+using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Text;
 
@@ -11,6 +13,12 @@ namespace HaCreator.MapSimulator
 {
     public partial class MapSimulator
     {
+        private const int PacketOwnedTeleportPortalRequestOpcode = 113;
+        private const int PacketOwnedTeleportForcedMovePathAttribute = 4;
+        private const byte PacketOwnedTeleportSyntheticFieldKey = 0;
+        private const string PacketOwnedTeleportGeneralEffectImageName = "BasicEff.img";
+        private const string PacketOwnedTeleportGeneralEffectPath = "Teleport";
+
         private bool TryApplyPacketOwnedTeleportResult(float targetX, float targetY, out string message)
         {
             _packetOwnedTeleportRequestActive = false;
@@ -21,18 +29,21 @@ namespace HaCreator.MapSimulator
             {
                 _lastPacketOwnedTeleportPortalIndex = portalIndex;
                 RegisterPacketOwnedTeleportHandoff(portalInstance);
-                string registrationMessage = ApplyPacketOwnedTeleportRegistrationSideEffects(portalInstance, currentTime);
+                string resolvedRegistrationMessage = ApplyPacketOwnedTeleportRegistrationSideEffects(portalInstance, currentTime);
                 ApplySameMapTeleportPosition(portalInstance.X, portalInstance.Y);
-                message = string.IsNullOrWhiteSpace(registrationMessage)
+                message = string.IsNullOrWhiteSpace(resolvedRegistrationMessage)
                     ? $"Applied packet-owned teleport result through resolved portal index {portalIndex} ({portalInstance.pn} -> {portalInstance.tn})."
-                    : $"Applied packet-owned teleport result through resolved portal index {portalIndex} ({portalInstance.pn} -> {portalInstance.tn}). {registrationMessage}";
+                    : $"Applied packet-owned teleport result through resolved portal index {portalIndex} ({portalInstance.pn} -> {portalInstance.tn}). {resolvedRegistrationMessage}";
                 return true;
             }
 
             _lastPacketOwnedTeleportPortalIndex = -1;
             RegisterPacketOwnedTeleportHandoff(sourcePortalName: null, targetPortalName: null);
+            string registrationMessage = ApplyPacketOwnedTeleportRegistrationSideEffects(targetX, targetY, currentTime);
             ApplySameMapTeleportPosition(targetX, targetY);
-            message = $"Applied packet-owned teleport result to exact coordinates ({targetX}, {targetY}).";
+            message = string.IsNullOrWhiteSpace(registrationMessage)
+                ? $"Applied packet-owned teleport result to exact coordinates ({targetX}, {targetY})."
+                : $"Applied packet-owned teleport result to exact coordinates ({targetX}, {targetY}). {registrationMessage}";
             return true;
         }
 
@@ -142,6 +153,18 @@ namespace HaCreator.MapSimulator
             _lastPacketOwnedTeleportPortalRequestTick = Environment.TickCount;
             _lastPacketOwnedTeleportSourcePortalName = sourcePortal.pn;
             _lastPacketOwnedTeleportTargetPortalName = sourcePortal.tn;
+
+            if (TryBuildPacketOwnedTeleportPortalRequest(sourcePortal, out byte[] payload, out string summary))
+            {
+                _lastPacketOwnedTeleportOutboundOpcode = PacketOwnedTeleportPortalRequestOpcode;
+                _lastPacketOwnedTeleportOutboundPayload = payload;
+                _lastPacketOwnedTeleportOutboundSummary = summary;
+                return;
+            }
+
+            _lastPacketOwnedTeleportOutboundOpcode = -1;
+            _lastPacketOwnedTeleportOutboundPayload = Array.Empty<byte>();
+            _lastPacketOwnedTeleportOutboundSummary = summary;
         }
 
         private bool IsPacketOwnedTeleportRegistrationCoolingDown(int currentTime)
@@ -162,15 +185,36 @@ namespace HaCreator.MapSimulator
                 return null;
             }
 
+            return ApplyPacketOwnedTeleportRegistrationSideEffects(portalInstance.X, portalInstance.Y, currentTime);
+        }
+
+        private string ApplyPacketOwnedTeleportRegistrationSideEffects(float targetX, float targetY, int currentTime)
+        {
             // `CUserLocal::OnTeleport` re-enters `TryRegisterTeleport(..., bForced = 1)`,
-            // so the packet-owned apply seam owns the post-ack portal cooldown and passenger cleanup.
+            // so the packet-owned apply seam owns the post-ack portal cooldown and the
+            // forced registration side effects (effect, move-path attr, set-item background,
+            // and passenger cleanup).
             _packetOwnedTeleportRequestCompletedAt = currentTime;
+            _lastPacketOwnedTeleportRegistrationTick = currentTime;
+            _lastPacketOwnedTeleportMovePathAttribute = PacketOwnedTeleportForcedMovePathAttribute;
+            _lastPacketOwnedTeleportSetItemBackgroundActive = true;
             _playerManager?.ForceStand();
 
+            bool effectShown = TryShowPacketOwnedTeleportGeneralEffect(targetX, targetY, currentTime);
             string detachedPassengerMessage = ClearPacketOwnedTeleportPassengerLink();
-            return string.IsNullOrWhiteSpace(detachedPassengerMessage)
-                ? null
-                : detachedPassengerMessage;
+            var details = new List<string>(3)
+            {
+                $"Replayed forced teleport registration with move-path attribute {PacketOwnedTeleportForcedMovePathAttribute} and set-item background (1, 1)."
+            };
+            details.Add(effectShown
+                ? $"Played WZ teleport effect {PacketOwnedTeleportGeneralEffectImageName}/{PacketOwnedTeleportGeneralEffectPath}."
+                : $"Teleport effect {PacketOwnedTeleportGeneralEffectImageName}/{PacketOwnedTeleportGeneralEffectPath} could not be shown.");
+            if (!string.IsNullOrWhiteSpace(detachedPassengerMessage))
+            {
+                details.Add(detachedPassengerMessage);
+            }
+
+            return string.Join(" ", details);
         }
 
         private string ClearPacketOwnedTeleportPassengerLink()
@@ -255,6 +299,99 @@ namespace HaCreator.MapSimulator
             SetCameraMoveX(false, true, 0);
             SetCameraMoveY(true, false, 0);
             SetCameraMoveY(false, true, 0);
+        }
+
+        private bool TryShowPacketOwnedTeleportGeneralEffect(float targetX, float targetY, int currentTime)
+        {
+            _lastPacketOwnedTeleportEffectTick = int.MinValue;
+            _lastPacketOwnedTeleportEffectPath = null;
+
+            string cacheKey = $"teleport:{PacketOwnedTeleportGeneralEffectImageName}/{PacketOwnedTeleportGeneralEffectPath}";
+            if (!TryGetOrCreatePacketOwnedAnimationFrames(
+                cacheKey,
+                () => LoadPacketOwnedAnimationFrames(
+                    ResolvePacketOwnedPropertyPath(
+                        Program.FindImage("Effect", PacketOwnedTeleportGeneralEffectImageName),
+                        PacketOwnedTeleportGeneralEffectPath)),
+                out List<IDXObject> frames))
+            {
+                return false;
+            }
+
+            _animationEffects?.AddOneTime(
+                frames,
+                (int)MathF.Round(targetX),
+                (int)MathF.Round(targetY),
+                flip: false,
+                currentTime,
+                zOrder: 1);
+            _lastPacketOwnedTeleportEffectTick = currentTime;
+            _lastPacketOwnedTeleportEffectPath = $"{PacketOwnedTeleportGeneralEffectImageName}/{PacketOwnedTeleportGeneralEffectPath}";
+            return true;
+        }
+
+        private bool TryBuildPacketOwnedTeleportPortalRequest(PortalInstance sourcePortal, out byte[] payload, out string summary)
+        {
+            payload = Array.Empty<byte>();
+            summary = "The current portal list could not resolve a same-map destination portal for opcode 113.";
+            if (sourcePortal == null
+                || string.IsNullOrWhiteSpace(sourcePortal.pn)
+                || string.IsNullOrWhiteSpace(sourcePortal.tn))
+            {
+                return false;
+            }
+
+            if (!TryResolvePacketOwnedPortalRequestTarget(sourcePortal.tn, out PortalInstance targetPortal))
+            {
+                return false;
+            }
+
+            using var stream = new MemoryStream();
+            using var writer = new BinaryWriter(stream, Encoding.Default, leaveOpen: true);
+            writer.Write(PacketOwnedTeleportSyntheticFieldKey);
+            WritePacketOwnedMapleString(writer, sourcePortal.pn);
+            writer.Write((short)Math.Clamp((int)MathF.Round(sourcePortal.X), short.MinValue, short.MaxValue));
+            writer.Write((short)Math.Clamp((int)MathF.Round(sourcePortal.Y), short.MinValue, short.MaxValue));
+            writer.Write((short)Math.Clamp((int)MathF.Round(targetPortal.X), short.MinValue, short.MaxValue));
+            writer.Write((short)Math.Clamp((int)MathF.Round(targetPortal.Y), short.MinValue, short.MaxValue));
+            writer.Flush();
+
+            payload = stream.ToArray();
+            summary = $"Recorded synthetic opcode {PacketOwnedTeleportPortalRequestOpcode} portal request for {sourcePortal.pn}->{sourcePortal.tn} with field key {PacketOwnedTeleportSyntheticFieldKey}.";
+            return true;
+        }
+
+        private bool TryResolvePacketOwnedPortalRequestTarget(string targetPortalName, out PortalInstance portalInstance)
+        {
+            portalInstance = null;
+            if (string.IsNullOrWhiteSpace(targetPortalName))
+            {
+                return false;
+            }
+
+            int targetPortalIndex = _portalPool?.GetPortalIndexByName(targetPortalName) ?? -1;
+            portalInstance = _portalPool?.GetPortal(targetPortalIndex)?.PortalInstance;
+            if (portalInstance != null)
+            {
+                return true;
+            }
+
+            if (_mapBoard?.BoardItems?.Portals == null)
+            {
+                return false;
+            }
+
+            foreach (PortalInstance portal in _mapBoard.BoardItems.Portals)
+            {
+                if (portal != null
+                    && string.Equals(portal.pn, targetPortalName, StringComparison.OrdinalIgnoreCase))
+                {
+                    portalInstance = portal;
+                    return true;
+                }
+            }
+
+            return false;
         }
     }
 }

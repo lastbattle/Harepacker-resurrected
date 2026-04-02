@@ -787,6 +787,17 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            if (EquipmentChangeClientParity.IsResolvedResultStale(_characterBuild, result))
+            {
+                if (pendingChange.SourceInventoryLocked && inventoryWindow != null)
+                {
+                    inventoryWindow.TryClearPendingRequestState(pendingChange.RequestId);
+                }
+
+                NotifyEquipmentEquipBlocked(EquipmentChangeClientParity.StaleCompletionMessage);
+                return;
+            }
+
             switch (pendingChange.Kind)
             {
                 case EquipmentChangeRequestKind.InventoryToCharacter:

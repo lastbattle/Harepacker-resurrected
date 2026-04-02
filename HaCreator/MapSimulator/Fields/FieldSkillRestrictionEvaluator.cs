@@ -167,10 +167,18 @@ namespace HaCreator.MapSimulator.Fields
                 return noSkillRestrictionMessage;
             }
 
+            if (IsCoconutBasicActionMap(mapInfo))
+            {
+                return "Skills cannot be used while the Coconut minigame owns basic attacks.";
+            }
+
+            if (SnowBallField.SnowBallFieldDataLoader.IsSnowBallMap(mapInfo))
+            {
+                return "Skills cannot be used while the Snowball minigame owns basic attacks.";
+            }
+
             return mapInfo.fieldType switch
             {
-                FieldType.FIELDTYPE_COCONUT => "Skills cannot be used while the Coconut minigame owns basic attacks.",
-                FieldType.FIELDTYPE_SNOWBALL => "Skills cannot be used while the Snowball minigame owns basic attacks.",
                 _ => null
             };
         }
@@ -395,6 +403,16 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return false;
+        }
+
+        private static bool IsCoconutBasicActionMap(MapInfo mapInfo)
+        {
+            if (mapInfo?.fieldType == FieldType.FIELDTYPE_COCONUT)
+            {
+                return true;
+            }
+
+            return FindAdditionalFieldProperty(mapInfo, "coconut") != null;
         }
     }
 }

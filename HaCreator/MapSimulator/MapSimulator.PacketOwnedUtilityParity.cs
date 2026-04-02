@@ -71,6 +71,12 @@ namespace HaCreator.MapSimulator
         private readonly TutorRuntime _packetOwnedTutorRuntime = new();
         private readonly LocalUtilityPacketInboxManager _localUtilityPacketInbox = new();
         private readonly LocalUtilityOfficialSessionBridgeManager _localUtilityOfficialSessionBridge = new();
+        private static readonly IReadOnlyDictionary<int, int[]> PacketOwnedSkillIdAliasCandidates =
+            new Dictionary<int, int[]>
+            {
+                [PacketOwnedLegacyVengeanceSkillId] = new[] { PacketOwnedCurrentVengeanceSkillId, PacketOwnedLegacyVengeanceSkillId },
+                [PacketOwnedCurrentVengeanceSkillId] = new[] { PacketOwnedCurrentVengeanceSkillId, PacketOwnedLegacyVengeanceSkillId }
+            };
         private LocalOverlayBalloonSkin _packetOwnedTutorBalloonSkin;
         private readonly Dictionary<int, List<IDXObject>> _packetOwnedTutorCueFramesByIndex = new();
         private PacketOwnedBattleshipDurabilityOverrideState _packetOwnedBattleshipDurabilityOverride;
@@ -1152,7 +1158,13 @@ namespace HaCreator.MapSimulator
         {
             if (_packetOwnedLocalUtilityContext.TryEmitChairGetUpRequest(currentTick, player?.HP ?? 0, timeIntervalMs: 0, out PacketOwnedLocalUtilityOutboundRequest request))
             {
-                return $"Packet-owned sit result returned seat {seatIndex}, but {reason}. Forced a stand-up correction and emitted GetUpFromChairRequest(0) as opcode {request.Opcode} [{BitConverter.ToString(request.Payload.ToArray()).Replace("-", string.Empty)}].";
+                string payloadHex = BitConverter.ToString(request.Payload.ToArray()).Replace("-", string.Empty);
+                if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(request.Opcode, request.Payload, out string dispatchStatus))
+                {
+                    return $"Packet-owned sit result returned seat {seatIndex}, but {reason}. Forced a stand-up correction, emitted GetUpFromChairRequest(0) as opcode {request.Opcode} [{payloadHex}], and dispatched it through the live local-utility bridge. {dispatchStatus}";
+                }
+
+                return $"Packet-owned sit result returned seat {seatIndex}, but {reason}. Forced a stand-up correction and emitted GetUpFromChairRequest(0) as opcode {request.Opcode} [{payloadHex}], but it remained simulator-owned because no live local-utility bridge accepted the outbound packet. {dispatchStatus}";
             }
 
             return $"Packet-owned sit result returned seat {seatIndex}, but {reason}. Forced a stand-up correction, but the simulated CWvsContext gate suppressed GetUpFromChairRequest(0).";
@@ -1467,9 +1479,18 @@ namespace HaCreator.MapSimulator
                 || !string.IsNullOrWhiteSpace(_lastPacketOwnedTeleportTargetPortalName)
                     ? $"{_lastPacketOwnedTeleportSourcePortalName ?? "?"}->{_lastPacketOwnedTeleportTargetPortalName ?? "?"}"
                     : "none";
+            string teleportEffectStatus = _lastPacketOwnedTeleportEffectTick == int.MinValue
+                ? "idle"
+                : $"{_lastPacketOwnedTeleportEffectPath ?? "unresolved"} age={Math.Max(0, unchecked(currentTickCount - _lastPacketOwnedTeleportEffectTick))} ms";
+            string teleportRegistrationStatus = _lastPacketOwnedTeleportRegistrationTick == int.MinValue
+                ? "forced registration=idle"
+                : $"forced registration age={Math.Max(0, unchecked(currentTickCount - _lastPacketOwnedTeleportRegistrationTick))} ms, movePathAttr={_lastPacketOwnedTeleportMovePathAttribute}, setItemBackground={(_lastPacketOwnedTeleportSetItemBackgroundActive ? "1/1" : "0/0")}, effect={teleportEffectStatus}";
+            string teleportOutboundStatus = _lastPacketOwnedTeleportOutboundOpcode < 0
+                ? "outbound portal request=unresolved"
+                : $"outbound portal request={_lastPacketOwnedTeleportOutboundOpcode}[{Convert.ToHexString(_lastPacketOwnedTeleportOutboundPayload ?? Array.Empty<byte>())}]";
             string teleportStatus = _lastPacketOwnedTeleportPortalRequestTick == int.MinValue
                 ? $"Teleport request active={_packetOwnedTeleportRequestActive.ToString().ToLowerInvariant()}, last portal request=none, cooldown={IsPacketOwnedTeleportRegistrationCoolingDown(currentTickCount).ToString().ToLowerInvariant()}."
-                : $"Teleport request active={_packetOwnedTeleportRequestActive.ToString().ToLowerInvariant()}, last portal request age={Math.Max(0, unchecked(currentTickCount - _lastPacketOwnedTeleportPortalRequestTick))} ms, handoff={teleportPortalNames}, portalIndex={_lastPacketOwnedTeleportPortalIndex}, cooldown={IsPacketOwnedTeleportRegistrationCoolingDown(currentTickCount).ToString().ToLowerInvariant()}.";
+                : $"Teleport request active={_packetOwnedTeleportRequestActive.ToString().ToLowerInvariant()}, last portal request age={Math.Max(0, unchecked(currentTickCount - _lastPacketOwnedTeleportPortalRequestTick))} ms, handoff={teleportPortalNames}, portalIndex={_lastPacketOwnedTeleportPortalIndex}, cooldown={IsPacketOwnedTeleportRegistrationCoolingDown(currentTickCount).ToString().ToLowerInvariant()}, {teleportRegistrationStatus}, {teleportOutboundStatus}.";
             return $"{directionStatus} {standAloneStatus} {chairStatus} {teleportStatus}";
         }
 
@@ -1763,7 +1784,6 @@ namespace HaCreator.MapSimulator
             {
                 string ignoreMessage = $"Ignored packet-owned radio schedule for {normalizedTrackDescriptor} because a radio session is already active.";
                 _lastPacketOwnedRadioStatusMessage = ignoreMessage;
-                ShowUtilityFeedbackMessage(ignoreMessage);
                 return ignoreMessage;
             }
 
@@ -2307,8 +2327,15 @@ namespace HaCreator.MapSimulator
                 return unavailable;
             }
 
-            int normalizedSkillId = NormalizePacketOwnedSkillId(skillId);
-            if (!_playerManager.Skills.TryApplyPacketOwnedMeleeAttack(normalizedSkillId, currTickCount, out SkillData skill, out int level, out string errorMessage))
+            int normalizedSkillId = ResolvePacketOwnedLocalSkillId(skillId);
+            if (!_playerManager.Skills.TryApplyPacketOwnedMeleeAttack(
+                    normalizedSkillId,
+                    currTickCount,
+                    action,
+                    out SkillData skill,
+                    out int level,
+                    out string resolvedActionName,
+                    out string errorMessage))
             {
                 ShowUtilityFeedbackMessage(errorMessage);
                 return errorMessage;
@@ -2321,20 +2348,26 @@ namespace HaCreator.MapSimulator
             }
 
             float knockbackX = 0f;
+            float knockbackY = 0f;
             if (impactPercent > 0)
             {
                 float impactMagnitude = Math.Max(390f, impactPercent * 4f);
                 knockbackX = _playerManager.Player.FacingRight ? -impactMagnitude : impactMagnitude;
+                knockbackY = -impactMagnitude;
             }
 
             _playerManager.Player.ApplyPacketDamageReaction(
                 Math.Max(0, damage),
                 Math.Max(1, resolvedHitPeriodMs),
                 knockbackX,
-                0f);
+                knockbackY,
+                useQueuedImpact: true);
 
             string skillName = skill?.Name ?? $"Skill {normalizedSkillId}";
-            string message = $"Applied packet-owned Time Bomb attack for {skillName} Lv.{level} (action {Math.Max(0, action)}, hit {Math.Max(0, hitPeriodMs)} ms, impact {Math.Max(0, impactPercent)}%, damage {Math.Max(0, damage)}).";
+            string actionSummary = string.IsNullOrWhiteSpace(resolvedActionName)
+                ? Math.Max(0, action).ToString(CultureInfo.InvariantCulture)
+                : $"{Math.Max(0, action)} => {resolvedActionName}";
+            string message = $"Applied packet-owned Time Bomb attack for {skillName} Lv.{level} (action {actionSummary}, hit {Math.Max(0, hitPeriodMs)} ms, impact {Math.Max(0, impactPercent)}%, damage {Math.Max(0, damage)}).";
             ShowUtilityFeedbackMessage(message);
             return message;
         }
@@ -2356,7 +2389,7 @@ namespace HaCreator.MapSimulator
                 return ignored;
             }
 
-            int normalizedSkillId = NormalizePacketOwnedSkillId(skillId);
+            int normalizedSkillId = ResolvePacketOwnedLocalSkillId(skillId);
             if (!_playerManager.Skills.TryApplyPacketOwnedMeleeAttack(normalizedSkillId, currTickCount, out SkillData skill, out int level, out string errorMessage))
             {
                 ShowUtilityFeedbackMessage(errorMessage);
@@ -2887,7 +2920,10 @@ namespace HaCreator.MapSimulator
         {
             if (!_packetOwnedTutorRuntime.IsActive)
             {
-                return "Tutor: idle.";
+                string knownVariants = DescribePacketOwnedTutorKnownVariants();
+                return string.IsNullOrWhiteSpace(knownVariants)
+                    ? "Tutor: idle."
+                    : $"Tutor: idle. Known variants: {knownVariants}.";
             }
 
             string variant = DescribePacketOwnedTutorVariant(_packetOwnedTutorRuntime.ActiveSkillId);
@@ -2904,6 +2940,20 @@ namespace HaCreator.MapSimulator
             }
 
             return $"Tutor: {variant}, waiting for message.";
+        }
+
+        private string DescribePacketOwnedTutorKnownVariants()
+        {
+            string variants = _packetOwnedTutorRuntime.DescribeActiveTutorVariants();
+            return string.Equals(variants, "none", StringComparison.Ordinal)
+                ? string.Empty
+                : string.Join(
+                    ", ",
+                    variants
+                        .Split(new[] { ", " }, StringSplitOptions.RemoveEmptyEntries)
+                        .Select(value => int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int skillId)
+                            ? DescribePacketOwnedTutorVariant(skillId)
+                            : value));
         }
 
         private void LoadPacketOwnedTutorAssets()
@@ -3110,7 +3160,21 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            Vector2 position = new(anchor.X - frame.X, anchor.Y - frame.Y);
+            Vector2 position;
+            if (_packetOwnedTutorRuntime.TryResolveIndexedCuePlacement(
+                currentTickCount,
+                frame.Texture.Width,
+                frame.Texture.Height,
+                out int offsetX,
+                out int offsetY))
+            {
+                position = new Vector2(anchor.X + offsetX, anchor.Y + offsetY);
+            }
+            else
+            {
+                position = new Vector2(anchor.X - frame.X, anchor.Y - frame.Y);
+            }
+
             _spriteBatch.Draw(frame.Texture, position, Color.White);
         }
 
@@ -3348,6 +3412,20 @@ namespace HaCreator.MapSimulator
             return $"{displayName} asked to follow the local player. Press Yes to accept the request on the existing local follow seam or No to decline it.";
         }
 
+        private bool TryMirrorPacketOwnedFollowRequestToOfficialSession(int driverId, bool autoRequest, bool keyInput, out string status)
+        {
+            status = null;
+            if (!_localUtilityOfficialSessionBridge.HasConnectedSession)
+            {
+                return true;
+            }
+
+            return _localUtilityOfficialSessionBridge.TrySendOutboundPacket(
+                LocalFollowCharacterRuntime.FollowRequestOpcode,
+                LocalUtilityOfficialSessionBridgeManager.BuildFollowCharacterRequestPayload(driverId, autoRequest, keyInput),
+                out status);
+        }
+
         private void AcceptPacketOwnedFollowCharacterPrompt()
         {
             if (_localFollowRuntime.IncomingRequesterId <= 0)
@@ -3406,6 +3484,16 @@ namespace HaCreator.MapSimulator
             }
 
             HideLoginUtilityDialog();
+            if (!TryMirrorPacketOwnedFollowRequestToOfficialSession(0, autoRequest: false, keyInput: true, out string bridgeStatus))
+            {
+                message = $"{message} {bridgeStatus}".Trim();
+                _chat?.AddErrorMessage(bridgeStatus, currTickCount);
+            }
+            else if (!string.IsNullOrWhiteSpace(bridgeStatus))
+            {
+                message = $"{message} {bridgeStatus}".Trim();
+            }
+
             ShowUtilityFeedbackMessage(message);
         }
 
@@ -3917,11 +4005,40 @@ namespace HaCreator.MapSimulator
             return isVehicleSentinel ? PacketOwnedBattleshipSkillId : skillId;
         }
 
-        private static int NormalizePacketOwnedSkillId(int skillId)
+        private int ResolvePacketOwnedLocalSkillId(int skillId)
         {
-            return skillId == PacketOwnedLegacyVengeanceSkillId
-                ? PacketOwnedCurrentVengeanceSkillId
-                : skillId;
+            int fallbackSkillId = skillId;
+            foreach (int candidateSkillId in EnumeratePacketOwnedSkillIdCandidates(skillId))
+            {
+                fallbackSkillId = candidateSkillId;
+                if (_playerManager?.Skills?.GetSkillLevel(candidateSkillId) > 0)
+                {
+                    return candidateSkillId;
+                }
+            }
+
+            return fallbackSkillId;
+        }
+
+        private static IEnumerable<int> EnumeratePacketOwnedSkillIdCandidates(int skillId)
+        {
+            var yielded = new HashSet<int>();
+            if (PacketOwnedSkillIdAliasCandidates.TryGetValue(skillId, out int[] candidates))
+            {
+                for (int i = 0; i < candidates.Length; i++)
+                {
+                    int candidateSkillId = candidates[i];
+                    if (candidateSkillId > 0 && yielded.Add(candidateSkillId))
+                    {
+                        yield return candidateSkillId;
+                    }
+                }
+            }
+
+            if (skillId > 0 && yielded.Add(skillId))
+            {
+                yield return skillId;
+            }
         }
 
         private void TryPlayPacketOwnedNoticeSound()
@@ -4980,9 +5097,19 @@ namespace HaCreator.MapSimulator
                     }
 
                     StampPacketOwnedUtilityRequestState();
-                    return _localFollowRuntime.TrySendOutgoingRequest(localUser, requestedDriver, currTickCount, autoRequest, keyInput, out string requestMessage)
-                        ? ChatCommandHandler.CommandResult.Ok(requestMessage)
-                        : ChatCommandHandler.CommandResult.Error(requestMessage);
+                    if (!_localFollowRuntime.TrySendOutgoingRequest(localUser, requestedDriver, currTickCount, autoRequest, keyInput, out string requestMessage))
+                    {
+                        return ChatCommandHandler.CommandResult.Error(requestMessage);
+                    }
+
+                    if (!TryMirrorPacketOwnedFollowRequestToOfficialSession(requestedDriver.CharacterId, autoRequest, keyInput, out string requestBridgeStatus))
+                    {
+                        return ChatCommandHandler.CommandResult.Error($"{requestMessage} {requestBridgeStatus}".Trim());
+                    }
+
+                    return ChatCommandHandler.CommandResult.Ok(string.IsNullOrWhiteSpace(requestBridgeStatus)
+                        ? requestMessage
+                        : $"{requestMessage} {requestBridgeStatus}".Trim());
 
                 case "ask":
                     if (args.Length < 2 || !TryResolvePacketOwnedRemoteCharacterToken(args[1], out int requesterId, out _)

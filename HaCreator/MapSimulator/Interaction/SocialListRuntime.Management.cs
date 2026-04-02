@@ -362,16 +362,12 @@ namespace HaCreator.MapSimulator.Interaction
 
         private bool CanManageGuild()
         {
-            string role = GetLocalGuildRoleLabel();
-            return string.Equals(role, "Master", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(role, "Jr. Master", StringComparison.OrdinalIgnoreCase);
+            return HasGuildAdministrativeAuthority();
         }
 
         private bool CanManageAlliance()
         {
-            string role = GetLocalAllianceRoleLabel();
-            return string.Equals(role, "Representative", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(role, "Leader", StringComparison.OrdinalIgnoreCase);
+            return HasAllianceAdministrativeAuthority();
         }
 
         private string GetLocalAllianceRoleLabel()

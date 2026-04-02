@@ -25,6 +25,11 @@ namespace HaCreator.MapSimulator
                 return EquipmentChangeSubmission.Reject("Equipment change request is missing.");
             }
 
+            if (_pendingEquipmentChangeRequests.Count > 0)
+            {
+                return EquipmentChangeSubmission.Reject("An equipment change is already pending.");
+            }
+
             request.RequestId = GetNextEquipmentChangeRequestId();
             request.RequestedAtTick = currTickCount;
             _pendingEquipmentChangeRequests[request.RequestId] = new PendingEquipmentChangeEnvelope

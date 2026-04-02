@@ -1416,14 +1416,7 @@ namespace HaCreator.MapSimulator.UI
                 return "Unknown quest";
             }
 
-            string stateLabel = requirement.RequiredStateValue switch
-            {
-                (int)QuestStateType.Not_Started => "not started",
-                (int)QuestStateType.Started => "started",
-                (int)QuestStateType.Completed => "completed",
-                (int)QuestStateType.PartyQuest => "progressed",
-                _ => $"state {requirement.RequiredStateValue}"
-            };
+            string stateLabel = ItemMakerQuestRequirementPolicy.DescribeRequirementState(requirement.RequiredStateValue);
             return $"Quest #{requirement.QuestId} ({stateLabel})";
         }
 

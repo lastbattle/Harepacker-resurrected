@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Character.Skills;
 using HaCreator.MapSimulator.UI;
 using HaCreator.MapSimulator.UI.Controls;
 using HaSharedLibrary.Render;
@@ -360,50 +361,22 @@ namespace HaCreator.MapSimulator.UI
 
         public bool IncreaseSTR()
         {
-            if (_characterBuild != null && _characterBuild.CanIncreasePrimaryStat(_characterBuild.STR))
-            {
-                _characterBuild.STR++;
-                _characterBuild.AP--;
-                return true;
-            }
-
-            return false;
+            return _characterBuild?.IncreasePrimaryStat(BuffStatType.Strength) == true;
         }
 
         public bool IncreaseDEX()
         {
-            if (_characterBuild != null && _characterBuild.CanIncreasePrimaryStat(_characterBuild.DEX))
-            {
-                _characterBuild.DEX++;
-                _characterBuild.AP--;
-                return true;
-            }
-
-            return false;
+            return _characterBuild?.IncreasePrimaryStat(BuffStatType.Dexterity) == true;
         }
 
         public bool IncreaseINT()
         {
-            if (_characterBuild != null && _characterBuild.CanIncreasePrimaryStat(_characterBuild.INT))
-            {
-                _characterBuild.INT++;
-                _characterBuild.AP--;
-                return true;
-            }
-
-            return false;
+            return _characterBuild?.IncreasePrimaryStat(BuffStatType.Intelligence) == true;
         }
 
         public bool IncreaseLUK()
         {
-            if (_characterBuild != null && _characterBuild.CanIncreasePrimaryStat(_characterBuild.LUK))
-            {
-                _characterBuild.LUK++;
-                _characterBuild.AP--;
-                return true;
-            }
-
-            return false;
+            return _characterBuild?.IncreasePrimaryStat(BuffStatType.Luck) == true;
         }
 
         public void OpenDetailMode()
@@ -454,72 +427,7 @@ namespace HaCreator.MapSimulator.UI
         #region Auto-Assign
         public void AutoAssignAP()
         {
-            if (_characterBuild == null || _characterBuild.AP <= 0)
-                return;
-
-            int jobId = _characterBuild.Job;
-            int jobClass = jobId / 100;
-
-            while (_characterBuild.AP > 0)
-            {
-                bool assigned;
-
-                switch (jobClass)
-                {
-                    case 1: // Warrior
-                        if (_characterBuild.STR % 5 == 0 && _characterBuild.DEX < _characterBuild.STR / 2)
-                            assigned = IncreaseDEX() || IncreaseSTR();
-                        else
-                            assigned = IncreaseSTR() || IncreaseDEX();
-                        break;
-
-                    case 2: // Magician
-                        if (_characterBuild.INT % 5 == 0 && _characterBuild.LUK < _characterBuild.INT / 2)
-                            assigned = IncreaseLUK() || IncreaseINT();
-                        else
-                            assigned = IncreaseINT() || IncreaseLUK();
-                        break;
-
-                    case 3: // Archer
-                        if (_characterBuild.DEX % 5 == 0 && _characterBuild.STR < _characterBuild.DEX / 2)
-                            assigned = IncreaseSTR() || IncreaseDEX();
-                        else
-                            assigned = IncreaseDEX() || IncreaseSTR();
-                        break;
-
-                    case 4: // Thief
-                        if (_characterBuild.LUK % 5 == 0 && _characterBuild.DEX < _characterBuild.LUK / 2)
-                            assigned = IncreaseDEX() || IncreaseLUK();
-                        else
-                            assigned = IncreaseLUK() || IncreaseDEX();
-                        break;
-
-                    case 5: // Pirate
-                        if (_characterBuild.STR <= _characterBuild.DEX)
-                            assigned = IncreaseSTR() || IncreaseDEX();
-                        else
-                            assigned = IncreaseDEX() || IncreaseSTR();
-                        break;
-
-                    default:
-                        int minStat = Math.Min(Math.Min(_characterBuild.STR, _characterBuild.DEX),
-                                               Math.Min(_characterBuild.INT, _characterBuild.LUK));
-                        if (_characterBuild.STR == minStat)
-                            assigned = IncreaseSTR() || IncreaseDEX() || IncreaseINT() || IncreaseLUK();
-                        else if (_characterBuild.DEX == minStat)
-                            assigned = IncreaseDEX() || IncreaseINT() || IncreaseLUK() || IncreaseSTR();
-                        else if (_characterBuild.INT == minStat)
-                            assigned = IncreaseINT() || IncreaseLUK() || IncreaseSTR() || IncreaseDEX();
-                        else
-                            assigned = IncreaseLUK() || IncreaseSTR() || IncreaseDEX() || IncreaseINT();
-                        break;
-                }
-
-                if (!assigned)
-                {
-                    break;
-                }
-            }
+            _characterBuild?.AutoAssignAbilityPoints();
         }
         #endregion
 

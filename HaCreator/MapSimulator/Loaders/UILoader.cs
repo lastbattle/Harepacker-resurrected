@@ -551,19 +551,40 @@ namespace HaCreator.MapSimulator.Loaders
                     chatUI.SetChatTargetTextures(chatTargetTextures, chatTargetOrigins);
                     Vector2 chatTargetLabelPos = ResolveCanvasPosition(chatFrameAnchorOrigin, subProperty_chatTarget?["all"] as WzCanvasProperty).ToVector2();
                     Vector2 chatEnterPos = ResolveCanvasPosition(chatFrameAnchorOrigin, chatEnterCanvas).ToVector2();
+                    Rectangle chatEnterBounds = ResolveCanvasBounds(chatFrameAnchorOrigin, chatEnterCanvas);
+                    Rectangle chatSpace2Bounds = ResolveCanvasBounds(chatFrameAnchorOrigin, chatSpace2Canvas);
                     Vector2 chatTargetButtonPos = ResolveCanvasPosition(
                         chatFrameAnchorOrigin,
                         subProperty_chatTargetBase?["normal"]?["0"] as WzCanvasProperty).ToVector2();
                     Vector2 chatInputPos = new Vector2(
                         chatTargetButtonPos.X + obj_Ui_chatTarget.CanvasSnapshotWidth + 4,
                         chatEnterPos.Y);
+                    Vector2 chatLogTextPos = new Vector2(ResolveCanvasPosition(chatFrameAnchorOrigin, chatSpace2Canvas).X + 4, -16);
+                    int chatLogRightEdge = Math.Min(
+                        chatEnterBounds.Right > 0 ? chatEnterBounds.Right : int.MaxValue,
+                        chatSpace2Bounds.Right > 0 ? chatSpace2Bounds.Right : int.MaxValue);
+                    if (chatLogRightEdge == int.MaxValue)
+                    {
+                        chatLogRightEdge = (int)MathF.Ceiling(chatLogTextPos.X) + Math.Max(1, (chatEnterTexture?.Width ?? 457) - 5);
+                    }
+
+                    int chatLogWidth = Math.Max(
+                        1,
+                        chatLogRightEdge - (int)MathF.Floor(chatLogTextPos.X) - 1);
+                    Rectangle chatInteractionBounds = ResolveChatInteractionBounds(
+                        chatLogTextPos,
+                        chatLogWidth,
+                        chatEnterBounds,
+                        chatSpace2Bounds,
+                        chatEnterTexture?.Height ?? 21);
                     chatUI.SetLayoutMetrics(
                         chatFrameAnchorOrigin,
                         chatTargetLabelPos,
                         chatEnterPos,
                         chatInputPos,
-                        new Vector2(ResolveCanvasPosition(chatFrameAnchorOrigin, chatSpace2Canvas).X + 4, -16),
-                        Math.Max(1, (chatEnterTexture?.Width ?? 457) - 5));
+                        chatLogTextPos,
+                        chatLogWidth,
+                        chatInteractionBounds);
                     chatUI.SetPointNotificationAnimations(
                         LoadPointNotificationAnimation(mainBarProperties?["ApNotify"] as WzSubProperty, device),
                         LoadPointNotificationAnimation(mainBarProperties?["SpNotify"] as WzSubProperty, device));
@@ -1146,6 +1167,66 @@ namespace HaCreator.MapSimulator.Loaders
             return new Point(
                 anchorOrigin.X - canvasOrigin.X,
                 anchorOrigin.Y - canvasOrigin.Y);
+        }
+
+        private static Rectangle ResolveCanvasBounds(Point anchorOrigin, WzCanvasProperty canvas)
+        {
+            if (canvas == null)
+            {
+                return Rectangle.Empty;
+            }
+
+            Point position = ResolveCanvasPosition(anchorOrigin, canvas);
+            using System.Drawing.Bitmap bitmap = LoadCanvasBitmap(canvas);
+            if (!TryGetBitmapDimensions(bitmap, out int width, out int height))
+            {
+                return Rectangle.Empty;
+            }
+
+            return new Rectangle(position.X, position.Y, width, height);
+        }
+
+        private static Rectangle ResolveChatInteractionBounds(
+            Vector2 chatLogTextPos,
+            int chatLogWidth,
+            Rectangle chatEnterBounds,
+            Rectangle chatSpace2Bounds,
+            int chatEnterHeight)
+        {
+            const int ChatMaxVisibleLines = 8;
+            const int DefaultChatLogLineHeight = 14;
+            int left = Math.Min(
+                (int)MathF.Floor(chatLogTextPos.X) - 4,
+                chatSpace2Bounds.IsEmpty ? int.MaxValue : chatSpace2Bounds.Left);
+            if (left == int.MaxValue)
+            {
+                left = (int)MathF.Floor(chatLogTextPos.X) - 4;
+            }
+
+            int right = Math.Max(
+                (int)MathF.Ceiling(chatLogTextPos.X) + chatLogWidth + 4,
+                Math.Max(
+                    chatEnterBounds.IsEmpty ? int.MinValue : chatEnterBounds.Right,
+                    chatSpace2Bounds.IsEmpty ? int.MinValue : chatSpace2Bounds.Right));
+            if (right == int.MinValue)
+            {
+                right = left + chatLogWidth + 8;
+            }
+
+            int bottom = Math.Max(
+                chatEnterBounds.IsEmpty ? int.MinValue : chatEnterBounds.Bottom,
+                chatSpace2Bounds.IsEmpty ? int.MinValue : chatSpace2Bounds.Bottom);
+            if (bottom == int.MinValue)
+            {
+                bottom = (chatEnterBounds.IsEmpty ? 0 : chatEnterBounds.Y) + Math.Max(1, chatEnterHeight);
+            }
+
+            int top = (int)MathF.Floor(chatLogTextPos.Y) - (ChatMaxVisibleLines * DefaultChatLogLineHeight) - 2;
+            return new Rectangle(
+                left,
+                top,
+                Math.Max(1, right - left),
+                Math.Max(1, bottom - top));
         }
 
         private static StatusBarWarningAnimation LoadStatusBarWarningAnimation(WzSubProperty warningProperty, GraphicsDevice device)

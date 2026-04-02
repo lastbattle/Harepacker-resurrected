@@ -170,7 +170,7 @@ namespace HaCreator.MapSimulator.Companions
             FollowUpdateFlags followUpdate = UpdateVisualAnchor(deltaSeconds);
             if ((followUpdate & (FollowUpdateFlags.SnappedToTarget | FollowUpdateFlags.PassiveSettleEffect)) != 0)
             {
-                TriggerBlink(currentTime);
+                TriggerBlink(owner, currentTime);
             }
 
             bool explicitActionSelected = false;
@@ -589,14 +589,33 @@ namespace HaCreator.MapSimulator.Companions
 
         private static bool ShouldSuppressForCurrentMount(PlayerCharacter owner)
         {
-            if (owner?.Build?.Equipment == null
-                || !owner.Build.Equipment.TryGetValue(EquipSlot.TamingMob, out CharacterPart mountPart)
-                || mountPart?.ItemId is not int mountItemId)
+            if (!TryGetCurrentMountItemId(owner, out int mountItemId))
             {
                 return false;
             }
 
             return HiddenDragonMountIds.Contains(mountItemId);
+        }
+
+        private static bool HasMountedVehicle(PlayerCharacter owner)
+        {
+            return TryGetCurrentMountItemId(owner, out _);
+        }
+
+        private static bool TryGetCurrentMountItemId(PlayerCharacter owner, out int mountItemId)
+        {
+            mountItemId = 0;
+
+            if (owner?.Build?.Equipment == null
+                || !owner.Build.Equipment.TryGetValue(EquipSlot.TamingMob, out CharacterPart mountPart)
+                || mountPart?.ItemId is not int resolvedMountItemId
+                || resolvedMountItemId <= 0)
+            {
+                return false;
+            }
+
+            mountItemId = resolvedMountItemId;
+            return true;
         }
 
         private float GetDeltaSeconds(int currentTime)
@@ -1002,13 +1021,9 @@ namespace HaCreator.MapSimulator.Companions
             EnsureAuxiliaryAnimationsLoaded();
 
             bool shouldShowFury = ShouldShowDragonFury(owner);
-            if (!shouldShowFury)
-            {
-                _dragonFuryAlpha = 0f;
-                return;
-            }
-
-            _dragonFuryAlpha = Approach(_dragonFuryAlpha, _alpha, deltaSeconds * AlphaFadeRate * 1.5f);
+            _dragonFuryAlpha = shouldShowFury
+                ? Approach(_dragonFuryAlpha, _alpha, deltaSeconds * AlphaFadeRate * 1.5f)
+                : 0f;
             UpdateQuestInfoLayer(owner);
         }
 
@@ -1157,7 +1172,7 @@ namespace HaCreator.MapSimulator.Companions
                 return false;
             }
 
-            if (ShouldSuppressForCurrentMount(owner))
+            if (HasMountedVehicle(owner))
             {
                 return false;
             }
@@ -1223,7 +1238,7 @@ namespace HaCreator.MapSimulator.Companions
                 return false;
             }
 
-            if (ShouldSuppressForCurrentMount(owner))
+            if (HasMountedVehicle(owner))
             {
                 return false;
             }
@@ -1231,9 +1246,9 @@ namespace HaCreator.MapSimulator.Companions
             return !IsExplicitDragonAction(_currentActionName);
         }
 
-        private void TriggerBlink(int currentTime)
+        private void TriggerBlink(PlayerCharacter owner, int currentTime)
         {
-            if (_isSuppressed)
+            if (_isSuppressed || HasMountedVehicle(owner))
             {
                 return;
             }

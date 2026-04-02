@@ -74,6 +74,12 @@ namespace HaCreator.MapSimulator.Pools
         int SummonedObjectId,
         int ExpireTime);
 
+    internal readonly record struct PacketOwnedOneTimeActionClip(
+        SkillAnimation Animation,
+        int BaseAnimationTime,
+        int StartTime,
+        int EndTime);
+
     public sealed class SummonedPool
     {
         private const int TeslaCoilSkillId = 35111002;
@@ -107,6 +113,7 @@ namespace HaCreator.MapSimulator.Pools
             public int LastHitDamage { get; set; }
             public int OneTimeAction { get; set; }
             public int OneTimeActionEndTime { get; set; } = int.MinValue;
+            public PacketOwnedOneTimeActionClip? OneTimeActionClip { get; set; }
             public int LastPassiveMovementUpdateTime { get; set; } = int.MinValue;
             public PlayerMovementSyncSnapshot MovementSnapshot { get; set; }
         }
@@ -576,7 +583,9 @@ namespace HaCreator.MapSimulator.Pools
 
             state.Summon.LastAttackAnimationStartTime = currentTime;
             state.Summon.CurrentAnimationBranchName = ResolvePacketOwnedSkillBranch(state);
-            bool hasPrepareAnimation = state.Summon.SkillData?.SummonAttackPrepareAnimation?.Frames.Count > 0;
+            bool hasPrepareAnimation = SummonRuntimeRules.ResolveSummonActionPrepareDurationMs(
+                state.Summon.SkillData,
+                state.Summon.CurrentAnimationBranchName) > 0;
             state.Summon.ActorState = hasPrepareAnimation
                 ? SummonActorState.Prepare
                 : SummonActorState.Attack;
@@ -772,7 +781,7 @@ namespace HaCreator.MapSimulator.Pools
                 .OrderBy(static value => value.Summon.PositionY)
                 .ThenBy(static value => value.OwnerCharacterId))
             {
-                DrawSummon(spriteBatch, state.Summon, mapShiftX, mapShiftY, centerX, centerY, currentTime);
+                DrawSummon(spriteBatch, state, mapShiftX, mapShiftY, centerX, centerY, currentTime);
             }
 
             foreach (ActiveProjectile projectile in _projectiles)
@@ -1395,6 +1404,7 @@ namespace HaCreator.MapSimulator.Pools
 
                 state.OneTimeAction = 0;
                 state.OneTimeActionEndTime = int.MinValue;
+                state.OneTimeActionClip = null;
                 state.Summon.OneTimeActionFallbackAnimation = null;
                 state.Summon.OneTimeActionFallbackStartTime = int.MinValue;
                 state.Summon.OneTimeActionFallbackAnimationTime = int.MinValue;
@@ -1497,7 +1507,9 @@ namespace HaCreator.MapSimulator.Pools
                 return 0;
             }
 
-            int prepareDuration = GetSkillAnimationDuration(summon.SkillData.SummonAttackPrepareAnimation) ?? 0;
+            int prepareDuration = SummonRuntimeRules.ResolveSummonActionPrepareDurationMs(
+                summon.SkillData,
+                summon.CurrentAnimationBranchName);
             SkillAnimation actionAnimation = ResolvePacketPendingRemovalActionAnimation(summon);
             int actionDuration = GetSkillAnimationDuration(actionAnimation) ?? 0;
             return actionDuration > 0 ? prepareDuration + actionDuration : 0;
@@ -1558,30 +1570,22 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             bool hasHitAnimation = state.Summon.SkillData?.SummonHitAnimation?.Frames.Count > 0;
-            if (hasHitAnimation)
-            {
-                state.Summon.OneTimeActionFallbackAnimation = null;
-                state.Summon.OneTimeActionFallbackStartTime = int.MinValue;
-                state.Summon.OneTimeActionFallbackAnimationTime = int.MinValue;
-                state.Summon.OneTimeActionFallbackEndTime = int.MinValue;
-            }
-            else
+            state.OneTimeActionClip = null;
+            state.Summon.OneTimeActionFallbackAnimation = null;
+            state.Summon.OneTimeActionFallbackStartTime = int.MinValue;
+            state.Summon.OneTimeActionFallbackAnimationTime = int.MinValue;
+            state.Summon.OneTimeActionFallbackEndTime = int.MinValue;
+            if (!hasHitAnimation)
             {
                 int elapsed = Math.Max(0, currentTime - state.Summon.StartTime);
                 SkillAnimation fallbackAnimation = ResolvePreHitSummonAnimation(state.Summon, currentTime, elapsed, out int fallbackAnimationTime);
-                int fallbackDuration = ResolveOneTimeActionFallbackDurationMs(fallbackAnimation, fallbackAnimationTime);
-                state.Summon.OneTimeActionFallbackAnimation = fallbackAnimation;
-                state.Summon.OneTimeActionFallbackStartTime = currentTime;
-                state.Summon.OneTimeActionFallbackAnimationTime = fallbackAnimation?.Frames.Count > 0
-                    ? Math.Max(0, fallbackAnimationTime)
-                    : int.MinValue;
-                state.Summon.OneTimeActionFallbackEndTime = currentTime + fallbackDuration;
+                state.OneTimeActionClip = CreatePacketOwnedOneTimeActionClip(fallbackAnimation, fallbackAnimationTime, currentTime);
             }
 
             state.OneTimeAction = 15;
             state.OneTimeActionEndTime = hasHitAnimation
                 ? currentTime + ResolveSummonHitActionDurationMs(state.Summon)
-                : state.Summon.OneTimeActionFallbackEndTime;
+                : state.OneTimeActionClip?.EndTime ?? currentTime + 240;
             if (hasHitAnimation)
             {
                 state.Summon.ActorState = SummonActorState.Hit;
@@ -2120,8 +2124,9 @@ namespace HaCreator.MapSimulator.Pools
                 state.Summon.SkillData,
                 state.Summon.AssistType);
 
-            bool hasPrepareAnimation = string.IsNullOrWhiteSpace(state.Summon.CurrentAnimationBranchName)
-                && state.Summon.SkillData.SummonAttackPrepareAnimation?.Frames.Count > 0;
+            bool hasPrepareAnimation = SummonRuntimeRules.ResolveSummonActionPrepareDurationMs(
+                state.Summon.SkillData,
+                state.Summon.CurrentAnimationBranchName) > 0;
             state.Summon.ActorState = hasPrepareAnimation
                 ? SummonActorState.Prepare
                 : SummonActorState.Attack;
@@ -2911,12 +2916,30 @@ namespace HaCreator.MapSimulator.Pools
             _combatEffects.AddMiss(x, y, currentTime);
         }
 
-        private void DrawSummon(SpriteBatch spriteBatch, ActiveSummon summon, int mapShiftX, int mapShiftY, int centerX, int centerY, int currentTime)
+        private void DrawSummon(SpriteBatch spriteBatch, PacketOwnedSummonState state, int mapShiftX, int mapShiftY, int centerX, int centerY, int currentTime)
         {
+            ActiveSummon summon = state?.Summon;
+            if (summon == null)
+            {
+                return;
+            }
+
             int elapsed = Math.Max(0, currentTime - summon.StartTime);
             SkillAnimation animation = ResolveSummonAnimation(summon, currentTime, elapsed, out int animationTime);
             SkillFrame frame = animation?.GetFrameAtTime(animationTime);
-            if (frame?.Texture == null)
+            DrawSummonFrame(spriteBatch, summon, frame, mapShiftX, mapShiftY, centerX, centerY);
+
+            if (state.OneTimeActionClip is PacketOwnedOneTimeActionClip actionClip
+                && TryResolvePacketOwnedOneTimeActionPlayback(actionClip, currentTime, out int actionAnimationTime))
+            {
+                SkillFrame actionFrame = actionClip.Animation?.GetFrameAtTime(actionAnimationTime);
+                DrawSummonFrame(spriteBatch, summon, actionFrame, mapShiftX, mapShiftY, centerX, centerY);
+            }
+        }
+
+        private void DrawSummonFrame(SpriteBatch spriteBatch, ActiveSummon summon, SkillFrame frame, int mapShiftX, int mapShiftY, int centerX, int centerY)
+        {
+            if (summon == null || frame?.Texture == null)
             {
                 return;
             }
@@ -3168,6 +3191,54 @@ namespace HaCreator.MapSimulator.Pools
             return true;
         }
 
+        internal static PacketOwnedOneTimeActionClip? CreatePacketOwnedOneTimeActionClip(SkillAnimation animation, int animationTime, int currentTime)
+        {
+            if (animation?.Frames.Count <= 0)
+            {
+                return null;
+            }
+
+            int normalizedAnimationTime = Math.Max(0, animationTime);
+            int duration = ResolveOneTimeActionFallbackDurationMs(animation, normalizedAnimationTime);
+            return new PacketOwnedOneTimeActionClip(
+                animation,
+                normalizedAnimationTime,
+                currentTime,
+                currentTime + duration);
+        }
+
+        internal static bool TryResolvePacketOwnedOneTimeActionPlayback(PacketOwnedOneTimeActionClip clip, int currentTime, out int animationTime)
+        {
+            animationTime = 0;
+            if (clip.Animation?.Frames.Count <= 0)
+            {
+                return false;
+            }
+
+            int totalDuration = GetSkillAnimationDuration(clip.Animation) ?? 0;
+            if (totalDuration <= 0)
+            {
+                animationTime = Math.Max(0, clip.BaseAnimationTime);
+                return currentTime < clip.EndTime;
+            }
+
+            int baseAnimationTime = Math.Max(0, clip.BaseAnimationTime);
+            int remainingDuration = Math.Max(0, totalDuration - Math.Min(baseAnimationTime, totalDuration));
+            if (remainingDuration <= 0)
+            {
+                return false;
+            }
+
+            int elapsed = Math.Max(0, currentTime - clip.StartTime);
+            if (elapsed >= remainingDuration || currentTime >= clip.EndTime)
+            {
+                return false;
+            }
+
+            animationTime = Math.Min(totalDuration - 1, baseAnimationTime + elapsed);
+            return true;
+        }
+
         private static bool ShouldUseSummonPrepareAnimation(ActiveSummon summon, SkillData skill)
         {
             if (summon?.ActorState != SummonActorState.Prepare || skill == null)
@@ -3278,7 +3349,9 @@ namespace HaCreator.MapSimulator.Pools
                 return 0;
             }
 
-            int prepareDurationMs = GetSkillAnimationDuration(summon.SkillData.SummonAttackPrepareAnimation) ?? 0;
+            int prepareDurationMs = SummonRuntimeRules.ResolveSummonActionPrepareDurationMs(
+                summon.SkillData,
+                branchName);
             SkillAnimation attackAnimation = summon.SkillData.SummonAttackAnimation;
             if (!string.IsNullOrWhiteSpace(branchName)
                 && summon.SkillData.SummonNamedAnimations.TryGetValue(branchName, out SkillAnimation branchAnimation)

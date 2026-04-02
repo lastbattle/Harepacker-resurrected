@@ -108,10 +108,39 @@ namespace HaCreator.MapSimulator.UI
         }
 
         public override string WindowName => _windowName;
+        public string StatusMessage => _statusMessage;
+        public string SearchState => _searchState;
+        public string NavigationState => _navigationState;
+        public string NoticeState => _noticeState;
+        public int PendingCommoditySerialNumber => _pendingCommoditySerialNumber;
+        public int WishlistCount => _wishlistCount;
+        public long NexonCashBalance => _nexonCash;
+        public long MaplePointBalance => _maplePoint;
+        public long PrepaidCashBalance => _prepaidCash;
+        public int ChargeParam => _chargeParam;
+        public bool HasPendingCommodityMigration => _hasPendingMigration;
+        public bool IsOneADayPending => _packetRoutes.ContainsKey(395);
 
         public override void SetFont(SpriteFont font)
         {
             _font = font;
+        }
+
+        public IReadOnlyList<string> GetRecentPacketSummaries(int maxCount = 4)
+        {
+            if (_packetRouteOrder.Count == 0 || maxCount <= 0)
+            {
+                return Array.Empty<string>();
+            }
+
+            List<string> lines = new();
+            foreach (int packetType in _packetRouteOrder.TakeLast(maxCount))
+            {
+                PacketRouteState route = _packetRoutes[packetType];
+                lines.Add($"{route.Label} x{route.HitCount}: {route.Detail}");
+            }
+
+            return lines;
         }
 
         public void AddLayer(IDXObject layer, Point offset)

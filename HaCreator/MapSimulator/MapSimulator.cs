@@ -604,6 +604,14 @@ namespace HaCreator.MapSimulator
         private int _lastPacketOwnedTeleportPortalIndex = -1;
         private string _lastPacketOwnedTeleportSourcePortalName;
         private string _lastPacketOwnedTeleportTargetPortalName;
+        private int _lastPacketOwnedTeleportRegistrationTick = int.MinValue;
+        private int _lastPacketOwnedTeleportMovePathAttribute = -1;
+        private bool _lastPacketOwnedTeleportSetItemBackgroundActive = false;
+        private int _lastPacketOwnedTeleportEffectTick = int.MinValue;
+        private string _lastPacketOwnedTeleportEffectPath;
+        private int _lastPacketOwnedTeleportOutboundOpcode = -1;
+        private byte[] _lastPacketOwnedTeleportOutboundPayload = Array.Empty<byte>();
+        private string _lastPacketOwnedTeleportOutboundSummary;
         private PendingMapSpawnTarget _pendingMapSpawnTarget = null;
         private bool _scriptedDirectionModeOwnerActive = false;
         private bool _passiveTransferRequestPending = false;
@@ -1827,7 +1835,10 @@ namespace HaCreator.MapSimulator
                             tab == ParcelDialogTab.QuickSend
                                 ? "Quick Send money button selected. Use /memo draft meso <amount> to stage the field."
                                 : "Send money button selected. Use /memo draft meso <amount> or /memo draft item ... to update the parcel.");
-                    });
+                    },
+                    recipient => _memoMailbox.UpdateDraftRecipientFromUi(recipient),
+                    body => _memoMailbox.UpdateDraftBodyFromUi(body),
+                    meso => _memoMailbox.UpdateDraftMesoFromUi(meso));
                 memoMailboxWindow.SetFont(_fontChat);
             }
 
@@ -2522,7 +2533,7 @@ namespace HaCreator.MapSimulator
                     },
                     () => _familyChartRuntime.CyclePrecept(),
                     () => _familyChartRuntime.AddJunior(),
-                    delta => _familyChartRuntime.MoveFocus(delta),
+                    delta => ShowUtilityFeedbackMessage(_familyChartRuntime.MoveEntitlementSelection(delta)),
                     () =>
                     {
                         FamilyEntitlementUseResult result = _familyChartRuntime.ExecuteSelectedEntitlement(
@@ -7830,7 +7841,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            _loginBackendSessionManager.ApplyViewAllCharResult(_loginPacketViewAllCharResultProfile, _loginCanHaveExtraCharacter);
+            _loginBackendSessionManager.ApplyViewAllCharResult(_loginPacketViewAllCharResultProfile);
 
             switch (_loginPacketViewAllCharResultProfile.Kind)
             {
@@ -10384,6 +10395,22 @@ namespace HaCreator.MapSimulator
             {
                 utilityDialogWindow.Hide();
             }
+
+            BringLoginTitleWindowToFront();
+        }
+
+        private void BringLoginTitleWindowToFront()
+        {
+            if (!IsLoginRuntimeSceneActive || _loginRuntime.CurrentStep != LoginStep.Title)
+            {
+                return;
+            }
+
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.LoginTitle) is LoginTitleWindow titleWindow &&
+                titleWindow.IsVisible)
+            {
+                uiWindowManager.BringToFront(titleWindow);
+            }
         }
 
 
@@ -10524,12 +10551,11 @@ namespace HaCreator.MapSimulator
             }
 
 
-            _loginTitleStatusMessage = "ID recovery now routes through the dedicated title owner.";
-            ShowLoginUtilityDialog(
-                "Login Utility",
-                "ID recovery is surfaced from the title owner, but the simulator does not yet implement the external account recovery service.",
-                LoginUtilityDialogButtonLayout.Ok,
-                LoginUtilityDialogAction.DismissOnly);
+            ShowLoginTitleWebsiteHandoff(
+                LoginWebsiteHandoffResolver.DefaultFindEmailHelpUrl,
+                "Login ID recovery",
+                "The title owner routed the Nexon ID recovery flow through the login utility seam.",
+                "The login title requested Nexon account self-service for ID recovery. Press the Nexon button to open the official Account Self-Service guide, then follow the Find Your Email path outside the simulator while the existing login notice seam stays active.");
             SyncLoginTitleWindow();
         }
 
@@ -10542,12 +10568,11 @@ namespace HaCreator.MapSimulator
             }
 
 
-            _loginTitleStatusMessage = "Password recovery now routes through the dedicated title owner.";
-            ShowLoginUtilityDialog(
-                "Login Utility",
-                "Password recovery is surfaced from the title owner, but the simulator does not yet implement the external account recovery service.",
-                LoginUtilityDialogButtonLayout.Ok,
-                LoginUtilityDialogAction.DismissOnly);
+            ShowLoginTitleWebsiteHandoff(
+                LoginWebsiteHandoffResolver.DefaultPasswordResetHelpUrl,
+                "Login password recovery",
+                "The title owner routed the Nexon password recovery flow through the login utility seam.",
+                "The login title requested Nexon account self-service for password recovery. Press the Nexon button to open the official Account Self-Service guide, then follow the Reset Your Password path outside the simulator while the existing login notice seam stays active.");
             SyncLoginTitleWindow();
         }
 
@@ -10580,30 +10605,11 @@ namespace HaCreator.MapSimulator
 
 
 
-            _loginTitleStatusMessage = "The title owner routed the homepage handoff through the login utility seam.";
-            PrepareLoginWebsiteHandoff(LoginWebsiteHandoffResolver.DefaultHomepageUrl, "Login homepage");
-
-
-
-            ShowLoginUtilityDialog(
-
-
-
-                "Login Utility",
-
-
-
-                $"The login title requested the Nexon homepage handoff. Press the Nexon button to open {_loginWebsiteHandoffUrl} in the external browser while the simulator keeps the existing login notice seam.",
-
-
-
-                LoginUtilityDialogButtonLayout.Nexon,
-
-
-
-                LoginUtilityDialogAction.WebsiteHandoff);
-
-
+            ShowLoginTitleWebsiteHandoff(
+                LoginWebsiteHandoffResolver.DefaultHomepageUrl,
+                "Login homepage",
+                "The title owner routed the homepage handoff through the login utility seam.",
+                "The login title requested the Nexon homepage handoff. Press the Nexon button to open the external browser while the simulator keeps the existing login notice seam.");
 
             SyncLoginTitleWindow();
 
@@ -10809,6 +10815,7 @@ namespace HaCreator.MapSimulator
             _loginCreateCharacterFlow.SelectRace(raceIndex);
             _loginCreateCharacterFlow.ResetAvatarIndices();
             _loginCreateCharacterFlow.RollRandom(_playerManager?.Loader);
+            _loginCreateCharacterFlow.OpenRaceConfirmation();
             _loginCharacterStatusMessage = _loginCreateCharacterFlow.StatusMessage;
             SyncLoginCreateCharacterWindow();
         }
@@ -10889,8 +10896,16 @@ namespace HaCreator.MapSimulator
             switch (_loginCreateCharacterFlow.Stage)
             {
                 case LoginCreateCharacterStage.RaceSelect:
+                    if (!_loginCreateCharacterFlow.IsRaceConfirmationOpen)
+                    {
+                        _loginCreateCharacterFlow.OpenRaceConfirmation();
+                        _loginRuntime.ForceStep(LoginStep.NewCharacter, "Opened the dedicated confirm-race dialog from the race-selection owner.");
+                        break;
+                    }
+
+                    _loginCreateCharacterFlow.CloseRaceConfirmation();
                     _loginCreateCharacterFlow.SetStage(LoginCreateCharacterStage.JobSelect, "Choose the starter job banner for the new character.");
-                    _loginRuntime.ForceStep(LoginStep.NewCharacter, "Advanced the dedicated create-character flow to job selection.");
+                    _loginRuntime.ForceStep(LoginStep.NewCharacter, "Accepted the dedicated confirm-race dialog and advanced to job selection.");
                     break;
                 case LoginCreateCharacterStage.JobSelect:
                     _loginCreateCharacterFlow.SetStage(LoginCreateCharacterStage.AvatarSelect, "Adjust the starter avatar, check the name, then create the character.");
@@ -10926,6 +10941,10 @@ namespace HaCreator.MapSimulator
                 case LoginCreateCharacterStage.JobSelect:
                     _loginCreateCharacterFlow.SetStage(LoginCreateCharacterStage.RaceSelect, "Returned to the race-selection owner.");
                     _loginRuntime.ForceStep(LoginStep.NewCharacter, "Moved back from job selection to race selection.");
+                    break;
+                case LoginCreateCharacterStage.RaceSelect when _loginCreateCharacterFlow.IsRaceConfirmationOpen:
+                    _loginCreateCharacterFlow.CloseRaceConfirmation("Closed the confirm-race dialog and stayed on race selection.");
+                    _loginRuntime.ForceStep(LoginStep.NewCharacter, "Cancelled the dedicated confirm-race dialog.");
                     break;
                 default:
                     CloseLoginCreateCharacterFlow("Cancelled the dedicated create-character flow and returned to character selection.");
@@ -13430,6 +13449,7 @@ namespace HaCreator.MapSimulator
             _dojoPacketInbox.Dispose();
             _dojoOfficialSessionBridge.Dispose();
             _transportPacketInbox.Dispose();
+            _transportOfficialSessionBridge.Dispose();
 
             _partyRaidPacketInbox.Dispose();
             _tournamentPacketInbox.Dispose();
@@ -15989,6 +16009,21 @@ namespace HaCreator.MapSimulator
 
         }
 
+        private void ShowLoginTitleWebsiteHandoff(
+            string targetUrl,
+            string source,
+            string statusMessage,
+            string body)
+        {
+            _loginTitleStatusMessage = statusMessage;
+            PrepareLoginWebsiteHandoff(targetUrl, source);
+            ShowLoginUtilityDialog(
+                "Login Utility",
+                $"{body} Target URL: {_loginWebsiteHandoffUrl}",
+                LoginUtilityDialogButtonLayout.Nexon,
+                LoginUtilityDialogAction.WebsiteHandoff);
+        }
+
 
 
         private void HandleItemMakerHiddenRecipesUnlocked(IReadOnlyCollection<ItemMakerRecipeProgressionEntry> recipeEntries)
@@ -16016,17 +16051,7 @@ namespace HaCreator.MapSimulator
 
 
             QuestStateType currentState = _questRuntime.GetCurrentState(questId);
-            return requiredStateValue switch
-            {
-                0 => currentState == QuestStateType.Not_Started,
-                1 => currentState == QuestStateType.Started,
-                2 => currentState == QuestStateType.Completed,
-                // ItemMake reqQuest uses additional client-side progression flags in a few recipes.
-                // Treat those as "quest has progressed" so those recipes respect the gate without
-                // hard-failing on an enum value the simulator does not model separately.
-                >= 3 => currentState == QuestStateType.Started || currentState == QuestStateType.Completed,
-                _ => false
-            };
+            return ItemMakerQuestRequirementPolicy.MatchesClientQuestRequirement(currentState, requiredStateValue);
         }
 
 
@@ -17473,10 +17498,15 @@ namespace HaCreator.MapSimulator
             public int Mad { get; init; }
             public int Pdd { get; init; }
             public int Mdd { get; init; }
+            public int Strength { get; init; }
+            public int Dexterity { get; init; }
+            public int Intelligence { get; init; }
+            public int Luck { get; init; }
             public int Accuracy { get; init; }
             public int Avoidability { get; init; }
             public int Speed { get; init; }
             public int Jump { get; init; }
+            public int AllStat { get; init; }
             public int IndieMaxHp { get; init; }
             public int IndieMaxMp { get; init; }
             public int MaxHpPercent { get; init; }
@@ -17535,10 +17565,15 @@ namespace HaCreator.MapSimulator
                  Mad != 0 ||
                  Pdd != 0 ||
                  Mdd != 0 ||
+                 Strength != 0 ||
+                 Dexterity != 0 ||
+                 Intelligence != 0 ||
+                 Luck != 0 ||
                  Accuracy != 0 ||
                  Avoidability != 0 ||
                  Speed != 0 ||
                  Jump != 0 ||
+                 AllStat != 0 ||
                  IndieMaxHp != 0 ||
                  IndieMaxMp != 0 ||
                  MaxHpPercent != 0 ||
@@ -17909,10 +17944,15 @@ namespace HaCreator.MapSimulator
                 Mad = ResolveConsumableIntValue(specProperty, "mad", "indieMad"),
                 Pdd = ResolveConsumableIntValue(specProperty, "pdd", "indiePdd"),
                 Mdd = ResolveConsumableIntValue(specProperty, "mdd", "indieMdd"),
+                Strength = ResolveConsumableIntValue(specProperty, "str", "indieSTR"),
+                Dexterity = ResolveConsumableIntValue(specProperty, "dex", "indieDEX"),
+                Intelligence = ResolveConsumableIntValue(specProperty, "int", "indieINT"),
+                Luck = ResolveConsumableIntValue(specProperty, "luk", "indieLUK"),
                 Accuracy = ResolveConsumableIntValue(specProperty, "acc"),
                 Avoidability = ResolveConsumableIntValue(specProperty, "eva"),
                 Speed = ResolveConsumableIntValue(specProperty, "speed", "indieSpeed"),
                 Jump = ResolveConsumableIntValue(specProperty, "jump", "indieJump"),
+                AllStat = ResolveConsumableIntValue(specProperty, "indieAllStat"),
                 IndieMaxHp = ResolveConsumableIntValue(specProperty, "indieMhp"),
                 IndieMaxMp = ResolveConsumableIntValue(specProperty, "indieMmp"),
                 MaxHpPercent = ResolveConsumablePercentValue(specProperty, "mhpR", "mhpRRate"),
@@ -18063,10 +18103,15 @@ namespace HaCreator.MapSimulator
                 MAD = effect.Mad,
                 PDD = effect.Pdd,
                 MDD = effect.Mdd,
+                STR = effect.Strength,
+                DEX = effect.Dexterity,
+                INT = effect.Intelligence,
+                LUK = effect.Luck,
                 ACC = effect.Accuracy,
                 EVA = effect.Avoidability,
                 Speed = effect.Speed,
                 Jump = effect.Jump,
+                AllStat = effect.AllStat,
                 IndieMaxHP = effect.IndieMaxHp,
                 IndieMaxMP = effect.IndieMaxMp,
                 MaxHPPercent = effect.MaxHpPercent,
@@ -19037,6 +19082,10 @@ namespace HaCreator.MapSimulator
             {
                 relationshipLines.Add("Friend");
             }
+            if (state.IsStalkTarget)
+            {
+                relationshipLines.Add("Stalk target");
+            }
 
 
             return BuildMinimapTooltipText(
@@ -19213,6 +19262,7 @@ namespace HaCreator.MapSimulator
                 state.HasPosition = true;
                 state.Position = member.SimulatedPosition;
             }
+            AppendPacketOwnedStalkTrackedUserMarkers(trackedUsers);
             AppendMiniRoomTrackedUserMarkers(trackedUsers, player);
             AppendTraderTrackedUserMarkers(trackedUsers, player);
 
@@ -19371,6 +19421,7 @@ namespace HaCreator.MapSimulator
             public bool IsGuildLeader { get; set; }
             public bool IsMatchParticipant { get; set; }
             public bool IsTrader { get; set; }
+            public bool IsStalkTarget { get; set; }
             public bool HasPosition { get; set; }
             public Vector2 Position { get; set; }
         }
@@ -20365,19 +20416,7 @@ namespace HaCreator.MapSimulator
             if (_mesoAnimFrames == null) return null;
 
 
-            // Select meso icon based on amount thresholds
-            int index;
-            if (amount >= 10000)
-                index = 3; // Bag (large boss drops)
-            else if (amount >= 1000)
-                index = 2; // Gold (large)
-            else if (amount >= 100)
-                index = 1; // Silver (medium)
-            else
-                index = 0; // Bronze (small)
-
-
-            return _mesoAnimFrames[index];
+            return _mesoAnimFrames[DropPool.GetMoneyIconTypeForAmount(amount)];
 
         }
 
@@ -21228,6 +21267,7 @@ namespace HaCreator.MapSimulator
                 return y - 18;
             });
             _dropPool.SetSourcePositionResolver(ResolveDropPacketSourcePosition);
+            _dropPool.SetPartyPickupMembershipEvaluator(AreDropActorsInSameParty);
 
 
             // Set up pickup sound and notice callbacks
@@ -22642,35 +22682,14 @@ namespace HaCreator.MapSimulator
                 ResolveQuestSkillName,
                 AddQuestGrantedSkillPoints);
             _questRuntime.ConfigurePetRuntime(
-                (supportedPetItemIds, recallLimit) =>
-                {
-                    IReadOnlyList<PetRuntime> activePets = _playerManager?.Pets?.ActivePets;
-                    if (activePets == null || activePets.Count == 0)
-                    {
-                        return false;
-                    }
-
-
-                    if (recallLimit.HasValue && recallLimit.Value > 0 && activePets.Count > recallLimit.Value)
-                    {
-                        return false;
-                    }
-
-
-                    if (supportedPetItemIds == null || supportedPetItemIds.Count == 0)
-                    {
-                        return true;
-                    }
-
-
-                    return activePets.Any(pet => pet != null && supportedPetItemIds.Contains(pet.ItemId));
-                },
-                (supportedPetItemIds, recallLimit, skillMask) =>
-                    _playerManager?.Pets?.TryGrantSkillMask(supportedPetItemIds, recallLimit, skillMask, out _) == true,
-                (supportedPetItemIds, recallLimit, tamenessAmount) =>
-                    _playerManager?.Pets?.TryGrantTameness(supportedPetItemIds, recallLimit, tamenessAmount, out _) == true,
-                (supportedPetItemIds, recallLimit, speedAmount) =>
-                    _playerManager?.Pets?.TryGrantSpeed(supportedPetItemIds, recallLimit, speedAmount, out _) == true);
+                (supportedPetItemIds, recallLimit, tamenessMinimum, tamenessMaximum) =>
+                    _playerManager?.Pets?.HasCompatibleActivePet(supportedPetItemIds, recallLimit, tamenessMinimum, tamenessMaximum) == true,
+                (supportedPetItemIds, recallLimit, tamenessMinimum, tamenessMaximum, skillMask) =>
+                    _playerManager?.Pets?.TryGrantSkillMask(supportedPetItemIds, recallLimit, tamenessMinimum, tamenessMaximum, skillMask, out _) == true,
+                (supportedPetItemIds, recallLimit, tamenessMinimum, tamenessMaximum, tamenessAmount) =>
+                    _playerManager?.Pets?.TryGrantTameness(supportedPetItemIds, recallLimit, tamenessMinimum, tamenessMaximum, tamenessAmount, out _) == true,
+                (supportedPetItemIds, recallLimit, tamenessMinimum, tamenessMaximum, speedAmount) =>
+                    _playerManager?.Pets?.TryGrantSpeed(supportedPetItemIds, recallLimit, tamenessMinimum, tamenessMaximum, speedAmount, out _) == true);
 
 
             if (uiWindowManager.QuestWindow is QuestUI questWindow)
@@ -22719,6 +22738,28 @@ namespace HaCreator.MapSimulator
             {
                 questDeliveryWindow.SetFont(_fontChat);
                 questDeliveryWindow.DeliveryRequested += HandleQuestDeliveryWindowRequest;
+            }
+
+            if (uiWindowManager.GetWindow(MapSimulatorWindowNames.QuestTimer) is QuestTimerRuntimeWindow questTimerWindow)
+            {
+                questTimerWindow.SetFont(_fontChat);
+                questTimerWindow.BindRuntime(
+                    _packetFieldStateRuntime,
+                    () => _renderParams.RenderWidth,
+                    () => _renderParams.RenderHeight,
+                    () => currTickCount);
+                questTimerWindow.IsVisible = true;
+            }
+
+            if (uiWindowManager.GetWindow(MapSimulatorWindowNames.QuestTimerAction) is QuestTimerRuntimeWindow questTimerActionWindow)
+            {
+                questTimerActionWindow.SetFont(_fontChat);
+                questTimerActionWindow.BindRuntime(
+                    _packetFieldStateRuntime,
+                    () => _renderParams.RenderWidth,
+                    () => _renderParams.RenderHeight,
+                    () => currTickCount);
+                questTimerActionWindow.IsVisible = true;
             }
 
             if (uiWindowManager.GetWindow(MapSimulatorWindowNames.ClassCompetition) is UtilityPanelWindow classCompetitionWindow)
@@ -23287,20 +23328,42 @@ namespace HaCreator.MapSimulator
             string cashItemName = string.IsNullOrWhiteSpace(state.DeliveryCashItemName) ? $"Cash item {cashItemId}" : state.DeliveryCashItemName;
             if (cashItemId > 0 && HasInventoryItem(cashItemId))
             {
+                bool consumedCashItem = TryConsumeInventoryWindowItem(cashItemId, 1);
                 string deliveryMessage = ApplyDeliveryQuestLaunch(questId, targetItemId, Array.Empty<int>());
                 return new QuestWindowActionResult
                 {
                     QuestId = questId,
-                    Messages = new[] { $"{deliveryMessage} Routed from the quest-detail {(completionPhase ? "completion" : "accept")} delivery button for {targetItemName}." }
+                    Messages = new[]
+                    {
+                        consumedCashItem
+                            ? $"{deliveryMessage} Consumed {cashItemName} from the cash inventory through the local delivery-item seam and routed the quest-detail {(completionPhase ? "completion" : "accept")} button for {targetItemName} into the delivery owner."
+                            : $"{deliveryMessage} Routed from the quest-detail {(completionPhase ? "completion" : "accept")} delivery button for {targetItemName}, but the simulator could not consume {cashItemName} from the live inventory."
+                    }
                 };
             }
 
-            ShowCashShopWindow();
             int fallbackCommoditySn = completionPhase ? 50200219 : 50200218;
+            long fallbackCommodityPrice = 0L;
+            int resolvedCommoditySn = 0;
+            long resolvedCommodityPrice = 0L;
+            bool resolvedCommodityFromWz = cashItemId > 0
+                && AdminShopDialogUI.TryResolveBestCommoditySerialNumberForItem(cashItemId, out resolvedCommoditySn, out resolvedCommodityPrice);
+            if (resolvedCommodityFromWz)
+            {
+                fallbackCommoditySn = resolvedCommoditySn;
+                fallbackCommodityPrice = resolvedCommodityPrice;
+            }
+
+            string shopMessage = ApplyPacketOwnedGoToCommoditySn(fallbackCommoditySn);
             return new QuestWindowActionResult
             {
                 QuestId = questId,
-                Messages = new[] { $"Opened the Cash Shop fallback for {cashItemName} (client commodity {fallbackCommoditySn}) before guiding delivery for {targetItemName}." }
+                Messages = new[]
+                {
+                    resolvedCommodityFromWz
+                        ? $"Quest-detail {(completionPhase ? "completion" : "accept")} delivery requested {cashItemName} through the packet-shaped Cash Shop seam by resolving item {cashItemId} to commodity SN {fallbackCommoditySn} in `Etc/Commodity.img` ({fallbackCommodityPrice.ToString("N0", CultureInfo.InvariantCulture)} NX). {shopMessage}"
+                        : $"Quest-detail {(completionPhase ? "completion" : "accept")} delivery could not use {cashItemName} locally, so it fell back to the packet-shaped Cash Shop seam at client commodity SN {fallbackCommoditySn}. {shopMessage}"
+                }
             };
         }
 
@@ -23830,6 +23893,11 @@ namespace HaCreator.MapSimulator
 
         private void ApplyAmbientFieldWeather(int currentTime)
         {
+            if (TryApplyPacketOwnedFieldUtilityWeatherOverride(currentTime))
+            {
+                return;
+            }
+
             WeatherType ambientWeather = FieldEnvironmentEffectEvaluator.ResolveAmbientWeather(_mapBoard?.MapInfo);
             ToggleWeather(ambientWeather);
 

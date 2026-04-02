@@ -44,7 +44,8 @@ namespace HaCreator.MapSimulator
             FieldHazardSharedPetConsumeSource SharedSource,
             bool ForceRequest,
             bool BuffSkillRequest,
-            int InventorySlotIndex,
+            int InventoryRuntimeSlotIndex,
+            int InventoryClientSlotIndex,
             int RequestedAt,
             int AckAt,
             int ResultAt,
@@ -1185,11 +1186,12 @@ namespace HaCreator.MapSimulator
             string petLabel = DescribeFieldHazardAutoConsumePet(target.PetSlotIndex, target.PetName);
             string requestMode = DescribeFieldHazardSharedPetConsumeMode(target.SharedSource);
             int requestId = GetNextFieldHazardPetAutoConsumeRequestId();
-            if (!TryResolveFieldHazardItemSlotIndex(
+            if (!TryResolveFieldHazardItemSlotIndices(
                     uiWindowManager?.InventoryWindow as IInventoryRuntime,
                     target.Candidate.InventoryType,
                     target.Candidate.ItemId,
-                    out int inventorySlotIndex))
+                    out int inventoryRuntimeSlotIndex,
+                    out int inventoryClientSlotIndex))
             {
                 TryTriggerLimitedPetSpeechEvent(PetAutoSpeechEvent.NoHpPotion, ref _petHpPotionFailureSpeechCount, currentTickCount);
                 _chat?.AddSystemMessage(FieldHazardNoHpPotionNoticeText, currentTickCount);
@@ -1215,7 +1217,7 @@ namespace HaCreator.MapSimulator
 
             TrySetFieldHazardPendingInventoryRequestState(
                 target.Candidate.InventoryType,
-                inventorySlotIndex,
+                inventoryRuntimeSlotIndex,
                 requestId,
                 isPending: true);
 
@@ -1227,7 +1229,8 @@ namespace HaCreator.MapSimulator
                 target.SharedSource,
                 ForceRequest: false,
                 BuffSkillRequest: false,
-                InventorySlotIndex: inventorySlotIndex,
+                InventoryRuntimeSlotIndex: inventoryRuntimeSlotIndex,
+                InventoryClientSlotIndex: inventoryClientSlotIndex,
                 RequestedAt: currentTickCount,
                 AckAt: currentTickCount + FieldHazardPetAutoConsumeSyntheticAckDelayMs,
                 ResultAt: currentTickCount + FieldHazardPetAutoConsumeSyntheticAckDelayMs + FieldHazardPetAutoConsumeSyntheticResultDelayMs,
@@ -1235,7 +1238,7 @@ namespace HaCreator.MapSimulator
             _lastFieldHazardPetAutoConsumeRequestTick = currentTickCount;
             _petHpPotionFailureSpeechCount = 0;
 
-            string requestDetail = $"{petLabel} {requestMode} sent pet item-use request #{requestId} for {target.Candidate.ItemName} on {target.Candidate.InventoryType} slot {inventorySlotIndex}.";
+            string requestDetail = $"{petLabel} {requestMode} sent pet item-use request #{requestId} for {target.Candidate.ItemName} on {target.Candidate.InventoryType} slot {inventoryClientSlotIndex}.";
             _localOverlayRuntime.SetFieldHazardFollowUp(requestDetail, FieldHazardFollowUpKind.Pending, currentTickCount);
             return requestDetail;
         }
@@ -1268,7 +1271,7 @@ namespace HaCreator.MapSimulator
             if (!TryGetFieldHazardInventorySlot(
                     uiWindowManager?.InventoryWindow as IInventoryRuntime,
                     request.Candidate.InventoryType,
-                    request.InventorySlotIndex,
+                    request.InventoryRuntimeSlotIndex,
                     out InventorySlotData requestSlot)
                 || requestSlot.ItemId != request.Candidate.ItemId)
             {
@@ -1276,14 +1279,14 @@ namespace HaCreator.MapSimulator
                 _pendingFieldHazardPetAutoConsumeRequest = null;
                 TryTriggerLimitedPetSpeechEvent(PetAutoSpeechEvent.NoHpPotion, ref _petHpPotionFailureSpeechCount, currentTickCount);
                 _chat?.AddSystemMessage(FieldHazardNoHpPotionNoticeText, currentTickCount);
-                string slotExpiredDetail = $"{petLabel} {requestMode} request #{request.RequestId} for {request.Candidate.ItemName} lost {request.Candidate.InventoryType} slot {request.InventorySlotIndex} before the synthetic ack arrived.";
+                string slotExpiredDetail = $"{petLabel} {requestMode} request #{request.RequestId} for {request.Candidate.ItemName} lost {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex} before the synthetic ack arrived.";
                 _localOverlayRuntime.SetFieldHazardFollowUp(slotExpiredDetail, FieldHazardFollowUpKind.Failure, currentTickCount);
                 return;
             }
 
             if (!request.Acknowledged)
             {
-                string ackDetail = $"{petLabel} {requestMode} request #{request.RequestId} was acknowledged on {request.Candidate.InventoryType} slot {request.InventorySlotIndex}.";
+                string ackDetail = $"{petLabel} {requestMode} request #{request.RequestId} was acknowledged on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex}.";
                 _localOverlayRuntime.SetFieldHazardFollowUp(ackDetail, FieldHazardFollowUpKind.Acknowledged, currentTickCount);
                 request = request with { Acknowledged = true };
                 _pendingFieldHazardPetAutoConsumeRequest = request;
@@ -1298,7 +1301,7 @@ namespace HaCreator.MapSimulator
 
             if (player.HP >= player.MaxHP)
             {
-                string ackOnlyDetail = $"{petLabel} {requestMode} request #{request.RequestId} was acknowledged on {request.Candidate.InventoryType} slot {request.InventorySlotIndex} without consuming {request.Candidate.ItemName}.";
+                string ackOnlyDetail = $"{petLabel} {requestMode} request #{request.RequestId} was acknowledged on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex} without consuming {request.Candidate.ItemName}.";
                 _localOverlayRuntime.SetFieldHazardFollowUp(ackOnlyDetail, FieldHazardFollowUpKind.Acknowledged, currentTickCount);
                 return;
             }
@@ -1306,17 +1309,17 @@ namespace HaCreator.MapSimulator
             if (TryUseConsumableInventoryItemAtSlot(
                     request.Candidate.ItemId,
                     request.Candidate.InventoryType,
-                    request.InventorySlotIndex,
+                    request.InventoryRuntimeSlotIndex,
                     currentTickCount))
             {
-                string successDetail = $"{petLabel} {requestMode} request #{request.RequestId} acknowledged {request.Candidate.ItemName} on {request.Candidate.InventoryType} slot {request.InventorySlotIndex} and consumed it.";
+                string successDetail = $"{petLabel} {requestMode} request #{request.RequestId} acknowledged {request.Candidate.ItemName} on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex} and consumed it.";
                 _localOverlayRuntime.SetFieldHazardFollowUp(successDetail, FieldHazardFollowUpKind.Consumed, currentTickCount);
                 return;
             }
 
             TryTriggerLimitedPetSpeechEvent(PetAutoSpeechEvent.NoHpPotion, ref _petHpPotionFailureSpeechCount, currentTickCount);
             _chat?.AddSystemMessage(FieldHazardNoHpPotionNoticeText, currentTickCount);
-            string failureDetail = $"{petLabel} {requestMode} request #{request.RequestId} for {request.Candidate.ItemName} failed after the synthetic ack arrived but before the client could consume the locked slot.";
+            string failureDetail = $"{petLabel} {requestMode} request #{request.RequestId} for {request.Candidate.ItemName} failed after the synthetic ack arrived but before the client could consume locked slot {request.InventoryClientSlotIndex}.";
             _localOverlayRuntime.SetFieldHazardFollowUp(failureDetail, FieldHazardFollowUpKind.Failure, currentTickCount);
         }
 
@@ -1522,13 +1525,15 @@ namespace HaCreator.MapSimulator
             }
         }
 
-        private static bool TryResolveFieldHazardItemSlotIndex(
+        private static bool TryResolveFieldHazardItemSlotIndices(
             IInventoryRuntime inventoryWindow,
             InventoryType inventoryType,
             int itemId,
-            out int slotIndex)
+            out int runtimeSlotIndex,
+            out int clientSlotIndex)
         {
-            slotIndex = 0;
+            runtimeSlotIndex = -1;
+            clientSlotIndex = 0;
             if (inventoryWindow == null || inventoryType == InventoryType.NONE || itemId <= 0)
             {
                 return false;
@@ -1551,7 +1556,8 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                slotIndex = i + 1;
+                runtimeSlotIndex = i;
+                clientSlotIndex = i + 1;
                 return true;
             }
 
@@ -1657,13 +1663,14 @@ namespace HaCreator.MapSimulator
             int resultRemainingMs = Math.Max(0, request.ResultAt - currentTickCount);
             return string.Format(
                 CultureInfo.InvariantCulture,
-                "Field hazard pet transport: {0}, requester={1}, requestId={2}, pending={3} [{4}] slot={5} state={6} ackIn={7}ms resultIn={8}ms force={9} buffSkill={10}.",
+                "Field hazard pet transport: {0}, requester={1}, requestId={2}, pending={3} [{4}] slot={5} runtimeSlot={6} state={7} ackIn={8}ms resultIn={9}ms force={10} buffSkill={11}.",
                 sharedItemStatus,
                 DescribeFieldHazardAutoConsumePet(request.PetSlotIndex, request.PetName),
                 request.RequestId,
                 request.Candidate.ItemId,
                 request.Candidate.InventoryType,
-                request.InventorySlotIndex,
+                request.InventoryClientSlotIndex,
+                request.InventoryRuntimeSlotIndex,
                 request.Acknowledged ? "acknowledged" : "queued",
                 remainingMs,
                 resultRemainingMs,
@@ -1857,7 +1864,7 @@ namespace HaCreator.MapSimulator
         {
             if (string.IsNullOrWhiteSpace(scope) || string.Equals(scope, "all", StringComparison.OrdinalIgnoreCase))
             {
-                _packetOwnedFieldFadeOverlay.Clear();
+                ResetAnimationDisplayerLocalFadeLayer();
                 _packetOwnedBalloonState.Clear();
                 _pendingFieldHazardPetAutoConsumeRequest = null;
                 _localOverlayRuntime.ClearDamageMeter(currTickCount, updateSharedTiming: false);
@@ -1867,7 +1874,7 @@ namespace HaCreator.MapSimulator
 
             if (string.Equals(scope, "fade", StringComparison.OrdinalIgnoreCase))
             {
-                _packetOwnedFieldFadeOverlay.Clear();
+                ResetAnimationDisplayerLocalFadeLayer();
                 return;
             }
 

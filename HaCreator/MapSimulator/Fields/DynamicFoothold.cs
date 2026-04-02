@@ -483,6 +483,7 @@ namespace HaCreator.MapSimulator.Fields
         public void Clear()
         {
             _platforms.Clear();
+            _entityOnPlatform.Clear();
         }
 
         /// <summary>

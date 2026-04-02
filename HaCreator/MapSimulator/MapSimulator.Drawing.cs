@@ -215,7 +215,7 @@ namespace HaCreator.MapSimulator
             _renderingManager.DrawLimitedView(in renderContext);
 
             DrawMapleTvOverlay(gameTime, TickCount);
-            _packetFieldStateRuntime.Draw(
+            _packetFieldStateRuntime.DrawHelpOverlay(
                 _spriteBatch,
                 _fontChat,
                 _renderParams.RenderWidth,

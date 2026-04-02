@@ -1,3 +1,5 @@
+using System;
+
 namespace HaCreator.MapSimulator.Character.Skills
 {
     internal static class AfterImageChargeSkillResolver
@@ -8,6 +10,15 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const int PaladinHolyChargeSkillId = 1221004;
         private const int ThunderBreakerLightningChargeSkillId = 15101006;
         private const int AranIceChargeSkillId = 21111005;
+        private static readonly int[] KnownChargeSkillIds =
+        {
+            PageIceChargeSkillId,
+            AranIceChargeSkillId,
+            PageFireChargeSkillId,
+            PageLightningChargeSkillId,
+            ThunderBreakerLightningChargeSkillId,
+            PaladinHolyChargeSkillId
+        };
 
         public static bool TryGetChargeElement(int skillId, out int chargeElement)
         {
@@ -23,6 +34,46 @@ namespace HaCreator.MapSimulator.Character.Skills
             };
 
             return chargeElement > 0;
+        }
+
+        internal static bool TryResolveChargeElementFromTemporaryStatPayload(ReadOnlySpan<byte> payload, out int chargeElement)
+        {
+            chargeElement = 0;
+            return TryResolveChargeSkillIdFromTemporaryStatPayload(payload, out int chargeSkillId)
+                && TryGetChargeElement(chargeSkillId, out chargeElement);
+        }
+
+        internal static bool TryResolveChargeSkillIdFromTemporaryStatPayload(ReadOnlySpan<byte> payload, out int chargeSkillId)
+        {
+            chargeSkillId = 0;
+            if (payload.Length < sizeof(int))
+            {
+                return false;
+            }
+
+            int matchedChargeSkillId = 0;
+            for (int offset = 0; offset <= payload.Length - sizeof(int); offset++)
+            {
+                int candidateSkillId = payload[offset]
+                    | (payload[offset + 1] << 8)
+                    | (payload[offset + 2] << 16)
+                    | (payload[offset + 3] << 24);
+                if (Array.IndexOf(KnownChargeSkillIds, candidateSkillId) < 0)
+                {
+                    continue;
+                }
+
+                if (matchedChargeSkillId != 0 && matchedChargeSkillId != candidateSkillId)
+                {
+                    chargeSkillId = 0;
+                    return false;
+                }
+
+                matchedChargeSkillId = candidateSkillId;
+            }
+
+            chargeSkillId = matchedChargeSkillId;
+            return chargeSkillId > 0;
         }
     }
 }

@@ -97,6 +97,7 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Color TOOLTIP_BACKGROUND_COLOR = new Color(28, 28, 28, 228);
         private static readonly Color TOOLTIP_BORDER_COLOR = new Color(112, 112, 112, 235);
         private static readonly Color TOOLTIP_INLINE_HIGHLIGHT_COLOR = new Color(255, 214, 140);
+        private static readonly Color TOOLTIP_REQUIREMENT_ROW_BACKGROUND_COLOR = new Color(161, 6, 6, 161);
 
         // Job book icon position
         private const int BOOK_ICON_X = 15;
@@ -886,7 +887,7 @@ namespace HaCreator.MapSimulator.UI
 
             DrawTooltipText(
                 sprite,
-                skill.Requirements.Count == 1 ? "Required Skill" : "Required Skills",
+                "Required Skill",
                 new Vector2(tooltipX + CLIENT_TOOLTIP_REQUIREMENT_HEADER_X, sectionY + CLIENT_TOOLTIP_REQUIREMENT_HEADER_Y_OFFSET),
                 new Color(255, 204, 120));
 
@@ -894,16 +895,27 @@ namespace HaCreator.MapSimulator.UI
             {
                 SkillRequirementDisplayData requirement = skill.Requirements[i];
                 float rowY = sectionY + CLIENT_TOOLTIP_REQUIREMENT_FIRST_ROW_Y + (i * CLIENT_TOOLTIP_REQUIREMENT_ROW_HEIGHT);
+                int rowTop = (int)Math.Round(rowY);
+
+                if (_debugPlaceholder != null)
+                {
+                    sprite.Draw(
+                        _debugPlaceholder,
+                        new Rectangle(
+                            tooltipX + CLIENT_TOOLTIP_REQUIREMENT_ICON_X,
+                            rowTop - 1,
+                            CLIENT_TOOLTIP_REQUIREMENT_ICON_SIZE,
+                            CLIENT_TOOLTIP_REQUIREMENT_ICON_SIZE),
+                        TOOLTIP_REQUIREMENT_ROW_BACKGROUND_COLOR);
+                }
 
                 if (requirement.IconTexture != null)
                 {
                     sprite.Draw(
                         requirement.IconTexture,
-                        new Rectangle(
-                            tooltipX + CLIENT_TOOLTIP_REQUIREMENT_ICON_X,
-                            (int)Math.Round(rowY),
-                            CLIENT_TOOLTIP_REQUIREMENT_ICON_SIZE,
-                            CLIENT_TOOLTIP_REQUIREMENT_ICON_SIZE),
+                        new Vector2(
+                            tooltipX + CLIENT_TOOLTIP_REQUIREMENT_ICON_X + 1 - requirement.IconOrigin.X,
+                            rowTop - requirement.IconOrigin.Y),
                         Color.White);
                 }
 
@@ -1968,6 +1980,7 @@ namespace HaCreator.MapSimulator.UI
         public string SkillName { get; set; }
         public int RequiredLevel { get; set; }
         public Texture2D IconTexture { get; set; }
+        public Point IconOrigin { get; set; }
     }
 
     internal sealed class TooltipLine

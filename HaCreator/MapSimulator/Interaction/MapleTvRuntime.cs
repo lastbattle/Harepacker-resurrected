@@ -497,9 +497,11 @@ namespace HaCreator.MapSimulator.Interaction
                 _showMessage = true;
                 _queueExists = true;
                 _messageStartedAt = currentTick;
-                _draftDurationMs = Math.Clamp(totalWaitTime, 0, MaxDurationMs);
+                // CMapleTVMan::OnSetMessage keeps the packet wait time verbatim and
+                // drives the receiver surface from the packet-owned message type.
+                _draftDurationMs = Math.Max(0, totalWaitTime);
                 _isSelfMessage = !hasReceiverAvatar;
-                _useReceiver = hasReceiverAvatar || !string.IsNullOrWhiteSpace(_receiverName);
+                _useReceiver = _messageType == 2 || hasReceiverAvatar;
                 _senderBuild = buildResolver?.Invoke(senderLook);
                 if (_senderBuild != null)
                 {
@@ -682,7 +684,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             if (MapleTvSendResultText.TryResolve(definition.StringPoolId, out string resolvedText))
             {
-                return $"{resolvedText} [StringPool 0x{definition.StringPoolId:X}]";
+                return resolvedText;
             }
 
             return definition.StringPoolId >= 0

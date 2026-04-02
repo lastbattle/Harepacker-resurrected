@@ -801,6 +801,20 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
+        public static bool TryResolveBestCommoditySerialNumberForItem(int itemId, out int commoditySerialNumber, out long price)
+        {
+            commoditySerialNumber = 0;
+            price = 0;
+            if (itemId <= 0 || !TryGetBestCommodityForItem(itemId, out AdminShopCommodityData commodity) || commodity == null)
+            {
+                return false;
+            }
+
+            commoditySerialNumber = Math.Max(0, commodity.SerialNumber);
+            price = Math.Max(0L, commodity.Price);
+            return commoditySerialNumber > 0;
+        }
+
         public override void Update(GameTime gameTime)
         {
             if (!IsVisible)

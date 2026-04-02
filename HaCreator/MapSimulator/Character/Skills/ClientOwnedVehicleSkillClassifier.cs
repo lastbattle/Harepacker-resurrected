@@ -54,6 +54,30 @@ namespace HaCreator.MapSimulator.Character.Skills
             "aboard the battleship"
         };
 
+        private static readonly string[] SharedClientOwnedVehicleMountedMoveActions =
+        {
+            "walk1",
+            "walk2",
+            "stand1",
+            "stand2",
+            "jump",
+            "prone",
+            "fly",
+            "tired"
+        };
+
+        private static readonly string[] MechanicClientOwnedVehicleMountedMoveActions =
+        {
+            "alert",
+            "alert2",
+            "alert3",
+            "proneStab",
+            "ladder",
+            "rope",
+            "ladder2",
+            "rope2"
+        };
+
         internal static bool LooksLikeClientOwnedRideDescriptionBuff(SkillData skill)
         {
             if (skill?.IsBuff != true)
@@ -249,6 +273,23 @@ namespace HaCreator.MapSimulator.Character.Skills
                        || string.Equals(actionName, "alert3", StringComparison.OrdinalIgnoreCase));
         }
 
+        internal static bool IsBattleshipVehicleOwnedCurrentActionName(string actionName, bool includeSupportActions = false)
+        {
+            return IsBattleshipVehicleActionName(actionName, includeSupportActions)
+                   || IsMountedMoveActionName(actionName);
+        }
+
+        internal static bool IsMechanicVehicleOwnedCurrentActionName(string actionName, bool includeTransformStates = false)
+        {
+            if (IsMechanicVehicleActionName(actionName, includeTransformStates))
+            {
+                return true;
+            }
+
+            return IsMountedMoveActionName(actionName)
+                   || ContainsActionName(MechanicClientOwnedVehicleMountedMoveActions, actionName);
+        }
+
         internal static bool IsDistinctMechanicVehicleActionName(string actionName, bool includeTransformStates = false)
         {
             if (!IsMechanicVehicleActionName(actionName, includeTransformStates))
@@ -259,6 +300,29 @@ namespace HaCreator.MapSimulator.Character.Skills
             return !string.Equals(actionName, "alert3", StringComparison.OrdinalIgnoreCase)
                    && !string.Equals(actionName, "ride2", StringComparison.OrdinalIgnoreCase)
                    && !string.Equals(actionName, "getoff2", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsMountedMoveActionName(string actionName)
+        {
+            return ContainsActionName(SharedClientOwnedVehicleMountedMoveActions, actionName);
+        }
+
+        private static bool ContainsActionName(string[] candidates, string actionName)
+        {
+            if (candidates == null || string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            foreach (string candidate in candidates)
+            {
+                if (string.Equals(candidate, actionName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         internal static bool HasRideDescriptionText(SkillData skill)

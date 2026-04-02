@@ -44,6 +44,17 @@ namespace HaCreator.MapSimulator
             "MainNotice/userReward/Notify",
             "MainNotice/userReward/Appear"
         };
+        private static readonly byte[] PacketOwnedNpcSummonFallbackEffectIds =
+        {
+            0,
+            2,
+            5,
+            13,
+            14,
+            24,
+            25,
+            26
+        };
 
         private void UpdatePacketOwnedFieldFeedbackState(int currentTickCount)
         {
@@ -199,7 +210,7 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
-        private bool TryShowPacketOwnedRewardRouletteEffect(int rewardId, int step, int total)
+        private bool TryShowPacketOwnedRewardRouletteEffect(int rewardJobIndex, int rewardPartIndex, int rewardLevelIndex)
         {
             bool shownAnyLayer = false;
             foreach (string propertyPath in EnumeratePacketOwnedRewardRouletteLayerSourcePaths())
@@ -221,8 +232,8 @@ namespace HaCreator.MapSimulator
                 shownAnyLayer = true;
             }
 
-            string itemName = ResolvePacketFieldFeedbackItemName(rewardId);
-            ShowUtilityFeedbackMessage($"Packet-owned reward roulette: {itemName} ({Math.Max(0, step) + 1}/{Math.Max(1, total)}).");
+            ShowUtilityFeedbackMessage(
+                $"Packet-owned reward roulette: job={rewardJobIndex} part={rewardPartIndex} level={rewardLevelIndex}.");
             return shownAnyLayer;
         }
 
@@ -324,7 +335,7 @@ namespace HaCreator.MapSimulator
                 return frames;
             }
 
-            if (!ShouldUsePacketOwnedNpcSummonFallback(effectId, HasPacketOwnedSummonSoundAsset(effectId)))
+            if (!ShouldUsePacketOwnedNpcSummonFallback(effectId))
             {
                 return null;
             }
@@ -591,9 +602,9 @@ namespace HaCreator.MapSimulator
             return EnumeratePacketOwnedRewardRouletteLayerSourcePaths().ToArray();
         }
 
-        internal static bool ShouldUsePacketOwnedNpcSummonFallback(byte effectId, bool hasSummonSoundAsset)
+        internal static bool ShouldUsePacketOwnedNpcSummonFallback(byte effectId)
         {
-            return effectId == 0 || hasSummonSoundAsset;
+            return PacketOwnedNpcSummonFallbackEffectIds.Contains(effectId);
         }
 
         private static IEnumerable<string> EnumeratePacketOwnedRewardRouletteLayerSourcePaths()
@@ -601,6 +612,10 @@ namespace HaCreator.MapSimulator
             foreach (string layerPath in PacketOwnedRewardRouletteLayerPaths)
             {
                 yield return layerPath;
+            }
+
+            foreach (string layerPath in PacketOwnedRewardRouletteLayerPaths)
+            {
                 yield return $"{layerPath}/0";
             }
         }

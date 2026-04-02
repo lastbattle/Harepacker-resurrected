@@ -91,6 +91,7 @@ namespace HaCreator.MapSimulator.Pools
         public int HitCount { get; set; }
         public int RequiredHits { get; set; }
         public float Alpha { get; set; } = 1f;
+        public ReactorActivationType PrimaryActivationType { get; set; }
         public ReactorActivationType ActivationType { get; set; }
         public int ActivationValue { get; set; }
         public ReactorType ReactorType { get; set; } = ReactorType.UNKNOWN;
@@ -174,7 +175,7 @@ namespace HaCreator.MapSimulator.Pools
         /// <summary>
         /// Initialize the reactor pool with existing reactors from map load
         /// </summary>
-        public void Initialize(ReactorItem[] reactors, GraphicsDevice graphicsDevice = null)
+        public void Initialize(ReactorItem[] reactors, GraphicsDevice graphicsDevice = null, int currentTick = 0)
         {
             Clear();
 
@@ -205,11 +206,12 @@ namespace HaCreator.MapSimulator.Pools
                     PoolId = poolId,
                     State = ReactorState.Idle,
                     StateFrame = 0,
-                    StateStartTime = 0,
+                    StateStartTime = currentTick,
                     VisualState = reactor.GetInitialState(),
                     HitCount = 0,
                     RequiredHits = 1, // Default, could be loaded from reactor info
                     Alpha = 1f,
+                    PrimaryActivationType = interactionMetadata.ActivationType,
                     ReactorType = interactionMetadata.ReactorType,
                     ActivationType = interactionMetadata.ActivationType,
                     ActivationValue = 0,
@@ -875,6 +877,7 @@ namespace HaCreator.MapSimulator.Pools
             data.VisualState = reactor?.GetInitialState() ?? 0;
             data.HitCount = 0;
             data.Alpha = 1f;
+            data.ActivationType = data.PrimaryActivationType;
             data.ActivationValue = 0;
             PublishScriptState(reactor, data, isEnabled: false, currentTick);
         }
@@ -1056,8 +1059,11 @@ namespace HaCreator.MapSimulator.Pools
             if (eventTypes.Contains(100))
                 return ReactorActivationType.Quest;
 
-            if (eventTypes.Any(eventType => eventType is 0 or 6 or 7))
+            if (eventTypes.Any(eventType => eventType is 0 or 6))
                 return ReactorActivationType.Touch;
+
+            if (eventTypes.Any(eventType => eventType is 7 or 101))
+                return ReactorActivationType.Time;
 
             return null;
         }
@@ -1168,6 +1174,7 @@ namespace HaCreator.MapSimulator.Pools
                     HitCount = 0,
                     RequiredHits = 1,
                     Alpha = 1f,
+                    PrimaryActivationType = activationTypeOverride == ReactorActivationType.None ? ReactorActivationType.Touch : activationTypeOverride,
                     ActivationType = activationTypeOverride == ReactorActivationType.None ? ReactorActivationType.Touch : activationTypeOverride,
                     ActivationValue = 0,
                     SupportedActivationTypes = ToActivationMask(
@@ -1208,6 +1215,15 @@ namespace HaCreator.MapSimulator.Pools
 
                 switch (data.State)
                 {
+                    case ReactorState.Idle:
+                        if (data.PrimaryActivationType == ReactorActivationType.Time
+                            && currentTick - data.StateStartTime >= GetActivationDuration(index)
+                            && TryActivateTimedIdleReactor(index, reactor, data, currentTick))
+                        {
+                            break;
+                        }
+                        break;
+
                     case ReactorState.Activated:
                         if (currentTick - data.StateStartTime >= GetActivationDuration(index))
                         {
@@ -1444,6 +1460,7 @@ namespace HaCreator.MapSimulator.Pools
 
             ReactorInteractionMetadata interactionMetadata = ResolveInteractionMetadata(reactorInstance);
             data.ReactorType = interactionMetadata.ReactorType;
+            data.PrimaryActivationType = interactionMetadata.ActivationType;
             data.ActivationType = interactionMetadata.ActivationType;
             data.SupportedActivationTypes = interactionMetadata.SupportedActivationTypes;
             data.RequiredItemId = interactionMetadata.RequiredItemId;
@@ -1560,6 +1577,32 @@ namespace HaCreator.MapSimulator.Pools
             data.State = ReactorState.Activated;
             data.StateStartTime = currentTick;
             data.StateFrame = 0;
+            return true;
+        }
+
+        private bool TryActivateTimedIdleReactor(int index, ReactorItem reactor, ReactorRuntimeData data, int currentTick)
+        {
+            if (reactor == null
+                || data == null
+                || !TryResolveNextVisualState(
+                    reactor,
+                    data,
+                    new ReactorTransitionRequest(ReactorActivationType.Time, data.ReactorType, data.ActivationValue),
+                    out int nextVisualState,
+                    allowNumericFallback: false))
+            {
+                return false;
+            }
+
+            data.VisualState = nextVisualState;
+            data.ActivationType = ReactorActivationType.Time;
+            data.ActivationValue = 0;
+            data.State = ReactorState.Activated;
+            data.StateStartTime = currentTick;
+            data.StateFrame = 0;
+            data.ActivatingPlayerId = 0;
+            PublishScriptState(reactor, data, isEnabled: true, currentTick);
+            _onReactorActivated?.Invoke(reactor, 0);
             return true;
         }
 

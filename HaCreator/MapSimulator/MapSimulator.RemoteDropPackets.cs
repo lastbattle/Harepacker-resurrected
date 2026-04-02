@@ -54,6 +54,37 @@ namespace HaCreator.MapSimulator
             return new Vector2(mob.MovementInfo.X, mob.MovementInfo.Y);
         }
 
+        private bool AreDropActorsInSameParty(int ownerId, int actorId)
+        {
+            if (ownerId <= 0 || actorId <= 0)
+            {
+                return false;
+            }
+
+            if (ownerId == actorId)
+            {
+                return true;
+            }
+
+            return IsTrackedDropPartyActor(ownerId) && IsTrackedDropPartyActor(actorId);
+        }
+
+        private bool IsTrackedDropPartyActor(int actorId)
+        {
+            int localCharacterId = _playerManager?.Player?.Build?.Id ?? 0;
+            if (actorId > 0 && actorId == localCharacterId)
+            {
+                return true;
+            }
+
+            if (!_remoteUserPool.TryGetActor(actorId, out RemoteUserActor actor) || string.IsNullOrWhiteSpace(actor?.Name))
+            {
+                return false;
+            }
+
+            return _socialListRuntime.IsTrackedPartyMember(actor.Name);
+        }
+
         private string ResolveRemoteDropPacketActorName(PacketDropLeaveReason reason, RemoteDropLeavePacket packet)
         {
             return reason switch

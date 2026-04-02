@@ -15,6 +15,8 @@ namespace HaCreator.MapSimulator.UI
     /// </summary>
     public class MinimapUI : BaseDXDrawableItem, IUIObjectEvents
     {
+        internal readonly record struct ClientStateTransition(int CurrentOption, int PreviousExpandedOption, bool IsCollapsed);
+
         public enum HelperMarkerType
         {
             Another,
@@ -599,13 +601,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void HandleMinimapStateButtonClick()
         {
-            if (_bIsCollapsedState || _currentOption <= ClientOptionCollapsed)
-            {
-                RestoreRememberedExpandedOption();
-                return;
-            }
-
-            CollapseMinimapToRememberedOption();
+            AdvanceToggleCycle();
         }
 
         private void CollapseMinimapToRememberedOption()
@@ -759,6 +755,48 @@ namespace HaCreator.MapSimulator.UI
             }
 
             CollapseMinimapToRememberedOption();
+        }
+
+        internal static ClientStateTransition ResolveClientStateTransitionForTesting(
+            int buttonId,
+            int currentOption,
+            int previousExpandedOption,
+            bool supportsExpandedOption)
+        {
+            static int NormalizeExpandedOptionForState(int option, bool supportsExpanded)
+            {
+                if (!supportsExpanded)
+                {
+                    return ClientOptionCompact;
+                }
+
+                return option >= ClientOptionExpanded ? ClientOptionExpanded : ClientOptionCompact;
+            }
+
+            int normalizedCurrentOption = currentOption <= ClientOptionCollapsed
+                ? ClientOptionCollapsed
+                : NormalizeExpandedOptionForState(currentOption, supportsExpandedOption);
+            int normalizedPreviousExpandedOption = previousExpandedOption > ClientOptionCollapsed
+                ? NormalizeExpandedOptionForState(previousExpandedOption, supportsExpandedOption)
+                : ClientOptionCompact;
+
+            return buttonId switch
+            {
+                ClientButtonIdMinimapState => normalizedCurrentOption <= ClientOptionCollapsed
+                    ? new ClientStateTransition(normalizedPreviousExpandedOption, normalizedPreviousExpandedOption, false)
+                    : normalizedCurrentOption == ClientOptionCompact && supportsExpandedOption
+                        ? new ClientStateTransition(ClientOptionExpanded, ClientOptionExpanded, false)
+                        : new ClientStateTransition(ClientOptionCollapsed, normalizedCurrentOption, true),
+                ClientButtonIdOption when supportsExpandedOption => normalizedCurrentOption <= ClientOptionCollapsed
+                    ? new ClientStateTransition(normalizedPreviousExpandedOption, normalizedPreviousExpandedOption, false)
+                    : normalizedCurrentOption >= ClientOptionExpanded
+                        ? new ClientStateTransition(ClientOptionCompact, ClientOptionCompact, false)
+                        : new ClientStateTransition(ClientOptionExpanded, ClientOptionExpanded, false),
+                _ => new ClientStateTransition(
+                    normalizedCurrentOption <= ClientOptionCollapsed ? ClientOptionCompact : normalizedCurrentOption,
+                    normalizedPreviousExpandedOption,
+                    normalizedCurrentOption <= ClientOptionCollapsed)
+            };
         }
 
         private void DrawNpcMarkers(

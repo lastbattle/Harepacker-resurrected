@@ -213,7 +213,29 @@ namespace HaCreator.MapSimulator.Interaction
             return $"{_statusMessage} {helpStatus}; {timerStatus}; timerOwners=visible:{visibleOwners},dismissed:{dismissedOwners}; fieldspecific={_lastFieldSpecificDataSummary}";
         }
 
-        internal void Draw(SpriteBatch spriteBatch, SpriteFont font, int renderWidth, int renderHeight, int currentTick)
+        internal void DrawHelpOverlay(SpriteBatch spriteBatch, SpriteFont font, int renderWidth, int renderHeight, int currentTick)
+        {
+            if (spriteBatch == null || font == null || _pixelTexture == null)
+            {
+                return;
+            }
+
+            DrawHelpMessage(spriteBatch, font, renderWidth, renderHeight, currentTick);
+        }
+
+        internal void DrawQuestTimerOwnerLayer(SpriteBatch spriteBatch, int renderWidth, int renderHeight, int currentTick)
+        {
+            if (spriteBatch == null || _pixelTexture == null)
+            {
+                return;
+            }
+
+            SyncQuestTimerOwners(renderWidth);
+            RefreshQuestTimerOwnerBounds(currentTick);
+            DrawQuestTimerBars(spriteBatch, renderHeight, currentTick);
+        }
+
+        internal void DrawQuestTimerActionLayer(SpriteBatch spriteBatch, SpriteFont font, int renderWidth, int renderHeight, int currentTick)
         {
             if (spriteBatch == null || font == null || _pixelTexture == null)
             {
@@ -221,13 +243,44 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             SyncQuestTimerOwners(renderWidth);
-            DrawQuestTimers(spriteBatch, font, renderWidth, renderHeight, currentTick);
-            DrawHelpMessage(spriteBatch, font, renderWidth, renderHeight, currentTick);
+            RefreshQuestTimerOwnerBounds(currentTick);
+            DrawQuestTimerActions(spriteBatch, font, renderWidth, renderHeight, currentTick);
         }
 
-        internal bool HandleMouse(MouseState mouseState, MouseState previousMouseState, int renderWidth, int renderHeight, int currentTick)
+        internal IReadOnlyList<Rectangle> GetQuestTimerInteractiveBounds(int renderWidth, int renderHeight, int currentTick)
+        {
+            if (_questTimers.Count == 0)
+            {
+                return Array.Empty<Rectangle>();
+            }
+
+            SyncQuestTimerOwners(renderWidth);
+            RefreshQuestTimerOwnerBounds(currentTick);
+
+            List<Rectangle> bounds = new();
+            foreach (PacketQuestTimerEntry timer in _questTimers.Values.OrderBy(static entry => entry.ExpireTick))
+            {
+                if (!_questTimerOwners.TryGetValue(timer.QuestId, out PacketQuestTimerOwnerState owner) ||
+                    owner.IsDismissed ||
+                    !owner.IsVisible)
+                {
+                    continue;
+                }
+
+                bounds.Add(Rectangle.Union(owner.BarBounds, owner.ActionBounds));
+                if (owner.TooltipVisible && owner.TooltipBounds != Rectangle.Empty)
+                {
+                    bounds.Add(owner.TooltipBounds);
+                }
+            }
+
+            return bounds;
+        }
+
+        internal bool HandleQuestTimerMouse(MouseState mouseState, MouseState previousMouseState, int renderWidth, int renderHeight, int currentTick)
         {
             SyncQuestTimerOwners(renderWidth);
+            RefreshQuestTimerOwnerBounds(currentTick);
             _questTimerMousePosition = mouseState.Position;
 
             bool leftPressed = mouseState.LeftButton == ButtonState.Pressed;
@@ -601,6 +654,17 @@ namespace HaCreator.MapSimulator.Interaction
             return 0;
         }
 
+        private void RefreshQuestTimerOwnerBounds(int currentTick)
+        {
+            foreach (PacketQuestTimerEntry timer in _questTimers.Values.OrderBy(static entry => entry.ExpireTick))
+            {
+                PacketQuestTimerOwnerState owner = GetOrCreateQuestTimerOwner(timer.QuestId);
+                Rectangle barBounds = ResolveQuestTimerBarBounds(owner.Position);
+                Rectangle actionBounds = ResolveQuestTimerActionBounds(timer, owner.Position, currentTick);
+                owner.SetBounds(barBounds, actionBounds);
+            }
+        }
+
         private Rectangle ResolveQuestTimerBarBounds(Point ownerPosition)
         {
             int width = Math.Max(88, _questTimeBarBackgroundTexture?.Width ?? 110);
@@ -675,7 +739,7 @@ namespace HaCreator.MapSimulator.Interaction
             return 18;
         }
 
-        private void DrawQuestTimers(SpriteBatch spriteBatch, SpriteFont font, int renderWidth, int renderHeight, int currentTick)
+        private void DrawQuestTimerBars(SpriteBatch spriteBatch, int renderHeight, int currentTick)
         {
             if (_questTimers.Count == 0)
             {
@@ -692,27 +756,47 @@ namespace HaCreator.MapSimulator.Interaction
                     continue;
                 }
 
-                DrawQuestTimerEntry(spriteBatch, font, timer, owner, renderHeight, currentTick);
+                DrawQuestTimerBar(spriteBatch, timer, owner, renderHeight, currentTick);
+            }
+        }
+
+        private void DrawQuestTimerActions(SpriteBatch spriteBatch, SpriteFont font, int renderWidth, int renderHeight, int currentTick)
+        {
+            if (_questTimers.Count == 0)
+            {
+                return;
+            }
+
+            List<PacketQuestTimerEntry> timers = _questTimers.Values.OrderBy(static timer => timer.ExpireTick).ToList();
+            for (int i = 0; i < timers.Count; i++)
+            {
+                PacketQuestTimerEntry timer = timers[i];
+                PacketQuestTimerOwnerState owner = GetOrCreateQuestTimerOwner(timer.QuestId);
+                if (owner.IsDismissed)
+                {
+                    continue;
+                }
+
+                DrawQuestTimerActionEntry(spriteBatch, timer, owner, currentTick);
             }
 
             DrawQuestTimerTooltip(spriteBatch, font, renderWidth, renderHeight, currentTick);
         }
 
-        private void DrawQuestTimerEntry(
+        private void DrawQuestTimerBar(
             SpriteBatch spriteBatch,
-            SpriteFont font,
             PacketQuestTimerEntry timer,
             PacketQuestTimerOwnerState owner,
             int renderHeight,
             int currentTick)
         {
-            Rectangle barBounds = ResolveQuestTimerBarBounds(owner.Position);
-            Rectangle actionBounds = ResolveQuestTimerActionBounds(timer, owner.Position, currentTick);
-            owner.SetBounds(barBounds, actionBounds);
+            DrawQuestGauge(spriteBatch, owner.BarBounds);
+            DrawQuestGaugeFill(spriteBatch, owner.BarBounds, ResolveQuestTimerUnitCount(timer, currentTick));
+        }
 
-            DrawQuestGauge(spriteBatch, barBounds);
-            DrawQuestGaugeFill(spriteBatch, barBounds, ResolveQuestTimerUnitCount(timer, currentTick));
-            DrawQuestTimerAction(spriteBatch, timer, actionBounds, currentTick);
+        private void DrawQuestTimerActionEntry(SpriteBatch spriteBatch, PacketQuestTimerEntry timer, PacketQuestTimerOwnerState owner, int currentTick)
+        {
+            DrawQuestTimerAction(spriteBatch, timer, owner.ActionBounds, currentTick);
         }
 
         private void DrawQuestGauge(SpriteBatch spriteBatch, Rectangle bounds)
@@ -1062,8 +1146,15 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static string BuildQuestTimerTooltipText(PacketQuestTimerEntry timer, int currentTick)
         {
-            string remaining = FormatRemainingTime(Math.Max(0, timer.ExpireTick - currentTick));
-            return $"{timer.QuestName}\nTime left: {remaining}";
+            string remaining = FormatQuestTimerTooltipRemainingTime(Math.Max(0, timer.ExpireTick - currentTick));
+            return $"{timer.QuestName}\n{remaining}";
+        }
+
+        private static string FormatQuestTimerTooltipRemainingTime(int remainingMs)
+        {
+            int remainingSeconds = Math.Max(0, (int)Math.Ceiling(remainingMs / 1000f));
+            TimeSpan span = TimeSpan.FromSeconds(remainingSeconds);
+            return $"{(int)span.TotalHours:00}:{span.Minutes:00}:{span.Seconds:00}";
         }
 
         private static int ResolveQuestTimerUnitCount(PacketQuestTimerEntry timer, int currentTick)

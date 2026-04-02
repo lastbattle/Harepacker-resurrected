@@ -276,6 +276,7 @@ namespace HaCreator.MapSimulator.Interaction
     public sealed partial class SocialRoomRuntime
     {
         private const int MiniRoomOmokBoardSize = 15;
+        private const int TradingRoomClientItemSlotCount = 9;
         private const byte TradingRoomPutItemPacketType = 15;
         private const byte TradingRoomPutMoneyPacketType = 16;
         private const byte TradingRoomTradePacketType = 17;
@@ -359,7 +360,7 @@ namespace HaCreator.MapSimulator.Interaction
             public bool ReturnOnClose { get; }
         }
 
-        private readonly record struct PacketOwnedTradeItem(byte SlotType, int ItemId, int Quantity, InventoryType InventoryType);
+        private readonly record struct PacketOwnedTradeItem(byte SlotType, long SerialNumber, int ItemId, int Quantity, InventoryType InventoryType);
         private readonly record struct OmokMoveHistoryEntry(int X, int Y, int StoneValue, int SeatIndex);
         private readonly record struct TradeVerificationEntry(int ItemId, uint Checksum);
 
@@ -1675,7 +1676,7 @@ namespace HaCreator.MapSimulator.Interaction
                     ResolveItemLabel(item.ItemId),
                     item.Quantity,
                     mesoAmount: 0,
-                    detail: $"{ownerLabel} offer | Packet slot {slotIndex} | {item.InventoryType}",
+                    detail: BuildTradingRoomPacketItemDetail(ownerLabel, slotIndex, item),
                     itemId: item.ItemId,
                     packetSlotIndex: slotIndex);
                 _items.Add(entry);
@@ -1683,7 +1684,7 @@ namespace HaCreator.MapSimulator.Interaction
             else
             {
                 entry.UpdatePacketIdentity(item.ItemId, slotIndex);
-                entry.Update($"{ownerLabel} offer | Packet slot {slotIndex} | {item.InventoryType}", item.Quantity, 0, false, false);
+                entry.Update(BuildTradingRoomPacketItemDetail(ownerLabel, slotIndex, item), item.Quantity, 0, false, false);
             }
 
             SortTradeRoomItems();
@@ -1753,7 +1754,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            if (!TryDecodePacketOwnedItemBody(payload.Slice(1), slotType, out int itemId, out int quantity))
+            if (!TryDecodePacketOwnedItemBody(payload.Slice(1), slotType, out long serialNumber, out int itemId, out int quantity))
             {
                 error = "Trading-room item payload did not contain a recognizable MapleStory item row.";
                 return false;
@@ -1766,12 +1767,13 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            item = new PacketOwnedTradeItem(slotType, itemId, quantity, inventoryType);
+            item = new PacketOwnedTradeItem(slotType, serialNumber, itemId, quantity, inventoryType);
             return true;
         }
 
-        private static bool TryDecodePacketOwnedItemBody(ReadOnlySpan<byte> payload, byte slotType, out int itemId, out int quantity)
+        private static bool TryDecodePacketOwnedItemBody(ReadOnlySpan<byte> payload, byte slotType, out long serialNumber, out int itemId, out int quantity)
         {
+            serialNumber = 0;
             itemId = 0;
             quantity = 1;
             if (payload.Length < sizeof(long) + sizeof(int))
@@ -1779,13 +1781,14 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
+            serialNumber = BinaryPrimitives.ReadInt64LittleEndian(payload);
             int preferredItemIdOffset = sizeof(long);
             int candidateItemId = BinaryPrimitives.ReadInt32LittleEndian(payload.Slice(preferredItemIdOffset, sizeof(int)));
             if (candidateItemId > 0 && InventoryItemMetadataResolver.ResolveInventoryType(candidateItemId) != InventoryType.NONE)
             {
                 itemId = candidateItemId;
                 quantity = slotType == 2 && payload.Length >= preferredItemIdOffset + sizeof(int) + sizeof(short)
-                    ? Math.Max((short)1, BinaryPrimitives.ReadInt16LittleEndian(payload.Slice(preferredItemIdOffset + sizeof(int), sizeof(short))))
+                    ? Math.Max(1, (int)BinaryPrimitives.ReadInt16LittleEndian(payload.Slice(preferredItemIdOffset + sizeof(int), sizeof(short))))
                     : 1;
                 return true;
             }
@@ -1872,6 +1875,12 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return 1;
+        }
+
+        private static string BuildTradingRoomPacketItemDetail(string ownerLabel, int slotIndex, PacketOwnedTradeItem item)
+        {
+            string serialText = item.SerialNumber > 0 ? $" | Serial {item.SerialNumber}" : string.Empty;
+            return $"{ownerLabel} offer | Packet slot {slotIndex} | {item.InventoryType}{serialText}";
         }
 
         private string ResolveTradeOwnerName(int traderIndex)
@@ -4983,8 +4992,11 @@ namespace HaCreator.MapSimulator.Interaction
         {
             string ownerName = isLocalParty ? OwnerName : ResolveRemoteTraderName();
             List<TradeVerificationEntry> entries = new();
-            Span<byte> hashInput = stackalloc byte[sizeof(int) * 2];
-            foreach (SocialRoomItemEntry item in _items.Where(entry => string.Equals(entry.OwnerName, ownerName, StringComparison.OrdinalIgnoreCase)))
+            Span<byte> hashInput = stackalloc byte[sizeof(int)];
+            foreach (SocialRoomItemEntry item in _items
+                .Where(entry => string.Equals(entry.OwnerName, ownerName, StringComparison.OrdinalIgnoreCase))
+                .OrderBy(entry => entry.PacketSlotIndex ?? int.MaxValue)
+                .Take(TradingRoomClientItemSlotCount))
             {
                 int itemId = item.ItemId;
                 if (itemId <= 0)
@@ -4993,7 +5005,6 @@ namespace HaCreator.MapSimulator.Interaction
                 }
 
                 BinaryPrimitives.WriteInt32LittleEndian(hashInput, itemId);
-                BinaryPrimitives.WriteInt32LittleEndian(hashInput[sizeof(int)..], Math.Max(1, item.Quantity));
                 entries.Add(new TradeVerificationEntry(itemId, ComputeTradeVerificationChecksum(hashInput)));
             }
 
@@ -5012,6 +5023,41 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return hash;
+        }
+
+        internal static uint ComputeTradeVerificationChecksumForTest(int itemId)
+        {
+            Span<byte> hashInput = stackalloc byte[sizeof(int)];
+            BinaryPrimitives.WriteInt32LittleEndian(hashInput, itemId);
+            return ComputeTradeVerificationChecksum(hashInput);
+        }
+
+        internal static bool TryDecodePacketOwnedTradeItemForTest(
+            byte[] payload,
+            out byte slotType,
+            out long serialNumber,
+            out int itemId,
+            out int quantity,
+            out InventoryType inventoryType,
+            out string error)
+        {
+            slotType = 0;
+            serialNumber = 0;
+            itemId = 0;
+            quantity = 0;
+            inventoryType = InventoryType.NONE;
+
+            if (!TryDecodePacketOwnedTradeItem(payload, out PacketOwnedTradeItem item, out error))
+            {
+                return false;
+            }
+
+            slotType = item.SlotType;
+            serialNumber = item.SerialNumber;
+            itemId = item.ItemId;
+            quantity = item.Quantity;
+            inventoryType = item.InventoryType;
+            return true;
         }
 
         private string DescribeTradeVerificationStatus()

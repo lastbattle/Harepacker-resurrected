@@ -1914,6 +1914,8 @@ namespace HaCreator.MapSimulator.UI
             {
                 EquipSlot.FaceAccessory => "Face Accessory",
                 EquipSlot.EyeAccessory => "Eye Accessory",
+                EquipSlot.Ring1 or EquipSlot.Ring2 or EquipSlot.Ring3 or EquipSlot.Ring4 => "Ring",
+                EquipSlot.Pendant or EquipSlot.Pendant2 => "Pendant",
                 EquipSlot.Longcoat => "Overall",
                 _ => slot.ToString()
             };
@@ -2898,6 +2900,7 @@ namespace HaCreator.MapSimulator.UI
             if (normalized.IndexOf("pendant", StringComparison.OrdinalIgnoreCase) >= 0 || normalized.IndexOf("necklace", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 targetSlots.Add(EquipSlot.Pendant);
+                targetSlots.Add(EquipSlot.Pendant2);
             }
 
             if (normalized.IndexOf("belt", StringComparison.OrdinalIgnoreCase) >= 0)

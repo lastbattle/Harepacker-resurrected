@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 
 namespace HaCreator.MapSimulator.Character.Skills
 {
@@ -101,6 +102,21 @@ namespace HaCreator.MapSimulator.Character.Skills
                    && string.Equals(skill.SummonCondition, "damaged", StringComparison.OrdinalIgnoreCase)
                    && !string.IsNullOrWhiteSpace(skill.MinionAbility)
                    && skill.MinionAbility.IndexOf("reflect", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        public static int ResolveSummonActionPrepareDurationMs(SkillData skill, string branchName)
+        {
+            if (skill == null)
+            {
+                return 0;
+            }
+
+            if (UsesNamedSummonAnimationBranch(skill, branchName))
+            {
+                return 0;
+            }
+
+            return GetAnimationDuration(skill.SummonAttackPrepareAnimation);
         }
 
         public static string ResolvePacketSkillBranch(SkillData skill, byte packetAction, SummonAssistType? assistType = null)
@@ -239,6 +255,26 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return null;
+        }
+
+        private static bool UsesNamedSummonAnimationBranch(SkillData skill, string branchName)
+        {
+            return skill?.SummonNamedAnimations != null
+                && !string.IsNullOrWhiteSpace(branchName)
+                && skill.SummonNamedAnimations.TryGetValue(branchName, out SkillAnimation branchAnimation)
+                && branchAnimation?.Frames.Count > 0;
+        }
+
+        private static int GetAnimationDuration(SkillAnimation animation)
+        {
+            if (animation?.Frames.Count <= 0)
+            {
+                return 0;
+            }
+
+            return animation.TotalDuration > 0
+                ? animation.TotalDuration
+                : animation.Frames.Sum(frame => frame.Delay);
         }
     }
 }

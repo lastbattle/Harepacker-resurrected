@@ -4,6 +4,12 @@ using System.Collections.Generic;
 
 namespace HaCreator.MapSimulator.Interaction
 {
+    public enum EntrustedShopChildDialogKind
+    {
+        VisitList,
+        Blacklist
+    }
+
     public sealed class SocialRoomRuntimeSnapshot
     {
         public SocialRoomKind Kind { get; set; }
@@ -28,6 +34,7 @@ namespace HaCreator.MapSimulator.Interaction
         public int MiniRoomOmokOwnerStoneValue { get; set; } = 1;
         public int MiniRoomOmokGuestStoneValue { get; set; } = 2;
         public bool MiniRoomOmokTieRequested { get; set; }
+        public bool MiniRoomOmokRetreatRequested { get; set; }
         public List<int> MiniRoomOmokBoard { get; set; } = new();
         public List<SocialRoomOmokMoveSnapshot> MiniRoomOmokMoveHistory { get; set; } = new();
         public int TradeLocalOfferMeso { get; set; }
@@ -68,9 +75,41 @@ namespace HaCreator.MapSimulator.Interaction
         public List<string> Notes { get; set; } = new();
         public List<SocialRoomChatEntrySnapshot> ChatEntries { get; set; } = new();
         public List<string> SavedVisitors { get; set; } = new();
+        public int EntrustedVisitListSelectedIndex { get; set; } = -1;
+        public int EntrustedBlacklistSelectedIndex { get; set; } = -1;
+        public string EntrustedChildDialogStatus { get; set; }
+        public List<EntrustedShopVisitLogEntrySnapshot> EntrustedVisitLogEntries { get; set; } = new();
         public List<string> BlockedVisitors { get; set; } = new();
         public int RemoteInventoryMeso { get; set; }
         public List<SocialRoomRemoteInventoryEntrySnapshot> RemoteInventoryEntries { get; set; } = new();
+    }
+
+    public sealed class EntrustedShopVisitLogEntrySnapshot
+    {
+        public string Name { get; set; }
+        public int StaySeconds { get; set; }
+    }
+
+    public sealed class EntrustedShopChildDialogEntrySnapshot
+    {
+        public string PrimaryText { get; set; }
+        public string SecondaryText { get; set; }
+        public bool IsSelected { get; set; }
+    }
+
+    public sealed class EntrustedShopChildDialogSnapshot
+    {
+        public EntrustedShopChildDialogKind Kind { get; set; }
+        public string Title { get; set; }
+        public string Subtitle { get; set; }
+        public string StatusText { get; set; }
+        public string PrimaryActionText { get; set; }
+        public string SecondaryActionText { get; set; }
+        public string FooterText { get; set; }
+        public bool CanPrimaryAction { get; set; }
+        public bool CanSecondaryAction { get; set; }
+        public int SelectedIndex { get; set; } = -1;
+        public List<EntrustedShopChildDialogEntrySnapshot> Entries { get; set; } = new();
     }
 
     public sealed class SocialRoomOccupantSnapshot

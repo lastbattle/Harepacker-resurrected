@@ -10,6 +10,7 @@ using MapleLib.ClientLib;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure.Data.CharacterStructure;
+using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using MapleLib.WzLib.WzStructure.Data.QuestStructure;
 using System.Text;
 using Microsoft.Xna.Framework;
@@ -108,6 +109,26 @@ namespace HaCreator.MapSimulator.Interaction
         private sealed class QuestPetRequirement
         {
             public int ItemId { get; init; }
+        }
+
+        private readonly struct QuestPetRequirementContext
+        {
+            public QuestPetRequirementContext(
+                IReadOnlyList<QuestPetRequirement> requirements,
+                int? recallLimit,
+                int? tamenessMinimum,
+                int? tamenessMaximum)
+            {
+                Requirements = requirements ?? Array.Empty<QuestPetRequirement>();
+                RecallLimit = recallLimit;
+                TamenessMinimum = tamenessMinimum;
+                TamenessMaximum = tamenessMaximum;
+            }
+
+            public IReadOnlyList<QuestPetRequirement> Requirements { get; }
+            public int? RecallLimit { get; }
+            public int? TamenessMinimum { get; }
+            public int? TamenessMaximum { get; }
         }
 
         private sealed class QuestDeliveryMetadata
@@ -229,12 +250,16 @@ namespace HaCreator.MapSimulator.Interaction
             public IReadOnlyList<QuestItemRequirement> StartItemRequirements { get; init; } = Array.Empty<QuestItemRequirement>();
             public IReadOnlyList<QuestPetRequirement> StartPetRequirements { get; init; } = Array.Empty<QuestPetRequirement>();
             public int? StartPetRecallLimit { get; init; }
+            public int? StartPetTamenessMinimum { get; init; }
+            public int? StartPetTamenessMaximum { get; init; }
             public IReadOnlyList<QuestSkillRequirement> StartSkillRequirements { get; init; } = Array.Empty<QuestSkillRequirement>();
             public IReadOnlyList<QuestStateRequirement> EndQuestRequirements { get; init; } = Array.Empty<QuestStateRequirement>();
             public IReadOnlyList<QuestMobRequirement> EndMobRequirements { get; init; } = Array.Empty<QuestMobRequirement>();
             public IReadOnlyList<QuestItemRequirement> EndItemRequirements { get; init; } = Array.Empty<QuestItemRequirement>();
             public IReadOnlyList<QuestPetRequirement> EndPetRequirements { get; init; } = Array.Empty<QuestPetRequirement>();
             public int? EndPetRecallLimit { get; init; }
+            public int? EndPetTamenessMinimum { get; init; }
+            public int? EndPetTamenessMaximum { get; init; }
             public IReadOnlyList<NpcInteractionPage> StartSayPages { get; init; } = Array.Empty<NpcInteractionPage>();
             public IReadOnlyList<NpcInteractionPage> EndSayPages { get; init; } = Array.Empty<NpcInteractionPage>();
             public IReadOnlyDictionary<string, IReadOnlyList<NpcInteractionPage>> StartStopPages { get; init; } =
@@ -273,10 +298,10 @@ namespace HaCreator.MapSimulator.Interaction
         private Action<int, int> _setSkillMasterLevel;
         private Func<int, string> _skillNameProvider;
         private Action<int> _addSkillPoints;
-        private Func<IReadOnlyCollection<int>, int?, bool> _hasCompatibleActivePetProvider;
-        private Func<IReadOnlyCollection<int>, int?, int, bool> _grantPetSkillProvider;
-        private Func<IReadOnlyCollection<int>, int?, int, bool> _grantPetTamenessProvider;
-        private Func<IReadOnlyCollection<int>, int?, int, bool> _grantPetSpeedProvider;
+        private Func<IReadOnlyCollection<int>, int?, int?, int?, bool> _hasCompatibleActivePetProvider;
+        private Func<IReadOnlyCollection<int>, int?, int?, int?, int, bool> _grantPetSkillProvider;
+        private Func<IReadOnlyCollection<int>, int?, int?, int?, int, bool> _grantPetTamenessProvider;
+        private Func<IReadOnlyCollection<int>, int?, int?, int?, int, bool> _grantPetSpeedProvider;
         private Func<int, bool> _applyQuestBuffItem;
         private Func<int> _currentMapIdProvider;
         private Func<int, string> _mapNameProvider;
@@ -330,10 +355,10 @@ namespace HaCreator.MapSimulator.Interaction
         }
 
         public void ConfigurePetRuntime(
-            Func<IReadOnlyCollection<int>, int?, bool> hasCompatibleActivePetProvider,
-            Func<IReadOnlyCollection<int>, int?, int, bool> grantPetSkillProvider,
-            Func<IReadOnlyCollection<int>, int?, int, bool> grantPetTamenessProvider,
-            Func<IReadOnlyCollection<int>, int?, int, bool> grantPetSpeedProvider)
+            Func<IReadOnlyCollection<int>, int?, int?, int?, bool> hasCompatibleActivePetProvider,
+            Func<IReadOnlyCollection<int>, int?, int?, int?, int, bool> grantPetSkillProvider,
+            Func<IReadOnlyCollection<int>, int?, int?, int?, int, bool> grantPetTamenessProvider,
+            Func<IReadOnlyCollection<int>, int?, int?, int?, int, bool> grantPetSpeedProvider)
         {
             _hasCompatibleActivePetProvider = hasCompatibleActivePetProvider;
             _grantPetSkillProvider = grantPetSkillProvider;
@@ -1025,7 +1050,9 @@ namespace HaCreator.MapSimulator.Interaction
                     out string actionFailureMessage,
                     rewardResolution.GrantedItems,
                     definition.StartPetRequirements,
-                    definition.StartPetRecallLimit))
+                    definition.StartPetRecallLimit,
+                    definition.StartPetTamenessMinimum,
+                    definition.StartPetTamenessMaximum))
             {
                 return new QuestWindowActionResult
                 {
@@ -1183,7 +1210,9 @@ namespace HaCreator.MapSimulator.Interaction
                     out string actionFailureMessage,
                     rewardResolution.GrantedItems,
                     definition.EndPetRequirements,
-                    definition.EndPetRecallLimit))
+                    definition.EndPetRecallLimit,
+                    definition.EndPetTamenessMinimum,
+                    definition.EndPetTamenessMaximum))
             {
                 return new QuestWindowActionResult
                 {
@@ -1357,7 +1386,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             QuestStateType clientState = hasQuestRecord ? QuestStateType.Started : QuestStateType.Not_Started;
             NpcDialogueFormattingContext formattingContext = CreateDialogueFormattingContext();
-            string noticeText = BuildPacketQuestResultNoticeText(definition, build, clientState, PacketQuestResultTextKind.Auto, formattingContext);
+            string noticeText = BuildClientPacketQuestResultActNotice(definition, build, clientState, formattingContext);
             IReadOnlyList<NpcInteractionPage> modalPages = BuildPacketQuestResultModalPages(definition, clientState, PacketQuestResultTextKind.Auto, formattingContext);
             presentation = new PacketQuestResultPresentation
             {
@@ -1412,13 +1441,13 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             QuestStateType clientState = hasQuestRecord ? QuestStateType.Started : QuestStateType.Not_Started;
-            IReadOnlyList<string> actionLines = BuildPacketQuestResultActionLines(definition, build, clientState, PacketQuestResultTextKind.Auto);
-
             questName = definition.Name;
-            noticeText = actionLines.Count == 0
-                ? definition.Name
-                : $"{definition.Name}\n\n{string.Join("\n", actionLines)}";
-            return true;
+            noticeText = BuildClientPacketQuestResultActNotice(
+                definition,
+                build,
+                clientState,
+                formattingContext: null);
+            return !string.IsNullOrWhiteSpace(noticeText);
         }
 
         internal int GetTrackedItemCount(int itemId)
@@ -1840,7 +1869,9 @@ namespace HaCreator.MapSimulator.Interaction
                         out string actionFailureMessage,
                         rewardResolution.GrantedItems,
                         definition.StartPetRequirements,
-                        definition.StartPetRecallLimit))
+                        definition.StartPetRecallLimit,
+                        definition.StartPetTamenessMinimum,
+                        definition.StartPetTamenessMaximum))
                 {
                     return new QuestActionResult
                     {
@@ -1934,7 +1965,9 @@ namespace HaCreator.MapSimulator.Interaction
                         out string actionFailureMessage,
                         rewardResolution.GrantedItems,
                         definition.EndPetRequirements,
-                        definition.EndPetRecallLimit))
+                        definition.EndPetRecallLimit,
+                        definition.EndPetTamenessMinimum,
+                        definition.EndPetTamenessMaximum))
                 {
                     return new QuestActionResult
                     {
@@ -2588,7 +2621,13 @@ namespace HaCreator.MapSimulator.Interaction
                 });
             }
 
-            AppendPetRequirementLines(definition.StartPetRequirements, definition.StartPetRecallLimit, lines);
+            AppendPetRequirementLines(
+                CreatePetRequirementContext(
+                    definition.StartPetRequirements,
+                    definition.StartPetRecallLimit,
+                    definition.StartPetTamenessMinimum,
+                    definition.StartPetTamenessMaximum),
+                lines);
             AppendActionConsumeItemRequirementLines(definition.StartActions.RewardItems, lines);
             AppendSkillRequirementLines(definition.StartSkillRequirements, lines);
 
@@ -2659,7 +2698,13 @@ namespace HaCreator.MapSimulator.Interaction
                 });
             }
 
-            AppendPetRequirementLines(definition.EndPetRequirements, definition.EndPetRecallLimit, lines);
+            AppendPetRequirementLines(
+                CreatePetRequirementContext(
+                    definition.EndPetRequirements,
+                    definition.EndPetRecallLimit,
+                    definition.EndPetTamenessMinimum,
+                    definition.EndPetTamenessMaximum),
+                lines);
             AppendActionConsumeItemRequirementLines(definition.EndActions.RewardItems, lines);
         }
 
@@ -2710,23 +2755,24 @@ namespace HaCreator.MapSimulator.Interaction
         }
 
         private void AppendPetRequirementLines(
-            IReadOnlyList<QuestPetRequirement> requirements,
-            int? recallLimit,
+            QuestPetRequirementContext context,
             ICollection<QuestLogLineSnapshot> lines)
         {
-            if ((requirements == null || requirements.Count == 0) && !recallLimit.HasValue)
+            if (!HasPetRequirementContext(context))
             {
                 return;
             }
 
             bool isComplete = _hasCompatibleActivePetProvider?.Invoke(
-                requirements?.Select(static requirement => requirement.ItemId).ToArray() ?? Array.Empty<int>(),
-                recallLimit) == true;
+                context.Requirements.Select(static requirement => requirement.ItemId).ToArray(),
+                context.RecallLimit,
+                context.TamenessMinimum,
+                context.TamenessMaximum) == true;
 
             lines.Add(new QuestLogLineSnapshot
             {
                 Label = "Pet",
-                Text = BuildPetRequirementText(requirements, recallLimit),
+                Text = BuildPetRequirementText(context),
                 IsComplete = isComplete
             });
         }
@@ -2906,7 +2952,13 @@ namespace HaCreator.MapSimulator.Interaction
               AppendQuestStateIssues(definition.StartQuestRequirements, issues);
               AppendItemIssues(definition.StartItemRequirements, issues);
               AppendActionConsumeItemIssues(definition.StartActions.RewardItems, issues, "accept");
-              AppendPetIssues(definition.StartPetRequirements, definition.StartPetRecallLimit, issues);
+              AppendPetIssues(
+                  CreatePetRequirementContext(
+                      definition.StartPetRequirements,
+                      definition.StartPetRecallLimit,
+                      definition.StartPetTamenessMinimum,
+                      definition.StartPetTamenessMaximum),
+                  issues);
               AppendSkillIssues(definition.StartSkillRequirements, issues);
               AppendMesoIssues(definition.StartActions.MesoReward, issues, "start");
             issues.AddRange(EvaluateRewardInventoryIssues(ResolveGrantedRewardItems(definition.StartActions.RewardItems, build, messages: null)));
@@ -2941,7 +2993,13 @@ namespace HaCreator.MapSimulator.Interaction
               }
 
               AppendActionConsumeItemIssues(definition.EndActions.RewardItems, issues, "complete");
-              AppendPetIssues(definition.EndPetRequirements, definition.EndPetRecallLimit, issues);
+              AppendPetIssues(
+                  CreatePetRequirementContext(
+                      definition.EndPetRequirements,
+                      definition.EndPetRecallLimit,
+                      definition.EndPetTamenessMinimum,
+                      definition.EndPetTamenessMaximum),
+                  issues);
               AppendMesoIssues(-definition.EndMesoRequirement, issues, "complete");
             issues.AddRange(EvaluateRewardInventoryIssues(ResolveGrantedRewardItems(definition.EndActions.RewardItems, build, messages: null)));
 
@@ -3150,23 +3208,24 @@ namespace HaCreator.MapSimulator.Interaction
         }
 
         private void AppendPetIssues(
-            IReadOnlyList<QuestPetRequirement> requirements,
-            int? recallLimit,
+            QuestPetRequirementContext context,
             ICollection<string> issues)
         {
-            if ((requirements == null || requirements.Count == 0) && !recallLimit.HasValue)
+            if (!HasPetRequirementContext(context))
             {
                 return;
             }
 
             if (_hasCompatibleActivePetProvider?.Invoke(
-                    requirements?.Select(static requirement => requirement.ItemId).ToArray() ?? Array.Empty<int>(),
-                    recallLimit) == true)
+                    context.Requirements.Select(static requirement => requirement.ItemId).ToArray(),
+                    context.RecallLimit,
+                    context.TamenessMinimum,
+                    context.TamenessMaximum) == true)
             {
                 return;
             }
 
-            issues.Add(BuildPetRequirementIssueText(requirements, recallLimit));
+            issues.Add(BuildPetRequirementIssueText(context));
         }
 
         private void AppendSkillIssues(IReadOnlyList<QuestSkillRequirement> requirements, ICollection<string> issues)
@@ -3186,32 +3245,59 @@ namespace HaCreator.MapSimulator.Interaction
             return Math.Max(0, build?.Fame ?? 0);
         }
 
-        private string BuildPetRequirementIssueText(
-            IReadOnlyList<QuestPetRequirement> requirements,
-            int? recallLimit)
+        private string BuildPetRequirementIssueText(QuestPetRequirementContext context)
         {
-            string requirementText = BuildPetRequirementText(requirements, recallLimit);
+            string requirementText = BuildPetRequirementText(context);
             return string.IsNullOrWhiteSpace(requirementText)
                 ? "Summon a compatible pet."
                 : $"{requirementText}.";
         }
 
-        private string BuildPetRequirementText(
-            IReadOnlyList<QuestPetRequirement> requirements,
-            int? recallLimit)
+        private string BuildPetRequirementText(QuestPetRequirementContext context)
         {
+            IReadOnlyList<QuestPetRequirement> requirements = context.Requirements;
             string petText = requirements == null || requirements.Count == 0
                 ? "Summon a pet"
                 : requirements.Count == 1
                     ? $"Summon {GetItemName(requirements[0].ItemId)}"
                     : $"Summon 1 of {requirements.Count} compatible pets";
 
-            if (recallLimit.HasValue && recallLimit.Value > 0)
+            var constraints = new List<string>();
+            if (context.RecallLimit.HasValue && context.RecallLimit.Value > 0)
             {
-                return $"{petText} with at most {recallLimit.Value} active";
+                constraints.Add($"at most {context.RecallLimit.Value} active");
             }
 
-            return petText;
+            if (context.TamenessMinimum.HasValue)
+            {
+                constraints.Add($"tameness at least {context.TamenessMinimum.Value}");
+            }
+
+            if (context.TamenessMaximum.HasValue)
+            {
+                constraints.Add($"tameness at most {context.TamenessMaximum.Value}");
+            }
+
+            return constraints.Count == 0
+                ? petText
+                : $"{petText} with {string.Join(", ", constraints)}";
+        }
+
+        private static bool HasPetRequirementContext(QuestPetRequirementContext context)
+        {
+            return context.Requirements.Count > 0 ||
+                   context.RecallLimit.HasValue ||
+                   context.TamenessMinimum.HasValue ||
+                   context.TamenessMaximum.HasValue;
+        }
+
+        private static QuestPetRequirementContext CreatePetRequirementContext(
+            IReadOnlyList<QuestPetRequirement> requirements,
+            int? recallLimit,
+            int? tamenessMinimum,
+            int? tamenessMaximum)
+        {
+            return new QuestPetRequirementContext(requirements, recallLimit, tamenessMinimum, tamenessMaximum);
         }
 
         private static int GetCurrentTraitValue(CharacterBuild build, QuestTraitType trait)
@@ -3658,6 +3744,8 @@ namespace HaCreator.MapSimulator.Interaction
             int skillMask,
             IReadOnlyList<QuestPetRequirement> petRequirements,
             int? petRecallLimit,
+            int? petTamenessMinimum,
+            int? petTamenessMaximum,
             ICollection<string> messages)
         {
             if (skillMask <= 0)
@@ -3672,7 +3760,7 @@ namespace HaCreator.MapSimulator.Interaction
                 .ToArray()
                 ?? Array.Empty<int>();
 
-            if (_grantPetSkillProvider?.Invoke(supportedPetItemIds, petRecallLimit, skillMask) == true)
+            if (_grantPetSkillProvider?.Invoke(supportedPetItemIds, petRecallLimit, petTamenessMinimum, petTamenessMaximum, skillMask) == true)
             {
                 messages.Add(GetPetSkillRewardText(skillMask));
                 return;
@@ -3685,6 +3773,8 @@ namespace HaCreator.MapSimulator.Interaction
             int amount,
             IReadOnlyList<QuestPetRequirement> petRequirements,
             int? petRecallLimit,
+            int? petTamenessMinimum,
+            int? petTamenessMaximum,
             ICollection<string> messages)
         {
             if (amount == 0)
@@ -3699,7 +3789,7 @@ namespace HaCreator.MapSimulator.Interaction
                 .ToArray()
                 ?? Array.Empty<int>();
 
-            if (_grantPetTamenessProvider?.Invoke(supportedPetItemIds, petRecallLimit, amount) == true)
+            if (_grantPetTamenessProvider?.Invoke(supportedPetItemIds, petRecallLimit, petTamenessMinimum, petTamenessMaximum, amount) == true)
             {
                 messages.Add(GetPetTamenessRewardText(amount));
                 return;
@@ -3712,6 +3802,8 @@ namespace HaCreator.MapSimulator.Interaction
             int amount,
             IReadOnlyList<QuestPetRequirement> petRequirements,
             int? petRecallLimit,
+            int? petTamenessMinimum,
+            int? petTamenessMaximum,
             ICollection<string> messages)
         {
             if (amount == 0)
@@ -3726,7 +3818,7 @@ namespace HaCreator.MapSimulator.Interaction
                 .ToArray()
                 ?? Array.Empty<int>();
 
-            if (_grantPetSpeedProvider?.Invoke(supportedPetItemIds, petRecallLimit, amount) == true)
+            if (_grantPetSpeedProvider?.Invoke(supportedPetItemIds, petRecallLimit, petTamenessMinimum, petTamenessMaximum, amount) == true)
             {
                 messages.Add(GetPetSpeedRewardText(amount));
                 return;
@@ -3765,7 +3857,9 @@ namespace HaCreator.MapSimulator.Interaction
             out string failureMessage,
             IReadOnlyList<QuestRewardItem> resolvedGrantedItems = null,
             IReadOnlyList<QuestPetRequirement> petRequirements = null,
-            int? petRecallLimit = null)
+            int? petRecallLimit = null,
+            int? petTamenessMinimum = null,
+            int? petTamenessMaximum = null)
         {
             failureMessage = null;
             if (actions == null)
@@ -3866,9 +3960,9 @@ namespace HaCreator.MapSimulator.Interaction
                 ApplySkillReward(actions.SkillRewards[i], build, messages);
             }
 
-            ApplyPetSkillReward(actions.PetSkillRewardMask, petRequirements, petRecallLimit, messages);
-            ApplyPetTamenessReward(actions.PetTamenessReward, petRequirements, petRecallLimit, messages);
-            ApplyPetSpeedReward(actions.PetSpeedReward, petRequirements, petRecallLimit, messages);
+            ApplyPetSkillReward(actions.PetSkillRewardMask, petRequirements, petRecallLimit, petTamenessMinimum, petTamenessMaximum, messages);
+            ApplyPetTamenessReward(actions.PetTamenessReward, petRequirements, petRecallLimit, petTamenessMinimum, petTamenessMaximum, messages);
+            ApplyPetSpeedReward(actions.PetSpeedReward, petRequirements, petRecallLimit, petTamenessMinimum, petTamenessMaximum, messages);
 
             for (int i = 0; i < actions.SpRewards.Count; i++)
             {
@@ -4362,12 +4456,16 @@ namespace HaCreator.MapSimulator.Interaction
                 StartItemRequirements = ParseItemRequirements(startCheck?["item"]),
                 StartPetRequirements = ParsePetRequirements(startCheck?["pet"]),
                 StartPetRecallLimit = ParsePetActiveLimit(startCheck),
+                StartPetTamenessMinimum = ParsePositiveInt(startCheck?["pettamenessmin"]),
+                StartPetTamenessMaximum = ParsePositiveInt(startCheck?["pettamenessmax"]),
                 StartSkillRequirements = ParseSkillRequirements(startCheck?["skill"]),
                 EndQuestRequirements = ParseQuestRequirements(endCheck?["quest"]),
                 EndMobRequirements = ParseMobRequirements(endCheck?["mob"]),
                 EndItemRequirements = ParseItemRequirements(endCheck?["item"]),
                 EndPetRequirements = ParsePetRequirements(endCheck?["pet"]),
                 EndPetRecallLimit = ParsePetActiveLimit(endCheck),
+                EndPetTamenessMinimum = ParsePositiveInt(endCheck?["pettamenessmin"]),
+                EndPetTamenessMaximum = ParsePositiveInt(endCheck?["pettamenessmax"]),
                 StartSayPages = ParseConversationPages(startSay),
                 EndSayPages = ParseConversationPages(endSay),
                 StartStopPages = ParseConversationStopPages(startSay),
@@ -6739,6 +6837,73 @@ namespace HaCreator.MapSimulator.Interaction
             return string.Join("\n\n", sections.Where(section => !string.IsNullOrWhiteSpace(section)));
         }
 
+        private string BuildClientPacketQuestResultActNotice(
+            QuestDefinition definition,
+            CharacterBuild build,
+            QuestStateType state,
+            NpcDialogueFormattingContext formattingContext)
+        {
+            if (definition == null)
+            {
+                return string.Empty;
+            }
+
+            QuestActionBundle actions = state == QuestStateType.Not_Started
+                ? definition.StartActions
+                : definition.EndActions;
+            var sections = new List<string>();
+
+            string itemCategoryText = BuildClientPacketQuestResultItemCategorySummary(actions, build);
+            if (!string.IsNullOrWhiteSpace(itemCategoryText))
+            {
+                sections.Add(itemCategoryText);
+            }
+
+            if (actions != null && actions.MesoReward != 0)
+            {
+                sections.Add($"Meso {actions.MesoReward:+#;-#;0}");
+            }
+
+            if (sections.Count == 0 && actions?.Messages?.Count > 0)
+            {
+                for (int i = 0; i < actions.Messages.Count; i++)
+                {
+                    string message = actions.Messages[i]?.Trim();
+                    if (!IsMeaningfulQuestActionText(message))
+                    {
+                        continue;
+                    }
+
+                    sections.Add(formattingContext == null
+                        ? message
+                        : NpcDialogueTextFormatter.Format(message, formattingContext));
+                    break;
+                }
+            }
+
+            if (sections.Count == 0)
+            {
+                IReadOnlyList<string> actionLines = BuildPacketQuestResultActionLines(definition, build, state, PacketQuestResultTextKind.Auto);
+                if (actionLines.Count > 0)
+                {
+                    sections.Add(string.Join("\n", actionLines));
+                }
+            }
+
+            if (sections.Count == 0)
+            {
+                string primaryText = ResolvePacketQuestResultPrimaryText(definition, state, PacketQuestResultTextKind.Auto);
+                if (!string.IsNullOrWhiteSpace(primaryText))
+                {
+                    sections.Add(formattingContext == null
+                        ? primaryText
+                        : NpcDialogueTextFormatter.Format(primaryText, formattingContext));
+                }
+            }
+
+            return string.Join("\n", sections.Where(section => !string.IsNullOrWhiteSpace(section)));
+        }
+
         private static string ResolvePacketQuestResultPrimaryText(
             QuestDefinition definition,
             QuestStateType state,
@@ -6917,6 +7082,74 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return lines;
+        }
+
+        internal static string DescribeClientPacketQuestResultItemCategories(IEnumerable<int> itemIds)
+        {
+            if (itemIds == null)
+            {
+                return string.Empty;
+            }
+
+            var categories = new List<string>();
+            foreach (int itemId in itemIds)
+            {
+                InventoryType? inventoryType = InventoryTypeExtensions.GetByType((byte)(Math.Max(0, itemId) / 1000000));
+                string categoryLabel = inventoryType switch
+                {
+                    InventoryType.EQUIP => "Equip",
+                    InventoryType.USE => "Use",
+                    InventoryType.SETUP => "Setup",
+                    InventoryType.ETC => "Etc",
+                    InventoryType.CASH => "Cash",
+                    _ => null
+                };
+
+                if (!string.IsNullOrWhiteSpace(categoryLabel) &&
+                    !categories.Contains(categoryLabel, StringComparer.Ordinal))
+                {
+                    categories.Add(categoryLabel);
+                }
+            }
+
+            return string.Join(", ", categories);
+        }
+
+        private string BuildClientPacketQuestResultItemCategorySummary(QuestActionBundle actions, CharacterBuild build)
+        {
+            if (actions?.RewardItems == null || actions.RewardItems.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            var itemIds = new List<int>(actions.RewardItems.Count);
+            for (int i = 0; i < actions.RewardItems.Count; i++)
+            {
+                QuestRewardItem reward = actions.RewardItems[i];
+                if (reward?.Count <= 0)
+                {
+                    continue;
+                }
+
+                if (build != null &&
+                    !MatchesRewardItemFilterCore(
+                        build.Job,
+                        build.SubJob,
+                        build.Gender,
+                        reward.JobClassBitfield,
+                        reward.JobExBitfield,
+                        reward.Gender))
+                {
+                    continue;
+                }
+
+                itemIds.Add(reward.ItemId);
+            }
+
+            string categoryList = DescribeClientPacketQuestResultItemCategories(itemIds);
+            return string.IsNullOrWhiteSpace(categoryList)
+                ? string.Empty
+                : $"Reward items: {categoryList}";
         }
 
         private List<string> RemoveGiveUpItems(QuestActionBundle actions)

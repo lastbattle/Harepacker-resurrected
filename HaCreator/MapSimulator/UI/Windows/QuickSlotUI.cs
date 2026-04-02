@@ -84,6 +84,7 @@ namespace HaCreator.MapSimulator.UI
             // Ctrl bar (Ctrl+1-8)
             new[] { "^1", "^2", "^3", "^4", "^5", "^6", "^7", "^8" }
         };
+        private string[] _primaryBarKeyLabelOverride;
 
         private enum DragBindingType
         {
@@ -349,9 +350,10 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 // Draw key label below slot
-                if (_font != null && i < BarKeyLabels[_currentBar].Length)
+                string[] keyLabels = GetActiveBarKeyLabels();
+                if (_font != null && i < keyLabels.Length)
                 {
-                    string label = BarKeyLabels[_currentBar][i];
+                    string label = keyLabels[i];
                     Vector2 labelSize = _font.MeasureString(label);
                     int labelX = slotX + (SLOT_SIZE - (int)labelSize.X) / 2;
                     int labelY = slotY + SLOT_SIZE + 1;
@@ -1139,6 +1141,20 @@ namespace HaCreator.MapSimulator.UI
         {
             CurrentBar = (_currentBar + 2) % 3;
         }
+
+        public void SetPrimaryBarKeyLabels(IReadOnlyList<string> labels)
+        {
+            if (labels == null)
+            {
+                _primaryBarKeyLabelOverride = null;
+                return;
+            }
+
+            _primaryBarKeyLabelOverride = labels
+                .Take(SkillManager.PRIMARY_SLOT_COUNT)
+                .Select(label => string.IsNullOrWhiteSpace(label) ? string.Empty : label.Trim())
+                .ToArray();
+        }
         #endregion
 
         #region Cleanup
@@ -1148,6 +1164,18 @@ namespace HaCreator.MapSimulator.UI
         public void ClearIconCache()
         {
             _skillIconCache.Clear();
+        }
+
+        private string[] GetActiveBarKeyLabels()
+        {
+            if (_currentBar == BAR_PRIMARY
+                && _primaryBarKeyLabelOverride != null
+                && _primaryBarKeyLabelOverride.Length > 0)
+            {
+                return _primaryBarKeyLabelOverride;
+            }
+
+            return BarKeyLabels[_currentBar];
         }
 
         private bool TryAssignDraggedBinding(int targetSlot)

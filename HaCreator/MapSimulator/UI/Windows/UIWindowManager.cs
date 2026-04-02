@@ -309,6 +309,11 @@ namespace HaCreator.MapSimulator.UI
         {
             foreach (var window in windows)
             {
+                if (window.ExcludeFromWindowManagerHide)
+                {
+                    continue;
+                }
+
                 window.Hide();
             }
             _focusedWindow = null;
@@ -323,7 +328,7 @@ namespace HaCreator.MapSimulator.UI
             // Find the topmost visible window (last in list)
             for (int i = windows.Count - 1; i >= 0; i--)
             {
-                if (windows[i].IsVisible)
+                if (windows[i].IsVisible && !windows[i].ExcludeFromWindowManagerHide)
                 {
                     windows[i].Hide();
 

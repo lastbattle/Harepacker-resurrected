@@ -15,8 +15,9 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedFuncKeyEntryCount = 89;
         private const int PacketOwnedFuncKeyPayloadSize = 1 + (PacketOwnedFuncKeyEntryCount * 5);
         private const byte PacketOwnedFuncKeyFunctionType = 4;
+        private const int PacketOwnedPetConsumeMpAttemptThrottleMs = 200;
 
-        private static readonly (int ClientFunctionId, InputAction Action)[] PacketOwnedSupportedFunctionBindings =
+        private static readonly (int ClientFunctionId, InputAction Action)[] PacketOwnedKnownFunctionBindings =
         {
             (0, InputAction.ToggleEquip),
             (1, InputAction.ToggleInventory),
@@ -30,6 +31,7 @@ namespace HaCreator.MapSimulator
         private int _packetOwnedPetConsumeItemId;
         private InventoryType _packetOwnedPetConsumeItemInventoryType = InventoryType.NONE;
         private int _packetOwnedPetConsumeMpItemId;
+        private int _lastPacketOwnedPetConsumeMpAttemptTick = int.MinValue;
         private bool _packetOwnedFuncKeyConfigLoaded;
         private string _lastPacketOwnedFuncKeyInitMessage = "Packet-owned function-key init not applied yet.";
 
@@ -330,13 +332,12 @@ namespace HaCreator.MapSimulator
             }
 
             int appliedBindings = 0;
-            for (int i = 0; i < PacketOwnedSupportedFunctionBindings.Length; i++)
+            for (int i = 0; i < PacketOwnedKnownFunctionBindings.Length; i++)
             {
-                (int clientFunctionId, InputAction action) = PacketOwnedSupportedFunctionBindings[i];
-                if (!TryResolvePacketOwnedBindingKey(clientFunctionId, out Keys mappedKey))
-                {
-                    continue;
-                }
+                (int clientFunctionId, InputAction action) = PacketOwnedKnownFunctionBindings[i];
+                Keys mappedKey = TryResolvePacketOwnedBindingKey(clientFunctionId, out Keys resolvedKey)
+                    ? resolvedKey
+                    : Keys.None;
 
                 KeyBinding existingBinding = input.GetBinding(action);
                 if (existingBinding != null && existingBinding.PrimaryKey == mappedKey)
@@ -353,6 +354,49 @@ namespace HaCreator.MapSimulator
             }
 
             return appliedBindings;
+        }
+
+        private void UpdatePacketOwnedPetConsumeMpRuntime(int currentTime)
+        {
+            if (!_packetOwnedFuncKeyConfigLoaded
+                || _packetOwnedPetConsumeMpItemId <= 0
+                || _gameState?.PendingMapChange == true
+                || _playerManager?.Player is not PlayerCharacter player
+                || player.Build == null
+                || !player.IsAlive
+                || player.MaxMP <= 0
+                || player.MP >= player.MaxMP)
+            {
+                return;
+            }
+
+            int mpThresholdPercent = Math.Clamp(_statusBarMpWarningThresholdPercent, 1, 99);
+            int mpThreshold = Math.Max(1, (int)Math.Ceiling(player.MaxMP * (mpThresholdPercent / 100f)));
+            if (player.MP >= mpThreshold)
+            {
+                return;
+            }
+
+            if (_lastPacketOwnedPetConsumeMpAttemptTick != int.MinValue
+                && unchecked(currentTime - _lastPacketOwnedPetConsumeMpAttemptTick) < PacketOwnedPetConsumeMpAttemptThrottleMs)
+            {
+                return;
+            }
+
+            InventoryType inventoryType = ResolvePacketOwnedPetConsumeInventoryType(_packetOwnedPetConsumeMpItemId);
+            if (inventoryType == InventoryType.NONE)
+            {
+                return;
+            }
+
+            ConsumableItemEffect effect = ResolveConsumableItemEffect(_packetOwnedPetConsumeMpItemId);
+            if (effect.FlatMp <= 0 && effect.PercentMp <= 0)
+            {
+                return;
+            }
+
+            _lastPacketOwnedPetConsumeMpAttemptTick = currentTime;
+            TryUseConsumableInventoryItem(_packetOwnedPetConsumeMpItemId, inventoryType, currentTime);
         }
 
         private bool TryResolvePacketOwnedBindingKey(int clientFunctionId, out Keys key)

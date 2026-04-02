@@ -22,6 +22,7 @@ namespace HaCreator.MapSimulator.Managers
         public int? WorldId { get; init; }
         public IReadOnlyList<LoginSelectWorldCharacterEntry> Entries { get; init; } = Array.Empty<LoginSelectWorldCharacterEntry>();
         public bool? LoginOpt { get; init; }
+        public string NoticeText { get; init; }
     }
 
     public static class LoginViewAllCharResultCodec
@@ -144,10 +145,21 @@ namespace HaCreator.MapSimulator.Managers
                         return true;
 
                     default:
+                        string noticeText = null;
+                        if (resultCode is 3 or 6 or 7)
+                        {
+                            bool hasNoticeText = reader.ReadByte() != 0;
+                            if (hasNoticeText)
+                            {
+                                noticeText = reader.ReadMapleString();
+                            }
+                        }
+
                         profile = new LoginViewAllCharResultPacketProfile
                         {
                             ResultCode = resultCode,
-                            Kind = LoginViewAllCharResultKind.Error
+                            Kind = LoginViewAllCharResultKind.Error,
+                            NoticeText = noticeText
                         };
                         return true;
                 }

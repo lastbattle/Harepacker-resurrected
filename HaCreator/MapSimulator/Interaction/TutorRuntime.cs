@@ -38,9 +38,9 @@ namespace HaCreator.MapSimulator.Interaction
         internal int ActiveMessageStartedAt { get; private set; } = int.MinValue;
         internal int ActiveMessageExpiresAt { get; private set; } = int.MinValue;
         internal string StatusMessage { get; private set; } = "Tutor runtime idle.";
-        internal IReadOnlyCollection<int> ActiveTutorSkillIds => _activeTutorSkillIds;
+        internal IReadOnlyCollection<int> KnownTutorSkillIds => _knownTutorSkillIds;
 
-        private readonly HashSet<int> _activeTutorSkillIds = new();
+        private readonly HashSet<int> _knownTutorSkillIds = new();
 
         internal bool HasVisibleMessage(int currentTick)
         {
@@ -56,6 +56,23 @@ namespace HaCreator.MapSimulator.Interaction
                 && MessageKind == TutorMessageKind.Indexed
                 && currentTick < ActiveMessageExpiresAt
                 && LastIndexedMessage >= 0;
+        }
+
+        internal bool TryResolveIndexedCuePlacement(int currentTick, int frameWidth, int frameHeight, out int offsetX, out int offsetY)
+        {
+            offsetX = 0;
+            offsetY = 0;
+
+            if (!HasVisibleIndexedCue(currentTick) || frameWidth <= 0 || frameHeight <= 0)
+            {
+                return false;
+            }
+
+            // Client evidence: CTutor::OnMessage(long,long) positions the cue layer using
+            // x = -(layerWidth / 2) and y = -(layerHeight + summonHeight).
+            offsetX = -(frameWidth / 2);
+            offsetY = -(frameHeight + ResolveActorHeight());
+            return true;
         }
 
         internal bool HasVisibleTextMessage(int currentTick)
@@ -78,10 +95,9 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal void ApplyHire(int skillId, int currentTick)
         {
-            _activeTutorSkillIds.Clear();
             if (skillId > 0)
             {
-                _activeTutorSkillIds.Add(skillId);
+                _knownTutorSkillIds.Add(skillId);
             }
 
             IsActive = true;
@@ -95,7 +111,6 @@ namespace HaCreator.MapSimulator.Interaction
         internal void ApplyRemoval(string reason = null)
         {
             bool hadActor = IsActive;
-            _activeTutorSkillIds.Clear();
             IsActive = false;
             ActiveSkillId = 0;
             ActiveSummonObjectId = 0;
@@ -163,12 +178,12 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string DescribeActiveTutorVariants()
         {
-            if (_activeTutorSkillIds.Count == 0)
+            if (_knownTutorSkillIds.Count == 0)
             {
                 return "none";
             }
 
-            return string.Join(", ", _activeTutorSkillIds.OrderBy(skillId => skillId));
+            return string.Join(", ", _knownTutorSkillIds.OrderBy(skillId => skillId));
         }
 
         private static int ClampDuration(int durationMs)

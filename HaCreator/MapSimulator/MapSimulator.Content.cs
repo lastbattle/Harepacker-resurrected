@@ -157,6 +157,12 @@ namespace HaCreator.MapSimulator
                 {
                     _soundManager.RegisterSound("PickUpItem", pickUpItemSound);
                 }
+
+                WzBinaryProperty loginEntryGameInSound = (WzBinaryProperty)soundGameImage["GameIn"];
+                if (loginEntryGameInSound != null)
+                {
+                    _soundManager.RegisterSound(LoginEntryGameInSoundKey, loginEntryGameInSound);
+                }
             }
 
 
@@ -746,6 +752,7 @@ namespace HaCreator.MapSimulator
             RegisterChatCommands();
             RegisterRemoteUserChatCommand();
             RegisterSummonedPacketChatCommand();
+            RegisterAnimationDisplayerChatCommand();
 
 
             // Initialize pickup notice UI (bottom right corner messages)
@@ -1170,6 +1177,14 @@ namespace HaCreator.MapSimulator
                 _lastPacketOwnedTeleportPortalIndex = -1;
                 _lastPacketOwnedTeleportSourcePortalName = null;
                 _lastPacketOwnedTeleportTargetPortalName = null;
+                _lastPacketOwnedTeleportRegistrationTick = int.MinValue;
+                _lastPacketOwnedTeleportMovePathAttribute = -1;
+                _lastPacketOwnedTeleportSetItemBackgroundActive = false;
+                _lastPacketOwnedTeleportEffectTick = int.MinValue;
+                _lastPacketOwnedTeleportEffectPath = null;
+                _lastPacketOwnedTeleportOutboundOpcode = -1;
+                _lastPacketOwnedTeleportOutboundPayload = Array.Empty<byte>();
+                _lastPacketOwnedTeleportOutboundSummary = null;
                 _pendingMapSpawnTarget = null;
             }
             ClearPassiveTransferRequest();

@@ -2,6 +2,7 @@ using MapleLib.MapleCryptoLib;
 using MapleLib.PacketLib;
 using System;
 using System.Collections.Concurrent;
+using System.Collections.Generic;
 using System.Linq;
 using System.Net;
 using System.Net.Sockets;
@@ -74,6 +75,7 @@ namespace HaCreator.MapSimulator.Managers
         public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
         public bool HasConnectedSession => _activePair?.InitCompleted == true;
         public int ReceivedCount { get; private set; }
+        public int SentCount { get; private set; }
         public string LastStatus { get; private set; } = "Local utility official-session bridge inactive.";
 
         public string DescribeStatus()
@@ -84,7 +86,7 @@ namespace HaCreator.MapSimulator.Managers
             string session = HasConnectedSession
                 ? $"connected session {_activePair?.ClientEndpoint ?? "unknown-client"} -> {_activePair?.RemoteEndpoint ?? "unknown-remote"}"
                 : "no active Maple session";
-            return $"Local utility official-session bridge {lifecycle}; {session}; received={ReceivedCount}; opcodes=253,254. {LastStatus}";
+            return $"Local utility official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; inbound opcodes=193,253,254,270; outbound opcode=134. {LastStatus}";
         }
 
         public void Start(int listenPort, string remoteHost, int remotePort)
@@ -174,6 +176,55 @@ namespace HaCreator.MapSimulator.Managers
             LastStatus = success
                 ? $"Applied {summary} from {source}."
                 : $"Ignored {summary} from {source}.";
+        }
+
+        public bool TrySendOutboundPacket(int opcode, IReadOnlyList<byte> payload, out string status)
+        {
+            BridgePair pair;
+            lock (_sync)
+            {
+                pair = _activePair;
+            }
+
+            if (pair == null || !pair.InitCompleted)
+            {
+                status = "Local utility official-session bridge has no connected Maple session for outbound injection.";
+                LastStatus = status;
+                return false;
+            }
+
+            if (opcode < ushort.MinValue || opcode > ushort.MaxValue)
+            {
+                status = $"Local utility outbound opcode {opcode} is outside the 16-bit Maple packet range.";
+                LastStatus = status;
+                return false;
+            }
+
+            byte[] rawPacket = BuildRawPacket((ushort)opcode, payload);
+
+            try
+            {
+                pair.ServerSession.SendPacket(rawPacket);
+                SentCount++;
+                status = $"Injected local utility outbound opcode {opcode} into live session {pair.RemoteEndpoint}.";
+                LastStatus = status;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                ClearActivePair(pair, $"Local utility official-session outbound injection failed: {ex.Message}");
+                status = LastStatus;
+                return false;
+            }
+        }
+
+        internal static byte[] BuildFollowCharacterRequestPayload(int driverId, bool autoRequest, bool keyInput)
+        {
+            byte[] payload = new byte[sizeof(int) + sizeof(byte) + sizeof(byte)];
+            BitConverter.GetBytes(driverId).CopyTo(payload, 0);
+            payload[sizeof(int)] = autoRequest ? (byte)1 : (byte)0;
+            payload[sizeof(int) + sizeof(byte)] = keyInput ? (byte)1 : (byte)0;
+            return payload;
         }
 
         public void Dispose()
@@ -375,7 +426,21 @@ namespace HaCreator.MapSimulator.Managers
                 }
 
                 ReceivedCount = 0;
+                SentCount = 0;
             }
+        }
+
+        private static byte[] BuildRawPacket(ushort opcode, IReadOnlyList<byte> payload)
+        {
+            int payloadLength = payload?.Count ?? 0;
+            byte[] raw = new byte[sizeof(ushort) + payloadLength];
+            BitConverter.GetBytes(opcode).CopyTo(raw, 0);
+            for (int i = 0; i < payloadLength; i++)
+            {
+                raw[sizeof(ushort) + i] = payload[i];
+            }
+
+            return raw;
         }
 
         private static MapleCrypto CreateCrypto(byte[] iv, short version)
@@ -385,16 +450,20 @@ namespace HaCreator.MapSimulator.Managers
 
         private static bool IsBridgeOpcode(int packetType)
         {
-            return packetType == LocalUtilityPacketInboxManager.SetDirectionModeClientPacketType
-                || packetType == LocalUtilityPacketInboxManager.SetStandAloneModeClientPacketType;
+            return packetType == LocalUtilityPacketInboxManager.FollowCharacterClientPacketType
+                || packetType == LocalUtilityPacketInboxManager.SetDirectionModeClientPacketType
+                || packetType == LocalUtilityPacketInboxManager.SetStandAloneModeClientPacketType
+                || packetType == LocalUtilityPacketInboxManager.FollowCharacterFailedClientPacketType;
         }
 
         private static string DescribePacketType(int packetType)
         {
             return packetType switch
             {
+                LocalUtilityPacketInboxManager.FollowCharacterClientPacketType => "FollowCharacter(193)",
                 LocalUtilityPacketInboxManager.SetDirectionModeClientPacketType => "SetDirectionMode(253)",
                 LocalUtilityPacketInboxManager.SetStandAloneModeClientPacketType => "SetStandAloneMode(254)",
+                LocalUtilityPacketInboxManager.FollowCharacterFailedClientPacketType => "FollowCharacterFailed(270)",
                 _ => $"packet {packetType}"
             };
         }

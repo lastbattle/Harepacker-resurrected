@@ -1139,6 +1139,8 @@ namespace HaCreator.MapSimulator.Companions
         internal bool TryGrantSkillMask(
             IReadOnlyCollection<int> supportedPetItemIds,
             int? recallLimit,
+            int? tamenessMinimum,
+            int? tamenessMaximum,
             int skillMask,
             out int slotIndex)
         {
@@ -1148,12 +1150,14 @@ namespace HaCreator.MapSimulator.Companions
                 return false;
             }
 
-            return TryGrantSkillMask(_activePets, supportedPetItemIds, recallLimit, skillMask, out slotIndex);
+            return TryGrantSkillMask(_activePets, supportedPetItemIds, recallLimit, tamenessMinimum, tamenessMaximum, skillMask, out slotIndex);
         }
 
         internal bool TryGrantTameness(
             IReadOnlyCollection<int> supportedPetItemIds,
             int? recallLimit,
+            int? tamenessMinimum,
+            int? tamenessMaximum,
             int amount,
             out int slotIndex)
         {
@@ -1163,12 +1167,14 @@ namespace HaCreator.MapSimulator.Companions
                 return false;
             }
 
-            return TryGrantTameness(_activePets, supportedPetItemIds, recallLimit, amount, out slotIndex);
+            return TryGrantTameness(_activePets, supportedPetItemIds, recallLimit, tamenessMinimum, tamenessMaximum, amount, out slotIndex);
         }
 
         internal bool TryGrantSpeed(
             IReadOnlyCollection<int> supportedPetItemIds,
             int? recallLimit,
+            int? tamenessMinimum,
+            int? tamenessMaximum,
             int amount,
             out int slotIndex)
         {
@@ -1178,7 +1184,7 @@ namespace HaCreator.MapSimulator.Companions
                 return false;
             }
 
-            return TryGrantSpeed(_activePets, supportedPetItemIds, recallLimit, amount, out slotIndex);
+            return TryGrantSpeed(_activePets, supportedPetItemIds, recallLimit, tamenessMinimum, tamenessMaximum, amount, out slotIndex);
         }
 
         internal bool TryPlanFoodItemUse(
@@ -1214,6 +1220,20 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             return _activePets.Where(pet => pet.HasActiveSpeech && pet.ActiveSpeechExpiresAt > currentTime);
+        }
+
+        internal bool HasCompatibleActivePet(
+            IReadOnlyCollection<int> supportedPetItemIds,
+            int? recallLimit,
+            int? tamenessMinimum,
+            int? tamenessMaximum)
+        {
+            if (_fieldUsageBlocked)
+            {
+                return false;
+            }
+
+            return HasCompatibleActivePet(_activePets, supportedPetItemIds, recallLimit, tamenessMinimum, tamenessMaximum);
         }
 
         private PetRuntime SelectPetForFoodItem(IReadOnlyCollection<int> supportedPetItemIds, int fullnessIncrease)
@@ -1269,12 +1289,14 @@ namespace HaCreator.MapSimulator.Companions
             IReadOnlyList<PetRuntime> activePets,
             IReadOnlyCollection<int> supportedPetItemIds,
             int? recallLimit,
+            int? tamenessMinimum,
+            int? tamenessMaximum,
             int skillMask,
             out int slotIndex)
         {
             slotIndex = -1;
 
-            PetRuntime pet = SelectPetForSkillReward(activePets, supportedPetItemIds, recallLimit, skillMask);
+            PetRuntime pet = SelectPetForSkillReward(activePets, supportedPetItemIds, recallLimit, tamenessMinimum, tamenessMaximum, skillMask);
             if (pet == null || !pet.AddSkillMask(skillMask))
             {
                 return false;
@@ -1288,12 +1310,14 @@ namespace HaCreator.MapSimulator.Companions
             IReadOnlyList<PetRuntime> activePets,
             IReadOnlyCollection<int> supportedPetItemIds,
             int? recallLimit,
+            int? tamenessMinimum,
+            int? tamenessMaximum,
             int amount,
             out int slotIndex)
         {
             slotIndex = -1;
 
-            PetRuntime pet = SelectPetForQuestReward(activePets, supportedPetItemIds, recallLimit);
+            PetRuntime pet = SelectPetForQuestReward(activePets, supportedPetItemIds, recallLimit, tamenessMinimum, tamenessMaximum);
             if (pet == null || !pet.TryAddQuestTameness(amount))
             {
                 return false;
@@ -1307,12 +1331,14 @@ namespace HaCreator.MapSimulator.Companions
             IReadOnlyList<PetRuntime> activePets,
             IReadOnlyCollection<int> supportedPetItemIds,
             int? recallLimit,
+            int? tamenessMinimum,
+            int? tamenessMaximum,
             int amount,
             out int slotIndex)
         {
             slotIndex = -1;
 
-            PetRuntime pet = SelectPetForQuestReward(activePets, supportedPetItemIds, recallLimit);
+            PetRuntime pet = SelectPetForQuestReward(activePets, supportedPetItemIds, recallLimit, tamenessMinimum, tamenessMaximum);
             if (pet == null || !pet.TryAddQuestSpeed(amount))
             {
                 return false;
@@ -1320,6 +1346,16 @@ namespace HaCreator.MapSimulator.Companions
 
             slotIndex = pet.SlotIndex;
             return true;
+        }
+
+        internal static bool HasCompatibleActivePet(
+            IReadOnlyList<PetRuntime> activePets,
+            IReadOnlyCollection<int> supportedPetItemIds,
+            int? recallLimit,
+            int? tamenessMinimum,
+            int? tamenessMaximum)
+        {
+            return SelectPetForQuestReward(activePets, supportedPetItemIds, recallLimit, tamenessMinimum, tamenessMaximum) != null;
         }
 
         private static PetRuntime SelectPetForFoodItem(
@@ -1349,6 +1385,8 @@ namespace HaCreator.MapSimulator.Companions
             IReadOnlyList<PetRuntime> activePets,
             IReadOnlyCollection<int> supportedPetItemIds,
             int? recallLimit,
+            int? tamenessMinimum,
+            int? tamenessMaximum,
             int skillMask)
         {
             if (activePets == null || activePets.Count == 0)
@@ -1361,9 +1399,11 @@ namespace HaCreator.MapSimulator.Companions
                 return null;
             }
 
-            IEnumerable<PetRuntime> compatiblePets = supportedPetItemIds == null || supportedPetItemIds.Count == 0
-                ? activePets.Where(pet => pet != null)
-                : activePets.Where(pet => pet != null && supportedPetItemIds.Contains(pet.ItemId));
+            IEnumerable<PetRuntime> compatiblePets = EnumerateCompatibleQuestPets(
+                activePets,
+                supportedPetItemIds,
+                tamenessMinimum,
+                tamenessMaximum);
 
             return compatiblePets.FirstOrDefault(pet => !pet.HasSkillMask(skillMask))
                 ?? compatiblePets.FirstOrDefault();
@@ -1372,7 +1412,9 @@ namespace HaCreator.MapSimulator.Companions
         private static PetRuntime SelectPetForQuestReward(
             IReadOnlyList<PetRuntime> activePets,
             IReadOnlyCollection<int> supportedPetItemIds,
-            int? recallLimit)
+            int? recallLimit,
+            int? tamenessMinimum,
+            int? tamenessMaximum)
         {
             if (activePets == null || activePets.Count == 0)
             {
@@ -1384,11 +1426,26 @@ namespace HaCreator.MapSimulator.Companions
                 return null;
             }
 
-            IEnumerable<PetRuntime> compatiblePets = supportedPetItemIds == null || supportedPetItemIds.Count == 0
-                ? activePets.Where(pet => pet != null)
-                : activePets.Where(pet => pet != null && supportedPetItemIds.Contains(pet.ItemId));
+            IEnumerable<PetRuntime> compatiblePets = EnumerateCompatibleQuestPets(
+                activePets,
+                supportedPetItemIds,
+                tamenessMinimum,
+                tamenessMaximum);
 
             return compatiblePets.FirstOrDefault();
+        }
+
+        private static IEnumerable<PetRuntime> EnumerateCompatibleQuestPets(
+            IReadOnlyList<PetRuntime> activePets,
+            IReadOnlyCollection<int> supportedPetItemIds,
+            int? tamenessMinimum,
+            int? tamenessMaximum)
+        {
+            return activePets.Where(pet =>
+                pet != null &&
+                (supportedPetItemIds == null || supportedPetItemIds.Count == 0 || supportedPetItemIds.Contains(pet.ItemId)) &&
+                (!tamenessMinimum.HasValue || pet.Tameness >= tamenessMinimum.Value) &&
+                (!tamenessMaximum.HasValue || pet.Tameness <= tamenessMaximum.Value));
         }
 
         private static int ResolveFoodFeedbackVariant(PetRuntime pet)

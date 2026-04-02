@@ -3,6 +3,7 @@ using HaSharedLibrary.Util;
 using HaCreator.MapSimulator.Character.Skills;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
+using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using System;
 using System.Collections.Generic;
@@ -512,7 +513,8 @@ namespace HaCreator.MapSimulator.Loaders
                     SkillId = skillId,
                     SkillName = ResolveSkillName(skillId, stringImage),
                     RequiredLevel = skillLevel,
-                    IconTexture = LoadSkillIcon(skillId, device)
+                    IconTexture = LoadSkillIcon(skillId, device, out Point iconOrigin),
+                    IconOrigin = iconOrigin
                 });
             }
 
@@ -531,8 +533,9 @@ namespace HaCreator.MapSimulator.Loaders
             return $"Skill {skillId}";
         }
 
-        private static Texture2D LoadSkillIcon(int skillId, GraphicsDevice device)
+        private static Texture2D LoadSkillIcon(int skillId, GraphicsDevice device, out Point iconOrigin)
         {
+            iconOrigin = Point.Zero;
             if (skillId <= 0 || device == null)
                 return null;
 
@@ -544,8 +547,17 @@ namespace HaCreator.MapSimulator.Loaders
             if (skillImage?["skill"]?[skillId.ToString(CultureInfo.InvariantCulture)]?["icon"] is not WzCanvasProperty iconProp)
                 return null;
 
+            iconOrigin = ResolveCanvasOrigin(iconProp);
             System.Drawing.Bitmap iconBitmap = iconProp.GetLinkedWzCanvasBitmap();
             return iconBitmap?.ToTexture2DAndDispose(device);
+        }
+
+        private static Point ResolveCanvasOrigin(WzCanvasProperty canvasProperty)
+        {
+            if (canvasProperty?[WzCanvasProperty.OriginPropertyName] is WzVectorProperty originProperty)
+                return new Point(originProperty.X?.Value ?? 0, originProperty.Y?.Value ?? 0);
+
+            return Point.Zero;
         }
 
         private static Dictionary<int, string> BuildLevelDescriptions(

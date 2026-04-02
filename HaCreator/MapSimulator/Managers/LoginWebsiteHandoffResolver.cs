@@ -5,6 +5,9 @@ namespace HaCreator.MapSimulator.Managers
     internal static class LoginWebsiteHandoffResolver
     {
         internal const string DefaultHomepageUrl = "https://www.nexon.com/";
+        internal const string DefaultAccountSelfServiceUrl = "https://playersupport.nexon.com/hc/en-us/articles/4402870496148-Using-Account-Self-Service";
+        internal const string DefaultFindEmailHelpUrl = DefaultAccountSelfServiceUrl;
+        internal const string DefaultPasswordResetHelpUrl = DefaultAccountSelfServiceUrl;
 
         public static string ResolveOrDefault(string candidateUrl)
         {

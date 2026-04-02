@@ -22,6 +22,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D _row0Texture;
         private readonly Texture2D _row1Texture;
         private readonly Texture2D _recommendTexture;
+        private readonly Texture2D[] _summaryStripTextures;
         private readonly UIObject _renewButton;
         private readonly UIObject _upButton;
         private readonly Texture2D _pixel;
@@ -45,6 +46,12 @@ namespace HaCreator.MapSimulator.UI
         private const int RowHeight = 39;
         private const int VisibleRows = 7;
         private const int TooltipWidth = 250;
+        private const int SummaryStripX = 15;
+        private const int SummaryStripY = 329;
+        private const int SummaryStripStepY = 16;
+        private const int SummaryTextPaddingX = 6;
+        private const int SummaryTextPaddingY = 4;
+        private const int SummaryTextMaxWidth = 202;
 
         public GuildSkillWindow(
             IDXObject frame,
@@ -55,6 +62,7 @@ namespace HaCreator.MapSimulator.UI
             Texture2D row0Texture,
             Texture2D row1Texture,
             Texture2D recommendTexture,
+            Texture2D[] summaryStripTextures,
             UIObject renewButton,
             UIObject upButton,
             GraphicsDevice device)
@@ -67,6 +75,7 @@ namespace HaCreator.MapSimulator.UI
             _row0Texture = row0Texture;
             _row1Texture = row1Texture;
             _recommendTexture = recommendTexture;
+            _summaryStripTextures = summaryStripTextures ?? Array.Empty<Texture2D>();
             _renewButton = renewButton;
             _upButton = upButton;
             _pixel = new Texture2D(device ?? throw new ArgumentNullException(nameof(device)), 1, 1);
@@ -266,10 +275,6 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawSummary(SpriteBatch sprite, GuildSkillSnapshot snapshot)
         {
-            Rectangle summaryBounds = new Rectangle(Position.X + 15, Position.Y + 336, 170, 36);
-            sprite.Draw(_pixel, summaryBounds, new Color(5, 11, 18, 76));
-
-            int y = summaryBounds.Y + 3;
             Color[] palette =
             {
                 new Color(245, 246, 248),
@@ -279,8 +284,25 @@ namespace HaCreator.MapSimulator.UI
 
             for (int i = 0; i < snapshot.SummaryLines.Count && i < 3; i++)
             {
-                DrawText(sprite, snapshot.SummaryLines[i], summaryBounds.X + 4, y, palette[Math.Min(i, palette.Length - 1)], i == 0 ? 0.34f : 0.3f);
-                y += 11;
+                Rectangle stripBounds = GetSummaryStripBounds(i);
+                Texture2D stripTexture = i < _summaryStripTextures.Length ? _summaryStripTextures[i] : null;
+                if (stripTexture != null)
+                {
+                    sprite.Draw(stripTexture, new Vector2(stripBounds.X, stripBounds.Y), Color.White);
+                }
+                else
+                {
+                    sprite.Draw(_pixel, stripBounds, new Color(5, 11, 18, 76));
+                }
+
+                string fittedLine = FitTextToWidth(snapshot.SummaryLines[i], SummaryTextMaxWidth, 0.3f);
+                DrawText(
+                    sprite,
+                    fittedLine,
+                    stripBounds.X + SummaryTextPaddingX,
+                    stripBounds.Y + SummaryTextPaddingY,
+                    palette[Math.Min(i, palette.Length - 1)],
+                    0.3f);
             }
         }
 
@@ -630,6 +652,45 @@ namespace HaCreator.MapSimulator.UI
 
             Vector2 size = _font.MeasureString(text) * scale;
             DrawText(sprite, text, (int)Math.Round(rightX - size.X), y, color, scale);
+        }
+
+        private Rectangle GetSummaryStripBounds(int index)
+        {
+            Texture2D stripTexture = index < _summaryStripTextures.Length ? _summaryStripTextures[index] : null;
+            int width = Math.Max(170, stripTexture?.Width ?? 233);
+            int height = Math.Max(12, stripTexture?.Height ?? 21);
+            return new Rectangle(
+                Position.X + SummaryStripX,
+                Position.Y + SummaryStripY + (index * SummaryStripStepY),
+                width,
+                height);
+        }
+
+        private string FitTextToWidth(string text, int maxWidth, float scale)
+        {
+            if (string.IsNullOrWhiteSpace(text) || _font == null)
+            {
+                return string.Empty;
+            }
+
+            string candidate = text.Trim();
+            if ((_font.MeasureString(candidate) * scale).X <= maxWidth)
+            {
+                return candidate;
+            }
+
+            const string ellipsis = "...";
+            while (candidate.Length > 1)
+            {
+                candidate = candidate[..^1].TrimEnd();
+                string truncated = candidate + ellipsis;
+                if ((_font.MeasureString(truncated) * scale).X <= maxWidth)
+                {
+                    return truncated;
+                }
+            }
+
+            return ellipsis;
         }
     }
 }

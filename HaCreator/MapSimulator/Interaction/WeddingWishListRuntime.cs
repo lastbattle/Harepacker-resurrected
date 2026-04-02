@@ -52,6 +52,7 @@ namespace HaCreator.MapSimulator.Interaction
         };
 
         private readonly Dictionary<int, List<InventorySlotData>> _giftListByTab = new();
+        private readonly Dictionary<WeddingWishListSelectionPane, int> _paneStartIndices = new();
         private readonly List<InventorySlotData> _wishListEntries = new();
         private readonly List<InventorySlotData> _candidateEntries = new();
 
@@ -154,6 +155,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             _selectedTabIndex = tabIndex;
             ClampSelections();
+            NormalizeViewportState();
             _statusMessage = $"Selected {ResolveTabLabel(_selectedTabIndex)} tab for the wedding wish-list dialog.";
             return _statusMessage;
         }
@@ -162,6 +164,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             _activePane = pane;
             ClampSelections();
+            EnsureSelectionVisible(pane);
             _statusMessage = $"Focused {ResolvePaneLabel(pane)} in the wedding wish-list dialog.";
             return _statusMessage;
         }
@@ -186,6 +189,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             _activePane = pane;
             ClampSelections();
+            EnsureSelectionVisible(pane);
             _statusMessage = $"Selected {ResolvePaneLabel(pane)} entry {Math.Max(0, index) + 1}.";
             return _statusMessage;
         }
@@ -209,7 +213,35 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             ClampSelections();
+            EnsureSelectionVisible(_activePane);
             _statusMessage = $"Moved selection in {ResolvePaneLabel(_activePane)}.";
+            return _statusMessage;
+        }
+
+        internal string ScrollPane(WeddingWishListSelectionPane pane, int delta)
+        {
+            int count = GetEntryCount(pane);
+            int visibleRows = GetVisibleRowCount(pane);
+            if (count <= visibleRows || visibleRows <= 0)
+            {
+                return string.Empty;
+            }
+
+            int startIndex = GetFirstVisibleIndex(pane);
+            int maxStart = Math.Max(0, count - visibleRows);
+            int nextStart = Math.Clamp(startIndex + delta, 0, maxStart);
+            if (nextStart == startIndex)
+            {
+                return string.Empty;
+            }
+
+            _paneStartIndices[pane] = nextStart;
+            if (pane == _activePane)
+            {
+                ClampSelectionIntoVisibleRange(pane);
+            }
+
+            _statusMessage = $"Scrolled {ResolvePaneLabel(pane)} to row {nextStart + 1}.";
             return _statusMessage;
         }
 
@@ -346,6 +378,7 @@ namespace HaCreator.MapSimulator.Interaction
             _selectedInventoryIndex = 0;
             _selectedWishIndex = 0;
             _selectedCandidateIndex = 0;
+            _paneStartIndices.Clear();
             _statusMessage = "Cleared wedding wish-list dialog state.";
             return _statusMessage;
         }
@@ -379,6 +412,10 @@ namespace HaCreator.MapSimulator.Interaction
                 SelectedInventoryIndex = _selectedInventoryIndex,
                 SelectedWishIndex = _selectedWishIndex,
                 SelectedCandidateIndex = _selectedCandidateIndex,
+                FirstVisibleGiftIndex = GetFirstVisibleIndex(WeddingWishListSelectionPane.GiftList),
+                FirstVisibleInventoryIndex = GetFirstVisibleIndex(WeddingWishListSelectionPane.Inventory),
+                FirstVisibleWishIndex = GetFirstVisibleIndex(WeddingWishListSelectionPane.WishList),
+                FirstVisibleCandidateIndex = GetFirstVisibleIndex(WeddingWishListSelectionPane.Candidate),
                 StatusMessage = _statusMessage,
                 LocalCharacterName = _localCharacterName
             };
@@ -515,6 +552,136 @@ namespace HaCreator.MapSimulator.Interaction
             _selectedCandidateIndex = ClampIndex(_selectedCandidateIndex, _candidateEntries.Count);
         }
 
+        private void NormalizeViewportState()
+        {
+            NormalizePaneViewport(WeddingWishListSelectionPane.GiftList);
+            NormalizePaneViewport(WeddingWishListSelectionPane.Inventory);
+            NormalizePaneViewport(WeddingWishListSelectionPane.WishList);
+            NormalizePaneViewport(WeddingWishListSelectionPane.Candidate);
+            EnsureSelectionVisible(_activePane);
+        }
+
+        private void NormalizePaneViewport(WeddingWishListSelectionPane pane)
+        {
+            int count = GetEntryCount(pane);
+            int visibleRows = GetVisibleRowCount(pane);
+            if (count <= 0 || visibleRows <= 0)
+            {
+                _paneStartIndices[pane] = 0;
+                return;
+            }
+
+            int maxStart = Math.Max(0, count - visibleRows);
+            _paneStartIndices[pane] = Math.Clamp(GetFirstVisibleIndex(pane), 0, maxStart);
+        }
+
+        private void EnsureSelectionVisible(WeddingWishListSelectionPane pane)
+        {
+            int count = GetEntryCount(pane);
+            int visibleRows = GetVisibleRowCount(pane);
+            if (count <= 0 || visibleRows <= 0)
+            {
+                _paneStartIndices[pane] = 0;
+                return;
+            }
+
+            int selectedIndex = GetSelectedIndex(pane);
+            int startIndex = GetFirstVisibleIndex(pane);
+            int maxStart = Math.Max(0, count - visibleRows);
+            if (selectedIndex < startIndex)
+            {
+                _paneStartIndices[pane] = selectedIndex;
+                return;
+            }
+
+            int endIndex = startIndex + visibleRows - 1;
+            if (selectedIndex > endIndex)
+            {
+                _paneStartIndices[pane] = Math.Clamp(selectedIndex - visibleRows + 1, 0, maxStart);
+            }
+        }
+
+        private void ClampSelectionIntoVisibleRange(WeddingWishListSelectionPane pane)
+        {
+            int count = GetEntryCount(pane);
+            int visibleRows = GetVisibleRowCount(pane);
+            if (count <= 0 || visibleRows <= 0)
+            {
+                SetSelectedIndex(pane, 0);
+                return;
+            }
+
+            int startIndex = GetFirstVisibleIndex(pane);
+            int endIndex = Math.Min(count - 1, startIndex + visibleRows - 1);
+            int selectedIndex = Math.Clamp(GetSelectedIndex(pane), startIndex, endIndex);
+            SetSelectedIndex(pane, selectedIndex);
+        }
+
+        private int GetEntryCount(WeddingWishListSelectionPane pane)
+        {
+            return pane switch
+            {
+                WeddingWishListSelectionPane.GiftList => GetGiftListForSelectedTab().Count,
+                WeddingWishListSelectionPane.Inventory => GetInventoryEntriesForSelectedTab().Count,
+                WeddingWishListSelectionPane.WishList => _wishListEntries.Count,
+                WeddingWishListSelectionPane.Candidate => _candidateEntries.Count,
+                _ => 0
+            };
+        }
+
+        private int GetVisibleRowCount(WeddingWishListSelectionPane pane)
+        {
+            return (_mode, pane) switch
+            {
+                (WeddingWishListDialogMode.Receive, WeddingWishListSelectionPane.GiftList) => 5,
+                (WeddingWishListDialogMode.Receive, WeddingWishListSelectionPane.Inventory) => 5,
+                (WeddingWishListDialogMode.Give, WeddingWishListSelectionPane.WishList) => 3,
+                (WeddingWishListDialogMode.Give, WeddingWishListSelectionPane.GiftList) => 2,
+                (WeddingWishListDialogMode.Give, WeddingWishListSelectionPane.Inventory) => 3,
+                (WeddingWishListDialogMode.Input, WeddingWishListSelectionPane.WishList) => 8,
+                (WeddingWishListDialogMode.Input, WeddingWishListSelectionPane.Candidate) => 1,
+                _ => 0
+            };
+        }
+
+        private int GetFirstVisibleIndex(WeddingWishListSelectionPane pane)
+        {
+            return _paneStartIndices.TryGetValue(pane, out int index)
+                ? index
+                : 0;
+        }
+
+        private int GetSelectedIndex(WeddingWishListSelectionPane pane)
+        {
+            return pane switch
+            {
+                WeddingWishListSelectionPane.GiftList => _selectedGiftIndex,
+                WeddingWishListSelectionPane.Inventory => _selectedInventoryIndex,
+                WeddingWishListSelectionPane.WishList => _selectedWishIndex,
+                WeddingWishListSelectionPane.Candidate => _selectedCandidateIndex,
+                _ => 0
+            };
+        }
+
+        private void SetSelectedIndex(WeddingWishListSelectionPane pane, int index)
+        {
+            switch (pane)
+            {
+                case WeddingWishListSelectionPane.GiftList:
+                    _selectedGiftIndex = index;
+                    break;
+                case WeddingWishListSelectionPane.Inventory:
+                    _selectedInventoryIndex = index;
+                    break;
+                case WeddingWishListSelectionPane.WishList:
+                    _selectedWishIndex = index;
+                    break;
+                case WeddingWishListSelectionPane.Candidate:
+                    _selectedCandidateIndex = index;
+                    break;
+            }
+        }
+
         private static int ClampIndex(int index, int count)
         {
             return count <= 0 ? 0 : Math.Clamp(index, 0, count - 1);
@@ -639,6 +806,10 @@ namespace HaCreator.MapSimulator.Interaction
         public int SelectedInventoryIndex { get; init; }
         public int SelectedWishIndex { get; init; }
         public int SelectedCandidateIndex { get; init; }
+        public int FirstVisibleGiftIndex { get; init; }
+        public int FirstVisibleInventoryIndex { get; init; }
+        public int FirstVisibleWishIndex { get; init; }
+        public int FirstVisibleCandidateIndex { get; init; }
         public string StatusMessage { get; init; } = string.Empty;
         public string LocalCharacterName { get; init; } = string.Empty;
     }

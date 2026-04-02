@@ -25,6 +25,7 @@ namespace HaCreator.MapSimulator.Fields
     public sealed class TournamentField
     {
         private const int StatusDurationMs = 9000;
+        private const string MatchTableDialogOwner = "CMatchTableDlg";
 
         private int _mapId;
         private bool _isActive;
@@ -36,6 +37,7 @@ namespace HaCreator.MapSimulator.Fields
         private string _lastDialogOwner;
         private int[] _lastStringPoolIds = Array.Empty<int>();
         private int[] _lastPrizeItemIds = Array.Empty<int>();
+        private readonly TournamentMatchTableDialogState _matchTableDialog = new();
 
         public bool IsActive => _isActive;
         public int MapId => _mapId;
@@ -45,6 +47,7 @@ namespace HaCreator.MapSimulator.Fields
         public string LastDialogOwner => _lastDialogOwner;
         public IReadOnlyList<int> LastStringPoolIds => _lastStringPoolIds;
         public IReadOnlyList<int> LastPrizeItemIds => _lastPrizeItemIds;
+        public TournamentMatchTableDialogState MatchTableDialog => _matchTableDialog;
 
         public void Configure(MapInfo mapInfo)
         {
@@ -64,6 +67,8 @@ namespace HaCreator.MapSimulator.Fields
             {
                 _statusMessage = null;
             }
+
+            _matchTableDialog.Update(tickCount);
         }
 
         public void Draw(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font)
@@ -115,6 +120,8 @@ namespace HaCreator.MapSimulator.Fields
             {
                 DrawShadowedText(spriteBatch, font, TrimForDisplay(_statusMessage, 72), new Vector2(panelX + 12, panelY + 120), Color.LightGoldenrodYellow, 0.82f);
             }
+
+            _matchTableDialog.Draw(spriteBatch, pixelTexture, font);
         }
 
         public bool TryApplyPacket(TournamentPacketType packetType, byte[] payload, int currentTimeMs, out string errorMessage)
@@ -202,7 +209,23 @@ namespace HaCreator.MapSimulator.Fields
                 : string.Join("/", _lastStringPoolIds.Select(id => $"0x{id:X}"));
             string dialogText = string.IsNullOrWhiteSpace(_lastDialogOwner) ? "none" : _lastDialogOwner;
             string summary = string.IsNullOrWhiteSpace(_lastPacketSummary) ? "No packet applied yet." : _lastPacketSummary;
-            return $"Tournament: active | map={_mapId} | last={packetText} | dialog={dialogText} | stringPool={stringPoolText} | summary={summary}";
+            string matchTableText = _matchTableDialog.DescribeStatus();
+            return $"Tournament: active | map={_mapId} | last={packetText} | dialog={dialogText} | stringPool={stringPoolText} | summary={summary}{Environment.NewLine}{matchTableText}";
+        }
+
+        public string DescribeMatchTableDialog()
+        {
+            return _matchTableDialog.DescribeStatus();
+        }
+
+        public bool TryScrollMatchTableDialog(int delta, out string message)
+        {
+            return _matchTableDialog.TryScroll(delta, out message);
+        }
+
+        public void CloseMatchTableDialog()
+        {
+            _matchTableDialog.Close("Tournament match-table dialog closed locally.");
         }
 
         public void Reset()
@@ -217,6 +240,7 @@ namespace HaCreator.MapSimulator.Fields
             _lastDialogOwner = null;
             _lastStringPoolIds = Array.Empty<int>();
             _lastPrizeItemIds = Array.Empty<int>();
+            _matchTableDialog.Reset();
         }
 
         private void ApplyTournamentNotice(BinaryReader reader, int currentTimeMs)
@@ -251,12 +275,17 @@ namespace HaCreator.MapSimulator.Fields
 
         private void ApplyMatchTable(byte[] payload, int currentTimeMs)
         {
+            if (!_matchTableDialog.TryOpen(payload, out string dialogSummary, out string errorMessage))
+            {
+                throw new InvalidDataException(errorMessage);
+            }
+
             SetStatus(
-                $"Tournament match table payload received ({payload.Length} byte(s)); the client constructs CMatchTableDlg and runs it modally from opcode 375.",
+                dialogSummary,
                 currentTimeMs,
                 Array.Empty<int>(),
                 $"match-table (375) bytes={payload.Length}",
-                "CMatchTableDlg::DoModal");
+                $"{MatchTableDialogOwner}::DoModal");
         }
 
         private void ApplyPrize(BinaryReader reader, int currentTimeMs)
@@ -375,7 +404,7 @@ namespace HaCreator.MapSimulator.Fields
             }
         }
 
-        private static void DrawShadowedText(SpriteBatch spriteBatch, SpriteFont font, string text, Vector2 position, Color color, float scale = 1f)
+        internal static void DrawShadowedText(SpriteBatch spriteBatch, SpriteFont font, string text, Vector2 position, Color color, float scale = 1f)
         {
             if (string.IsNullOrWhiteSpace(text))
             {
@@ -396,5 +425,605 @@ namespace HaCreator.MapSimulator.Fields
 
             return text[..Math.Max(0, maxLength - 3)] + "...";
         }
+    }
+
+    public sealed class TournamentMatchTableDialogState
+    {
+        private const int RawTableByteCount = 0x300;
+        private const int EntrantCount = 8;
+        private const int EntryValueCount = 6;
+        private const int MinPayloadLength = RawTableByteCount + 1;
+        private const int DialogWidth = 758;
+        private const int DialogHeight = 470;
+        private const int MatchTableWidth = 714;
+        private const int MatchTableHeight = 406;
+        private const int DrawOffsetX = 22;
+        private const int DrawOffsetY = 38;
+        private const int AvatarLineOffsetY = 28;
+        private const int HeaderHeight = 28;
+        private const int CloseButtonWidth = 36;
+        private const int CloseButtonHeight = 18;
+        private const int ScrollButtonWidth = 24;
+        private const int ScrollButtonHeight = 18;
+        private const int MatchTableStatusMin = 2;
+        private const int MatchTableStatusMax = 5;
+        private const int MaxScroll = 2;
+
+        private static readonly Point[] RoundOneNamePoints =
+        {
+            new(42, 393),
+            new(125, 393),
+            new(216, 393),
+            new(299, 393),
+            new(390, 393),
+            new(473, 393),
+            new(564, 393),
+            new(647, 393)
+        };
+
+        private static readonly Point[] RoundTwoNamePoints =
+        {
+            new(81, 289),
+            new(256, 289),
+            new(431, 289),
+            new(606, 289)
+        };
+
+        private static readonly Point[] SemiFinalNamePoints =
+        {
+            new(277, 185),
+            new(411, 185)
+        };
+
+        private static readonly Point ChampionNamePoint = new(341, 81);
+        private static readonly Point[] RoundOneDebugPoints =
+        {
+            new(42, 410),
+            new(125, 410),
+            new(216, 410),
+            new(299, 410),
+            new(390, 410),
+            new(473, 410),
+            new(564, 410),
+            new(647, 410)
+        };
+
+        private readonly int[,] _matchValues = new int[EntrantCount, EntryValueCount];
+        private readonly string[] _slotNames = new string[EntrantCount];
+        private byte[] _rawTable = Array.Empty<byte>();
+
+        public bool IsVisible { get; private set; }
+        public byte Stage { get; private set; }
+        public int Scroll { get; private set; } = MaxScroll;
+        public int PayloadLength { get; private set; }
+        public string Summary { get; private set; }
+        public IReadOnlyList<string> SlotNames => _slotNames;
+
+        public void Reset()
+        {
+            IsVisible = false;
+            Stage = 0;
+            Scroll = MaxScroll;
+            PayloadLength = 0;
+            Summary = null;
+            _rawTable = Array.Empty<byte>();
+            Array.Clear(_matchValues, 0, _matchValues.Length);
+            Array.Fill(_slotNames, string.Empty);
+        }
+
+        public void Update(int tickCount)
+        {
+        }
+
+        public bool TryOpen(byte[] payload, out string summary, out string errorMessage)
+        {
+            summary = null;
+            errorMessage = null;
+
+            if (payload == null || payload.Length < MinPayloadLength)
+            {
+                errorMessage = $"Tournament match-table payload must be at least {MinPayloadLength} byte(s); received {payload?.Length ?? 0}.";
+                return false;
+            }
+
+            PayloadLength = payload.Length;
+            _rawTable = payload.Take(RawTableByteCount).ToArray();
+            Stage = payload[RawTableByteCount];
+            Scroll = MaxScroll;
+            IsVisible = true;
+
+            DecodeMatchValues();
+            DecodeSlotNames();
+
+            string firstNames = string.Join(", ", _slotNames.Where(name => !string.IsNullOrWhiteSpace(name)).Take(4));
+            if (string.IsNullOrWhiteSpace(firstNames))
+            {
+                firstNames = "no printable entrant names recovered";
+            }
+
+            Summary = $"Tournament match table opened in a dedicated {MatchTableDialogOwnerText} dialog ({PayloadLength} byte(s), stage={Stage}, scroll={Scroll}, preview={firstNames}).";
+            summary = Summary;
+            return true;
+        }
+
+        public void Close(string reason = null)
+        {
+            IsVisible = false;
+            Summary = string.IsNullOrWhiteSpace(reason) ? "Tournament match-table dialog is closed." : reason;
+        }
+
+        public bool TryScroll(int delta, out string message)
+        {
+            if (!IsVisible)
+            {
+                message = "Tournament match-table dialog is not open.";
+                return false;
+            }
+
+            int nextScroll = Math.Clamp(Scroll + delta, 0, MaxScroll);
+            Scroll = nextScroll;
+            message = $"Tournament match-table dialog scroll set to {Scroll}.";
+            return true;
+        }
+
+        public string DescribeStatus()
+        {
+            if (!IsVisible)
+            {
+                return "Tournament match-table dialog: closed.";
+            }
+
+            string names = string.Join(", ", _slotNames.Where(name => !string.IsNullOrWhiteSpace(name)).Take(4));
+            if (string.IsNullOrWhiteSpace(names))
+            {
+                names = "none recovered";
+            }
+
+            return $"Tournament match-table dialog: open | payload={PayloadLength} bytes | stage={Stage} | scroll={Scroll} | entrants={names}";
+        }
+
+        public void Draw(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font)
+        {
+            if (!IsVisible || spriteBatch == null || pixelTexture == null || font == null)
+            {
+                return;
+            }
+
+            Viewport viewport = spriteBatch.GraphicsDevice.Viewport;
+            float scale = Math.Min(1f, Math.Min((viewport.Width - 48f) / DialogWidth, (viewport.Height - 64f) / DialogHeight));
+            scale = Math.Max(0.72f, scale);
+
+            int scaledWidth = Scale(DialogWidth, scale);
+            int scaledHeight = Scale(DialogHeight, scale);
+            int panelX = Math.Max(18, (viewport.Width - scaledWidth) / 2);
+            int panelY = Math.Max(18, (viewport.Height - scaledHeight) / 2);
+
+            DrawFilled(spriteBatch, pixelTexture, new Rectangle(panelX, panelY, scaledWidth, scaledHeight), new Color(14, 18, 27, 238));
+            DrawBorder(spriteBatch, pixelTexture, new Rectangle(panelX, panelY, scaledWidth, scaledHeight), new Color(205, 182, 119, 255));
+            DrawFilled(spriteBatch, pixelTexture, new Rectangle(panelX, panelY, scaledWidth, Scale(HeaderHeight, scale)), new Color(79, 57, 39, 255));
+
+            float titleScale = Math.Max(0.82f, 0.92f * scale);
+            TournamentField.DrawShadowedText(spriteBatch, font, "Tournament Match Table", new Vector2(panelX + Scale(12, scale), panelY + Scale(6, scale)), Color.White, titleScale);
+
+            Rectangle closeButtonRect = new(panelX + Scale(710, scale), panelY + Scale(9, scale), Scale(CloseButtonWidth, scale), Scale(CloseButtonHeight, scale));
+            Rectangle upButtonRect = new(panelX + Scale(729, scale), panelY + Scale(36, scale), Scale(ScrollButtonWidth, scale), Scale(ScrollButtonHeight, scale));
+            Rectangle downButtonRect = new(panelX + Scale(729, scale), panelY + Scale(433, scale), Scale(ScrollButtonWidth, scale), Scale(ScrollButtonHeight, scale));
+            DrawButton(spriteBatch, pixelTexture, font, closeButtonRect, "X", Scroll >= 0, scale);
+            DrawButton(spriteBatch, pixelTexture, font, upButtonRect, "Up", Scroll < MaxScroll, Math.Max(0.68f, 0.78f * scale));
+            DrawButton(spriteBatch, pixelTexture, font, downButtonRect, "Dn", Scroll > 0, Math.Max(0.68f, 0.78f * scale));
+
+            Rectangle tableRect = new(
+                panelX + Scale(DrawOffsetX, scale),
+                panelY + Scale(DrawOffsetY, scale),
+                Scale(MatchTableWidth, scale),
+                Scale(MatchTableHeight, scale));
+            DrawFilled(spriteBatch, pixelTexture, tableRect, new Color(35, 41, 56, 240));
+            DrawBorder(spriteBatch, pixelTexture, tableRect, new Color(139, 168, 201, 210));
+
+            Rectangle stageRect = new(tableRect.X, tableRect.Y, tableRect.Width, Scale(28, scale));
+            DrawFilled(spriteBatch, pixelTexture, stageRect, ResolveStageColor());
+            TournamentField.DrawShadowedText(
+                spriteBatch,
+                font,
+                $"stage={Stage} | scroll={Scroll} | client owner={MatchTableDialogOwnerText}",
+                new Vector2(tableRect.X + Scale(10, scale), tableRect.Y + Scale(6, scale)),
+                Color.White,
+                Math.Max(0.7f, 0.82f * scale));
+
+            DrawBracketSkeleton(spriteBatch, pixelTexture, tableRect, scale);
+            DrawRoundOne(spriteBatch, font, tableRect, scale);
+            DrawRoundSummary(spriteBatch, font, tableRect, scale);
+        }
+
+        private void DecodeMatchValues()
+        {
+            Array.Clear(_matchValues, 0, _matchValues.Length);
+
+            int bytesToDecode = Math.Min(_rawTable.Length, EntrantCount * EntryValueCount * sizeof(int));
+            for (int slotIndex = 0; slotIndex < EntrantCount; slotIndex++)
+            {
+                for (int valueIndex = 0; valueIndex < EntryValueCount; valueIndex++)
+                {
+                    int byteOffset = (slotIndex * EntryValueCount + valueIndex) * sizeof(int);
+                    if (byteOffset + sizeof(int) > bytesToDecode)
+                    {
+                        return;
+                    }
+
+                    _matchValues[slotIndex, valueIndex] = BitConverter.ToInt32(_rawTable, byteOffset);
+                }
+            }
+        }
+
+        private void DecodeSlotNames()
+        {
+            Array.Fill(_slotNames, string.Empty);
+
+            List<string> candidates = ExtractLikelyNames(_rawTable)
+                .Distinct(StringComparer.Ordinal)
+                .Take(EntrantCount)
+                .ToList();
+
+            for (int index = 0; index < EntrantCount; index++)
+            {
+                _slotNames[index] = index < candidates.Count
+                    ? candidates[index]
+                    : $"Slot {index + 1}";
+            }
+        }
+
+        private static IEnumerable<string> ExtractLikelyNames(byte[] data)
+        {
+            if (data == null || data.Length == 0)
+            {
+                yield break;
+            }
+
+            foreach (string ascii in ExtractPrintableAscii(data))
+            {
+                yield return ascii;
+            }
+
+            foreach (string unicode in ExtractPrintableUnicode(data))
+            {
+                yield return unicode;
+            }
+        }
+
+        private static IEnumerable<string> ExtractPrintableAscii(byte[] data)
+        {
+            StringBuilder builder = new();
+            foreach (byte value in data)
+            {
+                if (value is >= 32 and <= 126)
+                {
+                    builder.Append((char)value);
+                    continue;
+                }
+
+                if (builder.Length >= 3)
+                {
+                    string candidate = builder.ToString().Trim();
+                    if (LooksLikeName(candidate))
+                    {
+                        yield return candidate;
+                    }
+                }
+
+                builder.Clear();
+            }
+
+            if (builder.Length >= 3)
+            {
+                string candidate = builder.ToString().Trim();
+                if (LooksLikeName(candidate))
+                {
+                    yield return candidate;
+                }
+            }
+        }
+
+        private static IEnumerable<string> ExtractPrintableUnicode(byte[] data)
+        {
+            StringBuilder builder = new();
+            for (int index = 0; index + 1 < data.Length; index += 2)
+            {
+                char value = BitConverter.ToChar(data, index);
+                if (value is >= ' ' and <= '~')
+                {
+                    builder.Append(value);
+                    continue;
+                }
+
+                if (builder.Length >= 3)
+                {
+                    string candidate = builder.ToString().Trim();
+                    if (LooksLikeName(candidate))
+                    {
+                        yield return candidate;
+                    }
+                }
+
+                builder.Clear();
+            }
+
+            if (builder.Length >= 3)
+            {
+                string candidate = builder.ToString().Trim();
+                if (LooksLikeName(candidate))
+                {
+                    yield return candidate;
+                }
+            }
+        }
+
+        private static bool LooksLikeName(string candidate)
+        {
+            if (string.IsNullOrWhiteSpace(candidate) || candidate.Length > 18)
+            {
+                return false;
+            }
+
+            int alphaNumericCount = candidate.Count(char.IsLetterOrDigit);
+            return alphaNumericCount >= 3 && candidate.Any(char.IsLetter);
+        }
+
+        private void DrawBracketSkeleton(SpriteBatch spriteBatch, Texture2D pixelTexture, Rectangle tableRect, float scale)
+        {
+            Color activeLine = new(204, 214, 239, 220);
+            Color inactiveLine = new(88, 97, 122, 180);
+
+            Point[] roundOne = RoundOneNamePoints.Select(point => ScaleAndOffset(point, tableRect, scale)).ToArray();
+            Point[] roundTwo = RoundTwoNamePoints.Select(point => ScaleAndOffset(point, tableRect, scale)).ToArray();
+            Point[] semiFinal = SemiFinalNamePoints.Select(point => ScaleAndOffset(point, tableRect, scale)).ToArray();
+            Point champion = ScaleAndOffset(ChampionNamePoint, tableRect, scale);
+
+            for (int pairIndex = 0; pairIndex < 4; pairIndex++)
+            {
+                Color lineColor = Stage > 2 ? activeLine : inactiveLine;
+                DrawBracketPair(spriteBatch, pixelTexture, roundOne[pairIndex * 2], roundOne[pairIndex * 2 + 1], roundTwo[pairIndex], lineColor, scale);
+            }
+
+            for (int pairIndex = 0; pairIndex < 2; pairIndex++)
+            {
+                Color lineColor = Stage > 3 ? activeLine : inactiveLine;
+                DrawBracketPair(spriteBatch, pixelTexture, roundTwo[pairIndex * 2], roundTwo[pairIndex * 2 + 1], semiFinal[pairIndex], lineColor, scale);
+            }
+
+            DrawBracketPair(spriteBatch, pixelTexture, semiFinal[0], semiFinal[1], champion, Stage > 4 ? activeLine : inactiveLine, scale);
+        }
+
+        private void DrawRoundOne(SpriteBatch spriteBatch, SpriteFont font, Rectangle tableRect, float scale)
+        {
+            float nameScale = Math.Max(0.56f, 0.72f * scale);
+            float debugScale = Math.Max(0.48f, 0.58f * scale);
+            Color currentColor = new(255, 247, 212);
+            Color normalColor = Color.Gainsboro;
+            Color debugColor = new(182, 191, 209);
+
+            for (int slotIndex = 0; slotIndex < EntrantCount; slotIndex++)
+            {
+                Vector2 namePosition = ToVector2(ScaleAndOffset(RoundOneNamePoints[slotIndex], tableRect, scale));
+                DrawCenteredText(spriteBatch, font, _slotNames[slotIndex], namePosition, normalColor, nameScale);
+
+                string dataSummary = $"[{_matchValues[slotIndex, 0]},{_matchValues[slotIndex, 1]},{_matchValues[slotIndex, 4]}]";
+                Vector2 debugPosition = ToVector2(ScaleAndOffset(RoundOneDebugPoints[slotIndex], tableRect, scale));
+                DrawCenteredText(spriteBatch, font, dataSummary, debugPosition, debugColor, debugScale);
+            }
+
+            DrawCenteredText(spriteBatch, font, ResolveRoundLabel(1), ToVector2(ScaleAndOffset(new Point(83, 362), tableRect, scale)), currentColor, nameScale);
+            DrawCenteredText(spriteBatch, font, ResolveRoundLabel(2), ToVector2(ScaleAndOffset(new Point(255, 258), tableRect, scale)), currentColor, nameScale);
+            DrawCenteredText(spriteBatch, font, ResolveRoundLabel(3), ToVector2(ScaleAndOffset(new Point(341, 154), tableRect, scale)), currentColor, nameScale);
+            DrawCenteredText(spriteBatch, font, ResolveRoundLabel(4), ToVector2(ScaleAndOffset(new Point(341, 50), tableRect, scale)), currentColor, nameScale);
+        }
+
+        private void DrawRoundSummary(SpriteBatch spriteBatch, SpriteFont font, Rectangle tableRect, float scale)
+        {
+            float summaryScale = Math.Max(0.56f, 0.66f * scale);
+            Color summaryColor = Color.WhiteSmoke;
+
+            string[] roundTwo = BuildRoundSummaries(0, 4, 2);
+            string[] semiFinal = BuildRoundSummaries(4, 2, 1);
+            string champion = BuildChampionSummary();
+
+            for (int index = 0; index < roundTwo.Length; index++)
+            {
+                DrawCenteredText(
+                    spriteBatch,
+                    font,
+                    roundTwo[index],
+                    ToVector2(ScaleAndOffset(RoundTwoNamePoints[index], tableRect, scale)),
+                    Stage > 2 ? summaryColor : Color.SlateGray,
+                    summaryScale);
+            }
+
+            for (int index = 0; index < semiFinal.Length; index++)
+            {
+                DrawCenteredText(
+                    spriteBatch,
+                    font,
+                    semiFinal[index],
+                    ToVector2(ScaleAndOffset(SemiFinalNamePoints[index], tableRect, scale)),
+                    Stage > 3 ? summaryColor : Color.SlateGray,
+                    summaryScale);
+            }
+
+            DrawCenteredText(
+                spriteBatch,
+                font,
+                champion,
+                ToVector2(ScaleAndOffset(ChampionNamePoint, tableRect, scale)),
+                Stage > 4 ? Color.White : Color.SlateGray,
+                summaryScale);
+        }
+
+        private string[] BuildRoundSummaries(int keyIndex, int pairCount, int nextIndex)
+        {
+            string[] result = new string[pairCount];
+            for (int pairIndex = 0; pairIndex < pairCount; pairIndex++)
+            {
+                int leftSlot = pairIndex * 2;
+                int rightSlot = leftSlot + 1;
+                string leftName = leftSlot < _slotNames.Length ? _slotNames[leftSlot] : string.Empty;
+                string rightName = rightSlot < _slotNames.Length ? _slotNames[rightSlot] : string.Empty;
+                int leftKey = keyIndex < EntryValueCount ? _matchValues[leftSlot, keyIndex] : 0;
+                int rightKey = keyIndex < EntryValueCount ? _matchValues[rightSlot, keyIndex] : 0;
+                int nextKey = nextIndex < EntryValueCount && pairIndex < EntrantCount ? _matchValues[Math.Min(pairIndex, EntrantCount - 1), nextIndex] : 0;
+                result[pairIndex] = ResolvePairSummary(leftName, rightName, leftKey, rightKey, nextKey);
+            }
+
+            return result;
+        }
+
+        private string BuildChampionSummary()
+        {
+            string left = SemiFinalNamePoints.Length > 0 ? BuildRoundSummaries(4, 2, 5)[0] : "Pending";
+            string right = SemiFinalNamePoints.Length > 1 ? BuildRoundSummaries(4, 2, 5)[1] : "Pending";
+            int leftKey = _matchValues[0, 5];
+            int rightKey = _matchValues[1, 5];
+            return ResolvePairSummary(left, right, leftKey, rightKey, 0);
+        }
+
+        private static string ResolvePairSummary(string leftName, string rightName, int leftKey, int rightKey, int nextKey)
+        {
+            if (nextKey > 0)
+            {
+                if (leftKey == nextKey && !string.IsNullOrWhiteSpace(leftName))
+                {
+                    return leftName;
+                }
+
+                if (rightKey == nextKey && !string.IsNullOrWhiteSpace(rightName))
+                {
+                    return rightName;
+                }
+            }
+
+            if (leftKey > 0 && rightKey <= 0 && !string.IsNullOrWhiteSpace(leftName))
+            {
+                return leftName;
+            }
+
+            if (rightKey > 0 && leftKey <= 0 && !string.IsNullOrWhiteSpace(rightName))
+            {
+                return rightName;
+            }
+
+            if (!string.IsNullOrWhiteSpace(leftName) && !string.IsNullOrWhiteSpace(rightName))
+            {
+                return $"{TrimLabel(leftName, 8)}/{TrimLabel(rightName, 8)}";
+            }
+
+            return "Pending";
+        }
+
+        private Color ResolveStageColor()
+        {
+            return Stage switch
+            {
+                <= 1 => new Color(98, 84, 126, 220),
+                2 => new Color(69, 111, 159, 220),
+                3 => new Color(75, 131, 106, 220),
+                4 => new Color(160, 119, 56, 220),
+                _ => new Color(168, 78, 63, 220)
+            };
+        }
+
+        private string ResolveRoundLabel(int round)
+        {
+            return round switch
+            {
+                1 => "Round of 8",
+                2 => "Final 4",
+                3 => "Semi Final",
+                _ => "Champion"
+            };
+        }
+
+        private static string TrimLabel(string text, int maxLength)
+        {
+            if (string.IsNullOrWhiteSpace(text) || text.Length <= maxLength)
+            {
+                return text;
+            }
+
+            return text[..Math.Max(1, maxLength - 1)] + "…";
+        }
+
+        private static void DrawBracketPair(SpriteBatch spriteBatch, Texture2D pixelTexture, Point left, Point right, Point target, Color color, float scale)
+        {
+            int thickness = Math.Max(1, Scale(2, scale));
+            int middleX = (left.X + target.X) / 2;
+            DrawFilled(spriteBatch, pixelTexture, new Rectangle(left.X, left.Y, Math.Max(1, middleX - left.X), thickness), color);
+            DrawFilled(spriteBatch, pixelTexture, new Rectangle(right.X, right.Y, Math.Max(1, middleX - right.X), thickness), color);
+            DrawFilled(spriteBatch, pixelTexture, new Rectangle(middleX, Math.Min(left.Y, right.Y), thickness, Math.Abs(right.Y - left.Y) + thickness), color);
+            DrawFilled(spriteBatch, pixelTexture, new Rectangle(middleX, target.Y, Math.Max(1, target.X - middleX), thickness), color);
+        }
+
+        private static void DrawButton(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font, Rectangle bounds, string label, bool enabled, float scale)
+        {
+            Color fill = enabled ? new Color(81, 96, 126, 220) : new Color(52, 58, 72, 220);
+            Color border = enabled ? new Color(210, 216, 229, 220) : new Color(116, 123, 137, 180);
+            DrawFilled(spriteBatch, pixelTexture, bounds, fill);
+            DrawBorder(spriteBatch, pixelTexture, bounds, border);
+
+            Vector2 size = font.MeasureString(label) * scale;
+            Vector2 position = new(
+                bounds.X + (bounds.Width - size.X) / 2f,
+                bounds.Y + (bounds.Height - size.Y) / 2f);
+            TournamentField.DrawShadowedText(spriteBatch, font, label, position, enabled ? Color.White : Color.Gainsboro, scale);
+        }
+
+        private static void DrawCenteredText(SpriteBatch spriteBatch, SpriteFont font, string text, Vector2 center, Color color, float scale)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return;
+            }
+
+            Vector2 size = font.MeasureString(text) * scale;
+            Vector2 position = new(center.X - size.X / 2f, center.Y - size.Y / 2f);
+            TournamentField.DrawShadowedText(spriteBatch, font, text, position, color, scale);
+        }
+
+        private static Point ScaleAndOffset(Point point, Rectangle tableRect, float scale)
+        {
+            return new Point(tableRect.X + Scale(point.X, scale), tableRect.Y + Scale(point.Y, scale));
+        }
+
+        private static Vector2 ToVector2(Point point)
+        {
+            return new Vector2(point.X, point.Y);
+        }
+
+        private static int Scale(int value, float scale)
+        {
+            return (int)Math.Round(value * scale, MidpointRounding.AwayFromZero);
+        }
+
+        private static void DrawFilled(SpriteBatch spriteBatch, Texture2D pixelTexture, Rectangle bounds, Color color)
+        {
+            if (bounds.Width <= 0 || bounds.Height <= 0)
+            {
+                return;
+            }
+
+            spriteBatch.Draw(pixelTexture, bounds, color);
+        }
+
+        private static void DrawBorder(SpriteBatch spriteBatch, Texture2D pixelTexture, Rectangle bounds, Color color)
+        {
+            if (bounds.Width <= 0 || bounds.Height <= 0)
+            {
+                return;
+            }
+
+            DrawFilled(spriteBatch, pixelTexture, new Rectangle(bounds.X, bounds.Y, bounds.Width, 2), color);
+            DrawFilled(spriteBatch, pixelTexture, new Rectangle(bounds.X, bounds.Bottom - 2, bounds.Width, 2), color);
+            DrawFilled(spriteBatch, pixelTexture, new Rectangle(bounds.X, bounds.Y, 2, bounds.Height), color);
+            DrawFilled(spriteBatch, pixelTexture, new Rectangle(bounds.Right - 2, bounds.Y, 2, bounds.Height), color);
+        }
+
+        private const string MatchTableDialogOwnerText = "CMatchTableDlg";
     }
 }

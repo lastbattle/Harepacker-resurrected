@@ -1152,6 +1152,18 @@ namespace HaCreator.MapSimulator.Fields
         {
             if (metadataDestination.HasValue && observationDestination.HasValue)
             {
+                if (metadata.SourceMapId == ownerObservation.SourceMapId)
+                {
+                    int sameSourceComparison = CompareRemoteTownPortalSameSourceCoordinateAuthority(
+                        metadata.ObservationSource,
+                        metadata.RecordedAt,
+                        ownerObservation.ObservationSource,
+                        ownerObservation.RecordedAt);
+                    return sameSourceComparison >= 0
+                        ? metadataDestination.Value
+                        : observationDestination.Value;
+                }
+
                 int comparison = CompareRemoteTownPortalObservationQuality(
                     metadata.ObservationSource,
                     metadata.RecordedAt,
@@ -1228,6 +1240,31 @@ namespace HaCreator.MapSimulator.Fields
             return 0;
         }
 
+        private static int CompareRemoteTownPortalSameSourceCoordinateAuthority(
+            RemoteTownPortalObservationSource metadataObservationSource,
+            int metadataRecordedAt,
+            RemoteTownPortalObservationSource observationSource,
+            int observationRecordedAt)
+        {
+            int metadataPositionAuthority = GetRemoteTownPortalPositionAuthority(metadataObservationSource);
+            int observationPositionAuthority = GetRemoteTownPortalPositionAuthority(observationSource);
+            if (metadataPositionAuthority != observationPositionAuthority)
+            {
+                return metadataPositionAuthority.CompareTo(observationPositionAuthority);
+            }
+
+            if (metadataRecordedAt != observationRecordedAt)
+            {
+                return metadataRecordedAt.CompareTo(observationRecordedAt);
+            }
+
+            return CompareRemoteTownPortalObservationQuality(
+                metadataObservationSource,
+                metadataRecordedAt,
+                observationSource,
+                observationRecordedAt);
+        }
+
         private static int GetRemoteTownPortalObservationPriority(RemoteTownPortalObservationSource observationSource)
         {
             return observationSource switch
@@ -1237,6 +1274,19 @@ namespace HaCreator.MapSimulator.Fields
                 RemoteTownPortalObservationSource.EnterField => 3,
                 RemoteTownPortalObservationSource.FollowTransfer => 4,
                 RemoteTownPortalObservationSource.PacketCast => 5,
+                _ => 0
+            };
+        }
+
+        private static int GetRemoteTownPortalPositionAuthority(RemoteTownPortalObservationSource observationSource)
+        {
+            return observationSource switch
+            {
+                RemoteTownPortalObservationSource.PacketCast => 3,
+                RemoteTownPortalObservationSource.EnterField => 2,
+                RemoteTownPortalObservationSource.FollowTransfer => 2,
+                RemoteTownPortalObservationSource.InferredSourceField => 1,
+                RemoteTownPortalObservationSource.MovementSnapshot => 1,
                 _ => 0
             };
         }

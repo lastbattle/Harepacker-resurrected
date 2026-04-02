@@ -33,6 +33,9 @@ namespace HaCreator.MapSimulator.Character
         private const int LoginStarterAvatarSelectionCount = 8;
         private const int StarterFaceSearchSpan = 100;
         private const int StarterHairSearchSpan = 100;
+        private const int CarryItemEffectBundleItemId = 1112916;
+        private const int CarryItemEffectSingleAItemId = 1112924;
+        private const int CarryItemEffectSingleBItemId = 1112926;
 
         private static readonly SkinColor[] PreferredStarterSkins =
         {
@@ -58,6 +61,7 @@ namespace HaCreator.MapSimulator.Character
         private readonly Dictionary<int, ItemEffectAnimationSet> _completedSetEffectCache = new();
         private readonly Dictionary<RemoteRelationshipOverlayType, RelationshipTextTagStyle> _relationshipTextTagCache = new();
         private readonly Dictionary<CharacterGender, StarterAvatarRandomizationCatalog> _starterAvatarCatalogCache = new();
+        private CarryItemEffectDefinition _carryItemEffectCache;
 
         // Standard actions to load
         private static readonly string[] StandardActions = new[]
@@ -622,6 +626,36 @@ namespace HaCreator.MapSimulator.Character
             return style;
         }
 
+        public CarryItemEffectDefinition LoadCarryItemEffectDefinition()
+        {
+            if (_carryItemEffectCache?.IsReady == true)
+            {
+                return _carryItemEffectCache;
+            }
+
+            WzImage characterEffectImage = Program.FindImage("Effect", "CharacterEff.img");
+            if (characterEffectImage == null)
+            {
+                return null;
+            }
+
+            characterEffectImage.ParseImage();
+            var effect = new CarryItemEffectDefinition
+            {
+                BundleLayer = LoadCharacterEffectLayer(characterEffectImage, CarryItemEffectBundleItemId, "carry/bundle"),
+                SingleLayerA = LoadCharacterEffectLayer(characterEffectImage, CarryItemEffectSingleAItemId, "carry/singleA"),
+                SingleLayerB = LoadCharacterEffectLayer(characterEffectImage, CarryItemEffectSingleBItemId, "carry/singleB")
+            };
+
+            if (!effect.IsReady)
+            {
+                return null;
+            }
+
+            _carryItemEffectCache = effect;
+            return effect;
+        }
+
         private void LoadPortableChairLayers(WzSubProperty chairProperty, ICollection<PortableChairLayer> layers)
         {
             if (chairProperty == null || layers == null)
@@ -716,6 +750,20 @@ namespace HaCreator.MapSimulator.Character
         {
             WzCanvasProperty canvas = parentProperty?[childName] as WzCanvasProperty;
             return canvas?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(_device);
+        }
+
+        private PortableChairLayer LoadCharacterEffectLayer(WzImage characterEffectImage, int effectItemId, string layerName)
+        {
+            if (characterEffectImage?[effectItemId.ToString(CultureInfo.InvariantCulture)] is not WzSubProperty effectProperty)
+            {
+                return null;
+            }
+
+            WzImageProperty layerProperty = effectProperty["0"] ?? effectProperty;
+            PortableChairLayer layer = LoadPortableChairLayer(layerProperty, layerName, loop: true);
+            return layer == null || IsPlaceholderPortableChairLayer(layer)
+                ? null
+                : layer;
         }
 
         private PortableChairLayer LoadPortableChairLayer(WzSubProperty layerProperty)

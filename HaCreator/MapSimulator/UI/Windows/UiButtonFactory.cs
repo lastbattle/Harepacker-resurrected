@@ -7,6 +7,8 @@ namespace HaCreator.MapSimulator.UI
 {
     internal static class UiButtonFactory
     {
+        private const int QuestCategoryCountGutterWidth = 18;
+
         public static UIObject CreateSolidButton(
             GraphicsDevice device,
             int width,
@@ -26,10 +28,50 @@ namespace HaCreator.MapSimulator.UI
         public static UIObject CreateQuestCategoryButton(GraphicsDevice device, int width, int height)
         {
             return new UIObject(
-                CreateQuestCategoryDrawable(device, width, height, new Color(235, 212, 176), new Color(252, 246, 224), new Color(158, 116, 71), new Color(181, 140, 92), new Color(198, 164, 122), false),
-                CreateQuestCategoryDrawable(device, width, height, new Color(201, 192, 178), new Color(224, 218, 206), new Color(142, 132, 117), new Color(156, 146, 132), new Color(166, 156, 144), true),
-                CreateQuestCategoryDrawable(device, width, height, new Color(214, 190, 153), new Color(231, 216, 189), new Color(141, 99, 57), new Color(161, 120, 77), new Color(186, 149, 109), false),
-                CreateQuestCategoryDrawable(device, width, height, new Color(244, 226, 193), new Color(255, 251, 235), new Color(169, 124, 76), new Color(191, 150, 101), new Color(208, 174, 133), false));
+                CreateQuestCategoryDrawable(
+                    device,
+                    width,
+                    height,
+                    new Color(244, 228, 194),
+                    new Color(255, 250, 235),
+                    new Color(160, 118, 72),
+                    new Color(122, 83, 47),
+                    new Color(225, 194, 151),
+                    new Color(205, 171, 125),
+                    false),
+                CreateQuestCategoryDrawable(
+                    device,
+                    width,
+                    height,
+                    new Color(208, 200, 189),
+                    new Color(231, 226, 217),
+                    new Color(145, 136, 122),
+                    new Color(119, 111, 101),
+                    new Color(196, 188, 177),
+                    new Color(182, 174, 163),
+                    true),
+                CreateQuestCategoryDrawable(
+                    device,
+                    width,
+                    height,
+                    new Color(228, 205, 166),
+                    new Color(245, 231, 204),
+                    new Color(149, 105, 59),
+                    new Color(117, 78, 43),
+                    new Color(210, 178, 135),
+                    new Color(192, 157, 113),
+                    false),
+                CreateQuestCategoryDrawable(
+                    device,
+                    width,
+                    height,
+                    new Color(250, 238, 212),
+                    new Color(255, 252, 241),
+                    new Color(169, 126, 79),
+                    new Color(136, 96, 56),
+                    new Color(234, 205, 163),
+                    new Color(216, 185, 141),
+                    false));
         }
 
         private static BaseDXDrawableItem CreateDrawable(GraphicsDevice device, int width, int height, Color color)
@@ -54,13 +96,18 @@ namespace HaCreator.MapSimulator.UI
             Color border,
             Color shadow,
             Color accent,
+            Color gutterFill,
             bool disabled)
         {
             Texture2D texture = new Texture2D(device, width, height);
             Color[] pixels = new Color[width * height];
             int lastX = Math.Max(0, width - 1);
             int lastY = Math.Max(0, height - 1);
-            int dividerX = Math.Max(10, lastX - 18);
+            int gutterWidth = Math.Clamp(QuestCategoryCountGutterWidth, 12, Math.Max(12, width / 3));
+            int dividerX = Math.Max(8, width - gutterWidth - 2);
+            int labelInsetX = 4;
+            int topStripeY = Math.Max(2, Math.Min(lastY - 2, 3));
+            int bottomStripeY = Math.Max(2, lastY - 3);
 
             for (int y = 0; y < height; y++)
             {
@@ -71,13 +118,17 @@ namespace HaCreator.MapSimulator.UI
                     bool innerHighlight = (x == 1 || y == 1) && x < lastX && y < lastY;
                     bool innerShadow = (x == lastX - 1 || y == lastY - 1) && x > 0 && y > 0;
                     bool cornerCut =
-                        (x == 1 && (y == 1 || y == lastY - 1))
-                        || (x == lastX - 1 && (y == 1 || y == lastY - 1));
-                    bool midBand = y >= 3 && y <= Math.Max(3, (height / 2));
-                    bool divider = x == dividerX && y >= 3 && y <= lastY - 3;
-                    bool dividerHighlight = x == dividerX - 1 && y >= 3 && y <= lastY - 3;
-                    bool dividerShadow = x == dividerX + 1 && y >= 3 && y <= lastY - 3;
+                        (x == 1 && (y == 1 || y == lastY - 1)) ||
+                        (x == lastX - 1 && (y == 1 || y == lastY - 1));
                     bool bevelDot = (x == 2 || x == lastX - 2) && (y == 2 || y == lastY - 2);
+                    bool divider = x == dividerX && y >= 2 && y <= lastY - 2;
+                    bool dividerHighlight = x == dividerX - 1 && y >= 2 && y <= lastY - 2;
+                    bool dividerShadow = x == dividerX + 1 && y >= 2 && y <= lastY - 2;
+                    bool gutter = x > dividerX && x < lastX;
+                    bool topStripe = y == topStripeY && x >= labelInsetX && x < dividerX - 1;
+                    bool bottomStripe = y == bottomStripeY && x >= labelInsetX && x < dividerX - 1;
+                    bool leftBevel = x == 2 && y >= 2 && y <= lastY - 2;
+                    bool innerRivet = x == dividerX + Math.Max(2, gutterWidth / 2) && (y == 3 || y == lastY - 3);
 
                     if (outerEdge)
                     {
@@ -102,12 +153,13 @@ namespace HaCreator.MapSimulator.UI
                     else
                     {
                         float verticalRatio = height > 1 ? (float)y / lastY : 0f;
-                        color = Color.Lerp(highlight, fill, MathHelper.Clamp(verticalRatio * 1.1f, 0f, 1f));
-                        if (midBand)
+                        Color bandBase = gutter ? gutterFill : fill;
+                        color = Color.Lerp(highlight, bandBase, MathHelper.Clamp(verticalRatio * 1.12f, 0f, 1f));
+                        if (y >= 3 && y <= Math.Max(3, height / 2))
                         {
-                            color = Color.Lerp(color, accent, disabled ? 0.06f : 0.13f);
+                            color = Color.Lerp(color, accent, disabled ? 0.05f : 0.14f);
                         }
-                        if (!disabled && (x + y) % 7 == 0)
+                        if (!disabled && !gutter && (x + (y * 2)) % 11 == 0)
                         {
                             color = Color.Lerp(color, highlight, 0.08f);
                         }
@@ -126,6 +178,22 @@ namespace HaCreator.MapSimulator.UI
                         else if (dividerShadow)
                         {
                             color = Color.Lerp(shadow, border, 0.3f);
+                        }
+                        else if (topStripe)
+                        {
+                            color = Color.Lerp(highlight, accent, disabled ? 0.15f : 0.28f);
+                        }
+                        else if (bottomStripe)
+                        {
+                            color = Color.Lerp(shadow, accent, disabled ? 0.12f : 0.2f);
+                        }
+                        else if (leftBevel)
+                        {
+                            color = Color.Lerp(highlight, accent, disabled ? 0.18f : 0.3f);
+                        }
+                        else if (innerRivet)
+                        {
+                            color = Color.Lerp(highlight, gutterFill, 0.45f);
                         }
                     }
 

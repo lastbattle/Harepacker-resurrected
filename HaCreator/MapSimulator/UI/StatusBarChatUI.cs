@@ -99,6 +99,7 @@ namespace HaCreator.MapSimulator.UI
         private int _chatInputWidth = 380;
         private int _chatLogLineHeight = DefaultChatLogLineHeight;
         private int _chatCursorHeight = DefaultChatCursorHeight;
+        private Rectangle? _chatInteractionBounds;
 
         public Action ToggleChatRequested { get; set; }
         public Action<int> CycleChatTargetRequested { get; set; }
@@ -199,7 +200,8 @@ namespace HaCreator.MapSimulator.UI
             Vector2 chatEnterPos,
             Vector2 chatInputPos,
             Vector2 chatLogTextPos,
-            int chatLogWidth)
+            int chatLogWidth,
+            Rectangle? chatInteractionBounds = null)
         {
             _pointNotificationAnchor = frameAnchor;
             _chatTargetLabelPos = chatTargetLabelPos;
@@ -207,6 +209,7 @@ namespace HaCreator.MapSimulator.UI
             _chatInputBasePos = chatInputPos;
             _chatLogTextBasePos = chatLogTextPos;
             _chatLogWidth = Math.Max(1, chatLogWidth);
+            _chatInteractionBounds = chatInteractionBounds;
             RefreshTextMetrics();
         }
 
@@ -1062,6 +1065,16 @@ namespace HaCreator.MapSimulator.UI
 
         private Rectangle GetChatInteractionBounds()
         {
+            if (_chatInteractionBounds.HasValue)
+            {
+                Rectangle bounds = _chatInteractionBounds.Value;
+                return new Rectangle(
+                    this.Position.X + bounds.X,
+                    this.Position.Y + bounds.Y,
+                    bounds.Width,
+                    bounds.Height);
+            }
+
             return new Rectangle(
                 this.Position.X + (int)_chatLogTextPos.X - 4,
                 this.Position.Y + (int)_chatLogTextPos.Y - (ChatMaxVisibleLines * _chatLogLineHeight) + 2,
@@ -1184,20 +1197,10 @@ namespace HaCreator.MapSimulator.UI
 
         private static bool CanBeginWhisperFromCandidate(string whisperTargetCandidate, string localPlayerName)
         {
-            if (string.IsNullOrWhiteSpace(whisperTargetCandidate))
-            {
-                return false;
-            }
-
-            if (string.IsNullOrWhiteSpace(localPlayerName))
-            {
-                return true;
-            }
-
-            return !string.Equals(
-                MapSimulatorChat.NormalizeChatSpeakerCandidate(whisperTargetCandidate),
-                MapSimulatorChat.NormalizeChatSpeakerCandidate(localPlayerName),
-                StringComparison.OrdinalIgnoreCase);
+            return MapSimulatorChat.ValidateWhisperTargetCandidate(
+                whisperTargetCandidate,
+                localPlayerName,
+                out _) == MapSimulatorChat.WhisperTargetValidationResult.Valid;
         }
         #endregion
     }

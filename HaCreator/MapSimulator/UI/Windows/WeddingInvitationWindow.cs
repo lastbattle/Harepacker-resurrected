@@ -15,6 +15,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly GraphicsDevice _device;
         private readonly Texture2D _pixel;
         private readonly IReadOnlyDictionary<WeddingInvitationStyle, Texture2D> _backgrounds;
+        private readonly ClientTextRasterizer _nameTextRasterizer;
 
         private SpriteFont _font;
         private UIObject _acceptButton;
@@ -33,6 +34,7 @@ namespace HaCreator.MapSimulator.UI
             _backgrounds = backgrounds ?? throw new ArgumentNullException(nameof(backgrounds));
             _device = device ?? throw new ArgumentNullException(nameof(device));
             _pixel = CreateFilledTexture(device, 1, 1, new Color(245, 233, 220));
+            _nameTextRasterizer = new ClientTextRasterizer(device);
         }
 
         public override string WindowName => MapSimulatorWindowNames.WeddingInvitation;
@@ -145,7 +147,14 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            sprite.DrawString(_font, name, new Vector2(Position.X + offsetX, Position.Y + offsetY), Color.Black);
+            Vector2 drawPosition = new(Position.X + offsetX, Position.Y + offsetY);
+            if (_nameTextRasterizer != null)
+            {
+                _nameTextRasterizer.DrawString(sprite, name, drawPosition, Color.Black);
+                return;
+            }
+
+            sprite.DrawString(_font, name, drawPosition, Color.Black);
         }
 
         private WeddingInvitationSnapshot RefreshSnapshot()

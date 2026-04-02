@@ -44,7 +44,8 @@ namespace HaCreator.MapSimulator.Pools
     public readonly record struct RemoteUserTemporaryStatSnapshot(
         int EncodedLength,
         int[] MaskWords,
-        byte[] RawPayload)
+        byte[] RawPayload,
+        RemoteUserTemporaryStatKnownState KnownState)
     {
         public bool HasPayload => RawPayload != null && RawPayload.Length > 0;
 
@@ -100,6 +101,31 @@ namespace HaCreator.MapSimulator.Pools
 
             return count;
         }
+    }
+
+    public readonly record struct RemoteUserTemporaryStatKnownState(
+        int? Speed,
+        bool HasShadowPartner,
+        bool HasDarkSight,
+        bool HasSoulArrow,
+        int? MorphId,
+        int? GhostId,
+        bool HasBarrier,
+        bool HasWindWalk,
+        int? MechanicMode)
+    {
+        public bool HasAnyKnownState =>
+            Speed.HasValue
+            || HasShadowPartner
+            || HasDarkSight
+            || HasSoulArrow
+            || MorphId.HasValue
+            || GhostId.HasValue
+            || HasBarrier
+            || HasWindWalk
+            || MechanicMode.HasValue;
+
+        public bool IsHiddenLikeClient => HasDarkSight || HasWindWalk;
     }
 
     public readonly record struct RemoteUserLeaveFieldPacket(int CharacterId);
@@ -556,7 +582,8 @@ namespace HaCreator.MapSimulator.Pools
                     new RemoteUserTemporaryStatSnapshot(
                         encodedLength,
                         maskWords,
-                        remainingPayload.AsSpan(0, encodedLength).ToArray()),
+                        remainingPayload.AsSpan(0, encodedLength).ToArray(),
+                        DecodeKnownTemporaryStatState(remainingPayload.AsSpan(0, encodedLength))),
                     delay);
                 return true;
             }
@@ -1145,7 +1172,11 @@ namespace HaCreator.MapSimulator.Pools
                 ? DecodeTemporaryStatMaskWords(rawPayload.AsSpan(0, sizeof(int) * 4))
                 : Array.Empty<int>();
 
-            return new RemoteUserTemporaryStatSnapshot(encodedLength, maskWords, rawPayload);
+            return new RemoteUserTemporaryStatSnapshot(
+                encodedLength,
+                maskWords,
+                rawPayload,
+                DecodeKnownTemporaryStatState(rawPayload));
         }
 
         private static int[] DecodeTemporaryStatMaskWords(ReadOnlySpan<byte> maskPayload)
@@ -1162,6 +1193,85 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return maskWords;
+        }
+
+        private static RemoteUserTemporaryStatKnownState DecodeKnownTemporaryStatState(ReadOnlySpan<byte> rawPayload)
+        {
+            if (rawPayload.Length < sizeof(int) * 4)
+            {
+                return default;
+            }
+
+            var reader = new PacketReader(rawPayload);
+            reader.ReadBytes(sizeof(int) * 4);
+
+            int? speed = null;
+            bool hasShadowPartner = false;
+            bool hasDarkSight = false;
+            bool hasSoulArrow = false;
+            int? morphId = null;
+            int? ghostId = null;
+            bool hasBarrier = false;
+            bool hasWindWalk = false;
+            int? mechanicMode = null;
+
+            try
+            {
+                speed = reader.ReadByte();
+                reader.ReadByte();
+                reader.ReadInt32();
+                reader.ReadInt32();
+                reader.ReadInt32();
+                reader.ReadInt32();
+                reader.ReadInt32();
+                reader.ReadInt32();
+                reader.ReadInt16();
+                reader.ReadInt32();
+                reader.ReadInt32();
+                hasShadowPartner = true;
+                hasShadowPartner = true;
+                hasDarkSight = true;
+                hasSoulArrow = true;
+                morphId = (ushort)reader.ReadInt16();
+                ghostId = (ushort)reader.ReadInt16();
+                reader.ReadInt32();
+                reader.ReadInt32();
+                reader.ReadInt32();
+                reader.ReadInt32();
+                hasBarrier = true;
+                reader.ReadInt32();
+                reader.ReadInt32();
+                reader.ReadInt32();
+                reader.ReadInt32();
+                reader.ReadInt32();
+                reader.ReadInt32();
+                hasWindWalk = true;
+                reader.ReadInt32();
+                reader.ReadInt32();
+                reader.ReadInt32();
+                reader.ReadInt32();
+                reader.ReadInt32();
+                reader.ReadInt32();
+                reader.ReadInt32();
+                reader.ReadByte();
+                mechanicMode = reader.ReadInt32();
+            }
+            catch (InvalidOperationException)
+            {
+                // Keep the raw payload authoritative if the known-state walk encounters
+                // a truncated packet or an unmodeled branch.
+            }
+
+            return new RemoteUserTemporaryStatKnownState(
+                speed,
+                hasShadowPartner,
+                hasDarkSight,
+                hasSoulArrow,
+                morphId,
+                ghostId,
+                hasBarrier,
+                hasWindWalk,
+                mechanicMode);
         }
 
         private static int FindOfficialAvatarLookOffset(ReadOnlySpan<byte> payload, int searchStartOffset, out string error)

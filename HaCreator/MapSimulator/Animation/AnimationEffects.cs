@@ -25,6 +25,8 @@ namespace HaCreator.MapSimulator.Animation
         private readonly List<ChainLightning> _chainLightnings = new();
         private readonly List<FallingAnimation> _fallingAnimations = new();
         private readonly List<FollowAnimation> _followAnimations = new();
+        private readonly List<AreaAnimationRegistration> _areaAnimations = new();
+        private readonly List<UserStateAnimation> _userStateAnimations = new();
 
         private readonly Random _random = new();
 
@@ -251,6 +253,115 @@ namespace HaCreator.MapSimulator.Animation
 
         #endregion
 
+        #region User State Animation
+
+        public int RegisterUserState(
+            int ownerId,
+            List<IDXObject> startFrames,
+            List<IDXObject> repeatFrames,
+            List<IDXObject> endFrames,
+            Func<Vector2> getTargetPosition,
+            float offsetX,
+            float offsetY,
+            int currentTimeMs)
+        {
+            if (ownerId <= 0 || getTargetPosition == null)
+            {
+                return -1;
+            }
+
+            if (!HasFrames(startFrames) && !HasFrames(repeatFrames) && !HasFrames(endFrames))
+            {
+                return -1;
+            }
+
+            for (int i = _userStateAnimations.Count - 1; i >= 0; i--)
+            {
+                if (_userStateAnimations[i].OwnerId == ownerId)
+                {
+                    _userStateAnimations.RemoveAt(i);
+                }
+            }
+
+            var animation = new UserStateAnimation();
+            animation.Initialize(ownerId, startFrames, repeatFrames, endFrames, getTargetPosition, offsetX, offsetY, currentTimeMs);
+            _userStateAnimations.Add(animation);
+            return ownerId;
+        }
+
+        public bool RemoveUserState(int ownerId, int currentTimeMs)
+        {
+            for (int i = _userStateAnimations.Count - 1; i >= 0; i--)
+            {
+                if (_userStateAnimations[i].OwnerId == ownerId)
+                {
+                    if (_userStateAnimations[i].BeginEndPhase(currentTimeMs))
+                    {
+                        return true;
+                    }
+
+                    _userStateAnimations.RemoveAt(i);
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        public bool HasUserState(int ownerId)
+        {
+            for (int i = 0; i < _userStateAnimations.Count; i++)
+            {
+                if (_userStateAnimations[i].OwnerId == ownerId)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        #endregion
+
+        #region Area Animation
+
+        public int RegisterAreaAnimation(
+            List<IDXObject> frames,
+            Rectangle area,
+            int updateIntervalMs,
+            int updateCount,
+            int updateNextMs,
+            int durationMs,
+            int currentTimeMs,
+            Action onSpawn = null)
+        {
+            if (!HasFrames(frames) || area.Width <= 0 || area.Height <= 0)
+            {
+                return -1;
+            }
+
+            var registration = new AreaAnimationRegistration();
+            registration.Initialize(frames, area, updateIntervalMs, updateCount, updateNextMs, durationMs, currentTimeMs, onSpawn);
+            _areaAnimations.Add(registration);
+            return registration.Id;
+        }
+
+        public bool RemoveAreaAnimation(int id)
+        {
+            for (int i = _areaAnimations.Count - 1; i >= 0; i--)
+            {
+                if (_areaAnimations[i].Id == id)
+                {
+                    _areaAnimations.RemoveAt(i);
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        #endregion
+
         #region Update
 
         /// <summary>
@@ -306,6 +417,22 @@ namespace HaCreator.MapSimulator.Animation
                     _followAnimations.RemoveAt(i);
                 }
             }
+
+            for (int i = _areaAnimations.Count - 1; i >= 0; i--)
+            {
+                if (!_areaAnimations[i].Update(this, currentTimeMs, _random))
+                {
+                    _areaAnimations.RemoveAt(i);
+                }
+            }
+
+            for (int i = _userStateAnimations.Count - 1; i >= 0; i--)
+            {
+                if (!_userStateAnimations[i].Update(currentTimeMs))
+                {
+                    _userStateAnimations.RemoveAt(i);
+                }
+            }
         }
 
         #endregion
@@ -354,6 +481,11 @@ namespace HaCreator.MapSimulator.Animation
             {
                 anim.Draw(spriteBatch, skeletonRenderer, gameTime, mapShiftX, mapShiftY);
             }
+
+            foreach (var anim in _userStateAnimations)
+            {
+                anim.Draw(spriteBatch, skeletonRenderer, gameTime, mapShiftX, mapShiftY);
+            }
         }
 
         #endregion
@@ -370,6 +502,8 @@ namespace HaCreator.MapSimulator.Animation
             _chainLightnings.Clear();
             _fallingAnimations.Clear();
             _followAnimations.Clear();
+            _areaAnimations.Clear();
+            _userStateAnimations.Clear();
         }
 
         /// <summary>
@@ -378,7 +512,26 @@ namespace HaCreator.MapSimulator.Animation
         public int ActiveCount =>
             _oneTimeAnimations.Count + _repeatAnimations.Count +
             _chainLightnings.Count + _fallingAnimations.Count +
-            _followAnimations.Count;
+            _followAnimations.Count + _areaAnimations.Count +
+            _userStateAnimations.Count;
+
+        internal static bool HasFrames(List<IDXObject> frames)
+        {
+            return frames != null && frames.Count > 0;
+        }
+
+        public void ClearUserStates()
+        {
+            _userStateAnimations.Clear();
+        }
+
+        public void ClearAreaAnimations()
+        {
+            _areaAnimations.Clear();
+        }
+
+        public int UserStateCount => _userStateAnimations.Count;
+        public int AreaAnimationCount => _areaAnimations.Count;
 
         #endregion
     }
@@ -780,6 +933,252 @@ namespace HaCreator.MapSimulator.Animation
             int drawShiftY = -(int)drawY - mapShiftY;
 
             frame.DrawObject(spriteBatch, skeletonRenderer, gameTime, drawShiftX, drawShiftY, false, null);
+        }
+    }
+
+    internal sealed class UserStateAnimation
+    {
+        private enum UserStatePhase
+        {
+            Start,
+            Repeat,
+            End
+        }
+
+        private List<IDXObject> _startFrames;
+        private List<IDXObject> _repeatFrames;
+        private List<IDXObject> _endFrames;
+        private Func<Vector2> _getTargetPosition;
+        private float _offsetX;
+        private float _offsetY;
+        private int _currentFrame;
+        private int _lastFrameTime;
+        private bool _finished;
+        private UserStatePhase _phase;
+
+        public int OwnerId { get; private set; }
+
+        public void Initialize(
+            int ownerId,
+            List<IDXObject> startFrames,
+            List<IDXObject> repeatFrames,
+            List<IDXObject> endFrames,
+            Func<Vector2> getTargetPosition,
+            float offsetX,
+            float offsetY,
+            int currentTimeMs)
+        {
+            OwnerId = ownerId;
+            _startFrames = startFrames;
+            _repeatFrames = repeatFrames;
+            _endFrames = endFrames;
+            _getTargetPosition = getTargetPosition;
+            _offsetX = offsetX;
+            _offsetY = offsetY;
+            _currentFrame = 0;
+            _lastFrameTime = currentTimeMs;
+            _finished = false;
+            _phase = AnimationEffects.HasFrames(startFrames)
+                ? UserStatePhase.Start
+                : AnimationEffects.HasFrames(repeatFrames)
+                    ? UserStatePhase.Repeat
+                    : UserStatePhase.End;
+        }
+
+        public bool BeginEndPhase(int currentTimeMs)
+        {
+            if (_finished)
+            {
+                return false;
+            }
+
+            if (!AnimationEffects.HasFrames(_endFrames))
+            {
+                _finished = true;
+                return false;
+            }
+
+            _phase = UserStatePhase.End;
+            _currentFrame = 0;
+            _lastFrameTime = currentTimeMs;
+            return true;
+        }
+
+        public bool Update(int currentTimeMs)
+        {
+            if (_finished)
+            {
+                return false;
+            }
+
+            List<IDXObject> frames = GetCurrentFrames();
+            if (!AnimationEffects.HasFrames(frames))
+            {
+                return AdvancePhase(currentTimeMs);
+            }
+
+            IDXObject frame = frames[_currentFrame];
+            if (currentTimeMs - _lastFrameTime > frame.Delay)
+            {
+                _currentFrame++;
+                _lastFrameTime = currentTimeMs;
+                if (_currentFrame >= frames.Count)
+                {
+                    return AdvancePhase(currentTimeMs);
+                }
+            }
+
+            return true;
+        }
+
+        public void Draw(SpriteBatch spriteBatch, SkeletonMeshRenderer skeletonRenderer, GameTime gameTime, int mapShiftX, int mapShiftY)
+        {
+            if (_finished)
+            {
+                return;
+            }
+
+            List<IDXObject> frames = GetCurrentFrames();
+            if (!AnimationEffects.HasFrames(frames) || _currentFrame < 0 || _currentFrame >= frames.Count)
+            {
+                return;
+            }
+
+            Vector2 targetPosition = _getTargetPosition();
+            IDXObject frame = frames[_currentFrame];
+            int drawShiftX = -(int)(targetPosition.X + _offsetX) - mapShiftX;
+            int drawShiftY = -(int)(targetPosition.Y + _offsetY) - mapShiftY;
+            frame.DrawObject(spriteBatch, skeletonRenderer, gameTime, drawShiftX, drawShiftY, false, null);
+        }
+
+        private bool AdvancePhase(int currentTimeMs)
+        {
+            switch (_phase)
+            {
+                case UserStatePhase.Start:
+                    if (AnimationEffects.HasFrames(_repeatFrames))
+                    {
+                        _phase = UserStatePhase.Repeat;
+                        _currentFrame = 0;
+                        _lastFrameTime = currentTimeMs;
+                        return true;
+                    }
+
+                    if (AnimationEffects.HasFrames(_endFrames))
+                    {
+                        _phase = UserStatePhase.End;
+                        _currentFrame = 0;
+                        _lastFrameTime = currentTimeMs;
+                        return true;
+                    }
+
+                    _finished = true;
+                    return false;
+
+                case UserStatePhase.Repeat:
+                    if (!AnimationEffects.HasFrames(_repeatFrames))
+                    {
+                        return AdvanceEndOrFinish(currentTimeMs);
+                    }
+
+                    _currentFrame = 0;
+                    _lastFrameTime = currentTimeMs;
+                    return true;
+
+                case UserStatePhase.End:
+                default:
+                    _finished = true;
+                    return false;
+            }
+        }
+
+        private bool AdvanceEndOrFinish(int currentTimeMs)
+        {
+            if (AnimationEffects.HasFrames(_endFrames))
+            {
+                _phase = UserStatePhase.End;
+                _currentFrame = 0;
+                _lastFrameTime = currentTimeMs;
+                return true;
+            }
+
+            _finished = true;
+            return false;
+        }
+
+        private List<IDXObject> GetCurrentFrames()
+        {
+            return _phase switch
+            {
+                UserStatePhase.Start => _startFrames,
+                UserStatePhase.Repeat => _repeatFrames,
+                UserStatePhase.End => _endFrames,
+                _ => null
+            };
+        }
+    }
+
+    internal sealed class AreaAnimationRegistration
+    {
+        private static int _nextId;
+
+        private List<IDXObject> _frames;
+        private Rectangle _area;
+        private int _effectiveWidth;
+        private int _effectiveHeight;
+        private int _updateIntervalMs;
+        private int _remainingUpdates;
+        private int _nextUpdateAt;
+        private int _expiresAt;
+        private Action _onSpawn;
+
+        public int Id { get; private set; }
+
+        public void Initialize(
+            List<IDXObject> frames,
+            Rectangle area,
+            int updateIntervalMs,
+            int updateCount,
+            int updateNextMs,
+            int durationMs,
+            int currentTimeMs,
+            Action onSpawn)
+        {
+            Id = ++_nextId;
+            _frames = frames;
+            _area = area;
+            _effectiveWidth = Math.Max(1, area.Width * 5 / 6);
+            _effectiveHeight = Math.Max(1, area.Height / 3);
+            _updateIntervalMs = Math.Max(1, updateIntervalMs);
+            _remainingUpdates = Math.Max(0, updateCount);
+            _nextUpdateAt = currentTimeMs + Math.Max(0, updateNextMs);
+            _expiresAt = durationMs > 0 ? currentTimeMs + durationMs : int.MaxValue;
+            _onSpawn = onSpawn;
+        }
+
+        public bool Update(AnimationEffects effects, int currentTimeMs, Random random)
+        {
+            if (effects == null || !AnimationEffects.HasFrames(_frames))
+            {
+                return false;
+            }
+
+            if (_remainingUpdates == 0 || currentTimeMs > _expiresAt)
+            {
+                return false;
+            }
+
+            while (_remainingUpdates > 0 && _nextUpdateAt <= currentTimeMs && _nextUpdateAt <= _expiresAt)
+            {
+                float x = _area.Left + random.Next(_effectiveWidth);
+                float y = _area.Top + random.Next(_effectiveHeight);
+                effects.AddOneTime(_frames, x, y, flip: false, currentTimeMs, zOrder: 1);
+                _onSpawn?.Invoke();
+                _remainingUpdates--;
+                _nextUpdateAt += _updateIntervalMs;
+            }
+
+            return _remainingUpdates > 0 && _nextUpdateAt <= _expiresAt;
         }
     }
 

@@ -3,6 +3,7 @@ using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Text;
 
 namespace HaCreator.MapSimulator
@@ -114,6 +115,7 @@ namespace HaCreator.MapSimulator
         private MapSimulatorChatTargetType _chatTarget = MapSimulatorChatTargetType.All;
         private string _whisperTarget = string.Empty;
         private string _replyTarget = string.Empty;
+        private string _localPlayerName = string.Empty;
 
         // Key repeat tracking
         private Keys _lastHeldKey = Keys.None;
@@ -167,6 +169,14 @@ namespace HaCreator.MapSimulator
             Type22 = 22,
             Type23 = 23,
             Expedition = 26
+        }
+
+        internal enum WhisperTargetValidationResult
+        {
+            Valid = 0,
+            Empty = 1,
+            Invalid = 2,
+            Self = 3
         }
 
         internal static Color ResolveRenderedClientChatLogColor(int chatLogType, int channelId = -1)
@@ -759,7 +769,7 @@ namespace HaCreator.MapSimulator
 
         public void BeginWhisperTo(string whisperTarget, int tickCount)
         {
-            if (!TryArmWhisperTarget(whisperTarget))
+            if (!TryArmWhisperTarget(whisperTarget, tickCount))
             {
                 return;
             }
@@ -769,13 +779,16 @@ namespace HaCreator.MapSimulator
 
         public void RememberWhisperTarget(string whisperTarget)
         {
-            whisperTarget = NormalizeChatSpeakerCandidate(whisperTarget);
-            if (string.IsNullOrWhiteSpace(whisperTarget))
+            WhisperTargetValidationResult validationResult = ValidateWhisperTargetCandidate(
+                whisperTarget,
+                _localPlayerName,
+                out string normalizedTarget);
+            if (validationResult != WhisperTargetValidationResult.Valid)
             {
                 return;
             }
 
-            _replyTarget = whisperTarget;
+            _replyTarget = normalizedTarget;
         }
 
         public void AddIncomingTargetedMessage(
@@ -801,6 +814,7 @@ namespace HaCreator.MapSimulator
 
         public MapSimulatorChatRenderState GetRenderState(string localPlayerName = null)
         {
+            _localPlayerName = NormalizeChatSpeakerCandidate(localPlayerName);
             return new MapSimulatorChatRenderState
             {
                 Messages = _messages,
@@ -809,7 +823,7 @@ namespace HaCreator.MapSimulator
                 CursorPosition = _cursorPosition,
                 TargetType = _chatTarget,
                 WhisperTarget = _whisperTarget ?? string.Empty,
-                LocalPlayerName = NormalizeChatSpeakerCandidate(localPlayerName)
+                LocalPlayerName = _localPlayerName
             };
         }
 
@@ -981,9 +995,8 @@ namespace HaCreator.MapSimulator
                     return true;
                 }
 
-                if (!TryArmWhisperTarget(parts[1]))
+                if (!TryArmWhisperTarget(parts[1], tickCount))
                 {
-                    AddClientMessage("Usage: /w <name> [message]", tickCount, ClientChatLogType.Error);
                     disposition = ChatSubmitDisposition.KeepChatOpen;
                     return true;
                 }
@@ -1007,7 +1020,11 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            TryArmWhisperTarget(replyTarget);
+            if (!TryArmWhisperTarget(replyTarget, tickCount))
+            {
+                disposition = ChatSubmitDisposition.KeepChatOpen;
+                return true;
+            }
             string[] replyParts = trimmedMessage.Split(new[] { ' ' }, 2, StringSplitOptions.RemoveEmptyEntries);
             if (replyParts.Length < 2)
             {
@@ -1057,7 +1074,7 @@ namespace HaCreator.MapSimulator
 
         private void SendWhisperMessage(string whisperTarget, string message, int tickCount)
         {
-            if (!TryArmWhisperTarget(whisperTarget))
+            if (!TryArmWhisperTarget(whisperTarget, tickCount))
             {
                 return;
             }
@@ -1071,16 +1088,31 @@ namespace HaCreator.MapSimulator
             MessageSubmitted?.Invoke(message, tickCount);
         }
 
-        private bool TryArmWhisperTarget(string whisperTarget)
+        private bool TryArmWhisperTarget(string whisperTarget, int tickCount)
         {
-            whisperTarget = NormalizeChatSpeakerCandidate(whisperTarget);
-            if (string.IsNullOrWhiteSpace(whisperTarget))
+            WhisperTargetValidationResult validationResult = ValidateWhisperTargetCandidate(
+                whisperTarget,
+                _localPlayerName,
+                out string normalizedTarget);
+            if (validationResult == WhisperTargetValidationResult.Empty)
             {
                 return false;
             }
 
-            _whisperTarget = whisperTarget;
-            _replyTarget = whisperTarget;
+            if (validationResult == WhisperTargetValidationResult.Invalid)
+            {
+                AddClientMessage("Please enter a valid character name.", tickCount, ClientChatLogType.System);
+                return false;
+            }
+
+            if (validationResult == WhisperTargetValidationResult.Self)
+            {
+                AddClientMessage("You cannot whisper yourself.", tickCount, ClientChatLogType.System);
+                return false;
+            }
+
+            _whisperTarget = normalizedTarget;
+            _replyTarget = normalizedTarget;
             return true;
         }
 
@@ -1405,6 +1437,57 @@ namespace HaCreator.MapSimulator
             }
 
             return trimmed.Trim();
+        }
+
+        internal static WhisperTargetValidationResult ValidateWhisperTargetCandidate(
+            string whisperTarget,
+            string localPlayerName,
+            out string normalizedTarget)
+        {
+            normalizedTarget = NormalizeChatSpeakerCandidate(whisperTarget);
+            if (string.IsNullOrWhiteSpace(normalizedTarget))
+            {
+                return WhisperTargetValidationResult.Empty;
+            }
+
+            if (!IsPlausibleCharacterName(normalizedTarget))
+            {
+                return WhisperTargetValidationResult.Invalid;
+            }
+
+            string normalizedLocalPlayerName = NormalizeChatSpeakerCandidate(localPlayerName);
+            if (!string.IsNullOrWhiteSpace(normalizedLocalPlayerName)
+                && string.Equals(normalizedTarget, normalizedLocalPlayerName, StringComparison.OrdinalIgnoreCase))
+            {
+                return WhisperTargetValidationResult.Self;
+            }
+
+            return WhisperTargetValidationResult.Valid;
+        }
+
+        private static bool IsPlausibleCharacterName(string characterName)
+        {
+            if (string.IsNullOrWhiteSpace(characterName))
+            {
+                return false;
+            }
+
+            StringInfo info = new(characterName.Trim());
+            int textElementCount = info.LengthInTextElements;
+            if (textElementCount < 1 || textElementCount > 13)
+            {
+                return false;
+            }
+
+            foreach (char c in characterName)
+            {
+                if (!char.IsLetterOrDigit(c))
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         private static bool TryTrimTrailingChannelSuffix(string text, out string trimmed)

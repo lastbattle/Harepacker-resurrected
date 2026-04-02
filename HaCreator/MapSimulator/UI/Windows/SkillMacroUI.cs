@@ -79,6 +79,8 @@ namespace HaCreator.MapSimulator.UI
         private const int NAME_FIELD_Y = 260;
         private const int NAME_FIELD_TEXT_INSET_X = 4;
         private const int NAME_FIELD_TEXT_INSET_Y = 0;
+        private const float NAME_FIELD_COUNTER_SCALE = 0.55f;
+        private static readonly Color NameFieldCounterColor = new(196, 196, 178);
 
         // WZ `Skill/macro/check` resolves to (161, 235) inside the owner.
         private const int CHECKBOX_X = 161;
@@ -666,6 +668,44 @@ namespace HaCreator.MapSimulator.UI
                     new Vector2(fieldX, fieldY - _font.LineSpacing - 2),
                     new Color(216, 226, 183));
             }
+
+            DrawNameByteCounter(sprite, fieldRect);
+        }
+
+        private void DrawNameByteCounter(SpriteBatch sprite, Rectangle fieldRect)
+        {
+            if (_font == null)
+            {
+                return;
+            }
+
+            string counterText = BuildNameByteCounterText();
+            if (string.IsNullOrEmpty(counterText))
+            {
+                return;
+            }
+
+            Vector2 size = _font.MeasureString(counterText) * NAME_FIELD_COUNTER_SCALE;
+            Vector2 position = new(
+                fieldRect.Right - size.X,
+                fieldRect.Bottom + 2);
+            sprite.DrawString(
+                _font,
+                counterText,
+                position,
+                NameFieldCounterColor,
+                0f,
+                Vector2.Zero,
+                NAME_FIELD_COUNTER_SCALE,
+                SpriteEffects.None,
+                0f);
+        }
+
+        private string BuildNameByteCounterText()
+        {
+            string displayedText = BuildDisplayedNameText();
+            int byteCount = SkillMacroNameRules.GetByteCount(displayedText);
+            return $"{byteCount}/{SkillMacroNameRules.MaxNameBytes}";
         }
 
         private Texture2D ResolveMacroIconTexture(int macroIndex, bool hovered, bool enabled)
@@ -2201,7 +2241,7 @@ namespace HaCreator.MapSimulator.UI
 
                 SkillMacroImeCandidateWindowMetrics metrics = SkillMacroImeCandidateWindowLayout.MeasureVertical(
                     _font.LineSpacing,
-                    GetCandidatePageSize(),
+                    count,
                     widestEntryWidth);
                 width = metrics.Width;
                 height = metrics.Height;
@@ -2210,7 +2250,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 SkillMacroImeCandidateWindowMetrics metrics = SkillMacroImeCandidateWindowLayout.MeasureHorizontal(
                     _font.LineSpacing,
-                    GetCandidatePageSize());
+                    count);
                 width = metrics.Width;
                 height = metrics.Height;
             }

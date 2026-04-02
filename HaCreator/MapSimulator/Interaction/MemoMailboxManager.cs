@@ -103,13 +103,18 @@ namespace HaCreator.MapSimulator.Interaction
                 Subject = _draft.Subject,
                 Body = _draft.Body,
                 AttachmentSummary = BuildAttachmentSummary(_draft.Attachment),
+                ItemAttachmentSummary = _draft.Attachment?.Kind == MemoAttachmentKind.Item
+                    ? BuildAttachmentSummary(_draft.Attachment)
+                    : string.Empty,
                 LastActionSummary = _lastActionSummary,
                 HasAttachment = hasAttachment,
                 IsMesoAttachment = isMesoAttachment,
+                AttachedMeso = _draft.Attachment?.Kind == MemoAttachmentKind.Meso ? _draft.Attachment.Meso : 0,
                 CanSend = CanSendDraft(),
                 CanQuickSend = CanQuickSendDraft(),
                 ActiveMode = _composeMode,
                 ActiveTab = _activeTab,
+                AttachmentKind = ResolveDraftAttachmentKind(),
                 ShowTaxInfo = _showTaxInfo,
                 ModeSummary = BuildModeSummary(),
                 TaxSummary = BuildTaxSummary()
@@ -208,29 +213,17 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal void SetDraftRecipient(string recipient)
         {
-            _draft.Recipient = string.IsNullOrWhiteSpace(recipient) ? _draft.Recipient : recipient.Trim();
-            _lastActionSummary = $"Parcel target set to {_draft.Recipient}.";
+            SetDraftRecipient(recipient, announce: true);
         }
 
         internal void SetDraftSubject(string subject)
         {
-            _draft.Subject = string.IsNullOrWhiteSpace(subject)
-                ? string.Empty
-                : subject.Trim();
-            _lastActionSummary = string.IsNullOrWhiteSpace(_draft.Subject)
-                ? "Parcel label cleared."
-                : $"Parcel label set to '{_draft.Subject}'.";
+            SetDraftSubject(subject, announce: true);
         }
 
         internal void SetDraftBody(string body)
         {
-            if (string.IsNullOrWhiteSpace(body))
-            {
-                return;
-            }
-
-            _draft.Body = body.Trim();
-            _lastActionSummary = "Draft body updated.";
+            SetDraftBody(body, announce: true);
         }
 
         internal void ClearDraftAttachment()
@@ -359,21 +352,22 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal bool SetDraftMesoAttachment(int meso, out string message)
         {
-            if (meso <= 0)
-            {
-                message = "Attached meso must be positive.";
-                return false;
-            }
+            return TrySetDraftMesoAttachment(meso, announce: true, out message);
+        }
 
-            _draft.Attachment = new MemoAttachmentState
-            {
-                Kind = MemoAttachmentKind.Meso,
-                Meso = meso
-            };
+        internal void UpdateDraftRecipientFromUi(string recipient)
+        {
+            SetDraftRecipient(recipient, announce: false);
+        }
 
-            message = $"Draft attachment set to {BuildAttachmentSummary(_draft.Attachment)}.";
-            _lastActionSummary = message;
-            return true;
+        internal void UpdateDraftBodyFromUi(string body)
+        {
+            SetDraftBody(body, announce: false);
+        }
+
+        internal void UpdateDraftMesoFromUi(int meso)
+        {
+            TrySetDraftMesoAttachment(meso, announce: false, out _);
         }
 
         internal bool CanClaimAttachment(int memoId)
@@ -543,6 +537,75 @@ namespace HaCreator.MapSimulator.Interaction
             _draft.Attachment = null;
         }
 
+        private void SetDraftRecipient(string recipient, bool announce)
+        {
+            _draft.Recipient = recipient?.Trim() ?? string.Empty;
+            if (announce)
+            {
+                _lastActionSummary = string.IsNullOrWhiteSpace(_draft.Recipient)
+                    ? "Parcel target cleared."
+                    : $"Parcel target set to {_draft.Recipient}.";
+            }
+        }
+
+        private void SetDraftSubject(string subject, bool announce)
+        {
+            _draft.Subject = subject?.Trim() ?? string.Empty;
+            if (announce)
+            {
+                _lastActionSummary = string.IsNullOrWhiteSpace(_draft.Subject)
+                    ? "Parcel label cleared."
+                    : $"Parcel label set to '{_draft.Subject}'.";
+            }
+        }
+
+        private void SetDraftBody(string body, bool announce)
+        {
+            string normalizedBody = body?.Replace("\r\n", "\n").Replace('\r', '\n') ?? string.Empty;
+            _draft.Body = normalizedBody;
+            if (announce)
+            {
+                _lastActionSummary = string.IsNullOrWhiteSpace(_draft.Body)
+                    ? "Draft body cleared."
+                    : "Draft body updated.";
+            }
+        }
+
+        private bool TrySetDraftMesoAttachment(int meso, bool announce, out string message)
+        {
+            if (meso <= 0)
+            {
+                if (_draft.Attachment?.Kind == MemoAttachmentKind.Meso)
+                {
+                    _draft.Attachment = null;
+                }
+
+                message = announce
+                    ? "Attached meso must be positive."
+                    : string.Empty;
+                if (announce)
+                {
+                    _lastActionSummary = "Parcel meso attachment cleared.";
+                }
+
+                return !announce && meso == 0;
+            }
+
+            _draft.Attachment = new MemoAttachmentState
+            {
+                Kind = MemoAttachmentKind.Meso,
+                Meso = meso
+            };
+
+            message = $"Draft attachment set to {BuildAttachmentSummary(_draft.Attachment)}.";
+            if (announce)
+            {
+                _lastActionSummary = message;
+            }
+
+            return true;
+        }
+
         private static string BuildPreview(string body)
         {
             if (string.IsNullOrWhiteSpace(body))
@@ -645,6 +708,16 @@ namespace HaCreator.MapSimulator.Interaction
                     "Quick-delivery fee info is informational only here. Use /memo draft meso <amount> to stage the money field.",
                 _ =>
                     "Parcel fee info is informational only here. Use /memo draft item ... or /memo draft meso ... to stage the package payload."
+            };
+        }
+
+        private MemoDraftAttachmentKind ResolveDraftAttachmentKind()
+        {
+            return _draft.Attachment?.Kind switch
+            {
+                MemoAttachmentKind.Item => MemoDraftAttachmentKind.Item,
+                MemoAttachmentKind.Meso => MemoDraftAttachmentKind.Meso,
+                _ => MemoDraftAttachmentKind.None
             };
         }
 

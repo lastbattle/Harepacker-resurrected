@@ -128,6 +128,8 @@ namespace HaCreator.MapSimulator.UI
 
     public static class EquipmentChangeClientParity
     {
+        public const string StaleCompletionMessage = "The equipped item state changed before the equipment request completed.";
+
         public static bool IsExclusiveRequestThrottled(int currentTick, int lastRequestTick, int cooldownMs)
         {
             if (lastRequestTick == int.MinValue || cooldownMs <= 0)
@@ -136,6 +138,20 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return unchecked(currentTick - lastRequestTick) < cooldownMs;
+        }
+
+        public static bool IsResolvedResultStale(CharacterBuild build, EquipmentChangeResult result)
+        {
+            if (build == null
+                || result == null
+                || !result.Accepted
+                || result.IsPending
+                || result.ResolvedBuildStateToken == 0)
+            {
+                return false;
+            }
+
+            return build.ComputeEquipmentStateToken() != result.ResolvedBuildStateToken;
         }
     }
 

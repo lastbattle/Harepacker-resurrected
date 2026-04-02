@@ -103,89 +103,147 @@ namespace HaCreator.MapSimulator.Character
             string playerActionName,
             PlayerState state,
             string fallbackActionName,
-            string weaponType = null)
+            string weaponType = null,
+            int? rawActionCode = null)
         {
+            var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            // CActionMan::LoadShadowPartnerAction probes the exact raw-action name first
+            // before it falls back through ghost alias remaps or broader state heuristics.
+            if (rawActionCode.HasValue
+                && CharacterPart.TryGetActionStringFromCode(rawActionCode.Value, out string rawActionName)
+                && !string.IsNullOrWhiteSpace(rawActionName)
+                && yielded.Add(rawActionName))
+            {
+                yield return rawActionName;
+            }
+
             if (!string.IsNullOrWhiteSpace(playerActionName))
             {
+                if (yielded.Add(playerActionName))
+                {
+                    yield return playerActionName;
+                }
+
                 foreach (string candidate in EnumerateAliasCandidates(playerActionName))
                 {
-                    yield return candidate;
+                    if (yielded.Add(candidate))
+                    {
+                        yield return candidate;
+                    }
                 }
 
                 foreach (string candidate in EnumerateHeuristicAttackAliases(playerActionName, state, weaponType))
                 {
-                    yield return candidate;
+                    if (yielded.Add(candidate))
+                    {
+                        yield return candidate;
+                    }
                 }
-
-                // CActionMan::LoadShadowPartnerAction walks the raw-action alias table first,
-                // then falls back to the plain action-name lookup before broader state fallback.
-                yield return playerActionName;
             }
 
             if (state is PlayerState.Swimming or PlayerState.Flying)
             {
-                yield return "stand1";
-                yield return "stand2";
-                yield return "fly";
-                yield return "jump";
+                foreach (string candidate in new[] { "stand1", "stand2", "fly", "jump" })
+                {
+                    if (yielded.Add(candidate))
+                    {
+                        yield return candidate;
+                    }
+                }
             }
             else if (state is PlayerState.Jumping or PlayerState.Falling)
             {
-                yield return "jump";
-                yield return "fly";
-                yield return "stand1";
-                yield return "stand2";
+                foreach (string candidate in new[] { "jump", "fly", "stand1", "stand2" })
+                {
+                    if (yielded.Add(candidate))
+                    {
+                        yield return candidate;
+                    }
+                }
             }
             else if (state == PlayerState.Ladder)
             {
-                yield return "ladder";
-                yield return "rope";
-                yield return "stand1";
+                foreach (string candidate in new[] { "ladder", "rope", "stand1" })
+                {
+                    if (yielded.Add(candidate))
+                    {
+                        yield return candidate;
+                    }
+                }
             }
             else if (state == PlayerState.Rope)
             {
-                yield return "rope";
-                yield return "ladder";
-                yield return "stand1";
+                foreach (string candidate in new[] { "rope", "ladder", "stand1" })
+                {
+                    if (yielded.Add(candidate))
+                    {
+                        yield return candidate;
+                    }
+                }
             }
             else if (state == PlayerState.Prone)
             {
-                yield return "prone";
-                yield return "proneStab";
-                yield return "stand1";
+                foreach (string candidate in new[] { "prone", "proneStab", "stand1" })
+                {
+                    if (yielded.Add(candidate))
+                    {
+                        yield return candidate;
+                    }
+                }
             }
             else if (state == PlayerState.Sitting)
             {
-                yield return "sit";
-                yield return "stand1";
-                yield return "stand2";
+                foreach (string candidate in new[] { "sit", "stand1", "stand2" })
+                {
+                    if (yielded.Add(candidate))
+                    {
+                        yield return candidate;
+                    }
+                }
             }
             else if (state == PlayerState.Hit)
             {
-                yield return "alert";
-                yield return "stand1";
-                yield return "stand2";
+                foreach (string candidate in new[] { "alert", "stand1", "stand2" })
+                {
+                    if (yielded.Add(candidate))
+                    {
+                        yield return candidate;
+                    }
+                }
             }
             else if (state == PlayerState.Dead)
             {
-                yield return "dead";
-                yield return "stand1";
+                foreach (string candidate in new[] { "dead", "stand1" })
+                {
+                    if (yielded.Add(candidate))
+                    {
+                        yield return candidate;
+                    }
+                }
             }
             else if (state == PlayerState.Walking)
             {
-                yield return "walk1";
-                yield return "walk2";
-                yield return "stand1";
-                yield return "stand2";
+                foreach (string candidate in new[] { "walk1", "walk2", "stand1", "stand2" })
+                {
+                    if (yielded.Add(candidate))
+                    {
+                        yield return candidate;
+                    }
+                }
             }
             else if (state == PlayerState.Standing)
             {
-                yield return "stand1";
-                yield return "stand2";
-                yield return "alert";
+                foreach (string candidate in new[] { "stand1", "stand2", "alert" })
+                {
+                    if (yielded.Add(candidate))
+                    {
+                        yield return candidate;
+                    }
+                }
             }
 
-            if (!string.IsNullOrWhiteSpace(fallbackActionName))
+            if (!string.IsNullOrWhiteSpace(fallbackActionName) && yielded.Add(fallbackActionName))
             {
                 yield return fallbackActionName;
             }

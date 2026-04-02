@@ -177,6 +177,11 @@ namespace HaCreator.MapSimulator.Pools
         public float HoverAmplitude { get; set; }
         public float HoverFrequency { get; set; } = 1f;
         public float HoverPhase { get; set; }
+        public float TargetX { get; set; }
+        public float TargetY { get; set; }
+        public int MotionElapsedMs { get; set; }
+        public int MotionLastUpdateTime { get; set; }
+        public int ParabolicDurationMs { get; set; }
         #endregion
 
         #region Constants
@@ -202,7 +207,7 @@ namespace HaCreator.MapSimulator.Pools
                     UpdateSpawning(currentTime);
                     break;
                 case DropState.Falling:
-                    UpdateFalling(deltaTime);
+                    UpdateFalling(currentTime, deltaTime);
                     break;
                 case DropState.Bouncing:
                     UpdateBouncing(currentTime, deltaTime);
@@ -234,10 +239,18 @@ namespace HaCreator.MapSimulator.Pools
 
             State = DropState.Falling;
             LastStateChangeTime = currentTime;
+            MotionElapsedMs = 0;
+            MotionLastUpdateTime = currentTime;
         }
 
-        private void UpdateFalling(float deltaTime)
+        private void UpdateFalling(int currentTime, float deltaTime)
         {
+            if (UsesClientPacketMotion())
+            {
+                UpdatePacketParabolicMotion(currentTime);
+                return;
+            }
+
             VelocityY += GRAVITY * deltaTime;
             Y += VelocityY * deltaTime;
             X += VelocityX * deltaTime;
@@ -261,15 +274,21 @@ namespace HaCreator.MapSimulator.Pools
                     VelocityX = 0;
                     VelocityY = 0;
                     State = DropState.Idle;
-                    LastStateChangeTime = Environment.TickCount;
+                    LastStateChangeTime = currentTime;
                 }
             }
         }
 
         private void UpdateBouncing(int currentTime, float deltaTime)
         {
+            if (UsesClientPacketMotion())
+            {
+                UpdatePacketSettleMotion(currentTime);
+                return;
+            }
+
             // Same as falling but tracks bounce count
-            UpdateFalling(deltaTime);
+            UpdateFalling(currentTime, deltaTime);
         }
 
         private void UpdateIdle(int currentTime)
@@ -324,6 +343,78 @@ namespace HaCreator.MapSimulator.Pools
             Y = GroundY - (30f * t);
             Alpha = 1f - t;
             Scale = 1f + (0.3f * t); // Slight grow
+        }
+
+        private bool UsesClientPacketMotion()
+        {
+            return IsPacketControlled && PacketEnterType != 2 && ParabolicDurationMs > 0;
+        }
+
+        private void UpdatePacketParabolicMotion(int currentTime)
+        {
+            int deltaMs = Math.Max(0, currentTime - MotionLastUpdateTime);
+            MotionLastUpdateTime = currentTime;
+            MotionElapsedMs += deltaMs;
+
+            float horizontalHalfDistance = (TargetX - SpawnX) * 0.5f;
+            float progressA = MathF.Min(MotionElapsedMs / 500f, 1f);
+            float progressB = MotionElapsedMs <= 500
+                ? 0f
+                : MathF.Min((MotionElapsedMs - 500f) / MathF.Max(1f, ParabolicDurationMs - 500f), 1f);
+            float arcTimeSeconds = MotionElapsedMs / 1000f;
+            if (PacketEnterType == 4)
+            {
+                arcTimeSeconds /= 3f;
+            }
+
+            float launchVelocity = OwnershipType == DropOwnershipType.Explosive ? 720f : 400f;
+            X = SpawnX + (progressA + progressB) * horizontalHalfDistance;
+            Y = SpawnY - (launchVelocity * arcTimeSeconds) + (400f * arcTimeSeconds * arcTimeSeconds);
+
+            if (MotionElapsedMs < ParabolicDurationMs)
+            {
+                return;
+            }
+
+            if (SpawnY < TargetY)
+            {
+                State = DropState.Bouncing;
+                MotionElapsedMs = 0;
+                MotionLastUpdateTime = currentTime;
+                return;
+            }
+
+            SnapToPacketIdle(currentTime);
+        }
+
+        private void UpdatePacketSettleMotion(int currentTime)
+        {
+            int deltaMs = Math.Max(0, currentTime - MotionLastUpdateTime);
+            MotionLastUpdateTime = currentTime;
+            MotionElapsedMs += deltaMs;
+
+            float settleTimeSeconds = MotionElapsedMs / 1000f;
+            float launchVelocity = OwnershipType == DropOwnershipType.Explosive ? 720f : 400f;
+            float settledY = SpawnY + (settleTimeSeconds * launchVelocity);
+
+            X = SpawnY < TargetY ? TargetX : SpawnX;
+            Y = settledY;
+            if (settledY >= TargetY)
+            {
+                SnapToPacketIdle(currentTime);
+            }
+        }
+
+        private void SnapToPacketIdle(int currentTime)
+        {
+            X = TargetX;
+            Y = TargetY;
+            VelocityX = 0f;
+            VelocityY = 0f;
+            State = DropState.Idle;
+            LastStateChangeTime = currentTime;
+            MotionElapsedMs = 0;
+            MotionLastUpdateTime = currentTime;
         }
 
         private void UpdateAnimation(int currentTime)
@@ -449,6 +540,7 @@ namespace HaCreator.MapSimulator.Pools
         private Action<DropItem, int, string> _onRemotePlayerPickedUp;
         private Action<DropItem, int, string> _onRemotePetPickedUp;
         private Action<DropItem, int, string> _onRemoteOtherPickedUp;
+        private Func<int, int, bool> _partyPickupMembershipEvaluator;
 
         // Ground level lookup function
         private Func<float, float, float> _getGroundY;
@@ -475,6 +567,7 @@ namespace HaCreator.MapSimulator.Pools
         public void SetPetPickupAvailabilityEvaluator(Func<DropItem, DropPickupFailureReason> callback) => _petPickupAvailabilityEvaluator = callback;
         public void SetGroundLevelLookup(Func<float, float, float> getGroundY) => _getGroundY = getGroundY;
         public void SetSourcePositionResolver(Func<int, Vector2?> resolver) => _sourcePositionResolver = resolver;
+        public void SetPartyPickupMembershipEvaluator(Func<int, int, bool> evaluator) => _partyPickupMembershipEvaluator = evaluator;
         public void SetOnRemotePlayerPickedUp(Action<DropItem, int, string> callback) => _onRemotePlayerPickedUp = callback;
         public void SetOnRemotePetPickedUp(Action<DropItem, int, string> callback) => _onRemotePetPickedUp = callback;
         public void SetOnRemoteOtherPickedUp(Action<DropItem, int, string> callback) => _onRemoteOtherPickedUp = callback;
@@ -667,6 +760,8 @@ namespace HaCreator.MapSimulator.Pools
             drop.X = x;
             drop.SpawnX = x;
             drop.SpawnY = y;
+            drop.TargetX = x;
+            drop.TargetY = y;
             // Start above spawn point so the arc animation is visible
             // The drop will arc up slightly then fall to ground
             drop.Y = y - 60;  // Start 60px above mob position
@@ -697,6 +792,9 @@ namespace HaCreator.MapSimulator.Pools
             drop.HoverAmplitude = 0f;
             drop.HoverFrequency = 1f;
             drop.HoverPhase = 0f;
+            drop.MotionElapsedMs = 0;
+            drop.MotionLastUpdateTime = currentTime;
+            drop.ParabolicDurationMs = 0;
             drop.CanPickup = true;
             drop.IsRare = false;
             drop.GlowColor = Color.White;
@@ -706,6 +804,21 @@ namespace HaCreator.MapSimulator.Pools
             drop.MesoAmount = 0;
             drop.LastPickupFailureTime = int.MinValue;
             drop.LastPickupFailureReason = DropPickupFailureReason.None;
+        }
+
+        public static int GetMoneyIconTypeForAmount(int amount)
+        {
+            if (amount < 50)
+            {
+                return 0;
+            }
+
+            if (amount < 100)
+            {
+                return 1;
+            }
+
+            return amount < 1000 ? 2 : 3;
         }
         #endregion
 
@@ -1847,11 +1960,20 @@ namespace HaCreator.MapSimulator.Pools
             Vector2 startPosition = ResolvePacketDropStartPosition(packet);
             drop.SpawnX = startPosition.X;
             drop.SpawnY = startPosition.Y;
+            drop.TargetX = packet.TargetX;
             drop.X = startPosition.X;
             drop.Y = startPosition.Y;
             drop.GroundY = _getGroundY?.Invoke(packet.TargetX, packet.TargetY) ?? packet.TargetY;
+            drop.TargetY = drop.GroundY;
             drop.VelocityX = 0f;
             drop.VelocityY = packet.EnterType == 4 ? DROP_INITIAL_VELOCITY_Y * 0.45f : DROP_INITIAL_VELOCITY_Y;
+            drop.MotionElapsedMs = 0;
+            drop.MotionLastUpdateTime = currentTime;
+            drop.ParabolicDurationMs = CalculateParabolicMotionDuration(
+                drop.SpawnY,
+                drop.TargetY,
+                drop.OwnershipType == DropOwnershipType.Explosive,
+                packet.EnterType == 4);
 
             if (packet.IsMoney)
             {
@@ -1865,9 +1987,7 @@ namespace HaCreator.MapSimulator.Pools
 
             if (packet.EnterType == 2)
             {
-                drop.State = DropState.Idle;
-                drop.X = packet.TargetX;
-                drop.Y = drop.GroundY;
+                SnapDropToPacketIdle(drop, currentTime);
             }
             else
             {
@@ -1967,7 +2087,7 @@ namespace HaCreator.MapSimulator.Pools
             return !drop.IsPacketControlled || drop.SourceId != 0;
         }
 
-        private static bool IsPlayerOwnershipBlocked(DropItem drop, int actorId, int currentTime)
+        private bool IsPlayerOwnershipBlocked(DropItem drop, int actorId, int currentTime)
         {
             if (!IsOwnershipWindowActive(drop, currentTime))
             {
@@ -1977,19 +2097,19 @@ namespace HaCreator.MapSimulator.Pools
             return drop.OwnershipType switch
             {
                 DropOwnershipType.Character => drop.OwnerId != actorId,
-                DropOwnershipType.Party => drop.OwnerId != actorId,
+                DropOwnershipType.Party => !AreActorsPartyLinked(drop.OwnerId, actorId),
                 _ => false
             };
         }
 
-        private static bool CanPlayerPickup(DropItem drop, int actorId, int currentTime)
+        private bool CanPlayerPickup(DropItem drop, int actorId, int currentTime)
         {
             return drop != null
                 && drop.IsReal
                 && !IsPlayerOwnershipBlocked(drop, actorId, currentTime);
         }
 
-        private static bool CanPetPickup(DropItem drop, int ownerId, int currentTime)
+        private bool CanPetPickup(DropItem drop, int ownerId, int currentTime)
         {
             return drop != null
                 && drop.IsReal
@@ -2000,6 +2120,43 @@ namespace HaCreator.MapSimulator.Pools
         private static bool CanMobPickup(DropItem drop)
         {
             return drop != null && drop.IsReal;
+        }
+
+        private bool AreActorsPartyLinked(int ownerId, int actorId)
+        {
+            if (ownerId <= 0 || actorId <= 0)
+            {
+                return false;
+            }
+
+            if (ownerId == actorId)
+            {
+                return true;
+            }
+
+            return _partyPickupMembershipEvaluator?.Invoke(ownerId, actorId) == true;
+        }
+
+        private static int CalculateParabolicMotionDuration(float startY, float targetY, bool explosiveOwnership, bool elongatedEnter)
+        {
+            float launchVelocity = explosiveOwnership ? 720f : 400f;
+            float verticalDistance = Math.Max(0f, targetY - startY);
+            float discriminant = (launchVelocity * launchVelocity) + (1600f * verticalDistance);
+            float durationSeconds = (launchVelocity + MathF.Sqrt(discriminant)) / 800f;
+            int durationMs = Math.Max(500, (int)MathF.Ceiling(durationSeconds * 1000f));
+            return elongatedEnter ? durationMs * 2 : durationMs;
+        }
+
+        private static void SnapDropToPacketIdle(DropItem drop, int currentTime)
+        {
+            drop.State = DropState.Idle;
+            drop.X = drop.TargetX;
+            drop.Y = drop.TargetY;
+            drop.VelocityX = 0f;
+            drop.VelocityY = 0f;
+            drop.LastStateChangeTime = currentTime;
+            drop.MotionElapsedMs = 0;
+            drop.MotionLastUpdateTime = currentTime;
         }
 
         #endregion

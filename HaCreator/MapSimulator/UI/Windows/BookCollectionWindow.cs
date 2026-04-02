@@ -997,6 +997,17 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            IReadOnlyList<CollectionBookRecordSnapshot> records = page.Records;
+            if (records?.Count > 0)
+            {
+                foreach (CollectionBookRecordSnapshot record in records)
+                {
+                    DrawCollectionRecord(sprite, pageBounds, isRightPage, record);
+                }
+
+                return;
+            }
+
             float pageInset = isRightPage ? 4f : 0f;
             DrawTextLine(sprite, page.Title, new Vector2(pageBounds.X + 16 + pageInset, pageBounds.Y + 14), GetBookStyle(0), pageBounds.Width - 32, HorizontalAlignment.Center);
             DrawTextLine(sprite, page.Subtitle, new Vector2(pageBounds.X + 16 + pageInset, pageBounds.Y + 34), GetBookStyle(10), pageBounds.Width - 32, HorizontalAlignment.Center);
@@ -1022,6 +1033,43 @@ namespace HaCreator.MapSimulator.UI
             DrawTextLine(sprite, entry.Label, new Vector2(bounds.X + 2, bounds.Y), GetBookStyle(2), bounds.Width - 80, HorizontalAlignment.Left);
             DrawTextLine(sprite, entry.Value, new Vector2(bounds.Right - 2, bounds.Y), GetEntryStyle(entry.Tone), 76, HorizontalAlignment.Right);
             DrawTextLine(sprite, entry.Detail, new Vector2(bounds.X + 8, bounds.Y + 12), GetBookStyle(10), bounds.Width - 10, HorizontalAlignment.Left);
+        }
+
+        private void DrawCollectionRecord(SpriteBatch sprite, Rectangle pageBounds, bool isRightPage, CollectionBookRecordSnapshot record)
+        {
+            if (record == null)
+            {
+                return;
+            }
+
+            float pageInset = isRightPage ? 4f : 0f;
+            switch (record.Type)
+            {
+                case CollectionBookRecordType.Rule:
+                    DrawRule(sprite, new Rectangle(pageBounds.X + record.Left, pageBounds.Y + record.Top, record.Width, Math.Max(1, record.Height)));
+                    break;
+                case CollectionBookRecordType.Text:
+                    HorizontalAlignment alignment = record.Alignment switch
+                    {
+                        CollectionBookTextAlignment.Center => HorizontalAlignment.Center,
+                        CollectionBookTextAlignment.Right => HorizontalAlignment.Right,
+                        _ => HorizontalAlignment.Left
+                    };
+                    float anchorX = pageBounds.X + record.Left + pageInset;
+                    if (alignment == HorizontalAlignment.Right)
+                    {
+                        anchorX += record.Width;
+                    }
+
+                    DrawTextLine(
+                        sprite,
+                        record.Text,
+                        new Vector2(anchorX, pageBounds.Y + record.Top),
+                        GetBookStyle(record.StyleIndex),
+                        record.Width,
+                        alignment);
+                    break;
+            }
         }
 
         private void DrawPageFrame(SpriteBatch sprite, Rectangle bounds)

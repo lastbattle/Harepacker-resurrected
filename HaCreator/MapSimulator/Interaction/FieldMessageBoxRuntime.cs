@@ -36,17 +36,8 @@ namespace HaCreator.MapSimulator.Interaction
         private const string UiBottomPropertyName = "s";
         private const string CreateFailedFallbackText = "The client refused to create the field message-box.";
         private static readonly string[] DefaultClientVisualCandidatePaths = { ClientMessageBoxPropertyName };
-        private static readonly string[] ChalkboardClientVisualCandidatePaths =
+        private static readonly string[] ChalkboardFallbackVisualCandidatePaths =
         {
-            ClientMessageBoxPropertyName,
-            UiPropertyName,
-            $"{InfoPropertyName}/{ChalkboardSamplePropertyName}"
-        };
-        private static readonly string[] ChalkboardSharedVisualCandidatePaths =
-        {
-            ClientMessageBoxPropertyName,
-            UiPropertyName,
-            ChalkboardSamplePropertyName,
             $"{InfoPropertyName}/{ChalkboardSamplePropertyName}"
         };
         private const int ClientLeaveStartAlpha = 255;
@@ -463,13 +454,23 @@ namespace HaCreator.MapSimulator.Interaction
                             ?? LoadCanvasTexture(resolvedInfoProperty?["icon"] as WzCanvasProperty);
 
             bool usingResolvedSharedProperty = !ReferenceEquals(resolvedItemProperty, itemProperty);
-            if (TryLoadClientMessageBoxVisual(resolvedItemProperty, itemId, iconTexture, usingResolvedSharedProperty, out MessageBoxVisual visual))
+            if (TryLoadClientMessageBoxVisual(
+                    resolvedItemProperty,
+                    itemId,
+                    iconTexture,
+                    allowChalkboardSampleFallback: !usingResolvedSharedProperty,
+                    out MessageBoxVisual visual))
             {
                 return visual;
             }
 
             if (!ReferenceEquals(resolvedItemProperty, itemProperty) &&
-                TryLoadClientMessageBoxVisual(itemProperty, itemId, iconTexture, includeSharedPropertyCandidates: false, out visual))
+                TryLoadClientMessageBoxVisual(
+                    itemProperty,
+                    itemId,
+                    iconTexture,
+                    allowChalkboardSampleFallback: true,
+                    out visual))
             {
                 return visual;
             }
@@ -483,12 +484,12 @@ namespace HaCreator.MapSimulator.Interaction
             WzSubProperty itemProperty,
             int itemId,
             Texture2D iconTexture,
-            bool includeSharedPropertyCandidates,
+            bool allowChalkboardSampleFallback,
             out MessageBoxVisual visual)
         {
             visual = null;
 
-            foreach (string candidatePath in GetPreferredVisualPropertyPaths(itemId, includeSharedPropertyCandidates))
+            foreach (string candidatePath in GetPreferredVisualPropertyPaths(itemId))
             {
                 if (!TryLoadVisualAtPath(itemProperty, candidatePath, out visual))
                 {
@@ -499,8 +500,18 @@ namespace HaCreator.MapSimulator.Interaction
                 return true;
             }
 
-            if (TryLoadUiBoardVisual(itemProperty?[UiPropertyName] as WzSubProperty, out visual))
+            if (!allowChalkboardSampleFallback)
             {
+                return false;
+            }
+
+            foreach (string candidatePath in GetFallbackVisualPropertyPaths(itemId))
+            {
+                if (!TryLoadVisualAtPath(itemProperty, candidatePath, out visual))
+                {
+                    continue;
+                }
+
                 visual = visual with { IconTexture = iconTexture ?? visual.IconTexture };
                 return true;
             }
@@ -510,19 +521,19 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal static IReadOnlyList<string> GetPreferredVisualPropertyPaths(int itemId)
         {
-            return GetPreferredVisualPropertyPaths(itemId, includeSharedPropertyCandidates: false);
+            return DefaultClientVisualCandidatePaths;
         }
 
-        private static IReadOnlyList<string> GetPreferredVisualPropertyPaths(int itemId, bool includeSharedPropertyCandidates)
+        internal static IReadOnlyList<string> GetFallbackVisualPropertyPathsForTest(int itemId)
         {
-            if (!IsKnownChalkboardItem(itemId))
-            {
-                return DefaultClientVisualCandidatePaths;
-            }
+            return GetFallbackVisualPropertyPaths(itemId);
+        }
 
-            return includeSharedPropertyCandidates
-                ? ChalkboardSharedVisualCandidatePaths
-                : ChalkboardClientVisualCandidatePaths;
+        private static IReadOnlyList<string> GetFallbackVisualPropertyPaths(int itemId)
+        {
+            return IsKnownChalkboardItem(itemId)
+                ? ChalkboardFallbackVisualCandidatePaths
+                : Array.Empty<string>();
         }
 
         internal static string ResolveCreateFailedNoticeText()
@@ -1039,11 +1050,6 @@ namespace HaCreator.MapSimulator.Interaction
         internal static IReadOnlyList<string> GetPreferredVisualPropertyPathsForTest(int itemId)
         {
             return GetPreferredVisualPropertyPaths(itemId);
-        }
-
-        internal static IReadOnlyList<string> GetSharedVisualPropertyPathsForTest(int itemId)
-        {
-            return GetPreferredVisualPropertyPaths(itemId, includeSharedPropertyCandidates: true);
         }
 
         internal static bool TryParseWzPropertyPathForTest(string path, out string category, out string imagePath, out string propertyPath)

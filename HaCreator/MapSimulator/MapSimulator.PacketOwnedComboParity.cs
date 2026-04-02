@@ -385,7 +385,10 @@ namespace HaCreator.MapSimulator
                     return false;
                 }
 
-                digits.Add(new PacketOwnedComboDigitState(digitValues[i], i > rightMostNonZeroIndex, frames));
+                // `CUserLocal::DrawCombo` applies the larger fly-origin track to the
+                // least-significant digit run up through the right-most non-zero digit.
+                bool useBigAmplitude = rightMostNonZeroIndex >= 0 && i <= rightMostNonZeroIndex;
+                digits.Add(new PacketOwnedComboDigitState(digitValues[i], useBigAmplitude, frames));
             }
 
             return digits.Count > 0;
@@ -422,6 +425,12 @@ namespace HaCreator.MapSimulator
                 return frames;
             }
 
+            frames = ResolvePacketOwnedComboAnimationFrames($"ComboCommand/{fallbackPathName}");
+            if (frames?.Count > 0)
+            {
+                return frames;
+            }
+
             string numericPath = $"ComboCommand/{skillId}";
             frames = ResolvePacketOwnedComboAnimationFrames(numericPath);
             if (frames?.Count > 0)
@@ -429,7 +438,7 @@ namespace HaCreator.MapSimulator
                 return frames;
             }
 
-            return ResolvePacketOwnedComboAnimationFrames($"ComboCommand/{fallbackPathName}");
+            return null;
         }
 
         private static int ResolvePacketOwnedComboLevel(int comboCount)

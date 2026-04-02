@@ -719,11 +719,11 @@ namespace HaCreator.MapSimulator.Interaction
                     }
                 case 7:
                     {
-                        int rewardId = reader.ReadInt32();
-                        int step = reader.ReadInt32();
-                        int total = reader.ReadInt32();
-                        bool shown = callbacks?.ShowRewardRouletteVisual?.Invoke(rewardId, step, total) == true;
-                        _lastFieldEffectSummary = $"reward roulette reward={rewardId} step={step} total={total}";
+                        int rewardJobIndex = reader.ReadInt32();
+                        int rewardPartIndex = reader.ReadInt32();
+                        int rewardLevelIndex = reader.ReadInt32();
+                        bool shown = callbacks?.ShowRewardRouletteVisual?.Invoke(rewardJobIndex, rewardPartIndex, rewardLevelIndex) == true;
+                        _lastFieldEffectSummary = $"reward roulette job={rewardJobIndex} part={rewardPartIndex} level={rewardLevelIndex}";
                         _statusMessage = shown
                             ? "Applied packet-owned reward roulette state."
                             : "Applied packet-owned reward roulette state without a resolved visual.";

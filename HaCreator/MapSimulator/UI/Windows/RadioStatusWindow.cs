@@ -11,6 +11,9 @@ namespace HaCreator.MapSimulator.UI
 {
     internal sealed class RadioStatusWindow : UIWindowBase
     {
+        private const int ClientTopInset = 3;
+        private const int ClientRightInset = 3;
+        private const int ClientLeftModeExtraRightInset = 40;
         private const float TooltipScale = 0.38f;
         private const int TooltipPadding = 6;
         private const int TooltipOffsetY = 20;
@@ -31,12 +34,11 @@ namespace HaCreator.MapSimulator.UI
         private readonly List<IndicatorFrame> _activeFrames = new();
         private readonly Dictionary<Texture2D, IDXObject> _frameCache = new();
         private readonly Texture2D _pixel;
-        private readonly int _rightMargin;
-        private readonly int _topMargin;
         private readonly Texture2D _inactiveTexture;
 
         private SpriteFont _font;
         private Func<bool> _indicatorActiveProvider;
+        private Func<bool> _clientLeftInsetProvider;
         private Func<string> _trackNameProvider;
 
         internal RadioStatusWindow(
@@ -50,8 +52,6 @@ namespace HaCreator.MapSimulator.UI
         {
             _windowName = string.IsNullOrWhiteSpace(windowName) ? MapSimulatorWindowNames.Radio : windowName;
             _inactiveTexture = inactiveTexture ?? throw new ArgumentNullException(nameof(inactiveTexture));
-            _rightMargin = Math.Max(0, rightMargin);
-            _topMargin = Math.Max(0, topMargin);
             SupportsDragging = false;
 
             if (activeFrames != null)
@@ -80,6 +80,11 @@ namespace HaCreator.MapSimulator.UI
         internal void SetIndicatorActiveProvider(Func<bool> indicatorActiveProvider)
         {
             _indicatorActiveProvider = indicatorActiveProvider;
+        }
+
+        internal void SetClientLeftInsetProvider(Func<bool> clientLeftInsetProvider)
+        {
+            _clientLeftInsetProvider = clientLeftInsetProvider;
         }
 
         internal void SetTrackNameProvider(Func<string> trackNameProvider)
@@ -174,10 +179,11 @@ namespace HaCreator.MapSimulator.UI
 
         private void UpdateAnchoredPosition(RenderParameters renderParameters)
         {
-            int frameWidth = CurrentFrame?.Width ?? _inactiveTexture.Width;
+            int frameWidth = _inactiveTexture.Width;
+            int rightInset = ClientRightInset + ((_clientLeftInsetProvider?.Invoke() == true) ? ClientLeftModeExtraRightInset : 0);
             Position = new Point(
-                Math.Max(0, renderParameters.RenderWidth - frameWidth - _rightMargin),
-                _topMargin);
+                Math.Max(0, renderParameters.RenderWidth - frameWidth - rightInset),
+                ClientTopInset);
         }
 
         private Texture2D ResolveIndicatorTexture(int tickCount)

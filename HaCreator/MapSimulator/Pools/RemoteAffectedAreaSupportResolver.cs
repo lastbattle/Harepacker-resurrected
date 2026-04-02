@@ -145,7 +145,10 @@ namespace HaCreator.MapSimulator.Pools
                    || levelData.DropRate > 0
                    || levelData.MesoRate > 0
                    || levelData.BossDamageRate > 0
-                   || levelData.IgnoreDefenseRate > 0;
+                   || levelData.IgnoreDefenseRate > 0
+                   || levelData.X > 0
+                   || levelData.Y > 0
+                   || levelData.Z > 0;
         }
 
         public static SkillLevelData CreateProjectedSupportBuffLevelData(SkillLevelData levelData)
@@ -386,9 +389,16 @@ namespace HaCreator.MapSimulator.Pools
         {
             return skill != null
                    && (skill.IsMassSpell
+                       || SupportsPartyMembersViaSupportSummonMetadata(skill)
                        || skill.Type == SkillType.PartyBuff
                        || skill.Target == SkillTarget.Party
                        || ContainsToken(skill.Description, FriendlyAreaDescriptionTokens));
+        }
+
+        private static bool SupportsPartyMembersViaSupportSummonMetadata(SkillData skill)
+        {
+            return skill?.ClientInfoType == 33
+                   && ContainsToken(skill.MinionAbility, "heal", "amplifyDamage");
         }
 
         private static void MergeProjectableSupportStats(SkillLevelData target, SkillLevelData source)
@@ -435,6 +445,9 @@ namespace HaCreator.MapSimulator.Pools
             target.MesoRate = Math.Max(target.MesoRate, source.MesoRate);
             target.BossDamageRate = Math.Max(target.BossDamageRate, source.BossDamageRate);
             target.IgnoreDefenseRate = Math.Max(target.IgnoreDefenseRate, source.IgnoreDefenseRate);
+            target.X = Math.Max(target.X, source.X);
+            target.Y = Math.Max(target.Y, source.Y);
+            target.Z = Math.Max(target.Z, source.Z);
         }
 
         private static bool ContainsToken(string value, params string[] tokens)

@@ -137,6 +137,7 @@ namespace HaCreator.MapSimulator.Managers
         public string EnteredName { get; private set; } = string.Empty;
         public string CheckedName { get; private set; } = string.Empty;
         public string StatusMessage { get; private set; } = string.Empty;
+        public bool IsRaceConfirmationOpen { get; private set; }
 
         public int SelectedFaceIndex { get; private set; }
         public int SelectedHairIndex { get; private set; }
@@ -162,6 +163,7 @@ namespace HaCreator.MapSimulator.Managers
             Stage = LoginCreateCharacterStage.RaceSelect;
             StatusMessage = "Choose the race family for the new character.";
             CheckedName = string.Empty;
+            IsRaceConfirmationOpen = false;
         }
 
         public void SetStage(LoginCreateCharacterStage stage, string statusMessage = null)
@@ -183,6 +185,7 @@ namespace HaCreator.MapSimulator.Managers
             SelectedRace = SupportedRaces[raceIndex];
             SelectedJobIndex = 0;
             CheckedName = string.Empty;
+            IsRaceConfirmationOpen = false;
             StatusMessage = $"Selected {GetRaceLabel(SelectedRace)}.";
         }
 
@@ -273,6 +276,26 @@ namespace HaCreator.MapSimulator.Managers
             {
                 EnteredName = normalized;
                 CheckedName = string.Empty;
+            }
+        }
+
+        public void OpenRaceConfirmation()
+        {
+            if (Stage != LoginCreateCharacterStage.RaceSelect)
+            {
+                return;
+            }
+
+            IsRaceConfirmationOpen = true;
+            StatusMessage = $"Confirm {GetRaceLabel(SelectedRace)} before advancing to the job owner.";
+        }
+
+        public void CloseRaceConfirmation(string statusMessage = null)
+        {
+            IsRaceConfirmationOpen = false;
+            if (!string.IsNullOrWhiteSpace(statusMessage))
+            {
+                StatusMessage = statusMessage;
             }
         }
 
