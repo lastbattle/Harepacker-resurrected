@@ -221,6 +221,7 @@ namespace HaCreator.MapSimulator
             // Objects
             Task t_tiles = Task.Run(() =>
             {
+                Stopwatch taskStopwatch = Stopwatch.StartNew();
                 foreach (LayeredItem tileObj in _mapBoard.BoardItems.TileObjs)
                 {
                     WzImageProperty tileParent = (WzImageProperty)tileObj.BaseInfo.ParentObject;
@@ -1222,6 +1223,7 @@ namespace HaCreator.MapSimulator
         /// <param name="spawnPortalName">Optional portal name to spawn at</param>
         private void LoadMapContent(Board newBoard, string newTitle, string spawnPortalName, int spawnPortalIndex = -1)
         {
+            Stopwatch loadMapContentStopwatch = Stopwatch.StartNew();
             this._mapBoard = newBoard;
             this._spawnPortalName = spawnPortalName;
             this._spawnPortalIndex = spawnPortalIndex;
@@ -1320,6 +1322,7 @@ namespace HaCreator.MapSimulator
             // Load map objects in parallel
             Task t_tiles = Task.Run(() =>
             {
+                Stopwatch taskStopwatch = Stopwatch.StartNew();
                 foreach (LayeredItem tileObj in _mapBoard.BoardItems.TileObjs)
                 {
                     WzImageProperty tileParent = (WzImageProperty)tileObj.BaseInfo.ParentObject;
@@ -1341,11 +1344,14 @@ namespace HaCreator.MapSimulator
                     RegisterQuestGatedMapObject(mapItem, tileObj, questGatedMapObjects);
                     mapObjects[tileObj.LayerNumber].Add(mapItem);
                 }
+                taskStopwatch.Stop();
+                Debug.WriteLine($"[MapLoad] Tiles task loaded {_mapBoard.BoardItems.TileObjs.Count} items in {taskStopwatch.ElapsedMilliseconds} ms");
             });
 
 
             Task t_Background = Task.Run(() =>
             {
+                Stopwatch taskStopwatch = Stopwatch.StartNew();
                 foreach (BackgroundInstance background in _mapBoard.BoardItems.BackBackgrounds)
                 {
                     WzImageProperty bgParent = (WzImageProperty)background.BaseInfo.ParentObject;
@@ -1360,80 +1366,111 @@ namespace HaCreator.MapSimulator
                     if (bgItem != null)
                         backgrounds_front.Add(bgItem);
                 }
+                taskStopwatch.Stop();
+                Debug.WriteLine($"[MapLoad] Background task loaded {_mapBoard.BoardItems.BackBackgrounds.Count + _mapBoard.BoardItems.FrontBackgrounds.Count} items in {taskStopwatch.ElapsedMilliseconds} ms");
             });
 
 
             Task t_reactor = Task.Run(() =>
             {
+                Stopwatch taskStopwatch = Stopwatch.StartNew();
                 foreach (ReactorInstance reactor in _mapBoard.BoardItems.Reactors)
                 {
                     ReactorItem reactorItem = MapSimulatorLoader.CreateReactorFromProperty(_texturePool, reactor, _DxDeviceManager.GraphicsDevice, usedProps);
                     if (reactorItem != null)
                         mapObjects_Reactors.Add(reactorItem);
                 }
+                taskStopwatch.Stop();
+                Debug.WriteLine($"[MapLoad] Reactor task loaded {_mapBoard.BoardItems.Reactors.Count} items in {taskStopwatch.ElapsedMilliseconds} ms");
             });
 
 
             Task t_npc = Task.Run(() =>
             {
+                Stopwatch taskStopwatch = Stopwatch.StartNew();
+                int loadedCount = 0;
                 foreach (NpcInstance npc in _mapBoard.BoardItems.NPCs)
                 {
                     if (npc.Hide)
                         continue;
                     NpcItem npcItem = MapSimulatorLoader.CreateNpcFromProperty(_texturePool, npc, UserScreenScaleFactor, _DxDeviceManager.GraphicsDevice, usedProps);
                     if (npcItem != null)
+                    {
                         mapObjects_NPCs.Add(npcItem);
+                        loadedCount++;
+                    }
                 }
+                taskStopwatch.Stop();
+                Debug.WriteLine($"[MapLoad] NPC task loaded {loadedCount}/{_mapBoard.BoardItems.NPCs.Count} items in {taskStopwatch.ElapsedMilliseconds} ms");
             });
 
 
             Task t_mobs = Task.Run(() =>
             {
+                Stopwatch taskStopwatch = Stopwatch.StartNew();
+                int loadedCount = 0;
                 foreach (MobInstance mob in _mapBoard.BoardItems.Mobs)
                 {
                     if (mob.Hide)
                         continue;
                     MobItem mobItem = MapSimulatorLoader.CreateMobFromProperty(_texturePool, mob, UserScreenScaleFactor, _DxDeviceManager.GraphicsDevice, _soundManager, usedProps);
                     mapObjects_Mobs.Add(mobItem);
+                    loadedCount++;
                 }
+                taskStopwatch.Stop();
+                Debug.WriteLine($"[MapLoad] Mob task loaded {loadedCount}/{_mapBoard.BoardItems.Mobs.Count} items in {taskStopwatch.ElapsedMilliseconds} ms");
             });
 
 
             Task t_portal = Task.Run(() =>
             {
+                Stopwatch taskStopwatch = Stopwatch.StartNew();
+                int loadedCount = 0;
                 WzSubProperty portalParent = (WzSubProperty)mapHelperImage["portal"];
                 WzSubProperty gameParent = (WzSubProperty)portalParent["game"];
                 foreach (PortalInstance portal in _mapBoard.BoardItems.Portals)
                 {
                     PortalItem portalItem = MapSimulatorLoader.CreatePortalFromProperty(_texturePool, gameParent, portal, _DxDeviceManager.GraphicsDevice, usedProps);
                     if (portalItem != null)
+                    {
                         mapObjects_Portal.Add(portalItem);
+                        loadedCount++;
+                    }
                 }
+                taskStopwatch.Stop();
+                Debug.WriteLine($"[MapLoad] Portal task loaded {loadedCount}/{_mapBoard.BoardItems.Portals.Count} items in {taskStopwatch.ElapsedMilliseconds} ms");
             });
 
 
             Task t_tooltips = Task.Run(() =>
             {
+                Stopwatch taskStopwatch = Stopwatch.StartNew();
                 WzSubProperty farmFrameParent = (WzSubProperty)uiToolTipImage?["Item"]?["FarmFrame"];
                 foreach (ToolTipInstance tooltip in _mapBoard.BoardItems.ToolTips)
                 {
                     TooltipItem item = MapSimulatorLoader.CreateTooltipFromProperty(_texturePool, UserScreenScaleFactor, farmFrameParent, tooltip, _DxDeviceManager.GraphicsDevice);
                     mapObjects_tooltips.Add(item);
                 }
+                taskStopwatch.Stop();
+                Debug.WriteLine($"[MapLoad] Tooltip task loaded {_mapBoard.BoardItems.ToolTips.Count} items in {taskStopwatch.ElapsedMilliseconds} ms");
             });
 
 
             Task t_minimap = Task.Run(() =>
             {
+                Stopwatch taskStopwatch = Stopwatch.StartNew();
                 if (!_gameState.IsLoginMap && !_mapBoard.MapInfo.hideMinimap && !_gameState.IsCashShopMap)
                 {
                     miniMapUi = MapSimulatorLoader.CreateMinimapFromProperty(uiWindow1Image, uiWindow2Image, uiBasicImage, _mapBoard, GraphicsDevice, UserScreenScaleFactor, _mapBoard.MapInfo.strMapName, _mapBoard.MapInfo.strStreetName, soundUIImage, _gameState.IsBigBangUpdate);
                 }
+                taskStopwatch.Stop();
+                Debug.WriteLine($"[MapLoad] Minimap task finished in {taskStopwatch.ElapsedMilliseconds} ms");
             });
 
 
             Task t_statusBar = Task.Run(() =>
             {
+                Stopwatch taskStopwatch = Stopwatch.StartNew();
                 if (!_gameState.IsLoginMap && !_gameState.IsCashShopMap)
                 {
                     Tuple<StatusBarUI, StatusBarChatUI> statusBar = MapSimulatorLoader.CreateStatusBarFromProperty(uiStatusBarImage, uiStatus2BarImage, uiBasicImage, uiBuffIconImage, _mapBoard, GraphicsDevice, UserScreenScaleFactor, _renderParams, soundUIImage, _gameState.IsBigBangUpdate);
@@ -1443,6 +1480,8 @@ namespace HaCreator.MapSimulator
                         statusBarChatUI = statusBar.Item2;
                     }
                 }
+                taskStopwatch.Stop();
+                Debug.WriteLine($"[MapLoad] Status bar task finished in {taskStopwatch.ElapsedMilliseconds} ms");
             });
 
 
@@ -1450,14 +1489,23 @@ namespace HaCreator.MapSimulator
             // or expired pooled textures across map transitions.
             Task t_cursor = Task.Run(() =>
             {
+                Stopwatch taskStopwatch = Stopwatch.StartNew();
                 WzImageProperty cursorImageProperty = (WzImageProperty)uiBasicImage["Cursor"];
                 this.mouseCursor = MapSimulatorLoader.CreateMouseCursorFromProperty(_texturePool, cursorImageProperty, 0, 0, _DxDeviceManager.GraphicsDevice, usedProps, false);
+                taskStopwatch.Stop();
+                Debug.WriteLine($"[MapLoad] Cursor task finished in {taskStopwatch.ElapsedMilliseconds} ms");
             });
 
 
             // Wait for all loading tasks
 
+            ThreadPool.GetAvailableThreads(out int workerThreadsBeforeWait, out int completionPortThreadsBeforeWait);
+            Stopwatch waitAllStopwatch = Stopwatch.StartNew();
             Task.WaitAll(t_tiles, t_Background, t_reactor, t_npc, t_mobs, t_portal, t_tooltips, t_minimap, t_statusBar, t_cursor);
+            waitAllStopwatch.Stop();
+            ThreadPool.GetAvailableThreads(out int workerThreadsAfterWait, out int completionPortThreadsAfterWait);
+            Debug.WriteLine($"[MapLoad] Task.WaitAll blocked for {waitAllStopwatch.ElapsedMilliseconds} ms (worker threads before/after: {workerThreadsBeforeWait}/{workerThreadsAfterWait}, IO before/after: {completionPortThreadsBeforeWait}/{completionPortThreadsAfterWait})");
+            Debug.WriteLine($"[MapLoad] Parallel asset tasks finished in {loadMapContentStopwatch.ElapsedMilliseconds} ms");
 
 
 
@@ -1519,6 +1567,7 @@ namespace HaCreator.MapSimulator
                             Math.Max(24, (_renderParams.RenderHeight / 2) - 263)));
                 }
             }
+            Debug.WriteLine($"[MapLoad] UI/window setup finished in {loadMapContentStopwatch.ElapsedMilliseconds} ms");
 
 
             ReplaceQuestGatedMapObjects(questGatedMapObjects);
@@ -1573,6 +1622,7 @@ namespace HaCreator.MapSimulator
                 statusBarChatUI.ToggleChatRequested = () => _chat.ToggleActive(Environment.TickCount);
                 statusBarChatUI.CycleChatTargetRequested = delta => _chat.CycleTarget(delta);
             }
+            Debug.WriteLine($"[MapLoad] Status/UI provider hookup finished in {loadMapContentStopwatch.ElapsedMilliseconds} ms");
 
 
             // Reconnect Ability/Stat window to player's CharacterBuild after map change
@@ -1864,6 +1914,9 @@ namespace HaCreator.MapSimulator
                 obj.MSTag = null;
                 obj.MSTagSpine = null;
             }
+
+            loadMapContentStopwatch.Stop();
+            Debug.WriteLine($"[MapLoad] Total LoadMapContent for map {_mapBoard?.MapInfo?.id} took {loadMapContentStopwatch.ElapsedMilliseconds} ms");
         }
     }
 }

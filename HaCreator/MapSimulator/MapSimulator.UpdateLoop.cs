@@ -1132,11 +1132,15 @@ namespace HaCreator.MapSimulator
                         _screenEffects.UpdateFade(currTickCount);
                         if (_screenEffects.IsFadeOutComplete || !_screenEffects.IsFadeActive)
                         {
+                            Stopwatch mapChangeStopwatch = Stopwatch.StartNew();
                             PendingCrossMapTeleportTarget pendingCrossMapTeleport = _pendingCrossMapTeleportTarget;
                             _gameState.PendingMapChange = false;
 
 
+                            Stopwatch loadCallbackStopwatch = Stopwatch.StartNew();
                             Tuple<Board, string> result = _loadMapCallback(_gameState.PendingMapId);
+                            loadCallbackStopwatch.Stop();
+                            Debug.WriteLine($"[MapChange] _loadMapCallback({_gameState.PendingMapId}) took {loadCallbackStopwatch.ElapsedMilliseconds} ms");
                             if (result != null && result.Item1 != null)
                             {
                                 string entryRestrictionMessage = GetPendingMapEntryRestrictionMessage(result.Item1);
@@ -1159,9 +1163,15 @@ namespace HaCreator.MapSimulator
                                 }
 
 
+                                Stopwatch unloadStopwatch = Stopwatch.StartNew();
                                 UnloadMapContent();
+                                unloadStopwatch.Stop();
+                                Debug.WriteLine($"[MapChange] UnloadMapContent took {unloadStopwatch.ElapsedMilliseconds} ms");
 
+                                Stopwatch loadContentStopwatch = Stopwatch.StartNew();
                                 LoadMapContent(result.Item1, result.Item2, _gameState.PendingPortalName, _gameState.PendingPortalIndex);
+                                loadContentStopwatch.Stop();
+                                Debug.WriteLine($"[MapChange] LoadMapContent took {loadContentStopwatch.ElapsedMilliseconds} ms");
 
 
 
@@ -1184,6 +1194,8 @@ namespace HaCreator.MapSimulator
 
 
                                 _playerManager?.Input?.SyncState();
+                                mapChangeStopwatch.Stop();
+                                Debug.WriteLine($"[MapChange] Total transition to map {newMapId} took {mapChangeStopwatch.ElapsedMilliseconds} ms");
 
                             }
 

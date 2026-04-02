@@ -19,6 +19,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using HaCreator.MapSimulator.UI.Controls;
 using System.Linq;
+using System.Runtime.CompilerServices;
 
 namespace HaCreator.MapSimulator.Loaders
 {
@@ -31,6 +32,51 @@ namespace HaCreator.MapSimulator.Loaders
         // Constants
         private const string GLOBAL_FONT = "Arial";
         private const float MINIMAP_STREETNAME_TOOLTIP_FONTSIZE = 10f;
+        private static readonly ConcurrentDictionary<string, Tuple<StatusBarUI, StatusBarChatUI>> _statusBarCache = new(StringComparer.Ordinal);
+        private static readonly ConcurrentDictionary<string, MinimapUI> _minimapCache = new(StringComparer.Ordinal);
+        private static readonly ConcurrentDictionary<string, Dictionary<string, Texture2D>> _buffIconTextureCache = new(StringComparer.Ordinal);
+        private static readonly ConcurrentDictionary<string, IReadOnlyDictionary<string, BuffIconCatalogEntry>> _buffIconCatalogCache = new(StringComparer.Ordinal);
+        private static readonly ConcurrentDictionary<string, Texture2D[]> _skillTooltipTextureCache = new(StringComparer.Ordinal);
+        private static readonly ConcurrentDictionary<string, Dictionary<string, StatusBarKeyDownBarTextures>> _keyDownBarTextureCache = new(StringComparer.Ordinal);
+        private static readonly ConcurrentDictionary<string, StatusBarWarningAnimation> _warningAnimationCache = new(StringComparer.Ordinal);
+        private static readonly ConcurrentDictionary<string, (Dictionary<MapSimulatorChatTargetType, Texture2D> Textures, Dictionary<MapSimulatorChatTargetType, Point> Origins)> _chatTargetTextureCache = new(StringComparer.Ordinal);
+        private static readonly ConcurrentDictionary<string, StatusBarChatUI.StatusBarPointNotificationAnimation> _pointNotificationAnimationCache = new(StringComparer.Ordinal);
+
+        private static string GetDeviceCachePrefix(GraphicsDevice device)
+        {
+            return device == null
+                ? "nodevice"
+                : $"device:{RuntimeHelpers.GetHashCode(device)}";
+        }
+
+        private static string BuildStatusBarCacheKey(GraphicsDevice device, RenderParameters renderParams, bool isBigBang)
+        {
+            return $"{GetDeviceCachePrefix(device)}|statusbar|bb:{isBigBang}|rw:{renderParams.RenderWidth}|rh:{renderParams.RenderHeight}|scale:{renderParams.RenderObjectScaling}";
+        }
+
+        private static string BuildMinimapCacheKey(GraphicsDevice device, Board mapBoard, float userScreenScaleFactor, bool isBigBang)
+        {
+            int mapId = mapBoard?.MapInfo?.id ?? 0;
+            bool zeroMirror = mapBoard?.MapInfo?.zeroSideOnly ?? false;
+            int miniMapWidth = mapBoard?.MiniMap?.Width ?? 0;
+            int miniMapHeight = mapBoard?.MiniMap?.Height ?? 0;
+            return $"{GetDeviceCachePrefix(device)}|minimap|map:{mapId}|bb:{isBigBang}|zero:{zeroMirror}|scale:{userScreenScaleFactor}|w:{miniMapWidth}|h:{miniMapHeight}";
+        }
+
+        private static string BuildWarningAnimationCacheKey(GraphicsDevice device, WzSubProperty warningProperty)
+        {
+            return $"{GetDeviceCachePrefix(device)}|warn:{warningProperty?.FullPath ?? string.Empty}";
+        }
+
+        private static string BuildChatTargetTextureCacheKey(GraphicsDevice device, WzSubProperty chatTargetProperty)
+        {
+            return $"{GetDeviceCachePrefix(device)}|chatTarget:{chatTargetProperty?.FullPath ?? string.Empty}";
+        }
+
+        private static string BuildPointNotificationCacheKey(GraphicsDevice device, WzSubProperty notificationProperty)
+        {
+            return $"{GetDeviceCachePrefix(device)}|pointNotify:{notificationProperty?.FullPath ?? string.Empty}";
+        }
 
         #region StatusBar
         /// <summary>
@@ -49,6 +95,12 @@ namespace HaCreator.MapSimulator.Loaders
             WzImage uiStatusBar, WzImage uiStatusBar2, WzImage uiBasic, WzImage uiBuffIcon, Board mapBoard, GraphicsDevice device,
             float UserScreenScaleFactor, RenderParameters renderParams, WzImage soundUIImage, bool bBigBang)
         {
+            string statusBarCacheKey = BuildStatusBarCacheKey(device, renderParams, bBigBang);
+            if (_statusBarCache.TryGetValue(statusBarCacheKey, out Tuple<StatusBarUI, StatusBarChatUI> cachedStatusBar))
+            {
+                return cachedStatusBar;
+            }
+
             // Pre-big bang maplestory status bar
             if (bBigBang)
             {
@@ -594,7 +646,9 @@ namespace HaCreator.MapSimulator.Loaders
                         LoadPointNotificationAnimation(mainBarProperties?["SpNotify"] as WzSubProperty, device));
                     chatUI.BindControls(obj_Ui_chatTarget, obj_Ui_chatOpen, obj_Ui_chatClose, obj_Ui_scrollUp, obj_Ui_scrollDown, obj_Ui_BtCharacter, obj_Ui_MemoIcon);
 
-                    return new Tuple<StatusBarUI, StatusBarChatUI>(statusBar, chatUI);
+                    var result = new Tuple<StatusBarUI, StatusBarChatUI>(statusBar, chatUI);
+                    _statusBarCache[statusBarCacheKey] = result;
+                    return result;
                 }
             }
             else
@@ -849,7 +903,9 @@ namespace HaCreator.MapSimulator.Loaders
                     }
 
                     // Pre-BB doesn't have separate chat UI, return null for chatUI
-                    return new Tuple<StatusBarUI, StatusBarChatUI>(statusBar, null);
+                    var result = new Tuple<StatusBarUI, StatusBarChatUI>(statusBar, null);
+                    _statusBarCache[statusBarCacheKey] = result;
+                    return result;
                 }
             }
             return null;
@@ -857,42 +913,62 @@ namespace HaCreator.MapSimulator.Loaders
 
         private static Dictionary<string, Texture2D> LoadBuffIconTextures(WzImage uiBuffIcon, GraphicsDevice device)
         {
-            var buffIconTextures = new Dictionary<string, Texture2D>(StringComparer.OrdinalIgnoreCase);
             if (uiBuffIcon == null)
             {
-                return buffIconTextures;
+                return new Dictionary<string, Texture2D>(StringComparer.OrdinalIgnoreCase);
             }
 
             if (device == null)
             {
-                return buffIconTextures;
+                return new Dictionary<string, Texture2D>(StringComparer.OrdinalIgnoreCase);
             }
 
+            string cacheKey = $"{GetDeviceCachePrefix(device)}|buffIcons:{uiBuffIcon.Name}";
+            if (_buffIconTextureCache.TryGetValue(cacheKey, out Dictionary<string, Texture2D> cachedTextures))
+            {
+                return cachedTextures;
+            }
+
+            var buffIconTextures = new Dictionary<string, Texture2D>(StringComparer.OrdinalIgnoreCase);
             LoadBuffIconsRecursive(buffIconTextures, uiBuffIcon, device, string.Empty);
+            _buffIconTextureCache[cacheKey] = buffIconTextures;
             return buffIconTextures;
         }
 
         public static IReadOnlyDictionary<string, BuffIconCatalogEntry> LoadBuffIconCatalogEntries(WzImage uiBuffIcon)
         {
-            var catalogEntries = new Dictionary<string, BuffIconCatalogEntry>(StringComparer.OrdinalIgnoreCase);
             if (uiBuffIcon == null)
             {
-                return catalogEntries;
+                return new Dictionary<string, BuffIconCatalogEntry>(StringComparer.OrdinalIgnoreCase);
             }
 
+            string cacheKey = $"buffCatalog:{uiBuffIcon.Name}";
+            if (_buffIconCatalogCache.TryGetValue(cacheKey, out IReadOnlyDictionary<string, BuffIconCatalogEntry> cachedCatalogEntries))
+            {
+                return cachedCatalogEntries;
+            }
+
+            var catalogEntries = new Dictionary<string, BuffIconCatalogEntry>(StringComparer.OrdinalIgnoreCase);
             int sortOrder = 0;
             LoadBuffIconCatalogEntriesRecursive(catalogEntries, uiBuffIcon, string.Empty, ref sortOrder);
+            _buffIconCatalogCache[cacheKey] = catalogEntries;
             return catalogEntries;
         }
 
         private static Texture2D[] LoadSkillTooltipTextures(GraphicsDevice device)
         {
-            Texture2D[] tooltipFrames = new Texture2D[3];
             if (device == null)
             {
-                return tooltipFrames;
+                return new Texture2D[3];
             }
 
+            string cacheKey = $"{GetDeviceCachePrefix(device)}|skillTooltip";
+            if (_skillTooltipTextureCache.TryGetValue(cacheKey, out Texture2D[] cachedFrames))
+            {
+                return cachedFrames;
+            }
+
+            Texture2D[] tooltipFrames = new Texture2D[3];
             WzImage uiWindow2Image = Program.FindImage("UI", "UIWindow2.img");
             if (uiWindow2Image == null)
             {
@@ -909,6 +985,7 @@ namespace HaCreator.MapSimulator.Loaders
             tooltipFrames[0] = LoadCanvasTexture(mainProperty["tip0"] as WzCanvasProperty, device);
             tooltipFrames[1] = LoadCanvasTexture(mainProperty["tip1"] as WzCanvasProperty, device);
             tooltipFrames[2] = LoadCanvasTexture(mainProperty["tip2"] as WzCanvasProperty, device);
+            _skillTooltipTextureCache[cacheKey] = tooltipFrames;
             return tooltipFrames;
         }
 
@@ -952,12 +1029,18 @@ namespace HaCreator.MapSimulator.Loaders
 
         private static Dictionary<string, StatusBarKeyDownBarTextures> LoadKeyDownBarTextures(WzImage uiBasic, GraphicsDevice device)
         {
-            var keyDownBarTextures = new Dictionary<string, StatusBarKeyDownBarTextures>(StringComparer.OrdinalIgnoreCase);
             if (uiBasic == null || device == null)
             {
-                return keyDownBarTextures;
+                return new Dictionary<string, StatusBarKeyDownBarTextures>(StringComparer.OrdinalIgnoreCase);
             }
 
+            string cacheKey = $"{GetDeviceCachePrefix(device)}|keyDown:{uiBasic.Name}";
+            if (_keyDownBarTextureCache.TryGetValue(cacheKey, out Dictionary<string, StatusBarKeyDownBarTextures> cachedTextures))
+            {
+                return cachedTextures;
+            }
+
+            var keyDownBarTextures = new Dictionary<string, StatusBarKeyDownBarTextures>(StringComparer.OrdinalIgnoreCase);
             static Point GetCanvasOrigin(WzCanvasProperty canvas)
             {
                 if (!(canvas?["origin"] is WzVectorProperty origin))
@@ -991,6 +1074,7 @@ namespace HaCreator.MapSimulator.Loaders
                 }
             }
 
+            _keyDownBarTextureCache[cacheKey] = keyDownBarTextures;
             return keyDownBarTextures;
         }
 
@@ -1235,12 +1319,18 @@ namespace HaCreator.MapSimulator.Loaders
 
         private static StatusBarWarningAnimation LoadStatusBarWarningAnimation(WzSubProperty warningProperty, GraphicsDevice device)
         {
-            var animation = new StatusBarWarningAnimation();
             if (warningProperty == null || device == null)
             {
-                return animation;
+                return new StatusBarWarningAnimation();
             }
 
+            string cacheKey = BuildWarningAnimationCacheKey(device, warningProperty);
+            if (_warningAnimationCache.TryGetValue(cacheKey, out StatusBarWarningAnimation cachedAnimation))
+            {
+                return cachedAnimation;
+            }
+
+            var animation = new StatusBarWarningAnimation();
             var frames = new List<Texture2D>();
             int frameDelayMs = animation.FrameDelayMs;
 
@@ -1267,38 +1357,53 @@ namespace HaCreator.MapSimulator.Loaders
             animation.Frames = frames.ToArray();
             animation.FrameDelayMs = frameDelayMs;
             animation.FlashDurationMs = 500;
+            _warningAnimationCache[cacheKey] = animation;
             return animation;
         }
 
         private static (Dictionary<MapSimulatorChatTargetType, Texture2D> Textures, Dictionary<MapSimulatorChatTargetType, Point> Origins)
             LoadChatTargetTextures(WzSubProperty chatTargetProperty, GraphicsDevice device)
         {
-            var textures = new Dictionary<MapSimulatorChatTargetType, Texture2D>();
-            var origins = new Dictionary<MapSimulatorChatTargetType, Point>();
             if (chatTargetProperty == null || device == null)
             {
-                return (textures, origins);
+                return (new Dictionary<MapSimulatorChatTargetType, Texture2D>(), new Dictionary<MapSimulatorChatTargetType, Point>());
             }
 
+            string cacheKey = BuildChatTargetTextureCacheKey(device, chatTargetProperty);
+            if (_chatTargetTextureCache.TryGetValue(cacheKey, out var cachedTextures))
+            {
+                return cachedTextures;
+            }
+
+            var textures = new Dictionary<MapSimulatorChatTargetType, Texture2D>();
+            var origins = new Dictionary<MapSimulatorChatTargetType, Point>();
             AddChatTargetTexture(textures, origins, chatTargetProperty, "all", MapSimulatorChatTargetType.All, device);
             AddChatTargetTexture(textures, origins, chatTargetProperty, "friend", MapSimulatorChatTargetType.Friend, device);
             AddChatTargetTexture(textures, origins, chatTargetProperty, "party", MapSimulatorChatTargetType.Party, device);
             AddChatTargetTexture(textures, origins, chatTargetProperty, "guild", MapSimulatorChatTargetType.Guild, device);
             AddChatTargetTexture(textures, origins, chatTargetProperty, "association", MapSimulatorChatTargetType.Association, device);
             AddChatTargetTexture(textures, origins, chatTargetProperty, "expedition", MapSimulatorChatTargetType.Expedition, device);
-            return (textures, origins);
+            var result = (textures, origins);
+            _chatTargetTextureCache[cacheKey] = result;
+            return result;
         }
 
         private static StatusBarChatUI.StatusBarPointNotificationAnimation LoadPointNotificationAnimation(
             WzSubProperty notificationProperty,
             GraphicsDevice device)
         {
-            var animation = new StatusBarChatUI.StatusBarPointNotificationAnimation();
             if (notificationProperty == null || device == null)
             {
-                return animation;
+                return new StatusBarChatUI.StatusBarPointNotificationAnimation();
             }
 
+            string cacheKey = BuildPointNotificationCacheKey(device, notificationProperty);
+            if (_pointNotificationAnimationCache.TryGetValue(cacheKey, out StatusBarChatUI.StatusBarPointNotificationAnimation cachedAnimation))
+            {
+                return cachedAnimation;
+            }
+
+            var animation = new StatusBarChatUI.StatusBarPointNotificationAnimation();
             var frames = new List<Texture2D>();
             var origins = new List<Point>();
             var frameDelays = new List<int>();
@@ -1340,6 +1445,7 @@ namespace HaCreator.MapSimulator.Loaders
             animation.Frames = frames.ToArray();
             animation.Origins = origins.ToArray();
             animation.FrameDelaysMs = frameDelays.ToArray();
+            _pointNotificationAnimationCache[cacheKey] = animation;
             return animation;
         }
 
@@ -1607,6 +1713,12 @@ namespace HaCreator.MapSimulator.Loaders
         {
             if (mapBoard.MiniMap == null)
                 return null;
+
+            string minimapCacheKey = BuildMinimapCacheKey(device, mapBoard, UserScreenScaleFactor, bBigBang);
+            if (_minimapCache.TryGetValue(minimapCacheKey, out MinimapUI cachedMinimap))
+            {
+                return cachedMinimap;
+            }
 
             WzSubProperty minimapFrameProperty = (WzSubProperty)uiWindow2Image?["MiniMap"];
             if (minimapFrameProperty == null) // UIWindow2 not available pre-BB.
@@ -2138,6 +2250,7 @@ namespace HaCreator.MapSimulator.Loaders
 
                 minimapItem.InitializeMinimapButtons(objUIBtMin, objUIBtMax, null, null, objUIBtMap);
             }
+            _minimapCache[minimapCacheKey] = minimapItem;
             return minimapItem;
         }
 

@@ -599,16 +599,6 @@ namespace HaCreator.MapSimulator.Character
             Point bodyNeck = bodyFrame.GetMapPoint(MAP_NECK);
             CharacterFrame headFrame = suppressBaseAvatar ? null : GetPartFrame(_build.Head, actionName, frameIndex);
 
-            // Debug: log what we're getting
-            if (frameIndex == 0)
-            {
-                System.Diagnostics.Debug.WriteLine($"[Assembler] action={actionName}, frame={frameIndex}");
-                System.Diagnostics.Debug.WriteLine($"[Assembler] Body has texture: {bodyFrame.Texture != null}");
-                System.Diagnostics.Debug.WriteLine($"[Assembler] Head part: {_build.Head != null}, headFrame: {headFrame != null}");
-                System.Diagnostics.Debug.WriteLine($"[Assembler] Face part: {_build.Face != null}");
-                System.Diagnostics.Debug.WriteLine($"[Assembler] Hair part: {_build.Hair != null}");
-            }
-
             Point? headOffset = null;
             if (!suppressBaseAvatar && headFrame != null)
             {
@@ -621,9 +611,6 @@ namespace HaCreator.MapSimulator.Character
 
                 // Add face - relative to head
                 var faceFrame = GetFaceFrame(_build.Face, _faceExpressionName, frameIndex);
-                if (frameIndex == 0)
-                    System.Diagnostics.Debug.WriteLine($"[Assembler] faceFrame: {faceFrame != null}");
-
                 if (faceFrame != null)
                 {
                     Point headBrow = headFrame.GetMapPoint(MAP_BROW);
@@ -636,18 +623,7 @@ namespace HaCreator.MapSimulator.Character
                 }
 
                 // Add hair - relative to head
-                if (frameIndex == 0 && _build.Hair != null)
-                {
-                    System.Diagnostics.Debug.WriteLine($"[Assembler] Hair has {_build.Hair.Animations.Count} animations:");
-                    foreach (var kv in _build.Hair.Animations)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"  - {kv.Key}: {kv.Value.Frames.Count} frames");
-                    }
-                }
                 var hairFrame = GetPartFrame(_build.Hair, actionName, frameIndex);
-                if (frameIndex == 0)
-                    System.Diagnostics.Debug.WriteLine($"[Assembler] hairFrame: {hairFrame != null}");
-
                 if (hairFrame != null)
                 {
                     Point headBrow = headFrame.GetMapPoint(MAP_BROW);
@@ -1126,21 +1102,9 @@ namespace HaCreator.MapSimulator.Character
         {
             if (face == null) return null;
 
-            // Debug: show available expressions
-            if (frameIndex == 0)
-            {
-                System.Diagnostics.Debug.WriteLine($"[Assembler] Face has {face.Expressions.Count} expressions:");
-                foreach (var kv in face.Expressions)
-                {
-                    System.Diagnostics.Debug.WriteLine($"  - {kv.Key}: {kv.Value.Frames.Count} frames");
-                }
-            }
-
             var expr = face.GetExpression(expressionName) ?? face.GetExpression("default") ?? face.GetExpression("blink");
             if (expr == null || expr.Frames.Count == 0)
             {
-                if (frameIndex == 0)
-                    System.Diagnostics.Debug.WriteLine($"[Assembler] No valid face expression found!");
                 return null;
             }
 
@@ -1174,11 +1138,6 @@ namespace HaCreator.MapSimulator.Character
 
             if (TryResolveAnchorOffset(bodyFrame, equipFrame, baseOffset, anchorCandidates, out Point anchorOffset, out string resolvedAnchor))
             {
-                if (type == CharacterPartType.Weapon || type == CharacterPartType.WeaponOverGlove || type == CharacterPartType.WeaponOverHand)
-                {
-                    System.Diagnostics.Debug.WriteLine($"[Assembler] Weapon positioning anchor={resolvedAnchor}, z={equipFrame.Z}");
-                }
-
                 return anchorOffset;
             }
 
