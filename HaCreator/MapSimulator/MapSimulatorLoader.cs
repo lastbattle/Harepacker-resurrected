@@ -56,6 +56,48 @@ namespace HaCreator.MapSimulator {
             return holder.Texture;
         }
 
+        private static void EnsureCanvasTextureLoaded(TexturePool texturePool, WzCanvasProperty canvasProperty, GraphicsDevice device) {
+            if (canvasProperty?.MSTag != null) {
+                return;
+            }
+
+            string canvasBitmapPath = canvasProperty.FullPath;
+            Texture2D textureFromCache = texturePool.GetTexture(canvasBitmapPath);
+            if (textureFromCache != null) {
+                canvasProperty.MSTag = textureFromCache;
+                return;
+            }
+
+            using (var bitmap = canvasProperty.GetLinkedWzCanvasBitmap())
+            {
+                if (bitmap != null) {
+                    canvasProperty.MSTag = bitmap.ToTexture2D(device);
+                }
+            }
+
+            if (canvasProperty.MSTag != null) {
+                texturePool.AddTextureToPool(canvasBitmapPath, (Texture2D)canvasProperty.MSTag);
+            }
+        }
+
+        private static IDXObject CreateFrameDrawable(WzCanvasProperty canvasProperty, int x, int y, GraphicsDevice device, int? delay = null) {
+            System.Drawing.PointF origin = canvasProperty.GetCanvasOriginPosition();
+
+            if (canvasProperty.MSTagSpine is WzSpineObject spineObject) {
+                return delay.HasValue
+                    ? new DXSpineObject(spineObject, x, y, origin, delay.Value)
+                    : new DXSpineObject(spineObject, x, y, origin);
+            }
+
+            Texture2D texture = canvasProperty.MSTag as Texture2D ?? GetTransparentTexture(device);
+            int drawX = x - (int)origin.X;
+            int drawY = y - (int)origin.Y;
+
+            return delay.HasValue
+                ? new DXObject(drawX, drawY, texture, delay.Value)
+                : new DXObject(drawX, drawY, texture);
+        }
+
         // Constants
         private const string GLOBAL_FONT = "Arial";
         private const float TOOLTIP_FONTSIZE = 9.25f; // thankie willified, ya'll be remembered forever here <3
@@ -146,44 +188,10 @@ namespace HaCreator.MapSimulator {
             {
                 bool bLoadedSpine = LoadSpineMapObjectItem(source, source, device, spineAni);
                 if (!bLoadedSpine) {
-                    string canvasBitmapPath = property.FullPath;
-                    Texture2D textureFromCache = texturePool.GetTexture(canvasBitmapPath);
-                    if (textureFromCache != null) {
-                        source.MSTag = textureFromCache;
-                    }
-                    else {
-                        using (var bitmap = property.GetLinkedWzCanvasBitmap())
-                        {
-                            if (bitmap != null)
-                            {
-                                source.MSTag = bitmap.ToTexture2D(device);
-                                // add to cache
-                                texturePool.AddTextureToPool(canvasBitmapPath, (Texture2D)source.MSTag);
-                            }
-                        }
-                    }
+                    EnsureCanvasTextureLoaded(texturePool, property, device);
                 }
                 usedProps.Add(source);
-
-                if (source.MSTagSpine != null) {
-                    WzSpineObject spineObject = (WzSpineObject)source.MSTagSpine;
-                    System.Drawing.PointF origin = property.GetCanvasOriginPosition();
-
-                    frames.Add(new DXSpineObject(spineObject, x, y, origin));
-                }
-                else if (source.MSTag != null) {
-                    Texture2D texture = (Texture2D)source.MSTag;
-                    System.Drawing.PointF origin = property.GetCanvasOriginPosition();
-
-                    frames.Add(new DXObject(x - (int)origin.X, y - (int)origin.Y, texture));
-                }
-                else // fallback
-                {
-                    Texture2D texture = GetTransparentTexture(device);
-                    System.Drawing.PointF origin = property.GetCanvasOriginPosition();
-
-                    frames.Add(new DXObject(x - (int)origin.X, y - (int)origin.Y, texture));
-                }
+                frames.Add(CreateFrameDrawable(property, x, y, device));
             }
             else if (source is WzSubProperty) // animated
             {
@@ -215,47 +223,10 @@ namespace HaCreator.MapSimulator {
 
                         bool bLoadedSpine = LoadSpineMapObjectItem((WzImageProperty)frameProp.Parent, frameProp, device, spineAni);
                         if (!bLoadedSpine) {
-                            if (frameProp.MSTag == null) {
-                                string canvasBitmapPath = frameProp.FullPath;
-                                Texture2D textureFromCache = texturePool.GetTexture(canvasBitmapPath);
-                                if (textureFromCache != null) {
-                                    frameProp.MSTag = textureFromCache;
-                                }
-                                else {
-                                    using (var bitmap = frameProp.GetLinkedWzCanvasBitmap())
-                                    {
-                                        if (bitmap != null) {
-                                            frameProp.MSTag = bitmap.ToTexture2D(device);
-                                        }
-                                    }
-
-                                    // add to cache
-                                    if (frameProp.MSTag != null) {
-                                        texturePool.AddTextureToPool(canvasBitmapPath, (Texture2D)frameProp.MSTag);
-                                    }
-                                }
-                            }
+                            EnsureCanvasTextureLoaded(texturePool, frameProp, device);
                         }
                         usedProps.Add(frameProp);
-
-                        if (frameProp.MSTagSpine != null) {
-                            WzSpineObject spineObject = (WzSpineObject)frameProp.MSTagSpine;
-                            System.Drawing.PointF origin = frameProp.GetCanvasOriginPosition();
-
-                            frames.Add(new DXSpineObject(spineObject, x, y, origin, delay));
-                        }
-                        else if (frameProp.MSTag != null) {
-                            Texture2D texture = (Texture2D)frameProp.MSTag;
-                            System.Drawing.PointF origin = frameProp.GetCanvasOriginPosition();
-
-                            frames.Add(new DXObject(x - (int)origin.X, y - (int)origin.Y, texture, delay));
-                        }
-                        else {
-                            Texture2D texture = GetTransparentTexture(device);
-                            System.Drawing.PointF origin = frameProp.GetCanvasOriginPosition();
-
-                            frames.Add(new DXObject(x - (int)origin.X, y - (int)origin.Y, texture, delay));
-                        }
+                        frames.Add(CreateFrameDrawable(frameProp, x, y, device, delay));
                     }
                 }
             }
@@ -280,9 +251,7 @@ namespace HaCreator.MapSimulator {
             WzImageProperty source, 
             int x, int y, 
             Point mapCenter, GraphicsDevice device, ConcurrentBag<WzObject> usedProps, bool flip) {
-
-            BaseDXDrawableItem mapItem = new BaseDXDrawableItem(LoadFrames(texturePool, source, x, y, device, usedProps), flip);
-            return mapItem;
+            return new BaseDXDrawableItem(LoadFrames(texturePool, source, x, y, device, usedProps), flip);
         }
 
         /// <summary>
