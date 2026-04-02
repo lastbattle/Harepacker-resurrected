@@ -347,6 +347,13 @@ namespace HaCreator.MapSimulator.UI {
 
         public void SetLeftClusterWidth(int leftClusterWidth)
         {
+            if (leftClusterWidth <= NAME_TEXT_POS.X + 8f)
+            {
+                _jobTextMaxWidth = JOB_TEXT_MAX_WIDTH;
+                _nameTextMaxWidth = DEFAULT_NAME_TEXT_MAX_WIDTH;
+                return;
+            }
+
             float availableJobWidth = Math.Max(1f, leftClusterWidth - JOB_TEXT_POS.X - 4f);
             float availableNameWidth = Math.Max(1f, leftClusterWidth - NAME_TEXT_POS.X - 4f);
             _jobTextMaxWidth = Math.Min(JOB_TEXT_MAX_WIDTH, availableJobWidth);
@@ -1497,8 +1504,7 @@ namespace HaCreator.MapSimulator.UI {
                 return;
             }
 
-            sprite.DrawString(_font, text, position + Vector2.One, Color.Black);
-            sprite.DrawString(_font, text, position, color);
+            ClientTextDrawing.DrawShadowed(sprite, text, position, color, _font);
         }
 
         private float MeasureLongestLine(string[] lines)
@@ -1508,7 +1514,7 @@ namespace HaCreator.MapSimulator.UI {
             {
                 if (!string.IsNullOrWhiteSpace(lines[i]))
                 {
-                    width = Math.Max(width, _font.MeasureString(lines[i]).X);
+                    width = Math.Max(width, ClientTextDrawing.Measure((GraphicsDevice)null, lines[i], 1.0f, _font).X);
                 }
             }
 
@@ -1556,7 +1562,7 @@ namespace HaCreator.MapSimulator.UI {
                 foreach (string word in words)
                 {
                     string candidate = string.IsNullOrEmpty(currentLine) ? word : $"{currentLine} {word}";
-                    if (!string.IsNullOrEmpty(currentLine) && _font.MeasureString(candidate).X > maxWidth)
+                    if (!string.IsNullOrEmpty(currentLine) && ClientTextDrawing.Measure((GraphicsDevice)null, candidate, 1.0f, _font).X > maxWidth)
                     {
                         lines.Add(currentLine);
                         currentLine = word;
@@ -1677,7 +1683,7 @@ namespace HaCreator.MapSimulator.UI {
                 return 0f;
             }
 
-            return _font.MeasureString(text).X * spriteFontScale;
+            return ClientTextDrawing.Measure((GraphicsDevice)null, text, spriteFontScale, _font).X;
         }
 
         private Vector2 GetClientLevelTextPosition(Vector2 basePosLeft, string levelText)
@@ -1816,6 +1822,15 @@ namespace HaCreator.MapSimulator.UI {
         /// Draw text with a shadow effect (similar to client rendering)
         /// </summary>
         private void DrawTextWithShadow(SpriteBatch sprite, string text, Vector2 position, Color textColor, Color shadowColor, float scale = 1.0f) {
+            if (string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            ClientTextDrawing.DrawOutlined(sprite, text, position, textColor, shadowColor, _font, scale);
+            return;
+
+/*
             // Draw shadow at offset positions (similar to client shadow rendering)
             sprite.DrawString(_font, text, position + new Vector2(-1, 0), shadowColor, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
             sprite.DrawString(_font, text, position + new Vector2(1, 0), shadowColor, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
@@ -1824,6 +1839,7 @@ namespace HaCreator.MapSimulator.UI {
 
             // Draw main text
             sprite.DrawString(_font, text, position, textColor, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+*/
         }
 
         private void DrawPlainText(SpriteBatch sprite, string text, Vector2 position, Color textColor, float scale = 1.0f, float? maxWidth = null)
@@ -1834,12 +1850,6 @@ namespace HaCreator.MapSimulator.UI {
             }
 
             Vector2 snappedPosition = SnapToPixel(position);
-            if (_clientTextRasterizer != null)
-            {
-                _clientTextRasterizer.DrawString(sprite, text, snappedPosition, textColor, scale, maxWidth);
-                return;
-            }
-
             string textToDraw = maxWidth.HasValue
                 ? ClipTextToWidth(text, maxWidth.Value, scale)
                 : text;
@@ -1848,22 +1858,12 @@ namespace HaCreator.MapSimulator.UI {
                 return;
             }
 
-            sprite.DrawString(_font, textToDraw, snappedPosition, textColor, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            ClientTextDrawing.Draw(sprite, textToDraw, snappedPosition, textColor, scale, _font, maxWidth);
         }
 
         private void DrawDiagonalShadowText(SpriteBatch sprite, string text, Vector2 position, Color textColor, Color shadowColor, float scale = 1.0f, float? maxWidth = null)
         {
             Vector2 snappedPosition = SnapToPixel(position);
-            if (_clientTextRasterizer != null)
-            {
-                _clientTextRasterizer.DrawString(sprite, text, snappedPosition + new Vector2(-1, -1), shadowColor, scale, maxWidth);
-                _clientTextRasterizer.DrawString(sprite, text, snappedPosition + new Vector2(1, -1), shadowColor, scale, maxWidth);
-                _clientTextRasterizer.DrawString(sprite, text, snappedPosition + new Vector2(-1, 1), shadowColor, scale, maxWidth);
-                _clientTextRasterizer.DrawString(sprite, text, snappedPosition + new Vector2(1, 1), shadowColor, scale, maxWidth);
-                _clientTextRasterizer.DrawString(sprite, text, snappedPosition, textColor, scale, maxWidth);
-                return;
-            }
-
             string textToDraw = maxWidth.HasValue
                 ? ClipTextToWidth(text, maxWidth.Value, scale)
                 : text;
@@ -1872,11 +1872,7 @@ namespace HaCreator.MapSimulator.UI {
                 return;
             }
 
-            sprite.DrawString(_font, textToDraw, snappedPosition + new Vector2(-1, -1), shadowColor, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
-            sprite.DrawString(_font, textToDraw, snappedPosition + new Vector2(1, -1), shadowColor, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
-            sprite.DrawString(_font, textToDraw, snappedPosition + new Vector2(-1, 1), shadowColor, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
-            sprite.DrawString(_font, textToDraw, snappedPosition + new Vector2(1, 1), shadowColor, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
-            sprite.DrawString(_font, textToDraw, snappedPosition, textColor, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            ClientTextDrawing.DrawOutlined(sprite, textToDraw, snappedPosition, textColor, shadowColor, _font, scale);
         }
 
         private Vector2 MeasureStatusBarText(string text, float scale)
@@ -1886,12 +1882,7 @@ namespace HaCreator.MapSimulator.UI {
                 return Vector2.Zero;
             }
 
-            if (_clientTextRasterizer != null)
-            {
-                return _clientTextRasterizer.MeasureString(text, scale);
-            }
-
-            return _font?.MeasureString(text) * scale ?? Vector2.Zero;
+            return ClientTextDrawing.Measure((GraphicsDevice)null, text, scale, _font);
         }
 
         /// <summary>
@@ -1935,9 +1926,8 @@ namespace HaCreator.MapSimulator.UI {
                     string charStr = c.ToString();
                     Vector2 charPos = new Vector2(snappedPosition.X + xOffset, snappedPosition.Y);
                     // Draw with slight shadow for visibility
-                    sprite.DrawString(_font, charStr, charPos + new Vector2(1, 1), Color.Black, 0f, Vector2.Zero, scale * 0.8f, SpriteEffects.None, 0f);
-                    sprite.DrawString(_font, charStr, charPos, Color.White, 0f, Vector2.Zero, scale * 0.8f, SpriteEffects.None, 0f);
-                    Vector2 charSize = _font.MeasureString(charStr) * scale * 0.8f;
+                    ClientTextDrawing.DrawShadowed(sprite, charStr, charPos, Color.White, _font, scale * 0.8f);
+                    Vector2 charSize = ClientTextDrawing.Measure((GraphicsDevice)null, charStr, scale * 0.8f, _font);
                     xOffset += (int)charSize.X + CHAR_SPACING;
                 }
             }
