@@ -575,6 +575,7 @@ namespace HaCreator.MapSimulator.Fields
         private int _lastRequestIndex;
         private bool _isVisible;
         private bool _enteredField;
+        private string _localCharacterName;
 
         public bool IsVisible => _isVisible;
         public bool IsEntered => _enteredField;
@@ -601,6 +602,13 @@ namespace HaCreator.MapSimulator.Fields
             _definition = definition;
             _isVisible = _definition != null;
             _activeTab = MonsterCarnivalTab.Mob;
+        }
+
+        public void SetLocalPlayerName(string characterName)
+        {
+            _localCharacterName = string.IsNullOrWhiteSpace(characterName)
+                ? null
+                : characterName.Trim();
         }
 
         public void OnEnter(
@@ -769,7 +777,8 @@ namespace HaCreator.MapSimulator.Fields
                 return;
             }
 
-            ApplySuccessfulRequest(entry);
+            bool spendLocalCp = IsLocalRequestOwner(characterName);
+            ApplySuccessfulRequest(entry, spendLocalCp);
             string successMessage = BuildRequestSuccessMessage(entry, characterName);
             ShowStatus(successMessage, tickCount);
         }
@@ -1341,16 +1350,30 @@ namespace HaCreator.MapSimulator.Fields
             return true;
         }
 
-        private void ApplySuccessfulRequest(MonsterCarnivalEntry entry)
+        private bool IsLocalRequestOwner(string characterName)
+        {
+            if (string.IsNullOrWhiteSpace(characterName))
+            {
+                return true;
+            }
+
+            return !string.IsNullOrWhiteSpace(_localCharacterName)
+                && string.Equals(characterName.Trim(), _localCharacterName, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private void ApplySuccessfulRequest(MonsterCarnivalEntry entry, bool spendLocalCp)
         {
             _activeTab = entry.Tab;
             _selectedEntryIndex = entry.Index;
             _lastRequestTab = (int)entry.Tab;
             _lastRequestIndex = entry.Index;
 
-            _personalCp = Math.Max(0, _personalCp - entry.Cost);
-            MonsterCarnivalTeamState teamState = GetTeamState(_localTeam);
-            teamState.CurrentCp = Math.Max(0, teamState.CurrentCp - entry.Cost);
+            if (spendLocalCp)
+            {
+                _personalCp = Math.Max(0, _personalCp - entry.Cost);
+                MonsterCarnivalTeamState teamState = GetTeamState(_localTeam);
+                teamState.CurrentCp = Math.Max(0, teamState.CurrentCp - entry.Cost);
+            }
 
             Dictionary<int, int> counts = GetCountDictionary(entry.Tab);
             int nextCount = GetEntryCount(counts, entry.Id) + 1;

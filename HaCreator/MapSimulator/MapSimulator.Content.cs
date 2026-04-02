@@ -619,6 +619,7 @@ namespace HaCreator.MapSimulator
             _specialFieldRuntime.BindMap(_mapBoard);
             ApplyClientOwnedFieldWrappers();
             _packetFieldStateRuntime.Initialize(GraphicsDevice, _mapBoard?.MapInfo);
+            BindPacketOwnedStageTransitionMapState();
             SyncWeddingPacketInboxState();
             SyncCoconutPacketInboxState();
             SyncMemoryGamePacketInboxState();
@@ -754,6 +755,7 @@ namespace HaCreator.MapSimulator
             _packetOwnedHudNoticeUI.Initialize(_fontChat, _debugBoundaryTexture, Width, Height);
             LoadPacketOwnedHudNoticeUiFrame();
             LoadPacketOwnedLocalOverlayAssets();
+            LoadPacketOwnedComboAssets();
             LoadPacketOwnedTutorAssets();
 
 
@@ -1159,12 +1161,16 @@ namespace HaCreator.MapSimulator
             // Reset same-map teleport state
             _sameMapTeleportPending = false;
             _sameMapTeleportTarget = null;
-            _packetOwnedTeleportRequestActive = false;
-            _packetOwnedTeleportRequestCompletedAt = int.MinValue;
-            _lastPacketOwnedTeleportPortalIndex = -1;
-            _lastPacketOwnedTeleportSourcePortalName = null;
-            _lastPacketOwnedTeleportTargetPortalName = null;
-            _pendingMapSpawnTarget = null;
+            bool preserveCrossMapTeleportRequest = _pendingCrossMapTeleportTarget != null;
+            if (!preserveCrossMapTeleportRequest)
+            {
+                _packetOwnedTeleportRequestActive = false;
+                _packetOwnedTeleportRequestCompletedAt = int.MinValue;
+                _lastPacketOwnedTeleportPortalIndex = -1;
+                _lastPacketOwnedTeleportSourcePortalName = null;
+                _lastPacketOwnedTeleportTargetPortalName = null;
+                _pendingMapSpawnTarget = null;
+            }
             ClearPassiveTransferRequest();
 
 
@@ -1177,6 +1183,7 @@ namespace HaCreator.MapSimulator
             ResetPetSpeechEventState();
             _fieldMessageBoxRuntime.Clear();
             _packetFieldStateRuntime.Clear();
+            ClearPacketOwnedStageTransitionState();
             _gameState.ExitDirectionModeImmediate();
             _scriptedDirectionModeWindows.Reset();
 
@@ -1733,6 +1740,7 @@ namespace HaCreator.MapSimulator
             _specialFieldRuntime.BindMap(_mapBoard);
             ApplyClientOwnedFieldWrappers();
             _packetFieldStateRuntime.Initialize(GraphicsDevice, _mapBoard?.MapInfo);
+            BindPacketOwnedStageTransitionMapState();
             SyncCoconutPacketInboxState();
             SyncMemoryGamePacketInboxState();
             SyncAriantArenaPacketInboxState();

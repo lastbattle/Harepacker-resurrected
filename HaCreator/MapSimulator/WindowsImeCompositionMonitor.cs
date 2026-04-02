@@ -25,6 +25,7 @@ namespace HaCreator.MapSimulator
         public event Action<ImeCandidateListState> CandidateListChanged;
 
         private ImeCompositionState _lastCompositionState = ImeCompositionState.Empty;
+        private uint _activeCandidateListMask;
 
         public void Attach(IntPtr handle)
         {
@@ -53,6 +54,7 @@ namespace HaCreator.MapSimulator
                     break;
                 case WM_IME_ENDCOMPOSITION:
                     PublishCompositionState(ImeCompositionState.Empty);
+                    _activeCandidateListMask = 0;
                     PublishCandidateList(ImeCandidateListState.Empty);
                     break;
                 case WM_IME_NOTIFY:
@@ -109,6 +111,7 @@ namespace HaCreator.MapSimulator
 
         private void HandleNotifyMessage(Message message)
         {
+            uint candidateMask = unchecked((uint)message.LParam.ToInt64());
             switch (message.WParam.ToInt32())
             {
                 case IMN_OPENCANDIDATE:
@@ -122,7 +125,16 @@ namespace HaCreator.MapSimulator
 
                     try
                     {
-                        PublishCandidateList(GetCandidateListState(inputContext));
+                        if (message.WParam.ToInt32() == IMN_OPENCANDIDATE)
+                        {
+                            _activeCandidateListMask |= candidateMask;
+                        }
+                        else if (candidateMask != 0)
+                        {
+                            _activeCandidateListMask |= candidateMask;
+                        }
+
+                        PublishCandidateList(GetCandidateListState(inputContext, candidateMask != 0 ? candidateMask : _activeCandidateListMask));
                     }
                     finally
                     {
@@ -131,7 +143,32 @@ namespace HaCreator.MapSimulator
                     break;
 
                 case IMN_CLOSECANDIDATE:
-                    PublishCandidateList(ImeCandidateListState.Empty);
+                    if (candidateMask != 0)
+                    {
+                        _activeCandidateListMask &= ~candidateMask;
+                    }
+
+                    if (_activeCandidateListMask == 0)
+                    {
+                        PublishCandidateList(ImeCandidateListState.Empty);
+                        return;
+                    }
+
+                    IntPtr closeContext = ImmGetContext(message.HWnd);
+                    if (closeContext == IntPtr.Zero)
+                    {
+                        PublishCandidateList(ImeCandidateListState.Empty);
+                        return;
+                    }
+
+                    try
+                    {
+                        PublishCandidateList(GetCandidateListState(closeContext, _activeCandidateListMask));
+                    }
+                    finally
+                    {
+                        ImmReleaseContext(message.HWnd, closeContext);
+                    }
                     break;
             }
         }
@@ -197,64 +234,37 @@ namespace HaCreator.MapSimulator
             return cursorPosition >= 0 ? cursorPosition : -1;
         }
 
-        private ImeCandidateListState GetCandidateListState(IntPtr inputContext)
+        private ImeCandidateListState GetCandidateListState(IntPtr inputContext, uint candidateMask)
         {
-            int byteLength = (int)ImmGetCandidateListW(inputContext, 0, null, 0);
+            foreach (int listIndex in ImeCandidateListInterop.EnumerateCandidateListIndices(candidateMask))
+            {
+                ImeCandidateListState state = GetCandidateListState(inputContext, listIndex);
+                if (state.HasCandidates)
+                {
+                    return state;
+                }
+            }
+
+            return ImeCandidateListState.Empty;
+        }
+
+        private ImeCandidateListState GetCandidateListState(IntPtr inputContext, int listIndex)
+        {
+            int byteLength = (int)ImmGetCandidateListW(inputContext, (uint)listIndex, null, 0);
             if (byteLength <= 0)
             {
                 return ImeCandidateListState.Empty;
             }
 
             byte[] buffer = new byte[byteLength];
-            uint bytesRead = ImmGetCandidateListW(inputContext, 0, buffer, (uint)buffer.Length);
+            uint bytesRead = ImmGetCandidateListW(inputContext, (uint)listIndex, buffer, (uint)buffer.Length);
             if (bytesRead < 24)
             {
                 return ImeCandidateListState.Empty;
             }
 
-            uint count = BitConverter.ToUInt32(buffer, 8);
-            int selection = (int)BitConverter.ToUInt32(buffer, 12);
-            int pageStart = (int)BitConverter.ToUInt32(buffer, 16);
-            int pageSize = (int)BitConverter.ToUInt32(buffer, 20);
-
-            List<string> candidates = new((int)count);
-            int offsetTableStart = 24;
-            for (int i = 0; i < count; i++)
-            {
-                int offsetIndex = offsetTableStart + (i * sizeof(uint));
-                if (offsetIndex + sizeof(uint) > buffer.Length)
-                {
-                    break;
-                }
-
-                int stringOffset = (int)BitConverter.ToUInt32(buffer, offsetIndex);
-                if (stringOffset < 0 || stringOffset >= buffer.Length)
-                {
-                    continue;
-                }
-
-                int terminatorOffset = stringOffset;
-                while (terminatorOffset + 1 < buffer.Length)
-                {
-                    if (buffer[terminatorOffset] == 0 && buffer[terminatorOffset + 1] == 0)
-                    {
-                        break;
-                    }
-
-                    terminatorOffset += 2;
-                }
-
-                int stringByteLength = Math.Max(0, terminatorOffset - stringOffset);
-                string candidate = stringByteLength > 0
-                    ? Encoding.Unicode.GetString(buffer, stringOffset, stringByteLength)
-                    : string.Empty;
-                candidates.Add(candidate);
-            }
-
             bool vertical = _lastCompositionState.CursorPosition >= 0;
-            return candidates.Count > 0
-                ? new ImeCandidateListState(candidates, pageStart, pageSize, selection, vertical)
-                : ImeCandidateListState.Empty;
+            return ImeCandidateListInterop.DecodeCandidateList(buffer, vertical, listIndex);
         }
 
         [DllImport("imm32.dll")]

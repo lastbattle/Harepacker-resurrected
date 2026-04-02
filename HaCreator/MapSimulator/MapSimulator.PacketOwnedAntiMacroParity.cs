@@ -26,6 +26,9 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedAntiMacroNoticeMode = 11;
         private const int PacketOwnedAntiMacroAnswerSubmitOpcode = 117;
         private const int PacketOwnedAntiMacroDefaultDurationMs = 60000;
+        private const int PacketOwnedAntiMacroScreenshotFolderModeClientDirectory = 0;
+        private const int PacketOwnedAntiMacroScreenshotFolderModeDesktop = 1;
+        private const int PacketOwnedAntiMacroScreenshotFolderModeRootDrive = 2;
         private static readonly Point PacketOwnedAntiMacroBackground2Offset = new(3, 7);
         private static readonly Point PacketOwnedAntiMacroBackground3Offset = new(5, 23);
         private const string PacketOwnedAntiMacroPopupCanvasPath = "Macro/popup";
@@ -40,6 +43,7 @@ namespace HaCreator.MapSimulator
         private string _lastPacketOwnedAntiMacroSummary = "Packet-owned anti-macro idle.";
         private string _lastPacketOwnedAntiMacroNotice = string.Empty;
         private string _lastPacketOwnedAntiMacroScreenshotPath = string.Empty;
+        private string _lastPacketOwnedAntiMacroScreenshotBaseFolder = string.Empty;
         private int _lastPacketOwnedAntiMacroMode = -1;
         private int _lastPacketOwnedAntiMacroType = -1;
         private int _lastPacketOwnedAntiMacroNoticeStringPoolId = -1;
@@ -278,10 +282,13 @@ namespace HaCreator.MapSimulator
             string screenshotState = string.IsNullOrWhiteSpace(_lastPacketOwnedAntiMacroScreenshotPath)
                 ? "no packet-authored screenshot saved"
                 : $"last screenshot={_lastPacketOwnedAntiMacroScreenshotPath}";
+            string screenshotBaseFolderState = string.IsNullOrWhiteSpace(_lastPacketOwnedAntiMacroScreenshotBaseFolder)
+                ? "baseFolder=unresolved"
+                : $"baseFolder={_lastPacketOwnedAntiMacroScreenshotBaseFolder}";
             string noticeState = string.IsNullOrWhiteSpace(_lastPacketOwnedAntiMacroNotice)
                 ? "no notice"
                 : $"notice=\"{_lastPacketOwnedAntiMacroNotice}\"";
-            return $"Anti-macro mode={_lastPacketOwnedAntiMacroMode}, type={_lastPacketOwnedAntiMacroType}, comboHeld={_packetOwnedAntiMacroComboHeld}, {ownerState}, {noticeState}, {screenshotState}. {_lastPacketOwnedAntiMacroSummary}";
+            return $"Anti-macro mode={_lastPacketOwnedAntiMacroMode}, type={_lastPacketOwnedAntiMacroType}, comboHeld={_packetOwnedAntiMacroComboHeld}, {ownerState}, {noticeState}, {screenshotState}, {screenshotBaseFolderState}. {_lastPacketOwnedAntiMacroSummary}";
         }
 
         private string ClearPacketOwnedAntiMacro(bool releaseCombo)
@@ -429,6 +436,14 @@ namespace HaCreator.MapSimulator
         private string SavePacketOwnedAntiMacroScreenshot(string userName)
         {
             string screenshotDirectory = ResolvePacketOwnedAntiMacroScreenshotBaseFolder();
+            _lastPacketOwnedAntiMacroScreenshotBaseFolder = screenshotDirectory;
+            if (string.IsNullOrWhiteSpace(screenshotDirectory))
+            {
+                _lastPacketOwnedAntiMacroSummary = "Failed to resolve the packet-owned anti-macro screenshot base folder.";
+                return _lastPacketOwnedAntiMacroSummary;
+            }
+
+            Directory.CreateDirectory(screenshotDirectory);
             string safeUserName = SanitizePacketOwnedAntiMacroFileName(string.IsNullOrWhiteSpace(userName) ? "AntiMacro" : userName.Trim());
             string filePath = Path.Combine(
                 screenshotDirectory,
@@ -521,8 +536,9 @@ namespace HaCreator.MapSimulator
         {
             switch (ResolvePacketOwnedAntiMacroScreenshotFolderMode())
             {
-                case 0:
+                case PacketOwnedAntiMacroScreenshotFolderModeClientDirectory:
                 {
+                    // Mirrors CScreenShot::GetBaseFolder mode 0, which resolves the executable folder.
                     string processPath = Environment.ProcessPath;
                     if (!string.IsNullOrWhiteSpace(processPath))
                     {
@@ -533,11 +549,13 @@ namespace HaCreator.MapSimulator
                     return TrimPacketOwnedAntiMacroTrailingDirectorySeparator(AppContext.BaseDirectory);
                 }
 
-                case 1:
+                case PacketOwnedAntiMacroScreenshotFolderModeDesktop:
+                    // Mirrors CScreenShot::GetBaseFolder mode 1.
                     return TrimPacketOwnedAntiMacroTrailingDirectorySeparator(
                         Environment.GetFolderPath(Environment.SpecialFolder.DesktopDirectory));
 
-                case 2:
+                case PacketOwnedAntiMacroScreenshotFolderModeRootDrive:
+                    // Mirrors CScreenShot::GetBaseFolder mode 2.
                     return @"C:\";
 
                 default:
@@ -547,11 +565,13 @@ namespace HaCreator.MapSimulator
 
         private static int ResolvePacketOwnedAntiMacroScreenshotFolderMode()
         {
+            // The client reads this from CConfig::m_nScreenShotSaveLocation; the simulator keeps the same
+            // mode values but sources them from an opt-in environment variable until that config seam exists.
             string configuredValue = Environment.GetEnvironmentVariable("MAPSIM_CLIENT_SCREENSHOT_MODE");
             return int.TryParse(configuredValue, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedMode)
-                && parsedMode is >= 0 and <= 2
+                && parsedMode is >= PacketOwnedAntiMacroScreenshotFolderModeClientDirectory and <= PacketOwnedAntiMacroScreenshotFolderModeRootDrive
                 ? parsedMode
-                : 0;
+                : PacketOwnedAntiMacroScreenshotFolderModeClientDirectory;
         }
 
         private static string TrimPacketOwnedAntiMacroTrailingDirectorySeparator(string path)

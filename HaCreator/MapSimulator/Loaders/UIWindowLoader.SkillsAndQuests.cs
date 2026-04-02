@@ -1484,6 +1484,7 @@ namespace HaCreator.MapSimulator.Loaders
                 LoadCanvasTexture(questInfoProperty["Gauge"] as WzSubProperty, "gauge", device),
                 LoadCanvasTexture(questInfoProperty["Gauge"] as WzSubProperty, "spot", device),
                 new Point(30, 0));
+            InitializeQuestDetailTimeLimitArt(window, uiWindow2Image, uiWindow1Image, device);
             InitializeQuestDetailNoticeArt(window, uiWindow2Image?["Quest"]?["list"] as WzSubProperty, legacyQuestProperty, device);
 
 
@@ -1541,6 +1542,7 @@ namespace HaCreator.MapSimulator.Loaders
                 LoadCanvasTexture(questProperty["Gauge"] as WzSubProperty, "gauge", device),
                 LoadCanvasTexture(questProperty["Gauge"] as WzSubProperty, "spot", device),
                 new Point(32, 0));
+            InitializeQuestDetailTimeLimitArt(window, uiWindow1Image, uiWindow1Image, device);
             InitializeQuestDetailNoticeArt(window, questProperty, questProperty, device);
 
 
@@ -1709,6 +1711,108 @@ namespace HaCreator.MapSimulator.Loaders
 
             window.SetNoticeTextures(noticeTextures, noticeOffsets, animationFrames, animationDelays, animationOffset);
 
+        }
+
+        private static void InitializeQuestDetailTimeLimitArt(
+            QuestDetailWindow window,
+            WzImage preferredUiImage,
+            WzImage fallbackUiImage,
+            GraphicsDevice device)
+        {
+            if (window == null)
+            {
+                return;
+            }
+
+            window.SetTimeLimitBarTextures(
+                ResolveCanvasProperty(preferredUiImage, "Quest/TimeQuest/TimeBar/backgrnd")?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device)
+                    ?? ResolveCanvasProperty(fallbackUiImage, "Quest/TimeQuest/TimeBar/backgrnd")?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device),
+                ResolveCanvasProperty(preferredUiImage, "Quest/TimeQuest/TimeBar/TimeGage/0")?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device)
+                    ?? ResolveCanvasProperty(fallbackUiImage, "Quest/TimeQuest/TimeBar/TimeGage/0")?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device),
+                ResolveCanvasProperty(preferredUiImage, "Quest/TimeQuest/TimeBar/TimeGage/1")?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device)
+                    ?? ResolveCanvasProperty(fallbackUiImage, "Quest/TimeQuest/TimeBar/TimeGage/1")?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device),
+                ResolveCanvasProperty(preferredUiImage, "Quest/TimeQuest/TimeBar/TimeGage/2")?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device)
+                    ?? ResolveCanvasProperty(fallbackUiImage, "Quest/TimeQuest/TimeBar/TimeGage/2")?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device));
+
+            LoadQuestDetailTimeLimitIndicatorStyle(window, "default", preferredUiImage, fallbackUiImage, device);
+            LoadQuestDetailTimeLimitIndicatorStyle(window, "SelectMob", preferredUiImage, fallbackUiImage, device);
+        }
+
+        private static void LoadQuestDetailTimeLimitIndicatorStyle(
+            QuestDetailWindow window,
+            string styleKey,
+            WzImage preferredUiImage,
+            WzImage fallbackUiImage,
+            GraphicsDevice device)
+        {
+            if (window == null || string.IsNullOrWhiteSpace(styleKey))
+            {
+                return;
+            }
+
+            WzSubProperty styleProperty = ResolveProperty(preferredUiImage, $"Quest/TimeQuest/AlarmClock/{styleKey}") as WzSubProperty
+                ?? ResolveProperty(fallbackUiImage, $"Quest/TimeQuest/AlarmClock/{styleKey}") as WzSubProperty;
+            if (styleProperty == null)
+            {
+                return;
+            }
+
+            List<Texture2D> frames = new();
+            List<Point> origins = new();
+            List<int> delays = new();
+            foreach (WzImageProperty groupProperty in styleProperty.WzProperties.OrderBy(static property => property.Name, StringComparer.Ordinal))
+            {
+                if (groupProperty is not WzSubProperty frameGroup)
+                {
+                    continue;
+                }
+
+                foreach (WzImageProperty frameProperty in frameGroup.WzProperties.OrderBy(static property => property.Name, StringComparer.Ordinal))
+                {
+                    if (frameProperty is not WzCanvasProperty canvas)
+                    {
+                        continue;
+                    }
+
+                    Texture2D texture = canvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device);
+                    if (texture == null)
+                    {
+                        continue;
+                    }
+
+                    frames.Add(texture);
+                    Point offset = ResolveCanvasOffset(canvas, Point.Zero);
+                    origins.Add(new Point(-offset.X, -offset.Y));
+                    delays.Add(Math.Max(120, (canvas["delay"] as WzIntProperty)?.Value ?? 120));
+                }
+            }
+
+            if (frames.Count > 0)
+            {
+                window.SetTimeLimitIndicatorStyle(styleKey, frames.ToArray(), origins.ToArray(), delays.ToArray());
+            }
+        }
+
+        private static WzImageProperty ResolveProperty(WzObject root, string propertyPath)
+        {
+            if (root == null || string.IsNullOrWhiteSpace(propertyPath))
+            {
+                return root as WzImageProperty;
+            }
+
+            WzObject current = root;
+            string[] pathSegments = propertyPath.Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries);
+            for (int i = 0; i < pathSegments.Length && current != null; i++)
+            {
+                current = current switch
+                {
+                    WzImage image => image[pathSegments[i]],
+                    WzImageProperty property => property[pathSegments[i]],
+                    _ => null
+                };
+            }
+
+            return current as WzImageProperty;
         }
 
 
@@ -2430,6 +2534,9 @@ namespace HaCreator.MapSimulator.Loaders
                     Math.Max(12, (screenWidth - frameTexture.Width) / 2),
                     Math.Max(12, (screenHeight - frameTexture.Height) / 2))
             };
+            window.InitializeQuestGuideButtons(
+                LoadButton(uiWindow2Image?["QuestGuide"]?["Button"] as WzSubProperty, "Location", clickSound, overSound, device),
+                LoadButton(uiWindow2Image?["QuestGuide"]?["Button"] as WzSubProperty, "WorldMapQuestToggle", clickSound, overSound, device));
 
 
             UIObject closeButton = CreateUserInfoCloseButton(basicImage, clickSound, overSound, device, frameTexture.Width);

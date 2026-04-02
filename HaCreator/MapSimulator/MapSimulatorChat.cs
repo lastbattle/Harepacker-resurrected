@@ -1355,15 +1355,47 @@ namespace HaCreator.MapSimulator
             }
 
             string trimmed = text.Trim();
+            int separatorIndex = trimmed.IndexOf(':');
+            if (separatorIndex > 0)
+            {
+                trimmed = trimmed[..separatorIndex].TrimEnd();
+            }
+
+            if (TryStripWhisperPrefix(trimmed, out string whisperRemainder))
+            {
+                trimmed = whisperRemainder;
+            }
+
+            while (trimmed.StartsWith("[", StringComparison.Ordinal))
+            {
+                int closingBracketIndex = trimmed.IndexOf(']');
+                if (closingBracketIndex <= 0 || closingBracketIndex >= trimmed.Length - 1)
+                {
+                    break;
+                }
+
+                trimmed = trimmed[(closingBracketIndex + 1)..].TrimStart();
+            }
+
+            if (trimmed.StartsWith(">", StringComparison.Ordinal))
+            {
+                trimmed = trimmed[1..].TrimStart();
+            }
+
+            int arrowIndex = trimmed.LastIndexOf("->", StringComparison.Ordinal);
+            if (arrowIndex >= 0 && arrowIndex + 2 < trimmed.Length)
+            {
+                trimmed = trimmed[(arrowIndex + 2)..].TrimStart();
+            }
+
             if (trimmed.StartsWith("GM ", StringComparison.OrdinalIgnoreCase))
             {
                 trimmed = trimmed[3..].TrimStart();
             }
 
-            int channelSuffixIndex = trimmed.LastIndexOf(" (", StringComparison.Ordinal);
-            if (channelSuffixIndex > 0 && trimmed.EndsWith(")", StringComparison.Ordinal))
+            if (TryTrimTrailingChannelSuffix(trimmed, out string withoutChannelSuffix))
             {
-                trimmed = trimmed[..channelSuffixIndex].TrimEnd();
+                trimmed = withoutChannelSuffix;
             }
 
             int lastSpaceIndex = trimmed.LastIndexOf(' ');
@@ -1373,6 +1405,31 @@ namespace HaCreator.MapSimulator
             }
 
             return trimmed.Trim();
+        }
+
+        private static bool TryTrimTrailingChannelSuffix(string text, out string trimmed)
+        {
+            trimmed = text;
+            if (string.IsNullOrWhiteSpace(text) || !text.EndsWith(")", StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            int suffixStart = text.LastIndexOf(" (", StringComparison.Ordinal);
+            if (suffixStart <= 0)
+            {
+                return false;
+            }
+
+            string suffix = text[(suffixStart + 2)..^1].Trim();
+            if (!suffix.StartsWith("Ch", StringComparison.OrdinalIgnoreCase)
+                && !suffix.StartsWith("Channel", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            trimmed = text[..suffixStart].TrimEnd();
+            return true;
         }
 
         private static bool ColorsMatch(Color left, Color right)

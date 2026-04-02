@@ -1858,7 +1858,7 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private static HashSet<int> GetAllowedBucketKeys(int jobId)
+        internal static HashSet<int> GetAllowedBucketKeys(int jobId)
         {
             HashSet<int> buckets = new() { 0 };
             int jobGroup = Math.Abs(jobId % 1000) / 100;

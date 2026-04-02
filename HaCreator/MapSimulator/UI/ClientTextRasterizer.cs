@@ -80,13 +80,33 @@ namespace HaCreator.MapSimulator.UI
         public ClientTextRasterizer(GraphicsDevice graphicsDevice, string fontFamily = null, float basePointSize = 12f, SD.FontStyle fontStyle = SD.FontStyle.Regular)
         {
             _graphicsDevice = graphicsDevice ?? throw new ArgumentNullException(nameof(graphicsDevice));
-            _fontFamily = ResolveFontFamily(fontFamily);
+            _fontFamily = ResolvePreferredFontFamily(fontFamily);
             _basePointSize = basePointSize <= 0f ? 12f : basePointSize;
             _fontStyle = fontStyle;
 
             _measureGraphics = SD.Graphics.FromImage(_measureBitmap);
             _measureGraphics.TextRenderingHint = SDText.TextRenderingHint.SingleBitPerPixelGridFit;
             _measureGraphics.PageUnit = SD.GraphicsUnit.Pixel;
+        }
+
+        internal static string ResolvePreferredFontFamily(string requestedFamily = null)
+        {
+            return ResolveFontFamily(requestedFamily);
+        }
+
+        internal static SD.Font CreateClientFont(float pixelSize, SD.FontStyle style = SD.FontStyle.Regular, string requestedFamily = null)
+        {
+            string resolvedFamily = ResolvePreferredFontFamily(requestedFamily);
+            float normalizedSize = pixelSize <= 0f ? 12f : pixelSize;
+
+            try
+            {
+                return new SD.Font(resolvedFamily, normalizedSize, style, SD.GraphicsUnit.Pixel, KoreanGdiCharset);
+            }
+            catch (ArgumentException)
+            {
+                return new SD.Font(resolvedFamily, normalizedSize, style, SD.GraphicsUnit.Pixel);
+            }
         }
 
         public Vector2 MeasureString(string text, float scale = 1.0f)

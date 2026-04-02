@@ -8,8 +8,6 @@ using Microsoft.Xna.Framework.Graphics;
 using Spine;
 using System;
 using System.Collections.Generic;
-using SD = System.Drawing;
-using SDText = System.Drawing.Text;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -24,6 +22,9 @@ namespace HaCreator.MapSimulator.UI
         private const int AvatarFeetOffsetY = 106;
         private const int NameTagBaselineOffsetY = 120;
         private const int DoubleClickThresholdMs = 400;
+        private const int ClientNameTagMinimumWidth = 58;
+        private const int ClientNameTagHorizontalPadding = 18;
+        private const int NameTagTextInsetY = 2;
 
         private readonly List<UIObject> _cardButtons = new();
         private readonly List<LoginCharacterRosterEntry> _entries = new();
@@ -37,11 +38,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly IReadOnlyDictionary<LoginJobDecorationStyle, PreviewCanvasFrame> _jobDecorations;
         private readonly IReadOnlyList<PreviewCanvasFrame> _buyCharacterFrames;
         private readonly Texture2D _emptySlotTexture;
-        private readonly Dictionary<PreviewNameTagCacheKey, Texture2D> _nameTagTextureCache = new();
-        private readonly GraphicsDevice _graphicsDevice;
-        private readonly SD.Bitmap _measureBitmap;
-        private readonly SD.Graphics _measureGraphics;
-        private readonly SD.Font _nameTagFont;
+        private readonly ClientTextRasterizer _nameTagTextRasterizer;
 
         private SpriteFont _font;
         private int _selectedIndex = -1;
@@ -74,11 +71,11 @@ namespace HaCreator.MapSimulator.UI
             _buyCharacterFrames = buyCharacterFrames ?? Array.Empty<PreviewCanvasFrame>();
             _prevPageButton = prevPageButton;
             _nextPageButton = nextPageButton;
-            _graphicsDevice = frame?.Texture?.GraphicsDevice;
-            _measureBitmap = new SD.Bitmap(1, 1);
-            _measureGraphics = SD.Graphics.FromImage(_measureBitmap);
-            _measureGraphics.TextRenderingHint = SDText.TextRenderingHint.SingleBitPerPixelGridFit;
-            _nameTagFont = new SD.Font("Tahoma", 12f, SD.FontStyle.Regular, SD.GraphicsUnit.Pixel);
+            GraphicsDevice graphicsDevice = frame?.Texture?.GraphicsDevice;
+            if (graphicsDevice != null)
+            {
+                _nameTagTextRasterizer = new ClientTextRasterizer(graphicsDevice, basePointSize: 12f);
+            }
 
             int slotIndex = 0;
             foreach (UIObject cardButton in cardButtons ?? Array.Empty<UIObject>())
@@ -128,7 +125,6 @@ namespace HaCreator.MapSimulator.UI
             int buyCharacterCount,
             int pageIndex)
         {
-            ClearNameTagTextureCache();
             _entries.Clear();
             _previewAssemblers.Clear();
             if (entries != null)
@@ -434,83 +430,46 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            Texture2D nameTagTexture = GetOrCreateNameTagTexture(name, isSelected);
-            if (nameTagTexture == null)
+            PreviewNameTagStyle style = isSelected ? _selectedNameTagStyle : _normalNameTagStyle;
+            if (!style.IsReady || _nameTagTextRasterizer == null)
             {
                 DrawNameTagFallback(sprite, name, isSelected, centerX, y);
                 return;
             }
 
-            sprite.Draw(
-                nameTagTexture,
-                new Vector2(centerX - (nameTagTexture.Width / 2f), y),
-                Color.White);
-        }
+            int textWidth = Math.Max(1, (int)Math.Ceiling(_nameTagTextRasterizer.MeasureString(name).X));
+            int totalWidth = Math.Max(
+                ClientNameTagMinimumWidth,
+                Math.Max(style.Left.Width + style.Right.Width, textWidth + ClientNameTagHorizontalPadding));
+            int left = centerX - (totalWidth / 2);
+            int middleStartX = left + style.Left.Width;
+            int middleEndX = left + totalWidth - style.Right.Width;
 
-        private Texture2D GetOrCreateNameTagTexture(string name, bool isSelected)
-        {
-            PreviewNameTagStyle style = isSelected ? _selectedNameTagStyle : _normalNameTagStyle;
-            if (!style.IsReady || _graphicsDevice == null || _nameTagFont == null)
+            sprite.Draw(style.Left, new Vector2(left, y), Color.White);
+
+            for (int offsetX = middleStartX; offsetX < middleEndX; offsetX += style.Middle.Width)
             {
-                return null;
-            }
-
-            PreviewNameTagCacheKey cacheKey = new(name, isSelected);
-            if (_nameTagTextureCache.TryGetValue(cacheKey, out Texture2D cachedTexture) &&
-                cachedTexture != null &&
-                !cachedTexture.IsDisposed)
-            {
-                return cachedTexture;
-            }
-
-            SD.SizeF measured = _measureGraphics.MeasureString(name, _nameTagFont, SD.PointF.Empty, SD.StringFormat.GenericTypographic);
-            int textWidth = Math.Max(1, (int)Math.Ceiling(measured.Width));
-            int totalWidth = Math.Max(style.Left.Width + style.Right.Width, textWidth + 10);
-            int totalHeight = Math.Max(Math.Max(style.Left.Height, style.Middle.Height), style.Right.Height);
-
-            using var bitmap = new SD.Bitmap(totalWidth, totalHeight);
-            using SD.Graphics graphics = SD.Graphics.FromImage(bitmap);
-            graphics.Clear(SD.Color.Transparent);
-            graphics.TextRenderingHint = SDText.TextRenderingHint.SingleBitPerPixelGridFit;
-
-            using (SD.Bitmap leftBitmap = style.Left.ToBitmap())
-            using (SD.Bitmap middleBitmap = style.Middle.ToBitmap())
-            using (SD.Bitmap rightBitmap = style.Right.ToBitmap())
-            using (var brush = new SD.SolidBrush(SD.Color.FromArgb(style.TextColor.A, style.TextColor.R, style.TextColor.G, style.TextColor.B)))
-            {
-                graphics.DrawImageUnscaled(leftBitmap, 0, 0);
-
-                int middleStartX = style.Left.Width;
-                int middleEndX = Math.Max(middleStartX, totalWidth - style.Right.Width);
-                for (int offsetX = middleStartX; offsetX < middleEndX; offsetX += middleBitmap.Width)
+                int remainingWidth = middleEndX - offsetX;
+                if (remainingWidth <= 0)
                 {
-                    int remainingWidth = middleEndX - offsetX;
-                    if (remainingWidth <= 0)
-                    {
-                        break;
-                    }
-
-                    int drawWidth = Math.Min(middleBitmap.Width, remainingWidth);
-                    graphics.DrawImage(
-                        middleBitmap,
-                        new SD.Rectangle(offsetX, 0, drawWidth, middleBitmap.Height),
-                        new SD.Rectangle(0, 0, drawWidth, middleBitmap.Height),
-                        SD.GraphicsUnit.Pixel);
+                    break;
                 }
 
-                graphics.DrawImageUnscaled(rightBitmap, totalWidth - style.Right.Width, 0);
-                graphics.DrawString(
-                    name,
-                    _nameTagFont,
-                    brush,
-                    (float)(((totalWidth - textWidth) / 2) - 1),
-                    2f,
-                    SD.StringFormat.GenericTypographic);
+                int drawWidth = Math.Min(style.Middle.Width, remainingWidth);
+                sprite.Draw(
+                    style.Middle,
+                    new Rectangle(offsetX, y, drawWidth, style.Middle.Height),
+                    new Rectangle(0, 0, drawWidth, style.Middle.Height),
+                    Color.White);
             }
 
-            Texture2D texture = bitmap.ToTexture2D(_graphicsDevice);
-            _nameTagTextureCache[cacheKey] = texture;
-            return texture;
+            sprite.Draw(style.Right, new Vector2(left + totalWidth - style.Right.Width, y), Color.White);
+
+            Vector2 textSize = _nameTagTextRasterizer.MeasureString(name);
+            Vector2 textPosition = new(
+                left + ((totalWidth - textSize.X) * 0.5f),
+                y + NameTagTextInsetY);
+            _nameTagTextRasterizer.DrawString(sprite, name, textPosition, style.TextColor);
         }
 
         private void DrawNameTagFallback(SpriteBatch sprite, string name, bool isSelected, int centerX, int y)
@@ -532,16 +491,6 @@ namespace HaCreator.MapSimulator.UI
                 0.5f,
                 SpriteEffects.None,
                 0f);
-        }
-
-        private void ClearNameTagTextureCache()
-        {
-            foreach (Texture2D texture in _nameTagTextureCache.Values)
-            {
-                texture?.Dispose();
-            }
-
-            _nameTagTextureCache.Clear();
         }
 
         private static LoginJobDecorationStyle ResolveDecorationStyle(int jobId)
@@ -603,34 +552,6 @@ namespace HaCreator.MapSimulator.UI
             public Texture2D Right { get; }
             public Color TextColor { get; }
             public bool IsReady => Left != null && Middle != null && Right != null;
-        }
-
-        private readonly struct PreviewNameTagCacheKey : IEquatable<PreviewNameTagCacheKey>
-        {
-            public PreviewNameTagCacheKey(string name, bool isSelected)
-            {
-                Name = name ?? string.Empty;
-                IsSelected = isSelected;
-            }
-
-            public string Name { get; }
-            public bool IsSelected { get; }
-
-            public bool Equals(PreviewNameTagCacheKey other)
-            {
-                return IsSelected == other.IsSelected &&
-                       string.Equals(Name, other.Name, StringComparison.Ordinal);
-            }
-
-            public override bool Equals(object obj)
-            {
-                return obj is PreviewNameTagCacheKey other && Equals(other);
-            }
-
-            public override int GetHashCode()
-            {
-                return HashCode.Combine(Name, IsSelected);
-            }
         }
 
         public enum LoginJobDecorationStyle

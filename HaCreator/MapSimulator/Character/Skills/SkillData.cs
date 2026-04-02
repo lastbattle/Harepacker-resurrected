@@ -231,6 +231,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int MesoRate { get; set; }            // mesoR bonus rate
         public int BossDamageRate { get; set; }      // bdR boss damage bonus rate
         public int IgnoreDefenseRate { get; set; }   // ignoreMobpdpR monster defense ignore rate
+        public List<string> AuthoredPropertyOrder { get; set; } = new();
 
         // Requirements
         public int RequiredLevel { get; set; }       // Level required
@@ -430,6 +431,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool RedirectsDamageToMp { get; set; }
         public bool HasInvincibleMetadata { get; set; }
         public bool UsesEnergyChargeRuntime { get; set; }
+        public bool HasChargingSkillMetadata { get; set; }
         public string FullChargeEffectName { get; set; }
 
         // Level data
@@ -1291,6 +1293,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int MaxHealth { get; set; } = 1;
         public int CurrentHealth { get; set; } = 1;
         public byte TeslaCoilState { get; set; }
+        public Point[] TeslaTrianglePoints { get; set; } = Array.Empty<Point>();
 
         public bool IsPendingRemoval => PendingRemovalTime != int.MaxValue;
 
@@ -1302,6 +1305,21 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool IsExpired(int currentTime)
         {
             return IsPendingRemoval && currentTime >= PendingRemovalTime;
+        }
+
+        public int GetRemainingTime(int currentTime)
+        {
+            if (IsPendingRemoval)
+            {
+                return Math.Max(0, PendingRemovalTime - currentTime);
+            }
+
+            if (Duration <= 0)
+            {
+                return 0;
+            }
+
+            return Math.Max(0, (StartTime + Duration) - currentTime);
         }
     }
 

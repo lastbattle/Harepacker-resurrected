@@ -77,7 +77,7 @@ namespace HaCreator.MapSimulator.UI
             RefreshLayout(snapshot);
 
             KeyboardState keyboardState = Keyboard.GetState();
-            if (IsVisible && snapshot.IsOpen && Pressed(keyboardState, Keys.Enter))
+            if (IsVisible && snapshot.IsOpen && snapshot.CanAccept && snapshot.HasAcceptFocus && Pressed(keyboardState, Keys.Enter))
             {
                 ShowFeedback(_acceptHandler?.Invoke());
             }

@@ -1333,9 +1333,12 @@ namespace HaCreator.MapSimulator
 
             if (persistPacketOwnedSelection
                 && _packetOwnedFuncKeyConfigLoaded
-                && _packetOwnedPetConsumeItemId != itemId)
+                && source == FieldHazardSharedPetConsumeSource.PacketOwnedConfig
+                && (_packetOwnedPetConsumeItemId != itemId
+                    || _packetOwnedPetConsumeItemInventoryType != inventoryType))
             {
                 _packetOwnedPetConsumeItemId = itemId;
+                _packetOwnedPetConsumeItemInventoryType = inventoryType;
                 PersistPacketOwnedFuncKeyConfig();
             }
         }

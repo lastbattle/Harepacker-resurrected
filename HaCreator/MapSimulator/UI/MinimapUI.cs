@@ -99,6 +99,9 @@ namespace HaCreator.MapSimulator.UI
         private const int ClientButtonIdMax = 1001;
         private const int ClientButtonIdMap = 1002;
         private const int ClientButtonIdOption = 1003;
+        private const int ClientOptionCollapsed = 0;
+        private const int ClientOptionCompact = 1;
+        private const int ClientOptionExpanded = 2;
 
         // Player position on minimap (in minimap coordinates, not world coordinates)
         private int _playerMinimapX = 0;
@@ -405,15 +408,7 @@ namespace HaCreator.MapSimulator.UI
             if (currTickCount - _lastMinimapToggleTime > MINIMAP_TOGGLE_COOLDOWN_MS)
             {
                 _lastMinimapToggleTime = currTickCount;
-
-                if (!this._bIsCollapsedState)
-                {
-                    ObjUIBtMin_ButtonClickReleased(null);
-                }
-                else
-                {
-                    ObjUIBtMax_ButtonClickReleased(null);
-                }
+                AdvanceToggleCycle();
             }
         }
 
@@ -608,7 +603,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void CollapseMinimapToRememberedOption()
         {
-            if (_currentOption > 0)
+            if (_currentOption > ClientOptionCollapsed)
             {
                 _previousExpandedOption = _currentOption;
             }
@@ -617,7 +612,7 @@ namespace HaCreator.MapSimulator.UI
             _btnMax.SetButtonState(UIObjectState.Normal);
             SyncFramePositionsFrom(GetActiveExpandedFrame());
 
-            _currentOption = 0;
+            _currentOption = ClientOptionCollapsed;
             _bIsCollapsedState = true;
             UpdateButtonLayout();
         }
@@ -626,7 +621,7 @@ namespace HaCreator.MapSimulator.UI
         {
             _btnMin.SetButtonState(UIObjectState.Normal);
             _btnMax.SetButtonState(UIObjectState.Disabled);
-            _currentOption = NormalizeExpandedOption(_previousExpandedOption > 0 ? _previousExpandedOption : 1);
+            _currentOption = NormalizeExpandedOption(_previousExpandedOption > ClientOptionCollapsed ? _previousExpandedOption : ClientOptionCompact);
             SyncFramePositionsFrom(_collapsedFrame);
             _bIsCollapsedState = false;
             UpdateButtonLayout();
@@ -645,7 +640,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            SetExpandedOption(_currentOption >= 2 ? 1 : 2);
+            SetExpandedOption(_currentOption >= ClientOptionExpanded ? ClientOptionCompact : ClientOptionExpanded);
         }
 
         private void SetExpandedOption(int option)
@@ -662,15 +657,15 @@ namespace HaCreator.MapSimulator.UI
         {
             if (_expandedFrame == null || _btnSmall == null)
             {
-                return 1;
+                return ClientOptionCompact;
             }
 
-            return option >= 2 ? 2 : 1;
+            return option >= ClientOptionExpanded ? ClientOptionExpanded : ClientOptionCompact;
         }
 
         private BaseDXDrawableItem GetActiveExpandedFrame()
         {
-            return _currentOption >= 2 && _expandedFrame != null ? _expandedFrame : this;
+            return _currentOption >= ClientOptionExpanded && _expandedFrame != null ? _expandedFrame : this;
         }
 
         private BaseDXDrawableItem GetVisibleFrame()
@@ -699,12 +694,12 @@ namespace HaCreator.MapSimulator.UI
 
             if (_btnBig != null)
             {
-                _btnBig.SetVisible(!_bIsCollapsedState && NormalizeExpandedOption(_currentOption) == 1);
+                _btnBig.SetVisible(!_bIsCollapsedState && NormalizeExpandedOption(_currentOption) == ClientOptionCompact);
             }
 
             if (_btnSmall != null)
             {
-                _btnSmall.SetVisible(!_bIsCollapsedState && NormalizeExpandedOption(_currentOption) >= 2);
+                _btnSmall.SetVisible(!_bIsCollapsedState && NormalizeExpandedOption(_currentOption) >= ClientOptionExpanded);
             }
 
             int frameWidth = GetVisibleFrame()?.Frame0?.Width ?? Frame0?.Width ?? 0;
@@ -740,6 +735,23 @@ namespace HaCreator.MapSimulator.UI
 
             button.X = rightEdge - button.CanvasSnapshotWidth;
             return button.X;
+        }
+
+        private void AdvanceToggleCycle()
+        {
+            if (_bIsCollapsedState)
+            {
+                RestoreRememberedExpandedOption();
+                return;
+            }
+
+            if (NormalizeExpandedOption(_currentOption) == ClientOptionCompact)
+            {
+                SetExpandedOption(ClientOptionExpanded);
+                return;
+            }
+
+            CollapseMinimapToRememberedOption();
         }
 
         private void DrawNpcMarkers(

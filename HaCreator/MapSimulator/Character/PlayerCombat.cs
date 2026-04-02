@@ -48,6 +48,7 @@ namespace HaCreator.MapSimulator.Character
         private int _invincibilityDurationMs = INVINCIBILITY_DURATION;
         private readonly List<int> _recentlyHitMobs = new(); // Prevent multi-hit exploits
         private Func<int, bool> _damageBlockedEvaluator;
+        private Func<int, int, int> _incomingDamageResolver;
         private float _additionalPlayerMissChance;
 
         // Callbacks
@@ -80,6 +81,11 @@ namespace HaCreator.MapSimulator.Character
         public void SetDamageBlockedEvaluator(Func<int, bool> damageBlockedEvaluator)
         {
             _damageBlockedEvaluator = damageBlockedEvaluator;
+        }
+
+        public void SetIncomingDamageResolver(Func<int, int, int> incomingDamageResolver)
+        {
+            _incomingDamageResolver = incomingDamageResolver;
         }
 
         public void SetAdditionalPlayerMissChance(float additionalPlayerMissChance)
@@ -228,6 +234,7 @@ namespace HaCreator.MapSimulator.Character
             int reflectedDamage = mob.AI.CalculateReflectedDamageToAttacker(mob.AI.LastDamageTaken, damageType);
             if (reflectedDamage > 0)
             {
+                reflectedDamage = ResolveIncomingDamage(reflectedDamage, Environment.TickCount);
                 _player.TakeDamage(reflectedDamage, 0f, 0f);
             }
         }
@@ -390,6 +397,7 @@ namespace HaCreator.MapSimulator.Character
             // Apply damage variance
             float variance = 0.9f + (float)_random.NextDouble() * 0.2f;
             damage = (int)(damage * variance);
+            damage = ResolveIncomingDamage(damage, currentTime);
 
             // Calculate knockback direction (away from mob)
             Vector2 knockback = GetPlayerKnockbackVelocity(mob.MovementInfo.X);
@@ -545,6 +553,7 @@ namespace HaCreator.MapSimulator.Character
             int playerDefense = _player.Build?.Defense ?? 0;
 
             int damage = Math.Max(1, touchDamage - playerDefense / 2);
+            damage = ResolveIncomingDamage(damage, currentTime);
 
             // Calculate knockback direction (away from mob)
             Vector2 knockback = GetPlayerKnockbackVelocity(mob.MovementInfo.X);
@@ -584,6 +593,17 @@ namespace HaCreator.MapSimulator.Character
         {
             int remaining = _invincibilityDurationMs - (currentTime - _lastHitTime);
             return Math.Max(0, remaining);
+        }
+
+        private int ResolveIncomingDamage(int damage, int currentTime)
+        {
+            if (damage <= 0)
+            {
+                return 0;
+            }
+
+            int resolvedDamage = _incomingDamageResolver?.Invoke(damage, currentTime) ?? damage;
+            return Math.Max(1, resolvedDamage);
         }
 
         /// <summary>

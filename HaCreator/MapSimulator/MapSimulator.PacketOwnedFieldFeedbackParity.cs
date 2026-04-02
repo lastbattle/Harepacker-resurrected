@@ -202,7 +202,7 @@ namespace HaCreator.MapSimulator
         private bool TryShowPacketOwnedRewardRouletteEffect(int rewardId, int step, int total)
         {
             bool shownAnyLayer = false;
-            foreach (string propertyPath in PacketOwnedRewardRouletteLayerPaths)
+            foreach (string propertyPath in EnumeratePacketOwnedRewardRouletteLayerSourcePaths())
             {
                 string cacheKey = $"reward-roulette:{propertyPath}";
                 if (!TryGetOrCreatePacketOwnedAnimationFrames(
@@ -403,9 +403,15 @@ namespace HaCreator.MapSimulator
 
         private List<IDXObject> LoadPacketOwnedAnimationFrames(WzImageProperty sourceProperty, int fallbackDelay = 90)
         {
+            sourceProperty = sourceProperty?.GetLinkedWzImageProperty() ?? sourceProperty;
             if (sourceProperty == null || GraphicsDevice == null)
             {
                 return null;
+            }
+
+            if (sourceProperty is WzCanvasProperty canvasProperty)
+            {
+                return LoadPacketOwnedCanvasFrame(canvasProperty, fallbackDelay);
             }
 
             List<IDXObject> frames = new();
@@ -435,6 +441,32 @@ namespace HaCreator.MapSimulator
             }
 
             return frames.Count > 0 ? frames : null;
+        }
+
+        private List<IDXObject> LoadPacketOwnedCanvasFrame(WzCanvasProperty canvasProperty, int fallbackDelay)
+        {
+            if (canvasProperty == null || GraphicsDevice == null)
+            {
+                return null;
+            }
+
+            System.Drawing.Bitmap frameBitmap = canvasProperty.GetLinkedWzCanvasBitmap();
+            if (frameBitmap == null)
+            {
+                return null;
+            }
+
+            int delay = canvasProperty[WzCanvasProperty.AnimationDelayPropertyName]?.GetInt()
+                ?? canvasProperty["delay"]?.GetInt()
+                ?? fallbackDelay;
+            using (frameBitmap)
+            {
+                Texture2D texture = frameBitmap.ToTexture2D(GraphicsDevice);
+                return new List<IDXObject>
+                {
+                    new DXObject(canvasProperty.GetCanvasOriginPosition(), texture, delay)
+                };
+            }
         }
 
         private static WzImageProperty ResolvePacketOwnedPropertyPath(WzObject root, string propertyPath)
@@ -554,9 +586,23 @@ namespace HaCreator.MapSimulator
             return PacketOwnedRewardRouletteLayerPaths;
         }
 
+        internal static IReadOnlyList<string> GetPacketOwnedRewardRouletteLayerSourcePathsForTest()
+        {
+            return EnumeratePacketOwnedRewardRouletteLayerSourcePaths().ToArray();
+        }
+
         internal static bool ShouldUsePacketOwnedNpcSummonFallback(byte effectId, bool hasSummonSoundAsset)
         {
             return effectId == 0 || hasSummonSoundAsset;
+        }
+
+        private static IEnumerable<string> EnumeratePacketOwnedRewardRouletteLayerSourcePaths()
+        {
+            foreach (string layerPath in PacketOwnedRewardRouletteLayerPaths)
+            {
+                yield return layerPath;
+                yield return $"{layerPath}/0";
+            }
         }
 
         private ChatCommandHandler.CommandResult HandlePacketOwnedFieldFeedbackCommand(string[] args)

@@ -400,7 +400,7 @@ namespace HaCreator.MapSimulator
             };
         }
 
-        private IReadOnlyList<string> BuildEventAlarmOwnerLines(int currentTick)
+        private IReadOnlyList<EventAlarmLineSnapshot> BuildEventAlarmOwnerLines(int currentTick)
         {
             List<string> lines = new();
 
@@ -451,7 +451,13 @@ namespace HaCreator.MapSimulator
                 lines.Add("No packet-authored event alarm text is active.");
             }
 
-            return lines.Take(3).ToArray();
+            return lines
+                .Take(3)
+                .Select(static line => new EventAlarmLineSnapshot
+                {
+                    Text = line
+                })
+                .ToArray();
         }
 
         private static string FormatRank(int rank)

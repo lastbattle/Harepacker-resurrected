@@ -150,45 +150,42 @@ namespace HaCreator.MapSimulator.Interaction
             out WeddingInvitationHandoff handoff,
             out string message)
         {
-            if (_acceptedProposal == null)
+            if (!TryBuildWeddingPartyHandoff(localBuild, out WeddingPartyHandoff partyHandoff, out message))
             {
                 handoff = null;
-                message = "Accept an incoming engagement proposal before opening the downstream wedding invitation owner.";
                 return false;
-            }
-
-            string localName = NormalizeName(localBuild?.Name, _localCharacterName);
-            bool localIsBride = localBuild?.Gender == CharacterGender.Female;
-            bool localIsGroom = localBuild?.Gender == CharacterGender.Male;
-            string proposerName = NormalizeName(_acceptedProposal.ProposerName, DefaultPlayerName);
-            string partnerName = NormalizeName(_acceptedProposal.PartnerName, DefaultPartnerName);
-
-            string groomName;
-            string brideName;
-            if (localIsBride)
-            {
-                brideName = NamesMatch(localName, proposerName) ? proposerName : partnerName;
-                groomName = NamesMatch(brideName, proposerName) ? partnerName : proposerName;
-            }
-            else if (localIsGroom)
-            {
-                groomName = NamesMatch(localName, proposerName) ? proposerName : partnerName;
-                brideName = NamesMatch(groomName, proposerName) ? partnerName : proposerName;
-            }
-            else
-            {
-                groomName = proposerName;
-                brideName = partnerName;
             }
 
             handoff = new WeddingInvitationHandoff
             {
-                GroomName = groomName,
-                BrideName = brideName,
+                GroomName = partyHandoff.GroomName,
+                BrideName = partyHandoff.BrideName,
                 Style = style,
-                Proposal = _acceptedProposal
+                Proposal = partyHandoff.Proposal
             };
             message = $"Prepared wedding invitation handoff for {handoff.GroomName} and {handoff.BrideName} from the accepted engagement proposal snapshot.";
+            return true;
+        }
+
+        internal bool TryBuildWeddingWishListHandoff(
+            CharacterBuild localBuild,
+            out WeddingWishListHandoff handoff,
+            out string message)
+        {
+            if (!TryBuildWeddingPartyHandoff(localBuild, out WeddingPartyHandoff partyHandoff, out message))
+            {
+                handoff = null;
+                return false;
+            }
+
+            handoff = new WeddingWishListHandoff
+            {
+                GroomName = partyHandoff.GroomName,
+                BrideName = partyHandoff.BrideName,
+                LocalRole = partyHandoff.LocalRole,
+                Proposal = partyHandoff.Proposal
+            };
+            message = $"Prepared wedding wish-list handoff for {handoff.GroomName} and {handoff.BrideName} as {handoff.LocalRole}.";
             return true;
         }
 
@@ -383,6 +380,59 @@ namespace HaCreator.MapSimulator.Interaction
                 StringComparison.OrdinalIgnoreCase);
         }
 
+        private bool TryBuildWeddingPartyHandoff(
+            CharacterBuild localBuild,
+            out WeddingPartyHandoff handoff,
+            out string message)
+        {
+            if (_acceptedProposal == null)
+            {
+                handoff = null;
+                message = "Accept an incoming engagement proposal before opening the downstream wedding owner.";
+                return false;
+            }
+
+            string localName = NormalizeName(localBuild?.Name, _localCharacterName);
+            bool localIsBride = localBuild?.Gender == CharacterGender.Female;
+            bool localIsGroom = localBuild?.Gender == CharacterGender.Male;
+            string proposerName = NormalizeName(_acceptedProposal.ProposerName, DefaultPlayerName);
+            string partnerName = NormalizeName(_acceptedProposal.PartnerName, DefaultPartnerName);
+
+            string groomName;
+            string brideName;
+            WeddingWishListRole localRole;
+            if (localIsBride)
+            {
+                brideName = NamesMatch(localName, proposerName) ? proposerName : partnerName;
+                groomName = NamesMatch(brideName, proposerName) ? partnerName : proposerName;
+                localRole = WeddingWishListRole.Bride;
+            }
+            else if (localIsGroom)
+            {
+                groomName = NamesMatch(localName, proposerName) ? proposerName : partnerName;
+                brideName = NamesMatch(groomName, proposerName) ? partnerName : proposerName;
+                localRole = WeddingWishListRole.Groom;
+            }
+            else
+            {
+                groomName = proposerName;
+                brideName = partnerName;
+                localRole = NamesMatch(localName, partnerName)
+                    ? WeddingWishListRole.Bride
+                    : WeddingWishListRole.Groom;
+            }
+
+            handoff = new WeddingPartyHandoff
+            {
+                GroomName = groomName,
+                BrideName = brideName,
+                LocalRole = localRole,
+                Proposal = _acceptedProposal
+            };
+            message = $"Prepared downstream wedding handoff for {groomName} and {brideName} as {localRole}.";
+            return true;
+        }
+
         private static string FormatPayload(IReadOnlyList<byte> payload)
         {
             if (payload == null || payload.Count == 0)
@@ -444,6 +494,22 @@ namespace HaCreator.MapSimulator.Interaction
         public string GroomName { get; init; } = string.Empty;
         public string BrideName { get; init; } = string.Empty;
         public WeddingInvitationStyle Style { get; init; }
+        public EngagementProposalAcceptedSnapshot Proposal { get; init; }
+    }
+
+    internal sealed class WeddingWishListHandoff
+    {
+        public string GroomName { get; init; } = string.Empty;
+        public string BrideName { get; init; } = string.Empty;
+        public WeddingWishListRole LocalRole { get; init; }
+        public EngagementProposalAcceptedSnapshot Proposal { get; init; }
+    }
+
+    internal sealed class WeddingPartyHandoff
+    {
+        public string GroomName { get; init; } = string.Empty;
+        public string BrideName { get; init; } = string.Empty;
+        public WeddingWishListRole LocalRole { get; init; }
         public EngagementProposalAcceptedSnapshot Proposal { get; init; }
     }
 }

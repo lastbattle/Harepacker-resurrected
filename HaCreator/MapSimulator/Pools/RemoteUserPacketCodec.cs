@@ -24,7 +24,9 @@ namespace HaCreator.MapSimulator.Pools
         UserPreparedSkillClear = 213,
         UserMeleeAttack = 214,
         UserItemEffect = 215,
-        UserAvatarModified = 223
+        UserAvatarModified = 223,
+        UserTemporaryStatSet = 225,
+        UserTemporaryStatReset = 226
     }
 
     public readonly record struct RemoteUserEnterFieldPacket(
@@ -146,6 +148,8 @@ namespace HaCreator.MapSimulator.Pools
     public readonly record struct RemoteUserRelationshipRecord(
         bool IsActive,
         int ItemId,
+        long? ItemSerial,
+        long? PairItemSerial,
         int? CharacterId,
         int? PairCharacterId);
     public readonly record struct RemoteUserAvatarModifiedPacket(
@@ -646,29 +650,37 @@ namespace HaCreator.MapSimulator.Pools
                 }
 
                 bool hasCoupleRecord = reader.ReadByte() != 0;
+                long? coupleItemSerial = null;
+                long? couplePairItemSerial = null;
                 if (hasCoupleRecord)
                 {
-                    reader.ReadInt64();
-                    reader.ReadInt64();
+                    coupleItemSerial = reader.ReadInt64();
+                    couplePairItemSerial = reader.ReadInt64();
                 }
                 RemoteUserRelationshipRecord coupleRecord = hasCoupleRecord
                     ? new RemoteUserRelationshipRecord(
                         true,
                         ItemId: reader.ReadInt32(),
+                        ItemSerial: coupleItemSerial,
+                        PairItemSerial: couplePairItemSerial,
                         CharacterId: null,
                         PairCharacterId: null)
                     : default;
 
                 bool hasFriendshipRecord = reader.ReadByte() != 0;
+                long? friendshipItemSerial = null;
+                long? friendshipPairItemSerial = null;
                 if (hasFriendshipRecord)
                 {
-                    reader.ReadInt64();
-                    reader.ReadInt64();
+                    friendshipItemSerial = reader.ReadInt64();
+                    friendshipPairItemSerial = reader.ReadInt64();
                 }
                 RemoteUserRelationshipRecord friendshipRecord = hasFriendshipRecord
                     ? new RemoteUserRelationshipRecord(
                         true,
                         ItemId: reader.ReadInt32(),
+                        ItemSerial: friendshipItemSerial,
+                        PairItemSerial: friendshipPairItemSerial,
                         CharacterId: null,
                         PairCharacterId: null)
                     : default;
@@ -678,6 +690,8 @@ namespace HaCreator.MapSimulator.Pools
                     ? new RemoteUserRelationshipRecord(
                         true,
                         ItemId: 0,
+                        ItemSerial: null,
+                        PairItemSerial: null,
                         CharacterId: reader.ReadInt32(),
                         PairCharacterId: reader.ReadInt32())
                     : default;

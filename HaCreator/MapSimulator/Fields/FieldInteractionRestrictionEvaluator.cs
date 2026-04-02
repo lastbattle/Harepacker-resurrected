@@ -40,6 +40,13 @@ namespace HaCreator.MapSimulator.Fields
                 : null;
         }
 
+        public static string GetChannelShiftRestrictionMessage(long fieldLimit)
+        {
+            return FieldLimitType.Unable_To_Migrate.Check(fieldLimit)
+                ? "This field forbids channel changes."
+                : null;
+        }
+
         public static string GetMiniGameRestrictionMessage(long fieldLimit)
         {
             return FieldLimitType.Unable_To_Open_Mini_Game.Check(fieldLimit)

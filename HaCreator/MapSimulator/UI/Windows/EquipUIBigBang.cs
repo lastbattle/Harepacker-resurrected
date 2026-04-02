@@ -50,6 +50,7 @@ namespace HaCreator.MapSimulator.UI
         private const int COMPANION_PANE_ATTACH_Y = 18;
         private const int COMPANION_EMPTY_TEXT_PADDING = 14;
         private const int COMPANION_INVENTORY_REQUEST_DELAY_MS = 120;
+        private const int EQUIPMENT_EXCLUSIVE_REQUEST_COOLDOWN_MS = 500;
 
         // Tab indices
         private const int TAB_CHARACTER = 0;
@@ -278,6 +279,7 @@ namespace HaCreator.MapSimulator.UI
         private PendingCompanionInventoryChange _pendingCompanionInventoryChange;
         private int _nextCompanionInventoryRequestId = 1;
         private int _equipmentRequestSessionId = 1;
+        private int _lastEquipmentExclusiveRequestTick = int.MinValue;
         #endregion
 
         #region Properties
@@ -4163,6 +4165,15 @@ namespace HaCreator.MapSimulator.UI
             int itemId,
             string itemName)
         {
+            int currentTick = Environment.TickCount;
+            if (EquipmentChangeClientParity.IsExclusiveRequestThrottled(
+                    currentTick,
+                    _lastEquipmentExclusiveRequestTick,
+                    EQUIPMENT_EXCLUSIVE_REQUEST_COOLDOWN_MS))
+            {
+                return EquipmentChangeResult.Reject("Please wait a moment before changing equipment again.");
+            }
+
             if (EquipmentChangeSubmitted != null && EquipmentChangeResultRequested != null)
             {
                 EquipmentChangeSubmission submission = EquipmentChangeSubmitted.Invoke(request);
@@ -4175,6 +4186,10 @@ namespace HaCreator.MapSimulator.UI
                 {
                     return EquipmentChangeResult.Reject(submission.RejectReason);
                 }
+
+                RecordEquipmentExclusiveRequest(submission.RequestedAtTick != 0
+                    ? submission.RequestedAtTick
+                    : currentTick);
 
                 _pendingEquipmentChange = new PendingEquipmentChange
                 {
@@ -4191,7 +4206,13 @@ namespace HaCreator.MapSimulator.UI
                 return EquipmentChangeResult.Pending(submission.RequestId, submission.RequestedAtTick);
             }
 
-            return EquipmentChangeRequested?.Invoke(request);
+            EquipmentChangeResult result = EquipmentChangeRequested?.Invoke(request);
+            if (result?.Accepted == true)
+            {
+                RecordEquipmentExclusiveRequest(currentTick);
+            }
+
+            return result;
         }
 
         private void NotifyEquipmentEquipBlocked(string message)
@@ -4210,6 +4231,11 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return Math.Max(1, currentSessionId + 1);
+        }
+
+        private void RecordEquipmentExclusiveRequest(int requestTick)
+        {
+            _lastEquipmentExclusiveRequestTick = requestTick;
         }
 
         private string BuildDragCompareDescription(EquipSlot hoveredSlot)

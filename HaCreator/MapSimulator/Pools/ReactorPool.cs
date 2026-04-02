@@ -91,6 +91,7 @@ namespace HaCreator.MapSimulator.Pools
         public int RequiredHits { get; set; }
         public float Alpha { get; set; } = 1f;
         public ReactorActivationType ActivationType { get; set; }
+        public int ActivationValue { get; set; }
         public ReactorType ReactorType { get; set; } = ReactorType.UNKNOWN;
         public int ActivatingPlayerId { get; set; }
         public bool CanRespawn { get; set; } = true;
@@ -210,6 +211,7 @@ namespace HaCreator.MapSimulator.Pools
                     Alpha = 1f,
                     ReactorType = interactionMetadata.ReactorType,
                     ActivationType = interactionMetadata.ActivationType,
+                    ActivationValue = 0,
                     SupportedActivationTypes = interactionMetadata.SupportedActivationTypes,
                     CanRespawn = true,
                     RequiredItemId = interactionMetadata.RequiredItemId,
@@ -750,6 +752,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             data.ActivationType = activationType;
+            data.ActivationValue = activationValue;
             data.State = ReactorState.Activated;
             data.StateStartTime = currentTick;
             data.StateFrame = 0;
@@ -798,10 +801,11 @@ namespace HaCreator.MapSimulator.Pools
                     if (TryResolveNextVisualState(
                         reactor,
                         data,
-                        new ReactorTransitionRequest(ReactorActivationType.Hit, data.ReactorType),
+                        new ReactorTransitionRequest(ReactorActivationType.Hit, data.ReactorType, data.ActivationValue),
                         out int nextVisualState))
                     {
                         data.ActivationType = ReactorActivationType.Hit;
+                        data.ActivationValue = 0;
                         data.VisualState = nextVisualState;
                         data.State = ReactorState.Activated;
                         data.StateStartTime = currentTick;
@@ -870,6 +874,7 @@ namespace HaCreator.MapSimulator.Pools
             data.VisualState = reactor?.GetInitialState() ?? 0;
             data.HitCount = 0;
             data.Alpha = 1f;
+            data.ActivationValue = 0;
             PublishScriptState(reactor, data, isEnabled: false, currentTick);
         }
 
@@ -1101,6 +1106,7 @@ namespace HaCreator.MapSimulator.Pools
                     data.VisualState = newReactor.GetInitialState();
                     data.HitCount = 0;
                     data.Alpha = 1f;
+                    data.ActivationValue = 0;
                     data.CanRespawn = spawnPoint.CanRespawn;
                     data.ScriptStatePublished = false;
                 }
@@ -1162,6 +1168,7 @@ namespace HaCreator.MapSimulator.Pools
                     RequiredHits = 1,
                     Alpha = 1f,
                     ActivationType = activationTypeOverride == ReactorActivationType.None ? ReactorActivationType.Touch : activationTypeOverride,
+                    ActivationValue = 0,
                     SupportedActivationTypes = ToActivationMask(
                         activationTypeOverride == ReactorActivationType.None ? ReactorActivationType.Touch : activationTypeOverride),
                     CanRespawn = canRespawn
@@ -1535,7 +1542,7 @@ namespace HaCreator.MapSimulator.Pools
                 || !TryResolveNextVisualState(
                     reactor,
                     data,
-                    new ReactorTransitionRequest(ReactorActivationType.Time, data.ReactorType),
+                    new ReactorTransitionRequest(ReactorActivationType.Time, data.ReactorType, data.ActivationValue),
                     out int nextVisualState,
                     allowNumericFallback: false))
             {
@@ -1562,7 +1569,7 @@ namespace HaCreator.MapSimulator.Pools
                 || !TryResolveNextVisualState(
                     reactor,
                     data,
-                    new ReactorTransitionRequest(activationType, data.ReactorType),
+                    new ReactorTransitionRequest(activationType, data.ReactorType, data.ActivationValue),
                     out int nextVisualState))
             {
                 return false;

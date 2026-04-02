@@ -35,6 +35,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal string ActiveMessageText { get; private set; }
         internal int ActiveMessageWidth { get; private set; } = DefaultTextWidth;
         internal int ActiveMessageDurationMs { get; private set; }
+        internal int ActiveMessageStartedAt { get; private set; } = int.MinValue;
         internal int ActiveMessageExpiresAt { get; private set; } = int.MinValue;
         internal string StatusMessage { get; private set; } = "Tutor runtime idle.";
         internal IReadOnlyCollection<int> ActiveTutorSkillIds => _activeTutorSkillIds;
@@ -107,14 +108,15 @@ namespace HaCreator.MapSimulator.Interaction
                 : "Tutor actor already idle.";
         }
 
-        internal void ApplyIndexedMessage(int index, int durationMs)
+        internal void ApplyIndexedMessage(int index, int durationMs, int currentTick)
         {
             LastIndexedMessage = Math.Max(0, index);
             MessageKind = TutorMessageKind.Indexed;
             ActiveMessageText = string.Empty;
             ActiveMessageWidth = DefaultTextWidth;
             ActiveMessageDurationMs = ClampDuration(durationMs <= 0 ? DefaultIndexedDurationMs : durationMs);
-            ActiveMessageExpiresAt = unchecked(Environment.TickCount + ActiveMessageDurationMs);
+            ActiveMessageStartedAt = currentTick;
+            ActiveMessageExpiresAt = unchecked(currentTick + ActiveMessageDurationMs);
             StatusMessage = $"Tutor indexed cue #{LastIndexedMessage} active for {ActiveMessageDurationMs} ms.";
         }
 
@@ -132,6 +134,7 @@ namespace HaCreator.MapSimulator.Interaction
             ActiveMessageText = normalizedText;
             ActiveMessageWidth = Math.Clamp(width <= 0 ? DefaultTextWidth : width, MinTextWidth, MaxTextWidth);
             ActiveMessageDurationMs = ClampDuration(durationMs);
+            ActiveMessageStartedAt = currentTick;
             ActiveMessageExpiresAt = unchecked(currentTick + ActiveMessageDurationMs);
             StatusMessage = $"Tutor text message active for {ActiveMessageDurationMs} ms at width {ActiveMessageWidth}.";
         }
@@ -154,6 +157,7 @@ namespace HaCreator.MapSimulator.Interaction
             ActiveMessageText = string.Empty;
             ActiveMessageWidth = DefaultTextWidth;
             ActiveMessageDurationMs = 0;
+            ActiveMessageStartedAt = int.MinValue;
             ActiveMessageExpiresAt = int.MinValue;
         }
 

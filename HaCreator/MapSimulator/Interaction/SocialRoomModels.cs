@@ -235,6 +235,44 @@ namespace HaCreator.MapSimulator.Interaction
         public SocialRoomChatTone Tone { get; }
     }
 
+    public sealed class SocialRoomSoldItemEntry
+    {
+        public SocialRoomSoldItemEntry(
+            int itemId,
+            string itemName,
+            string buyerName,
+            int quantitySold,
+            int bundleCount,
+            int bundlePrice,
+            int grossMeso,
+            int taxMeso,
+            int netMeso,
+            int packetSlotIndex)
+        {
+            ItemId = Math.Max(0, itemId);
+            ItemName = string.IsNullOrWhiteSpace(itemName) ? "Unknown item" : itemName;
+            BuyerName = string.IsNullOrWhiteSpace(buyerName) ? "Visitor" : buyerName;
+            QuantitySold = Math.Max(1, quantitySold);
+            BundleCount = Math.Max(1, bundleCount);
+            BundlePrice = Math.Max(0, bundlePrice);
+            GrossMeso = Math.Max(0, grossMeso);
+            TaxMeso = Math.Max(0, taxMeso);
+            NetMeso = Math.Max(0, netMeso);
+            PacketSlotIndex = Math.Max(0, packetSlotIndex);
+        }
+
+        public int ItemId { get; }
+        public string ItemName { get; }
+        public string BuyerName { get; }
+        public int QuantitySold { get; }
+        public int BundleCount { get; }
+        public int BundlePrice { get; }
+        public int GrossMeso { get; }
+        public int TaxMeso { get; }
+        public int NetMeso { get; }
+        public int PacketSlotIndex { get; }
+    }
+
     public sealed partial class SocialRoomRuntime
     {
         private const int MiniRoomOmokBoardSize = 15;
@@ -334,6 +372,7 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly Queue<string> _pendingVisitorNames;
         private readonly List<InventoryEscrowEntry> _inventoryEscrow;
         private readonly List<SocialRoomRemoteInventoryEntry> _remoteInventoryEntries;
+        private readonly List<SocialRoomSoldItemEntry> _soldItems;
         private readonly List<SocialRoomItemEntry> _defaultItems;
         private readonly List<SocialRoomOccupant> _defaultOccupants;
         private readonly List<SocialRoomRemoteInventoryEntry> _defaultRemoteInventoryEntries;
@@ -386,6 +425,8 @@ namespace HaCreator.MapSimulator.Interaction
         private bool _suspendPersistence;
         private string _persistenceKey;
         private string _lastPacketOwnerSummary;
+        private int _personalShopTotalSoldGross;
+        private int _personalShopTotalReceivedNet;
         private Action _miniRoomToggleReadyHandler;
         private Action _miniRoomStartHandler;
         private Action _miniRoomModeHandler;
@@ -421,6 +462,7 @@ namespace HaCreator.MapSimulator.Interaction
             _pendingVisitorNames = new Queue<string>(new[] { "Rondo", "Rin", "Maya", "Pia", "Targa", "Rowen" });
             _inventoryEscrow = new List<InventoryEscrowEntry>();
             _remoteInventoryEntries = new List<SocialRoomRemoteInventoryEntry>();
+            _soldItems = new List<SocialRoomSoldItemEntry>();
             _defaultItems = items?.Select(item => new SocialRoomItemEntry(item.OwnerName, item.ItemName, item.Quantity, item.MesoAmount, item.Detail, item.IsLocked, item.IsClaimed, item.ItemId, item.PacketSlotIndex)).ToList()
                 ?? new List<SocialRoomItemEntry>();
             _defaultOccupants = occupants?.Select(occupant => new SocialRoomOccupant(occupant.Name, occupant.Role, occupant.Detail, occupant.IsReady, occupant.AvatarBuild)).ToList()
@@ -471,8 +513,11 @@ namespace HaCreator.MapSimulator.Interaction
         public IReadOnlyList<SocialRoomItemEntry> Items => _items;
         public IReadOnlyList<string> Notes => _notes;
         public IReadOnlyList<SocialRoomChatEntry> ChatEntries => _chatEntries;
+        public IReadOnlyList<SocialRoomSoldItemEntry> SoldItems => _soldItems;
         public IReadOnlyList<SocialRoomRemoteInventoryEntry> RemoteInventoryEntries => _remoteInventoryEntries;
         public int RemoteInventoryMeso => _remoteInventoryMeso;
+        public int PersonalShopTotalSoldGross => _personalShopTotalSoldGross;
+        public int PersonalShopTotalReceivedNet => _personalShopTotalReceivedNet;
         public int MiniRoomOmokBoardSizeValue => MiniRoomOmokBoardSize;
         public bool IsMiniRoomOmokActive => Kind == SocialRoomKind.MiniRoom && _miniRoomModeIndex == 0;
         public bool IsMiniRoomOmokInProgress => _miniRoomOmokInProgress;
@@ -519,6 +564,8 @@ namespace HaCreator.MapSimulator.Interaction
                 RoomState = RoomState,
                 ModeName = ModeName,
                 PacketOwnerSummary = _lastPacketOwnerSummary,
+                PersonalShopTotalSoldGross = _personalShopTotalSoldGross,
+                PersonalShopTotalReceivedNet = _personalShopTotalReceivedNet,
                 MiniRoomModeIndex = _miniRoomModeIndex,
                 MiniRoomWagerAmount = _miniRoomWagerAmount,
                 MiniRoomOmokInProgress = _miniRoomOmokInProgress,
@@ -605,6 +652,21 @@ namespace HaCreator.MapSimulator.Interaction
                         PacketSlotIndex = item.PacketSlotIndex
                     })
                     .ToList(),
+                SoldItems = _soldItems
+                    .Select(item => new SocialRoomSoldItemSnapshot
+                    {
+                        ItemId = item.ItemId,
+                        ItemName = item.ItemName,
+                        BuyerName = item.BuyerName,
+                        QuantitySold = item.QuantitySold,
+                        BundleCount = item.BundleCount,
+                        BundlePrice = item.BundlePrice,
+                        GrossMeso = item.GrossMeso,
+                        TaxMeso = item.TaxMeso,
+                        NetMeso = item.NetMeso,
+                        PacketSlotIndex = item.PacketSlotIndex
+                    })
+                    .ToList(),
                 Notes = _notes.ToList(),
                 ChatEntries = _chatEntries
                     .Select(entry => new SocialRoomChatEntrySnapshot
@@ -646,6 +708,8 @@ namespace HaCreator.MapSimulator.Interaction
                 RoomState = source?.RoomState ?? _defaultSnapshot.RoomState;
                 ModeName = source?.ModeName ?? _defaultSnapshot.ModeName;
                 _lastPacketOwnerSummary = source?.PacketOwnerSummary ?? _defaultSnapshot.PacketOwnerSummary ?? BuildDefaultPacketOwnerSummary();
+                _personalShopTotalSoldGross = Math.Max(0, source?.PersonalShopTotalSoldGross ?? _defaultSnapshot.PersonalShopTotalSoldGross);
+                _personalShopTotalReceivedNet = Math.Max(0, source?.PersonalShopTotalReceivedNet ?? _defaultSnapshot.PersonalShopTotalReceivedNet);
                 _miniRoomModeIndex = source?.MiniRoomModeIndex ?? _defaultSnapshot.MiniRoomModeIndex;
                 _miniRoomWagerAmount = Math.Max(0, source?.MiniRoomWagerAmount ?? _defaultSnapshot.MiniRoomWagerAmount);
                 _miniRoomOmokInProgress = source?.MiniRoomOmokInProgress ?? _defaultSnapshot.MiniRoomOmokInProgress;
@@ -701,6 +765,22 @@ namespace HaCreator.MapSimulator.Interaction
                 foreach (SocialRoomItemSnapshot item in (source?.Items?.Count > 0 ? source.Items : _defaultSnapshot.Items) ?? Enumerable.Empty<SocialRoomItemSnapshot>())
                 {
                     _items.Add(new SocialRoomItemEntry(item.OwnerName, item.ItemName, item.Quantity, item.MesoAmount, item.Detail, item.IsLocked, item.IsClaimed, item.ItemId, item.PacketSlotIndex));
+                }
+
+                _soldItems.Clear();
+                foreach (SocialRoomSoldItemSnapshot item in source?.SoldItems ?? Enumerable.Empty<SocialRoomSoldItemSnapshot>())
+                {
+                    _soldItems.Add(new SocialRoomSoldItemEntry(
+                        item.ItemId,
+                        item.ItemName,
+                        item.BuyerName,
+                        item.QuantitySold,
+                        item.BundleCount,
+                        item.BundlePrice,
+                        item.GrossMeso,
+                        item.TaxMeso,
+                        item.NetMeso,
+                        item.PacketSlotIndex));
                 }
 
                 _notes.Clear();
@@ -2359,9 +2439,24 @@ namespace HaCreator.MapSimulator.Interaction
 
             int normalizedBundles = Math.Max(1, purchasedBundles);
             int quantitySold = normalizedBundles * Math.Max(1, entry.Quantity);
-            int mesosReceived = Math.Max(0, normalizedBundles * entry.MesoAmount);
+            int grossMesosReceived = Math.Max(0, normalizedBundles * entry.MesoAmount);
+            int taxMesos = GetPersonalShopTax(grossMesosReceived);
+            int netMesosReceived = Math.Max(0, grossMesosReceived - taxMesos);
             entry.Update($"{entry.Detail} | Packet sold {normalizedBundles} bundle(s) to {buyerName}", entry.Quantity, entry.MesoAmount, entry.IsLocked, entry.IsClaimed);
-            MesoAmount += mesosReceived;
+            _personalShopTotalSoldGross += grossMesosReceived;
+            _personalShopTotalReceivedNet += netMesosReceived;
+            MesoAmount += netMesosReceived;
+            _soldItems.Add(new SocialRoomSoldItemEntry(
+                entry.ItemId,
+                entry.ItemName,
+                buyerName,
+                quantitySold,
+                normalizedBundles,
+                entry.MesoAmount,
+                grossMesosReceived,
+                taxMesos,
+                netMesosReceived,
+                soldIndex));
             SocialRoomOccupant buyer = _occupants.FirstOrDefault(occupant => string.Equals(occupant.Name, buyerName, StringComparison.OrdinalIgnoreCase));
             if (buyer == null)
             {
@@ -2378,10 +2473,10 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             EnsureMerchantPacketNotes();
-            _notes[2] = $"{buyerName} bought {quantitySold} of {entry.ItemName} across {normalizedBundles} bundle(s).";
-            _notes[3] = $"Personal-shop packet totals: {MesoAmount:N0} meso waiting to claim.";
+            _notes[2] = $"{buyerName} bought {quantitySold} of {entry.ItemName} across {normalizedBundles} bundle(s) for {grossMesosReceived:N0} meso gross and {netMesosReceived:N0} net.";
+            _notes[3] = $"Personal-shop packet totals: gross {_personalShopTotalSoldGross:N0}, tax {_personalShopTotalSoldGross - _personalShopTotalReceivedNet:N0}, net {_personalShopTotalReceivedNet:N0}, claimable {MesoAmount:N0}.";
             RoomState = "Sold-item result received";
-            StatusMessage = $"{buyerName} bought {quantitySold} of {entry.ItemName} across {normalizedBundles} bundle(s) from packet slot {soldIndex}.";
+            StatusMessage = $"{buyerName} bought {quantitySold} of {entry.ItemName} across {normalizedBundles} bundle(s) from packet slot {soldIndex}. Gross {grossMesosReceived:N0}, tax {taxMesos:N0}, net {netMesosReceived:N0}.";
             PersistState();
             message = StatusMessage;
             return true;
@@ -2545,6 +2640,41 @@ namespace HaCreator.MapSimulator.Interaction
             int removedRows = _items.RemoveAll(item => item.IsClaimed);
             NormalizeActiveMerchantPacketSlots();
             return removedRows;
+        }
+
+        private static int GetPersonalShopTax(int mesoAmount)
+        {
+            if (mesoAmount >= 100000000)
+            {
+                return (int)(mesoAmount * 0.03d);
+            }
+
+            if (mesoAmount >= 25000000)
+            {
+                return (int)(mesoAmount * 0.025d);
+            }
+
+            if (mesoAmount >= 10000000)
+            {
+                return (int)(mesoAmount * 0.02d);
+            }
+
+            if (mesoAmount >= 5000000)
+            {
+                return (int)(mesoAmount * 0.015d);
+            }
+
+            if (mesoAmount >= 1000000)
+            {
+                return (int)(mesoAmount * 0.009d);
+            }
+
+            if (mesoAmount >= 100000)
+            {
+                return (int)(mesoAmount * 0.004d);
+            }
+
+            return 0;
         }
 
         private void ApplyTradingRoomMesoPacket(int traderIndex, int offeredMeso)

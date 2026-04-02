@@ -75,6 +75,7 @@ namespace HaCreator.MapSimulator.UI
         private bool _categoryPanelExpanded;
         private bool _categoryLegendVisible;
         private int _categoryScrollOffset;
+        private bool _categoryPanelDockToBottom;
 
         public event Action<int> QuestDetailRequested;
 
@@ -247,6 +248,12 @@ namespace HaCreator.MapSimulator.UI
                 };
             }
 
+            UpdateTabStates();
+        }
+
+        public void SetCategoryPanelDockToBottom(bool dockToBottom)
+        {
+            _categoryPanelDockToBottom = dockToBottom;
             UpdateTabStates();
         }
 
@@ -687,8 +694,17 @@ namespace HaCreator.MapSimulator.UI
 
         private Rectangle GetListArea()
         {
-            int top = Position.Y + (_currentTab == TAB_AVAILABLE ? 66 : 48) + GetCategoryPanelHeight();
+            int top = Position.Y + (_currentTab == TAB_AVAILABLE ? 66 : 48);
             int bottom = GetFooterArea().Y - 8;
+            if (_categoryPanelDockToBottom)
+            {
+                bottom -= GetCategoryPanelHeight();
+            }
+            else
+            {
+                top += GetCategoryPanelHeight();
+            }
+
             return new Rectangle(Position.X + 8, top, (CurrentFrame?.Width ?? 240) - 16, Math.Max(QUEST_ENTRY_HEIGHT + 8, bottom - top));
         }
 
@@ -1036,12 +1052,23 @@ namespace HaCreator.MapSimulator.UI
             {
                 width = _categoryLegendTexture.Width;
                 x = Position.X + Math.Max(0, ((CurrentFrame?.Width ?? width) - width) / 2);
-                return new Rectangle(x, y, width, _categoryLegendTexture.Height);
+                int legendHeight = _categoryLegendTexture.Height;
+                if (_categoryPanelDockToBottom)
+                {
+                    y = GetCategoryPanelBottom(tabRect) - legendHeight;
+                }
+
+                return new Rectangle(x, y, width, legendHeight);
             }
 
             int columnCount = GetCategoryColumnCount(width);
             int rowCount = Math.Max(1, Math.Min(4, (int)Math.Ceiling(GetVisibleAreaFilters().Count / (float)columnCount)));
             int height = (rowCount * CATEGORY_ROW_HEIGHT) + (CATEGORY_PANEL_PADDING * 2);
+            if (_categoryPanelDockToBottom)
+            {
+                y = GetCategoryPanelBottom(tabRect) - height;
+            }
+
             return new Rectangle(x, y, width, height);
         }
 
@@ -1059,6 +1086,35 @@ namespace HaCreator.MapSimulator.UI
             y = Math.Max(y, GetButtonBottom(_showCategoryButton) + 4);
             y = Math.Max(y, GetButtonBottom(_hideCategoryButton) + 4);
             return y;
+        }
+
+        private int GetCategoryPanelBottom(Rectangle tabRect)
+        {
+            if (!_categoryPanelDockToBottom)
+            {
+                Rectangle panelRect = GetCategoryPanelArea(tabRect);
+                return panelRect.Bottom;
+            }
+
+            int footerTop = GetFooterArea().Y - 4;
+            int buttonTop = GetButtonTop(_showCategoryButton);
+            if (buttonTop > 0)
+            {
+                footerTop = Math.Min(footerTop, buttonTop - 4);
+            }
+
+            buttonTop = GetButtonTop(_hideCategoryButton);
+            if (buttonTop > 0)
+            {
+                footerTop = Math.Min(footerTop, buttonTop - 4);
+            }
+
+            return footerTop;
+        }
+
+        private int GetButtonTop(UIObject button)
+        {
+            return button == null ? 0 : Position.Y + button.Y;
         }
 
         private int GetButtonBottom(UIObject button)

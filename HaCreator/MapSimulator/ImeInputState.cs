@@ -22,20 +22,22 @@ namespace HaCreator.MapSimulator
 
     public sealed class ImeCandidateListState
     {
-        public static readonly ImeCandidateListState Empty = new(Array.Empty<string>(), 0, 0, -1, false);
+        public static readonly ImeCandidateListState Empty = new(Array.Empty<string>(), 0, 0, -1, false, -1);
 
         public ImeCandidateListState(
             IReadOnlyList<string> candidates,
             int pageStart,
             int pageSize,
             int selection,
-            bool vertical)
+            bool vertical,
+            int listIndex = -1)
         {
             Candidates = candidates ?? Array.Empty<string>();
             PageStart = Math.Max(0, pageStart);
             PageSize = Math.Max(0, pageSize);
             Selection = selection;
             Vertical = vertical;
+            ListIndex = listIndex;
         }
 
         public IReadOnlyList<string> Candidates { get; }
@@ -43,6 +45,7 @@ namespace HaCreator.MapSimulator
         public int PageSize { get; }
         public int Selection { get; }
         public bool Vertical { get; }
+        public int ListIndex { get; }
         public bool HasCandidates => Candidates.Count > 0;
     }
 }

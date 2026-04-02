@@ -329,6 +329,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 skill.RedirectsDamageToMp = GetInt(infoNode, "switchDamtoMP") == 1;
                 skill.HasInvincibleMetadata = GetInt(infoNode, "invincible") == 1;
                 skill.UsesEnergyChargeRuntime = GetInt(infoNode, "energyCharge") == 1;
+                skill.HasChargingSkillMetadata = GetInt(infoNode, "chargingSkill") == 1;
                 skill.FullChargeEffectName = GetString(infoNode, "fullChargeEffect");
                 skill.ReflectsIncomingDamage = GetInt(infoNode, "PADReflect") == 1
                                                || GetInt(infoNode, "MADReflect") == 1;
@@ -2972,6 +2973,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private static SkillLevelData CreateLevelData(SkillData skill, WzImageProperty node, int level)
         {
             var levelData = new SkillLevelData { Level = level };
+            levelData.AuthoredPropertyOrder = GetDirectPropertyOrder(node);
 
             levelData.Damage = GetInt(node, "damage", 0, level);
             levelData.AttackCount = GetInt(node, "attackCount", 1, level);
@@ -3038,6 +3040,25 @@ namespace HaCreator.MapSimulator.Character.Skills
             PopulateSkillLevelRequirements(levelData, node);
 
             return levelData;
+        }
+
+        private static List<string> GetDirectPropertyOrder(WzImageProperty node)
+        {
+            if (node?.WzProperties == null || node.WzProperties.Count == 0)
+            {
+                return new List<string>();
+            }
+
+            var propertyOrder = new List<string>(node.WzProperties.Count);
+            foreach (WzImageProperty child in node.WzProperties)
+            {
+                if (!string.IsNullOrWhiteSpace(child?.Name))
+                {
+                    propertyOrder.Add(child.Name);
+                }
+            }
+
+            return propertyOrder;
         }
 
         private static void NormalizePassiveStatAliases(SkillData skill, WzImageProperty node, int level, SkillLevelData levelData)

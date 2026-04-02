@@ -1,0 +1,127 @@
+using System;
+
+namespace HaCreator.MapSimulator.Interaction
+{
+    internal sealed class GuildCreateAgreementRuntime
+    {
+        internal const int IntroRevealDurationMs = 4460;
+        internal const int ChoiceTimeoutMs = 30000;
+
+        private bool _isOpen;
+        private bool _timedOut;
+        private int _elapsedMs;
+        private int _choiceRemainingMs;
+        private string _masterName = "Guild Master";
+        private string _guildName = "New Guild";
+        private string _statusMessage = "Guild creation agreement is idle.";
+
+        internal string Open(string masterName, string guildName)
+        {
+            _isOpen = true;
+            _timedOut = false;
+            _elapsedMs = 0;
+            _choiceRemainingMs = ChoiceTimeoutMs;
+            _masterName = string.IsNullOrWhiteSpace(masterName) ? "Guild Master" : masterName.Trim();
+            _guildName = string.IsNullOrWhiteSpace(guildName) ? "New Guild" : guildName.Trim();
+            _statusMessage = $"Opened guild creation agreement for {_masterName} creating {_guildName}. The dialog still uses simulator-authored text instead of the packet or script entry path.";
+            return _statusMessage;
+        }
+
+        internal string Advance(int elapsedMs)
+        {
+            if (!_isOpen || elapsedMs <= 0)
+            {
+                return null;
+            }
+
+            if (_elapsedMs < IntroRevealDurationMs)
+            {
+                _elapsedMs = Math.Min(IntroRevealDurationMs, _elapsedMs + elapsedMs);
+                return null;
+            }
+
+            _choiceRemainingMs = Math.Max(0, _choiceRemainingMs - elapsedMs);
+            if (_choiceRemainingMs > 0)
+            {
+                return null;
+            }
+
+            _isOpen = false;
+            _timedOut = true;
+            _statusMessage = $"Guild creation agreement timed out for {_masterName} and {_guildName}. The client-side timeout close path is mirrored, but the chat string and server follow-up are still approximated.";
+            return _statusMessage;
+        }
+
+        internal string Accept()
+        {
+            if (!_isOpen)
+            {
+                return _timedOut
+                    ? "The guild creation agreement already timed out."
+                    : "No guild creation agreement is active.";
+            }
+
+            if (!IsInteractive)
+            {
+                return "Guild creation agreement buttons unlock after the intro and message reveal complete.";
+            }
+
+            _isOpen = false;
+            _statusMessage = $"Accepted guild creation agreement for {_masterName} and {_guildName}. The simulator still does not create a real server-backed guild record from this dialog.";
+            return _statusMessage;
+        }
+
+        internal string Decline()
+        {
+            if (!_isOpen)
+            {
+                return _timedOut
+                    ? "The guild creation agreement already timed out."
+                    : "No guild creation agreement is active.";
+            }
+
+            _isOpen = false;
+            _statusMessage = $"Declined guild creation agreement for {_masterName} and {_guildName}.";
+            return _statusMessage;
+        }
+
+        internal string DescribeStatus()
+        {
+            string state = !_isOpen
+                ? (_timedOut ? "timed out" : "idle")
+                : (IsInteractive ? "awaiting choice" : "revealing");
+            return $"Guild creation agreement {state}: master={_masterName}, guild={_guildName}, wait={Math.Max(0, _choiceRemainingMs)}ms. {_statusMessage}";
+        }
+
+        internal GuildCreateAgreementSnapshot BuildSnapshot()
+        {
+            return new GuildCreateAgreementSnapshot
+            {
+                IsOpen = _isOpen,
+                ShowMessage = _isOpen && _elapsedMs >= 2460,
+                IsInteractive = IsInteractive,
+                TimedOut = _timedOut,
+                MasterName = _masterName,
+                GuildName = _guildName,
+                ChoiceRemainingMs = _choiceRemainingMs,
+                IntroRemainingMs = Math.Max(0, IntroRevealDurationMs - _elapsedMs),
+                StatusMessage = _statusMessage
+            };
+        }
+
+        private bool IsInteractive => _isOpen && _elapsedMs >= IntroRevealDurationMs;
+    }
+
+    internal sealed class GuildCreateAgreementSnapshot
+    {
+        public bool IsOpen { get; init; }
+        public bool ShowMessage { get; init; }
+        public bool IsInteractive { get; init; }
+        public bool TimedOut { get; init; }
+        public int IntroRemainingMs { get; init; }
+        public int ChoiceRemainingMs { get; init; }
+        public string MasterName { get; init; } = string.Empty;
+        public string GuildName { get; init; } = string.Empty;
+        public string StatusMessage { get; init; } = string.Empty;
+    }
+}

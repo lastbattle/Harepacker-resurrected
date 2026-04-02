@@ -159,17 +159,18 @@ namespace HaCreator.MapSimulator
         {
             SkillData skill = _playerManager?.SkillLoader?.LoadSkill(area.SkillId);
             SkillLevelData levelData = ResolveRemoteAffectedAreaSkillLevel(skill, area.SkillLevel);
+            SkillLevelData supportLevelData = ResolveRemoteAffectedAreaSupportLevelData(skill, levelData);
             if (skill == null || levelData == null)
             {
                 return;
             }
 
-            if (TryApplyRemotePlayerSupportAffectedAreaGameplay(area, skill, levelData, currentTime, activeProjectedSupportAreaIds))
+            if (TryApplyRemotePlayerSupportAffectedAreaGameplay(area, skill, supportLevelData ?? levelData, currentTime, activeProjectedSupportAreaIds))
             {
                 return;
             }
 
-            if (RemoteAffectedAreaSupportResolver.ResolveDisposition(skill, levelData) != RemotePlayerAffectedAreaDisposition.Hostile)
+            if (RemoteAffectedAreaSupportResolver.ResolveDisposition(skill, supportLevelData ?? levelData) != RemotePlayerAffectedAreaDisposition.Hostile)
             {
                 return;
             }
@@ -272,6 +273,37 @@ namespace HaCreator.MapSimulator
 
             _playerManager?.Heal(hpHeal, mpHeal);
             return true;
+        }
+
+        private SkillLevelData ResolveRemoteAffectedAreaSupportLevelData(SkillData skill, SkillLevelData primaryLevelData)
+        {
+            if (skill == null)
+            {
+                return primaryLevelData;
+            }
+
+            int[] affectedSkillIds = skill.GetAffectedSkillIds();
+            if (affectedSkillIds.Length == 0)
+            {
+                return primaryLevelData;
+            }
+
+            var levelDataEntries = new System.Collections.Generic.List<SkillLevelData>
+            {
+                primaryLevelData
+            };
+
+            for (int i = 0; i < affectedSkillIds.Length; i++)
+            {
+                SkillData affectedSkill = _playerManager?.SkillLoader?.LoadSkill(affectedSkillIds[i]);
+                SkillLevelData affectedLevelData = ResolveRemoteAffectedAreaSkillLevel(affectedSkill, primaryLevelData?.Level ?? 1);
+                if (affectedLevelData != null)
+                {
+                    levelDataEntries.Add(affectedLevelData);
+                }
+            }
+
+            return RemoteAffectedAreaSupportResolver.CreateProjectedSupportBuffLevelData(levelDataEntries.ToArray()) ?? primaryLevelData;
         }
 
         private static SkillLevelData ResolveRemoteAffectedAreaSkillLevel(SkillData skill, int level)

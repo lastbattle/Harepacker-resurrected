@@ -158,6 +158,7 @@ namespace HaCreator.MapSimulator.Pools
 
         private sealed class ScheduledPacketOwnedHitEffect
         {
+            public long SequenceId { get; init; }
             public ActiveHitEffect HitEffect { get; init; }
             public int ExecuteTime { get; init; }
         }
@@ -169,6 +170,7 @@ namespace HaCreator.MapSimulator.Pools
         private readonly List<ActiveHitEffect> _hitEffects = new();
         private readonly List<PacketOwnedMobAttackHitEffectDisplay> _mobAttackHitEffects = new();
         private readonly List<PacketOwnedSummonTimer> _summonExpiryTimers = new();
+        private long _nextScheduledHitEffectSequenceId = 1;
         private IReadOnlyCollection<SkillData> _cancelSkillCatalog;
         private readonly Random _random = new();
         private SkillLoader _skillLoader;
@@ -392,11 +394,14 @@ namespace HaCreator.MapSimulator.Pools
             SkillData skill = _skillLoader?.LoadSkill(packet.SkillId);
             int resolvedSkillLevel = ResolvePacketOwnedSkillLevel(skill, packet.SkillId, packet.SkillLevel, ownerIsLocal);
             SkillLevelData levelData = skill?.GetLevel(resolvedSkillLevel);
-            int durationMs = ResolveSummonDurationMs(skill, levelData, resolvedSkillLevel);
-            if (ownerIsLocal && durationMs <= 0)
-            {
-                durationMs = ResolveLocalOwnerCancelFamilyDurationMs(packet.SkillId, currentTime);
-            }
+            int durationMs = ResolvePacketOwnedCreateDurationMs(
+                skill,
+                levelData,
+                resolvedSkillLevel,
+                packet.SkillId,
+                ownerIsLocal,
+                currentTime,
+                ResolveLocalOwnerCancelFamilyDurationMs);
 
             RemoveExistingState(packet.SummonedObjectId);
 
@@ -668,18 +673,20 @@ namespace HaCreator.MapSimulator.Pools
                 }
             }
 
-            for (int i = _scheduledHitEffects.Count - 1; i >= 0; i--)
+            ScheduledPacketOwnedHitEffect[] dueHitEffects = _scheduledHitEffects
+                .Where(effect => effect != null && effect.ExecuteTime <= currentTime)
+                .OrderBy(effect => effect.ExecuteTime)
+                .ThenBy(effect => effect.SequenceId)
+                .ToArray();
+            if (dueHitEffects.Length > 0)
             {
-                ScheduledPacketOwnedHitEffect scheduledEffect = _scheduledHitEffects[i];
-                if (scheduledEffect.ExecuteTime > currentTime)
+                _scheduledHitEffects.RemoveAll(effect => effect != null && effect.ExecuteTime <= currentTime);
+                foreach (ScheduledPacketOwnedHitEffect scheduledEffect in dueHitEffects)
                 {
-                    continue;
-                }
-
-                _scheduledHitEffects.RemoveAt(i);
-                if (scheduledEffect.HitEffect != null)
-                {
-                    _hitEffects.Add(scheduledEffect.HitEffect);
+                    if (scheduledEffect.HitEffect != null)
+                    {
+                        _hitEffects.Add(scheduledEffect.HitEffect);
+                    }
                 }
             }
 
@@ -1615,33 +1622,15 @@ namespace HaCreator.MapSimulator.Pools
                 }
             }
 
-            SkillAnimation prepareAnimation = skill.SummonAttackPrepareAnimation;
-            SkillAnimation attackAnimation = ResolveAttackAnimation(summon);
-            if (attackAnimation?.Frames.Count > 0 && summon.LastAttackAnimationStartTime != int.MinValue)
+            if (TryResolveSummonAttackPlaybackAnimation(summon, currentTime, skill, out SkillAnimation attackPlaybackAnimation, out int attackPlaybackTime))
             {
-                int attackElapsed = currentTime - summon.LastAttackAnimationStartTime;
-                int prepareDuration = GetSkillAnimationDuration(prepareAnimation) ?? 0;
-                int attackDuration = GetSkillAnimationDuration(attackAnimation) ?? 0;
-                int totalDuration = prepareDuration + attackDuration;
-                if (attackElapsed >= 0 && totalDuration > 0 && attackElapsed < totalDuration)
-                {
-                    if (prepareAnimation?.Frames.Count > 0 && attackElapsed < prepareDuration)
-                    {
-                        animationTime = attackElapsed;
-                        return prepareAnimation;
-                    }
-
-                    animationTime = Math.Max(0, attackElapsed - prepareDuration);
-                    return attackAnimation;
-                }
+                animationTime = attackPlaybackTime;
+                return attackPlaybackAnimation;
             }
 
-            if (prepareAnimation?.Frames.Count > 0
-                && summon.ActorState == SummonActorState.Prepare
-                && summon.SkillId == TeslaCoilSkillId
-                && (summon.TeslaCoilState == 1
-                    || summon.TeslaCoilState == 2
-                    || summon.LastAttackAnimationStartTime == int.MinValue))
+            SkillAnimation prepareAnimation = skill.SummonAttackPrepareAnimation;
+            if (ShouldUseSummonPrepareAnimation(summon, skill)
+                && prepareAnimation?.Frames.Count > 0)
             {
                 int prepareElapsed = Math.Max(0, currentTime - summon.LastStateChangeTime);
                 int prepareDuration = GetSkillAnimationDuration(prepareAnimation) ?? 0;
@@ -2157,7 +2146,53 @@ namespace HaCreator.MapSimulator.Pools
             return SummonRuntimeRules.ResolveDurationMs(skill, levelData, skillLevel);
         }
 
+        internal static int ResolvePacketOwnedCreateDurationMs(
+            SkillData skill,
+            SkillLevelData levelData,
+            int skillLevel,
+            int skillId,
+            bool ownerIsLocal,
+            int currentTime,
+            Func<int, int, int> localCancelFamilyRemainingDurationAccessor)
+        {
+            int authoredDurationMs = SummonRuntimeRules.ResolveAuthoredDurationMs(skill, levelData, skillLevel);
+            if (authoredDurationMs > 0)
+            {
+                return authoredDurationMs;
+            }
+
+            if (ownerIsLocal)
+            {
+                int inheritedDurationMs = Math.Max(0, localCancelFamilyRemainingDurationAccessor?.Invoke(skillId, currentTime) ?? 0);
+                if (inheritedDurationMs > 0)
+                {
+                    return inheritedDurationMs;
+                }
+            }
+
+            return ResolveSummonDurationMs(skill, levelData, skillLevel);
+        }
+
         private int ResolvePacketOwnedSkillLevel(SkillData skill, int skillId, int packetSkillLevel, bool ownerIsLocal)
+        {
+            return ResolvePacketOwnedSkillLevelCore(
+                skill,
+                skillId,
+                packetSkillLevel,
+                ownerIsLocal,
+                _localSkillLevelAccessor,
+                ResolveCancelSkillData,
+                GetCancelSkillCatalog());
+        }
+
+        internal static int ResolvePacketOwnedSkillLevelCore(
+            SkillData skill,
+            int skillId,
+            int packetSkillLevel,
+            bool ownerIsLocal,
+            Func<int, int> localSkillLevelAccessor,
+            Func<int, SkillData> getSkillData,
+            IReadOnlyCollection<SkillData> skillCatalog)
         {
             int resolvedSkillLevel = Math.Max(1, packetSkillLevel);
             if (skill?.GetLevel(resolvedSkillLevel) != null)
@@ -2170,10 +2205,21 @@ namespace HaCreator.MapSimulator.Pools
                 return resolvedSkillLevel;
             }
 
-            int localSkillLevel = Math.Max(0, _localSkillLevelAccessor?.Invoke(skillId) ?? 0);
-            return skill?.GetLevel(localSkillLevel) != null
-                ? localSkillLevel
-                : resolvedSkillLevel;
+            foreach (int candidateSkillId in ClientSkillCancelResolver.ResolveConnectedCancelFamilySkillIds(skillId, getSkillData, skillCatalog))
+            {
+                int localSkillLevel = Math.Max(0, localSkillLevelAccessor?.Invoke(candidateSkillId) ?? 0);
+                if (localSkillLevel <= 0)
+                {
+                    continue;
+                }
+
+                if (skill == null || skill.GetLevel(localSkillLevel) != null)
+                {
+                    return localSkillLevel;
+                }
+            }
+
+            return resolvedSkillLevel;
         }
 
         private int ResolveLocalOwnerCancelFamilyDurationMs(int skillId, int currentTime)
@@ -2425,6 +2471,7 @@ namespace HaCreator.MapSimulator.Pools
                     : ResolvePacketAttackImpactDelayMs(summon, target, currentTime));
                 _scheduledHitEffects.Add(new ScheduledPacketOwnedHitEffect
                 {
+                    SequenceId = _nextScheduledHitEffectSequenceId++,
                     ExecuteTime = executeTime,
                     HitEffect = new ActiveHitEffect
                     {
@@ -3062,12 +3109,8 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             SkillAnimation prepareAnimation = skill.SummonAttackPrepareAnimation;
-            if (prepareAnimation?.Frames.Count > 0
-                && summon?.ActorState == SummonActorState.Prepare
-                && summon.SkillId == TeslaCoilSkillId
-                && (summon.TeslaCoilState == 1
-                    || summon.TeslaCoilState == 2
-                    || summon.LastAttackAnimationStartTime == int.MinValue))
+            if (ShouldUseSummonPrepareAnimation(summon, skill)
+                && prepareAnimation?.Frames.Count > 0)
             {
                 int prepareElapsed = Math.Max(0, currentTime - summon.LastStateChangeTime);
                 int prepareDuration = GetSkillAnimationDuration(prepareAnimation) ?? 0;
@@ -3078,27 +3121,84 @@ namespace HaCreator.MapSimulator.Pools
                 }
             }
 
-            SkillAnimation attackAnimation = ResolveAttackAnimation(summon);
-            if (attackAnimation?.Frames.Count > 0 && summon.LastAttackAnimationStartTime != int.MinValue)
+            if (TryResolveSummonAttackPlaybackAnimation(summon, currentTime, skill, out SkillAnimation attackPlaybackAnimation, out int attackPlaybackTime))
             {
-                int attackElapsed = currentTime - summon.LastAttackAnimationStartTime;
-                int prepareDuration = GetSkillAnimationDuration(prepareAnimation) ?? 0;
-                int attackDuration = GetSkillAnimationDuration(attackAnimation) ?? 0;
-                int totalDuration = prepareDuration + attackDuration;
-                if (attackElapsed >= 0 && totalDuration > 0 && attackElapsed < totalDuration)
-                {
-                    if (prepareAnimation?.Frames.Count > 0 && attackElapsed < prepareDuration)
-                    {
-                        animationTime = attackElapsed;
-                        return prepareAnimation;
-                    }
-
-                    animationTime = Math.Max(0, attackElapsed - prepareDuration);
-                    return attackAnimation;
-                }
+                animationTime = attackPlaybackTime;
+                return attackPlaybackAnimation;
             }
 
             return skill.SummonAnimation?.Frames.Count > 0 ? skill.SummonAnimation : skill.Effect;
+        }
+
+        private static bool ShouldUseSummonPrepareAnimation(ActiveSummon summon, SkillData skill)
+        {
+            if (summon?.ActorState != SummonActorState.Prepare || skill == null)
+            {
+                return false;
+            }
+
+            if (skill.SkillId != TeslaCoilSkillId)
+            {
+                return true;
+            }
+
+            return summon.TeslaCoilState == 1
+                || summon.TeslaCoilState == 2
+                || summon.LastAttackAnimationStartTime == int.MinValue;
+        }
+
+        private static bool TryResolveSummonAttackPlaybackAnimation(
+            ActiveSummon summon,
+            int currentTime,
+            SkillData skill,
+            out SkillAnimation animation,
+            out int animationTime)
+        {
+            animation = null;
+            animationTime = 0;
+            if (summon == null || skill == null || summon.LastAttackAnimationStartTime == int.MinValue)
+            {
+                return false;
+            }
+
+            SkillAnimation prepareAnimation = skill.SummonAttackPrepareAnimation;
+            int prepareDuration = GetSkillAnimationDuration(prepareAnimation) ?? 0;
+
+            SkillAnimation branchAnimation = null;
+            bool hasBranchAnimation = !string.IsNullOrWhiteSpace(summon.CurrentAnimationBranchName)
+                && skill.SummonNamedAnimations != null
+                && skill.SummonNamedAnimations.TryGetValue(summon.CurrentAnimationBranchName, out branchAnimation)
+                && branchAnimation?.Frames.Count > 0;
+            SkillAnimation attackAnimation = hasBranchAnimation
+                ? branchAnimation
+                : skill.SummonAttackAnimation;
+            if (attackAnimation?.Frames.Count <= 0)
+            {
+                return false;
+            }
+
+            int attackElapsed = currentTime - summon.LastAttackAnimationStartTime;
+            int attackDuration = GetSkillAnimationDuration(attackAnimation) ?? 0;
+            int totalDuration = (hasBranchAnimation ? 0 : prepareDuration) + attackDuration;
+            if (attackElapsed < 0 || totalDuration <= 0 || attackElapsed >= totalDuration)
+            {
+                return false;
+            }
+
+            if (!hasBranchAnimation
+                && prepareAnimation?.Frames.Count > 0
+                && attackElapsed < prepareDuration)
+            {
+                animation = prepareAnimation;
+                animationTime = attackElapsed;
+                return true;
+            }
+
+            animation = attackAnimation;
+            animationTime = hasBranchAnimation
+                ? attackElapsed
+                : Math.Max(0, attackElapsed - prepareDuration);
+            return true;
         }
 
         private static SkillAnimation ResolveAttackAnimation(ActiveSummon summon)

@@ -51,6 +51,8 @@ namespace HaCreator.MapSimulator.Fields
         private const int PacketTypeUserMove = 210;
         private const int PacketTypeSetActivePortableChair = 222;
         private const int PacketTypeAvatarModified = 223;
+        private const int PacketTypeTemporaryStatSet = 225;
+        private const int PacketTypeTemporaryStatReset = 226;
         private const int PacketTypeShowResult = 171;
         private const int PacketTypeUserScore = 354;
         private const int IconX = 5;
@@ -147,7 +149,11 @@ namespace HaCreator.MapSimulator.Fields
                     case PacketTypeSetActivePortableChair:
                         return TryApplyRemoteChairPacket(payload, out errorMessage);
                     case PacketTypeAvatarModified:
-                        return TryApplyRemoteAvatarModifiedPacket(payload, out errorMessage);
+                        return TryApplyRemoteAvatarModifiedPacket(payload, currentTimeMs, out errorMessage);
+                    case PacketTypeTemporaryStatSet:
+                        return TryApplyRemoteTemporaryStatSetPacket(payload, out errorMessage);
+                    case PacketTypeTemporaryStatReset:
+                        return TryApplyRemoteTemporaryStatResetPacket(payload, out errorMessage);
                     case PacketTypeUserScore:
                         ApplyUserScoreBatch(DecodeUserScorePacket(payload));
                         return true;
@@ -694,6 +700,15 @@ namespace HaCreator.MapSimulator.Fields
                 _remoteUserPool?.TrySetPortableChair(spawn.CharacterId, spawn.PortableChairItemId, out _);
             }
 
+            if (spawn.TemporaryStats.HasPayload)
+            {
+                _remoteUserPool?.TryApplyTemporaryStatSnapshot(
+                    spawn.CharacterId,
+                    spawn.TemporaryStats,
+                    delay: 0,
+                    out _);
+            }
+
             return true;
         }
 
@@ -753,43 +768,40 @@ namespace HaCreator.MapSimulator.Fields
             return _remoteUserPool.TrySetPortableChair(chair.CharacterId, chair.ChairItemId, out errorMessage);
         }
 
-        private bool TryApplyRemoteAvatarModifiedPacket(byte[] payload, out string errorMessage)
+        private bool TryApplyRemoteAvatarModifiedPacket(byte[] payload, int currentTimeMs, out string errorMessage)
         {
             errorMessage = null;
-            if (!TryDecodeRemoteAvatarModifiedPacket(payload, out AriantArenaRemoteAvatarModifiedPacket avatarUpdate, out errorMessage))
+            if (!RemoteUserPacketCodec.TryParseAvatarModified(payload, out RemoteUserAvatarModifiedPacket avatarUpdate, out errorMessage))
             {
                 return false;
             }
 
-            if (avatarUpdate.AvatarLook == null)
-            {
-                return true;
-            }
-
-            if (!TryGetRemoteActor(avatarUpdate.CharacterId, out RemoteUserActor participant))
-            {
-                errorMessage = $"Remote Ariant actor id {avatarUpdate.CharacterId} does not exist.";
-                return false;
-            }
-
-            CharacterBuild build = CreateRemoteBuildFromAvatarLook(
-                participant.Name,
-                avatarUpdate.AvatarLook,
+            return _remoteUserPool.TryApplyAvatarModified(
+                avatarUpdate,
+                currentTimeMs,
                 out errorMessage);
-            if (build == null)
+        }
+
+        private bool TryApplyRemoteTemporaryStatSetPacket(byte[] payload, out string errorMessage)
+        {
+            errorMessage = null;
+            if (!RemoteUserPacketCodec.TryParseTemporaryStatSet(payload, out RemoteUserTemporaryStatSetPacket packet, out errorMessage))
             {
                 return false;
             }
 
-            return _remoteUserPool.TryAddOrUpdate(
-                avatarUpdate.CharacterId,
-                build,
-                participant.Position,
-                out errorMessage,
-                participant.FacingRight,
-                participant.ActionName,
-                AriantRemoteSourceTag,
-                isVisibleInWorld: true);
+            return _remoteUserPool.TryApplyTemporaryStatSet(packet, out errorMessage);
+        }
+
+        private bool TryApplyRemoteTemporaryStatResetPacket(byte[] payload, out string errorMessage)
+        {
+            errorMessage = null;
+            if (!RemoteUserPacketCodec.TryParseTemporaryStatReset(payload, out RemoteUserTemporaryStatResetPacket packet, out errorMessage))
+            {
+                return false;
+            }
+
+            return _remoteUserPool.TryApplyTemporaryStatReset(packet, out errorMessage);
         }
 
         private CharacterBuild CreateRemoteBuildFromAvatarLook(string actorName, LoginAvatarLook avatarLook, out string errorMessage)
@@ -810,64 +822,6 @@ namespace HaCreator.MapSimulator.Fields
 
             build.Name = string.IsNullOrWhiteSpace(actorName) ? build.Name : actorName.Trim();
             return build;
-        }
-
-        private static bool TryDecodeRemoteAvatarModifiedPacket(byte[] payload, out AriantArenaRemoteAvatarModifiedPacket packet, out string errorMessage)
-        {
-            packet = default;
-            errorMessage = null;
-            if (!TryCreatePacketReader(payload, PacketTypeAvatarModified, out PacketReader reader, out errorMessage))
-            {
-                return false;
-            }
-
-            try
-            {
-                int characterId = reader.ReadInt();
-                byte flags = reader.ReadByte();
-                LoginAvatarLook avatarLook = null;
-
-                if ((flags & 0x01) != 0)
-                {
-                    if (!LoginAvatarLookCodec.TryDecode(reader, out avatarLook, out string avatarError))
-                    {
-                        errorMessage = avatarError ?? "Remote Ariant avatar-modified packet could not decode AvatarLook.";
-                        return false;
-                    }
-                }
-
-                if ((flags & 0x02) != 0)
-                {
-                    reader.ReadByte();
-                }
-
-                if ((flags & 0x04) != 0)
-                {
-                    reader.ReadByte();
-                }
-
-                packet = new AriantArenaRemoteAvatarModifiedPacket(characterId, avatarLook);
-                return true;
-            }
-            catch (EndOfStreamException)
-            {
-                errorMessage = "Ariant remote avatar-modified packet ended before decoding completed.";
-                return false;
-            }
-        }
-
-        private static bool TryCreatePacketReader(byte[] payload, int packetType, out PacketReader reader, out string errorMessage)
-        {
-            reader = null;
-            errorMessage = null;
-            if (payload == null || payload.Length == 0)
-            {
-                errorMessage = $"Ariant packet {packetType} payload is missing.";
-                return false;
-            }
-
-            reader = new PacketReader(payload);
-            return true;
         }
 
         private static bool DecodeFacingRight(byte moveAction)
@@ -990,6 +944,5 @@ namespace HaCreator.MapSimulator.Fields
     public readonly record struct AriantArenaScoreEntry(string Name, int Score, int IconIndex = -1);
     public readonly record struct AriantArenaScoreUpdate(string UserName, int Score);
     public readonly record struct AriantArenaRemoteParticipantSnapshot(string Name, Vector2 Position, bool FacingRight, string ActionName);
-    internal readonly record struct AriantArenaRemoteAvatarModifiedPacket(int CharacterId, LoginAvatarLook AvatarLook);
     #endregion
 }

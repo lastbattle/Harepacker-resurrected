@@ -8,6 +8,7 @@ namespace HaCreator.MapSimulator.Managers
     public sealed class LoginAccountDialogPacketProfile
     {
         public LoginPacketType PacketType { get; init; }
+        public string Source { get; init; }
         public byte[] Payload { get; init; } = Array.Empty<byte>();
         public byte? ResultCode { get; init; }
         public byte? SecondaryCode { get; init; }

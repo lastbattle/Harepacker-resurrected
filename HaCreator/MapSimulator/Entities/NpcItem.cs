@@ -168,6 +168,11 @@ namespace HaCreator.MapSimulator.Entities
             return _animationSet != null && _animationSet.HasAnimation(action);
         }
 
+        public IReadOnlyList<string> GetAvailableActions()
+        {
+            return _animationSet?.GetAvailableActionsList() ?? Array.Empty<string>();
+        }
+
         public int GetActionTotalDurationMs(string action)
         {
             if (_animationSet == null)

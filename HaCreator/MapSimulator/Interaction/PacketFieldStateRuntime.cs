@@ -28,6 +28,9 @@ namespace HaCreator.MapSimulator.Interaction
         private const int QuestTimerTooltipWidth = 150;
         private const int QuestTimerLargeScreenWidth = 1024;
         private const int QuestTimerLargeModeShiftX = 224;
+        private const int QuestTimerGaugeUnitCount = 48;
+        private const int QuestTimerLargeModeMinimumX = 400;
+        private const int QuestTimerSmallModeMinimumX = 512;
 
         private readonly List<string> _mapHelpMessages = new();
         private readonly Dictionary<int, PacketQuestTimerEntry> _questTimers = new();
@@ -107,6 +110,8 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (_questTimers.Count == 0)
             {
+                _questTimerHoveredQuestId = 0;
+                UpdateQuestTimerTooltipState(currentTick);
                 return;
             }
 
@@ -124,6 +129,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (expiredQuestIds == null)
             {
+                UpdateQuestTimerTooltipState(currentTick);
                 return;
             }
 
@@ -145,6 +151,8 @@ namespace HaCreator.MapSimulator.Interaction
             _statusMessage = expiredQuestIds.Count == 1
                 ? $"Quest timer expired for {ResolveQuestName(expiredQuestIds[0])}."
                 : $"{expiredQuestIds.Count} packet-authored quest timers expired.";
+
+            UpdateQuestTimerTooltipState(currentTick);
         }
 
         internal bool TryApplyPacket(
@@ -246,6 +254,13 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             int hoveredQuestId = HitTestQuestTimer(mouseState.Position, out bool overAction);
+            if (_questTimerHoveredQuestId != hoveredQuestId &&
+                hoveredQuestId > 0 &&
+                _questTimerOwners.TryGetValue(hoveredQuestId, out PacketQuestTimerOwnerState hoveredTimerOwner))
+            {
+                hoveredTimerOwner.LastTooltipRefreshTick = int.MinValue;
+            }
+
             _questTimerHoveredQuestId = hoveredQuestId;
 
             if (hoveredQuestId <= 0)
@@ -519,7 +534,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             if (!_questTimerOwners.TryGetValue(questId, out PacketQuestTimerOwnerState owner))
             {
-                owner = new PacketQuestTimerOwnerState();
+                owner = new PacketQuestTimerOwnerState(questId);
                 _questTimerOwners[questId] = owner;
             }
 
@@ -547,6 +562,8 @@ namespace HaCreator.MapSimulator.Interaction
             foreach (PacketQuestTimerEntry timer in _questTimers.Values.OrderBy(static entry => entry.ExpireTick))
             {
                 PacketQuestTimerOwnerState owner = GetOrCreateQuestTimerOwner(timer.QuestId);
+                owner.SetVisible(!owner.IsDismissed);
+                owner.ApplyScreenMode(_questTimerLargeMode);
                 if (owner.IsDismissed || owner.IsDragging || owner.IsPinned)
                 {
                     continue;
@@ -624,21 +641,24 @@ namespace HaCreator.MapSimulator.Interaction
             if (_questTimerHoveredQuestId <= 0 ||
                 !_questTimers.TryGetValue(_questTimerHoveredQuestId, out PacketQuestTimerEntry timer) ||
                 !_questTimerOwners.TryGetValue(_questTimerHoveredQuestId, out PacketQuestTimerOwnerState owner) ||
-                owner.IsDismissed)
+                owner.IsDismissed ||
+                !owner.IsVisible ||
+                !owner.TooltipVisible ||
+                string.IsNullOrWhiteSpace(owner.TooltipText))
             {
                 return;
             }
 
-            string tooltipText = $"{timer.QuestName}\n{FormatRemainingTime(Math.Max(0, timer.ExpireTick - currentTick))}";
             Vector2 measured = font.MeasureString(timer.QuestName);
-            Vector2 measuredTime = font.MeasureString("00:00");
+            Vector2 measuredTime = font.MeasureString("00:00:00");
             int width = Math.Max(QuestTimerTooltipWidth, (int)Math.Ceiling(Math.Max(measured.X, measuredTime.X)) + 18);
             int height = Math.Max(42, (int)Math.Ceiling((font.LineSpacing * 2f) + 14f));
             int x = Math.Clamp(_questTimerMousePosition.X + 18, 8, Math.Max(8, renderWidth - width - 8));
             int y = Math.Clamp(_questTimerMousePosition.Y + 18, 8, Math.Max(8, renderHeight - height - 8));
             Rectangle tooltipBounds = new(x, y, width, height);
+            owner.TooltipBounds = tooltipBounds;
             DrawPanel(spriteBatch, tooltipBounds, new Color(18, 22, 30, 236), new Color(236, 208, 124));
-            DrawWrappedText(spriteBatch, font, tooltipText, new Rectangle(x + 8, y + 7, width - 16, height - 12), 0.52f, Color.White);
+            DrawWrappedText(spriteBatch, font, owner.TooltipText, new Rectangle(x + 8, y + 7, width - 16, height - 12), 0.52f, Color.White);
         }
 
         private int ResolveQuestTimerActionSize()
@@ -688,16 +708,14 @@ namespace HaCreator.MapSimulator.Interaction
         {
             Rectangle barBounds = ResolveQuestTimerBarBounds(owner.Position);
             Rectangle actionBounds = ResolveQuestTimerActionBounds(timer, owner.Position, currentTick);
-            owner.BarBounds = barBounds;
-            owner.ActionBounds = actionBounds;
+            owner.SetBounds(barBounds, actionBounds);
 
-            DrawQuestGauge(spriteBatch, barBounds, 1f);
-            float ratio = timer.DurationMs <= 0 ? 0f : Math.Clamp((timer.ExpireTick - currentTick) / (float)Math.Max(1, timer.DurationMs), 0f, 1f);
-            DrawQuestGauge(spriteBatch, barBounds, ratio);
+            DrawQuestGauge(spriteBatch, barBounds);
+            DrawQuestGaugeFill(spriteBatch, barBounds, ResolveQuestTimerUnitCount(timer, currentTick));
             DrawQuestTimerAction(spriteBatch, timer, actionBounds, currentTick);
         }
 
-        private void DrawQuestGauge(SpriteBatch spriteBatch, Rectangle bounds, float ratio)
+        private void DrawQuestGauge(SpriteBatch spriteBatch, Rectangle bounds)
         {
             if (_questTimeBarBackgroundTexture != null)
             {
@@ -708,38 +726,42 @@ namespace HaCreator.MapSimulator.Interaction
                 spriteBatch.Draw(_pixelTexture, bounds, new Color(52, 55, 71, 220));
             }
 
-            int fillWidth = (int)Math.Round(bounds.Width * Math.Clamp(ratio, 0f, 1f));
-            if (fillWidth <= 0)
+        }
+
+        private void DrawQuestGaugeFill(SpriteBatch spriteBatch, Rectangle bounds, int unitCount)
+        {
+            if (unitCount <= 0)
             {
                 return;
             }
 
             if (_questTimeGaugeLeftTexture == null || _questTimeGaugeMiddleTexture == null || _questTimeGaugeRightTexture == null)
             {
-                spriteBatch.Draw(_pixelTexture, new Rectangle(bounds.X, bounds.Y + 2, fillWidth, Math.Max(2, bounds.Height - 4)), new Color(255, 202, 94));
+                int fallbackWidth = (int)Math.Round(bounds.Width * Math.Clamp(unitCount / (float)QuestTimerGaugeUnitCount, 0f, 1f));
+                spriteBatch.Draw(_pixelTexture, new Rectangle(bounds.X, bounds.Y + 2, fallbackWidth, Math.Max(2, bounds.Height - 4)), new Color(255, 202, 94));
                 return;
             }
 
-            int cursor = bounds.X;
-            if (fillWidth >= _questTimeGaugeLeftTexture.Width)
+            int fillStartX = bounds.X + 2;
+            int fillY = bounds.Y + 2;
+            int rightCapX = fillStartX + QuestTimerGaugeUnitCount - _questTimeGaugeRightTexture.Width;
+            spriteBatch.Draw(_questTimeGaugeRightTexture, new Vector2(rightCapX, fillY), Color.White);
+
+            if (unitCount > _questTimeGaugeRightTexture.Width)
             {
-                spriteBatch.Draw(_questTimeGaugeLeftTexture, new Vector2(cursor, bounds.Y + 2), Color.White);
-                cursor += _questTimeGaugeLeftTexture.Width;
+                int middleUnits = Math.Min(
+                    unitCount - _questTimeGaugeRightTexture.Width,
+                    QuestTimerGaugeUnitCount - _questTimeGaugeRightTexture.Width - 1);
+                int middleCursorX = rightCapX - _questTimeGaugeMiddleTexture.Width;
+                for (int i = 0; i < middleUnits; i++)
+                {
+                    spriteBatch.Draw(_questTimeGaugeMiddleTexture, new Vector2(middleCursorX - i, fillY), Color.White);
+                }
             }
 
-            int remainingMiddle = Math.Max(0, fillWidth - (cursor - bounds.X) - _questTimeGaugeRightTexture.Width);
-            while (remainingMiddle > 0)
+            if (unitCount > (QuestTimerGaugeUnitCount - 1))
             {
-                int segmentWidth = Math.Min(_questTimeGaugeMiddleTexture.Width, remainingMiddle);
-                spriteBatch.Draw(_questTimeGaugeMiddleTexture, new Rectangle(cursor, bounds.Y + 2, segmentWidth, _questTimeGaugeMiddleTexture.Height), new Rectangle(0, 0, segmentWidth, _questTimeGaugeMiddleTexture.Height), Color.White);
-                cursor += segmentWidth;
-                remainingMiddle -= segmentWidth;
-            }
-
-            int remaining = bounds.X + fillWidth - cursor;
-            if (remaining > 0)
-            {
-                spriteBatch.Draw(_questTimeGaugeRightTexture, new Rectangle(cursor, bounds.Y + 2, remaining, _questTimeGaugeRightTexture.Height), new Rectangle(0, 0, remaining, _questTimeGaugeRightTexture.Height), Color.White);
+                spriteBatch.Draw(_questTimeGaugeLeftTexture, new Vector2(fillStartX, fillY), Color.White);
             }
         }
 
@@ -1012,6 +1034,50 @@ namespace HaCreator.MapSimulator.Interaction
             return span.TotalHours >= 1 ? $"{(int)span.TotalHours:00}:{span.Minutes:00}:{span.Seconds:00}" : $"{span.Minutes:00}:{span.Seconds:00}";
         }
 
+        private void UpdateQuestTimerTooltipState(int currentTick)
+        {
+            foreach (PacketQuestTimerOwnerState timerOwner in _questTimerOwners.Values)
+            {
+                timerOwner.TooltipVisible = false;
+                timerOwner.TooltipBounds = Rectangle.Empty;
+            }
+
+            if (_questTimerHoveredQuestId <= 0 ||
+                !_questTimers.TryGetValue(_questTimerHoveredQuestId, out PacketQuestTimerEntry timer) ||
+                !_questTimerOwners.TryGetValue(_questTimerHoveredQuestId, out PacketQuestTimerOwnerState owner) ||
+                owner.IsDismissed ||
+                !owner.IsVisible)
+            {
+                return;
+            }
+
+            owner.TooltipVisible = true;
+            if (owner.LastTooltipRefreshTick == int.MinValue ||
+                currentTick - owner.LastTooltipRefreshTick >= QuestTimerTooltipRefreshIntervalMs)
+            {
+                owner.TooltipText = BuildQuestTimerTooltipText(timer, currentTick);
+                owner.LastTooltipRefreshTick = currentTick;
+            }
+        }
+
+        private static string BuildQuestTimerTooltipText(PacketQuestTimerEntry timer, int currentTick)
+        {
+            string remaining = FormatRemainingTime(Math.Max(0, timer.ExpireTick - currentTick));
+            return $"{timer.QuestName}\nTime left: {remaining}";
+        }
+
+        private static int ResolveQuestTimerUnitCount(PacketQuestTimerEntry timer, int currentTick)
+        {
+            int remainingMs = Math.Max(0, timer.ExpireTick - currentTick);
+            if (remainingMs <= 0)
+            {
+                return 0;
+            }
+
+            int unitDuration = Math.Max(1, timer.DurationMs / QuestTimerGaugeUnitCount);
+            return Math.Clamp((remainingMs / unitDuration) + 1, 1, QuestTimerGaugeUnitCount);
+        }
+
         private static string TrimForStatus(string text)
         {
             if (string.IsNullOrWhiteSpace(text))
@@ -1074,13 +1140,80 @@ namespace HaCreator.MapSimulator.Interaction
         private sealed record PacketQuestTimerFrame(Texture2D Texture, int Delay, Point Origin);
         private sealed class PacketQuestTimerOwnerState
         {
+            public PacketQuestTimerOwnerState(int questId)
+            {
+                QuestId = questId;
+                ActionOwner = new PacketQuestTimerActionOwner(questId);
+            }
+
+            public int QuestId { get; }
+            public PacketQuestTimerActionOwner ActionOwner { get; }
             public Point Position { get; set; } = new(QuestTimerDefaultTop, QuestTimerDefaultTop);
-            public Rectangle BarBounds { get; set; }
-            public Rectangle ActionBounds { get; set; }
+            public Rectangle BarBounds { get; private set; }
+            public Rectangle ActionBounds => ActionOwner.Bounds;
+            public Rectangle TooltipBounds { get; set; }
             public Point DragOffset { get; set; }
             public bool IsDismissed { get; set; }
             public bool IsDragging { get; set; }
             public bool IsPinned { get; set; }
+            public bool IsVisible { get; private set; } = true;
+            public bool IsLargeMode { get; private set; }
+            public bool TooltipVisible { get; set; }
+            public string TooltipText { get; set; } = string.Empty;
+            public int LastTooltipRefreshTick { get; set; } = int.MinValue;
+
+            public void SetBounds(Rectangle barBounds, Rectangle actionBounds)
+            {
+                BarBounds = barBounds;
+                ActionOwner.Bounds = actionBounds;
+            }
+
+            public void SetVisible(bool visible)
+            {
+                IsVisible = visible;
+                ActionOwner.IsVisible = visible;
+                if (!visible)
+                {
+                    TooltipVisible = false;
+                    TooltipBounds = Rectangle.Empty;
+                }
+            }
+
+            public void ApplyScreenMode(bool largeMode)
+            {
+                if (IsLargeMode == largeMode)
+                {
+                    return;
+                }
+
+                int shiftedX = Position.X;
+                if (largeMode)
+                {
+                    if (shiftedX >= QuestTimerLargeModeMinimumX)
+                    {
+                        shiftedX += QuestTimerLargeModeShiftX;
+                    }
+                }
+                else if (shiftedX >= QuestTimerSmallModeMinimumX)
+                {
+                    shiftedX -= QuestTimerLargeModeShiftX;
+                }
+
+                Position = new Point(shiftedX, Position.Y);
+                IsLargeMode = largeMode;
+            }
+        }
+
+        private sealed class PacketQuestTimerActionOwner
+        {
+            public PacketQuestTimerActionOwner(int questId)
+            {
+                QuestId = questId;
+            }
+
+            public int QuestId { get; }
+            public Rectangle Bounds { get; set; }
+            public bool IsVisible { get; set; }
         }
 
         private sealed record PacketQuestTimerVisualStyle(string StyleKey, IReadOnlyList<PacketQuestTimerFrame> Frames)

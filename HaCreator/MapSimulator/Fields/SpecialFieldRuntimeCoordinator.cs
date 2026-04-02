@@ -196,6 +196,11 @@ namespace HaCreator.MapSimulator.Fields
             _minigames.AriantArena.SetLocalPlayerState(localPlayerName, localPlayerJob ?? 0);
         }
 
+        public void SetMonsterCarnivalPlayerState(string localPlayerName)
+        {
+            _minigames.MonsterCarnival.SetLocalPlayerName(localPlayerName);
+        }
+
         public void SetCookieHousePointProvider(Func<int> pointProvider)
         {
             _cookieHousePointProvider = pointProvider;

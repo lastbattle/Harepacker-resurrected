@@ -87,6 +87,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Dictionary<int, Action> _buttonActions = new();
         private readonly Dictionary<int, Texture2D> _cardIconCache = new();
         private readonly List<SearchMatch> _searchMatches = new();
+        private ClientTextRasterizer _clientTextRasterizer;
 
         private Texture2D _cardSlotTexture;
         private Texture2D _infoPageTexture;
@@ -147,7 +148,11 @@ namespace HaCreator.MapSimulator.UI
 
         public override string WindowName => MapSimulatorWindowNames.BookCollection;
         public override bool CapturesKeyboardInput => IsVisible && _searchMode;
-        public override void SetFont(SpriteFont font) => _font = font;
+        public override void SetFont(SpriteFont font)
+        {
+            _font = font;
+            _clientTextRasterizer ??= _graphicsDevice != null ? new ClientTextRasterizer(_graphicsDevice) : null;
+        }
         public override void HandleCompositionState(ImeCompositionState state)
         {
             if (!CapturesKeyboardInput)
@@ -1083,12 +1088,12 @@ namespace HaCreator.MapSimulator.UI
         private void DrawTextLine(SpriteBatch sprite, string text, Vector2 anchor, BookTextStyle style, int maxWidth, HorizontalAlignment alignment)
         {
             string trimmed = TrimToWidth(text, maxWidth, style.Scale);
-            if (string.IsNullOrEmpty(trimmed) || _font == null)
+            if (string.IsNullOrEmpty(trimmed))
             {
                 return;
             }
 
-            Vector2 size = _font.MeasureString(trimmed) * style.Scale;
+            Vector2 size = MeasureRenderedText(trimmed, style.Scale, preferClientText: true);
             Vector2 position = alignment switch
             {
                 HorizontalAlignment.Center => new Vector2(anchor.X + ((maxWidth - size.X) / 2f), anchor.Y),
@@ -1098,10 +1103,10 @@ namespace HaCreator.MapSimulator.UI
 
             if (style.Shadow)
             {
-                sprite.DrawString(_font, trimmed, position + Vector2.One, style.ShadowColor, 0f, Vector2.Zero, style.Scale, SpriteEffects.None, 0f);
+                DrawRenderedString(sprite, trimmed, position + Vector2.One, style.ShadowColor, style.Scale, preferClientText: true);
             }
 
-            sprite.DrawString(_font, trimmed, position, style.Color, 0f, Vector2.Zero, style.Scale, SpriteEffects.None, 0f);
+            DrawRenderedString(sprite, trimmed, position, style.Color, style.Scale, preferClientText: true);
         }
 
         private void DrawOverviewSlots(SpriteBatch sprite)
@@ -1372,11 +1377,11 @@ namespace HaCreator.MapSimulator.UI
 
         private string TrimToWidth(string text, int maxWidth, float scale)
         {
-            if (string.IsNullOrEmpty(text) || _font == null)
+            if (string.IsNullOrEmpty(text))
                 return text ?? string.Empty;
 
             string candidate = text;
-            while (candidate.Length > 1 && _font.MeasureString(candidate).X * scale > maxWidth)
+            while (candidate.Length > 1 && MeasureRenderedText(candidate, scale, preferClientText: true).X > maxWidth)
                 candidate = candidate[..^1];
 
             return candidate.Length < text.Length && candidate.Length > 3 ? candidate[..^3] + "..." : candidate;
@@ -1385,10 +1390,10 @@ namespace HaCreator.MapSimulator.UI
         private void DrawTrimmedString(SpriteBatch sprite, string text, Vector2 position, Color color, float scale, int maxWidth)
         {
             string trimmed = TrimToWidth(text, maxWidth, scale);
-            if (string.IsNullOrEmpty(trimmed) || _font == null)
+            if (string.IsNullOrEmpty(trimmed))
                 return;
 
-            sprite.DrawString(_font, trimmed, position, color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            DrawRenderedString(sprite, trimmed, position, color, scale);
         }
 
         private void DrawOutline(SpriteBatch sprite, Rectangle bounds, Color color)
@@ -1401,12 +1406,47 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawCenteredString(SpriteBatch sprite, string text, Rectangle bounds, Color color, float scale)
         {
-            if (string.IsNullOrEmpty(text) || _font == null)
+            if (string.IsNullOrEmpty(text))
                 return;
 
-            Vector2 size = _font.MeasureString(text) * scale;
+            bool preferClientText = UsesCollectionLayout;
+            Vector2 size = MeasureRenderedText(text, scale, preferClientText);
             Vector2 position = new(bounds.X + ((bounds.Width - size.X) / 2f), bounds.Y + ((bounds.Height - size.Y) / 2f));
-            sprite.DrawString(_font, text, position, color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            DrawRenderedString(sprite, text, position, color, scale, preferClientText);
+        }
+
+        private Vector2 MeasureRenderedText(string text, float scale, bool preferClientText = false)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return Vector2.Zero;
+            }
+
+            if (preferClientText && _clientTextRasterizer != null)
+            {
+                return _clientTextRasterizer.MeasureString(text, scale);
+            }
+
+            return _font?.MeasureString(text) * scale ?? Vector2.Zero;
+        }
+
+        private void DrawRenderedString(SpriteBatch sprite, string text, Vector2 position, Color color, float scale, bool preferClientText = false)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            if (preferClientText && _clientTextRasterizer != null)
+            {
+                _clientTextRasterizer.DrawString(sprite, text, position, color, scale);
+                return;
+            }
+
+            if (_font != null)
+            {
+                sprite.DrawString(_font, text, position, color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            }
         }
 
         private void OnSearchQueryChanged()

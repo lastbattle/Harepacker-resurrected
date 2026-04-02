@@ -1,5 +1,6 @@
 using HaCreator.MapSimulator.UI;
 using HaCreator.MapSimulator.UI.Controls;
+using HaCreator.MapSimulator.Loaders;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
@@ -46,6 +47,20 @@ namespace HaCreator.MapSimulator.UI
 
         // Bonus level text position (from items/buffs)
         private const int BONUS_X = 65;
+        private const int ROW_BG_X = 10;
+        private const int ROW_BG_Y_OFFSET = -19;
+        private const int RECOMMEND_X = 47;
+        private const int LINE_X = 10;
+        private const int LINE_Y_OFFSET = 18;
+        private const int SP_UP_BUTTON_X = 135;
+        private const int SP_UP_BUTTON_Y_OFFSET = 1;
+        private const int SP_UP_BUTTON_FALLBACK_WIDTH = 18;
+        private const int SP_UP_BUTTON_FALLBACK_HEIGHT = 18;
+        private const int SCROLLBAR_X = 153;
+        private const int SCROLLBAR_Y = 93;
+        private const int SCROLLBAR_WIDTH = 12;
+        private const int SCROLLBAR_HEIGHT = 155;
+        private const int SCROLLBAR_BUTTON_HEIGHT = 12;
 
         // SP display position
         private const int SP_DISPLAY_X_BASE = 104;    // Right-aligned from this position
@@ -133,6 +148,12 @@ namespace HaCreator.MapSimulator.UI
         // Selected skill for description display
         private SkillDisplayData _selectedSkill;
         private int _selectedSkillIndex = -1;
+        private int _hoveredSpUpSkillIndex = -1;
+        private bool _hoveredSkillPointDisplay;
+        private int _pressedSpUpSkillIndex = -1;
+        private MouseState _previousMouseState;
+        private KeyboardState _previousKeyboardState;
+        private int _characterLevel = 1;
 
         // Skill description area
         private Rectangle _descriptionRect;
@@ -145,6 +166,28 @@ namespace HaCreator.MapSimulator.UI
         private Point _lastMousePosition;
         private readonly Dictionary<int, Texture2D> _jobIconsByTab;
         private readonly Dictionary<int, string> _jobNamesByTab;
+        private readonly Dictionary<int, int> _displaySkillRootByTab;
+        private readonly Dictionary<int, List<SkillDataLoader.RecommendedSkillEntry>> _recommendedSkillsByTab;
+        private Texture2D _skillRow0;
+        private Texture2D _skillRow1;
+        private Texture2D _recommendTexture;
+        private Texture2D _skillRowLine;
+        private Texture2D _spUpNormal;
+        private Texture2D _spUpPressed;
+        private Texture2D _spUpDisabled;
+        private Texture2D _spUpMouseOver;
+        private Texture2D _scrollPrevNormal;
+        private Texture2D _scrollPrevPressed;
+        private Texture2D _scrollNextNormal;
+        private Texture2D _scrollNextPressed;
+        private Texture2D _scrollTrackEnabled;
+        private Texture2D _scrollThumbNormal;
+        private Texture2D _scrollThumbPressed;
+        private Texture2D _scrollPrevDisabled;
+        private Texture2D _scrollNextDisabled;
+        private Texture2D _scrollTrackDisabled;
+        private bool _isDraggingScrollThumb;
+        private int _scrollThumbDragOffsetY;
 
         // Drag and drop
         private bool _isDragging = false;
@@ -201,6 +244,9 @@ namespace HaCreator.MapSimulator.UI
         /// Callback when drag ends (outside of QuickSlotUI)
         /// </summary>
         public Action OnDragEnd;
+        public Action<int> OnSkillInvoked { get; set; }
+        public Action<SkillDisplayData> OnSkillSelected { get; set; }
+        public Func<SkillDisplayData, bool> OnSkillLevelUpRequested { get; set; }
         #endregion
 
         #region Constructor
@@ -255,6 +301,22 @@ namespace HaCreator.MapSimulator.UI
                 { TAB_2ND, "2nd Job" },
                 { TAB_3RD, "3rd Job" },
                 { TAB_4TH, "4th Job" }
+            };
+            _displaySkillRootByTab = new Dictionary<int, int>
+            {
+                { TAB_BEGINNER, 0 },
+                { TAB_1ST, 0 },
+                { TAB_2ND, 0 },
+                { TAB_3RD, 0 },
+                { TAB_4TH, 0 }
+            };
+            _recommendedSkillsByTab = new Dictionary<int, List<SkillDataLoader.RecommendedSkillEntry>>
+            {
+                { TAB_BEGINNER, new List<SkillDataLoader.RecommendedSkillEntry>() },
+                { TAB_1ST, new List<SkillDataLoader.RecommendedSkillEntry>() },
+                { TAB_2ND, new List<SkillDataLoader.RecommendedSkillEntry>() },
+                { TAB_3RD, new List<SkillDataLoader.RecommendedSkillEntry>() },
+                { TAB_4TH, new List<SkillDataLoader.RecommendedSkillEntry>() }
             };
         }
 

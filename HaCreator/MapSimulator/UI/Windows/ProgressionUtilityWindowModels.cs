@@ -171,8 +171,8 @@ namespace HaCreator.MapSimulator.UI
             return new CollectionBookSnapshot
             {
                 Title = "Collection Book",
-                Subtitle = "The dedicated Book owner now composes the collect ledger from the live character build, maker progression, traits, equipment state, and discovered recipe history.",
-                StatusText = $"Local collection data composed across {pages.Count} page(s). Packet-authored collection payloads and the real server close workflow still remain outside this simulator owner.",
+                Subtitle = "Collect ledger composed from the active build, maker progression, traits, equipment, and discovered recipes.",
+                StatusText = $"Local collection ledger ready across {pages.Count} page(s). Server-authored collection data and the packet close lifecycle remain outside this owner.",
                 Pages = pages
             };
         }
@@ -191,8 +191,8 @@ namespace HaCreator.MapSimulator.UI
                     CreateEntry("Monster Book", $"{monsterBook.OwnedCardTypes}/{monsterBook.TotalCardTypes}", $"{monsterBook.CompletedCardTypes} complete, {monsterBook.TotalOwnedCopies} copies", monsterBook.OwnedCardTypes > 0 ? CollectionBookEntryTone.Success : CollectionBookEntryTone.Muted),
                     CreateEntry("Crafting", progression.SuccessfulCrafts.ToString(CultureInfo.InvariantCulture), $"Trait Craft {Math.Max(0, build?.TraitCraft ?? progression.TraitCraft)}", progression.SuccessfulCrafts > 0 ? CollectionBookEntryTone.Success : CollectionBookEntryTone.Muted),
                     CreateEntry("Recipes", totalRecipes.ToString(CultureInfo.InvariantCulture), $"{progression.DiscoveredRecipeIds.Count} discovered, {progression.UnlockedHiddenRecipeIds.Count} hidden", totalRecipes > 0 ? CollectionBookEntryTone.Accent : CollectionBookEntryTone.Muted),
-                    CreateEntry("Medal", ResolveEquippedItemName(build, EquipSlot.Medal), string.Empty, HasEquippedItem(build, EquipSlot.Medal) ? CollectionBookEntryTone.Success : CollectionBookEntryTone.Muted),
                     CreateEntry("Pocket", BuildPocketSummary(build), string.Empty, build?.IsPocketSlotAvailable == true ? CollectionBookEntryTone.Success : CollectionBookEntryTone.Warning),
+                    CreateEntry("Medal", ResolveEquippedItemName(build, EquipSlot.Medal), string.Empty, HasEquippedItem(build, EquipSlot.Medal) ? CollectionBookEntryTone.Success : CollectionBookEntryTone.Muted),
                 }
             };
         }
@@ -480,6 +480,10 @@ namespace HaCreator.MapSimulator.UI
         public string Title { get; init; } = "Ranking";
         public string Subtitle { get; init; } = string.Empty;
         public string StatusText { get; init; } = string.Empty;
+        public string NavigationCaption { get; init; } = string.Empty;
+        public string NavigationSeedText { get; init; } = string.Empty;
+        public string NavigationStateText { get; init; } = string.Empty;
+        public bool IsLoading { get; init; }
         public IReadOnlyList<RankingEntrySnapshot> Entries { get; init; } = Array.Empty<RankingEntrySnapshot>();
     }
 
@@ -500,13 +504,21 @@ namespace HaCreator.MapSimulator.UI
         public DateTime ScheduledAt { get; init; } = DateTime.Today;
     }
 
+    internal sealed class EventAlarmLineSnapshot
+    {
+        public string Text { get; init; } = string.Empty;
+        public int Left { get; init; }
+        public int Top { get; init; }
+        public bool IsHighlighted { get; init; }
+    }
+
     internal sealed class EventWindowSnapshot
     {
         public string Title { get; init; } = "Event";
         public string Subtitle { get; init; } = string.Empty;
         public string StatusText { get; init; } = string.Empty;
         public int AutoDismissDelayMs { get; init; }
-        public IReadOnlyList<string> AlarmLines { get; init; } = Array.Empty<string>();
+        public IReadOnlyList<EventAlarmLineSnapshot> AlarmLines { get; init; } = Array.Empty<EventAlarmLineSnapshot>();
         public IReadOnlyList<EventEntrySnapshot> Entries { get; init; } = Array.Empty<EventEntrySnapshot>();
     }
 }

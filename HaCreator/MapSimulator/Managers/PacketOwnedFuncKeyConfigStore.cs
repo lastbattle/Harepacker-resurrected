@@ -27,6 +27,7 @@ namespace HaCreator.MapSimulator.Managers
             public List<FuncKeyMappedRecord> FuncKeyMapped { get; set; } = new();
             public Dictionary<string, BindingRecord> SimulatorBindings { get; set; } = new(StringComparer.Ordinal);
             public int PetConsumeItemId { get; set; }
+            public string PetConsumeInventoryType { get; set; } = string.Empty;
             public int PetConsumeMpItemId { get; set; }
         }
 

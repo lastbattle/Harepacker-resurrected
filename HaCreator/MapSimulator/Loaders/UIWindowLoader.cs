@@ -1565,6 +1565,8 @@ namespace HaCreator.MapSimulator.Loaders
                 new Point(x + (cascade * 4), y + (cascade * 3)));
             RegisterWeddingInvitationWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
                 new Point(x + (cascade * 5), y + (cascade * 3)));
+            RegisterWeddingWishListWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
+                new Point(x + (cascade * 6), y + (cascade * 3)));
             RegisterMapleTvWindow(manager, uiWindow1Image, mapleTvImage, basicImage, soundUIImage, device,
                 new Point(x + (cascade * 4), y + (cascade * 2)));
             RegisterItemMakerWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
@@ -2228,8 +2230,31 @@ namespace HaCreator.MapSimulator.Loaders
                 return;
             }
 
+            AdminShopWishListCategoryUI categoryWindow = manager.GetWindow(MapSimulatorWindowNames.AdminShopWishListCategory) as AdminShopWishListCategoryUI;
+            if (categoryWindow == null)
+            {
+                UIWindowBase categoryBaseWindow = CreateAdminShopWishListCategoryWindow(uiWindow2Image, basicImage, soundUIImage, device, position);
+                manager.RegisterCustomWindow(categoryBaseWindow);
+                categoryWindow = categoryBaseWindow as AdminShopWishListCategoryUI;
+            }
 
             UIWindowBase window = CreateAdminShopWishListWindow(uiWindow2Image, basicImage, soundUIImage, device, position);
+            if (window is AdminShopWishListUI wishListWindow && categoryWindow != null)
+            {
+                wishListWindow.ShowCategoryAddOnRequested = owner =>
+                {
+                    categoryWindow.ShowFor(owner);
+                    manager.BringToFront(categoryWindow);
+                };
+                wishListWindow.HideCategoryAddOnRequested = () =>
+                {
+                    if (categoryWindow.IsVisible)
+                    {
+                        categoryWindow.Hide();
+                    }
+                };
+                wishListWindow.IsCategoryAddOnVisible = () => categoryWindow.IsVisible;
+            }
 
             manager.RegisterCustomWindow(window);
 
@@ -2583,6 +2608,27 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
 
+            UIWindowBase guildRankWindow = CreateGuildRankWindow(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, new Point(position.X + 54, Math.Max(24, position.Y - 6)));
+            if (guildRankWindow != null)
+            {
+                manager.RegisterCustomWindow(guildRankWindow);
+            }
+
+
+            UIWindowBase guildMarkWindow = CreateGuildMarkWindow(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, new Point(position.X + 64, Math.Max(24, position.Y - 2)));
+            if (guildMarkWindow != null)
+            {
+                manager.RegisterCustomWindow(guildMarkWindow);
+            }
+
+
+            UIWindowBase guildCreateAgreementWindow = CreateGuildCreateAgreementWindow(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, new Point(position.X + 72, Math.Max(24, position.Y + 6)));
+            if (guildCreateAgreementWindow != null)
+            {
+                manager.RegisterCustomWindow(guildCreateAgreementWindow);
+            }
+
+
             UIWindowBase allianceEditorWindow = CreateAllianceEditorWindow(uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device, new Point(position.X + 50, position.Y + 2));
             if (allianceEditorWindow != null)
             {
@@ -2721,6 +2767,26 @@ namespace HaCreator.MapSimulator.Loaders
 
             WeddingInvitationWindow window = CreateWeddingInvitationWindow(uiWindow1Image, uiWindow2Image, soundUIImage, device)
                 ?? CreateFallbackWeddingInvitationWindow(device);
+            window.Position = position;
+            manager.RegisterCustomWindow(window);
+        }
+
+        private static void RegisterWeddingWishListWindow(
+            UIWindowManager manager,
+            WzImage uiWindow1Image,
+            WzImage uiWindow2Image,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            Point position)
+        {
+            if (manager == null || manager.GetWindow(MapSimulatorWindowNames.WeddingWishList) != null)
+            {
+                return;
+            }
+
+            WeddingWishListWindow window = CreateWeddingWishListWindow(uiWindow1Image, uiWindow2Image, soundUIImage, device)
+                ?? CreateFallbackWeddingWishListWindow(device);
             window.Position = position;
             manager.RegisterCustomWindow(window);
         }
@@ -4487,6 +4553,235 @@ namespace HaCreator.MapSimulator.Loaders
         }
 
 
+        private static UIWindowBase CreateGuildRankWindow(
+            WzImage uiWindow1Image,
+            WzImage uiWindow2Image,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            Point position)
+        {
+            WzSubProperty userListProperty = uiWindow2Image?["UserList"] as WzSubProperty
+                ?? uiWindow1Image?["UserList"] as WzSubProperty;
+            WzSubProperty guildRankProperty = userListProperty?["GuildRank"] as WzSubProperty;
+            Texture2D frameTexture = LoadCanvasTexture(guildRankProperty, "backgrnd", device);
+            if (frameTexture == null)
+            {
+                return null;
+            }
+
+
+            WzBinaryProperty clickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
+            WzBinaryProperty overSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
+            LoadIndexedCanvasSequence(guildRankProperty?["IconEff"] as WzSubProperty, device, out Texture2D[] iconFrames, out Point[] iconOffsets, out _);
+
+            GuildRankWindow window = new(
+                new DXObject(0, 0, frameTexture, 0),
+                iconFrames,
+                iconOffsets,
+                LoadButton(guildRankProperty, "BtOK", clickSound, overSound, device),
+                LoadButton(guildRankProperty, "BtLeft", clickSound, overSound, device),
+                LoadButton(guildRankProperty, "BtRight", clickSound, overSound, device),
+                device)
+            {
+                Position = position
+            };
+
+
+            UIObject closeButton = CreateUserInfoCloseButton(basicImage, clickSound, overSound, device, frameTexture.Width);
+            if (closeButton != null)
+            {
+                window.InitializeCloseButton(closeButton);
+            }
+
+
+            return window;
+        }
+
+
+        private static UIWindowBase CreateGuildMarkWindow(
+            WzImage uiWindow1Image,
+            WzImage uiWindow2Image,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            Point position)
+        {
+            WzSubProperty userListProperty = uiWindow2Image?["UserList"] as WzSubProperty
+                ?? uiWindow1Image?["UserList"] as WzSubProperty;
+            WzSubProperty guildMarkProperty = userListProperty?["Guild_MakeMark"] as WzSubProperty
+                ?? ((uiWindow1Image?["UserList"] as WzSubProperty)?["Guild"] as WzSubProperty)?["MakeMark"] as WzSubProperty;
+            if (guildMarkProperty == null)
+            {
+                return null;
+            }
+
+
+            LoadIndexedCanvasSequence(guildMarkProperty?["backgrnd"] as WzSubProperty, device, out Texture2D[] backgroundFrames, out _, out int[] backgroundDelays);
+            if (backgroundFrames.Length == 0)
+            {
+                return null;
+            }
+
+
+            WzBinaryProperty clickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
+            WzBinaryProperty overSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
+            UIObject agreeButton = LoadButton(guildMarkProperty, "BtAgree", clickSound, overSound, device);
+            UIObject disagreeButton = LoadButton(guildMarkProperty, "BtDisagree", clickSound, overSound, device);
+            UIObject backgroundLeftButton = LoadButton(guildMarkProperty, "BtLeft", clickSound, overSound, device);
+            UIObject backgroundRightButton = LoadButton(guildMarkProperty, "BtRight", clickSound, overSound, device);
+            UIObject markLeftButton = LoadButton(guildMarkProperty, "BtLeft", clickSound, overSound, device);
+            UIObject markRightButton = LoadButton(guildMarkProperty, "BtRight", clickSound, overSound, device);
+            UIObject backgroundColorLeftButton = LoadButton(guildMarkProperty, "BtLeft", clickSound, overSound, device);
+            UIObject backgroundColorRightButton = LoadButton(guildMarkProperty, "BtRight", clickSound, overSound, device);
+            UIObject markColorLeftButton = LoadButton(guildMarkProperty, "BtLeft", clickSound, overSound, device);
+            UIObject markColorRightButton = LoadButton(guildMarkProperty, "BtRight", clickSound, overSound, device);
+            UIObject comboButton = LoadButton(guildMarkProperty, "BtDown", clickSound, overSound, device);
+
+            SetButtonPosition(backgroundLeftButton, 37, 172);
+            SetButtonPosition(markLeftButton, 37, 228);
+            SetButtonPosition(backgroundColorLeftButton, 130, 172);
+            SetButtonPosition(markColorLeftButton, 130, 228);
+            SetButtonPosition(backgroundRightButton, 80, 172);
+            SetButtonPosition(markRightButton, 80, 228);
+            SetButtonPosition(backgroundColorRightButton, 173, 172);
+            SetButtonPosition(markColorRightButton, 173, 228);
+            SetButtonPosition(comboButton, 214, 252);
+
+            GuildMarkWindow window = new(
+                backgroundFrames,
+                backgroundDelays,
+                LoadWindowCanvasLayerWithOffset(guildMarkProperty, "backgrnd2", device, out Point overlayOffset),
+                overlayOffset,
+                agreeButton,
+                disagreeButton,
+                backgroundLeftButton,
+                backgroundRightButton,
+                markLeftButton,
+                markRightButton,
+                backgroundColorLeftButton,
+                backgroundColorRightButton,
+                markColorLeftButton,
+                markColorRightButton,
+                comboButton,
+                device)
+            {
+                Position = position
+            };
+
+
+            UIObject closeButton = CreateUserInfoCloseButton(basicImage, clickSound, overSound, device, backgroundFrames[0].Width);
+            if (closeButton != null)
+            {
+                window.InitializeCloseButton(closeButton);
+            }
+
+
+            return window;
+        }
+
+
+        private static UIWindowBase CreateGuildCreateAgreementWindow(
+            WzImage uiWindow1Image,
+            WzImage uiWindow2Image,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            Point position)
+        {
+            WzSubProperty userListProperty = uiWindow2Image?["UserList"] as WzSubProperty
+                ?? uiWindow1Image?["UserList"] as WzSubProperty;
+            WzSubProperty sourceProperty = userListProperty?["Guild_Make"] as WzSubProperty;
+            if (sourceProperty == null)
+            {
+                return null;
+            }
+
+
+            LoadIndexedCanvasSequence(sourceProperty?["backgrnd"] as WzSubProperty, device, out Texture2D[] backgroundFrames, out _, out int[] backgroundDelays);
+            if (backgroundFrames.Length == 0)
+            {
+                return null;
+            }
+
+
+            WzBinaryProperty clickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
+            WzBinaryProperty overSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
+            GuildCreateAgreementWindow window = new(
+                backgroundFrames,
+                backgroundDelays,
+                LoadWindowCanvasLayerWithOffset(sourceProperty, "message", device, out Point messageOffset),
+                messageOffset,
+                LoadButton(sourceProperty, "BtAgree", clickSound, overSound, device),
+                LoadButton(sourceProperty, "BtDisagree", clickSound, overSound, device),
+                device)
+            {
+                Position = position
+            };
+
+
+            UIObject closeButton = CreateUserInfoCloseButton(basicImage, clickSound, overSound, device, backgroundFrames[0].Width);
+            if (closeButton != null)
+            {
+                window.InitializeCloseButton(closeButton);
+            }
+
+
+            return window;
+        }
+
+
+        private static void LoadIndexedCanvasSequence(
+            WzSubProperty sourceProperty,
+            GraphicsDevice device,
+            out Texture2D[] textures,
+            out Point[] offsets,
+            out int[] delays)
+        {
+            List<Texture2D> textureList = new();
+            List<Point> offsetList = new();
+            List<int> delayList = new();
+
+            if (sourceProperty != null)
+            {
+                foreach (WzImageProperty property in sourceProperty.WzProperties.OrderBy(current => int.TryParse(current.Name, out int index) ? index : int.MaxValue))
+                {
+                    if (property is not WzCanvasProperty canvas)
+                    {
+                        continue;
+                    }
+
+                    Texture2D texture = canvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device);
+                    if (texture == null)
+                    {
+                        continue;
+                    }
+
+                    System.Drawing.PointF origin = canvas.GetCanvasOriginPosition();
+                    textureList.Add(texture);
+                    offsetList.Add(new Point(-(int)origin.X, -(int)origin.Y));
+                    delayList.Add(canvas["delay"]?.GetInt() ?? 120);
+                }
+            }
+
+            textures = textureList.ToArray();
+            offsets = offsetList.ToArray();
+            delays = delayList.ToArray();
+        }
+
+
+        private static void SetButtonPosition(UIObject button, int x, int y)
+        {
+            if (button == null)
+            {
+                return;
+            }
+
+            button.X = x;
+            button.Y = y;
+        }
+
+
         private static void RegisterSocialListHeader(
             SocialListWindow window,
             SocialListTab tab,
@@ -4977,6 +5272,161 @@ namespace HaCreator.MapSimulator.Loaders
                     new Color(255, 236, 183),
                     new Color(170, 170, 170)));
             return window;
+        }
+
+        private static WeddingWishListWindow CreateWeddingWishListWindow(
+            WzImage uiWindow1Image,
+            WzImage uiWindow2Image,
+            WzImage soundUIImage,
+            GraphicsDevice device)
+        {
+            WzSubProperty sourceProperty = uiWindow2Image?["Wedding/wishList"] as WzSubProperty
+                ?? uiWindow1Image?["Wedding/wishList"] as WzSubProperty;
+            if (sourceProperty == null)
+            {
+                return null;
+            }
+
+            WzBinaryProperty clickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
+            WzBinaryProperty overSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
+
+            WeddingWishListWindow window = new(
+                new WeddingWishListWindowAssets(
+                    new Dictionary<WeddingWishListDialogMode, WeddingWishListModeAssets>
+                    {
+                        [WeddingWishListDialogMode.Receive] = CreateWeddingWishListModeAssets(sourceProperty["receive"] as WzSubProperty, device),
+                        [WeddingWishListDialogMode.Give] = CreateWeddingWishListModeAssets(sourceProperty["give"] as WzSubProperty, device),
+                        [WeddingWishListDialogMode.Input] = CreateWeddingWishListModeAssets(sourceProperty["input"] as WzSubProperty, device)
+                    },
+                    LoadIndexedCanvasTextureList((sourceProperty["receive"]?["Tab"]?["En"]) as WzSubProperty, device).ToArray(),
+                    LoadIndexedCanvasTextureList((sourceProperty["receive"]?["Tab"]?["Ds"]) as WzSubProperty, device).ToArray(),
+                    new[]
+                    {
+                        ResolveCanvasOffset(sourceProperty["receive"]?["Tab"]?["En"]?["0"] as WzCanvasProperty, new Point(216, 69)),
+                        ResolveCanvasOffset(sourceProperty["receive"]?["Tab"]?["En"]?["1"] as WzCanvasProperty, new Point(256, 69)),
+                        ResolveCanvasOffset(sourceProperty["receive"]?["Tab"]?["En"]?["2"] as WzCanvasProperty, new Point(296, 69)),
+                        ResolveCanvasOffset(sourceProperty["receive"]?["Tab"]?["En"]?["3"] as WzCanvasProperty, new Point(336, 69)),
+                        ResolveCanvasOffset(sourceProperty["receive"]?["Tab"]?["En"]?["4"] as WzCanvasProperty, new Point(376, 69))
+                    },
+                    ResolveButtonPosition(sourceProperty["receive"]?["BtGet"] as WzSubProperty, new Point(162, 265)),
+                    ResolveButtonPosition(sourceProperty["give"]?["BtPut"] as WzSubProperty, new Point(323, 247)),
+                    ResolveButtonPosition(sourceProperty["input"]?["BtEnter"] as WzSubProperty, new Point(145, 57)),
+                    ResolveButtonPosition(sourceProperty["input"]?["BtDelete"] as WzSubProperty, new Point(53, 260)),
+                    ResolveButtonPosition(sourceProperty["input"]?["BtOK"] as WzSubProperty, new Point(100, 260)),
+                    ResolveButtonPosition(sourceProperty["receive"]?["BtExit"] as WzSubProperty, new Point(370, 265))),
+                device);
+
+            window.InitializeControls(
+                LoadButton(sourceProperty["receive"] as WzSubProperty, "BtGet", clickSound, overSound, device),
+                LoadButton(sourceProperty["give"] as WzSubProperty, "BtPut", clickSound, overSound, device),
+                LoadButton(sourceProperty["input"] as WzSubProperty, "BtEnter", clickSound, overSound, device),
+                LoadButton(sourceProperty["input"] as WzSubProperty, "BtDelete", clickSound, overSound, device),
+                LoadButton(sourceProperty["input"] as WzSubProperty, "BtOK", clickSound, overSound, device),
+                LoadButton(sourceProperty["receive"] as WzSubProperty, "BtExit", clickSound, overSound, device)
+                ?? LoadButton(sourceProperty["give"] as WzSubProperty, "BtExit", clickSound, overSound, device));
+            return window;
+        }
+
+        private static WeddingWishListWindow CreateFallbackWeddingWishListWindow(GraphicsDevice device)
+        {
+            WeddingWishListModeAssets CreateMode(int width, int height, Color borderColor, Color headerColor, int selectionWidth, int selectionHeight)
+            {
+                return new WeddingWishListModeAssets(
+                    new Dictionary<WeddingWishListRole, WeddingWishListRoleAssets>
+                    {
+                        [WeddingWishListRole.Groom] = new(
+                            CreateFilledTexture(device, width, height, Color.Transparent, borderColor),
+                            CreateFilledTexture(device, Math.Max(1, width - 12), Math.Max(1, height - 28), new Color(242, 242, 242), new Color(210, 210, 210)),
+                            new Point(6, 23),
+                            CreateFilledTexture(device, Math.Max(1, width - 20), Math.Max(1, height - 60), Color.Transparent, headerColor),
+                            new Point(10, 27)),
+                        [WeddingWishListRole.Bride] = new(
+                            CreateFilledTexture(device, width, height, Color.Transparent, borderColor),
+                            CreateFilledTexture(device, Math.Max(1, width - 12), Math.Max(1, height - 28), new Color(242, 242, 242), new Color(210, 210, 210)),
+                            new Point(6, 23),
+                            CreateFilledTexture(device, Math.Max(1, width - 20), Math.Max(1, height - 60), Color.Transparent, headerColor),
+                            new Point(10, 27))
+                    },
+                    CreateFilledTexture(device, selectionWidth, selectionHeight, new Color(255, 244, 195), new Color(228, 181, 62)));
+            }
+
+            WeddingWishListWindow window = new(
+                new WeddingWishListWindowAssets(
+                    new Dictionary<WeddingWishListDialogMode, WeddingWishListModeAssets>
+                    {
+                        [WeddingWishListDialogMode.Receive] = CreateMode(423, 290, new Color(72, 72, 72), new Color(80, 148, 214), 148, 35),
+                        [WeddingWishListDialogMode.Give] = CreateMode(423, 273, new Color(72, 72, 72), new Color(214, 106, 144), 148, 35),
+                        [WeddingWishListDialogMode.Input] = CreateMode(196, 286, new Color(72, 72, 72), new Color(80, 148, 214), 160, 14)
+                    },
+                    new[]
+                    {
+                        CreateFilledTexture(device, 39, 19, new Color(115, 179, 235), new Color(49, 98, 152)),
+                        CreateFilledTexture(device, 39, 19, new Color(115, 179, 235), new Color(49, 98, 152)),
+                        CreateFilledTexture(device, 39, 19, new Color(115, 179, 235), new Color(49, 98, 152)),
+                        CreateFilledTexture(device, 39, 19, new Color(115, 179, 235), new Color(49, 98, 152)),
+                        CreateFilledTexture(device, 39, 19, new Color(115, 179, 235), new Color(49, 98, 152))
+                    },
+                    new[]
+                    {
+                        CreateFilledTexture(device, 39, 19, new Color(210, 210, 210), new Color(124, 124, 124)),
+                        CreateFilledTexture(device, 39, 19, new Color(210, 210, 210), new Color(124, 124, 124)),
+                        CreateFilledTexture(device, 39, 19, new Color(210, 210, 210), new Color(124, 124, 124)),
+                        CreateFilledTexture(device, 39, 19, new Color(210, 210, 210), new Color(124, 124, 124)),
+                        CreateFilledTexture(device, 39, 19, new Color(210, 210, 210), new Color(124, 124, 124))
+                    },
+                    new[] { new Point(216, 69), new Point(256, 69), new Point(296, 69), new Point(336, 69), new Point(376, 69) },
+                    new Point(162, 265),
+                    new Point(323, 247),
+                    new Point(145, 57),
+                    new Point(53, 260),
+                    new Point(100, 260),
+                    new Point(370, 265)),
+                device);
+
+            window.InitializeControls(
+                UiButtonFactory.CreateSolidButton(device, 44, 16, new Color(240, 220, 168), new Color(225, 196, 120), new Color(255, 236, 183), new Color(170, 170, 170)),
+                UiButtonFactory.CreateSolidButton(device, 44, 16, new Color(240, 220, 168), new Color(225, 196, 120), new Color(255, 236, 183), new Color(170, 170, 170)),
+                UiButtonFactory.CreateSolidButton(device, 44, 16, new Color(240, 220, 168), new Color(225, 196, 120), new Color(255, 236, 183), new Color(170, 170, 170)),
+                UiButtonFactory.CreateSolidButton(device, 44, 16, new Color(240, 220, 168), new Color(225, 196, 120), new Color(255, 236, 183), new Color(170, 170, 170)),
+                UiButtonFactory.CreateSolidButton(device, 44, 16, new Color(240, 220, 168), new Color(225, 196, 120), new Color(255, 236, 183), new Color(170, 170, 170)),
+                UiButtonFactory.CreateSolidButton(device, 44, 16, new Color(240, 220, 168), new Color(225, 196, 120), new Color(255, 236, 183), new Color(170, 170, 170)));
+            return window;
+        }
+
+        private static WeddingWishListModeAssets CreateWeddingWishListModeAssets(WzSubProperty modeProperty, GraphicsDevice device)
+        {
+            if (modeProperty == null)
+            {
+                return null;
+            }
+
+            return new WeddingWishListModeAssets(
+                new Dictionary<WeddingWishListRole, WeddingWishListRoleAssets>
+                {
+                    [WeddingWishListRole.Groom] = CreateWeddingWishListRoleAssets(modeProperty["groom"] as WzSubProperty, device),
+                    [WeddingWishListRole.Bride] = CreateWeddingWishListRoleAssets(modeProperty["bride"] as WzSubProperty, device)
+                },
+                LoadCanvasTexture(modeProperty, "select", device));
+        }
+
+        private static WeddingWishListRoleAssets CreateWeddingWishListRoleAssets(WzSubProperty roleProperty, GraphicsDevice device)
+        {
+            if (roleProperty == null)
+            {
+                return null;
+            }
+
+            return new WeddingWishListRoleAssets(
+                LoadCanvasTexture(roleProperty, "backgrnd", device),
+                LoadCanvasTexture(roleProperty, "backgrnd2", device),
+                ResolveCanvasOffset(roleProperty["backgrnd2"] as WzCanvasProperty, new Point(6, 23)),
+                LoadCanvasTexture(roleProperty, "backgrnd3", device),
+                ResolveCanvasOffset(roleProperty["backgrnd3"] as WzCanvasProperty, new Point(10, 27)));
+        }
+
+        private static Point ResolveButtonPosition(WzSubProperty buttonProperty, Point fallback)
+        {
+            return ResolveCanvasOffset(buttonProperty?["normal"]?["0"] as WzCanvasProperty, fallback);
         }
 
         private static EngagementProposalBand LoadEngagementProposalBand(WzSubProperty sourceProperty, GraphicsDevice device, int fallbackHeight)
@@ -6208,6 +6658,74 @@ namespace HaCreator.MapSimulator.Loaders
 
             return window;
 
+        }
+
+
+
+        private static UIWindowBase CreateAdminShopWishListCategoryWindow(
+            WzImage uiWindow2Image,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            Point position)
+        {
+            WzImage cashShopImage = global::HaCreator.Program.FindImage("ui", "CashShop.img");
+            WzSubProperty searchProperty = cashShopImage?["CSItemSearch"] as WzSubProperty;
+            WzSubProperty popupProperty = searchProperty?["PopUp1"] as WzSubProperty;
+            if (popupProperty == null)
+            {
+                return CreatePlaceholderUtilityWindow(
+                    basicImage,
+                    soundUIImage,
+                    device,
+                    MapSimulatorWindowNames.AdminShopWishListCategory,
+                    "Wish List Category",
+                    "Fallback category add-on because CashShop.img/CSItemSearch/PopUp1 assets were unavailable.",
+                    position);
+            }
+
+
+            Texture2D backgroundTexture = LoadCanvasTexture(popupProperty, "backgrnd", device);
+            if (backgroundTexture == null)
+            {
+                return CreatePlaceholderUtilityWindow(
+                    basicImage,
+                    soundUIImage,
+                    device,
+                    MapSimulatorWindowNames.AdminShopWishListCategory,
+                    "Wish List Category",
+                    "Fallback category add-on because the Cash Shop wish-list category frame could not be loaded.",
+                    position);
+            }
+
+
+            WzSubProperty scrollNormalProperty = (popupProperty["Scroll"] as WzSubProperty)?["normal"] as WzSubProperty;
+            Texture2D scrollBaseTexture = LoadCanvasTexture(scrollNormalProperty, "base", device);
+            Texture2D scrollThumbTexture = LoadCanvasTexture(scrollNormalProperty, "thumb", device);
+            Texture2D scrollPrevTexture = LoadCanvasTexture(scrollNormalProperty, "prev", device);
+            Texture2D scrollNextTexture = LoadCanvasTexture(scrollNormalProperty, "next", device);
+
+
+            WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
+            WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
+            UIObject closeButton = LoadButton(popupProperty, "BtCancel", btClickSound, btOverSound, device);
+
+
+            AdminShopWishListCategoryUI window = new AdminShopWishListCategoryUI(
+                new DXObject(0, 0, backgroundTexture, 0),
+                backgroundTexture,
+                closeButton,
+                scrollBaseTexture,
+                scrollThumbTexture,
+                scrollPrevTexture,
+                scrollNextTexture,
+                device)
+            {
+                Position = position
+            };
+
+
+            return window;
         }
 
 

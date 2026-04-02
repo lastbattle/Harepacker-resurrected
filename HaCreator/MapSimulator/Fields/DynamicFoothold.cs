@@ -486,6 +486,44 @@ namespace HaCreator.MapSimulator.Fields
         }
 
         /// <summary>
+        /// Mirrors the client-owned field wrapper rebinding seam by discarding any
+        /// simulator-owned platform state when a dynamic-foothold map owner changes.
+        /// </summary>
+        public void ResetForClientOwnedWrapper()
+        {
+            Clear();
+        }
+
+        public string DescribeClientOwnedWrapperState()
+        {
+            int activeCount = 0;
+            int visibleCount = 0;
+            int movingCount = 0;
+
+            for (int i = 0; i < _platforms.Count; i++)
+            {
+                DynamicPlatform platform = _platforms[i];
+                if (!platform.IsActive)
+                {
+                    continue;
+                }
+
+                activeCount++;
+                if (platform.IsVisible)
+                {
+                    visibleCount++;
+                }
+
+                if (platform.MovementType != PlatformMovementType.Static)
+                {
+                    movingCount++;
+                }
+            }
+
+            return $"platforms={_platforms.Count}, active={activeCount}, visible={visibleCount}, moving={movingCount}";
+        }
+
+        /// <summary>
         /// Set platform active state
         /// </summary>
         public void SetPlatformActive(int id, bool active)

@@ -6,6 +6,7 @@ using HaCreator.MapSimulator.Pools;
 using HaCreator.MapSimulator.UI;
 using HaCreator.Wz;
 using HaSharedLibrary.Wz;
+using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib;
 using MapleLib.WzLib.Util;
 using MapleLib.WzLib.WzProperties;
@@ -64,6 +65,7 @@ namespace HaCreator.MapSimulator
         private readonly TutorRuntime _packetOwnedTutorRuntime = new();
         private readonly LocalUtilityPacketInboxManager _localUtilityPacketInbox = new();
         private LocalOverlayBalloonSkin _packetOwnedTutorBalloonSkin;
+        private readonly Dictionary<int, List<IDXObject>> _packetOwnedTutorCueFramesByIndex = new();
         private PacketOwnedBattleshipDurabilityOverrideState _packetOwnedBattleshipDurabilityOverride;
         private int _packetQuestGuideQuestId;
         private int _packetOwnedUtilityRequestTick = int.MinValue;
@@ -106,6 +108,7 @@ namespace HaCreator.MapSimulator
         private int _packetOwnedApspPromptContextToken;
         private int _packetOwnedApspPromptEventType;
         private readonly PacketOwnedApspContextState _packetOwnedApspContextState = new();
+        private int _lastPacketOwnedApspRuntimeCharacterId;
         private int _lastPacketOwnedApspFollowUpContextToken;
         private int _lastPacketOwnedApspFollowUpResponseCode;
         private string _lastPacketOwnedEventSoundDescriptor;
@@ -117,6 +120,8 @@ namespace HaCreator.MapSimulator
         private string _lastPacketOwnedRadioDisplayName;
         private string _lastPacketOwnedRadioStatusMessage = "Packet-owned radio idle.";
         private int _lastPacketOwnedRadioTimeValue;
+        private int _lastPacketOwnedRadioStartOffsetMs;
+        private int _lastPacketOwnedRadioAvailableDurationMs;
         private int _lastPacketOwnedRadioStartTick = int.MinValue;
         private int _lastPacketOwnedRadioLastPollTick = int.MinValue;
         private bool _localUtilityPacketInboxEnabled = EnablePacketConnectionsByDefault;
@@ -1362,7 +1367,7 @@ namespace HaCreator.MapSimulator
                 ? "Sound cues: none."
                 : $"Sound cues: event={(_lastPacketOwnedEventSoundDescriptor ?? "none")}, minigame={(_lastPacketOwnedMinigameSoundDescriptor ?? "none")}.";
             string radioStatus = IsPacketOwnedRadioPlaying()
-                ? $"Radio: \"{TruncatePacketOwnedUtilityText(_lastPacketOwnedRadioDisplayName ?? _lastPacketOwnedRadioTrackDescriptor)}\", authoredTime={_lastPacketOwnedRadioTimeValue}, age={Math.Max(0, unchecked(currentTickCount - _lastPacketOwnedRadioStartTick))} ms."
+                ? $"Radio: \"{TruncatePacketOwnedUtilityText(_lastPacketOwnedRadioDisplayName ?? _lastPacketOwnedRadioTrackDescriptor)}\", authoredTime={_lastPacketOwnedRadioTimeValue}s, position={(_lastPacketOwnedRadioStartOffsetMs + Math.Max(0, unchecked(currentTickCount - _lastPacketOwnedRadioStartTick)))} ms, remaining={Math.Max(0, _lastPacketOwnedRadioAvailableDurationMs - Math.Max(0, unchecked(currentTickCount - _lastPacketOwnedRadioStartTick)))} ms."
                 : $"Radio: {TruncatePacketOwnedUtilityText(_lastPacketOwnedRadioStatusMessage)}";
             string antiMacroStatus = $"Anti-macro: {TruncatePacketOwnedUtilityText(DescribePacketOwnedAntiMacroStatus(currentTickCount), 140)}";
 
@@ -1716,12 +1721,19 @@ namespace HaCreator.MapSimulator
             try
             {
                 _packetOwnedRadioAudio?.Dispose();
-                _packetOwnedRadioAudio = new MonoGameBgmPlayer(trackResolution.AudioProperty, looped: false);
+                int normalizedTimeValue = Math.Max(0, timeValue);
+                int startOffsetMs = normalizedTimeValue * 1000;
+                _packetOwnedRadioAudio = new MonoGameBgmPlayer(trackResolution.AudioProperty, looped: false, startOffsetMs);
                 _lastPacketOwnedRadioTrackDescriptor = normalizedTrackDescriptor;
                 _lastPacketOwnedRadioResolvedTrackDescriptor = trackResolution.ResolvedTrackDescriptor;
                 _lastPacketOwnedRadioResolvedDescriptor = trackResolution.ResolvedAudioDescriptor;
                 _lastPacketOwnedRadioDisplayName = trackResolution.DisplayName;
-                _lastPacketOwnedRadioTimeValue = Math.Max(0, timeValue);
+                _lastPacketOwnedRadioTimeValue = normalizedTimeValue;
+                _lastPacketOwnedRadioStartOffsetMs = startOffsetMs;
+                _lastPacketOwnedRadioAvailableDurationMs = (int)Math.Clamp(
+                    Math.Round(_packetOwnedRadioAudio.Duration.TotalMilliseconds),
+                    0d,
+                    int.MaxValue);
                 _lastPacketOwnedRadioStartTick = Environment.TickCount;
                 _lastPacketOwnedRadioLastPollTick = int.MinValue;
                 _lastPacketOwnedRadioStatusMessage = $"Playing {trackResolution.DisplayName} through packet-owned radio ownership.";
@@ -1788,6 +1800,8 @@ namespace HaCreator.MapSimulator
             _lastPacketOwnedRadioResolvedDescriptor = null;
             _lastPacketOwnedRadioDisplayName = null;
             _lastPacketOwnedRadioTimeValue = 0;
+            _lastPacketOwnedRadioStartOffsetMs = 0;
+            _lastPacketOwnedRadioAvailableDurationMs = 0;
             _lastPacketOwnedRadioStartTick = int.MinValue;
             _lastPacketOwnedRadioLastPollTick = int.MinValue;
             ApplyUtilityAudioSettings();
@@ -1845,6 +1859,7 @@ namespace HaCreator.MapSimulator
             }
 
             int elapsedMs = Math.Max(0, unchecked(Environment.TickCount - _lastPacketOwnedRadioStartTick));
+            int playheadMs = _lastPacketOwnedRadioStartOffsetMs + elapsedMs;
             lines.Add($"Track: {_lastPacketOwnedRadioDisplayName ?? _lastPacketOwnedRadioTrackDescriptor}");
             lines.Add($"Authored descriptor: {_lastPacketOwnedRadioTrackDescriptor}");
             if (!string.IsNullOrWhiteSpace(_lastPacketOwnedRadioResolvedTrackDescriptor))
@@ -1853,10 +1868,16 @@ namespace HaCreator.MapSimulator
             }
 
             lines.Add($"Resolved source: {_lastPacketOwnedRadioResolvedDescriptor}");
-            lines.Add($"Elapsed: {elapsedMs / 1000f:0.0}s");
+            lines.Add($"Session elapsed: {elapsedMs / 1000f:0.0}s");
+            lines.Add($"Playback position: {playheadMs / 1000f:0.0}s");
             lines.Add(_lastPacketOwnedRadioTimeValue > 0
-                ? $"Authored time value: {_lastPacketOwnedRadioTimeValue}"
+                ? $"Authored time value: {_lastPacketOwnedRadioTimeValue}s"
                 : "Authored time value: 0");
+            if (_lastPacketOwnedRadioAvailableDurationMs > 0)
+            {
+                lines.Add($"Remaining runtime: {Math.Max(0, _lastPacketOwnedRadioAvailableDurationMs - elapsedMs) / 1000f:0.0}s");
+            }
+
             lines.Add("Field BGM is temporarily muted while the radio session owns playback.");
             return lines;
         }
@@ -2213,6 +2234,11 @@ namespace HaCreator.MapSimulator
             string skillName,
             int remainingMs)
         {
+            if (!ShouldShowOffBarSkillCooldownNotification(skillId))
+            {
+                return;
+            }
+
             string resolvedSkillName = string.IsNullOrWhiteSpace(skillName)
                 ? $"Skill {skillId}"
                 : skillName;
@@ -2400,7 +2426,7 @@ namespace HaCreator.MapSimulator
                 return inactiveMessage;
             }
 
-            _packetOwnedTutorRuntime.ApplyIndexedMessage(messageIndex, durationMs);
+            _packetOwnedTutorRuntime.ApplyIndexedMessage(messageIndex, durationMs, currTickCount);
             string message = $"Applied packet-owned tutor cue #{Math.Max(0, messageIndex)} ({Math.Max(0, durationMs)}).";
             ShowUtilityFeedbackMessage(message);
             return message;
@@ -2558,24 +2584,77 @@ namespace HaCreator.MapSimulator
 
         private int ResolvePacketOwnedApspReceiveContextToken()
         {
-            _packetOwnedApspContextState.EnsureSeeded(ResolvePacketOwnedApspSeedCharacterId());
-            return _packetOwnedApspContextState.ReceiveContextToken;
+            SyncPacketOwnedApspContextLifecycle();
+            return _packetOwnedApspContextState.ResolveReceiveContextToken(ResolvePacketOwnedApspRuntimeCharacterId());
         }
 
         private int ResolvePacketOwnedApspFollowUpContextToken(int promptContextToken)
         {
-            _packetOwnedApspContextState.EnsureSeeded(ResolvePacketOwnedApspSeedCharacterId());
-            return ResolvePacketOwnedApspFollowUpContextToken(promptContextToken, _packetOwnedApspContextState.SendContextToken);
+            SyncPacketOwnedApspContextLifecycle();
+            return ResolvePacketOwnedApspFollowUpContextToken(
+                promptContextToken,
+                _packetOwnedApspContextState.ResolveSendContextToken(promptContextToken, ResolvePacketOwnedApspRuntimeCharacterId()));
+        }
+
+        private void SyncPacketOwnedApspContextLifecycle()
+        {
+            int runtimeCharacterId = ResolvePacketOwnedApspRuntimeCharacterId();
+            _packetOwnedApspContextState.ObserveRuntimeCharacterId(runtimeCharacterId);
+
+            if (runtimeCharacterId <= 0)
+            {
+                _lastPacketOwnedApspRuntimeCharacterId = 0;
+                return;
+            }
+
+            if (!_packetOwnedApspContextState.HasPersistedState)
+            {
+                _packetOwnedApspContextState.SeedFromCharacterId(runtimeCharacterId);
+                _lastPacketOwnedApspRuntimeCharacterId = runtimeCharacterId;
+                return;
+            }
+
+            if (_lastPacketOwnedApspRuntimeCharacterId > 0
+                && _lastPacketOwnedApspRuntimeCharacterId != runtimeCharacterId)
+            {
+                ResetPacketOwnedApspContextForCharacter(runtimeCharacterId);
+            }
+
+            _lastPacketOwnedApspRuntimeCharacterId = runtimeCharacterId;
+        }
+
+        private void ResetPacketOwnedApspContextForCharacter(int runtimeCharacterId)
+        {
+            bool shouldHideMessageBox = _packetOwnedApspPromptActive;
+            _packetOwnedApspContextState.SeedFromCharacterId(runtimeCharacterId);
+            _packetOwnedApspPromptActive = false;
+            _packetOwnedApspPromptContextToken = 0;
+            _packetOwnedApspPromptEventType = 0;
+            _lastPacketOwnedApspFollowUpContextToken = 0;
+            _lastPacketOwnedApspFollowUpResponseCode = 0;
+
+            if (shouldHideMessageBox)
+            {
+                HideLoginUtilityDialog();
+            }
+
+            _lastPacketOwnedAskApspMessage =
+                $"Reset packet-owned AP/SP CWvsContext tokens for runtime character {runtimeCharacterId} after a local character transition.";
+        }
+
+        private int ResolvePacketOwnedApspRuntimeCharacterId()
+        {
+            return Math.Max(0, _playerManager?.Player?.Build?.Id ?? 0);
         }
 
         private int ResolvePacketOwnedApspSeedCharacterId()
         {
-            return Math.Max(1, _playerManager?.Player?.Build?.Id ?? 0);
+            return Math.Max(1, ResolvePacketOwnedApspRuntimeCharacterId());
         }
 
         private string DescribePacketOwnedApspContextStatus()
         {
-            _packetOwnedApspContextState.EnsureSeeded(ResolvePacketOwnedApspSeedCharacterId());
+            SyncPacketOwnedApspContextLifecycle();
             return _packetOwnedApspContextState.Describe();
         }
 
@@ -2813,19 +2892,79 @@ namespace HaCreator.MapSimulator
 
         private void DrawPacketOwnedTutorState(int currentTickCount, int mapCenterX, int mapCenterY)
         {
+            if (_spriteBatch == null)
+            {
+                return;
+            }
+
+            DrawPacketOwnedTutorIndexedCue(currentTickCount, mapCenterX, mapCenterY);
+
             if (!_packetOwnedTutorRuntime.HasVisibleTextMessage(currentTickCount)
                 || _fontChat == null
-                || _spriteBatch == null
                 || _packetOwnedTutorBalloonSkin?.IsLoaded != true)
             {
                 return;
             }
 
-            if (!TryResolvePacketOwnedTutorAnchorScreenPoint(currentTickCount, mapCenterX, mapCenterY, out Point anchor))
+            if (!TryResolvePacketOwnedTutorBalloonAnchorScreenPoint(mapCenterX, mapCenterY, out Point anchor))
             {
                 return;
             }
 
+            DrawPacketOwnedTutorBalloon(anchor);
+        }
+
+        private void DrawPacketOwnedTutorIndexedCue(int currentTickCount, int mapCenterX, int mapCenterY)
+        {
+            if (!_packetOwnedTutorRuntime.HasVisibleIndexedCue(currentTickCount))
+            {
+                return;
+            }
+
+            List<IDXObject> frames = ResolvePacketOwnedTutorCueFrames(_packetOwnedTutorRuntime.LastIndexedMessage);
+            if (frames == null || frames.Count == 0)
+            {
+                return;
+            }
+
+            if (!TryResolvePacketOwnedTutorActorScreenPoint(mapCenterX, mapCenterY, out Point anchor))
+            {
+                return;
+            }
+
+            IDXObject frame = ResolvePacketOwnedComboFrame(
+                frames,
+                currentTickCount,
+                _packetOwnedTutorRuntime.ActiveMessageStartedAt == int.MinValue
+                    ? currentTickCount
+                    : _packetOwnedTutorRuntime.ActiveMessageStartedAt);
+            if (frame?.Texture == null)
+            {
+                return;
+            }
+
+            Vector2 position = new(anchor.X - frame.X, anchor.Y - frame.Y);
+            _spriteBatch.Draw(frame.Texture, position, Color.White);
+        }
+
+        private List<IDXObject> ResolvePacketOwnedTutorCueFrames(int cueIndex)
+        {
+            int normalizedIndex = Math.Max(0, cueIndex);
+            if (_packetOwnedTutorCueFramesByIndex.TryGetValue(normalizedIndex, out List<IDXObject> cachedFrames))
+            {
+                return cachedFrames;
+            }
+
+            WzImage tutorialImage = Program.FindImage("UI", "tutorial.img");
+            List<IDXObject> frames = LoadPacketOwnedAnimationFrames(
+                ResolvePacketOwnedPropertyPath(tutorialImage, normalizedIndex.ToString(CultureInfo.InvariantCulture)),
+                fallbackDelay: TutorRuntime.DefaultIndexedDurationMs);
+            _packetOwnedTutorCueFramesByIndex[normalizedIndex] = frames;
+            return frames;
+        }
+
+        private void DrawPacketOwnedTutorBalloon(Point anchor)
+        {
             int requestedWidth = Math.Clamp(
                 _packetOwnedTutorRuntime.ActiveMessageWidth <= 0 ? TutorRuntime.DefaultTextWidth : _packetOwnedTutorRuntime.ActiveMessageWidth,
                 TutorRuntime.MinTextWidth,
@@ -2901,7 +3040,18 @@ namespace HaCreator.MapSimulator
             }
         }
 
-        private bool TryResolvePacketOwnedTutorAnchorScreenPoint(int currentTickCount, int mapCenterX, int mapCenterY, out Point anchor)
+        private bool TryResolvePacketOwnedTutorBalloonAnchorScreenPoint(int mapCenterX, int mapCenterY, out Point anchor)
+        {
+            if (!TryResolvePacketOwnedTutorActorScreenPoint(mapCenterX, mapCenterY, out anchor))
+            {
+                return false;
+            }
+
+            anchor = new Point(anchor.X, anchor.Y - _packetOwnedTutorRuntime.ResolveActorHeight() - PacketOwnedTutorBalloonAnchorOffsetY);
+            return true;
+        }
+
+        private bool TryResolvePacketOwnedTutorActorScreenPoint(int mapCenterX, int mapCenterY, out Point anchor)
         {
             anchor = Point.Zero;
 
@@ -2915,13 +3065,13 @@ namespace HaCreator.MapSimulator
 
                 anchor = new Point(
                     (int)Math.Round(player.X - mapShiftX + mapCenterX),
-                    (int)Math.Round(player.Y - mapShiftY + mapCenterY - _packetOwnedTutorRuntime.ResolveActorHeight() - PacketOwnedTutorBalloonAnchorOffsetY));
+                    (int)Math.Round(player.Y - mapShiftY + mapCenterY));
                 return true;
             }
 
             anchor = new Point(
                 (int)Math.Round(summon.PositionX - mapShiftX + mapCenterX),
-                (int)Math.Round(summon.PositionY - mapShiftY + mapCenterY - _packetOwnedTutorRuntime.ResolveActorHeight() - PacketOwnedTutorBalloonAnchorOffsetY));
+                (int)Math.Round(summon.PositionY - mapShiftY + mapCenterY));
             return true;
         }
 
@@ -4275,7 +4425,7 @@ namespace HaCreator.MapSimulator
 
                 default:
                     return ChatCommandHandler.CommandResult.Error(
-                        "Usage: /localutility [status|inbox [status|start [port]|stop|packet <sitresult|questresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|followfail|directionmode|standalone|damagemeter|hpdec|skillcooltime|231|242|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|1013|1014|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]]|directionmode <on|off|1|0> [delayMs]|standalone <on|off|1|0>|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel|type19|whisper:name|whisperout:name] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv]|classcompetition|skillguide|antimacro [status|launch <normal|admin> [first|retry]|notice <noticeType> [antiMacroType]|result <mode> [antiMacroType] [userName]|clear]|apsp [status|seed [characterId]|receive <token>|send <token>|context <receiveToken> [sendToken]|<contextToken> <11|12|13>|text]|follow <status|request <driverId|name> [auto|manual] [keyinput]|ask <requesterId|name>|accept|decline|attach <driverId|name>|detach [transferX transferY]|passengerdetach [requesterId|name] [transferX transferY]>|followfail [reasonCode [driverId]|text]|packet <sitresult|questresult|openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|directionmode|standalone|follow|followfail|193|231|242|243|250|251|252|255|256|262|263|264|265|266|267|270|273|274|275|276|1011|1012|1013|1014> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>]");
+                        "Usage: /localutility [status|inbox [status|start [port]|stop|packet <sitresult|questresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|follow|followfail|directionmode|standalone|damagemeter|hpdec|skillcooltime|193|231|242|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|1012|1013|1014|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]]|directionmode <on|off|1|0> [delayMs]|standalone <on|off|1|0>|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel|type19|whisper:name|whisperout:name] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv]|classcompetition|skillguide|antimacro [status|launch <normal|admin> [first|retry]|notice <noticeType> [antiMacroType]|result <mode> [antiMacroType] [userName]|clear]|apsp [status|seed [characterId]|receive <token>|send <token>|context <receiveToken> [sendToken]|<contextToken> <11|12|13>|text]|follow <status|request <driverId|name> [auto|manual] [keyinput]|ask <requesterId|name>|accept|decline|attach <driverId|name>|detach [transferX transferY]|passengerdetach [requesterId|name] [transferX transferY]>|followfail [reasonCode [driverId]|text]|packet <sitresult|questresult|openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|directionmode|standalone|follow|followfail|193|231|242|243|250|251|252|255|256|262|263|264|265|266|267|270|273|274|275|276|1011|1012|1013|1014> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>]");
             }
         }
 
@@ -4295,7 +4445,7 @@ namespace HaCreator.MapSimulator
                 int port = LocalUtilityPacketInboxManager.DefaultPort;
                 if (args.Length > offset + 1 && (!int.TryParse(args[offset + 1], out port) || port <= 0 || port > ushort.MaxValue))
                 {
-                    return ChatCommandHandler.CommandResult.Error($"Usage: {usagePrefix} [status|start [port]|stop|packet <sitresult|questresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|radio|skillguide|antimacro|apspevent|followfail|directionmode|standalone|damagemeter|hpdec|skillcooltime|231|242|243|246|247|250|251|252|261|262|263|264|265|266|267|270|273|274|275|276|1011|1013|1014|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]]");
+                    return ChatCommandHandler.CommandResult.Error($"Usage: {usagePrefix} [status|start [port]|stop|packet <sitresult|questresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|radio|skillguide|antimacro|apspevent|follow|followfail|directionmode|standalone|damagemeter|hpdec|skillcooltime|193|231|242|243|246|247|250|251|252|261|262|263|264|265|266|267|270|273|274|275|276|1011|1012|1013|1014|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]]");
                 }
 
                 _localUtilityPacketInboxConfiguredPort = port;
@@ -4321,7 +4471,7 @@ namespace HaCreator.MapSimulator
             }
 
             return ChatCommandHandler.CommandResult.Error(
-                $"Usage: {usagePrefix} [status|start [port]|stop|packet <sitresult|questresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|radio|skillguide|antimacro|apspevent|followfail|directionmode|standalone|damagemeter|hpdec|skillcooltime|231|242|243|246|247|250|251|252|261|262|263|264|265|266|267|270|273|274|275|276|1011|1013|1014|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]]");
+                $"Usage: {usagePrefix} [status|start [port]|stop|packet <sitresult|questresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|radio|skillguide|antimacro|apspevent|follow|followfail|directionmode|standalone|damagemeter|hpdec|skillcooltime|193|231|242|243|246|247|250|251|252|261|262|263|264|265|266|267|270|273|274|275|276|1011|1012|1013|1014|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]]");
         }
 
         private ChatCommandHandler.CommandResult HandlePacketOwnedUtilityPacketCommand(string[] args, bool rawHex)
@@ -4687,6 +4837,8 @@ namespace HaCreator.MapSimulator
 
             bool isMounted = actor.Build?.HasMonsterRiding == true
                 || actor.Build?.Equipment?.TryGetValue(EquipSlot.TamingMob, out CharacterPart mountPart) == true && mountPart != null;
+            bool hasMorphTemplate = actor.HasMorphTemplate
+                || actor.Build?.Body?.Type == CharacterPartType.Morph;
             bool isGhost = string.Equals(actor.ActionName, CharacterPart.GetActionString(CharacterAction.Ghost), StringComparison.OrdinalIgnoreCase);
             snapshot = new LocalFollowUserSnapshot(
                 actor.CharacterId,
@@ -4695,7 +4847,7 @@ namespace HaCreator.MapSimulator
                 IsAlive: true,
                 IsImmovable: false,
                 IsMounted: isMounted,
-                HasMorphTemplate: false,
+                HasMorphTemplate: hasMorphTemplate,
                 IsGhostAction: isGhost,
                 Position: actor.Position,
                 FacingRight: actor.FacingRight);

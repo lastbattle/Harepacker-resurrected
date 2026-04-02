@@ -30,6 +30,15 @@ namespace HaCreator.MapSimulator.UI
     public static class InventoryItemMetadataResolver
     {
         private const int DefaultStackLimit = 100;
+        private static readonly (string Key, string Label)[] CurableStatusEffectKeys =
+        {
+            ("poison", "Poison"),
+            ("seal", "Seal"),
+            ("darkness", "Darkness"),
+            ("weakness", "Weakness"),
+            ("curse", "Curse"),
+            ("painmark", "Pain Mark")
+        };
 
         public static InventoryType ResolveInventoryType(int itemId)
         {
@@ -325,11 +334,24 @@ namespace HaCreator.MapSimulator.UI
             AppendStatEffectLine(effectLines, "Avoidability", TryGetPositiveInt(specProperty["eva"]), false);
             AppendStatEffectLine(effectLines, "Speed", TryGetPositiveInt(specProperty["speed"]), false);
             AppendStatEffectLine(effectLines, "Jump", TryGetPositiveInt(specProperty["jump"]), false);
+            AppendCureEffectLine(effectLines, specProperty);
+            AppendMoveToEffectLine(effectLines, TryGetPositiveInt(specProperty["moveTo"]));
+            AppendMorphEffectLine(effectLines, specProperty);
 
             int? durationMs = TryGetPositiveInt(specProperty["time"]);
             if (durationMs.HasValue)
             {
                 effectLines.Add($"Duration: {FormatDuration(durationMs.Value)}");
+            }
+
+            if (GetIntValue(specProperty["party"]) == 1)
+            {
+                effectLines.Add("Applies to party members");
+            }
+
+            if (GetIntValue(specProperty["consumeOnPickup"]) == 1)
+            {
+                effectLines.Add("Consumed on pickup");
             }
 
             return effectLines;
@@ -412,6 +434,96 @@ namespace HaCreator.MapSimulator.UI
 
             string suffix = isPercent ? "%" : string.Empty;
             effectLines.Add($"{label} +{value.Value.ToString(CultureInfo.InvariantCulture)}{suffix}");
+        }
+
+        private static void AppendCureEffectLine(List<string> effectLines, WzSubProperty specProperty)
+        {
+            List<string> curedStatuses = new();
+            for (int i = 0; i < CurableStatusEffectKeys.Length; i++)
+            {
+                (string key, string label) = CurableStatusEffectKeys[i];
+                if (GetIntValue(specProperty[key]) == 1)
+                {
+                    curedStatuses.Add(label);
+                }
+            }
+
+            if (curedStatuses.Count > 0)
+            {
+                effectLines.Add($"Cures {string.Join(", ", curedStatuses)}");
+            }
+        }
+
+        private static void AppendMoveToEffectLine(List<string> effectLines, int? moveToMapId)
+        {
+            if (!moveToMapId.HasValue)
+            {
+                return;
+            }
+
+            string destinationName = ResolveMapName(moveToMapId.Value);
+            effectLines.Add(string.IsNullOrWhiteSpace(destinationName)
+                ? $"Moves to map {moveToMapId.Value.ToString(CultureInfo.InvariantCulture)}"
+                : $"Moves to {destinationName}");
+        }
+
+        private static void AppendMorphEffectLine(List<string> effectLines, WzSubProperty specProperty)
+        {
+            int? morphId = TryGetPositiveInt(specProperty["morph"]);
+            if (morphId.HasValue)
+            {
+                effectLines.Add($"Transforms into morph #{morphId.Value.ToString(CultureInfo.InvariantCulture)}");
+                return;
+            }
+
+            if (specProperty["morphRandom"] is WzSubProperty morphRandom
+                && morphRandom.WzProperties != null
+                && morphRandom.WzProperties.Count > 0)
+            {
+                effectLines.Add("Transforms into a random morph");
+            }
+        }
+
+        private static string ResolveMapName(int mapId)
+        {
+            if (global::HaCreator.Program.InfoManager?.MapsNameCache == null)
+            {
+                return string.Empty;
+            }
+
+            string[] candidateKeys =
+            {
+                mapId.ToString(CultureInfo.InvariantCulture),
+                mapId.ToString("D9", CultureInfo.InvariantCulture)
+            };
+
+            for (int i = 0; i < candidateKeys.Length; i++)
+            {
+                if (!global::HaCreator.Program.InfoManager.MapsNameCache.TryGetValue(candidateKeys[i], out Tuple<string, string, string> mapInfo)
+                    || mapInfo == null)
+                {
+                    continue;
+                }
+
+                string streetName = mapInfo.Item1?.Trim();
+                string mapName = mapInfo.Item2?.Trim();
+                if (!string.IsNullOrWhiteSpace(streetName) && !string.IsNullOrWhiteSpace(mapName))
+                {
+                    return $"{streetName} - {mapName}";
+                }
+
+                if (!string.IsNullOrWhiteSpace(mapName))
+                {
+                    return mapName;
+                }
+
+                if (!string.IsNullOrWhiteSpace(streetName))
+                {
+                    return streetName;
+                }
+            }
+
+            return string.Empty;
         }
 
         private static string FormatDuration(int durationMs)

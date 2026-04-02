@@ -139,6 +139,7 @@ namespace HaCreator.MapSimulator
 
             {
 
+                EnsureComboCounterPacketInboxState(shouldRun: false);
                 EnsureLocalOverlayPacketInboxState(shouldRun: false);
                 EnsureLocalUtilityPacketInboxState(shouldRun: false);
                 EnsureSummonedPacketInboxState(shouldRun: false);
@@ -164,6 +165,7 @@ namespace HaCreator.MapSimulator
                 _playerManager?.Player?.Build?.Name,
                 _playerManager?.Player?.Build?.Job,
                 _remoteUserPool);
+            _specialFieldRuntime.SetMonsterCarnivalPlayerState(_playerManager?.Player?.Build?.Name);
             DrainWeddingPacketInbox(currTickCount);
             DrainCoconutPacketInbox(currTickCount);
             FlushPendingCoconutAttackRequests();
@@ -209,8 +211,12 @@ namespace HaCreator.MapSimulator
             UpdateDirectionModeState(currTickCount);
 
             UpdateWorldChannelSelectorRequestState();
+            EnsureComboCounterPacketInboxState(shouldRun: true);
+            DrainComboCounterPacketInbox();
+            UpdatePacketOwnedComboState(currTickCount);
             EnsureLocalOverlayPacketInboxState(shouldRun: true);
             DrainLocalOverlayPacketInbox();
+            SyncPacketOwnedApspContextLifecycle();
             EnsureLocalUtilityPacketInboxState(shouldRun: true);
             DrainLocalUtilityPacketInbox();
             UpdatePacketOwnedTutorRuntime(currTickCount);
@@ -272,6 +278,8 @@ namespace HaCreator.MapSimulator
             _fieldMessageBoxRuntime.Update(currTickCount);
             _packetFieldStateRuntime.Initialize(GraphicsDevice, _mapBoard?.MapInfo);
             _packetFieldStateRuntime.Update(currTickCount);
+            UpdatePacketOwnedStageTransitionState(currTickCount);
+            UpdatePendingPacketOwnedQuestResultFollowUp();
             UpdatePacketOwnedFieldFeedbackState(currTickCount);
             UpdatePacketOwnedLocalOverlayState(currTickCount);
             _localOverlayRuntime.Update(currTickCount);
@@ -1062,11 +1070,16 @@ namespace HaCreator.MapSimulator
                     PortalInstance targetPortal = _mapBoard.BoardItems.Portals.FirstOrDefault(portal => portal.pn == _gameState.PendingPortalName);
                     if (targetPortal != null && !_sameMapTeleportPending)
                     {
+                        int targetPortalIndex = _portalPool?.GetPortalIndexByName(targetPortal.pn) ?? -1;
                         StartSameMapTeleport(
                             targetPortal.X,
                             targetPortal.Y,
                             targetPortal.delay ?? SAME_MAP_PORTAL_DEFAULT_DELAY_MS,
-                            currTickCount);
+                            currTickCount,
+                            targetPortalIndex,
+                            targetPortal.pn,
+                            targetPortal.tn,
+                            usePacketOwnedApply: true);
                     }
 
 
@@ -1088,6 +1101,7 @@ namespace HaCreator.MapSimulator
                         _screenEffects.UpdateFade(currTickCount);
                         if (_screenEffects.IsFadeOutComplete || !_screenEffects.IsFadeActive)
                         {
+                            PendingCrossMapTeleportTarget pendingCrossMapTeleport = _pendingCrossMapTeleportTarget;
                             _gameState.PendingMapChange = false;
 
 
@@ -1123,6 +1137,17 @@ namespace HaCreator.MapSimulator
                                 if (newMapId >= 0 && _mobsArray != null)
                                 {
                                     _mapStateCache.RestoreMapState(newMapId, _mobsArray, currTickCount);
+                                }
+
+                                if (pendingCrossMapTeleport != null && pendingCrossMapTeleport.MapId == newMapId)
+                                {
+                                    TryFinalizePendingCrossMapTeleport(pendingCrossMapTeleport, out _);
+                                    _pendingCrossMapTeleportTarget = null;
+                                }
+                                else if (pendingCrossMapTeleport != null)
+                                {
+                                    _pendingCrossMapTeleportTarget = null;
+                                    _packetOwnedTeleportRequestActive = false;
                                 }
 
 

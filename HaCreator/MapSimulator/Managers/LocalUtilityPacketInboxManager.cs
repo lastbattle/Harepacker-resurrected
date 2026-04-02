@@ -56,6 +56,8 @@ namespace HaCreator.MapSimulator.Managers
         public const int OpenClassCompetitionPagePacketType = 250;
         public const int OpenUiClientPacketType = 251;
         public const int OpenUiWithOptionClientPacketType = 252;
+        public const int SetDirectionModeClientPacketType = 253;
+        public const int SetStandAloneModeClientPacketType = 254;
         public const int HireTutorClientPacketType = 255;
         public const int TutorMsgClientPacketType = 256;
         public const int QuestResultPacketType = 242;
@@ -293,6 +295,8 @@ namespace HaCreator.MapSimulator.Managers
                     || packetType == FollowCharacterPacketType
                     || packetType == SetDirectionModePacketType
                     || packetType == SetStandAloneModePacketType
+                    || packetType == SetDirectionModeClientPacketType
+                    || packetType == SetStandAloneModeClientPacketType
                     || packetType == FollowCharacterClientPacketType
                     || packetType == SitResultPacketType
                     || packetType == RadioSchedulePacketType
@@ -635,6 +639,8 @@ namespace HaCreator.MapSimulator.Managers
                 OpenClassCompetitionPagePacketType => "OpenClassCompetitionPage(250)",
                 OpenUiClientPacketType => "OpenUI(251)",
                 OpenUiWithOptionClientPacketType => "OpenUIWithOption(252)",
+                SetDirectionModeClientPacketType => "SetDirectionMode(253)",
+                SetStandAloneModeClientPacketType => "SetStandAloneMode(254)",
                 HireTutorClientPacketType => "HireTutor(255)",
                 TutorMsgClientPacketType => "TutorMsg(256)",
                 NoticeMsgClientPacketType => "NoticeMsg(263)",

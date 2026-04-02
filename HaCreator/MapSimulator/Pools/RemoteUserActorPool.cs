@@ -846,6 +846,81 @@ namespace HaCreator.MapSimulator.Pools
             return true;
         }
 
+        public bool TryApplyTemporaryStatSnapshot(
+            int characterId,
+            RemoteUserTemporaryStatSnapshot temporaryStats,
+            ushort delay,
+            out string message)
+        {
+            message = null;
+            if (!_actorsById.TryGetValue(characterId, out RemoteUserActor actor))
+            {
+                message = $"Remote user {characterId} does not exist.";
+                return false;
+            }
+
+            actor.TemporaryStats = temporaryStats;
+            actor.TemporaryStatDelay = delay;
+            message = temporaryStats.HasPayload
+                ? $"Remote user {characterId} temporary-stat snapshot applied."
+                : $"Remote user {characterId} temporary-stat snapshot cleared.";
+            return true;
+        }
+
+        public bool TryApplyTemporaryStatSet(
+            RemoteUserTemporaryStatSetPacket packet,
+            out string message)
+        {
+            return TryApplyTemporaryStatSnapshot(
+                packet.CharacterId,
+                packet.TemporaryStats,
+                packet.Delay,
+                out message);
+        }
+
+        public bool TryApplyTemporaryStatReset(
+            RemoteUserTemporaryStatResetPacket packet,
+            out string message)
+        {
+            message = null;
+            if (!_actorsById.TryGetValue(packet.CharacterId, out RemoteUserActor actor))
+            {
+                message = $"Remote user {packet.CharacterId} does not exist.";
+                return false;
+            }
+
+            int[] currentMaskWords = actor.TemporaryStats.MaskWords ?? Array.Empty<int>();
+            int[] resetMaskWords = packet.MaskWords ?? Array.Empty<int>();
+            int maskWordCount = Math.Max(currentMaskWords.Length, resetMaskWords.Length);
+            if (maskWordCount == 0)
+            {
+                actor.TemporaryStats = default;
+                actor.TemporaryStatDelay = 0;
+                message = $"Remote user {packet.CharacterId} temporary-stat mask cleared.";
+                return true;
+            }
+
+            int[] remainingMaskWords = new int[maskWordCount];
+            bool hasActiveBits = false;
+            for (int i = 0; i < maskWordCount; i++)
+            {
+                int currentWord = i < currentMaskWords.Length ? currentMaskWords[i] : 0;
+                int resetWord = i < resetMaskWords.Length ? resetMaskWords[i] : 0;
+                int remainingWord = currentWord & ~resetWord;
+                remainingMaskWords[i] = remainingWord;
+                hasActiveBits |= remainingWord != 0;
+            }
+
+            actor.TemporaryStats = hasActiveBits
+                ? actor.TemporaryStats with { MaskWords = remainingMaskWords }
+                : default;
+            actor.TemporaryStatDelay = 0;
+            message = hasActiveBits
+                ? $"Remote user {packet.CharacterId} temporary-stat mask updated."
+                : $"Remote user {packet.CharacterId} temporary-stat mask cleared.";
+            return true;
+        }
+
         public bool TrySetPreparedSkill(
             int characterId,
             int skillId,
@@ -3076,6 +3151,8 @@ namespace HaCreator.MapSimulator.Pools
         public bool PortableChairAppliedMount { get; set; }
         public int? PreferredPortableChairPairCharacterId { get; set; }
         public Dictionary<RemoteRelationshipOverlayType, RemoteRelationshipOverlayState> RelationshipOverlays { get; } = new();
+        public RemoteUserTemporaryStatSnapshot TemporaryStats { get; set; }
+        public ushort TemporaryStatDelay { get; set; }
         public PlayerMovementSyncSnapshot MovementSnapshot { get; set; }
         public byte LastMoveActionRaw { get; set; }
         public int CurrentFootholdId { get; set; }

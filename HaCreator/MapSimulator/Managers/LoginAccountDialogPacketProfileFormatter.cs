@@ -24,6 +24,7 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             List<string> details = new();
+            Append(details, "Source", string.IsNullOrWhiteSpace(profile.Source) ? null : profile.Source.Trim());
             Append(details, "Result code", profile.ResultCode);
             Append(details, "Secondary code", profile.SecondaryCode);
             Append(details, "Account id", profile.AccountId);

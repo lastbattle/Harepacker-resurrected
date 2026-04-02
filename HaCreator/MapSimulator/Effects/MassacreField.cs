@@ -105,6 +105,8 @@ namespace HaCreator.MapSimulator.Effects
         private const int CountEffectY = 190;
         private const int ResultBoardOffsetX = -193;
         private const int ResultBoardOffsetY = -142;
+        private const int ResultStatusOffsetX = -167;
+        private const int ResultStatusOffsetY = -53;
         private const int ResultKillRateX = 218;
         private const int ResultCoolRateX = 218;
         private const int ResultMissRateX = 218;
@@ -119,10 +121,6 @@ namespace HaCreator.MapSimulator.Effects
         private const int ResultMissPercentY = 111;
         private const int ResultScoreX = 258;
         private const int ResultScoreY = 168;
-        private const int ResultRankX = 98;
-        private const int ResultRankY = 101;
-        private const int ResultBackdrop2X = 245;
-        private const int ResultBackdrop2Y = 28;
         private bool _isActive;
         private int _mapId;
         private int _incGauge;
@@ -1053,9 +1051,10 @@ namespace HaCreator.MapSimulator.Effects
             if (_resultBoardTexture != null)
             {
                 Vector2 boardPos = new(viewport.Width / 2f + ResultBoardOffsetX, viewport.Height / 2f + ResultBoardOffsetY);
+                Vector2 resultStatusAnchor = new(viewport.Width / 2f + ResultStatusOffsetX, viewport.Height / 2f + ResultStatusOffsetY);
                 spriteBatch.Draw(_resultBoardTexture, boardPos, Color.White);
-                DrawAnimation(spriteBatch, _resultBoardPulseFrames, currentTimeMs, _resultPresentationStartTick, boardPos + new Vector2(ResultBackdrop2X, ResultBackdrop2Y), repeat: false);
-                DrawResultRank(spriteBatch, boardPos + new Vector2(ResultRankX, ResultRankY));
+                DrawAnimation(spriteBatch, _resultBoardPulseFrames, currentTimeMs, _resultPresentationStartTick, resultStatusAnchor, repeat: false);
+                DrawResultRank(spriteBatch, resultStatusAnchor);
                 DrawResultRate(spriteBatch, font, _resultKillRate, boardPos + new Vector2(ResultKillRateX, ResultKillRateY));
                 DrawResultRate(spriteBatch, font, _resultCoolRate, boardPos + new Vector2(ResultCoolRateX, ResultCoolRateY));
                 DrawResultRate(spriteBatch, font, _resultMissRate, boardPos + new Vector2(ResultMissRateX, ResultMissRateY));
@@ -1089,8 +1088,18 @@ namespace HaCreator.MapSimulator.Effects
         {
             if (_rankTextures.TryGetValue(_resultRank, out MassacreCanvasFrame rankTexture) && rankTexture.Texture != null)
             {
-                spriteBatch.Draw(rankTexture.Texture, topLeft, Color.White);
+                DrawFrame(spriteBatch, rankTexture, topLeft);
             }
+        }
+        private static void DrawFrame(SpriteBatch spriteBatch, MassacreCanvasFrame frame, Vector2 anchor)
+        {
+            if (frame.Texture == null)
+            {
+                return;
+            }
+
+            Vector2 drawPos = new(anchor.X - frame.Origin.X, anchor.Y - frame.Origin.Y);
+            spriteBatch.Draw(frame.Texture, drawPos, Color.White);
         }
         private void DrawBitmapNumber(SpriteBatch spriteBatch, Texture2D[] digits, string text, Vector2 topLeft, Texture2D specialTexture = null, bool includePlus = false)
         {
@@ -1170,8 +1179,7 @@ namespace HaCreator.MapSimulator.Effects
             {
                 return false;
             }
-            Vector2 drawPos = new(anchor.X - frame.Origin.X, anchor.Y - frame.Origin.Y);
-            spriteBatch.Draw(frame.Texture, drawPos, Color.White);
+            DrawFrame(spriteBatch, frame, anchor);
             return true;
         }
         private static MassacreCanvasFrame ResolveAnimationFrame(IReadOnlyList<MassacreCanvasFrame> frames, int currentTimeMs, int startTick, bool repeat)

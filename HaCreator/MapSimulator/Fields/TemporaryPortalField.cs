@@ -1066,7 +1066,7 @@ namespace HaCreator.MapSimulator.Fields
         {
             RemoteTownPortalOwnerTownKey key = new(ownerCharacterId, townMapId);
             if (_remoteTownPortalOwnerFieldObservations.TryGetValue(key, out RemoteTownPortalOwnerFieldObservation existingObservation)
-                && !ShouldReplaceRemoteTownPortalOwnerObservation(existingObservation, sourceMapId, townMapId, observationSource))
+                && !ShouldReplaceRemoteTownPortalOwnerObservation(existingObservation, sourceMapId, townMapId, observationSource, recordedAt))
             {
                 return;
             }
@@ -1179,7 +1179,8 @@ namespace HaCreator.MapSimulator.Fields
             RemoteTownPortalOwnerFieldObservation existingObservation,
             int sourceMapId,
             int townMapId,
-            RemoteTownPortalObservationSource observationSource)
+            RemoteTownPortalObservationSource observationSource,
+            int recordedAt)
         {
             if (existingObservation.TownMapId != townMapId)
             {
@@ -1194,6 +1195,12 @@ namespace HaCreator.MapSimulator.Fields
             if (qualityComparison != 0)
             {
                 return qualityComparison > 0;
+            }
+
+            if (existingObservation.SourceMapId == sourceMapId
+                && existingObservation.ObservationSource == observationSource)
+            {
+                return recordedAt != existingObservation.RecordedAt;
             }
 
             return existingObservation.SourceMapId != sourceMapId
@@ -1977,9 +1984,11 @@ namespace HaCreator.MapSimulator.Fields
             int existingSourceMapId,
             int existingTownMapId,
             RemoteTownPortalObservationSource existingObservationSource,
+            int existingRecordedAt,
             int sourceMapId,
             int townMapId,
-            RemoteTownPortalObservationSource newObservationSource)
+            RemoteTownPortalObservationSource newObservationSource,
+            int newRecordedAt)
         {
             RemoteTownPortalOwnerFieldObservation existingObservation = new(
                 existingSourceMapId,
@@ -1987,13 +1996,14 @@ namespace HaCreator.MapSimulator.Fields
                 0,
                 existingTownMapId,
                 existingObservationSource,
-                0);
+                existingRecordedAt);
 
             return ShouldReplaceRemoteTownPortalOwnerObservation(
                 existingObservation,
                 sourceMapId,
                 townMapId,
-                newObservationSource);
+                newObservationSource,
+                newRecordedAt);
         }
 
         internal static RemoteOpenGateVisualPhase AdvanceRemoteOpenGatePhaseForTesting(RemoteOpenGateVisualPhase phase, int phaseStartedAt, int currentTime)

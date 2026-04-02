@@ -8,6 +8,27 @@ namespace HaCreator.MapSimulator
 {
     public partial class MapSimulator
     {
+        private bool TryApplyPacketOwnedTeleportResult(float targetX, float targetY, out string message)
+        {
+            _packetOwnedTeleportRequestActive = false;
+            _packetOwnedTeleportRequestCompletedAt = Environment.TickCount;
+
+            if (TryResolvePacketOwnedTeleportPortalByPosition(targetX, targetY, out int portalIndex, out PortalInstance portalInstance))
+            {
+                _lastPacketOwnedTeleportPortalIndex = portalIndex;
+                RegisterPacketOwnedTeleportHandoff(portalInstance);
+                ApplySameMapTeleportPosition(portalInstance.X, portalInstance.Y);
+                message = $"Applied packet-owned teleport result through resolved portal index {portalIndex} ({portalInstance.pn} -> {portalInstance.tn}).";
+                return true;
+            }
+
+            _lastPacketOwnedTeleportPortalIndex = -1;
+            RegisterPacketOwnedTeleportHandoff(sourcePortalName: null, targetPortalName: null);
+            ApplySameMapTeleportPosition(targetX, targetY);
+            message = $"Applied packet-owned teleport result to exact coordinates ({targetX}, {targetY}).";
+            return true;
+        }
+
         private bool TryApplyPacketOwnedTeleportResult(byte[] payload, out string message)
         {
             message = null;
@@ -30,6 +51,7 @@ namespace HaCreator.MapSimulator
 
             if (!succeeded)
             {
+                _packetOwnedTeleportRequestActive = false;
                 message = $"Packet-owned teleport result rejected portal index {portalIndex}.";
                 return true;
             }
@@ -51,15 +73,83 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
-        private void RegisterPacketOwnedTeleportHandoff(PortalInstance portalInstance)
+        private bool TryFinalizePendingCrossMapTeleport(PendingCrossMapTeleportTarget target, out string message)
         {
-            if (portalInstance == null)
+            message = null;
+            if (target == null)
             {
-                return;
+                return false;
             }
 
-            _lastPacketOwnedTeleportSourcePortalName = portalInstance.pn;
-            _lastPacketOwnedTeleportTargetPortalName = portalInstance.tn;
+            if ((_mapBoard?.MapInfo?.id ?? -1) != target.MapId)
+            {
+                message = $"Pending packet-owned cross-map teleport expected map {target.MapId}, but the current field differs.";
+                return false;
+            }
+
+            if (!string.IsNullOrWhiteSpace(target.TargetPortalName) && _portalPool != null)
+            {
+                int portalIndex = _portalPool.GetPortalIndexByName(target.TargetPortalName);
+                if (_portalPool.GetPortal(portalIndex)?.PortalInstance != null)
+                {
+                    _packetOwnedTeleportRequestActive = true;
+                    return TryApplyPacketOwnedTeleportResult(succeeded: true, portalIndex, out message);
+                }
+            }
+
+            if (target.HasFallbackCoordinates)
+            {
+                _packetOwnedTeleportRequestActive = true;
+                return TryApplyPacketOwnedTeleportResult(target.FallbackX.Value, target.FallbackY.Value, out message);
+            }
+
+            _packetOwnedTeleportRequestActive = false;
+            message = string.IsNullOrWhiteSpace(target.TargetPortalName)
+                ? $"Packet-owned cross-map teleport could not resolve a landing point in map {target.MapId}."
+                : $"Packet-owned cross-map teleport could not resolve portal '{target.TargetPortalName}' in map {target.MapId}.";
+            return false;
+        }
+
+        private void RegisterPacketOwnedTeleportHandoff(PortalInstance portalInstance)
+        {
+            RegisterPacketOwnedTeleportHandoff(portalInstance?.pn, portalInstance?.tn);
+        }
+
+        private void RegisterPacketOwnedTeleportHandoff(string sourcePortalName, string targetPortalName)
+        {
+            _lastPacketOwnedTeleportSourcePortalName = sourcePortalName;
+            _lastPacketOwnedTeleportTargetPortalName = targetPortalName;
+        }
+
+        private bool TryResolvePacketOwnedTeleportPortalByPosition(float targetX, float targetY, out int portalIndex, out PortalInstance portalInstance)
+        {
+            portalIndex = -1;
+            portalInstance = null;
+            if (_portalPool == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < _portalPool.PortalCount; i++)
+            {
+                PortalItem portal = _portalPool.GetPortal(i);
+                PortalInstance instance = portal?.PortalInstance;
+                if (instance == null)
+                {
+                    continue;
+                }
+
+                if (Math.Abs(instance.X - targetX) > 0.5f || Math.Abs(instance.Y - targetY) > 0.5f)
+                {
+                    continue;
+                }
+
+                portalIndex = i;
+                portalInstance = instance;
+                return true;
+            }
+
+            return false;
         }
 
         private void ApplySameMapTeleportPosition(float targetX, float targetY)

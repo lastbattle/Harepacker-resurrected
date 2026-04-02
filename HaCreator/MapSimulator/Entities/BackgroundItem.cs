@@ -348,6 +348,13 @@ namespace HaCreator.MapSimulator.Entities
             }
         }
 
+        public byte DefaultAlpha => (byte)Math.Clamp(_a, byte.MinValue, byte.MaxValue);
+
+        public void SetAlpha(byte alpha)
+        {
+            _color = new Color(_color.R, _color.G, _color.B, alpha);
+        }
+
         public bool Front { get { return front; } }
 
         public bool DisabledBackground { get { return disabledBackground; } }

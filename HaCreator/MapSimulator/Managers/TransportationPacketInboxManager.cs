@@ -349,7 +349,7 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
-        private static string DescribePacket(int packetType, byte[] payload)
+        internal static string DescribePacket(int packetType, byte[] payload)
         {
             if (packetType == PacketTypeContiMove && payload?.Length >= 2)
             {

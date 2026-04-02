@@ -699,7 +699,7 @@ namespace HaCreator.MapSimulator.UI
             int visibleLines = Math.Min(2, snapshot.AlarmLines.Count);
             for (int i = 0; i < visibleLines; i++)
             {
-                string line = snapshot.AlarmLines[i];
+                string line = snapshot.AlarmLines[i]?.Text;
                 if (string.IsNullOrWhiteSpace(line))
                 {
                     continue;

@@ -19,6 +19,7 @@ namespace HaCreator.MapSimulator.Companions
             int skillMask,
             int commandLevel,
             int tameness,
+            int questSpeed,
             int fullness,
             bool autoLootEnabled,
             bool autoConsumeHpEnabled,
@@ -28,6 +29,7 @@ namespace HaCreator.MapSimulator.Companions
             SkillMask = skillMask;
             CommandLevel = commandLevel;
             Tameness = tameness;
+            QuestSpeed = questSpeed;
             Fullness = fullness;
             AutoLootEnabled = autoLootEnabled;
             AutoConsumeHpEnabled = autoConsumeHpEnabled;
@@ -38,6 +40,7 @@ namespace HaCreator.MapSimulator.Companions
         public int SkillMask { get; }
         public int CommandLevel { get; }
         public int Tameness { get; }
+        public int QuestSpeed { get; }
         public int Fullness { get; }
         public bool AutoLootEnabled { get; }
         public bool AutoConsumeHpEnabled { get; }
@@ -136,6 +139,7 @@ namespace HaCreator.MapSimulator.Companions
         private int _temporaryActionExpiresAt;
         private int _commandLevel = MinCommandLevel;
         private int _tameness;
+        private int _questSpeed;
         private string _activeSpeechText;
         private int _activeSpeechExpiresAt;
         private bool _hangOnBack;
@@ -164,6 +168,7 @@ namespace HaCreator.MapSimulator.Companions
         public int ChatBalloonStyle => Definition.ChatBalloonStyle;
         public int CommandLevel => _commandLevel;
         public int Tameness => _tameness;
+        public int QuestSpeed => _questSpeed;
         public int SkillMask { get; private set; }
         public bool CanAutoSpeak => HasSkillMask(AutoSpeakingSkillMask);
         public int Fullness { get; private set; }
@@ -263,6 +268,7 @@ namespace HaCreator.MapSimulator.Companions
                 SkillMask,
                 _commandLevel,
                 _tameness,
+                _questSpeed,
                 Fullness,
                 AutoLootEnabled,
                 AutoConsumeHpEnabled,
@@ -282,6 +288,7 @@ namespace HaCreator.MapSimulator.Companions
                 SetCommandLevel(state.CommandLevel);
             }
 
+            SetQuestSpeed(state.QuestSpeed);
             Fullness = Math.Clamp(state.Fullness, MinFullness, MaxFullness);
             AutoLootEnabled = state.AutoLootEnabled;
             AutoConsumeHpEnabled = state.AutoConsumeHpEnabled;
@@ -435,6 +442,23 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             SetTameness(Math.Max(0, _tameness + amount));
+            return true;
+        }
+
+        internal bool TryAddQuestSpeed(int amount)
+        {
+            if (amount == 0)
+            {
+                return false;
+            }
+
+            int updatedSpeed = Math.Max(0, _questSpeed + amount);
+            if (updatedSpeed == _questSpeed)
+            {
+                return false;
+            }
+
+            SetQuestSpeed(updatedSpeed);
             return true;
         }
 
@@ -745,6 +769,11 @@ namespace HaCreator.MapSimulator.Companions
         {
             _tameness = Math.Clamp(tameness, 0, CommandLevelTamenessThresholds[^1]);
             _commandLevel = ResolveCommandLevelForTameness(_tameness);
+        }
+
+        private void SetQuestSpeed(int questSpeed)
+        {
+            _questSpeed = Math.Max(0, questSpeed);
         }
 
         internal static int ResolveCommandLevelForTameness(int tameness)
@@ -1137,6 +1166,21 @@ namespace HaCreator.MapSimulator.Companions
             return TryGrantTameness(_activePets, supportedPetItemIds, recallLimit, amount, out slotIndex);
         }
 
+        internal bool TryGrantSpeed(
+            IReadOnlyCollection<int> supportedPetItemIds,
+            int? recallLimit,
+            int amount,
+            out int slotIndex)
+        {
+            if (_fieldUsageBlocked)
+            {
+                slotIndex = -1;
+                return false;
+            }
+
+            return TryGrantSpeed(_activePets, supportedPetItemIds, recallLimit, amount, out slotIndex);
+        }
+
         internal bool TryPlanFoodItemUse(
             IReadOnlyCollection<int> supportedPetItemIds,
             int fullnessIncrease,
@@ -1251,6 +1295,25 @@ namespace HaCreator.MapSimulator.Companions
 
             PetRuntime pet = SelectPetForQuestReward(activePets, supportedPetItemIds, recallLimit);
             if (pet == null || !pet.TryAddQuestTameness(amount))
+            {
+                return false;
+            }
+
+            slotIndex = pet.SlotIndex;
+            return true;
+        }
+
+        internal static bool TryGrantSpeed(
+            IReadOnlyList<PetRuntime> activePets,
+            IReadOnlyCollection<int> supportedPetItemIds,
+            int? recallLimit,
+            int amount,
+            out int slotIndex)
+        {
+            slotIndex = -1;
+
+            PetRuntime pet = SelectPetForQuestReward(activePets, supportedPetItemIds, recallLimit);
+            if (pet == null || !pet.TryAddQuestSpeed(amount))
             {
                 return false;
             }

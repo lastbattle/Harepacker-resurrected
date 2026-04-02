@@ -8,6 +8,7 @@ using MapleLib.WzLib.WzStructure.Data.QuestStructure;
 using Spine;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 
 namespace HaCreator.MapSimulator.UI
@@ -39,6 +40,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly List<ButtonLabel> _buttonLabels = new();
         private readonly Dictionary<QuestWindowActionKind, ActionButtonBinding> _actionButtons = new();
         private readonly Dictionary<QuestDetailNpcButtonStyle, ActionButtonBinding> _npcButtons = new();
+        private readonly Dictionary<string, TimeLimitIndicatorStyle> _timeLimitIndicatorStyles = new(StringComparer.OrdinalIgnoreCase);
 
         private SpriteFont _font;
         private IDXObject _foreground;
@@ -81,6 +83,10 @@ namespace HaCreator.MapSimulator.UI
         private NoticeSurface[] _noticeSurfaces = Array.Empty<NoticeSurface>();
         private NoticeAnimationFrame[] _noticeAnimationFrames = Array.Empty<NoticeAnimationFrame>();
         private Point _noticeAnimationOffset;
+        private Texture2D _timeLimitBarBackgroundTexture;
+        private Texture2D _timeLimitGaugeLeftTexture;
+        private Texture2D _timeLimitGaugeMiddleTexture;
+        private Texture2D _timeLimitGaugeRightTexture;
         private int? _previousScrollWheelValue;
         private int _logScrollOffset;
         private int _summaryScrollOffset;
@@ -172,6 +178,49 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _noticeAnimationOffset = animationOffset;
+        }
+
+        public void SetTimeLimitBarTextures(Texture2D barBackgroundTexture, Texture2D gaugeLeftTexture, Texture2D gaugeMiddleTexture, Texture2D gaugeRightTexture)
+        {
+            _timeLimitBarBackgroundTexture = barBackgroundTexture;
+            _timeLimitGaugeLeftTexture = gaugeLeftTexture;
+            _timeLimitGaugeMiddleTexture = gaugeMiddleTexture;
+            _timeLimitGaugeRightTexture = gaugeRightTexture;
+        }
+
+        public void SetTimeLimitIndicatorStyle(string styleKey, Texture2D[] frames, Point[] origins, int[] delays)
+        {
+            if (string.IsNullOrWhiteSpace(styleKey) || frames == null || origins == null || delays == null)
+            {
+                return;
+            }
+
+            int count = Math.Min(frames.Length, Math.Min(origins.Length, delays.Length));
+            if (count <= 0)
+            {
+                return;
+            }
+
+            List<TimeLimitAnimationFrame> validFrames = new(count);
+            int totalDurationMs = 0;
+            for (int i = 0; i < count; i++)
+            {
+                if (frames[i] == null)
+                {
+                    continue;
+                }
+
+                int delayMs = Math.Max(1, delays[i]);
+                validFrames.Add(new TimeLimitAnimationFrame(frames[i], origins[i], delayMs));
+                totalDurationMs += delayMs;
+            }
+
+            if (validFrames.Count == 0)
+            {
+                return;
+            }
+
+            _timeLimitIndicatorStyles[styleKey.Trim()] = new TimeLimitIndicatorStyle(validFrames.ToArray(), Math.Max(1, totalDurationMs));
         }
 
         public void SetItemIconProvider(Func<int, Texture2D> itemIconProvider)
@@ -415,6 +464,7 @@ namespace HaCreator.MapSimulator.UI
                 sprite.DrawString(_font, _state.NpcText, new Vector2(Position.X + ClientNpcX, Position.Y + ClientNpcY), new Color(214, 214, 171));
             }
 
+            DrawDetailInset(sprite, TickCount);
             DrawNoticeSurface(sprite, TickCount);
             DrawLogPane(sprite);
             DrawSummaryPane(sprite);
@@ -506,6 +556,37 @@ namespace HaCreator.MapSimulator.UI
             y = DrawWrappedTextClipped(sprite, _state.SummaryText, new Vector2(Position.X + ClientContentX, y), ClientContentWidth, new Color(228, 228, 228), clipRect);
             y += 8;
             DrawProgressClipped(sprite, clipRect, Position.X + ClientContentX, ref y);
+        }
+
+        private void DrawDetailInset(SpriteBatch sprite, int tickCount)
+        {
+            if (_state == null || !ShouldDrawDetailTip() || _state.TimeLimitSeconds <= 0)
+            {
+                return;
+            }
+
+            Rectangle insetBounds = GetDetailInsetBounds();
+            if (insetBounds.Width <= 0 || insetBounds.Height <= 0)
+            {
+                return;
+            }
+
+            int iconInset = 0;
+            TimeLimitAnimationFrame? frame = GetActiveTimeLimitIndicatorFrame(tickCount);
+            if (frame.HasValue && frame.Value.Texture != null)
+            {
+                Point iconPosition = new(
+                    insetBounds.X + 4 - frame.Value.Origin.X,
+                    insetBounds.Y + Math.Max(0, (insetBounds.Height - frame.Value.Texture.Height) / 2) - frame.Value.Origin.Y);
+                sprite.Draw(frame.Value.Texture, new Vector2(iconPosition.X, iconPosition.Y), Color.White);
+                iconInset = Math.Max(0, (iconPosition.X + frame.Value.Texture.Width) - insetBounds.X) + 6;
+            }
+
+            string timerText = FormatRemainingTime(_state.RemainingTimeSeconds);
+            Vector2 timerPosition = new(insetBounds.X + Math.Max(10, iconInset), insetBounds.Y + 7);
+            sprite.DrawString(_font, timerText, timerPosition, new Color(255, 244, 199));
+
+            DrawTimeLimitGauge(sprite, insetBounds);
         }
 
         private float DrawRequirementSection(SpriteBatch sprite, Rectangle clipRect, float y, float x, float maxWidth)
@@ -909,9 +990,82 @@ namespace HaCreator.MapSimulator.UI
             return ShouldDrawDetailTip() ? 15 : 0;
         }
 
+        private Rectangle GetDetailInsetBounds()
+        {
+            return new Rectangle(
+                Position.X + (_detailTip != null ? _detailTipOffset.X : (int)ClientContentX),
+                Position.Y + (_detailTip != null ? _detailTipOffset.Y : (ClientLogBaseY - 18)),
+                _detailTip?.Width ?? Math.Min(154, (int)ClientContentWidth),
+                _detailTip?.Height ?? 32);
+        }
+
         private bool ShouldDrawDetailTip()
         {
             return _state?.HasDetailInset == true;
+        }
+
+        private void DrawTimeLimitGauge(SpriteBatch sprite, Rectangle insetBounds)
+        {
+            if (_timeLimitBarBackgroundTexture == null)
+            {
+                return;
+            }
+
+            int barWidth = _timeLimitBarBackgroundTexture.Width;
+            int barHeight = _timeLimitBarBackgroundTexture.Height;
+            Rectangle backgroundBounds = new(
+                insetBounds.Right - barWidth - 8,
+                insetBounds.Y + Math.Max(0, (insetBounds.Height - barHeight) / 2),
+                barWidth,
+                barHeight);
+            sprite.Draw(_timeLimitBarBackgroundTexture, new Vector2(backgroundBounds.X, backgroundBounds.Y), Color.White);
+
+            float ratio = _state.TimeLimitSeconds > 0
+                ? MathHelper.Clamp(_state.RemainingTimeSeconds / (float)_state.TimeLimitSeconds, 0f, 1f)
+                : 0f;
+            DrawHorizontalGauge(sprite, backgroundBounds, ratio);
+        }
+
+        private void DrawHorizontalGauge(SpriteBatch sprite, Rectangle bounds, float ratio)
+        {
+            Texture2D leftTexture = _timeLimitGaugeLeftTexture ?? _timeLimitGaugeMiddleTexture;
+            Texture2D middleTexture = _timeLimitGaugeMiddleTexture ?? leftTexture;
+            Texture2D rightTexture = _timeLimitGaugeRightTexture ?? middleTexture;
+            if (leftTexture == null || middleTexture == null || rightTexture == null)
+            {
+                return;
+            }
+
+            int interiorWidth = Math.Max(0, bounds.Width - leftTexture.Width - rightTexture.Width);
+            int fillWidth = (int)Math.Round(MathHelper.Clamp(ratio, 0f, 1f) * (leftTexture.Width + interiorWidth + rightTexture.Width));
+            if (fillWidth <= 0)
+            {
+                return;
+            }
+
+            int drawX = bounds.X;
+            int drawY = bounds.Y + Math.Max(0, (bounds.Height - leftTexture.Height) / 2);
+            int leftWidth = Math.Min(fillWidth, leftTexture.Width);
+            if (leftWidth > 0)
+            {
+                sprite.Draw(leftTexture, new Rectangle(drawX, drawY, leftWidth, leftTexture.Height), new Rectangle(0, 0, leftWidth, leftTexture.Height), Color.White);
+                drawX += leftWidth;
+                fillWidth -= leftWidth;
+            }
+
+            int middleWidth = Math.Min(fillWidth, interiorWidth);
+            if (middleWidth > 0)
+            {
+                sprite.Draw(middleTexture, new Rectangle(drawX, drawY, middleWidth, middleTexture.Height), new Rectangle(0, 0, Math.Max(1, Math.Min(middleWidth, middleTexture.Width)), middleTexture.Height), Color.White);
+                drawX += middleWidth;
+                fillWidth -= middleWidth;
+            }
+
+            int rightWidth = Math.Min(fillWidth, rightTexture.Width);
+            if (rightWidth > 0)
+            {
+                sprite.Draw(rightTexture, new Rectangle(drawX, drawY, rightWidth, rightTexture.Height), new Rectangle(0, 0, rightWidth, rightTexture.Height), Color.White);
+            }
         }
 
         private int GetMaxLogScrollOffset()
@@ -1168,6 +1322,43 @@ namespace HaCreator.MapSimulator.UI
             {
                 sprite.DrawString(_font, lines[i], new Vector2(position.X, position.Y + (i * _font.LineSpacing)), color);
             }
+        }
+
+        private TimeLimitAnimationFrame? GetActiveTimeLimitIndicatorFrame(int tickCount)
+        {
+            string styleKey = string.IsNullOrWhiteSpace(_state?.TimerUiKey) ? "default" : _state.TimerUiKey;
+            if (!_timeLimitIndicatorStyles.TryGetValue(styleKey, out TimeLimitIndicatorStyle style) &&
+                !_timeLimitIndicatorStyles.TryGetValue("default", out style))
+            {
+                return null;
+            }
+
+            if (style.Frames.Length == 0)
+            {
+                return null;
+            }
+
+            int normalizedTick = ((tickCount % style.TotalDurationMs) + style.TotalDurationMs) % style.TotalDurationMs;
+            int elapsed = 0;
+            for (int i = 0; i < style.Frames.Length; i++)
+            {
+                elapsed += style.Frames[i].DelayMs;
+                if (normalizedTick < elapsed)
+                {
+                    return style.Frames[i];
+                }
+            }
+
+            return style.Frames[^1];
+        }
+
+        private static string FormatRemainingTime(int totalSeconds)
+        {
+            int seconds = Math.Max(0, totalSeconds);
+            TimeSpan duration = TimeSpan.FromSeconds(seconds);
+            return duration.TotalHours >= 1d
+                ? string.Format(CultureInfo.InvariantCulture, "{0:D2}:{1:D2}:{2:D2}", (int)duration.TotalHours, duration.Minutes, duration.Seconds)
+                : string.Format(CultureInfo.InvariantCulture, "{0:D2}:{1:D2}", duration.Minutes, duration.Seconds);
         }
 
         private string[] WrapTooltipText(string text, float maxWidth)
@@ -1460,6 +1651,32 @@ namespace HaCreator.MapSimulator.UI
             }
 
             public Texture2D Texture { get; }
+            public int DelayMs { get; }
+        }
+
+        private readonly struct TimeLimitIndicatorStyle
+        {
+            public TimeLimitIndicatorStyle(TimeLimitAnimationFrame[] frames, int totalDurationMs)
+            {
+                Frames = frames ?? Array.Empty<TimeLimitAnimationFrame>();
+                TotalDurationMs = Math.Max(1, totalDurationMs);
+            }
+
+            public TimeLimitAnimationFrame[] Frames { get; }
+            public int TotalDurationMs { get; }
+        }
+
+        private readonly struct TimeLimitAnimationFrame
+        {
+            public TimeLimitAnimationFrame(Texture2D texture, Point origin, int delayMs)
+            {
+                Texture = texture;
+                Origin = origin;
+                DelayMs = delayMs;
+            }
+
+            public Texture2D Texture { get; }
+            public Point Origin { get; }
             public int DelayMs { get; }
         }
     }

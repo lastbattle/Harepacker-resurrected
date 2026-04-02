@@ -18,12 +18,18 @@ namespace HaCreator.MapSimulator.UI
         private const int NoticeBodySpacingY = 6;
         private const float BodyWrapWidth = 248f;
         private const float InputWrapWidth = 230f;
+        private const int ClientInputOffsetX = 130;
+        private const int ClientInputOffsetY = 103;
+        private const int ClientInputWidth = 150;
+        private const int ClientInputHeight = 15;
         private const int DialogButtonY = 106;
         private const int OkButtonX = 100;
         private const int YesButtonX = 70;
         private const int YesTightButtonX = 65;
         private const int NoButtonX = 129;
         private const int NowButtonX = 59;
+        private const int InputPaddingX = 4;
+        private const int InputPaddingY = 1;
 
         private readonly UIObject _okButton;
         private readonly UIObject _yesButton;
@@ -232,7 +238,7 @@ namespace HaCreator.MapSimulator.UI
                     new Vector2(Position.X + TextOffsetX, Position.Y + TextOffsetY),
                     Color.White);
 
-                if (string.IsNullOrWhiteSpace(_body))
+                if (string.IsNullOrWhiteSpace(_body) && !HasInputField)
                 {
                     return;
                 }
@@ -263,33 +269,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (HasInputField)
             {
-                y += 8f;
-                SelectorWindowDrawing.DrawShadowedText(
-                    sprite,
-                    _font,
-                    _inputLabel,
-                    new Vector2(Position.X + TextOffsetX, y),
-                    new Color(255, 248, 223));
-                y += _font.LineSpacing;
-
-                string visibleValue = string.IsNullOrEmpty(_inputValue)
-                    ? _inputPlaceholder
-                    : (_inputMasked ? new string('*', _inputValue.Length) : _inputValue);
-                Color valueColor = string.IsNullOrEmpty(_inputValue)
-                    ? new Color(164, 164, 164)
-                    : new Color(232, 232, 232);
-                string drawValue = BuildVisibleInputText(visibleValue);
-                foreach (string line in WrapText(string.IsNullOrWhiteSpace(drawValue) ? "_" : drawValue, InputWrapWidth))
-                {
-                    SelectorWindowDrawing.DrawShadowedText(
-                        sprite,
-                        _font,
-                        line,
-                        new Vector2(Position.X + TextOffsetX, y),
-                        valueColor);
-                    y += _font.LineSpacing;
-                }
-
+                DrawInputField(sprite, y);
                 DrawImeCandidateWindow(sprite);
             }
         }
@@ -684,8 +664,81 @@ namespace HaCreator.MapSimulator.UI
                 : new string(acceptedCharacters.ToArray());
         }
 
+        private void DrawInputField(SpriteBatch sprite, float bodyBottomY)
+        {
+            if (_font == null)
+            {
+                return;
+            }
+
+            Rectangle inputBounds = GetInputBounds();
+            float labelX = UsesClientNoticeInputLane ? inputBounds.X : Position.X + TextOffsetX;
+            float labelY = UsesClientNoticeInputLane ? inputBounds.Y - _font.LineSpacing - 2f : bodyBottomY + 8f;
+            if (!string.IsNullOrWhiteSpace(_inputLabel))
+            {
+                SelectorWindowDrawing.DrawShadowedText(
+                    sprite,
+                    _font,
+                    _inputLabel,
+                    new Vector2(labelX, labelY),
+                    new Color(255, 248, 223));
+            }
+
+            if (_pixelTexture != null)
+            {
+                Color fillColor = _softKeyboardActive
+                    ? new Color(66, 59, 46, 230)
+                    : new Color(36, 32, 27, 215);
+                Color borderColor = _softKeyboardActive
+                    ? new Color(255, 218, 123)
+                    : new Color(173, 158, 122);
+                sprite.Draw(_pixelTexture, inputBounds, fillColor);
+                sprite.Draw(_pixelTexture, new Rectangle(inputBounds.X, inputBounds.Y, inputBounds.Width, 1), borderColor);
+                sprite.Draw(_pixelTexture, new Rectangle(inputBounds.X, inputBounds.Bottom - 1, inputBounds.Width, 1), borderColor);
+                sprite.Draw(_pixelTexture, new Rectangle(inputBounds.X, inputBounds.Y, 1, inputBounds.Height), borderColor);
+                sprite.Draw(_pixelTexture, new Rectangle(inputBounds.Right - 1, inputBounds.Y, 1, inputBounds.Height), borderColor);
+            }
+
+            string visibleValue = string.IsNullOrEmpty(_inputValue)
+                ? _inputPlaceholder
+                : (_inputMasked ? new string('*', _inputValue.Length) : _inputValue);
+            Color valueColor = string.IsNullOrEmpty(_inputValue)
+                ? new Color(164, 164, 164)
+                : new Color(232, 232, 232);
+            string inputText = BuildVisibleInputText(visibleValue);
+            if (string.IsNullOrWhiteSpace(inputText))
+            {
+                inputText = "_";
+            }
+
+            float textY = inputBounds.Y + InputPaddingY;
+            foreach (string line in WrapText(inputText, Math.Max(1f, inputBounds.Width - (InputPaddingX * 2))))
+            {
+                SelectorWindowDrawing.DrawShadowedText(
+                    sprite,
+                    _font,
+                    line,
+                    new Vector2(inputBounds.X + InputPaddingX, textY),
+                    valueColor);
+                textY += _font.LineSpacing;
+                if (textY > inputBounds.Bottom - _font.LineSpacing)
+                {
+                    break;
+                }
+            }
+        }
+
         private Rectangle GetInputBounds()
         {
+            if (UsesClientNoticeInputLane)
+            {
+                return new Rectangle(
+                    Position.X + ClientInputOffsetX,
+                    Position.Y + ClientInputOffsetY,
+                    ClientInputWidth,
+                    ClientInputHeight);
+            }
+
             float bodyLines = Math.Max(1, WrapText(_body, BodyWrapWidth).Count());
             int lineSpacing = _font?.LineSpacing ?? 18;
             int inputY = Position.Y + TextOffsetY + (lineSpacing * 2) + 6 + (int)((bodyLines - 1) * lineSpacing) + 8 + lineSpacing;
@@ -695,6 +748,8 @@ namespace HaCreator.MapSimulator.UI
                 (int)Math.Ceiling(InputWrapWidth),
                 Math.Max(lineSpacing, 18));
         }
+
+        private bool UsesClientNoticeInputLane => HasInputField && _noticeTextIndex.HasValue;
 
         private void DrawImeCandidateWindow(SpriteBatch sprite)
         {

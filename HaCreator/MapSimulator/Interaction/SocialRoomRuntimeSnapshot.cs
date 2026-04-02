@@ -14,6 +14,8 @@ namespace HaCreator.MapSimulator.Interaction
         public string RoomState { get; set; }
         public string ModeName { get; set; }
         public string PacketOwnerSummary { get; set; }
+        public int PersonalShopTotalSoldGross { get; set; }
+        public int PersonalShopTotalReceivedNet { get; set; }
         public int MiniRoomModeIndex { get; set; }
         public int MiniRoomWagerAmount { get; set; }
         public bool MiniRoomOmokInProgress { get; set; }
@@ -35,6 +37,7 @@ namespace HaCreator.MapSimulator.Interaction
         public bool TradeLocalAccepted { get; set; }
         public bool TradeRemoteAccepted { get; set; }
         public bool TradeVerificationPending { get; set; }
+        public bool TradeVerificationMismatch { get; set; }
         public bool TradeLocalVerificationReady { get; set; }
         public bool TradeRemoteVerificationReady { get; set; }
         public List<SocialRoomTradeVerificationEntrySnapshot> TradeLocalVerificationEntries { get; set; } = new();
@@ -61,6 +64,7 @@ namespace HaCreator.MapSimulator.Interaction
         public byte EmployeePacketBalloonByte2 { get; set; }
         public List<SocialRoomOccupantSnapshot> Occupants { get; set; } = new();
         public List<SocialRoomItemSnapshot> Items { get; set; } = new();
+        public List<SocialRoomSoldItemSnapshot> SoldItems { get; set; } = new();
         public List<string> Notes { get; set; } = new();
         public List<SocialRoomChatEntrySnapshot> ChatEntries { get; set; } = new();
         public List<string> SavedVisitors { get; set; } = new();
@@ -94,6 +98,20 @@ namespace HaCreator.MapSimulator.Interaction
     {
         public string Text { get; set; }
         public SocialRoomChatTone Tone { get; set; }
+    }
+
+    public sealed class SocialRoomSoldItemSnapshot
+    {
+        public int ItemId { get; set; }
+        public string ItemName { get; set; }
+        public string BuyerName { get; set; }
+        public int QuantitySold { get; set; }
+        public int BundleCount { get; set; }
+        public int BundlePrice { get; set; }
+        public int GrossMeso { get; set; }
+        public int TaxMeso { get; set; }
+        public int NetMeso { get; set; }
+        public int PacketSlotIndex { get; set; }
     }
 
     public sealed class SocialRoomOmokMoveSnapshot

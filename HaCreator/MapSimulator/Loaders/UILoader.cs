@@ -55,7 +55,7 @@ namespace HaCreator.MapSimulator.Loaders
                 WzSubProperty mainBarProperties = (uiStatusBar2?["mainBar"] as WzSubProperty);
                 if (mainBarProperties != null)
                 {
-                    WzCanvasProperty backgrndCanvas = mainBarProperties?["backgrnd"] as WzCanvasProperty;
+                    WzCanvasProperty backgrndCanvas = ResolveBigBangStatusBarBackgroundCanvas(mainBarProperties, renderParams);
                     WzCanvasProperty lvBacktrndCanvas = mainBarProperties?["lvBacktrnd"] as WzCanvasProperty;
                     WzCanvasProperty lvCoverCanvas = mainBarProperties?["lvCover"] as WzCanvasProperty;
                     WzCanvasProperty gaugeBackgrdCanvas = mainBarProperties?["gaugeBackgrd"] as WzCanvasProperty;
@@ -74,6 +74,7 @@ namespace HaCreator.MapSimulator.Loaders
                     System.Drawing.Bitmap bitmap_gaugeCover = LoadCanvasBitmap(gaugeCoverCanvas);
                     System.Drawing.Bitmap composedMainBar = ComposeBigBangStatusBarFrame(
                         mainBarProperties,
+                        backgrndCanvas,
                         backgrnd,
                         bitmap_lvBacktrnd,
                         bitmap_lvCover,
@@ -886,6 +887,44 @@ namespace HaCreator.MapSimulator.Loaders
             return tooltipFrames;
         }
 
+        private static WzCanvasProperty ResolveBigBangStatusBarBackgroundCanvas(WzSubProperty mainBarProperties, RenderParameters renderParams)
+        {
+            WzCanvasProperty defaultBackgroundCanvas = mainBarProperties?["backgrnd"] as WzCanvasProperty;
+            WzCanvasProperty widescreenBackgroundCanvas = mainBarProperties?["backgrnd_BAK2"] as WzCanvasProperty;
+            if (widescreenBackgroundCanvas == null)
+            {
+                return defaultBackgroundCanvas;
+            }
+
+            int viewportWidth = (int)Math.Ceiling(renderParams.RenderWidth / Math.Max(0.01f, renderParams.RenderObjectScaling));
+            int defaultWidth = GetCanvasBitmapWidth(defaultBackgroundCanvas);
+            int widescreenWidth = GetCanvasBitmapWidth(widescreenBackgroundCanvas);
+            if (widescreenWidth <= 0)
+            {
+                return defaultBackgroundCanvas;
+            }
+
+            if (viewportWidth > defaultWidth && widescreenWidth > defaultWidth)
+            {
+                return widescreenBackgroundCanvas;
+            }
+
+            return defaultBackgroundCanvas ?? widescreenBackgroundCanvas;
+        }
+
+        private static int GetCanvasBitmapWidth(WzCanvasProperty canvas)
+        {
+            if (canvas == null)
+            {
+                return 0;
+            }
+
+            using (System.Drawing.Bitmap bitmap = LoadCanvasBitmap(canvas))
+            {
+                return bitmap?.Width ?? 0;
+            }
+        }
+
         private static Dictionary<string, StatusBarKeyDownBarTextures> LoadKeyDownBarTextures(WzImage uiBasic, GraphicsDevice device)
         {
             var keyDownBarTextures = new Dictionary<string, StatusBarKeyDownBarTextures>(StringComparer.OrdinalIgnoreCase);
@@ -932,6 +971,7 @@ namespace HaCreator.MapSimulator.Loaders
 
         private static System.Drawing.Bitmap ComposeBigBangStatusBarFrame(
             WzSubProperty mainBarProperties,
+            WzCanvasProperty backgrndCanvas,
             System.Drawing.Bitmap backgrnd,
             System.Drawing.Bitmap lvBacktrnd,
             System.Drawing.Bitmap lvCover,
@@ -943,7 +983,7 @@ namespace HaCreator.MapSimulator.Loaders
                 return new System.Drawing.Bitmap(1, 1);
             }
 
-            Point frameOrigin = GetCanvasOrigin(mainBarProperties?["backgrnd"] as WzCanvasProperty);
+            Point frameOrigin = GetCanvasOrigin(backgrndCanvas);
             var layers = new List<(int Z, WzCanvasProperty Canvas, System.Drawing.Bitmap Bitmap)>
             {
                 (GetCanvasZ(mainBarProperties?["lvBacktrnd"] as WzCanvasProperty), mainBarProperties?["lvBacktrnd"] as WzCanvasProperty, lvBacktrnd),
@@ -1569,6 +1609,10 @@ namespace HaCreator.MapSimulator.Loaders
             {
                 Margins = new HaUIMargin() { Top = MAPMARK_MAPNAME_TOP_MARGIN, Left = MAPMARK_MAPNAME_LEFT_MARGIN, Bottom = 0, Right = 0 },
             });
+            HaUIStackPanel collapsedMapNameStackPanel = new HaUIStackPanel(HaUIStackOrientation.Horizontal, new HaUIInfo()
+            {
+                Margins = new HaUIMargin() { Top = 1, Left = MAPMARK_MAPNAME_LEFT_MARGIN, Bottom = 0, Right = 0 },
+            });
 
             if (mapMark != null)
             {
@@ -1578,19 +1622,40 @@ namespace HaCreator.MapSimulator.Loaders
                     Bitmap = mapMark,
                 });
                 mapNameMarkStackPanel.AddRenderable(mapNameMarkImage);
+
+                collapsedMapNameStackPanel.AddRenderable(new HaUIImage(new HaUIInfo()
+                {
+                    Bitmap = mapMark,
+                    Margins = new HaUIMargin() { Right = 2 }
+                }));
             }
             // Minimap name, and street name
             string renderText = string.Format("{0}{1}{2}", StreetName, Environment.NewLine, MapName);
+            string collapsedRenderText = !string.IsNullOrWhiteSpace(MapName) ? MapName : StreetName;
             HaUIText haUITextMapNameStreetName = new HaUIText(renderText, color_foreGround, GLOBAL_FONT, MINIMAP_STREETNAME_TOOLTIP_FONTSIZE, UserScreenScaleFactor);
             haUITextMapNameStreetName.GetInfo().Margins.Top = 3;
             haUITextMapNameStreetName.GetInfo().Margins.Left = MAP_IMAGE_TEXT_PADDING;
             haUITextMapNameStreetName.GetInfo().Margins.Right = MAP_IMAGE_TEXT_PADDING;
+            HaUIText collapsedTitleText = new HaUIText(collapsedRenderText, color_foreGround, GLOBAL_FONT, MINIMAP_STREETNAME_TOOLTIP_FONTSIZE, UserScreenScaleFactor);
+            collapsedTitleText.GetInfo().Margins.Top = 1;
+            collapsedTitleText.GetInfo().Margins.Left = MAP_IMAGE_TEXT_PADDING;
+            collapsedTitleText.GetInfo().Margins.Right = MAP_IMAGE_TEXT_PADDING;
 
             mapNameMarkStackPanel.AddRenderable(haUITextMapNameStreetName);
+            collapsedMapNameStackPanel.AddRenderable(collapsedTitleText);
             fullMiniMapStackPanel.AddRenderable(mapNameMarkStackPanel);
 
-            System.Drawing.Bitmap finalMininisedMinimapBitmap = HaUIHelper.RenderAndMergeMinimapUIFrame(fullMiniMapStackPanel, color_bgFill, compactNe, compactNw, compactSe, compactSw, compactE, compactW, compactN, compactS,
-                compactC, mapMark != null ? mapMark.Height : 0);
+            WzSubProperty collapsedBarProperty = minimapFrameProperty["Min"] as WzSubProperty;
+            System.Drawing.Bitmap collapsedBarLeft = ((WzCanvasProperty)collapsedBarProperty?["w"])?.GetLinkedWzCanvasBitmap();
+            System.Drawing.Bitmap collapsedBarCenter = ((WzCanvasProperty)collapsedBarProperty?["c"])?.GetLinkedWzCanvasBitmap();
+            System.Drawing.Bitmap collapsedBarRight = ((WzCanvasProperty)collapsedBarProperty?["e"])?.GetLinkedWzCanvasBitmap();
+            HaUIStackPanel collapsedMiniMapStackPanel = new HaUIStackPanel(HaUIStackOrientation.Vertical);
+            collapsedMiniMapStackPanel.AddRenderable(collapsedMapNameStackPanel);
+            System.Drawing.Bitmap finalMininisedMinimapBitmap =
+                collapsedBarLeft != null && collapsedBarCenter != null && collapsedBarRight != null
+                    ? HaUIHelper.RenderAndMergeMinimapCollapsedBar(collapsedMiniMapStackPanel, color_bgFill, collapsedBarLeft, collapsedBarCenter, collapsedBarRight)
+                    : HaUIHelper.RenderAndMergeMinimapUIFrame(fullMiniMapStackPanel, color_bgFill, compactNe, compactNw, compactSe, compactSw, compactE, compactW, compactN, compactS,
+                        compactC, mapMark != null ? mapMark.Height : 0);
 
             HaUIGrid minimapUiGrid = new HaUIGrid(1, 1);
             minimapUiGrid.GetInfo().Margins.Top = 10;

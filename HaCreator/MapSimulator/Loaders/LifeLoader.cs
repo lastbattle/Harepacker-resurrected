@@ -711,7 +711,7 @@ namespace HaCreator.MapSimulator.Loaders
                 return false;
             }
 
-            WzSubProperty effectProperty = infoChild as WzSubProperty;
+            WzSubProperty effectProperty = WzInfoTools.GetRealProperty(infoChild) as WzSubProperty;
             if (effectProperty == null || !HasStructuredAttackEffectMetadata(effectProperty))
             {
                 return false;
@@ -745,19 +745,14 @@ namespace HaCreator.MapSimulator.Loaders
                 effectNode.RangeBounds = new Rectangle(left, top, Math.Max(1, right - left), Math.Max(1, bottom - top));
             }
 
-            for (int sequenceIndex = 0; ; sequenceIndex++)
+            foreach (WzImageProperty sequenceProperty in GetAttackEffectSequenceProperties(effectProperty))
             {
-                WzImageProperty sequenceProperty = effectProperty[sequenceIndex.ToString()];
-                if (sequenceProperty == null)
-                {
-                    break;
-                }
+                TryAddAttackEffectSequenceFrames(effectNode.Sequences, texturePool, sequenceProperty, device, usedProps);
+            }
 
-                List<IDXObject> sequenceFrames = MapSimulatorLoader.LoadFrames(texturePool, sequenceProperty, 0, 0, device, usedProps);
-                if (sequenceFrames.Count > 0)
-                {
-                    effectNode.Sequences.Add(sequenceFrames);
-                }
+            if (effectNode.Sequences.Count == 0)
+            {
+                TryAddAttackEffectSequenceFrames(effectNode.Sequences, texturePool, effectProperty, device, usedProps);
             }
 
             return effectNode.Sequences.Count > 0;
@@ -776,7 +771,8 @@ namespace HaCreator.MapSimulator.Loaders
                 return false;
             }
 
-            List<IDXObject> frames = MapSimulatorLoader.LoadFrames(texturePool, infoChild, 0, 0, device, usedProps);
+            WzImageProperty effectProperty = WzInfoTools.GetRealProperty(infoChild) ?? infoChild;
+            List<IDXObject> frames = MapSimulatorLoader.LoadFrames(texturePool, effectProperty, 0, 0, device, usedProps);
             if (frames.Count == 0)
             {
                 return false;
@@ -807,6 +803,54 @@ namespace HaCreator.MapSimulator.Loaders
                     effectProperty["fall"] != null ||
                     effectProperty["x"] != null ||
                     effectProperty["y"] != null);
+        }
+
+        internal static IReadOnlyList<WzImageProperty> GetAttackEffectSequenceProperties(WzSubProperty effectProperty)
+        {
+            var sequenceProperties = new List<WzImageProperty>();
+            if (effectProperty?.WzProperties == null)
+            {
+                return sequenceProperties;
+            }
+
+            foreach (WzImageProperty child in effectProperty.WzProperties)
+            {
+                WzImageProperty resolvedChild = WzInfoTools.GetRealProperty(child) ?? child;
+                if (resolvedChild == null || !int.TryParse(resolvedChild.Name, out _))
+                {
+                    continue;
+                }
+
+                sequenceProperties.Add(resolvedChild);
+            }
+
+            sequenceProperties.Sort((left, right) =>
+            {
+                int leftIndex = int.TryParse(left?.Name, out int parsedLeftIndex) ? parsedLeftIndex : int.MaxValue;
+                int rightIndex = int.TryParse(right?.Name, out int parsedRightIndex) ? parsedRightIndex : int.MaxValue;
+                return leftIndex.CompareTo(rightIndex);
+            });
+            return sequenceProperties;
+        }
+
+        private static void TryAddAttackEffectSequenceFrames(
+            List<List<IDXObject>> sequences,
+            TexturePool texturePool,
+            WzImageProperty sequenceProperty,
+            GraphicsDevice device,
+            ConcurrentBag<WzObject> usedProps)
+        {
+            if (sequences == null || sequenceProperty == null)
+            {
+                return;
+            }
+
+            WzImageProperty resolvedSequenceProperty = WzInfoTools.GetRealProperty(sequenceProperty) ?? sequenceProperty;
+            List<IDXObject> sequenceFrames = MapSimulatorLoader.LoadFrames(texturePool, resolvedSequenceProperty, 0, 0, device, usedProps);
+            if (sequenceFrames.Count > 0)
+            {
+                sequences.Add(sequenceFrames);
+            }
         }
 
         internal static Dictionary<string, int> BuildPlainAttackEffectGrouping(IEnumerable<string> effectPropertyNames)

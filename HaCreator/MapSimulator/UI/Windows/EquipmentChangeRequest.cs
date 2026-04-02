@@ -126,6 +126,19 @@ namespace HaCreator.MapSimulator.UI
         public int RequestedAtTick { get; init; }
     }
 
+    public static class EquipmentChangeClientParity
+    {
+        public static bool IsExclusiveRequestThrottled(int currentTick, int lastRequestTick, int cooldownMs)
+        {
+            if (lastRequestTick == int.MinValue || cooldownMs <= 0)
+            {
+                return false;
+            }
+
+            return unchecked(currentTick - lastRequestTick) < cooldownMs;
+        }
+    }
+
     internal static class EquipmentChangeRequestValidator
     {
         internal static bool TryGetRequestStateRejectReason(

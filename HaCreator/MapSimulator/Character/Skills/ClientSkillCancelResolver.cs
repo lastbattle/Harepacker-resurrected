@@ -57,6 +57,19 @@ namespace HaCreator.MapSimulator.Character.Skills
                 : new[] { skillId };
         }
 
+        internal static IReadOnlyList<int> ResolveConnectedCancelFamilySkillIds(
+            int skillId,
+            Func<int, SkillData> getSkillData,
+            IReadOnlyCollection<SkillData> skillCatalog)
+        {
+            if (skillId <= 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            return ResolveConnectedCancelFamily(skillId, getSkillData, skillCatalog).ToArray();
+        }
+
         private static bool UsesAffectedSkillCancelFamily(SkillData skill)
         {
             return skill != null

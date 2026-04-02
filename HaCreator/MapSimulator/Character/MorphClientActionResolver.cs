@@ -44,6 +44,12 @@ namespace HaCreator.MapSimulator.Character
             "icePanic"
         };
 
+        private static readonly IReadOnlyDictionary<string, string[]> GenericMorphAttackAliasMap =
+            new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+            {
+                ["shotC1"] = new[] { "shoot1", "shoot2", "shootF" }
+            };
+
         public static IEnumerable<string> EnumerateClientActionAliases(CharacterPart morphPart, string actionName)
         {
             if (string.IsNullOrWhiteSpace(actionName))
@@ -158,11 +164,40 @@ namespace HaCreator.MapSimulator.Character
                 }
             }
 
+            foreach (string genericAlias in EnumerateGenericAttackAliases(morphPart, actionName))
+            {
+                if (yielded.Add(genericAlias))
+                {
+                    yield return genericAlias;
+                }
+            }
+
             foreach (string authoredAlias in EnumerateHeuristicCombatAliases(morphPart))
             {
                 if (yielded.Add(authoredAlias))
                 {
                     yield return authoredAlias;
+                }
+            }
+        }
+
+        private static IEnumerable<string> EnumerateGenericAttackAliases(CharacterPart morphPart, string actionName)
+        {
+            if (morphPart?.Animations == null || string.IsNullOrWhiteSpace(actionName))
+            {
+                yield break;
+            }
+
+            if (!GenericMorphAttackAliasMap.TryGetValue(actionName, out string[] aliases))
+            {
+                yield break;
+            }
+
+            foreach (string alias in aliases)
+            {
+                if (!string.IsNullOrWhiteSpace(alias) && morphPart.Animations.ContainsKey(alias))
+                {
+                    yield return alias;
                 }
             }
         }

@@ -1,4 +1,5 @@
-﻿using System.Drawing;
+using System;
+using System.Drawing;
 using System.Runtime.CompilerServices;
 
 namespace HaCreator.MapSimulator.UI.Controls {
@@ -41,26 +42,78 @@ namespace HaCreator.MapSimulator.UI.Controls {
         /// <param name="startBgXPaint">The y coordinates to add before painting the frame bg color</param>
         /// <returns></returns>
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
-        public static System.Drawing.Bitmap RenderAndMergeMinimapUIFrame(HaUIStackPanel toDrawUI, System.Drawing.Color color_bgFill, 
+        public static Bitmap RenderAndMergeMinimapUIFrame(HaUIStackPanel toDrawUI, Color color_bgFill, 
             Bitmap ne, Bitmap nw, Bitmap se, Bitmap sw,
             Bitmap e, Bitmap w, Bitmap n, Bitmap s,
             Bitmap c, int startBgYPaint) {
             HaUISize size = toDrawUI.GetSize();
 
-            System.Drawing.Bitmap finalBitmap = new System.Drawing.Bitmap(size.Width, size.Height);
+            Bitmap finalBitmap = new Bitmap(size.Width, size.Height);
 
             // draw UI frame first
-            using (System.Drawing.Graphics graphics = System.Drawing.Graphics.FromImage(finalBitmap)) {
+            using (Graphics graphics = Graphics.FromImage(finalBitmap)) {
                 // Frames and background
                 UIFrameHelper.DrawUIFrame(graphics, color_bgFill, ne, nw, se, sw, e, w, n, s, c, startBgYPaint, size.Width, size.Height);
 
                 // then render the full thing on top of it
-                System.Drawing.Bitmap miniMapWithoutFrameBitmap = toDrawUI.Render();
+                Bitmap miniMapWithoutFrameBitmap = toDrawUI.Render();
 
                 // Now you can do whatever you want with finalBitmap,
                 // like creating a Texture2D, etc.
-                graphics.DrawImage(miniMapWithoutFrameBitmap, new System.Drawing.PointF(0, 0));
+                graphics.DrawImage(miniMapWithoutFrameBitmap, new PointF(0, 0));
             }
+            return finalBitmap;
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        public static Bitmap RenderAndMergeMinimapCollapsedBar(
+            HaUIStackPanel toDrawUI,
+            Color color_bgFill,
+            Bitmap left,
+            Bitmap center,
+            Bitmap right) {
+            HaUISize size = toDrawUI.GetSize();
+            int contentWidth = Math.Max(1, size.Width);
+            int contentHeight = Math.Max(1, size.Height);
+            int frameHeight = Math.Max(left?.Height ?? 0, Math.Max(center?.Height ?? 0, right?.Height ?? 0));
+            int finalWidth = Math.Max(contentWidth, (left?.Width ?? 0) + (right?.Width ?? 0) + 1);
+            int finalHeight = Math.Max(contentHeight, frameHeight > 0 ? frameHeight : contentHeight);
+
+            Bitmap finalBitmap = new Bitmap(finalWidth, finalHeight);
+
+            using (Graphics graphics = Graphics.FromImage(finalBitmap)) {
+                using (var backgroundBrush = new SolidBrush(color_bgFill))
+                {
+                    graphics.FillRectangle(backgroundBrush, 0, 0, finalWidth, finalHeight);
+                }
+
+                if (center != null)
+                {
+                    int startX = left?.Width ?? 0;
+                    int endX = finalWidth - (right?.Width ?? 0);
+                    int tileWidth = Math.Max(1, center.Width);
+                    int centerY = Math.Max(0, (finalHeight - center.Height) / 2);
+                    for (int x = startX; x < endX; x += tileWidth)
+                    {
+                        graphics.DrawImageUnscaled(center, x, centerY);
+                    }
+                }
+
+                if (left != null)
+                {
+                    graphics.DrawImageUnscaled(left, 0, Math.Max(0, (finalHeight - left.Height) / 2));
+                }
+
+                if (right != null)
+                {
+                    graphics.DrawImageUnscaled(right, finalWidth - right.Width, Math.Max(0, (finalHeight - right.Height) / 2));
+                }
+
+                Bitmap contentBitmap = toDrawUI.Render();
+                int contentY = Math.Max(0, (finalHeight - contentBitmap.Height) / 2);
+                graphics.DrawImage(contentBitmap, new PointF(0, contentY));
+            }
+
             return finalBitmap;
         }
     }

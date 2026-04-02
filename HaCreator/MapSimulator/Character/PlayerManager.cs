@@ -337,6 +337,11 @@ namespace HaCreator.MapSimulator.Character
             Dragon.SetCurrentMapInfoProvider(currentMapInfoProvider);
         }
 
+        public void SetDragonQuestInfoStateProvider(Func<int?> questInfoStateProvider)
+        {
+            Dragon.SetQuestInfoStateProvider(questInfoStateProvider);
+        }
+
         /// <summary>
         /// Set spawn point
         /// </summary>
@@ -404,6 +409,7 @@ namespace HaCreator.MapSimulator.Character
             Skills?.SetExternalStateRestrictionMessageProvider(currentTime => _mobStatusController?.GetSkillCastRestrictionMessage(currentTime));
 
             Combat.SetDamageBlockedEvaluator(IsDamageBlockedByAffectedArea);
+            Combat.SetIncomingDamageResolver((damage, currentTime) => Skills?.ResolveIncomingDamageAfterActiveBuffs(damage, currentTime) ?? damage);
 
             // Set up callbacks
             Player.SetFootholdLookup(_findFoothold);
@@ -512,6 +518,7 @@ namespace HaCreator.MapSimulator.Character
             };
 
             Combat.SetDamageBlockedEvaluator(IsDamageBlockedByAffectedArea);
+            Combat.SetIncomingDamageResolver((damage, currentTime) => Skills?.ResolveIncomingDamageAfterActiveBuffs(damage, currentTime) ?? damage);
 
             Player.SetFootholdLookup(_findFoothold);
             Player.SetLadderLookup(_findLadder);
@@ -1691,6 +1698,7 @@ namespace HaCreator.MapSimulator.Character
             int reflectedDamage = mob.AI.CalculateReflectedDamageToAttacker(mob.AI.LastDamageTaken, damageType);
             if (reflectedDamage > 0)
             {
+                reflectedDamage = Skills?.ResolveIncomingDamageAfterActiveBuffs(reflectedDamage, currentTime) ?? reflectedDamage;
                 Player.TakeDamage(reflectedDamage, 0f, 0f);
             }
         }

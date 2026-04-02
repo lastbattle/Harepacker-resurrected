@@ -1053,8 +1053,67 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
+            if (TryFindPermissionMaskCandidate(payload, out GuildBbsPermissionMask decodedMask, out string decodedDetail))
+            {
+                mask = decodedMask;
+                detail = decodedDetail;
+                return true;
+            }
+
             mask = NormalizePermissionMask((GuildBbsPermissionMask)payload[0]);
-            detail = $"Decoded authority mask byte 0x{payload[0]:X2}.";
+            detail = $"Fell back to authority mask byte 0x{payload[0]:X2} at offset 0 because no exact packet-shaped mask field was found.";
+            return true;
+        }
+
+        private bool TryFindPermissionMaskCandidate(byte[] payload, out GuildBbsPermissionMask mask, out string detail)
+        {
+            mask = GuildBbsPermissionMask.None;
+            detail = null;
+
+            for (int offset = 0; offset < payload.Length; offset++)
+            {
+                if (TryResolvePermissionMaskCandidate(payload[offset], out GuildBbsPermissionMask byteMask))
+                {
+                    mask = byteMask;
+                    detail = $"Decoded authority mask byte 0x{payload[offset]:X2} at offset {offset}.";
+                    return true;
+                }
+            }
+
+            for (int offset = 0; offset <= payload.Length - sizeof(short); offset++)
+            {
+                ushort candidate = BitConverter.ToUInt16(payload, offset);
+                if (TryResolvePermissionMaskCandidate(candidate, out GuildBbsPermissionMask shortMask))
+                {
+                    mask = shortMask;
+                    detail = $"Decoded authority mask ushort 0x{candidate:X4} at offset {offset}.";
+                    return true;
+                }
+            }
+
+            for (int offset = 0; offset <= payload.Length - sizeof(int); offset++)
+            {
+                uint candidate = BitConverter.ToUInt32(payload, offset);
+                if (TryResolvePermissionMaskCandidate(candidate, out GuildBbsPermissionMask intMask))
+                {
+                    mask = intMask;
+                    detail = $"Decoded authority mask uint 0x{candidate:X8} at offset {offset}.";
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryResolvePermissionMaskCandidate(uint rawValue, out GuildBbsPermissionMask mask)
+        {
+            mask = GuildBbsPermissionMask.None;
+            if (rawValue > (uint)SupportedPermissionMask)
+            {
+                return false;
+            }
+
+            mask = NormalizePermissionMask((GuildBbsPermissionMask)rawValue);
             return true;
         }
 

@@ -11,7 +11,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const byte PacketSkillActionHealingRobotHeal = 13;
         private const byte PacketSkillActionSubsummon = 14;
 
-        public static int ResolveDurationMs(SkillData skill, SkillLevelData levelData, int skillLevel)
+        public static int ResolveAuthoredDurationMs(SkillData skill, SkillLevelData levelData, int skillLevel)
         {
             if (levelData?.Time > 0)
             {
@@ -19,9 +19,17 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             int authoredDurationSeconds = skill?.ResolveSummonDurationSeconds(Math.Max(1, skillLevel)) ?? 0;
-            if (authoredDurationSeconds > 0)
+            return authoredDurationSeconds > 0
+                ? authoredDurationSeconds * 1000
+                : 0;
+        }
+
+        public static int ResolveDurationMs(SkillData skill, SkillLevelData levelData, int skillLevel)
+        {
+            int authoredDurationMs = ResolveAuthoredDurationMs(skill, levelData, skillLevel);
+            if (authoredDurationMs > 0)
             {
-                return authoredDurationSeconds * 1000;
+                return authoredDurationMs;
             }
 
             return IsSatelliteSummonSkill(skill?.SkillId ?? 0) ? 0 : 30000;
@@ -163,14 +171,14 @@ namespace HaCreator.MapSimulator.Character.Skills
             return assistType switch
             {
                 SummonAssistType.Support when skill.SkillId == 1321007
-                    => ResolveNamedSummonBranch(skill, "skill1", "heal", "support"),
+                    => ResolveNamedSummonBranch(skill, "skill1", "heal", "support", "stand"),
                 SummonAssistType.Support when HasMinionAbilityToken(skill.MinionAbility, "heal")
-                    => ResolveNamedSummonBranch(skill, "heal", "support"),
+                    => ResolveSupportOwnedBranch(skill, preferHealFirst: true),
                 SummonAssistType.Support when HasMinionAbilityToken(skill.MinionAbility, "mes")
                                                   || HasMinionAbilityToken(skill.MinionAbility, "amplifyDamage")
-                    => ResolveNamedSummonBranch(skill, "support", "heal"),
+                    => ResolveSupportOwnedBranch(skill, preferHealFirst: false),
                 SummonAssistType.Support
-                    => ResolveNamedSummonBranch(skill, "support", "heal"),
+                    => ResolveSupportOwnedBranch(skill, preferHealFirst: false),
                 SummonAssistType.SummonAction
                     => ResolveNamedSummonBranch(skill, "subsummon"),
                 _ => null
@@ -186,19 +194,26 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             if (skill.SkillId == 1321007)
             {
-                return ResolveNamedSummonBranch(skill, "skill1", "heal", "support");
+                return ResolveNamedSummonBranch(skill, "skill1", "heal", "support", "stand");
             }
 
             return assistType switch
-            {
+                {
                 SummonAssistType.Support when HasMinionAbilityToken(skill.MinionAbility, "heal")
-                    => ResolveNamedSummonBranch(skill, "heal", "support"),
+                    => ResolveSupportOwnedBranch(skill, preferHealFirst: true),
                 SummonAssistType.Support
-                    => ResolveNamedSummonBranch(skill, "support", "heal"),
+                    => ResolveSupportOwnedBranch(skill, preferHealFirst: false),
                 SummonAssistType.SummonAction
                     => ResolveNamedSummonBranch(skill, "subsummon"),
                 _ => null
             };
+        }
+
+        internal static string ResolveSupportOwnedBranch(SkillData skill, bool preferHealFirst)
+        {
+            return preferHealFirst
+                ? ResolveNamedSummonBranch(skill, "heal", "support", "stand")
+                : ResolveNamedSummonBranch(skill, "support", "heal", "stand");
         }
 
         public static bool IsSatelliteSummonSkill(int skillId)

@@ -585,27 +585,10 @@ namespace HaCreator.MapSimulator.UI
 
         private static SD.Font CreateBasicBlackFont(out string fontFamilyName)
         {
-            if (TryCreateConfiguredBasicBlackFont(out SD.Font configuredFont, out fontFamilyName))
-            {
-                return configuredFont;
-            }
-
-            string selectedFamilyName = ResolveInstalledFontFamilyName(BasicBlackFontFamilyCandidates);
-            fontFamilyName = selectedFamilyName;
-
-            try
-            {
-                return new SD.Font(
-                    selectedFamilyName,
-                    BasicBlackFontHeight,
-                    SD.FontStyle.Regular,
-                    SD.GraphicsUnit.Pixel,
-                    KoreanGdiCharset);
-            }
-            catch (ArgumentException)
-            {
-                return new SD.Font(selectedFamilyName, BasicBlackFontHeight, SD.FontStyle.Regular, SD.GraphicsUnit.Pixel);
-            }
+            string requestedFamily = ResolveInstalledFontFamilyName(BasicBlackFontFamilyCandidates);
+            SD.Font font = ClientTextRasterizer.CreateClientFont(BasicBlackFontHeight, SD.FontStyle.Regular, requestedFamily);
+            fontFamilyName = font.FontFamily?.Name ?? requestedFamily;
+            return font;
         }
 
         private static bool TryCreateConfiguredBasicBlackFont(out SD.Font font, out string fontFamilyName)

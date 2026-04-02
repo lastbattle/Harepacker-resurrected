@@ -291,130 +291,50 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static NpcInteractionEntry DecodeAskQuiz(BinaryReader reader, PacketScriptSpeaker speaker, byte param)
         {
-            byte mode = reader.ReadByte();
-            if (mode == 1)
+            long startPosition = reader.BaseStream.Position;
+            if (TryDecodeAskQuizClientPacket(reader, speaker, param, out NpcInteractionEntry entry))
             {
-                return null;
+                return entry;
             }
 
-            string title = ReadMapleString(reader);
-            string problemText = ReadMapleString(reader);
-            string hintText = ReadMapleString(reader);
-            int correctAnswer = reader.ReadInt32();
-            int questionNumber = reader.ReadInt32();
-            int remainingSeconds = reader.ReadInt32();
-
-            return CreateEntry(
-                "Quiz",
-                BuildSpeakerSubtitle(speaker, "AskQuiz", param, mode),
-                problemText,
-                AppendMetadata(
-                    $"Title: {FormatQuotedValue(title)}",
-                    NpcDialogueTextFormatter.Format(problemText),
-                    string.IsNullOrWhiteSpace(hintText) ? null : $"Hint text: {FormatQuotedValue(hintText)}",
-                    $"Client payload: answer={correctAnswer}, questionNo={questionNumber}, remaining={remainingSeconds} sec.",
-                    "WZ data exposes a dedicated `UIWindow(.img|2.img)/InitialQuiz` surface for this packet-owned prompt family."),
-                new[]
-                {
-                    CreateNumericResponseChoice("OK", "OK", 1),
-                    CreateNumericResponseChoice("Next", "Next", 2),
-                    CreateNumericResponseChoice("Give Up", "Give Up", 0)
-                });
+            reader.BaseStream.Position = startPosition;
+            return DecodeAskQuizCompactPacket(reader, speaker, param);
         }
 
         private static NpcInteractionEntry DecodeAskSpeedQuiz(BinaryReader reader, PacketScriptSpeaker speaker, byte param)
         {
-            byte mode = reader.ReadByte();
-            if (mode == 1)
+            long startPosition = reader.BaseStream.Position;
+            if (TryDecodeAskSpeedQuizClientPacket(reader, speaker, param, out NpcInteractionEntry entry))
             {
-                return null;
+                return entry;
             }
 
-            int currentQuestion = reader.ReadInt32();
-            int totalQuestions = reader.ReadInt32();
-            int correctAnswers = reader.ReadInt32();
-            int remainingQuestions = reader.ReadInt32();
-            int remainingSeconds = reader.ReadInt32();
-
-            return CreateEntry(
-                "Speed Quiz",
-                BuildSpeakerSubtitle(speaker, "AskSpeedQuiz", param, mode),
-                string.Empty,
-                AppendMetadata(
-                    $"Question {currentQuestion} / {totalQuestions}",
-                    $"Correct answers: {correctAnswers}",
-                    $"Questions remaining: {remainingQuestions}",
-                    $"Time remaining: {remainingSeconds} sec.",
-                    "WZ data exposes `UIWindow(.img|2.img)/SpeedQuiz` with dedicated OK / Next / Give up controls."),
-                new[]
-                {
-                    CreateNumericResponseChoice("OK", "OK", 1),
-                    CreateNumericResponseChoice("Next", "Next", 2),
-                    CreateNumericResponseChoice("Give Up", "Give Up", 0)
-                });
+            reader.BaseStream.Position = startPosition;
+            return DecodeAskSpeedQuizCompactPacket(reader, speaker, param);
         }
 
         private static NpcInteractionEntry DecodeAskPet(BinaryReader reader, PacketScriptSpeaker speaker, byte param, bool isPetAll)
         {
-            string rawText = ReadMapleString(reader);
-            byte count = reader.ReadByte();
-            bool exceptionExists = isPetAll && reader.ReadByte() != 0;
-            List<long> petSerialNumbers = new(count);
-            for (int i = 0; i < count; i++)
+            long startPosition = reader.BaseStream.Position;
+            if (TryDecodeAskPetClientPacket(reader, speaker, param, isPetAll, out NpcInteractionEntry entry))
             {
-                petSerialNumbers.Add(reader.ReadInt64());
-                _ = reader.ReadByte();
+                return entry;
             }
 
-            List<NpcInteractionChoice> choices = petSerialNumbers
-                .Select((serialNumber, index) => new NpcInteractionChoice
-                {
-                    Label = BuildPetChoiceLabel(serialNumber, index),
-                    SubmitSelection = true,
-                    SubmissionKind = NpcInteractionInputKind.None,
-                    SubmissionValue = serialNumber.ToString(),
-                    SubmissionNumericValue = null
-                })
-                .ToList();
-            string optionDetails = petSerialNumbers.Count == 0
-                ? "No pet options were decoded from the packet payload."
-                : string.Join("\n", petSerialNumbers.Select((serialNumber, index) => $"{index + 1}. {DescribePetOption(serialNumber, index)}"));
-
-            return CreateEntry(
-                isPetAll ? "Pet Selection (All)" : "Pet Selection",
-                BuildSpeakerSubtitle(speaker, isPetAll ? "AskPetAll" : "AskPet", param),
-                rawText,
-                AppendMetadata(
-                    NpcDialogueTextFormatter.Format(rawText),
-                    optionDetails,
-                    isPetAll ? $"Multi-pet exception flag: {(exceptionExists ? 1 : 0)}." : null,
-                    "WZ data exposes packet-owned pet utility surfaces under `UIWindow(.img|2.img)/UtilDlgEx_Pet` and `UtilDlgEx_MultiPetEquip`."),
-                choices);
+            reader.BaseStream.Position = startPosition;
+            return DecodeAskPetCompactPacket(reader, speaker, param, isPetAll);
         }
 
         private static NpcInteractionEntry DecodeAskSlideMenu(BinaryReader reader, PacketScriptSpeaker speaker, byte param)
         {
-            int slideMenuType = reader.ReadInt32();
-            string buttonInfo = ReadMapleString(reader);
-            IReadOnlyList<string> options = SplitSlideMenuOptions(buttonInfo);
-            List<NpcInteractionChoice> choices = options
-                .Select((option, index) => CreateNumericResponseChoice(
-                    $"{index + 1}. {NpcDialogueTextFormatter.Format(option)}",
-                    $"index={index}",
-                    index))
-                .ToList();
+            long startPosition = reader.BaseStream.Position;
+            if (TryDecodeAskSlideMenuClientPacket(reader, speaker, param, out NpcInteractionEntry entry))
+            {
+                return entry;
+            }
 
-            return CreateEntry(
-                "Slide Menu",
-                BuildSpeakerSubtitle(speaker, "AskSlideMenu", param),
-                buttonInfo,
-                AppendMetadata(
-                    string.IsNullOrWhiteSpace(buttonInfo) ? "No slide-menu button info string was decoded." : NpcDialogueTextFormatter.Format(buttonInfo),
-                    choices.Count == 0
-                        ? $"Slide-menu type {slideMenuType} did not expose any line-separated button strings."
-                        : $"Decoded {choices.Count} slide-menu option(s) for type {slideMenuType}.",
-                    "WZ data exposes authored slide-menu variants under `UIWindow(.img|2.img)/SlideMenu`."),
-                choices);
+            reader.BaseStream.Position = startPosition;
+            return DecodeAskSlideMenuCompactPacket(reader, speaker, param);
         }
 
         private static NpcInteractionEntry DecodeAskBoxText(BinaryReader reader, PacketScriptSpeaker speaker, byte param)
@@ -440,6 +360,341 @@ namespace HaCreator.MapSimulator.Interaction
                     LineCount = Math.Max(1, (int)lineCount),
                     MaxLength = Math.Max(1, (int)columnCount) * Math.Max(1, (int)lineCount)
                 });
+        }
+
+        private static bool TryDecodeAskQuizClientPacket(BinaryReader reader, PacketScriptSpeaker speaker, byte param, out NpcInteractionEntry entry)
+        {
+            long startPosition = reader.BaseStream.Position;
+            entry = null;
+            try
+            {
+                if (!TryReadByte(reader, out byte mode))
+                {
+                    reader.BaseStream.Position = startPosition;
+                    return false;
+                }
+
+                if (mode == 1 && reader.BaseStream.Position == reader.BaseStream.Length)
+                {
+                    entry = null;
+                    return true;
+                }
+
+                string title = ReadMapleString(reader);
+                string problemText = ReadMapleString(reader);
+                string hintText = ReadMapleString(reader);
+                int correctAnswer = reader.ReadInt32();
+                int questionNumber = reader.ReadInt32();
+                int remainingSeconds = reader.ReadInt32();
+
+                entry = CreateEntry(
+                    "Quiz",
+                    BuildSpeakerSubtitle(speaker, "AskQuiz", param, mode),
+                    problemText,
+                    AppendMetadata(
+                        $"Title: {FormatQuotedValue(title)}",
+                        NpcDialogueTextFormatter.Format(problemText),
+                        string.IsNullOrWhiteSpace(hintText) ? null : $"Hint text: {FormatQuotedValue(hintText)}",
+                        $"Client payload: answer={correctAnswer}, questionNo={questionNumber}, remaining={remainingSeconds} sec.",
+                        "WZ data exposes a dedicated `UIWindow(.img|2.img)/InitialQuiz` surface for this packet-owned prompt family."),
+                    new[]
+                    {
+                        CreateNumericResponseChoice("OK", "OK", 1),
+                        CreateNumericResponseChoice("Next", "Next", 2),
+                        CreateNumericResponseChoice("Give Up", "Give Up", 0)
+                    });
+                return true;
+            }
+            catch (Exception ex) when (ex is EndOfStreamException || ex is IOException || ex is ArgumentException)
+            {
+                reader.BaseStream.Position = startPosition;
+                entry = null;
+                return false;
+            }
+        }
+
+        private static NpcInteractionEntry DecodeAskQuizCompactPacket(BinaryReader reader, PacketScriptSpeaker speaker, byte param)
+        {
+            string rawText = ReadMapleString(reader);
+            int defaultValue = reader.ReadInt32();
+            int minValue = reader.ReadInt32();
+            int maxValue = reader.ReadInt32();
+            return CreateEntry(
+                "Quiz",
+                BuildSpeakerSubtitle(speaker, "AskQuiz", param),
+                rawText,
+                AppendMetadata(
+                    NpcDialogueTextFormatter.Format(rawText),
+                    $"Compact helper payload: default={defaultValue}, range={minValue}..{maxValue}.",
+                    "WZ data exposes a dedicated `UIWindow(.img|2.img)/InitialQuiz` surface for this packet-owned prompt family."),
+                null,
+                new NpcInteractionInputRequest
+                {
+                    Kind = NpcInteractionInputKind.Number,
+                    DefaultValue = defaultValue.ToString(),
+                    MinValue = minValue,
+                    MaxValue = maxValue
+                });
+        }
+
+        private static bool TryDecodeAskSpeedQuizClientPacket(BinaryReader reader, PacketScriptSpeaker speaker, byte param, out NpcInteractionEntry entry)
+        {
+            long startPosition = reader.BaseStream.Position;
+            entry = null;
+            try
+            {
+                if (!TryReadByte(reader, out byte mode))
+                {
+                    reader.BaseStream.Position = startPosition;
+                    return false;
+                }
+
+                if (mode == 1 && reader.BaseStream.Position == reader.BaseStream.Length)
+                {
+                    entry = null;
+                    return true;
+                }
+
+                int currentQuestion = reader.ReadInt32();
+                int totalQuestions = reader.ReadInt32();
+                int correctAnswers = reader.ReadInt32();
+                int remainingQuestions = reader.ReadInt32();
+                int remainingSeconds = reader.ReadInt32();
+
+                entry = CreateEntry(
+                    "Speed Quiz",
+                    BuildSpeakerSubtitle(speaker, "AskSpeedQuiz", param, mode),
+                    string.Empty,
+                    AppendMetadata(
+                        $"Question {currentQuestion} / {totalQuestions}",
+                        $"Correct answers: {correctAnswers}",
+                        $"Questions remaining: {remainingQuestions}",
+                        $"Time remaining: {remainingSeconds} sec.",
+                        "WZ data exposes `UIWindow(.img|2.img)/SpeedQuiz` with dedicated OK / Next / Give up controls."),
+                    new[]
+                    {
+                        CreateNumericResponseChoice("OK", "OK", 1),
+                        CreateNumericResponseChoice("Next", "Next", 2),
+                        CreateNumericResponseChoice("Give Up", "Give Up", 0)
+                    });
+                return true;
+            }
+            catch (Exception ex) when (ex is EndOfStreamException || ex is IOException || ex is ArgumentException)
+            {
+                reader.BaseStream.Position = startPosition;
+                entry = null;
+                return false;
+            }
+        }
+
+        private static NpcInteractionEntry DecodeAskSpeedQuizCompactPacket(BinaryReader reader, PacketScriptSpeaker speaker, byte param)
+        {
+            string rawText = ReadMapleString(reader);
+            string defaultText = ReadMapleString(reader);
+            IReadOnlyList<string> options = TryReadMapleStringList(reader, out IReadOnlyList<string> decodedOptions)
+                ? decodedOptions
+                : Array.Empty<string>();
+            List<NpcInteractionChoice> choices = options
+                .Select((option, index) => CreateNumericResponseChoice(
+                    $"{index + 1}. {NpcDialogueTextFormatter.Format(option)}",
+                    option,
+                    index))
+                .ToList();
+
+            return CreateEntry(
+                "Speed Quiz",
+                BuildSpeakerSubtitle(speaker, "AskSpeedQuiz", param),
+                rawText,
+                AppendMetadata(
+                    NpcDialogueTextFormatter.Format(rawText),
+                    string.IsNullOrWhiteSpace(defaultText) ? null : $"Default text: {FormatQuotedValue(defaultText)}",
+                    choices.Count == 0
+                        ? "Compact helper payload did not include explicit options."
+                        : $"Compact helper payload exposed {choices.Count} answer option(s).",
+                    "WZ data exposes `UIWindow(.img|2.img)/SpeedQuiz` with dedicated OK / Next / Give up controls."),
+                choices);
+        }
+
+        private static bool TryDecodeAskPetClientPacket(BinaryReader reader, PacketScriptSpeaker speaker, byte param, bool isPetAll, out NpcInteractionEntry entry)
+        {
+            long startPosition = reader.BaseStream.Position;
+            entry = null;
+            try
+            {
+                string rawText = ReadMapleString(reader);
+                if (!TryReadByte(reader, out byte count))
+                {
+                    reader.BaseStream.Position = startPosition;
+                    return false;
+                }
+
+                bool exceptionExists = isPetAll && reader.ReadByte() != 0;
+                List<long> petSerialNumbers = new(count);
+                for (int i = 0; i < count; i++)
+                {
+                    petSerialNumbers.Add(reader.ReadInt64());
+                    _ = reader.ReadByte();
+                }
+
+                entry = CreatePetSelectionEntry(
+                    speaker,
+                    param,
+                    isPetAll,
+                    rawText,
+                    exceptionExists,
+                    petSerialNumbers.Select((serialNumber, index) => new NpcInteractionChoice
+                    {
+                        Label = BuildPetChoiceLabel(serialNumber, index),
+                        SubmitSelection = true,
+                        SubmissionKind = NpcInteractionInputKind.None,
+                        SubmissionValue = serialNumber.ToString(),
+                        SubmissionNumericValue = null
+                    }).ToList(),
+                    petSerialNumbers.Count == 0
+                        ? "No pet options were decoded from the packet payload."
+                        : string.Join("\n", petSerialNumbers.Select((serialNumber, index) => $"{index + 1}. {DescribePetOption(serialNumber, index)}")));
+                return true;
+            }
+            catch (Exception ex) when (ex is EndOfStreamException || ex is IOException || ex is ArgumentException)
+            {
+                reader.BaseStream.Position = startPosition;
+                entry = null;
+                return false;
+            }
+        }
+
+        private static NpcInteractionEntry DecodeAskPetCompactPacket(BinaryReader reader, PacketScriptSpeaker speaker, byte param, bool isPetAll)
+        {
+            string rawText = ReadMapleString(reader);
+            if (!TryReadByte(reader, out byte count))
+            {
+                count = 0;
+            }
+
+            List<int> petItemIds = new(count);
+            for (int i = 0; i < count; i++)
+            {
+                petItemIds.Add(reader.ReadInt32());
+            }
+
+            return CreatePetSelectionEntry(
+                speaker,
+                param,
+                isPetAll,
+                rawText,
+                false,
+                petItemIds.Select((itemId, index) => new NpcInteractionChoice
+                {
+                    Label = BuildPetItemChoiceLabel(itemId, index),
+                    SubmitSelection = true,
+                    SubmissionKind = NpcInteractionInputKind.None,
+                    SubmissionValue = itemId.ToString(),
+                    SubmissionNumericValue = null
+                }).ToList(),
+                petItemIds.Count == 0
+                    ? "Compact helper payload did not decode any pet item ids."
+                    : string.Join("\n", petItemIds.Select((itemId, index) => $"{index + 1}. {DescribePetItemOption(itemId, index)}")));
+        }
+
+        private static NpcInteractionEntry CreatePetSelectionEntry(
+            PacketScriptSpeaker speaker,
+            byte param,
+            bool isPetAll,
+            string rawText,
+            bool exceptionExists,
+            IReadOnlyList<NpcInteractionChoice> choices,
+            string optionDetails)
+        {
+            return CreateEntry(
+                isPetAll ? "Pet Selection (All)" : "Pet Selection",
+                BuildSpeakerSubtitle(speaker, isPetAll ? "AskPetAll" : "AskPet", param),
+                rawText,
+                AppendMetadata(
+                    NpcDialogueTextFormatter.Format(rawText),
+                    optionDetails,
+                    isPetAll ? $"Multi-pet exception flag: {(exceptionExists ? 1 : 0)}." : null,
+                    "WZ data exposes packet-owned pet utility surfaces under `UIWindow(.img|2.img)/UtilDlgEx_Pet` and `UtilDlgEx_MultiPetEquip`."),
+                choices);
+        }
+
+        private static string BuildPetItemChoiceLabel(int itemId, int index)
+        {
+            return $"{index + 1}. {DescribePetItemOption(itemId, index)}";
+        }
+
+        private static string DescribePetItemOption(int itemId, int index)
+        {
+            if (itemId <= 0)
+            {
+                return $"Pet option {index + 1}";
+            }
+
+            string itemName = null;
+            if (HaCreator.Program.InfoManager?.ItemNameCache?.TryGetValue(itemId, out Tuple<string, string, string> itemInfo) == true)
+            {
+                itemName = itemInfo?.Item1;
+            }
+
+            itemName = string.IsNullOrWhiteSpace(itemName) ? $"Item {itemId}" : itemName.Trim();
+            return $"{itemName} ({itemId})";
+        }
+
+        private static bool TryDecodeAskSlideMenuClientPacket(BinaryReader reader, PacketScriptSpeaker speaker, byte param, out NpcInteractionEntry entry)
+        {
+            long startPosition = reader.BaseStream.Position;
+            entry = null;
+            try
+            {
+                int slideMenuType = reader.ReadInt32();
+                string buttonInfo = ReadMapleString(reader);
+                IReadOnlyList<string> options = SplitSlideMenuOptions(buttonInfo);
+                entry = CreateSlideMenuEntry(speaker, param, slideMenuType, buttonInfo, options, "Decoded");
+                return true;
+            }
+            catch (Exception ex) when (ex is EndOfStreamException || ex is IOException || ex is ArgumentException)
+            {
+                reader.BaseStream.Position = startPosition;
+                entry = null;
+                return false;
+            }
+        }
+
+        private static NpcInteractionEntry DecodeAskSlideMenuCompactPacket(BinaryReader reader, PacketScriptSpeaker speaker, byte param)
+        {
+            string rawText = ReadMapleString(reader);
+            byte slideMenuType = reader.ReadByte();
+            IReadOnlyList<string> options = TryReadMapleStringList(reader, out IReadOnlyList<string> decodedOptions)
+                ? decodedOptions
+                : Array.Empty<string>();
+            return CreateSlideMenuEntry(speaker, param, slideMenuType, rawText, options, "Compact helper payload exposed");
+        }
+
+        private static NpcInteractionEntry CreateSlideMenuEntry(
+            PacketScriptSpeaker speaker,
+            byte param,
+            int slideMenuType,
+            string rawText,
+            IReadOnlyList<string> options,
+            string decodedPrefix)
+        {
+            List<NpcInteractionChoice> choices = options
+                .Select((option, index) => CreateNumericResponseChoice(
+                    $"{index + 1}. {NpcDialogueTextFormatter.Format(option)}",
+                    $"index={index}",
+                    index))
+                .ToList();
+
+            return CreateEntry(
+                "Slide Menu",
+                BuildSpeakerSubtitle(speaker, "AskSlideMenu", param),
+                rawText,
+                AppendMetadata(
+                    string.IsNullOrWhiteSpace(rawText) ? "No slide-menu prompt string was decoded." : NpcDialogueTextFormatter.Format(rawText),
+                    choices.Count == 0
+                        ? $"Slide-menu type {slideMenuType} did not expose any options."
+                        : $"{decodedPrefix} {choices.Count} slide-menu option(s) for type {slideMenuType}.",
+                    "WZ data exposes authored slide-menu variants under `UIWindow(.img|2.img)/SlideMenu`."),
+                choices);
         }
 
         private static NpcInteractionEntry DecodeUnsupported(BinaryReader reader, PacketScriptSpeaker speaker, int messageType, byte param)

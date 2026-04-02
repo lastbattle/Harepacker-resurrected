@@ -333,7 +333,10 @@ namespace HaCreator.MapSimulator.Effects
                     participant.Build?.Clone(),
                     participant.MovementSnapshot,
                     participant.PortableChairItemId,
-                    participant.PortableChairPairCharacterId);
+                    participant.PortableChairPairCharacterId,
+                    participant.TemporaryStats,
+                    participant.AvatarModifiedState,
+                    participant.AvatarModifiedRevision);
                 return true;
             }
 
@@ -358,7 +361,10 @@ namespace HaCreator.MapSimulator.Effects
                     participant.Build?.Clone(),
                     participant.MovementSnapshot,
                     participant.PortableChairItemId,
-                    participant.PortableChairPairCharacterId));
+                    participant.PortableChairPairCharacterId,
+                    participant.TemporaryStats,
+                    participant.AvatarModifiedState,
+                    participant.AvatarModifiedRevision));
             }
 
             return snapshots;
@@ -384,7 +390,10 @@ namespace HaCreator.MapSimulator.Effects
                     participant.Build?.Clone(),
                     participant.MovementSnapshot,
                     participant.PortableChairItemId,
-                    participant.PortableChairPairCharacterId));
+                    participant.PortableChairPairCharacterId,
+                    participant.TemporaryStats,
+                    participant.AvatarModifiedState,
+                    participant.AvatarModifiedRevision));
             }
 
             return snapshots;
@@ -701,7 +710,10 @@ namespace HaCreator.MapSimulator.Effects
                 participant.Build?.Clone(),
                 participant.MovementSnapshot,
                 participant.PortableChairItemId,
-                participant.PortableChairPairCharacterId);
+                participant.PortableChairPairCharacterId,
+                participant.TemporaryStats,
+                participant.AvatarModifiedState,
+                participant.AvatarModifiedRevision);
             return true;
         }
 
@@ -807,13 +819,22 @@ namespace HaCreator.MapSimulator.Effects
 
             _audienceActors.Remove(actorName);
             _audienceActorNamesById.Remove(characterId);
-            TryConfigureParticipantActor(
+            if (TryConfigureParticipantActor(
                 characterId,
                 fallbackPosition ?? participant.Position,
                 participant.Build,
                 participant.FacingRight,
                 participant.ActionName,
-                out _);
+                out _)
+                && _participantActors.TryGetValue(characterId, out WeddingRemoteParticipant promotedParticipant))
+            {
+                promotedParticipant.TemporaryStats = participant.TemporaryStats;
+                if (participant.AvatarModifiedState.HasValue)
+                {
+                    promotedParticipant.AvatarModifiedState = participant.AvatarModifiedState;
+                    promotedParticipant.AvatarModifiedRevision = participant.AvatarModifiedRevision;
+                }
+            }
         }
 
         private bool TryApplyRemoteSpawnPacket(byte[] payload, out string errorMessage)
@@ -838,6 +859,11 @@ namespace HaCreator.MapSimulator.Effects
                 bool configured = TryConfigureParticipantActor(spawn.CharacterId, spawn.Position, build, facingRight, actionName, out errorMessage);
                 if (configured)
                 {
+                    if (_participantActors.TryGetValue(spawn.CharacterId, out WeddingRemoteParticipant participant))
+                    {
+                        participant.TemporaryStats = spawn.TemporaryStats;
+                    }
+
                     ApplyParticipantPortableChairState(spawn.CharacterId, spawn.PortableChairItemId, pairCharacterId: null);
                     QueueExternalRemoteActorLoad(spawn.CharacterId);
                 }
@@ -846,6 +872,11 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             UpsertAudienceParticipant(build, spawn.Position, facingRight, actionName, spawn.CharacterId);
+            if (TryGetAudienceActorById(spawn.CharacterId, out WeddingRemoteParticipant audienceParticipant))
+            {
+                audienceParticipant.TemporaryStats = spawn.TemporaryStats;
+            }
+
             ApplyParticipantPortableChairState(spawn.CharacterId, spawn.PortableChairItemId, pairCharacterId: null);
             QueueExternalRemoteActorLoad(spawn.CharacterId);
             return true;
@@ -971,14 +1002,29 @@ namespace HaCreator.MapSimulator.Effects
         private bool TryApplyRemoteAvatarModifiedPacket(byte[] payload, out string errorMessage)
         {
             errorMessage = null;
-            if (!TryDecodeRemoteAvatarModifiedPacket(payload, out WeddingRemoteAvatarModifiedPacket packet, out errorMessage))
+            if (!TryDecodeRemoteAvatarModifiedPacket(payload, out RemoteUserAvatarModifiedPacket packet, out errorMessage))
             {
                 return false;
             }
 
             if (packet.AvatarLook == null)
             {
-                return true;
+                if (_participantActors.TryGetValue(packet.CharacterId, out WeddingRemoteParticipant participantWithoutLook))
+                {
+                    StoreAvatarModifiedState(participantWithoutLook, packet);
+                    ApplyAvatarModifiedStateToBuild(participantWithoutLook.Build, packet);
+                    return true;
+                }
+
+                if (TryGetAudienceActorById(packet.CharacterId, out WeddingRemoteParticipant audienceWithoutLook))
+                {
+                    StoreAvatarModifiedState(audienceWithoutLook, packet);
+                    ApplyAvatarModifiedStateToBuild(audienceWithoutLook.Build, packet);
+                    return true;
+                }
+
+                errorMessage = $"Wedding remote actor id {packet.CharacterId} does not exist.";
+                return false;
             }
 
             if (packet.CharacterId == _groomId || packet.CharacterId == _brideId)
@@ -1001,7 +1047,14 @@ namespace HaCreator.MapSimulator.Effects
                     return false;
                 }
 
-                return TryConfigureParticipantActor(packet.CharacterId, position, build, facingRight, actionName, out errorMessage);
+                ApplyAvatarModifiedStateToBuild(build, packet);
+                bool configured = TryConfigureParticipantActor(packet.CharacterId, position, build, facingRight, actionName, out errorMessage);
+                if (configured && _participantActors.TryGetValue(packet.CharacterId, out WeddingRemoteParticipant participant))
+                {
+                    StoreAvatarModifiedState(participant, packet);
+                }
+
+                return configured;
             }
 
             if (!TryGetAudienceParticipantById(packet.CharacterId, out WeddingRemoteParticipantSnapshot audienceSnapshot))
@@ -1016,7 +1069,13 @@ namespace HaCreator.MapSimulator.Effects
                 return false;
             }
 
+            ApplyAvatarModifiedStateToBuild(audienceBuild, packet);
             UpsertAudienceParticipant(audienceBuild, audienceSnapshot.Position, audienceSnapshot.FacingRight, audienceSnapshot.ActionName, packet.CharacterId);
+            if (TryGetAudienceActorById(packet.CharacterId, out WeddingRemoteParticipant audienceParticipant))
+            {
+                StoreAvatarModifiedState(audienceParticipant, packet);
+            }
+
             ApplyParticipantPortableChairState(packet.CharacterId, audienceSnapshot.PortableChairItemId ?? 0, audienceSnapshot.PortableChairPairCharacterId);
             return true;
         }
@@ -1060,7 +1119,8 @@ namespace HaCreator.MapSimulator.Effects
                 spawn.AvatarLook,
                 new Vector2(spawn.X, spawn.Y),
                 EncodeMoveAction(spawn.FacingRight, spawn.ActionName, spawn.PortableChairItemId ?? 0),
-                spawn.PortableChairItemId ?? 0);
+                spawn.PortableChairItemId ?? 0,
+                spawn.TemporaryStats);
             return true;
         }
 
@@ -1134,70 +1194,30 @@ namespace HaCreator.MapSimulator.Effects
             return false;
         }
 
-        private static bool TryDecodeRemoteAvatarModifiedPacket(byte[] payload, out WeddingRemoteAvatarModifiedPacket packet, out string errorMessage)
+        private static bool TryDecodeRemoteAvatarModifiedPacket(byte[] payload, out RemoteUserAvatarModifiedPacket packet, out string errorMessage)
         {
-            packet = default;
-            errorMessage = null;
-            if (!TryCreatePacketReader(payload, PacketTypeAvatarModified, out PacketReader reader, out errorMessage))
+            return RemoteUserPacketCodec.TryParseAvatarModified(payload, out packet, out errorMessage);
+        }
+
+        private static void ApplyAvatarModifiedStateToBuild(CharacterBuild build, RemoteUserAvatarModifiedPacket packet)
+        {
+            if (build == null || !packet.Speed.HasValue)
             {
-                return false;
+                return;
             }
 
-            try
+            build.Speed = packet.Speed.Value;
+        }
+
+        private static void StoreAvatarModifiedState(WeddingRemoteParticipant participant, RemoteUserAvatarModifiedPacket packet)
+        {
+            if (participant == null)
             {
-                int characterId = reader.ReadInt();
-                byte flags = reader.ReadByte();
-                LoginAvatarLook avatarLook = null;
-
-                if ((flags & 0x01) != 0)
-                {
-                    if (!LoginAvatarLookCodec.TryDecode(reader, out avatarLook, out string avatarError))
-                    {
-                        errorMessage = avatarError ?? "Wedding remote avatar-modified packet could not decode AvatarLook.";
-                        return false;
-                    }
-                }
-
-                if ((flags & 0x02) != 0)
-                {
-                    reader.ReadByte();
-                }
-
-                if ((flags & 0x04) != 0)
-                {
-                    reader.ReadByte();
-                }
-
-                if (reader.ReadByte() != 0)
-                {
-                    reader.ReadLong();
-                    reader.ReadLong();
-                    reader.ReadInt();
-                }
-
-                if (reader.ReadByte() != 0)
-                {
-                    reader.ReadLong();
-                    reader.ReadLong();
-                    reader.ReadInt();
-                }
-
-                if (reader.ReadByte() != 0)
-                {
-                    reader.ReadInt();
-                    reader.ReadInt();
-                    reader.ReadInt();
-                }
-
-                reader.ReadInt();
-                packet = new WeddingRemoteAvatarModifiedPacket(characterId, avatarLook);
-                return true;
+                return;
             }
-            catch (EndOfStreamException)
-            {
-                errorMessage = "Wedding remote avatar-modified packet ended before decoding completed.";
-                return false;
-            }
+
+            participant.AvatarModifiedState = packet;
+            participant.AvatarModifiedRevision++;
         }
 
         private static bool TryCreatePacketReader(byte[] payload, int packetType, out PacketReader reader, out string errorMessage)
@@ -2658,7 +2678,10 @@ namespace HaCreator.MapSimulator.Effects
         CharacterBuild Build,
         PlayerMovementSyncSnapshot MovementSnapshot,
         int? PortableChairItemId,
-        int? PortableChairPairCharacterId);
+        int? PortableChairPairCharacterId,
+        RemoteUserTemporaryStatSnapshot TemporaryStats,
+        RemoteUserAvatarModifiedPacket? AvatarModifiedState,
+        int AvatarModifiedRevision);
 
     internal readonly record struct WeddingRemoteSpawnPacket(
         int CharacterId,
@@ -2666,7 +2689,8 @@ namespace HaCreator.MapSimulator.Effects
         LoginAvatarLook AvatarLook,
         Vector2 Position,
         byte MoveAction,
-        int PortableChairItemId);
+        int PortableChairItemId,
+        RemoteUserTemporaryStatSnapshot TemporaryStats);
 
     internal readonly record struct WeddingRemoteMovePacket(
         int CharacterId,
@@ -2675,9 +2699,6 @@ namespace HaCreator.MapSimulator.Effects
         PlayerMovementSyncSnapshot MovementSnapshot);
 
     internal readonly record struct WeddingRemoteChairPacket(int CharacterId, int PortableChairItemId, int? PairCharacterId);
-
-    internal readonly record struct WeddingRemoteAvatarModifiedPacket(int CharacterId, LoginAvatarLook AvatarLook);
-
 
     public sealed class WeddingRemoteParticipant
     {
@@ -2704,6 +2725,9 @@ namespace HaCreator.MapSimulator.Effects
         public PlayerMovementSyncSnapshot MovementSnapshot { get; set; }
         public int? PortableChairItemId { get; set; }
         public int? PortableChairPairCharacterId { get; set; }
+        public RemoteUserTemporaryStatSnapshot TemporaryStats { get; set; }
+        public RemoteUserAvatarModifiedPacket? AvatarModifiedState { get; set; }
+        public int AvatarModifiedRevision { get; set; }
         public bool MovementDrivenActionSelection { get; set; }
         public bool HasExplicitFacing { get; set; }
         public bool HasExplicitAction { get; set; }

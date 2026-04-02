@@ -6,6 +6,7 @@ using Microsoft.Xna.Framework.Input;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Runtime.InteropServices;
 
 namespace HaCreator.MapSimulator
 {
@@ -13,11 +14,21 @@ namespace HaCreator.MapSimulator
     {
         private const int PacketOwnedFuncKeyEntryCount = 89;
         private const int PacketOwnedFuncKeyPayloadSize = 1 + (PacketOwnedFuncKeyEntryCount * 5);
+        private const byte PacketOwnedFuncKeyFunctionType = 4;
+
+        private static readonly (int ClientFunctionId, InputAction Action)[] PacketOwnedSupportedFunctionBindings =
+        {
+            (0, InputAction.ToggleEquip),
+            (1, InputAction.ToggleInventory),
+            (2, InputAction.ToggleStats),
+            (3, InputAction.ToggleSkills),
+        };
 
         private readonly PacketOwnedFuncKeyConfigStore _packetOwnedFuncKeyConfigStore = new();
         private PacketOwnedFuncKeyMappedEntry[] _packetOwnedFuncKeyMapped = CreateEmptyPacketOwnedFuncKeyMap();
         private PacketOwnedFuncKeyMappedEntry[] _packetOwnedFuncKeyMappedOld = CreateEmptyPacketOwnedFuncKeyMap();
         private int _packetOwnedPetConsumeItemId;
+        private InventoryType _packetOwnedPetConsumeItemInventoryType = InventoryType.NONE;
         private int _packetOwnedPetConsumeMpItemId;
         private bool _packetOwnedFuncKeyConfigLoaded;
         private string _lastPacketOwnedFuncKeyInitMessage = "Packet-owned function-key init not applied yet.";
@@ -33,6 +44,9 @@ namespace HaCreator.MapSimulator
             public byte Type { get; }
             public int Id { get; }
         }
+
+        [DllImport("user32.dll", ExactSpelling = true)]
+        private static extern uint MapVirtualKey(uint uCode, uint uMapType);
 
         private static PacketOwnedFuncKeyMappedEntry[] CreateEmptyPacketOwnedFuncKeyMap()
         {
@@ -63,6 +77,7 @@ namespace HaCreator.MapSimulator
             }
 
             _packetOwnedPetConsumeItemId = Math.Max(0, snapshot.PetConsumeItemId);
+            _packetOwnedPetConsumeItemInventoryType = TryParsePersistedPacketOwnedInventoryType(snapshot.PetConsumeInventoryType);
             _packetOwnedPetConsumeMpItemId = Math.Max(0, snapshot.PetConsumeMpItemId);
 
             if (_playerManager?.Input != null && snapshot.SimulatorBindings?.Count > 0)
@@ -87,11 +102,15 @@ namespace HaCreator.MapSimulator
                 }
             }
 
+            int translatedBindings = ApplyPacketOwnedFuncKeyMappingsToLiveInput(_playerManager?.Input);
+
             _lastPacketOwnedFuncKeyInitMessage = string.Format(
                 CultureInfo.InvariantCulture,
-                "Loaded packet-owned function-key fallback config ({0} entries, pet HP {1}, pet MP {2}).",
+                "Loaded packet-owned function-key fallback config ({0} entries, translated {1} supported bindings, pet HP {2} [{3}], pet MP {4}).",
                 CountConfiguredPacketOwnedFuncKeyEntries(_packetOwnedFuncKeyMapped),
+                translatedBindings,
                 _packetOwnedPetConsumeItemId,
+                _packetOwnedPetConsumeItemInventoryType,
                 _packetOwnedPetConsumeMpItemId);
             ApplyPacketOwnedPetConsumeItemPreferenceToFieldHazard();
         }
@@ -107,6 +126,9 @@ namespace HaCreator.MapSimulator
             var snapshot = new PacketOwnedFuncKeyConfigStore.Snapshot
             {
                 PetConsumeItemId = Math.Max(0, _packetOwnedPetConsumeItemId),
+                PetConsumeInventoryType = _packetOwnedPetConsumeItemInventoryType == InventoryType.NONE
+                    ? string.Empty
+                    : _packetOwnedPetConsumeItemInventoryType.ToString(),
                 PetConsumeMpItemId = Math.Max(0, _packetOwnedPetConsumeMpItemId),
                 SimulatorBindings = PacketOwnedFuncKeyConfigStore.CreateBindingRecords(input ?? _playerManager?.Input)
             };
@@ -163,6 +185,7 @@ namespace HaCreator.MapSimulator
             }
 
             CopyPacketOwnedFuncKeyMap(_packetOwnedFuncKeyMapped, _packetOwnedFuncKeyMappedOld);
+            int translatedBindings = ApplyPacketOwnedFuncKeyMappingsToLiveInput(_playerManager?.Input);
             PersistPacketOwnedFuncKeyConfig();
 
             int configuredCount = CountConfiguredPacketOwnedFuncKeyEntries(_packetOwnedFuncKeyMapped);
@@ -171,9 +194,10 @@ namespace HaCreator.MapSimulator
                 : "packet payload";
             message = string.Format(
                 CultureInfo.InvariantCulture,
-                "Hydrated packet-owned function-key init from {0}: {1} configured entries, cleared {2} action-22 entries, persisted simulator key-config fallback.",
+                "Hydrated packet-owned function-key init from {0}: {1} configured entries, translated {2} supported bindings, cleared {3} action-22 entries, persisted simulator key-config fallback.",
                 source,
                 configuredCount,
+                translatedBindings,
                 clearedAction22Count);
             _lastPacketOwnedFuncKeyInitMessage = message;
             return true;
@@ -206,6 +230,9 @@ namespace HaCreator.MapSimulator
             else
             {
                 _packetOwnedPetConsumeItemId = Math.Max(0, resolvedItemId);
+                _packetOwnedPetConsumeItemInventoryType = resolvedItemId > 0
+                    ? ResolvePacketOwnedPetConsumeInventoryType(resolvedItemId, _packetOwnedPetConsumeItemInventoryType)
+                    : InventoryType.NONE;
                 ApplyPacketOwnedPetConsumeItemPreferenceToFieldHazard();
             }
 
@@ -228,9 +255,12 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            InventoryType inventoryType = ResolvePacketOwnedPetConsumeInventoryType(_packetOwnedPetConsumeItemId);
+            InventoryType inventoryType = ResolvePacketOwnedPetConsumeInventoryType(
+                _packetOwnedPetConsumeItemId,
+                _packetOwnedPetConsumeItemInventoryType);
             if (inventoryType != InventoryType.NONE)
             {
+                _packetOwnedPetConsumeItemInventoryType = inventoryType;
                 SetFieldHazardSharedPetConsumeItem(
                     _packetOwnedPetConsumeItemId,
                     inventoryType,
@@ -238,7 +268,7 @@ namespace HaCreator.MapSimulator
             }
         }
 
-        private InventoryType ResolvePacketOwnedPetConsumeInventoryType(int itemId)
+        private InventoryType ResolvePacketOwnedPetConsumeInventoryType(int itemId, InventoryType persistedInventoryType = InventoryType.NONE)
         {
             if (itemId <= 0)
             {
@@ -246,7 +276,12 @@ namespace HaCreator.MapSimulator
             }
 
             IInventoryRuntime inventoryWindow = uiWindowManager?.InventoryWindow as IInventoryRuntime;
-            InventoryType resolvedType = InventoryItemMetadataResolver.ResolveInventoryType(itemId);
+            InventoryType resolvedType = NormalizePacketOwnedPetConsumeInventoryType(persistedInventoryType);
+            if (resolvedType == InventoryType.NONE)
+            {
+                resolvedType = NormalizePacketOwnedPetConsumeInventoryType(InventoryItemMetadataResolver.ResolveInventoryType(itemId));
+            }
+
             if (resolvedType == InventoryType.USE || resolvedType == InventoryType.CASH)
             {
                 if (inventoryWindow == null || inventoryWindow.GetItemCount(resolvedType, itemId) > 0)
@@ -271,6 +306,100 @@ namespace HaCreator.MapSimulator
             return resolvedType == InventoryType.USE || resolvedType == InventoryType.CASH
                 ? resolvedType
                 : InventoryType.NONE;
+        }
+
+        private static InventoryType TryParsePersistedPacketOwnedInventoryType(string persistedInventoryType)
+        {
+            return Enum.TryParse(persistedInventoryType, ignoreCase: true, out InventoryType inventoryType)
+                ? NormalizePacketOwnedPetConsumeInventoryType(inventoryType)
+                : InventoryType.NONE;
+        }
+
+        private static InventoryType NormalizePacketOwnedPetConsumeInventoryType(InventoryType inventoryType)
+        {
+            return inventoryType == InventoryType.USE || inventoryType == InventoryType.CASH
+                ? inventoryType
+                : InventoryType.NONE;
+        }
+
+        private int ApplyPacketOwnedFuncKeyMappingsToLiveInput(PlayerInput input)
+        {
+            if (input == null)
+            {
+                return 0;
+            }
+
+            int appliedBindings = 0;
+            for (int i = 0; i < PacketOwnedSupportedFunctionBindings.Length; i++)
+            {
+                (int clientFunctionId, InputAction action) = PacketOwnedSupportedFunctionBindings[i];
+                if (!TryResolvePacketOwnedBindingKey(clientFunctionId, out Keys mappedKey))
+                {
+                    continue;
+                }
+
+                KeyBinding existingBinding = input.GetBinding(action);
+                if (existingBinding != null && existingBinding.PrimaryKey == mappedKey)
+                {
+                    continue;
+                }
+
+                input.SetBinding(
+                    action,
+                    mappedKey,
+                    existingBinding?.SecondaryKey ?? Keys.None,
+                    existingBinding?.GamepadButton ?? (Buttons)0);
+                appliedBindings++;
+            }
+
+            return appliedBindings;
+        }
+
+        private bool TryResolvePacketOwnedBindingKey(int clientFunctionId, out Keys key)
+        {
+            key = Keys.None;
+            if (clientFunctionId < 0)
+            {
+                return false;
+            }
+
+            for (int scanCode = 0; scanCode < _packetOwnedFuncKeyMapped.Length; scanCode++)
+            {
+                PacketOwnedFuncKeyMappedEntry entry = _packetOwnedFuncKeyMapped[scanCode];
+                if (entry.Type != PacketOwnedFuncKeyFunctionType || entry.Id != clientFunctionId)
+                {
+                    continue;
+                }
+
+                key = ResolvePacketOwnedScanCodeKey(scanCode);
+                return key != Keys.None;
+            }
+
+            return false;
+        }
+
+        private static Keys ResolvePacketOwnedScanCodeKey(int scanCode)
+        {
+            if (scanCode <= 0)
+            {
+                return Keys.None;
+            }
+
+            uint virtualKey = MapVirtualKey((uint)scanCode, 1);
+            if (virtualKey == 0)
+            {
+                return Keys.None;
+            }
+
+            return virtualKey switch
+            {
+                0x11u => Keys.LeftControl,
+                0x12u => Keys.LeftAlt,
+                0x10u => Keys.LeftShift,
+                0x5Bu or 0x5Cu => Keys.None,
+                0u => Keys.None,
+                _ => (Keys)virtualKey,
+            };
         }
 
         private static void CopyPacketOwnedFuncKeyMap(PacketOwnedFuncKeyMappedEntry[] source, PacketOwnedFuncKeyMappedEntry[] destination)

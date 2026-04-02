@@ -193,6 +193,9 @@ namespace HaCreator.MapSimulator.UI
 
         public override string WindowName => MapSimulatorWindowNames.AdminShopWishList;
         public override bool CapturesKeyboardInput => IsVisible;
+        public Action<AdminShopWishListUI> ShowCategoryAddOnRequested { get; set; }
+        public Action HideCategoryAddOnRequested { get; set; }
+        public Func<bool> IsCategoryAddOnVisible { get; set; }
 
         public IReadOnlyList<AdminShopDialogUI.WishlistCategoryNode> GetWishlistCategoryTree()
         {
@@ -212,7 +215,6 @@ namespace HaCreator.MapSimulator.UI
         public void OnCategoryAddOnClosed(string selectedCategoryKey, IEnumerable<string> expandedCategoryKeys, string message)
         {
             SyncCategoryAddOnState(selectedCategoryKey, expandedCategoryKeys, message);
-            _popupMode = PopupMode.None;
             UpdatePopupButtons();
         }
 
@@ -263,6 +265,7 @@ namespace HaCreator.MapSimulator.UI
             _compositionText = string.Empty;
             _popupMode = PopupMode.None;
             _statusMessage = $"CUIAdminShopWishList::OnCreate focused the search edit for {sourceDialog?.GetWishlistServiceName() ?? "cash-service"} browsing.";
+            HideCategoryAddOnRequested?.Invoke();
             PositionRelativeToSource(sourceDialog);
             Show();
         }
@@ -278,6 +281,7 @@ namespace HaCreator.MapSimulator.UI
 
         public override void Hide()
         {
+            HideCategoryAddOnRequested?.Invoke();
             base.Hide();
             _compositionText = string.Empty;
             _popupMode = PopupMode.None;
@@ -350,7 +354,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             bool leftJustPressed = mouseState.LeftButton == ButtonState.Pressed && _previousMouseState.LeftButton == ButtonState.Released;
-            if (_popupMode != PopupMode.None && leftJustPressed)
+            if (_popupMode == PopupMode.Results && leftJustPressed)
             {
                 if (GetScrollPrevBounds().Contains(mouseState.Position))
                 {
@@ -363,7 +367,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             int wheelDelta = mouseState.ScrollWheelValue - _previousMouseState.ScrollWheelValue;
-            if (_popupMode != PopupMode.None && wheelDelta != 0 && GetPopupBounds().Contains(mouseState.Position))
+            if (_popupMode == PopupMode.Results && wheelDelta != 0 && GetPopupBounds().Contains(mouseState.Position))
             {
                 ScrollActivePopup(wheelDelta > 0 ? -1 : 1);
             }
@@ -394,7 +398,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             Rectangle dragBounds = new Rectangle(Position.X, Position.Y - MainTitleBandHeight, CurrentFrame?.Width ?? 265, (CurrentFrame?.Height ?? 135) + MainTitleBandHeight);
-            if (_popupMode != PopupMode.None)
+            if (_popupMode == PopupMode.Results)
             {
                 dragBounds = Rectangle.Union(dragBounds, GetPopupBounds());
             }
@@ -411,8 +415,8 @@ namespace HaCreator.MapSimulator.UI
                     _dragStartOffset = new Point(mouseState.X - Position.X, mouseState.Y - Position.Y);
                 }
 
-                int maxWidth = _popupMode != PopupMode.None ? Math.Max(CurrentFrame?.Width ?? 265, _categoryPopupTexture?.Width ?? 264) : CurrentFrame?.Width ?? 265;
-                int maxHeight = _popupMode != PopupMode.None ? Math.Max(CurrentFrame?.Height ?? 135, CategoryPopupOffsetY + (_categoryPopupTexture?.Height ?? 274)) : CurrentFrame?.Height ?? 135;
+                int maxWidth = _popupMode == PopupMode.Results ? Math.Max(CurrentFrame?.Width ?? 265, _categoryPopupTexture?.Width ?? 264) : CurrentFrame?.Width ?? 265;
+                int maxHeight = _popupMode == PopupMode.Results ? Math.Max(CurrentFrame?.Height ?? 135, CategoryPopupOffsetY + (_categoryPopupTexture?.Height ?? 274)) : CurrentFrame?.Height ?? 135;
                 Position = new Point(
                     Math.Clamp(mouseState.X - _dragStartOffset.Value.X, 0, Math.Max(0, renderWidth - maxWidth)),
                     Math.Clamp(mouseState.Y - _dragStartOffset.Value.Y, MainTitleBandHeight, Math.Max(MainTitleBandHeight, renderHeight - maxHeight)));
@@ -450,11 +454,7 @@ namespace HaCreator.MapSimulator.UI
             sprite.DrawString(_font, TrimToWidth(GetSelectedPriceRangeLabel(), 172f), new Vector2(Position.X + PriceTextX, Position.Y + PriceTextY), new Color(50, 56, 94));
             sprite.DrawString(_font, TrimToWidth(_statusMessage, 224f), new Vector2(Position.X + StatusTextX, Position.Y + StatusTextY), new Color(255, 233, 160));
 
-            if (_popupMode == PopupMode.Category)
-            {
-                DrawCategoryPopup(sprite);
-            }
-            else if (_popupMode == PopupMode.Results)
+            if (_popupMode == PopupMode.Results)
             {
                 DrawResultsPopup(sprite);
             }
@@ -463,47 +463,10 @@ namespace HaCreator.MapSimulator.UI
         protected override IEnumerable<Rectangle> GetAdditionalInteractiveBounds()
         {
             yield return new Rectangle(Position.X, Position.Y - MainTitleBandHeight, CurrentFrame?.Width ?? 265, MainTitleBandHeight);
-            if (_popupMode != PopupMode.None)
+            if (_popupMode == PopupMode.Results)
             {
                 yield return GetPopupBounds();
             }
-        }
-
-        private void DrawCategoryPopup(SpriteBatch sprite)
-        {
-            Rectangle popupBounds = GetPopupBounds();
-            if (_categoryPopupTexture != null)
-            {
-                sprite.Draw(_categoryPopupTexture, popupBounds.Location.ToVector2(), Color.White);
-            }
-            else
-            {
-                sprite.Draw(_pixelTexture, popupBounds, new Color(74, 134, 186));
-            }
-
-            string header = TrimToWidth("CUIAdminShopWishListCategory", 184f);
-            sprite.DrawString(_font, header, new Vector2(popupBounds.X + CategoryListX, popupBounds.Y + PopupHeaderY), Color.White);
-            for (int row = 0; row < CategoryVisibleRows; row++)
-            {
-                int categoryIndex = _categoryScrollOffset + row;
-                if (categoryIndex >= _categoryRows.Count)
-                {
-                    break;
-                }
-
-                CategoryDisplayRow categoryRow = _categoryRows[categoryIndex];
-                Rectangle rowBounds = GetCategoryRowBounds(row);
-                bool selected = string.Equals(categoryRow.Node?.Key, _selectedCategoryKey, StringComparison.OrdinalIgnoreCase);
-                sprite.Draw(_pixelTexture, rowBounds, selected ? new Color(255, 255, 255, 120) : new Color(255, 255, 255, 40));
-                string prefix = categoryRow.HasChildren ? (categoryRow.IsExpanded ? "- " : "+ ") : "  ";
-                string label = prefix + new string(' ', categoryRow.Depth * 2) + categoryRow.Node.Label;
-                sprite.DrawString(_font, TrimToWidth(label, 182f), new Vector2(rowBounds.X + 6, rowBounds.Y + 2), selected ? new Color(40, 55, 96) : Color.White);
-            }
-
-            DrawPopupScrollBar(sprite);
-            string footer = $"Selected: {TrimToWidth(GetSelectedCategoryLabel(), 172f)}";
-            sprite.DrawString(_font, footer, new Vector2(popupBounds.X + 18, popupBounds.Y + CategoryPopupFooterY - 14), new Color(255, 233, 160));
-            sprite.DrawString(_font, "Left/Right collapse or expand. Enter confirms.", new Vector2(popupBounds.X + 18, popupBounds.Y + CategoryPopupFooterY), new Color(255, 233, 160));
         }
 
         private void DrawResultsPopup(SpriteBatch sprite)
@@ -586,11 +549,16 @@ namespace HaCreator.MapSimulator.UI
 
         private void HandleKeyboardInput(KeyboardState keyboardState)
         {
+            if (IsCategoryAddOnOpen())
+            {
+                return;
+            }
+
             if (WasPressed(keyboardState, Keys.Escape))
             {
-                if (_popupMode != PopupMode.None)
+                if (_popupMode == PopupMode.Results)
                 {
-                    ClosePopup(_popupMode == PopupMode.Results ? "Wish-list results closed." : "Wish-list category add-on closed.");
+                    ClosePopup("Wish-list results closed.");
                     return;
                 }
 
@@ -620,11 +588,6 @@ namespace HaCreator.MapSimulator.UI
             }
             else if (WasPressed(keyboardState, Keys.Space))
             {
-                if (_popupMode == PopupMode.Results)
-                {
-                    return;
-                }
-
                 ToggleAddOn();
                 return;
             }
@@ -659,48 +622,6 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            if (_popupMode == PopupMode.Category)
-            {
-                if (WasPressed(keyboardState, Keys.Up))
-                {
-                    MoveCategorySelection(-1);
-                }
-                else if (WasPressed(keyboardState, Keys.Down))
-                {
-                    MoveCategorySelection(1);
-                }
-                else if (WasPressed(keyboardState, Keys.PageUp))
-                {
-                    MoveCategorySelection(-CategoryVisibleRows);
-                }
-                else if (WasPressed(keyboardState, Keys.PageDown))
-                {
-                    MoveCategorySelection(CategoryVisibleRows);
-                }
-                else if (WasPressed(keyboardState, Keys.Home))
-                {
-                    SelectCategoryByRowIndex(0, true);
-                }
-                else if (WasPressed(keyboardState, Keys.End))
-                {
-                    SelectCategoryByRowIndex(_categoryRows.Count - 1, true);
-                }
-                else if (WasPressed(keyboardState, Keys.Left))
-                {
-                    CollapseSelectedCategoryOrMoveToParent();
-                }
-                else if (WasPressed(keyboardState, Keys.Right))
-                {
-                    ExpandSelectedCategoryOrMoveToFirstChild();
-                }
-                else if (WasPressed(keyboardState, Keys.Enter))
-                {
-                    ClosePopup($"Wish-list category set to {GetSelectedCategoryLabel()}.");
-                }
-
-                return;
-            }
-
             if (WasPressed(keyboardState, Keys.Left))
             {
                 CyclePriceRange(-1);
@@ -730,21 +651,30 @@ namespace HaCreator.MapSimulator.UI
 
         private void ToggleAddOn()
         {
-            if (_popupMode == PopupMode.Category)
+            if (IsCategoryAddOnOpen())
             {
-                _popupMode = PopupMode.None;
-                _statusMessage = "ToggleAddOn closed the wish-list category add-on.";
-                UpdatePopupButtons();
+                CloseCategoryAddOn();
                 return;
+            }
+
+            if (_popupMode == PopupMode.Results)
+            {
+                ClosePopup("Wish-list results closed.");
             }
 
             EnsureCategoryPathExpanded(_selectedCategoryKey);
             RefreshCategoryRows();
             EnsureSelectedCategoryVisible();
+            if (ShowCategoryAddOnRequested != null)
+            {
+                ShowCategoryAddOnRequested(this);
+                _statusMessage = "ToggleAddOn opened the wish-list category add-on.";
+                UpdatePopupButtons();
+                return;
+            }
+
             _popupMode = PopupMode.Category;
-            _statusMessage = _popupMode == PopupMode.Category
-                ? "ToggleAddOn opened the wish-list category add-on."
-                : "ToggleAddOn closed the wish-list category add-on.";
+            _statusMessage = "ToggleAddOn opened the wish-list category add-on.";
             UpdatePopupButtons();
         }
 
@@ -941,8 +871,39 @@ namespace HaCreator.MapSimulator.UI
         private void ClosePopup(string message)
         {
             _popupMode = PopupMode.None;
-            _statusMessage = message;
+            if (!string.IsNullOrWhiteSpace(message))
+            {
+                _statusMessage = message;
+            }
             UpdatePopupButtons();
+        }
+
+        private bool IsCategoryAddOnOpen()
+        {
+            if (IsCategoryAddOnVisible != null)
+            {
+                return IsCategoryAddOnVisible();
+            }
+
+            return _popupMode == PopupMode.Category;
+        }
+
+        private void CloseCategoryAddOn()
+        {
+            if (HideCategoryAddOnRequested != null)
+            {
+                HideCategoryAddOnRequested();
+                _statusMessage = "ToggleAddOn closed the wish-list category add-on.";
+                UpdatePopupButtons();
+                return;
+            }
+
+            if (_popupMode == PopupMode.Category)
+            {
+                _popupMode = PopupMode.None;
+                _statusMessage = "ToggleAddOn closed the wish-list category add-on.";
+                UpdatePopupButtons();
+            }
         }
 
         private void CyclePriceRange(int delta)

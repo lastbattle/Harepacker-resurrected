@@ -46,6 +46,52 @@ namespace HaCreator.MapSimulator.Managers
             };
         }
 
+        public static LoginAvatarLook CreateLook(CharacterBuild build)
+        {
+            if (build == null)
+            {
+                throw new ArgumentNullException(nameof(build));
+            }
+
+            return new LoginAvatarLook
+            {
+                Gender = build.Gender,
+                Skin = build.Skin,
+                FaceId = build.Face?.ItemId ?? 0,
+                HairId = build.Hair?.ItemId ?? 0,
+                VisibleEquipmentByBodyPart = CreateEquipmentMap(
+                    build.Equipment
+                        .Where(entry => entry.Value != null)
+                        .ToDictionary(entry => entry.Key, entry => entry.Value.ItemId)),
+                HiddenEquipmentByBodyPart = CreateEquipmentMap(
+                    build.HiddenEquipment
+                        .Where(entry => entry.Value != null)
+                        .ToDictionary(entry => entry.Key, entry => entry.Value.ItemId)),
+                WeaponStickerItemId = build.WeaponSticker?.ItemId ?? 0,
+                PetIds = NormalizePetIds(build.RemotePetItemIds)
+            };
+        }
+
+        public static LoginAvatarLook CloneLook(LoginAvatarLook look)
+        {
+            if (look == null)
+            {
+                return null;
+            }
+
+            return new LoginAvatarLook
+            {
+                Gender = look.Gender,
+                Skin = look.Skin,
+                FaceId = look.FaceId,
+                HairId = look.HairId,
+                VisibleEquipmentByBodyPart = CloneEquipmentMap(look.VisibleEquipmentByBodyPart),
+                HiddenEquipmentByBodyPart = CloneEquipmentMap(look.HiddenEquipmentByBodyPart),
+                WeaponStickerItemId = look.WeaponStickerItemId,
+                PetIds = NormalizePetIds(look.PetIds)
+            };
+        }
+
         public static byte[] Encode(CharacterBuild build)
         {
             if (build == null)
@@ -53,33 +99,7 @@ namespace HaCreator.MapSimulator.Managers
                 throw new ArgumentNullException(nameof(build));
             }
 
-            var equipmentBySlot = build.Equipment
-                .Where(entry => entry.Value != null)
-                .ToDictionary(entry => entry.Key, entry => entry.Value.ItemId);
-
-            LoginAvatarLook look = CreateLook(
-                build.Gender,
-                build.Skin,
-                build.Face?.ItemId ?? 0,
-                build.Hair?.ItemId ?? 0,
-                equipmentBySlot);
-
-            look = new LoginAvatarLook
-            {
-                Gender = look.Gender,
-                Skin = look.Skin,
-                FaceId = look.FaceId,
-                HairId = look.HairId,
-                VisibleEquipmentByBodyPart = look.VisibleEquipmentByBodyPart,
-                HiddenEquipmentByBodyPart = CreateEquipmentMap(
-                    build.HiddenEquipment
-                        .Where(entry => entry.Value != null)
-                        .ToDictionary(entry => entry.Key, entry => entry.Value.ItemId)),
-                WeaponStickerItemId = look.WeaponStickerItemId,
-                PetIds = look.PetIds
-            };
-
-            return Encode(look);
+            return Encode(CreateLook(build));
         }
 
         public static byte[] Encode(LoginAvatarLook look)
@@ -240,6 +260,13 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return equipmentByBodyPart;
+        }
+
+        private static IReadOnlyDictionary<byte, int> CloneEquipmentMap(IReadOnlyDictionary<byte, int> equipmentByBodyPart)
+        {
+            return equipmentByBodyPart == null
+                ? new Dictionary<byte, int>()
+                : new Dictionary<byte, int>(equipmentByBodyPart);
         }
 
         private static IReadOnlyList<int> NormalizePetIds(IEnumerable<int> petIds)

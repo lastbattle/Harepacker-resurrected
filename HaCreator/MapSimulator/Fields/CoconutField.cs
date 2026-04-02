@@ -366,6 +366,7 @@ namespace HaCreator.MapSimulator.Fields
                 _awaitingFinalScore = false;
                 _lastUpdateTime = now;
                 _lastScorePacketTick = null;
+                _hitQueue.Clear();
                 _pendingAttackPacketRequests.Clear();
                 ClearRoundResult();
             }

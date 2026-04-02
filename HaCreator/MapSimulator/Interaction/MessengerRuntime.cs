@@ -66,6 +66,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 _participants.Add(new MessengerParticipantState
                 {
+                    SlotIndex = 0,
                     Name = resolvedName,
                     LocationSummary = resolvedLocation,
                     Channel = resolvedChannel,
@@ -79,12 +80,13 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
-            MessengerParticipantState localPlayer = _participants[0];
+            MessengerParticipantState localPlayer = GetLocalParticipant();
             bool nameChanged = !string.Equals(localPlayer.Name, resolvedName, StringComparison.Ordinal);
             bool locationChanged = !string.Equals(localPlayer.LocationSummary, resolvedLocation, StringComparison.Ordinal)
                 || localPlayer.Channel != resolvedChannel;
 
-            _participants[0] = localPlayer with
+            int localParticipantIndex = FindParticipantIndex(localPlayer.Name);
+            _participants[localParticipantIndex] = localPlayer with
             {
                 Name = resolvedName,
                 LocationSummary = resolvedLocation,
@@ -111,13 +113,18 @@ namespace HaCreator.MapSimulator.Interaction
             var participants = new MessengerParticipantSnapshot[MaxParticipants];
             for (int i = 0; i < participants.Length; i++)
             {
-                participants[i] = i < _participants.Count
-                    ? _participants[i].ToSnapshot()
-                    : null;
+                participants[i] = null;
             }
 
-            MessengerParticipantState selectedParticipant =
-                _selectedSlot >= 0 && _selectedSlot < _participants.Count ? _participants[_selectedSlot] : null;
+            foreach (MessengerParticipantState participant in _participants)
+            {
+                if (participant?.SlotIndex >= 0 && participant.SlotIndex < participants.Length)
+                {
+                    participants[participant.SlotIndex] = participant.ToSnapshot();
+                }
+            }
+
+            MessengerParticipantState selectedParticipant = GetParticipantAtSlot(_selectedSlot);
 
             bool roomHasEmptySlot = _participants.Count < MaxParticipants;
             bool hasInvitableContact = _contacts.Values.Any(contact => contact.CanInvite && !ContainsParticipant(contact.Name));
@@ -158,10 +165,11 @@ namespace HaCreator.MapSimulator.Interaction
                 return Array.Empty<MessengerRemoteParticipantSnapshot>();
             }
 
-            List<MessengerRemoteParticipantSnapshot> snapshots = new(_participants.Count - 1);
-            for (int i = 1; i < _participants.Count; i++)
+            List<MessengerRemoteParticipantSnapshot> snapshots = new(Math.Max(0, _participants.Count - 1));
+            foreach (MessengerParticipantState participant in _participants
+                         .Where(candidate => candidate is { IsLocalPlayer: false })
+                         .OrderBy(candidate => candidate.SlotIndex))
             {
-                MessengerParticipantState participant = _participants[i];
                 snapshots.Add(new MessengerRemoteParticipantSnapshot(
                     participant.Name,
                     participant.LocationSummary,
@@ -418,12 +426,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         public string WhisperSelected(string message)
         {
-            if (_selectedSlot < 0 || _selectedSlot >= _participants.Count)
+            MessengerParticipantState participant = GetParticipantAtSlot(_selectedSlot);
+            if (participant == null)
             {
                 return "Select a Messenger member before whispering.";
             }
-
-            MessengerParticipantState participant = _participants[_selectedSlot];
             if (participant.IsLocalPlayer)
             {
                 return "Select another Messenger member before whispering.";
@@ -477,7 +484,7 @@ namespace HaCreator.MapSimulator.Interaction
             AddParticipantLog(participant.Name, resolvedMessage, isWhisper: true, targetName: localPlayerName);
             SetParticipantBubble(participant.Name, resolvedMessage, Environment.TickCount);
             NotifySocialChatObserved(resolvedMessage);
-            _selectedSlot = participantIndex;
+            _selectedSlot = participant.SlotIndex;
             _lastActionSummary = $"Received a Messenger whisper from {participant.Name}.";
             StartBlink(Environment.TickCount);
             RecordPacketSummary($"Applied simulated Messenger whisper packet from {participant.Name}.");
@@ -505,7 +512,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Type a Messenger message before sending.";
             }
 
-            string author = _participants.Count > 0 ? _participants[0].Name : "Player";
+            string author = GetLocalParticipant()?.Name ?? "Player";
             AddParticipantLog(author, resolvedMessage);
             SetParticipantBubble(author, resolvedMessage, Environment.TickCount);
             NotifySocialChatObserved(resolvedMessage);
@@ -547,7 +554,7 @@ namespace HaCreator.MapSimulator.Interaction
             AddParticipantLog(participant.Name, resolvedMessage);
             SetParticipantBubble(participant.Name, resolvedMessage, Environment.TickCount);
             NotifySocialChatObserved(resolvedMessage);
-            _selectedSlot = participantIndex;
+            _selectedSlot = participant.SlotIndex;
             _lastActionSummary = $"Received a Messenger room message from {participant.Name}.";
             StartBlink(Environment.TickCount);
             RecordPacketSummary($"Applied simulated Messenger room-chat packet from {participant.Name}.");
@@ -571,7 +578,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Messenger only has your local simulator profile right now.";
             }
 
-            MessengerParticipantState localPlayer = _participants[0];
+            MessengerParticipantState localPlayer = GetLocalParticipant();
             _participants.Clear();
             _participants.Add(localPlayer);
             _selectedSlot = 0;
@@ -649,7 +656,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             MessengerParticipantState participant = _participants[participantIndex];
             _participants.RemoveAt(participantIndex);
-            _selectedSlot = Math.Clamp(_selectedSlot, 0, Math.Max(0, _participants.Count - 1));
+            _selectedSlot = ResolveSelectedSlotAfterRosterMutation();
 
             _lastActionSummary = rejectedInvite
                 ? $"{participant.Name} rejected the Messenger room and stayed out."
@@ -940,6 +947,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             var participant = new MessengerParticipantState
             {
+                SlotIndex = FindFirstEmptyRemoteSlot(),
                 Name = contact.Name,
                 LocationSummary = contact.LocationSummary,
                 Channel = contact.Channel,
@@ -952,7 +960,7 @@ namespace HaCreator.MapSimulator.Interaction
             };
 
             _participants.Add(participant);
-            _selectedSlot = _participants.Count - 1;
+            _selectedSlot = participant.SlotIndex;
             _lastActionSummary = joinedViaIncomingInvite
                 ? $"Joined {contact.Name}'s Messenger room."
                 : packetDriven
@@ -1052,17 +1060,17 @@ namespace HaCreator.MapSimulator.Interaction
 
         private MessengerParticipantState GetAutoReplyParticipant()
         {
-            if (_selectedSlot > 0 && _selectedSlot < _participants.Count)
+            MessengerParticipantState selectedParticipant = GetParticipantAtSlot(_selectedSlot);
+            if (selectedParticipant is { IsLocalPlayer: false, IsOnline: true })
             {
-                return _participants[_selectedSlot];
+                return selectedParticipant;
             }
 
-            for (int i = 1; i < _participants.Count; i++)
+            foreach (MessengerParticipantState participant in _participants
+                         .Where(candidate => candidate is { IsLocalPlayer: false, IsOnline: true })
+                         .OrderBy(candidate => candidate.SlotIndex))
             {
-                if (!_participants[i].IsLocalPlayer && _participants[i].IsOnline)
-                {
-                    return _participants[i];
-                }
+                return participant;
             }
 
             return null;
@@ -1204,6 +1212,70 @@ namespace HaCreator.MapSimulator.Interaction
             return -1;
         }
 
+        private int FindParticipantIndexBySlot(int slotIndex)
+        {
+            for (int i = 0; i < _participants.Count; i++)
+            {
+                if (_participants[i].SlotIndex == slotIndex)
+                {
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+
+        private MessengerParticipantState GetParticipantAtSlot(int slotIndex)
+        {
+            int participantIndex = FindParticipantIndexBySlot(slotIndex);
+            return participantIndex >= 0 ? _participants[participantIndex] : null;
+        }
+
+        private MessengerParticipantState GetLocalParticipant()
+        {
+            MessengerParticipantState localParticipant = _participants.FirstOrDefault(candidate => candidate.IsLocalPlayer);
+            if (localParticipant != null)
+            {
+                return localParticipant;
+            }
+
+            if (_participants.Count == 0)
+            {
+                return null;
+            }
+
+            return _participants[0];
+        }
+
+        private int FindFirstEmptyRemoteSlot()
+        {
+            for (int slotIndex = 1; slotIndex < MaxParticipants; slotIndex++)
+            {
+                if (FindParticipantIndexBySlot(slotIndex) < 0)
+                {
+                    return slotIndex;
+                }
+            }
+
+            return -1;
+        }
+
+        private int ResolveSelectedSlotAfterRosterMutation()
+        {
+            if (GetParticipantAtSlot(_selectedSlot) != null)
+            {
+                return _selectedSlot;
+            }
+
+            if (GetParticipantAtSlot(0) != null)
+            {
+                return 0;
+            }
+
+            MessengerParticipantState firstParticipant = _participants.OrderBy(candidate => candidate.SlotIndex).FirstOrDefault();
+            return firstParticipant?.SlotIndex ?? 0;
+        }
+
         private void ResolveDeleteGate()
         {
             _deleteEligibleTick = int.MinValue;
@@ -1219,7 +1291,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (_participants.Count > 1)
             {
-                MessengerParticipantState localPlayer = _participants[0];
+                MessengerParticipantState localPlayer = GetLocalParticipant();
                 _participants.Clear();
                 _participants.Add(localPlayer);
                 _selectedSlot = 0;
@@ -1307,9 +1379,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string ApplyPacketAvatar(MessengerAvatarPacket packet)
         {
-            int participantIndex = packet.SlotIndex >= 0 && packet.SlotIndex < _participants.Count
-                ? packet.SlotIndex
-                : -1;
+            int participantIndex = FindParticipantIndexBySlot(Math.Clamp(packet.SlotIndex, 0, MaxParticipants - 1));
             if (participantIndex < 0)
             {
                 return $"Messenger avatar packet slot {packet.SlotIndex} is not active.";
@@ -1337,12 +1407,15 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string ApplyPacketEnter(MessengerEnterPacket packet)
         {
-            int participantIndex = FindParticipantIndex(packet.ContactName);
-            if (participantIndex < 0 && _participants.Count >= MaxParticipants)
+            string resolvedName = NormalizeParticipantName(packet.ContactName);
+            if (resolvedName == null)
             {
-                return $"Messenger enter packet could not add {packet.ContactName} because the room is full.";
+                return "Messenger enter packet contact name is empty.";
             }
 
+            int targetSlot = Math.Clamp(packet.SlotIndex, 0, MaxParticipants - 1);
+            int participantIndex = FindParticipantIndex(resolvedName);
+            int slotOccupantIndex = FindParticipantIndexBySlot(targetSlot);
             string statusText = packet.IsOnline ? "Online" : "Offline";
             const string dataSourceLabel = "packet";
 
@@ -1351,6 +1424,7 @@ namespace HaCreator.MapSimulator.Interaction
                 MessengerParticipantState existingParticipant = _participants[participantIndex];
                 _participants[participantIndex] = existingParticipant with
                 {
+                    SlotIndex = existingParticipant.IsLocalPlayer ? existingParticipant.SlotIndex : targetSlot,
                     Channel = packet.Channel,
                     StatusText = packet.IsOnline
                         ? (string.Equals(existingParticipant.StatusText, "Offline", StringComparison.OrdinalIgnoreCase)
@@ -1361,14 +1435,28 @@ namespace HaCreator.MapSimulator.Interaction
                     AvatarLook = packet.AvatarLook ?? existingParticipant.AvatarLook,
                     DataSourceLabel = dataSourceLabel
                 };
+
+                if (slotOccupantIndex >= 0 && slotOccupantIndex != participantIndex && !_participants[slotOccupantIndex].IsLocalPlayer)
+                {
+                    _participants.RemoveAt(slotOccupantIndex);
+                    participantIndex = FindParticipantIndex(resolvedName);
+                }
             }
             else
             {
-                int resolvedSlotIndex = Math.Clamp(packet.SlotIndex, 0, MaxParticipants - 1);
-                participantIndex = Math.Min(_participants.Count, Math.Max(1, resolvedSlotIndex));
-                _participants.Insert(participantIndex, new MessengerParticipantState
+                if (slotOccupantIndex >= 0 && !_participants[slotOccupantIndex].IsLocalPlayer)
                 {
-                    Name = packet.ContactName,
+                    _participants.RemoveAt(slotOccupantIndex);
+                }
+                else if (_participants.Count >= MaxParticipants)
+                {
+                    return $"Messenger enter packet could not add {resolvedName} because the room is full.";
+                }
+
+                _participants.Add(new MessengerParticipantState
+                {
+                    SlotIndex = targetSlot == 0 ? FindFirstEmptyRemoteSlot() : targetSlot,
+                    Name = resolvedName,
                     LocationSummary = "Field",
                     Channel = packet.Channel,
                     StatusText = statusText,
@@ -1379,9 +1467,10 @@ namespace HaCreator.MapSimulator.Interaction
                     AvatarLook = packet.AvatarLook,
                     DataSourceLabel = dataSourceLabel
                 });
+                participantIndex = FindParticipantIndex(resolvedName);
             }
 
-            if (_contacts.TryGetValue(packet.ContactName, out MessengerContactState contact))
+            if (_contacts.TryGetValue(resolvedName, out MessengerContactState contact))
             {
                 contact.IsOnline = packet.IsOnline;
                 contact.AcceptsInvites = packet.IsOnline;
@@ -1391,13 +1480,15 @@ namespace HaCreator.MapSimulator.Interaction
                 SyncParticipantFromContact(contact);
             }
 
-            _selectedSlot = Math.Clamp(participantIndex, 0, Math.Max(0, _participants.Count - 1));
-            _lastActionSummary = $"Applied decoded Messenger enter packet for {packet.ContactName} at slot {packet.SlotIndex}.";
+            _selectedSlot = GetParticipantAtSlot(targetSlot)?.Name == resolvedName
+                ? targetSlot
+                : _participants[participantIndex].SlotIndex;
+            _lastActionSummary = $"Applied decoded Messenger enter packet for {resolvedName} at slot {packet.SlotIndex}.";
             AddSystemLog(_lastActionSummary);
             StartBlink(Environment.TickCount);
             RecordPacketSummary(packet.AvatarLook != null
-                ? $"Decoded Messenger enter packet for {packet.ContactName}, slot {packet.SlotIndex}, CH {packet.Channel}, with AvatarLook."
-                : $"Decoded Messenger enter packet for {packet.ContactName}, slot {packet.SlotIndex}, CH {packet.Channel}.");
+                ? $"Decoded Messenger enter packet for {resolvedName}, slot {packet.SlotIndex}, CH {packet.Channel}, with AvatarLook."
+                : $"Decoded Messenger enter packet for {resolvedName}, slot {packet.SlotIndex}, CH {packet.Channel}.");
             return _lastActionSummary;
         }
 
@@ -1408,7 +1499,7 @@ namespace HaCreator.MapSimulator.Interaction
                 UpdateLocalContext("Player", "Field", 1);
             }
 
-            MessengerParticipantState localPlayer = _participants[0];
+            MessengerParticipantState localPlayer = GetLocalParticipant();
             _participants.Clear();
             _participants.Add(localPlayer);
 
@@ -1421,6 +1512,7 @@ namespace HaCreator.MapSimulator.Interaction
                     continue;
                 }
 
+                int targetSlot = Math.Clamp(participantPacket.SlotIndex, 0, MaxParticipants - 1);
                 if (_participants.Count >= MaxParticipants)
                 {
                     break;
@@ -1450,8 +1542,18 @@ namespace HaCreator.MapSimulator.Interaction
                     level = contact.Level;
                 }
 
+                if (targetSlot == 0)
+                {
+                    targetSlot = FindFirstEmptyRemoteSlot();
+                    if (targetSlot < 0)
+                    {
+                        break;
+                    }
+                }
+
                 _participants.Add(new MessengerParticipantState
                 {
+                    SlotIndex = targetSlot,
                     Name = resolvedName,
                     LocationSummary = locationSummary,
                     Channel = participantPacket.Channel,
@@ -1465,7 +1567,7 @@ namespace HaCreator.MapSimulator.Interaction
                 });
             }
 
-            _selectedSlot = Math.Clamp(_selectedSlot, 0, Math.Max(0, _participants.Count - 1));
+            _selectedSlot = ResolveSelectedSlotAfterRosterMutation();
             _lastActionSummary = $"Applied decoded Messenger migrated packet with {_participants.Count - 1} remote participant(s).";
             AddSystemLog(_lastActionSummary);
             StartBlink(Environment.TickCount);
@@ -1479,6 +1581,11 @@ namespace HaCreator.MapSimulator.Interaction
                 ? "Applied decoded Messenger self-enter result packet: join succeeded."
                 : "Applied decoded Messenger self-enter result packet: join failed.";
             AddSystemLog(_lastActionSummary);
+            if (packet.Succeeded && packet.SlotIndex >= 0 && packet.SlotIndex < MaxParticipants)
+            {
+                _selectedSlot = packet.SlotIndex;
+            }
+            StartBlink(Environment.TickCount);
             RecordPacketSummary(packet.Succeeded
                 ? "Decoded Messenger self-enter result packet: success."
                 : "Decoded Messenger self-enter result packet: failure.");
@@ -1532,6 +1639,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             string[] occupants = _participants
+                .OrderBy(participant => participant.SlotIndex)
                 .Where(participant => !string.IsNullOrWhiteSpace(participant.Name))
                 .Select(participant => participant.Name)
                 .ToArray();
@@ -1673,6 +1781,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private sealed record MessengerParticipantState
         {
+            public int SlotIndex { get; init; }
             public string Name { get; init; } = string.Empty;
             public string LocationSummary { get; init; } = string.Empty;
             public int Channel { get; init; }

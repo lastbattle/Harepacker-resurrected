@@ -14,7 +14,7 @@ using AnimationFrame = HaCreator.MapSimulator.UI.CharacterSelectWindow.Animation
 
 namespace HaCreator.MapSimulator.UI
 {
-    public abstract class LoginCreateCharacterWindowBase : UIWindowBase
+    public abstract class LoginCreateCharacterWindowBase : UIWindowBase, ISoftKeyboardHost
     {
         private static readonly Point StageBasePosition = new(220, 180);
         private static readonly Point RaceStatusPosition = new(224, 420);
@@ -45,6 +45,7 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Color SelectionOutlineColor = new(255, 236, 176);
         private static readonly Color MutedTextColor = new(188, 188, 188);
         private static readonly Color StatusTextColor = new(238, 226, 193);
+        private const int NameMaxLength = 13;
 
         private readonly Dictionary<LoginCreateCharacterRaceKind, Dictionary<LoginCreateCharacterStage, Texture2D>> _framesByRaceAndStage;
         private readonly IReadOnlyList<Texture2D> _jobTextures;
@@ -59,6 +60,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly UIObject _checkButton;
         private readonly string _windowName;
         private readonly LoginCreateCharacterStage _fixedStage;
+        private readonly Texture2D _pixelTexture;
         private SpriteFont _font;
         private IReadOnlyList<string> _raceLabels = Array.Empty<string>();
         private int _selectedRaceIndex;
@@ -73,6 +75,9 @@ namespace HaCreator.MapSimulator.UI
         private int[] _avatarIndices = new int[8];
         private CharacterGender _gender = CharacterGender.Male;
         private KeyboardState _previousKeyboardState;
+        private bool _softKeyboardActive;
+        private string _compositionText = string.Empty;
+        private ImeCandidateListState _candidateListState = ImeCandidateListState.Empty;
 
         protected LoginCreateCharacterWindowBase(
             IDXObject frame,
@@ -107,6 +112,11 @@ namespace HaCreator.MapSimulator.UI
             _diceFrames = diceFrames ?? Array.Empty<AnimationFrame>();
             _leftArrowTexture = leftArrowTexture;
             _rightArrowTexture = rightArrowTexture;
+            if (frame?.Texture?.GraphicsDevice != null)
+            {
+                _pixelTexture = new Texture2D(frame.Texture.GraphicsDevice, 1, 1);
+                _pixelTexture.SetData(new[] { Color.White });
+            }
 
             _confirmButton = confirmButton;
             if (_confirmButton != null)
@@ -133,6 +143,11 @@ namespace HaCreator.MapSimulator.UI
         public override string WindowName => _windowName;
         public override bool SupportsDragging => false;
         public override bool CapturesKeyboardInput => true;
+        bool ISoftKeyboardHost.WantsSoftKeyboard => IsVisible && _fixedStage == LoginCreateCharacterStage.NameSelect && _softKeyboardActive;
+        SoftKeyboardKeyboardType ISoftKeyboardHost.SoftKeyboardKeyboardType => SoftKeyboardKeyboardType.AlphaNumeric;
+        int ISoftKeyboardHost.SoftKeyboardTextLength => _displayName?.Length ?? 0;
+        int ISoftKeyboardHost.SoftKeyboardMaxLength => NameMaxLength;
+        bool ISoftKeyboardHost.CanSubmitSoftKeyboard => IsNameInputEditable && !string.IsNullOrWhiteSpace(_displayName);
 
         public event Action<int> RaceSelected;
         public event Action<int> JobSelected;
@@ -180,6 +195,12 @@ namespace HaCreator.MapSimulator.UI
 
             _previewBuild = previewBuild;
             _previewAssembler = previewBuild != null ? new CharacterAssembler(previewBuild) : null;
+            if (!IsNameInputEditable)
+            {
+                _softKeyboardActive = false;
+                ClearCompositionText();
+            }
+
             ConfigureButtons();
         }
 
@@ -190,6 +211,8 @@ namespace HaCreator.MapSimulator.UI
             KeyboardState keyboardState = Keyboard.GetState();
             if (_fixedStage != LoginCreateCharacterStage.NameSelect || !IsVisible)
             {
+                _softKeyboardActive = false;
+                ClearCompositionText();
                 _previousKeyboardState = keyboardState;
                 return;
             }
@@ -206,25 +229,8 @@ namespace HaCreator.MapSimulator.UI
 
             if (Pressed(keyboardState, Keys.Back) && _displayName.Length > 0)
             {
-                NameChanged?.Invoke(_displayName[..^1]);
-            }
-
-            bool shift = keyboardState.IsKeyDown(Keys.LeftShift) || keyboardState.IsKeyDown(Keys.RightShift);
-            foreach (Keys key in Enumerable.Range((int)Keys.A, 26).Select(value => (Keys)value))
-            {
-                if (Pressed(keyboardState, key))
-                {
-                    char character = (char)('a' + (key - Keys.A));
-                    AppendNameCharacter(shift ? char.ToUpperInvariant(character) : character);
-                }
-            }
-
-            foreach (Keys key in Enumerable.Range((int)Keys.D0, 10).Select(value => (Keys)value))
-            {
-                if (Pressed(keyboardState, key))
-                {
-                    AppendNameCharacter((char)('0' + (key - Keys.D0)));
-                }
+                ClearCompositionText();
+                RemoveLastNameCharacter();
             }
 
             _previousKeyboardState = keyboardState;
@@ -279,7 +285,24 @@ namespace HaCreator.MapSimulator.UI
 
         public override bool CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState, MouseCursorItem mouseCursor, int renderWidth, int renderHeight)
         {
-            if (base.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState, mouseCursor, renderWidth, renderHeight))
+            bool handled = base.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState, mouseCursor, renderWidth, renderHeight);
+            if (!IsVisible)
+            {
+                return handled;
+            }
+
+            if (_fixedStage == LoginCreateCharacterStage.NameSelect && handled && mouseState.LeftButton == ButtonState.Pressed)
+            {
+                Point handledLocalPoint = new(mouseState.X - Position.X, mouseState.Y - Position.Y);
+                if (!GetLocalNameInputBounds().Contains(handledLocalPoint))
+                {
+                    _softKeyboardActive = false;
+                }
+
+                return true;
+            }
+
+            if (handled)
             {
                 return true;
             }
@@ -333,6 +356,18 @@ namespace HaCreator.MapSimulator.UI
                     mouseCursor?.SetMouseCursorMovedToClickableItem();
                     return true;
                 }
+            }
+            else if (_fixedStage == LoginCreateCharacterStage.NameSelect)
+            {
+                Rectangle nameInputBounds = GetLocalNameInputBounds();
+                if (nameInputBounds.Contains(localPoint))
+                {
+                    _softKeyboardActive = true;
+                    mouseCursor?.SetMouseCursorMovedToClickableItem();
+                    return true;
+                }
+
+                _softKeyboardActive = false;
             }
             else if (_fixedStage == LoginCreateCharacterStage.AvatarSelect)
             {
@@ -440,7 +475,6 @@ namespace HaCreator.MapSimulator.UI
         {
             DrawNameDisplay(sprite);
             IReadOnlyList<Texture2D> enabledTextures = ResolveAvatarTextures(_avatarEnabledTexturesByRace);
-            IReadOnlyList<Texture2D> disabledTextures = ResolveAvatarTextures(_avatarDisabledTexturesByRace);
             Point stageOrigin = GetStageOrigin();
 
             for (int i = 0; i < _avatarIndices.Length; i++)
@@ -449,16 +483,23 @@ namespace HaCreator.MapSimulator.UI
                 Texture2D labelTexture = i < enabledTextures.Count
                     ? enabledTextures[i]
                     : null;
-                Texture2D disabledTexture = i < disabledTextures.Count
-                    ? disabledTextures[i]
-                    : null;
-                sprite.Draw(disabledTexture ?? labelTexture, new Vector2(rowBounds.X, rowBounds.Y), Color.White);
+                if (labelTexture != null)
+                {
+                    sprite.Draw(labelTexture, new Vector2(rowBounds.X, rowBounds.Y), Color.White);
+                }
                 DrawArrowTexture(sprite, _leftArrowTexture, new Vector2(Position.X + stageOrigin.X + AvatarListBounds.X, rowBounds.Y));
                 DrawArrowTexture(sprite, _rightArrowTexture, new Vector2(Position.X + stageOrigin.X + AvatarListBounds.X + 210, rowBounds.Y));
                 DrawAvatarValueLabel(sprite, i, rowBounds);
             }
 
             Rectangle genderBounds = new(Position.X + stageOrigin.X + AvatarListBounds.X, Position.Y + stageOrigin.Y + AvatarListBounds.Y + (_avatarIndices.Length * 18), AvatarListBounds.Width, 17);
+            Texture2D genderTexture = _avatarIndices.Length < enabledTextures.Count
+                ? enabledTextures[_avatarIndices.Length]
+                : null;
+            if (genderTexture != null)
+            {
+                sprite.Draw(genderTexture, new Vector2(genderBounds.X, genderBounds.Y), Color.White);
+            }
             DrawArrowTexture(sprite, _leftArrowTexture, new Vector2(Position.X + stageOrigin.X + AvatarListBounds.X, genderBounds.Y));
             DrawArrowTexture(sprite, _rightArrowTexture, new Vector2(Position.X + stageOrigin.X + AvatarListBounds.X + 210, genderBounds.Y));
             SelectorWindowDrawing.DrawShadowedText(
@@ -502,19 +543,19 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawNameEntry(SpriteBatch sprite)
         {
-            Point stageOrigin = GetStageOrigin();
-            Rectangle inputBounds = new(Position.X + stageOrigin.X + NameInputBounds.X, Position.Y + stageOrigin.Y + NameInputBounds.Y, NameInputBounds.Width, NameInputBounds.Height);
+            Rectangle inputBounds = GetNameInputBounds();
             DrawSelection(sprite, inputBounds);
-            string text = string.IsNullOrWhiteSpace(_displayName) ? "Type a name" : _displayName;
+            string text = BuildVisibleNameText();
             SelectorWindowDrawing.DrawShadowedText(
                 sprite,
                 _font,
                 text,
                 new Vector2(inputBounds.X + 6, inputBounds.Y + 4),
-                string.IsNullOrWhiteSpace(_displayName) ? MutedTextColor : Color.White);
+                string.IsNullOrWhiteSpace(_displayName) && string.IsNullOrEmpty(_compositionText) ? MutedTextColor : Color.White);
 
             if (!string.IsNullOrWhiteSpace(_checkedName))
             {
+                Point stageOrigin = GetStageOrigin();
                 SelectorWindowDrawing.DrawShadowedText(
                     sprite,
                     _font,
@@ -522,6 +563,8 @@ namespace HaCreator.MapSimulator.UI
                     new Vector2(Position.X + stageOrigin.X + 34, Position.Y + stageOrigin.Y + 130),
                     new Color(145, 232, 145));
             }
+
+            DrawImeCandidateWindow(sprite);
         }
 
         private void DrawPreview(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, int tickCount)
@@ -697,20 +740,315 @@ namespace HaCreator.MapSimulator.UI
             DrawArrowLabel(sprite, position, ">");
         }
 
-        private void AppendNameCharacter(char character)
+        public override void HandleCommittedText(string text)
         {
-            if (!char.IsLetterOrDigit(character) && character != '-' && character != '_')
+            if (!IsNameInputEditable || string.IsNullOrEmpty(text))
             {
                 return;
             }
 
-            if (_displayName.Length >= 13)
+            ClearCompositionText();
+            foreach (char character in text)
+            {
+                TryInsertNameCharacter(character);
+            }
+        }
+
+        public override void HandleCompositionText(string text)
+        {
+            HandleCompositionState(new ImeCompositionState(text ?? string.Empty, Array.Empty<int>(), -1));
+        }
+
+        public override void HandleCompositionState(ImeCompositionState state)
+        {
+            if (!IsNameInputEditable)
+            {
+                ClearCompositionText();
+                return;
+            }
+
+            string sanitized = SanitizeNameCompositionText(state?.Text);
+            if (sanitized.Length == 0)
+            {
+                ClearCompositionText();
+                return;
+            }
+
+            int availableLength = Math.Max(0, NameMaxLength - (_displayName?.Length ?? 0));
+            if (availableLength <= 0)
+            {
+                ClearCompositionText();
+                return;
+            }
+
+            _compositionText = sanitized.Length > availableLength
+                ? sanitized[..availableLength]
+                : sanitized;
+        }
+
+        public override void ClearCompositionText()
+        {
+            _compositionText = string.Empty;
+            ClearImeCandidateList();
+        }
+
+        public override void HandleImeCandidateList(ImeCandidateListState state)
+        {
+            _candidateListState = IsNameInputEditable && state != null && state.HasCandidates
+                ? state
+                : ImeCandidateListState.Empty;
+        }
+
+        public override void ClearImeCandidateList()
+        {
+            _candidateListState = ImeCandidateListState.Empty;
+        }
+
+        Rectangle ISoftKeyboardHost.GetSoftKeyboardAnchorBounds() => GetNameInputBounds();
+
+        bool ISoftKeyboardHost.TryInsertSoftKeyboardCharacter(char character, out string errorMessage)
+        {
+            errorMessage = string.Empty;
+            if (!IsNameInputEditable)
+            {
+                errorMessage = "This owner is not editable right now.";
+                return false;
+            }
+
+            if (!TryInsertNameCharacter(character))
+            {
+                errorMessage = "That key is disabled for this field.";
+                return false;
+            }
+
+            return true;
+        }
+
+        bool ISoftKeyboardHost.TryBackspaceSoftKeyboard(out string errorMessage)
+        {
+            errorMessage = string.Empty;
+            if (!SoftKeyboardUI.CanBackspace(_displayName?.Length ?? 0))
+            {
+                errorMessage = "Nothing to remove.";
+                return false;
+            }
+
+            RemoveLastNameCharacter();
+            return true;
+        }
+
+        bool ISoftKeyboardHost.TrySubmitSoftKeyboard(out string errorMessage)
+        {
+            errorMessage = string.Empty;
+            if (!IsNameInputEditable || string.IsNullOrWhiteSpace(_displayName))
+            {
+                errorMessage = "Enter a character name first.";
+                return false;
+            }
+
+            _softKeyboardActive = false;
+            DuplicateCheckRequested?.Invoke();
+            return true;
+        }
+
+        void ISoftKeyboardHost.OnSoftKeyboardClosed()
+        {
+            _softKeyboardActive = false;
+        }
+
+        private void AppendNameCharacter(char character)
+        {
+            if (!IsNameInputEditable)
             {
                 return;
+            }
+
+            TryInsertNameCharacter(character);
+        }
+
+        private bool TryInsertNameCharacter(char character)
+        {
+            if (!CanAcceptNameCharacter(character))
+            {
+                return false;
             }
 
             NameChanged?.Invoke(_displayName + character);
+            return true;
         }
+
+        private void RemoveLastNameCharacter()
+        {
+            if (!SoftKeyboardUI.CanBackspace(_displayName?.Length ?? 0))
+            {
+                return;
+            }
+
+            NameChanged?.Invoke(_displayName[..^1]);
+        }
+
+        private bool CanAcceptNameCharacter(char character)
+        {
+            return SoftKeyboardUI.CanAcceptCharacter(
+                SoftKeyboardKeyboardType.AlphaNumeric,
+                _displayName?.Length ?? 0,
+                NameMaxLength,
+                character);
+        }
+
+        private string SanitizeNameCompositionText(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return string.Empty;
+            }
+
+            List<char> accepted = new(text.Length);
+            foreach (char character in text)
+            {
+                if (!SoftKeyboardUI.CanAcceptCharacter(
+                        SoftKeyboardKeyboardType.AlphaNumeric,
+                        (_displayName?.Length ?? 0) + accepted.Count,
+                        NameMaxLength,
+                        character))
+                {
+                    continue;
+                }
+
+                accepted.Add(character);
+                if ((_displayName?.Length ?? 0) + accepted.Count >= NameMaxLength)
+                {
+                    break;
+                }
+            }
+
+            return accepted.Count == 0
+                ? string.Empty
+                : new string(accepted.ToArray());
+        }
+
+        private string BuildVisibleNameText()
+        {
+            if (string.IsNullOrWhiteSpace(_displayName) && string.IsNullOrEmpty(_compositionText))
+            {
+                return "Type a name";
+            }
+
+            string text = _displayName ?? string.Empty;
+            if (!string.IsNullOrEmpty(_compositionText))
+            {
+                text += _compositionText;
+            }
+
+            if (((Environment.TickCount / 350) % 2) == 0)
+            {
+                text += "|";
+            }
+
+            return text;
+        }
+
+        private Rectangle GetLocalNameInputBounds()
+        {
+            Point stageOrigin = GetStageOrigin();
+            return new Rectangle(
+                stageOrigin.X + NameInputBounds.X,
+                stageOrigin.Y + NameInputBounds.Y,
+                NameInputBounds.Width,
+                NameInputBounds.Height);
+        }
+
+        private Rectangle GetNameInputBounds()
+        {
+            Rectangle bounds = GetLocalNameInputBounds();
+            bounds.Offset(Position);
+            return bounds;
+        }
+
+        private void DrawImeCandidateWindow(SpriteBatch sprite)
+        {
+            if (_font == null || _pixelTexture == null || !_candidateListState.HasCandidates || !IsNameInputEditable)
+            {
+                return;
+            }
+
+            Rectangle bounds = GetImeCandidateWindowBounds(sprite.GraphicsDevice.Viewport);
+            if (bounds.Width <= 0 || bounds.Height <= 0)
+            {
+                return;
+            }
+
+            sprite.Draw(_pixelTexture, bounds, new Color(33, 33, 41, 235));
+            sprite.Draw(_pixelTexture, new Rectangle(bounds.X, bounds.Y, bounds.Width, 1), new Color(214, 214, 214, 220));
+            sprite.Draw(_pixelTexture, new Rectangle(bounds.X, bounds.Bottom - 1, bounds.Width, 1), new Color(214, 214, 214, 220));
+            sprite.Draw(_pixelTexture, new Rectangle(bounds.X, bounds.Y, 1, bounds.Height), new Color(214, 214, 214, 220));
+            sprite.Draw(_pixelTexture, new Rectangle(bounds.Right - 1, bounds.Y, 1, bounds.Height), new Color(214, 214, 214, 220));
+
+            int start = Math.Clamp(_candidateListState.PageStart, 0, _candidateListState.Candidates.Count);
+            int count = Math.Min(GetVisibleCandidateCount(), _candidateListState.Candidates.Count - start);
+            int rowHeight = Math.Max(_font.LineSpacing + 1, 16);
+            int numberWidth = (int)Math.Ceiling(_font.MeasureString($"{Math.Max(1, count)}.").X);
+            for (int i = 0; i < count; i++)
+            {
+                int candidateIndex = start + i;
+                string numberText = $"{i + 1}.";
+                Rectangle rowBounds = new(bounds.X + 2, bounds.Y + 2 + (i * rowHeight), bounds.Width - 4, rowHeight);
+                bool selected = candidateIndex == _candidateListState.Selection;
+                if (selected)
+                {
+                    sprite.Draw(_pixelTexture, rowBounds, new Color(89, 108, 147, 220));
+                }
+
+                sprite.DrawString(_font, numberText, new Vector2(rowBounds.X + 4, rowBounds.Y), selected ? Color.White : new Color(222, 222, 222));
+                sprite.DrawString(
+                    _font,
+                    _candidateListState.Candidates[candidateIndex] ?? string.Empty,
+                    new Vector2(rowBounds.X + 8 + numberWidth, rowBounds.Y),
+                    selected ? Color.White : new Color(240, 235, 200));
+            }
+        }
+
+        private Rectangle GetImeCandidateWindowBounds(Viewport viewport)
+        {
+            int visibleCount = GetVisibleCandidateCount();
+            if (visibleCount <= 0 || _font == null)
+            {
+                return Rectangle.Empty;
+            }
+
+            Rectangle ownerBounds = GetNameInputBounds();
+            int widestEntryWidth = 0;
+            for (int i = 0; i < visibleCount; i++)
+            {
+                int candidateIndex = Math.Clamp(_candidateListState.PageStart + i, 0, _candidateListState.Candidates.Count - 1);
+                string candidateText = _candidateListState.Candidates[candidateIndex] ?? string.Empty;
+                int entryWidth = (int)Math.Ceiling(_font.MeasureString($"{i + 1}.").X + _font.MeasureString(candidateText).X) + 16;
+                widestEntryWidth = Math.Max(widestEntryWidth, entryWidth);
+            }
+
+            int width = Math.Max(96, widestEntryWidth + 14);
+            int height = (visibleCount * Math.Max(_font.LineSpacing + 1, 16)) + 4;
+            int x = Math.Clamp(ownerBounds.X, 0, Math.Max(0, viewport.Width - width));
+            int y = ownerBounds.Bottom + 2;
+            if (y + height > viewport.Height)
+            {
+                y = Math.Max(0, ownerBounds.Y - height - 2);
+            }
+
+            return new Rectangle(x, y, width, height);
+        }
+
+        private int GetVisibleCandidateCount()
+        {
+            if (!_candidateListState.HasCandidates)
+            {
+                return 0;
+            }
+
+            return Math.Clamp(_candidateListState.PageSize > 0 ? _candidateListState.PageSize : _candidateListState.Candidates.Count, 1, _candidateListState.Candidates.Count);
+        }
+
+        private bool IsNameInputEditable => IsVisible && _fixedStage == LoginCreateCharacterStage.NameSelect;
 
         private bool Pressed(KeyboardState keyboardState, Keys key)
         {

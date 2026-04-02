@@ -2503,6 +2503,22 @@ namespace HaCreator.MapSimulator.Character
             return gender == CharacterGender.Male ? DefaultMaleHairId : DefaultFemaleHairId;
         }
 
+        public int ResolveLoginStarterHairId(CharacterGender gender, int hairStyleId, int hairColorValue)
+        {
+            int exactHairId = NormalizeHairStyleId(hairStyleId) + Math.Max(0, hairColorValue);
+            if (LoadHair(exactHairId) != null)
+            {
+                return exactHairId;
+            }
+
+            if (LoadHair(hairStyleId) != null)
+            {
+                return hairStyleId;
+            }
+
+            return gender == CharacterGender.Male ? DefaultMaleHairId : DefaultFemaleHairId;
+        }
+
         public CharacterBuild LoadLoginStarterBuild(
             CharacterGender gender,
             SkinColor skin,

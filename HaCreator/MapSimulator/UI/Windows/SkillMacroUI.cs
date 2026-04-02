@@ -141,6 +141,7 @@ namespace HaCreator.MapSimulator.UI
         private string _validationMessage = string.Empty;
         private string _ownerNoticeMessage = string.Empty;
         private Color _ownerNoticeColor = Color.White;
+        private bool _nameFieldFocused;
         private int _editingCursorPosition;
         private int _caretBlinkTick;
         private string _compositionText = string.Empty;
@@ -172,7 +173,7 @@ namespace HaCreator.MapSimulator.UI
 
         #region Properties
         public override string WindowName => "SkillMacro";
-        public override bool CapturesKeyboardInput => IsVisible && _editingMacroIndex >= 0;
+        public override bool CapturesKeyboardInput => IsVisible && _editingMacroIndex >= 0 && _nameFieldFocused;
         public bool IsDraggingSkillSlot => _dragMode == MacroDragMode.Skill;
         public bool IsDraggingMacroBinding => _dragMode == MacroDragMode.MacroBinding;
         public int DraggedMacroIndex => IsDraggingMacroBinding ? _dragMacroIndex : -1;
@@ -431,6 +432,7 @@ namespace HaCreator.MapSimulator.UI
             _editingMacroName = string.Empty;
             _notifyPartyMembers = false;
             _validationMessage = string.Empty;
+            _nameFieldFocused = false;
             ClearOwnerNotice();
             _editingCursorPosition = 0;
             _caretBlinkTick = Environment.TickCount;
@@ -617,7 +619,7 @@ namespace HaCreator.MapSimulator.UI
                     Color.White);
             }
 
-            if (((Environment.TickCount - _caretBlinkTick) / 500) % 2 == 0)
+            if (_nameFieldFocused && ((Environment.TickCount - _caretBlinkTick) / 500) % 2 == 0)
             {
                 float caretOffset = prefixWidth;
                 if (compositionText.Length > 0)
@@ -940,6 +942,7 @@ namespace HaCreator.MapSimulator.UI
 
             _editingMacroIndex = index;
             _editingMacroName = _macros[index].Name ?? "";
+            _nameFieldFocused = false;
             _editingCursorPosition = _editingMacroName.Length;
             _notifyPartyMembers = _macros[index].NotifyParty;
             _validationMessage = string.Empty;
@@ -1003,6 +1006,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            SetNameFieldFocus(true);
             _softKeyboardVisible = true;
             if (resetDismissedState)
             {
@@ -1028,7 +1032,27 @@ namespace HaCreator.MapSimulator.UI
             _softKeyboardShift = false;
         }
 
-        private bool IsSoftKeyboardVisible => _softKeyboardVisible && _editingMacroIndex >= 0;
+        private bool IsSoftKeyboardVisible => _softKeyboardVisible && _editingMacroIndex >= 0 && _nameFieldFocused;
+
+        private void SetNameFieldFocus(bool focused)
+        {
+            if (_nameFieldFocused == focused)
+            {
+                if (focused)
+                {
+                    _caretBlinkTick = Environment.TickCount;
+                }
+
+                return;
+            }
+
+            _nameFieldFocused = focused;
+            _caretBlinkTick = Environment.TickCount;
+            if (!focused)
+            {
+                ClearCompositionText();
+            }
+        }
 
         private Point GetSoftKeyboardPosition()
         {
@@ -1412,18 +1436,20 @@ namespace HaCreator.MapSimulator.UI
             {
                 if (leftButton && IsPointInNameField(mouseX, mouseY))
                 {
-                    ClearCompositionText();
+                    ShowSoftKeyboard(resetDismissedState: true);
                     ClearOwnerNotice();
                     _editingCursorPosition = ResolveNameCursorFromMouse(mouseX);
                     _caretBlinkTick = Environment.TickCount;
-                    ShowSoftKeyboard(resetDismissedState: true);
                 }
-
-                // Check checkbox
-                if (_editingMacroIndex >= 0 && IsPointInCheckbox(mouseX, mouseY) && leftButton)
+                else if (_editingMacroIndex >= 0 && IsPointInCheckbox(mouseX, mouseY) && leftButton)
                 {
+                    SetNameFieldFocus(false);
                     _notifyPartyMembers = !_notifyPartyMembers;
                     ClearOwnerNotice();
+                }
+                else if (leftButton)
+                {
+                    SetNameFieldFocus(false);
                 }
                 return;
             }
@@ -1432,6 +1458,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (rightButton && skillSlot >= 0)
             {
+                SetNameFieldFocus(false);
                 // Right-click to clear skill slot
                 ClearMacroSkill(macroIndex, skillSlot);
             }
@@ -1439,6 +1466,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 if (skillSlot >= 0)
                 {
+                    SetNameFieldFocus(false);
                     int skillId = _macros[macroIndex].SkillIds[skillSlot];
                     if (skillId > 0)
                     {
@@ -1451,12 +1479,14 @@ namespace HaCreator.MapSimulator.UI
                 }
                 else if (_selectedMacroIndex == macroIndex && _macros[macroIndex].IsEnabled)
                 {
+                    SetNameFieldFocus(false);
                     _dragMode = MacroDragMode.MacroBinding;
                     _dragMacroIndex = macroIndex;
                     _dragPosition = new Vector2(mouseX, mouseY);
                 }
                 else
                 {
+                    SetNameFieldFocus(false);
                     SelectedMacroIndex = macroIndex;
                 }
             }
@@ -2080,8 +2110,8 @@ namespace HaCreator.MapSimulator.UI
 
             int start = Math.Clamp(_candidateListState.PageStart, 0, _candidateListState.Candidates.Count);
             int count = Math.Min(visibleCount, _candidateListState.Candidates.Count - start);
-            int viewportWidth = Math.Max(1, viewport.Width);
-            int viewportHeight = Math.Max(1, viewport.Height);
+            int viewportWidth = Math.Max(1, Math.Min(viewport.Width, SkillMacroImeCandidateWindowLayout.ClientViewportWidth));
+            int viewportHeight = Math.Max(1, Math.Min(viewport.Height, SkillMacroImeCandidateWindowLayout.ClientViewportHeight));
             int width;
             int height;
             if (_candidateListState.Vertical)
@@ -2096,19 +2126,20 @@ namespace HaCreator.MapSimulator.UI
                     widestEntryWidth = Math.Max(widestEntryWidth, entryWidth);
                 }
 
-                width = widestEntryWidth + _font.LineSpacing + 7;
-                if (widestEntryWidth > 266)
-                {
-                    width = Math.Min(viewportWidth, 800);
-                }
-
-                int rowHeight = GetClientCandidateRowHeight();
-                height = (GetCandidatePageSize() * rowHeight) + 3;
+                SkillMacroImeCandidateWindowMetrics metrics = SkillMacroImeCandidateWindowLayout.MeasureVertical(
+                    _font.LineSpacing,
+                    GetCandidatePageSize(),
+                    widestEntryWidth);
+                width = metrics.Width;
+                height = metrics.Height;
             }
             else
             {
-                width = GetHorizontalCandidateWindowWidth();
-                height = _font.LineSpacing + 10;
+                SkillMacroImeCandidateWindowMetrics metrics = SkillMacroImeCandidateWindowLayout.MeasureHorizontal(
+                    _font.LineSpacing,
+                    GetCandidatePageSize());
+                width = metrics.Width;
+                height = metrics.Height;
             }
 
             width = Math.Max(64, Math.Min(viewportWidth, width));
@@ -2211,29 +2242,17 @@ namespace HaCreator.MapSimulator.UI
 
         private int GetClientCandidateRowHeight()
         {
-            return _font.LineSpacing + 1;
+            return SkillMacroImeCandidateWindowLayout.MeasureVertical(_font.LineSpacing, 1, 0).RowHeight;
         }
 
         private int GetHorizontalCandidateCellWidth()
         {
-            if (_font == null || !_candidateListState.HasCandidates)
+            if (_font == null)
             {
-                return 28;
+                return SkillMacroImeCandidateWindowLayout.MeasureHorizontal(10, 1).CellWidth;
             }
 
-            int start = Math.Clamp(_candidateListState.PageStart, 0, _candidateListState.Candidates.Count);
-            int count = Math.Min(GetVisibleCandidateCount(), _candidateListState.Candidates.Count - start);
-            int widestCell = 0;
-            for (int i = 0; i < count; i++)
-            {
-                int candidateIndex = start + i;
-                string numberText = $"{i + 1}.";
-                string candidateText = _candidateListState.Candidates[candidateIndex] ?? string.Empty;
-                int cellWidth = (int)Math.Ceiling(_font.MeasureString(numberText).X + _font.MeasureString(candidateText).X) + 10;
-                widestCell = Math.Max(widestCell, cellWidth);
-            }
-
-            return Math.Max(2 * (_font.LineSpacing + 4), widestCell);
+            return SkillMacroImeCandidateWindowLayout.MeasureHorizontal(_font.LineSpacing, 1).CellWidth;
         }
 
         private int GetHorizontalCandidateWindowWidth()
@@ -2244,7 +2263,7 @@ namespace HaCreator.MapSimulator.UI
                 return 64;
             }
 
-            return (GetHorizontalCandidateCellWidth() * pageSize) + 4;
+            return SkillMacroImeCandidateWindowLayout.MeasureHorizontal(_font.LineSpacing, pageSize).Width;
         }
 
         private int GetCandidateNumberWidth()

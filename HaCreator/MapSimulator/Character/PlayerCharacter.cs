@@ -2347,8 +2347,9 @@ namespace HaCreator.MapSimulator.Character
         private bool ShouldHideRotateSensitiveAvatarEffect()
         {
             return ClientOwnedAvatarEffectParity.ShouldHideDuringPlayerAction(
+                _forcedActionName,
                 CurrentActionName,
-                State == PlayerState.Attacking ? _forcedActionName : null);
+                CharacterPart.GetActionString(CurrentAction));
         }
 
         private static bool HasSkillAvatarEffectAnimationForMode(SkillAvatarEffectState effectState, SkillAvatarEffectMode mode)
@@ -3247,12 +3248,12 @@ namespace HaCreator.MapSimulator.Character
             int adjustedY = screenY - frame.FeetOffset;
 
             DrawMirrorImage(spriteBatch, skeletonRenderer, frame, screenX, screenY, currentTime);
-            DrawShadowPartner(spriteBatch, skeletonRenderer, screenX, screenY, currentTime);
             DrawAvatarEffectPlane(spriteBatch, skeletonRenderer, avatarEffects, SkillAvatarEffectPlane.BehindCharacter, screenX, screenY, tint);
             DrawMeleeAfterImage(spriteBatch, skeletonRenderer, screenX, screenY, tint, currentTime);
 
             int underFaceInsertionIndex = GetUnderFaceInsertionIndex(frame.Parts);
             bool underFaceDrawn = avatarEffects.Count == 0;
+            bool shadowPartnerDrawn = false;
 
             for (int i = 0; i < frame.Parts.Count; i++)
             {
@@ -3263,6 +3264,12 @@ namespace HaCreator.MapSimulator.Character
                     underFaceDrawn = true;
                 }
 
+                if (!shadowPartnerDrawn && i == underFaceInsertionIndex)
+                {
+                    DrawShadowPartner(spriteBatch, skeletonRenderer, screenX, screenY, currentTime);
+                    shadowPartnerDrawn = true;
+                }
+
                 DrawAssembledPart(spriteBatch, skeletonRenderer, frame.Parts[i], screenX, adjustedY, FacingRight, tint);
             }
 
@@ -3270,6 +3277,11 @@ namespace HaCreator.MapSimulator.Character
             {
                 drawUnderFaceOverlay?.Invoke();
                 DrawAvatarEffectPlane(spriteBatch, skeletonRenderer, avatarEffects, SkillAvatarEffectPlane.UnderFace, screenX, screenY, tint);
+            }
+
+            if (!shadowPartnerDrawn)
+            {
+                DrawShadowPartner(spriteBatch, skeletonRenderer, screenX, screenY, currentTime);
             }
 
             DrawAvatarEffectPlane(spriteBatch, skeletonRenderer, avatarEffects, SkillAvatarEffectPlane.OverCharacter, screenX, screenY, tint);
@@ -5000,15 +5012,20 @@ namespace HaCreator.MapSimulator.Character
 
         public Point? TryGetCurrentBodyOrigin(int currentTime)
         {
+            AssembledFrame frame = TryGetCurrentFrame(currentTime);
+            return frame == null
+                ? null
+                : new Point((int)X, (int)Y - frame.FeetOffset);
+        }
+
+        public AssembledFrame TryGetCurrentFrame(int currentTime)
+        {
             if (Assembler == null)
             {
                 return null;
             }
 
-            AssembledFrame frame = Assembler.GetFrameAtTime(CurrentActionName, GetRenderAnimationTime(currentTime));
-            return frame == null
-                ? null
-                : new Point((int)X, (int)Y - frame.FeetOffset);
+            return Assembler.GetFrameAtTime(CurrentActionName, GetRenderAnimationTime(currentTime));
         }
 
         public Point? TryGetCurrentBodyMapPoint(string mapPointName, int currentTime)
@@ -5018,7 +5035,7 @@ namespace HaCreator.MapSimulator.Character
                 return null;
             }
 
-            AssembledFrame frame = Assembler.GetFrameAtTime(CurrentActionName, GetRenderAnimationTime(currentTime));
+            AssembledFrame frame = TryGetCurrentFrame(currentTime);
             if (frame == null || !frame.MapPoints.TryGetValue(mapPointName, out Point localPoint))
             {
                 return null;
@@ -5031,12 +5048,7 @@ namespace HaCreator.MapSimulator.Character
 
         public Rectangle? TryGetCurrentFrameBounds(int currentTime)
         {
-            if (Assembler == null)
-            {
-                return null;
-            }
-
-            AssembledFrame frame = Assembler.GetFrameAtTime(CurrentActionName, GetRenderAnimationTime(currentTime));
+            AssembledFrame frame = TryGetCurrentFrame(currentTime);
             return frame == null || frame.Bounds.IsEmpty
                 ? null
                 : frame.Bounds;
@@ -6087,6 +6099,7 @@ namespace HaCreator.MapSimulator.Character
                 "shoot1",
                 "shoot2",
                 "shootF",
+                "shotC1",
                 "proneStab"
             };
 
@@ -6136,6 +6149,10 @@ namespace HaCreator.MapSimulator.Character
                    || actionName.IndexOf("stab", StringComparison.OrdinalIgnoreCase) >= 0
                    || actionName.IndexOf("swing", StringComparison.OrdinalIgnoreCase) >= 0
                    || actionName.IndexOf("shoot", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("shot", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("spear", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("rain", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("break", StringComparison.OrdinalIgnoreCase) >= 0
                    || actionName.IndexOf("leap", StringComparison.OrdinalIgnoreCase) >= 0
                    || actionName.IndexOf("smash", StringComparison.OrdinalIgnoreCase) >= 0
                    || actionName.IndexOf("panic", StringComparison.OrdinalIgnoreCase) >= 0
@@ -6173,7 +6190,11 @@ namespace HaCreator.MapSimulator.Character
             if (string.Equals(actionName, "fist", StringComparison.OrdinalIgnoreCase)
                 || actionName.IndexOf("stab", StringComparison.OrdinalIgnoreCase) >= 0
                 || actionName.IndexOf("swing", StringComparison.OrdinalIgnoreCase) >= 0
-                || actionName.IndexOf("shoot", StringComparison.OrdinalIgnoreCase) >= 0)
+                || actionName.IndexOf("shoot", StringComparison.OrdinalIgnoreCase) >= 0
+                || actionName.IndexOf("shot", StringComparison.OrdinalIgnoreCase) >= 0
+                || actionName.IndexOf("spear", StringComparison.OrdinalIgnoreCase) >= 0
+                || actionName.IndexOf("rain", StringComparison.OrdinalIgnoreCase) >= 0
+                || actionName.IndexOf("break", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 return "1_" + actionName;
             }

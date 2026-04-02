@@ -140,6 +140,8 @@ namespace HaCreator.MapSimulator.UI
         private readonly UIObject _levelMobButton;
         private readonly UIObject _prevButton;
         private readonly UIObject _nextButton;
+        private UIObject _locationButton;
+        private UIObject _questToggleButton;
         private readonly IReadOnlyDictionary<SearchResultKind, SearchResultVisualStyle> _resultStyles;
         private readonly List<RegionButtonEntry> _regionButtons = new List<RegionButtonEntry>();
         private readonly List<UIObject> _rowButtons = new List<UIObject>();
@@ -163,6 +165,7 @@ namespace HaCreator.MapSimulator.UI
         private string _hoveredSearchResultKey = string.Empty;
         private int _pageIndex;
         private SearchFilterMode _searchFilterMode;
+        private bool _questOverlayMarkersVisible = true;
         private MouseState _previousMouseState;
         private string _compositionText = string.Empty;
         private int _compositionInsertionIndex = -1;
@@ -544,6 +547,27 @@ namespace HaCreator.MapSimulator.UI
             {
                 _questOverlays.AddRange(overlays.Where(entry => entry != null));
             }
+
+            UpdateButtonStates();
+        }
+
+        public void InitializeQuestGuideButtons(UIObject locationButton, UIObject questToggleButton)
+        {
+            if (locationButton != null && !uiButtons.Contains(locationButton))
+            {
+                _locationButton = locationButton;
+                _locationButton.ButtonClickReleased += _ => FocusCurrentMap();
+                AddButton(_locationButton);
+            }
+
+            if (questToggleButton != null && !uiButtons.Contains(questToggleButton))
+            {
+                _questToggleButton = questToggleButton;
+                _questToggleButton.ButtonClickReleased += _ => ToggleQuestOverlayMarkers();
+                AddButton(_questToggleButton);
+            }
+
+            UpdateButtonStates();
         }
 
         public bool HasEntry(int mapId)
@@ -926,6 +950,26 @@ namespace HaCreator.MapSimulator.UI
                 _nextButton.SetEnabled(_pageIndex < maxPageIndex);
             }
 
+            if (_locationButton != null)
+            {
+                _locationButton.SetVisible(true);
+                _locationButton.SetEnabled(_currentMapId > 0);
+            }
+
+            if (_questToggleButton != null)
+            {
+                bool hasQuestOverlays = _questOverlays.Count > 0;
+                _questToggleButton.SetVisible(hasQuestOverlays);
+                _questToggleButton.SetEnabled(hasQuestOverlays);
+                if (hasQuestOverlays)
+                {
+                    _questToggleButton.SetButtonState(
+                        _questOverlayMarkersVisible
+                            ? UIObjectState.Disabled
+                            : UIObjectState.Normal);
+                }
+            }
+
             HashSet<string> activeRegions = _allEntries
                 .Select(entry => entry.RegionCode)
                 .Where(code => !string.IsNullOrWhiteSpace(code))
@@ -998,6 +1042,13 @@ namespace HaCreator.MapSimulator.UI
 
         private string BuildQuestOverlaySummary(int mapId, bool includeCurrentMapFallback)
         {
+            if (!_questOverlayMarkersVisible)
+            {
+                return _questOverlays.Count > 0
+                    ? "Quest overlays are hidden. Use the world-map quest toggle to re-enable markers."
+                    : string.Empty;
+            }
+
             IReadOnlyList<QuestOverlayEntry> overlays = _questOverlays
                 .Where(entry => entry.MapId == mapId)
                 .ToArray();
@@ -1025,6 +1076,11 @@ namespace HaCreator.MapSimulator.UI
         private int GetOverlayCountForMap(int mapId)
         {
             if (mapId <= 0)
+            {
+                return 0;
+            }
+
+            if (!_questOverlayMarkersVisible)
             {
                 return 0;
             }
@@ -1067,6 +1123,17 @@ namespace HaCreator.MapSimulator.UI
         private static int GetMaxPageIndex(int count)
         {
             return Math.Max(0, (int)Math.Ceiling(count / (double)MaxVisibleRows) - 1);
+        }
+
+        private void ToggleQuestOverlayMarkers()
+        {
+            if (_questOverlays.Count == 0)
+            {
+                return;
+            }
+
+            _questOverlayMarkersVisible = !_questOverlayMarkersVisible;
+            UpdateButtonStates();
         }
 
         private static UIObject CreateRowButton(GraphicsDevice device)

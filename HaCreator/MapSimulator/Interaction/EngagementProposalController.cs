@@ -136,6 +136,39 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        internal bool TryOpenWeddingWishListFromAcceptedProposal(
+            WeddingWishListController weddingWishListController,
+            UIWindowManager windowManager,
+            CharacterBuild build,
+            IInventoryRuntime inventory,
+            SpriteFont font,
+            Action<string> feedbackHandler,
+            WeddingWishListDialogMode mode,
+            WeddingWishListRole? roleOverride,
+            Action showWindow,
+            out string message)
+        {
+            _runtime.UpdateLocalContext(build);
+            if (!_runtime.TryBuildWeddingWishListHandoff(build, out WeddingWishListHandoff handoff, out string handoffMessage))
+            {
+                message = handoffMessage;
+                return false;
+            }
+
+            WeddingWishListRole resolvedRole = roleOverride ?? handoff.LocalRole;
+            string openMessage = weddingWishListController.Open(
+                mode,
+                resolvedRole,
+                windowManager,
+                build,
+                inventory,
+                font,
+                feedbackHandler,
+                showWindow);
+            message = $"{handoffMessage} Opened wedding wish-list handoff for {handoff.GroomName} and {handoff.BrideName}: {openMessage}";
+            return true;
+        }
+
         private void ShowWindow(
             UIWindowManager windowManager,
             CharacterBuild build,

@@ -593,7 +593,7 @@ namespace HaCreator.MapSimulator
         {
             if (args.Length < 3 || !TryParseRemoteUserPacketType(args[1], out int packetType))
             {
-                return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser packet <179|180|181|182|183|184|210|211|212|213|214|215|enter|leave|move|state|helper|team|follow|chair|mount|prepare|preparedclear|melee|effect> [followCharacterId] <payloadhex=..|payloadb64=..>");
+                return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser packet <179|180|181|182|183|184|210|211|212|213|214|215|223|225|226|enter|leave|move|state|helper|team|follow|chair|mount|prepare|preparedclear|melee|effect|avatarmodified|tempset|tempreset> [followCharacterId] <payloadhex=..|payloadb64=..>");
             }
 
             int? followCharacterId = null;
@@ -623,7 +623,7 @@ namespace HaCreator.MapSimulator
         {
             if (args.Length < 3 || !TryParseRemoteUserPacketType(args[1], out int packetType))
             {
-                return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser packetraw <179|180|181|182|183|184|210|211|212|213|214|215|enter|leave|move|state|helper|team|follow|chair|mount|prepare|preparedclear|melee|effect> [followCharacterId] <hex>");
+                return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser packetraw <179|180|181|182|183|184|210|211|212|213|214|215|223|225|226|enter|leave|move|state|helper|team|follow|chair|mount|prepare|preparedclear|melee|effect|avatarmodified|tempset|tempreset> [followCharacterId] <hex>");
             }
 
             int? followCharacterId = null;
@@ -683,6 +683,15 @@ namespace HaCreator.MapSimulator
                     if (created && enterPacket.PortableChairItemId.HasValue)
                     {
                         _remoteUserPool.TrySetPortableChair(enterPacket.CharacterId, enterPacket.PortableChairItemId, out _);
+                    }
+
+                    if (created && enterPacket.TemporaryStats.HasPayload)
+                    {
+                        _remoteUserPool.TryApplyTemporaryStatSnapshot(
+                            enterPacket.CharacterId,
+                            enterPacket.TemporaryStats,
+                            delay: 0,
+                            out _);
                     }
 
                     result = created
@@ -985,6 +994,36 @@ namespace HaCreator.MapSimulator
                         : avatarModifiedMessage;
                     return avatarModifiedApplied;
 
+                case RemoteUserPacketType.UserTemporaryStatSet:
+                    if (!RemoteUserPacketCodec.TryParseTemporaryStatSet(payload, out RemoteUserTemporaryStatSetPacket temporaryStatSetPacket, out string temporaryStatSetError))
+                    {
+                        result = temporaryStatSetError;
+                        return false;
+                    }
+
+                    bool temporaryStatSetApplied = _remoteUserPool.TryApplyTemporaryStatSet(
+                        temporaryStatSetPacket,
+                        out string temporaryStatSetMessage);
+                    result = temporaryStatSetApplied
+                        ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {temporaryStatSetPacket.CharacterId}."
+                        : temporaryStatSetMessage;
+                    return temporaryStatSetApplied;
+
+                case RemoteUserPacketType.UserTemporaryStatReset:
+                    if (!RemoteUserPacketCodec.TryParseTemporaryStatReset(payload, out RemoteUserTemporaryStatResetPacket temporaryStatResetPacket, out string temporaryStatResetError))
+                    {
+                        result = temporaryStatResetError;
+                        return false;
+                    }
+
+                    bool temporaryStatResetApplied = _remoteUserPool.TryApplyTemporaryStatReset(
+                        temporaryStatResetPacket,
+                        out string temporaryStatResetMessage);
+                    result = temporaryStatResetApplied
+                        ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {temporaryStatResetPacket.CharacterId}."
+                        : temporaryStatResetMessage;
+                    return temporaryStatResetApplied;
+
                 default:
                     result = $"Unsupported remote user packet type {packetType}.";
                     return false;
@@ -1086,6 +1125,8 @@ namespace HaCreator.MapSimulator
                 "melee" or "attack" or "meleeattack" => (int)RemoteUserPacketType.UserMeleeAttack,
                 "effect" or "itemeffect" or "ringeffect" => (int)RemoteUserPacketType.UserItemEffect,
                 "avatarmodified" or "avatarmod" or "look" => (int)RemoteUserPacketType.UserAvatarModified,
+                "tempset" or "tempstatset" => (int)RemoteUserPacketType.UserTemporaryStatSet,
+                "tempreset" or "tempstatreset" => (int)RemoteUserPacketType.UserTemporaryStatReset,
                 _ => 0
             };
 
@@ -1111,6 +1152,8 @@ namespace HaCreator.MapSimulator
                 (int)RemoteUserPacketType.UserMeleeAttack => "remote user remote melee-attack packet",
                 (int)RemoteUserPacketType.UserItemEffect => "remote user remote item-effect packet",
                 (int)RemoteUserPacketType.UserAvatarModified => "remote user remote avatar-modified packet",
+                (int)RemoteUserPacketType.UserTemporaryStatSet => "remote user remote temporary-stat set packet",
+                (int)RemoteUserPacketType.UserTemporaryStatReset => "remote user remote temporary-stat reset packet",
                 _ => $"remote user packet {packetType}"
             };
         }

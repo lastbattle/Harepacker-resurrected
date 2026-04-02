@@ -78,6 +78,7 @@ namespace HaCreator.MapSimulator.Companions
             1902042
         };
         private Func<MapInfo> _currentMapInfoProvider;
+        private Func<int?> _questInfoStateProvider;
         private DragonAnimationSet _currentSet;
         private string _currentActionName;
         private int _currentActionStartTime;
@@ -138,6 +139,11 @@ namespace HaCreator.MapSimulator.Companions
             _currentMapInfoProvider = currentMapInfoProvider;
         }
 
+        public void SetQuestInfoStateProvider(Func<int?> questInfoStateProvider)
+        {
+            _questInfoStateProvider = questInfoStateProvider;
+        }
+
         public void Update(PlayerCharacter owner, int currentTime)
         {
             if (owner?.Build == null || !TryResolveDragonJob(owner.Build.Job, out int dragonJob))
@@ -157,6 +163,7 @@ namespace HaCreator.MapSimulator.Companions
             _facingRight = owner.FacingRight;
             _worldAnchor = ResolveAnchor(owner, animationSet, currentTime);
             _isSuppressed = ShouldSuppress(owner);
+            ApplyQuestInfoState(_questInfoStateProvider?.Invoke());
 
             float deltaSeconds = GetDeltaSeconds(currentTime);
             UpdateFollowState(owner);
@@ -292,15 +299,7 @@ namespace HaCreator.MapSimulator.Companions
 
         public void SetQuestInfoPreviewState(int? state)
         {
-            _questInfoPreviewState = state switch
-            {
-                0 => DragonQuestInfoState.PreStart,
-                1 => DragonQuestInfoState.RewardReady,
-                2 => DragonQuestInfoState.Active,
-                _ => DragonQuestInfoState.Hidden
-            };
-            _questInfoAnimation = null;
-            _questInfoAlpha = 0f;
+            ApplyQuestInfoState(state);
         }
 
         public string DescribeDebugStatus(PlayerCharacter owner)
@@ -753,30 +752,49 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             bool shouldMoveVertically = _activeVerticalFollowState != 0 || absoluteDeltaY > ActiveFollowVerticalStartDistance;
-            if (shouldMoveVertically)
+            if (deltaY >= 0f)
             {
-                float verticalStep = MathF.Min(ActiveFollowVerticalStepCap, absoluteDeltaY / ActiveFollowVerticalStepDivisor) + 1f;
-                if (deltaY > 0f)
+                if (shouldMoveVertically)
                 {
-                    nextY = Math.Min(_worldAnchor.Y, _visualAnchor.Y + verticalStep);
-                    _activeVerticalFollowState = nextY >= _worldAnchor.Y ? 0 : 1;
+                    if (_activeVerticalFollowState < 0 && Math.Abs(deltaY) <= PassiveArrivalDistance)
+                    {
+                        _activeVerticalFollowState = 0;
+                    }
+                    else
+                    {
+                        float verticalStep = MathF.Min(ActiveFollowVerticalStepCap, absoluteDeltaY / ActiveFollowVerticalStepDivisor) + 1f;
+                        nextY = Math.Min(_worldAnchor.Y, _visualAnchor.Y + verticalStep);
+                        _activeVerticalFollowState = Math.Abs(_worldAnchor.Y - nextY) <= PassiveArrivalDistance ? -1 : 1;
+                    }
+
                     velocityY = 1d;
                 }
-                else if (deltaY < 0f)
+                else if (deltaY > 0f)
                 {
-                    nextY = Math.Max(_worldAnchor.Y, _visualAnchor.Y - verticalStep);
-                    _activeVerticalFollowState = nextY <= _worldAnchor.Y ? 0 : 1;
-                    velocityY = -1d;
-                }
-                else
-                {
-                    _activeVerticalFollowState = 0;
                     velocityY = 0d;
                 }
             }
             else
             {
-                velocityY = 0d;
+                if (shouldMoveVertically)
+                {
+                    if (_activeVerticalFollowState < 0 && Math.Abs(deltaY) <= PassiveArrivalDistance)
+                    {
+                        _activeVerticalFollowState = 0;
+                    }
+                    else
+                    {
+                        float verticalStep = MathF.Min(ActiveFollowVerticalStepCap, absoluteDeltaY / ActiveFollowVerticalStepDivisor) + 1f;
+                        nextY = Math.Max(_worldAnchor.Y, _visualAnchor.Y - verticalStep);
+                        _activeVerticalFollowState = Math.Abs(_worldAnchor.Y - nextY) <= PassiveArrivalDistance ? -1 : 1;
+                    }
+
+                    velocityY = -1d;
+                }
+                else
+                {
+                    velocityY = 0d;
+                }
             }
 
             _visualAnchor = new Vector2(nextX, nextY);
@@ -1227,6 +1245,26 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             _lastBlinkStartTime = currentTime;
+        }
+
+        private void ApplyQuestInfoState(int? state)
+        {
+            DragonQuestInfoState nextState = state switch
+            {
+                0 => DragonQuestInfoState.PreStart,
+                1 => DragonQuestInfoState.RewardReady,
+                2 => DragonQuestInfoState.Active,
+                _ => DragonQuestInfoState.Hidden
+            };
+
+            if (_questInfoPreviewState == nextState)
+            {
+                return;
+            }
+
+            _questInfoPreviewState = nextState;
+            _questInfoAnimation = null;
+            _questInfoAlpha = 0f;
         }
     }
 }

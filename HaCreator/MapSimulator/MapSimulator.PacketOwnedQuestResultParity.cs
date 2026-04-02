@@ -9,6 +9,10 @@ namespace HaCreator.MapSimulator
 {
     public partial class MapSimulator
     {
+        private int? _pendingPacketOwnedQuestResultFollowUpQuestId;
+        private int _pendingPacketOwnedQuestResultFollowUpSpeakerNpcId;
+        private string _pendingPacketOwnedQuestResultFollowUpQuestName = string.Empty;
+
         private bool TryApplyPacketOwnedQuestResultPayload(byte[] payload, out string message)
         {
             message = null;
@@ -32,6 +36,11 @@ namespace HaCreator.MapSimulator
                     8 => TryApplyPacketOwnedQuestTimerAddSingle(reader, timeKeepQuestTimer: true, out message),
                     9 => TryApplyPacketOwnedQuestTimerRemoveRange(reader, timeKeepQuestTimer: true, out message),
                     10 => TryApplyPacketOwnedQuestResultPresentation(reader, out message),
+                    11 => TryApplyPacketOwnedQuestResultFixedNotice(resultType, out message),
+                    12 => TryApplyPacketOwnedQuestResultActionNotice(reader, out message),
+                    13 => TryApplyPacketOwnedQuestResultFixedNotice(resultType, out message),
+                    15 => TryApplyPacketOwnedQuestResultFixedNotice(resultType, out message),
+                    16 => TryApplyPacketOwnedQuestResultFixedNotice(resultType, out message),
                     17 => TryApplyPacketOwnedQuestTimerExpiry(reader, out message),
                     18 => TryApplyPacketOwnedQuestTimerReset(reader, out message),
                     _ => ApplyUnsupportedPacketOwnedQuestResult(resultType, out message)
@@ -180,6 +189,7 @@ namespace HaCreator.MapSimulator
                 openedModal = true;
             }
 
+            string followUpStatus = string.Empty;
             string resultSummary = $"Applied packet-owned quest result for {presentation.QuestName}.";
             if (showedNotice && openedModal)
             {
@@ -199,11 +209,73 @@ namespace HaCreator.MapSimulator
                 string followUpQuestName = _questRuntime.TryGetQuestName(followUpQuestId, out string resolvedFollowUpName)
                     ? resolvedFollowUpName
                     : $"Quest #{followUpQuestId}";
-                resultSummary = $"{resultSummary} Follow-up quest requested: {followUpQuestName}.";
+                if (openedModal)
+                {
+                    QueuePendingPacketOwnedQuestResultFollowUp(followUpQuestId, speakerNpcId, followUpQuestName);
+                    followUpStatus = $"Queued packet-owned StartQuest for {followUpQuestName} after the quest-result dialog closes.";
+                }
+                else
+                {
+                    followUpStatus = ApplyPacketOwnedQuestResultFollowUpQuest(followUpQuestId, speakerNpcId, followUpQuestName);
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(followUpStatus))
+            {
+                resultSummary = $"{resultSummary} {followUpStatus}";
             }
 
             message = resultSummary;
-            return showedNotice || openedModal || !string.IsNullOrWhiteSpace(presentation.NoticeText);
+            return showedNotice
+                || openedModal
+                || !string.IsNullOrWhiteSpace(presentation.NoticeText)
+                || !string.IsNullOrWhiteSpace(followUpStatus);
+        }
+
+        private bool TryApplyPacketOwnedQuestResultActionNotice(BinaryReader reader, out string message)
+        {
+            int questId = reader.ReadUInt16();
+            if (!_questRuntime.TryBuildPacketQuestResultActionNotice(
+                    questId,
+                    _playerManager?.Player?.Build,
+                    out string questName,
+                    out string noticeText))
+            {
+                message = $"Quest-result packet references unknown quest #{questId}.";
+                return false;
+            }
+
+            if (!string.IsNullOrWhiteSpace(noticeText))
+            {
+                _chat?.AddMessage(noticeText, new Color(255, 228, 151), currTickCount);
+            }
+
+            message = string.IsNullOrWhiteSpace(noticeText)
+                ? $"Quest-result action summary for {questName} did not resolve any visible notice text."
+                : $"Displayed the packet-owned quest action summary for {questName}.";
+            return !string.IsNullOrWhiteSpace(noticeText);
+        }
+
+        private bool TryApplyPacketOwnedQuestResultFixedNotice(int resultType, out string message)
+        {
+            string noticeText = resultType switch
+            {
+                11 => "Quest-result fixed notice received from the client packet seam (subtype 11).",
+                13 => "Quest-result fixed notice received from the client packet seam (subtype 13).",
+                15 => "Quest-result fixed notice received from the client packet seam (subtype 15).",
+                16 => "Quest-result fixed notice received from the client packet seam (subtype 16).",
+                _ => null
+            };
+
+            if (string.IsNullOrWhiteSpace(noticeText))
+            {
+                message = $"Quest-result subtype {resultType} is not modeled by the simulator yet.";
+                return false;
+            }
+
+            _chat?.AddMessage(noticeText, new Color(255, 228, 151), currTickCount);
+            message = $"Displayed the packet-owned fixed quest-result notice for subtype {resultType}.";
+            return true;
         }
 
         private void OpenPacketOwnedQuestResultModal(int speakerNpcId, PacketQuestResultPresentation presentation)
@@ -213,6 +285,7 @@ namespace HaCreator.MapSimulator
             {
                 NpcName = npcName,
                 SelectedEntryId = presentation.QuestId,
+                PresentationStyle = NpcInteractionPresentationStyle.PacketScriptUtilDialog,
                 Entries = new[]
                 {
                     new NpcInteractionEntry
@@ -231,6 +304,14 @@ namespace HaCreator.MapSimulator
         private string ResolvePacketOwnedQuestResultSpeakerName(int speakerNpcId, string fallbackQuestName)
         {
             NpcItem npc = FindNpcById(speakerNpcId);
+            if (speakerNpcId > 0 &&
+                Program.InfoManager?.NpcNameCache != null &&
+                Program.InfoManager.NpcNameCache.TryGetValue(speakerNpcId.ToString(), out Tuple<string, string> npcInfo) &&
+                !string.IsNullOrWhiteSpace(npcInfo?.Item1))
+            {
+                return npcInfo.Item1;
+            }
+
             if (npc != null && speakerNpcId > 0)
             {
                 return $"NPC {speakerNpcId}";
@@ -239,6 +320,57 @@ namespace HaCreator.MapSimulator
             return speakerNpcId > 0
                 ? $"NPC {speakerNpcId}"
                 : fallbackQuestName;
+        }
+
+        private void QueuePendingPacketOwnedQuestResultFollowUp(int followUpQuestId, int speakerNpcId, string followUpQuestName)
+        {
+            _pendingPacketOwnedQuestResultFollowUpQuestId = followUpQuestId;
+            _pendingPacketOwnedQuestResultFollowUpSpeakerNpcId = speakerNpcId;
+            _pendingPacketOwnedQuestResultFollowUpQuestName = followUpQuestName ?? string.Empty;
+        }
+
+        private void UpdatePendingPacketOwnedQuestResultFollowUp()
+        {
+            if (!_pendingPacketOwnedQuestResultFollowUpQuestId.HasValue ||
+                _pendingPacketOwnedQuestResultFollowUpQuestId.Value <= 0 ||
+                _npcInteractionOverlay?.IsVisible == true)
+            {
+                return;
+            }
+
+            int followUpQuestId = _pendingPacketOwnedQuestResultFollowUpQuestId.Value;
+            int speakerNpcId = _pendingPacketOwnedQuestResultFollowUpSpeakerNpcId;
+            string followUpQuestName = _pendingPacketOwnedQuestResultFollowUpQuestName;
+
+            _pendingPacketOwnedQuestResultFollowUpQuestId = null;
+            _pendingPacketOwnedQuestResultFollowUpSpeakerNpcId = 0;
+            _pendingPacketOwnedQuestResultFollowUpQuestName = string.Empty;
+
+            string followUpStatus = ApplyPacketOwnedQuestResultFollowUpQuest(followUpQuestId, speakerNpcId, followUpQuestName);
+            if (!string.IsNullOrWhiteSpace(followUpStatus))
+            {
+                _chat?.AddMessage(followUpStatus, new Color(255, 228, 151), currTickCount);
+            }
+        }
+
+        private string ApplyPacketOwnedQuestResultFollowUpQuest(int followUpQuestId, int speakerNpcId, string followUpQuestName)
+        {
+            if (followUpQuestId <= 0)
+            {
+                return string.Empty;
+            }
+
+            QuestWindowActionResult result = _questRuntime.TryAcceptFromQuestWindow(followUpQuestId, _playerManager?.Player?.Build);
+            HandleQuestWindowActionResult(result);
+
+            string resolvedQuestName = string.IsNullOrWhiteSpace(followUpQuestName)
+                ? (_questRuntime.TryGetQuestName(followUpQuestId, out string runtimeQuestName) ? runtimeQuestName : $"Quest #{followUpQuestId}")
+                : followUpQuestName;
+            bool started = result?.StateChanged == true;
+            string speakerLabel = ResolvePacketOwnedQuestResultSpeakerName(speakerNpcId, resolvedQuestName);
+            return started
+                ? $"Packet-owned StartQuest accepted {resolvedQuestName} from {speakerLabel}."
+                : $"Packet-owned StartQuest for {resolvedQuestName} did not change quest state.";
         }
 
         private static bool ApplyUnsupportedPacketOwnedQuestResult(int resultType, out string message)

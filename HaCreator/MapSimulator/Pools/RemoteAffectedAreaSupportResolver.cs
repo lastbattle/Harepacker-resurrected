@@ -149,51 +149,30 @@ namespace HaCreator.MapSimulator.Pools
 
         public static SkillLevelData CreateProjectedSupportBuffLevelData(SkillLevelData levelData)
         {
-            if (!HasProjectableSupportBuffMetadata(levelData))
+            return CreateProjectedSupportBuffLevelData(levelData == null ? Array.Empty<SkillLevelData>() : new[] { levelData });
+        }
+
+        public static SkillLevelData CreateProjectedSupportBuffLevelData(params SkillLevelData[] levelDataEntries)
+        {
+            if (levelDataEntries == null || levelDataEntries.Length == 0)
             {
                 return null;
             }
 
-            return new SkillLevelData
+            SkillLevelData projected = null;
+            for (int i = 0; i < levelDataEntries.Length; i++)
             {
-                Level = levelData.Level,
-                PAD = levelData.PAD,
-                MAD = levelData.MAD,
-                PDD = levelData.PDD,
-                MDD = levelData.MDD,
-                DefensePercent = levelData.DefensePercent,
-                MagicDefensePercent = levelData.MagicDefensePercent,
-                ACC = levelData.ACC,
-                EVA = levelData.EVA,
-                AccuracyPercent = levelData.AccuracyPercent,
-                AvoidabilityPercent = levelData.AvoidabilityPercent,
-                Speed = levelData.Speed,
-                Jump = levelData.Jump,
-                STR = levelData.STR,
-                DEX = levelData.DEX,
-                INT = levelData.INT,
-                LUK = levelData.LUK,
-                CriticalRate = levelData.CriticalRate,
-                EnhancedPAD = levelData.EnhancedPAD,
-                EnhancedMAD = levelData.EnhancedMAD,
-                EnhancedPDD = levelData.EnhancedPDD,
-                EnhancedMDD = levelData.EnhancedMDD,
-                EnhancedMaxHP = levelData.EnhancedMaxHP,
-                EnhancedMaxMP = levelData.EnhancedMaxMP,
-                IndieMaxHP = levelData.IndieMaxHP,
-                IndieMaxMP = levelData.IndieMaxMP,
-                MaxHPPercent = levelData.MaxHPPercent,
-                MaxMPPercent = levelData.MaxMPPercent,
-                AllStat = levelData.AllStat,
-                DamageReductionRate = levelData.DamageReductionRate,
-                AbnormalStatusResistance = levelData.AbnormalStatusResistance,
-                ElementalResistance = levelData.ElementalResistance,
-                ExperienceRate = levelData.ExperienceRate,
-                DropRate = levelData.DropRate,
-                MesoRate = levelData.MesoRate,
-                BossDamageRate = levelData.BossDamageRate,
-                IgnoreDefenseRate = levelData.IgnoreDefenseRate
-            };
+                SkillLevelData entry = levelDataEntries[i];
+                if (!HasProjectableSupportBuffMetadata(entry))
+                {
+                    continue;
+                }
+
+                projected ??= new SkillLevelData();
+                MergeProjectableSupportStats(projected, entry);
+            }
+
+            return projected;
         }
 
         public static RemotePlayerAffectedAreaDisposition ResolveDisposition(SkillData skill, SkillLevelData levelData = null)
@@ -350,6 +329,52 @@ namespace HaCreator.MapSimulator.Pools
                    || levelData.MesoRate > 0
                    || levelData.AbnormalStatusResistance > 0
                    || levelData.ElementalResistance > 0;
+        }
+
+        private static void MergeProjectableSupportStats(SkillLevelData target, SkillLevelData source)
+        {
+            if (target == null || source == null)
+            {
+                return;
+            }
+
+            target.Level = Math.Max(target.Level, source.Level);
+            target.PAD = Math.Max(target.PAD, source.PAD);
+            target.MAD = Math.Max(target.MAD, source.MAD);
+            target.PDD = Math.Max(target.PDD, source.PDD);
+            target.MDD = Math.Max(target.MDD, source.MDD);
+            target.DefensePercent = Math.Max(target.DefensePercent, source.DefensePercent);
+            target.MagicDefensePercent = Math.Max(target.MagicDefensePercent, source.MagicDefensePercent);
+            target.ACC = Math.Max(target.ACC, source.ACC);
+            target.EVA = Math.Max(target.EVA, source.EVA);
+            target.AccuracyPercent = Math.Max(target.AccuracyPercent, source.AccuracyPercent);
+            target.AvoidabilityPercent = Math.Max(target.AvoidabilityPercent, source.AvoidabilityPercent);
+            target.Speed = Math.Max(target.Speed, source.Speed);
+            target.Jump = Math.Max(target.Jump, source.Jump);
+            target.STR = Math.Max(target.STR, source.STR);
+            target.DEX = Math.Max(target.DEX, source.DEX);
+            target.INT = Math.Max(target.INT, source.INT);
+            target.LUK = Math.Max(target.LUK, source.LUK);
+            target.CriticalRate = Math.Max(target.CriticalRate, source.CriticalRate);
+            target.EnhancedPAD = Math.Max(target.EnhancedPAD, source.EnhancedPAD);
+            target.EnhancedMAD = Math.Max(target.EnhancedMAD, source.EnhancedMAD);
+            target.EnhancedPDD = Math.Max(target.EnhancedPDD, source.EnhancedPDD);
+            target.EnhancedMDD = Math.Max(target.EnhancedMDD, source.EnhancedMDD);
+            target.EnhancedMaxHP = Math.Max(target.EnhancedMaxHP, source.EnhancedMaxHP);
+            target.EnhancedMaxMP = Math.Max(target.EnhancedMaxMP, source.EnhancedMaxMP);
+            target.IndieMaxHP = Math.Max(target.IndieMaxHP, source.IndieMaxHP);
+            target.IndieMaxMP = Math.Max(target.IndieMaxMP, source.IndieMaxMP);
+            target.MaxHPPercent = Math.Max(target.MaxHPPercent, source.MaxHPPercent);
+            target.MaxMPPercent = Math.Max(target.MaxMPPercent, source.MaxMPPercent);
+            target.AllStat = Math.Max(target.AllStat, source.AllStat);
+            target.DamageReductionRate = Math.Max(target.DamageReductionRate, source.DamageReductionRate);
+            target.AbnormalStatusResistance = Math.Max(target.AbnormalStatusResistance, source.AbnormalStatusResistance);
+            target.ElementalResistance = Math.Max(target.ElementalResistance, source.ElementalResistance);
+            target.ExperienceRate = Math.Max(target.ExperienceRate, source.ExperienceRate);
+            target.DropRate = Math.Max(target.DropRate, source.DropRate);
+            target.MesoRate = Math.Max(target.MesoRate, source.MesoRate);
+            target.BossDamageRate = Math.Max(target.BossDamageRate, source.BossDamageRate);
+            target.IgnoreDefenseRate = Math.Max(target.IgnoreDefenseRate, source.IgnoreDefenseRate);
         }
 
         private static bool ContainsToken(string value, params string[] tokens)

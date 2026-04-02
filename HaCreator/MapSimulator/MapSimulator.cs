@@ -322,6 +322,7 @@ namespace HaCreator.MapSimulator
         private readonly QuestRuntimeManager _questRuntime = new QuestRuntimeManager();
         private readonly MemoMailboxManager _memoMailbox = new MemoMailboxManager();
         private readonly FamilyChartRuntime _familyChartRuntime = new FamilyChartRuntime();
+        private UserInfoUI.UserInfoActionContext? _bookCollectionActionContext;
         private readonly SocialListRuntime _socialListRuntime = new SocialListRuntime();
         private readonly GuildSkillRuntime _guildSkillRuntime = new GuildSkillRuntime();
         private readonly RemoteUserActorPool _remoteUserPool = new();
@@ -527,7 +528,7 @@ namespace HaCreator.MapSimulator
         private float _tombVelocityY; // Current fall velocity
         private float _tombTargetY; // Ground Y position (death position)
         private bool _tombHasLanded; // Whether tombstone has hit ground
-        private const float TOMB_GRAVITY = 1200f; // Gravity acceleration (px/s鬯ｩ蟷｢・ｽ・｢髫ｴ雜｣・ｽ・｢郢晢ｽｻ繝ｻ・ｽ郢晢ｽｻ繝ｻ・ｻ鬯ｩ蟷｢・ｽ・｢郢晢ｽｻ繝ｻ・ｧ鬮ｫ・ｰ郢晢ｽｻ遶乗ｧｭ繝ｻ繝ｻ・ｽ郢晢ｽｻ繝ｻ・ｽ驛｢譎｢・ｽ・ｻ郢晢ｽｻ繝ｻ・ｽ鬩幢ｽ｢隴趣ｽ｢繝ｻ・ｽ繝ｻ・ｻ驛｢譎｢・ｽ・ｻ郢晢ｽｻ繝ｻ・ｲ)
+        private const float TOMB_GRAVITY = 1200f; // Gravity acceleration (px/s鬯ｯ・ｩ陝ｷ・｢繝ｻ・ｽ繝ｻ・｢鬮ｫ・ｴ髮懶ｽ｣繝ｻ・ｽ繝ｻ・｢驛｢譎｢・ｽ・ｻ郢晢ｽｻ繝ｻ・ｽ驛｢譎｢・ｽ・ｻ郢晢ｽｻ繝ｻ・ｻ鬯ｯ・ｩ陝ｷ・｢繝ｻ・ｽ繝ｻ・｢驛｢譎｢・ｽ・ｻ郢晢ｽｻ繝ｻ・ｧ鬯ｮ・ｫ繝ｻ・ｰ驛｢譎｢・ｽ・ｻ驕ｶ荵暦ｽｧ・ｭ郢晢ｽｻ郢晢ｽｻ繝ｻ・ｽ驛｢譎｢・ｽ・ｻ郢晢ｽｻ繝ｻ・ｽ鬩幢ｽ｢隴趣ｽ｢繝ｻ・ｽ繝ｻ・ｻ驛｢譎｢・ｽ・ｻ郢晢ｽｻ繝ｻ・ｽ鬯ｩ蟷｢・ｽ・｢髫ｴ雜｣・ｽ・｢郢晢ｽｻ繝ｻ・ｽ郢晢ｽｻ繝ｻ・ｻ鬩幢ｽ｢隴趣ｽ｢繝ｻ・ｽ繝ｻ・ｻ驛｢譎｢・ｽ・ｻ郢晢ｽｻ繝ｻ・ｲ)
         private const float TOMB_START_HEIGHT = 300f; // Height above death position to start falling
 
 
@@ -591,6 +592,7 @@ namespace HaCreator.MapSimulator
         private int _sameMapTeleportStartTime = 0;
         private int _sameMapTeleportDelay = 0;
         private SameMapTeleportTarget _sameMapTeleportTarget = null;
+        private PendingCrossMapTeleportTarget _pendingCrossMapTeleportTarget = null;
         private bool _packetOwnedTeleportRequestActive = false;
         private int _packetOwnedTeleportRequestCompletedAt = int.MinValue;
         private int _lastPacketOwnedTeleportPortalIndex = -1;
@@ -634,6 +636,7 @@ namespace HaCreator.MapSimulator
         private byte? _loginPacketSelectWorldResultCode;
         private int? _loginPacketSelectWorldTargetWorldId;
         private int? _loginPacketSelectWorldTargetChannelIndex;
+        private readonly LoginBackendSessionManager _loginBackendSessionManager = new();
         private LoginSelectWorldResultProfile _loginPacketSelectWorldResultProfile;
         private LoginViewAllCharResultPacketProfile _loginPacketViewAllCharResultProfile;
         private LoginSelectWorldResultProfile _loginPacketViewAllCharRosterProfile;
@@ -673,6 +676,7 @@ namespace HaCreator.MapSimulator
         private bool _loginTitleRememberId = true;
         private string _loginTitleStatusMessage = "Enter credentials or let the login packet inbox feed the bootstrap runtime.";
         private string _loginCharacterStatusMessage = "Dispatch SelectWorldResult to populate the character roster.";
+        private bool _pendingSelectCharacterByVacGameInSound;
         private string _loginPendingCreateCharacterName;
         private LoginCreateCharacterFlowState _loginCreateCharacterFlow;
         private LoginUtilityDialogAction _loginUtilityDialogAction;
@@ -1447,6 +1451,29 @@ namespace HaCreator.MapSimulator
             _soundManager?.PlaySound(LoginEntryGameInSoundKey);
         }
 
+        private void ArmSelectCharacterByVacGameInSound()
+        {
+            _pendingSelectCharacterByVacGameInSound = true;
+        }
+
+        private void ClearPendingLoginEntrySound()
+        {
+            _pendingSelectCharacterByVacGameInSound = false;
+        }
+
+        private void TryFinalizeSelectCharacterByVacGameInSound(LoginPacketType packetType)
+        {
+            if (!_pendingSelectCharacterByVacGameInSound ||
+                packetType != LoginPacketType.SelectCharacterByVacResult ||
+                _loginRuntime.CurrentStep != LoginStep.EnteringField)
+            {
+                return;
+            }
+
+            PlayLoginEntryGameInSE();
+            _pendingSelectCharacterByVacGameInSound = false;
+        }
+
 
         private string GetCurrentMapTransferDisplayName()
         {
@@ -2008,6 +2035,10 @@ namespace HaCreator.MapSimulator
 
         private void WireSocialListWindowData()
         {
+            WireGuildRankWindowData();
+            WireGuildMarkWindowData();
+            WireGuildCreateAgreementWindowData();
+
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.SocialList) is not SocialListWindow socialListWindow)
             {
                 return;
@@ -2913,11 +2944,7 @@ namespace HaCreator.MapSimulator
             userInfoWindow.TradingRoomRequested = HandleCharacterInfoTradingRoomRequest;
             userInfoWindow.FamilyRequested = HandleCharacterInfoFamilyRequest;
             userInfoWindow.PopularityRequested = (context, direction) => UserInfoPopularityPreviewService.HandleRequest(context, direction, _remoteUserPool);
-            userInfoWindow.BookCollectionRequested = _ =>
-            {
-                ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.BookCollection);
-                return "Collection book opened.";
-            };
+            userInfoWindow.BookCollectionRequested = HandleCharacterInfoBookCollectionRequest;
         }
         private string HandleCharacterInfoPartyRequest(UserInfoUI.UserInfoActionContext context)
         {
@@ -2980,6 +3007,46 @@ namespace HaCreator.MapSimulator
                 context.Channel);
             ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.FamilyChart);
             return message;
+        }
+
+        private string HandleCharacterInfoBookCollectionRequest(UserInfoUI.UserInfoActionContext context)
+        {
+            _bookCollectionActionContext = context;
+            ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.BookCollection);
+            return context.IsRemoteTarget
+                ? $"Collection book opened for inspected target {context.CharacterName}."
+                : "Collection book opened.";
+        }
+
+        private UserInfoUI.UserInfoActionContext ResolveBookCollectionActionContext()
+        {
+            if (_bookCollectionActionContext.HasValue)
+            {
+                UserInfoUI.UserInfoActionContext context = _bookCollectionActionContext.Value;
+                if (context.Build != null)
+                {
+                    return context;
+                }
+            }
+
+            CharacterBuild build = _playerManager?.Player?.Build ?? _loginCharacterRoster.SelectedEntry?.Build;
+            return new UserInfoUI.UserInfoActionContext(
+                false,
+                build?.Id ?? 0,
+                build?.Name ?? string.Empty,
+                build,
+                GetCurrentMapTransferDisplayName(),
+                Math.Max(1, _simulatorChannelIndex + 1));
+        }
+
+        private CollectionBookSnapshot BuildActiveCollectionBookSnapshot()
+        {
+            UserInfoUI.UserInfoActionContext context = ResolveBookCollectionActionContext();
+            CharacterBuild build = context.Build ?? _playerManager?.Player?.Build ?? _loginCharacterRoster.SelectedEntry?.Build;
+            return CollectionBookSnapshotFactory.Create(
+                build,
+                ResolveCharacterInfoItemMakerProgressionSnapshot(build),
+                ResolveCharacterInfoMonsterBookSnapshot(build));
         }
 
         private bool TryShowRemoteCharacterInfoWindow(string characterSelector)
@@ -3892,7 +3959,7 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                int encodedPosition = EncodeRepairDurabilityEquippedPosition(slot);
+                int encodedPosition = EncodeRepairDurabilityEquippedPosition(slot, part?.ItemId ?? 0);
                 if (encodedPosition == int.MinValue)
                 {
                     continue;
@@ -4230,15 +4297,10 @@ namespace HaCreator.MapSimulator
             NpcInfo npcInfo = NpcInfo.Get(npcTemplateId.ToString(CultureInfo.InvariantCulture));
             WzImage source = npcInfo?.LinkedWzImage;
             int? shopActionId = (source?["info"]?["shop"] as WzIntProperty)?.Value;
-            foreach (string candidate in RepairDurabilityClientParity.EnumerateNpcActionCandidates(shopActionId))
-            {
-                if (!string.IsNullOrWhiteSpace(candidate) && npcPreview.HasAction(candidate))
-                {
-                    return candidate;
-                }
-            }
-
-            return AnimationKeys.Stand;
+            return RepairDurabilityClientParity.ResolvePreferredNpcAction(
+                shopActionId,
+                npcPreview.GetAvailableActions(),
+                RepairDurabilityClientParity.EnumerateNpcSpeakFallbackActions(source));
         }
 
         private void ProcessPendingRepairDurabilityRequest()
@@ -4464,9 +4526,9 @@ namespace HaCreator.MapSimulator
             return entry?.Part ?? entry?.InventorySlot?.TooltipPart;
         }
 
-        private static int EncodeRepairDurabilityEquippedPosition(Character.EquipSlot slot)
+        private static int EncodeRepairDurabilityEquippedPosition(Character.EquipSlot slot, int itemId)
         {
-            return RepairDurabilityClientParity.TryEncodeEquippedPosition(slot, out int encodedPosition)
+            return RepairDurabilityClientParity.TryEncodeEquippedPosition(slot, itemId, out int encodedPosition)
                 ? encodedPosition
                 : int.MinValue;
         }
@@ -5260,6 +5322,8 @@ namespace HaCreator.MapSimulator
             bool applySelectorSideEffects = true,
             string summaryOverride = null)
         {
+            bool applyPacketOwnedRosterState = true;
+            bool skipRuntimeDispatch = false;
             bool suppressGenericDialogPrompt = false;
             if (applySelectorSideEffects &&
                 packetType == LoginPacketType.SelectWorldResult &&
@@ -5317,6 +5381,14 @@ namespace HaCreator.MapSimulator
 
                 }
             }
+            if (packetType == LoginPacketType.ViewAllCharResult &&
+                TryHandlePacketOwnedViewAllCharResult(out string viewAllSummary, out bool continueViewAllRuntimeDispatch))
+            {
+                message = viewAllSummary;
+                summaryOverride = viewAllSummary;
+                applyPacketOwnedRosterState = false;
+                skipRuntimeDispatch = !continueViewAllRuntimeDispatch;
+            }
 
             if (packetType == LoginPacketType.CheckPasswordResult &&
                 TryHandlePacketOwnedCheckPasswordResult(out string checkPasswordSummary, out bool continueRuntimeDispatch))
@@ -5358,16 +5430,26 @@ namespace HaCreator.MapSimulator
             }
 
 
-
-            _loginRuntime.TryDispatchPacket(packetType, currTickCount, out message);
-            if (!string.IsNullOrWhiteSpace(summaryOverride))
+            if (skipRuntimeDispatch)
             {
                 _loginRuntime.OverrideLastEventSummary(summaryOverride);
                 message = _loginRuntime.LastEventSummary;
             }
+            else
+            {
+                _loginRuntime.TryDispatchPacket(packetType, currTickCount, out message);
+                if (!string.IsNullOrWhiteSpace(summaryOverride))
+                {
+                    _loginRuntime.OverrideLastEventSummary(summaryOverride);
+                    message = _loginRuntime.LastEventSummary;
+                }
+            }
 
 
-            ApplyPacketOwnedLoginRosterState(packetType);
+            if (applyPacketOwnedRosterState)
+            {
+                ApplyPacketOwnedLoginRosterState(packetType);
+            }
 
 
 
@@ -5379,7 +5461,7 @@ namespace HaCreator.MapSimulator
 
 
             if ((packetType == LoginPacketType.SelectWorldResult ||
-                 packetType == LoginPacketType.ViewAllCharResult) &&
+                 ShouldInitializeLoginCharacterRosterFromPacket(packetType)) &&
                 IsLoginRuntimeSceneActive)
             {
                 InitializeLoginCharacterRoster();
@@ -5391,6 +5473,7 @@ namespace HaCreator.MapSimulator
                 ApplyLoginPacketDialogPrompt(packetType);
             }
             TryContinueLoginBootstrapFromPacketProfile(packetType);
+            TryFinalizeSelectCharacterByVacGameInSound(packetType);
 
 
 
@@ -5733,14 +5816,18 @@ namespace HaCreator.MapSimulator
 
             if (completedRequest == SelectorRequestKind.ViewAllCharacters)
             {
-                DispatchLoginRuntimePacket(
-                    LoginPacketType.ViewAllCharResult,
-                    out string message,
-                    applySelectorSideEffects: false,
-                    summaryOverride: "Received view-all-character data and scheduled the expanded roster step.");
-                _loginCharacterStatusMessage = string.IsNullOrWhiteSpace(message)
+                if (!TryDispatchGeneratedViewAllCharRequest(out string generatedViewAllSummary))
+                {
+                    DispatchLoginRuntimePacket(
+                        LoginPacketType.ViewAllCharResult,
+                        out generatedViewAllSummary,
+                        applySelectorSideEffects: false,
+                        summaryOverride: "Received view-all-character data and scheduled the expanded roster step.");
+                }
+
+                _loginCharacterStatusMessage = string.IsNullOrWhiteSpace(generatedViewAllSummary)
                     ? "Requested the expanded character roster."
-                    : $"Requested the expanded character roster. {message}";
+                    : generatedViewAllSummary;
                 SyncLoginEntryDialogs();
                 return;
             }
@@ -6295,6 +6382,17 @@ namespace HaCreator.MapSimulator
 
         }
 
+        private bool ShouldInitializeLoginCharacterRosterFromPacket(LoginPacketType packetType)
+        {
+            if (packetType != LoginPacketType.ViewAllCharResult)
+            {
+                return false;
+            }
+
+            return _loginRuntime.CurrentStep == LoginStep.ViewAllCharacters &&
+                   _loginPacketViewAllCharRosterProfile?.Entries?.Count > 0;
+        }
+
 
 
         private void AddLoginCharacterRosterEntry(
@@ -6314,12 +6412,11 @@ namespace HaCreator.MapSimulator
             }
 
 
-            byte[] rosterAvatarLookPacket = avatarLookPacket != null ? (byte[])avatarLookPacket.Clone() : LoginAvatarLookCodec.Encode(sourceBuild);
+            LoginAvatarLook rosterAvatarLook = ResolveLoginRosterAvatarLook(sourceBuild, avatarLookPacket, out byte[] rosterAvatarLookPacket);
             CharacterBuild rosterBuild = sourceBuild.Clone();
-            if (_playerManager?.Loader != null &&
-                LoginAvatarLookCodec.TryDecode(rosterAvatarLookPacket, out LoginAvatarLook avatarLook, out _))
+            if (_playerManager?.Loader != null && rosterAvatarLook != null)
             {
-                rosterBuild = _playerManager.Loader.LoadFromAvatarLook(avatarLook, sourceBuild);
+                rosterBuild = _playerManager.Loader.LoadFromAvatarLook(rosterAvatarLook, sourceBuild);
             }
 
 
@@ -6330,6 +6427,7 @@ namespace HaCreator.MapSimulator
                 canDelete,
                 previousWorldRank,
                 previousJobRank,
+                rosterAvatarLook,
                 rosterAvatarLookPacket,
                 portal));
         }
@@ -6395,7 +6493,7 @@ namespace HaCreator.MapSimulator
 
 
 
-            byte[] rosterAvatarLookPacket = avatarLookPacket != null ? (byte[])avatarLookPacket.Clone() : LoginAvatarLookCodec.Encode(sourceBuild);
+            LoginAvatarLook rosterAvatarLook = ResolveLoginRosterAvatarLook(sourceBuild, avatarLookPacket, out byte[] rosterAvatarLookPacket);
 
 
 
@@ -6403,11 +6501,7 @@ namespace HaCreator.MapSimulator
 
 
 
-            if (_playerManager?.Loader != null &&
-
-
-
-                LoginAvatarLookCodec.TryDecode(rosterAvatarLookPacket, out LoginAvatarLook avatarLook, out _))
+            if (_playerManager?.Loader != null && rosterAvatarLook != null)
 
 
 
@@ -6415,7 +6509,7 @@ namespace HaCreator.MapSimulator
 
 
 
-                rosterBuild = _playerManager.Loader.LoadFromAvatarLook(avatarLook, sourceBuild);
+                rosterBuild = _playerManager.Loader.LoadFromAvatarLook(rosterAvatarLook, sourceBuild);
 
 
 
@@ -6452,6 +6546,10 @@ namespace HaCreator.MapSimulator
 
 
                 previousJobRank,
+
+
+
+                rosterAvatarLook,
 
 
 
@@ -6693,40 +6791,12 @@ namespace HaCreator.MapSimulator
             out LoginSelectWorldResultProfile rosterProfile,
             out string packetSource)
         {
-            rosterProfile = null;
-            packetSource = null;
-
-
-            if (_loginRuntime.CurrentStep == LoginStep.ViewAllCharacters &&
-                _loginRuntime.GetPacketCount(LoginPacketType.ViewAllCharResult) > 0 &&
-                _loginPacketViewAllCharRosterProfile?.Entries?.Count > 0)
-            {
-                rosterProfile = _loginPacketViewAllCharRosterProfile;
-                packetSource = "ViewAllCharResult";
-                return true;
-            }
-
-
-            if (_loginRuntime.GetPacketCount(LoginPacketType.SelectWorldResult) > 0 &&
-                _loginPacketSelectWorldResultProfile != null &&
-                LoginSelectWorldResultCodec.IsSuccessCode(_loginPacketSelectWorldResultProfile.ResultCode) &&
-                _loginPacketSelectWorldResultProfile.Entries.Count > 0)
-            {
-                rosterProfile = _loginPacketSelectWorldResultProfile;
-                packetSource = "SelectWorldResult";
-                return true;
-            }
-
-
-            if (_loginPacketViewAllCharRosterProfile?.Entries?.Count > 0)
-            {
-                rosterProfile = _loginPacketViewAllCharRosterProfile;
-                packetSource = "ViewAllCharResult";
-                return true;
-            }
-
-
-            return false;
+            return _loginBackendSessionManager.TryGetActiveRoster(
+                preferViewAllRoster: _loginRuntime.CurrentStep == LoginStep.ViewAllCharacters,
+                hasViewAllPacket: _loginRuntime.GetPacketCount(LoginPacketType.ViewAllCharResult) > 0,
+                hasSelectWorldPacket: _loginRuntime.GetPacketCount(LoginPacketType.SelectWorldResult) > 0,
+                out rosterProfile,
+                out packetSource);
 
         }
 
@@ -6924,11 +6994,110 @@ namespace HaCreator.MapSimulator
 
 
             HideLoginUtilityDialog();
+            ArmSelectCharacterByVacGameInSound();
             message = BuildSelectCharacterByVacResultSuccessMessage(packetProfile, entry);
             _loginCharacterStatusMessage = message;
             handledRuntimeDispatch = true;
             return true;
         }
+
+        private bool TryHandlePacketOwnedViewAllCharResult(out string summary, out bool continueRuntimeDispatch)
+        {
+            summary = null;
+            continueRuntimeDispatch = false;
+
+            LoginViewAllCharResultPacketProfile packetProfile = _loginPacketViewAllCharResultProfile;
+            if (!IsLoginRuntimeSceneActive || packetProfile == null)
+            {
+                return false;
+            }
+
+            ApplyViewAllCharResultProfile();
+
+            switch (packetProfile.Kind)
+            {
+                case LoginViewAllCharResultKind.Header:
+                    if (_loginPacketViewAllCharExpectedCharacterCount <= 0 ||
+                        packetProfile.RelatedServerCount <= 0)
+                    {
+                        summary = BuildViewAllCharEmptyRosterMessage(packetProfile);
+                        _loginRuntime.SetCharacterSelectReady(false);
+                        _loginRuntime.ForceStep(LoginStep.WorldSelect, "Packet-authored ViewAllCharResult returned to world selection.");
+                        _loginCharacterStatusMessage = summary;
+                        ShowLoginUtilityDialog(
+                            "Login Utility",
+                            summary,
+                            LoginUtilityDialogButtonLayout.Ok,
+                            LoginUtilityDialogAction.DismissOnly);
+                        return true;
+                    }
+
+                    summary = BuildViewAllCharHeaderMessage(packetProfile);
+                    _loginRuntime.SetCharacterSelectReady(false);
+                    _loginCharacterStatusMessage = summary;
+                    HideLoginUtilityDialog();
+                    return true;
+
+                case LoginViewAllCharResultKind.Characters:
+                    if (_loginPacketViewAllCharRosterProfile?.Entries?.Count > 0)
+                    {
+                        summary = BuildViewAllCharCompletedMessage(_loginPacketViewAllCharRosterProfile);
+                        _loginRuntime.SetCharacterSelectReady(true);
+                        _loginRuntime.ForceStep(LoginStep.ViewAllCharacters, "Packet-authored ViewAllCharResult completed VAC roster aggregation.");
+                    }
+                    else
+                    {
+                        summary = BuildViewAllCharChunkMessage(packetProfile);
+                        _loginRuntime.SetCharacterSelectReady(false);
+                    }
+
+                    _loginCharacterStatusMessage = summary;
+                    HideLoginUtilityDialog();
+                    return true;
+
+                case LoginViewAllCharResultKind.Completion:
+                    if (_loginPacketViewAllCharRosterProfile?.Entries?.Count > 0)
+                    {
+                        summary = BuildViewAllCharCompletedMessage(_loginPacketViewAllCharRosterProfile);
+                        _loginRuntime.SetCharacterSelectReady(true);
+                        _loginRuntime.ForceStep(LoginStep.ViewAllCharacters, "Packet-authored ViewAllCharResult completed VAC roster aggregation.");
+                        _loginCharacterStatusMessage = summary;
+                        HideLoginUtilityDialog();
+                        return true;
+                    }
+
+                    summary = BuildViewAllCharWorldSelectFallbackMessage();
+                    _loginRuntime.SetCharacterSelectReady(false);
+                    _loginRuntime.ForceStep(LoginStep.WorldSelect, "Packet-authored ViewAllCharResult fell back to world selection.");
+                    _loginCharacterStatusMessage = summary;
+                    ShowLoginUtilityDialog(
+                        "Login Utility",
+                        summary,
+                        LoginUtilityDialogButtonLayout.Ok,
+                        LoginUtilityDialogAction.DismissOnly);
+                    return true;
+
+                case LoginViewAllCharResultKind.Error:
+                    summary = BuildViewAllCharErrorMessage(packetProfile);
+                    bool returnsToTitle = packetProfile.ResultCode is 2 or 3 or 6 or 7;
+                    _loginRuntime.SetCharacterSelectReady(false);
+                    _loginRuntime.ForceStep(
+                        returnsToTitle ? LoginStep.Title : LoginStep.WorldSelect,
+                        returnsToTitle
+                            ? "Packet-authored ViewAllCharResult returned the login flow to title."
+                            : "Packet-authored ViewAllCharResult kept the login flow on world selection.");
+                    _loginCharacterStatusMessage = summary;
+                    ShowLoginUtilityDialog(
+                        "Login Utility",
+                        summary,
+                        LoginUtilityDialogButtonLayout.Ok,
+                        LoginUtilityDialogAction.DismissOnly);
+                    return true;
+            }
+
+            return false;
+        }
+
         private bool TryHandlePacketOwnedCheckPasswordResult(out string summary, out bool continueRuntimeDispatch)
         {
             summary = null;
@@ -7080,6 +7249,7 @@ namespace HaCreator.MapSimulator
             if (packetProfile.AccountId.HasValue && packetProfile.AccountId.Value > 0)
             {
                 _loginAccountId = packetProfile.AccountId.Value;
+                _loginBackendSessionManager.SetAuthenticatedAccountId(packetProfile.AccountId.Value);
             }
 
             _loginPacketAccountDialogProfiles[LoginPacketType.AccountInfoResult] = new LoginAccountDialogPacketProfile
@@ -7658,57 +7828,180 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            _loginBackendSessionManager.ApplyViewAllCharResult(_loginPacketViewAllCharResultProfile, _loginCanHaveExtraCharacter);
 
             switch (_loginPacketViewAllCharResultProfile.Kind)
             {
                 case LoginViewAllCharResultKind.Header:
                     _loginPacketViewAllCharEntries.Clear();
                     _loginPacketViewAllCharRosterProfile = null;
-                    _loginPacketViewAllCharRemainingServerCount = Math.Max(0, _loginPacketViewAllCharResultProfile.RelatedServerCount);
-                    _loginPacketViewAllCharExpectedCharacterCount = Math.Max(0, _loginPacketViewAllCharResultProfile.CharacterCount);
+                    _loginPacketViewAllCharRemainingServerCount = _loginBackendSessionManager.ViewAllRemainingServerCount;
+                    _loginPacketViewAllCharExpectedCharacterCount = _loginBackendSessionManager.ViewAllExpectedCharacterCount;
                     _loginCharacterStatusMessage = _loginPacketViewAllCharExpectedCharacterCount > 0
                         ? $"Waiting for {_loginPacketViewAllCharExpectedCharacterCount} packet-authored VAC roster entries."
                         : "ViewAllCharResult header did not advertise any characters.";
                     break;
-
-
                 case LoginViewAllCharResultKind.Characters:
                     _loginPacketViewAllCharEntries.AddRange(_loginPacketViewAllCharResultProfile.Entries);
-                    if (_loginPacketViewAllCharRemainingServerCount > 0)
+                    _loginPacketViewAllCharRemainingServerCount = _loginBackendSessionManager.ViewAllRemainingServerCount;
+                    if (_loginBackendSessionManager.ViewAllCharRosterProfile != null)
                     {
-                        _loginPacketViewAllCharRemainingServerCount--;
-                    }
-
-
-                    if (_loginPacketViewAllCharRemainingServerCount <= 0)
-                    {
-                        _loginPacketViewAllCharRosterProfile = new LoginSelectWorldResultProfile
-                        {
-                            ResultCode = 0,
-                            Entries = _loginPacketViewAllCharEntries.ToArray(),
-                            LoginOpt = _loginPacketViewAllCharResultProfile.LoginOpt ?? false,
-                            SlotCount = _loginPacketViewAllCharEntries.Count,
-                            BuyCharacterCount = _loginCanHaveExtraCharacter ? 1 : 0
-                        };
+                        _loginPacketViewAllCharRosterProfile = _loginBackendSessionManager.ViewAllCharRosterProfile;
                     }
                     break;
-
-
                 case LoginViewAllCharResultKind.Completion:
-                    if (_loginPacketViewAllCharEntries.Count > 0)
-                    {
-                        _loginPacketViewAllCharRosterProfile ??= new LoginSelectWorldResultProfile
-                        {
-                            ResultCode = 0,
-                            Entries = _loginPacketViewAllCharEntries.ToArray(),
-                            LoginOpt = false,
-                            SlotCount = _loginPacketViewAllCharEntries.Count,
-                            BuyCharacterCount = _loginCanHaveExtraCharacter ? 1 : 0
-                        };
-                    }
+                    _loginPacketViewAllCharRosterProfile = _loginBackendSessionManager.ViewAllCharRosterProfile;
+                    _loginPacketViewAllCharRemainingServerCount = _loginBackendSessionManager.ViewAllRemainingServerCount;
                     break;
             }
         }
+
+        private bool TryDispatchGeneratedViewAllCharRequest(out string summary)
+        {
+            summary = null;
+            if (!IsLoginRuntimeSceneActive || _loginPacketViewAllCharResultProfile != null)
+            {
+                return false;
+            }
+
+            List<LoginViewAllCharResultPacketProfile> chunkProfiles = BuildGeneratedViewAllCharChunkProfiles();
+            int totalCharacterCount = chunkProfiles.Sum(profile => profile.Entries?.Count ?? 0);
+            _loginPacketViewAllCharResultProfile = new LoginViewAllCharResultPacketProfile
+            {
+                ResultCode = 1,
+                Kind = LoginViewAllCharResultKind.Header,
+                RelatedServerCount = chunkProfiles.Count,
+                CharacterCount = totalCharacterCount
+            };
+            DispatchLoginRuntimePacket(
+                LoginPacketType.ViewAllCharResult,
+                out _,
+                applySelectorSideEffects: false,
+                summaryOverride: totalCharacterCount > 0
+                    ? $"Generated packet-authored ViewAllCharResult header for {chunkProfiles.Count} related server(s) and {totalCharacterCount} character(s)."
+                    : "Generated packet-authored ViewAllCharResult header without any related server roster data.");
+
+            foreach (LoginViewAllCharResultPacketProfile chunkProfile in chunkProfiles)
+            {
+                _loginPacketViewAllCharResultProfile = chunkProfile;
+                DispatchLoginRuntimePacket(
+                    LoginPacketType.ViewAllCharResult,
+                    out _,
+                    applySelectorSideEffects: false,
+                    summaryOverride: $"Generated packet-authored ViewAllCharResult chunk for world {chunkProfile.WorldId.GetValueOrDefault()} with {chunkProfile.Entries.Count} character(s).");
+            }
+
+            _loginPacketViewAllCharResultProfile = new LoginViewAllCharResultPacketProfile
+            {
+                ResultCode = 4,
+                Kind = LoginViewAllCharResultKind.Completion
+            };
+            DispatchLoginRuntimePacket(
+                LoginPacketType.ViewAllCharResult,
+                out summary,
+                applySelectorSideEffects: false,
+                summaryOverride: totalCharacterCount > 0
+                    ? $"Generated packet-authored ViewAllCharResult completion after aggregating {totalCharacterCount} character(s) across {chunkProfiles.Count} world(s)."
+                    : "Generated packet-authored ViewAllCharResult completion without any aggregated characters, so the login flow returned to world selection.");
+            return true;
+        }
+
+        private List<LoginViewAllCharResultPacketProfile> BuildGeneratedViewAllCharChunkProfiles()
+        {
+            string accountName = ResolveLoginRosterAccountName();
+            int? accountId = ResolveLoginRosterAccountId();
+            HashSet<int> worldIds = new(GetRegisteredWorldSelectorIds());
+            worldIds.Add(ResolveLoginRosterWorldId());
+
+            List<LoginViewAllCharResultPacketProfile> chunkProfiles = new();
+            foreach (int worldId in worldIds.OrderBy(id => id))
+            {
+                LoginSelectWorldCharacterEntry[] entries = ResolveGeneratedViewAllCharEntriesForWorld(accountName, accountId, worldId);
+                if (entries.Length == 0)
+                {
+                    continue;
+                }
+
+                chunkProfiles.Add(new LoginViewAllCharResultPacketProfile
+                {
+                    ResultCode = 0,
+                    Kind = LoginViewAllCharResultKind.Characters,
+                    WorldId = worldId,
+                    CharacterCount = entries.Length,
+                    Entries = entries,
+                    LoginOpt = _loginPacketSelectWorldResultProfile?.LoginOpt ?? false
+                });
+            }
+
+            return chunkProfiles;
+        }
+
+        private LoginSelectWorldCharacterEntry[] ResolveGeneratedViewAllCharEntriesForWorld(string accountName, int? accountId, int worldId)
+        {
+            if (_loginPacketSelectWorldResultProfile != null &&
+                LoginSelectWorldResultCodec.IsSuccessCode(_loginPacketSelectWorldResultProfile.ResultCode) &&
+                worldId == ResolveLoginRosterWorldId() &&
+                _loginPacketSelectWorldResultProfile.Entries.Count > 0)
+            {
+                return _loginPacketSelectWorldResultProfile.Entries
+                    .Where(entry => entry != null)
+                    .Select(entry => CloneLoginSelectWorldCharacterEntry(entry, worldId))
+                    .ToArray();
+            }
+
+            LoginCharacterAccountStore.LoginCharacterAccountState storedState =
+                _loginCharacterAccountStore.GetState(accountName, worldId, accountId);
+            if (storedState?.Entries == null || storedState.Entries.Count == 0)
+            {
+                return Array.Empty<LoginSelectWorldCharacterEntry>();
+            }
+
+            return storedState.Entries
+                .Where(entry => entry != null)
+                .Select(entry => CreateLoginPacketCharacterEntry(entry, worldId))
+                .Where(entry => entry != null)
+                .ToArray();
+        }
+
+        private static string BuildViewAllCharHeaderMessage(LoginViewAllCharResultPacketProfile packetProfile)
+        {
+            return $"Packet-authored ViewAllCharResult started aggregating {Math.Max(0, packetProfile?.CharacterCount ?? 0)} character(s) from {Math.Max(0, packetProfile?.RelatedServerCount ?? 0)} related server(s).";
+        }
+
+        private static string BuildViewAllCharChunkMessage(LoginViewAllCharResultPacketProfile packetProfile)
+        {
+            int worldId = packetProfile?.WorldId ?? 0;
+            int entryCount = packetProfile?.Entries?.Count ?? 0;
+            return $"Packet-authored ViewAllCharResult collected {entryCount} character(s) from world {worldId} and is still waiting for the remaining related-server roster data.";
+        }
+
+        private static string BuildViewAllCharCompletedMessage(LoginSelectWorldResultProfile rosterProfile)
+        {
+            int entryCount = rosterProfile?.Entries?.Count ?? 0;
+            return $"Packet-authored ViewAllCharResult finished aggregating the VAC roster with {entryCount} character(s).";
+        }
+
+        private static string BuildViewAllCharEmptyRosterMessage(LoginViewAllCharResultPacketProfile packetProfile)
+        {
+            return $"Packet-authored ViewAllCharResult reported no related VAC roster data ({Math.Max(0, packetProfile?.RelatedServerCount ?? 0)} server(s), {Math.Max(0, packetProfile?.CharacterCount ?? 0)} character(s)) and returned the login flow to world selection.";
+        }
+
+        private static string BuildViewAllCharWorldSelectFallbackMessage()
+        {
+            return "Packet-authored ViewAllCharResult completed without any aggregated VAC characters and returned the login flow to world selection.";
+        }
+
+        private static string BuildViewAllCharErrorMessage(LoginViewAllCharResultPacketProfile packetProfile)
+        {
+            return packetProfile?.ResultCode switch
+            {
+                2 => "Packet-authored ViewAllCharResult hit the client VAC failure branch for StringPool 0xFBE and returned the login flow to title.",
+                3 or 6 or 7 => "Packet-authored ViewAllCharResult hit the client VAC warning branch for StringPool 0xFBF and returned the login flow to title.",
+                byte resultCode => $"Packet-authored ViewAllCharResult returned result {FormatSelectorPacketCode(resultCode)} while the expanded roster was loading.",
+                _ => "Packet-authored ViewAllCharResult failed while the expanded roster was loading.",
+            };
+        }
+
         private void ApplyCheckDuplicatedIdResultProfile()
         {
             if (!TryGetLoginCheckDuplicatedIdPacketProfile(out LoginAccountDialogPacketProfile packetProfile) ||
@@ -8071,38 +8364,34 @@ namespace HaCreator.MapSimulator
             int buyCharacterCount)
         {
             LoginSelectWorldCharacterEntry[] packetEntries = CreateLoginPacketCharacterEntries(entries);
-            if (_loginPacketSelectWorldResultProfile != null &&
-                LoginSelectWorldResultCodec.IsSuccessCode(_loginPacketSelectWorldResultProfile.ResultCode))
+            bool includeSelectWorldRoster = _loginPacketSelectWorldResultProfile != null &&
+                                            LoginSelectWorldResultCodec.IsSuccessCode(_loginPacketSelectWorldResultProfile.ResultCode);
+            bool includeViewAllRoster = _loginPacketViewAllCharRosterProfile != null ||
+                                        _loginPacketViewAllCharEntries.Count > 0 ||
+                                        _loginRuntime.CurrentStep == LoginStep.ViewAllCharacters;
+            _loginBackendSessionManager.SynchronizeResolvedRoster(
+                packetEntries,
+                slotCount,
+                buyCharacterCount,
+                includeSelectWorldRoster,
+                includeViewAllRoster,
+                _loginPacketSelectWorldResultProfile?.LoginOpt ?? false,
+                _loginPacketViewAllCharRosterProfile?.LoginOpt ?? false);
+
+            if (includeSelectWorldRoster)
             {
-                _loginPacketSelectWorldResultProfile = new LoginSelectWorldResultProfile
-                {
-                    ResultCode = _loginPacketSelectWorldResultProfile.ResultCode,
-                    Entries = packetEntries,
-                    LoginOpt = _loginPacketSelectWorldResultProfile.LoginOpt,
-                    SlotCount = slotCount,
-                    BuyCharacterCount = buyCharacterCount
-                };
+                _loginPacketSelectWorldResultProfile = _loginBackendSessionManager.SelectWorldRosterProfile;
             }
 
-            if (_loginPacketViewAllCharRosterProfile != null ||
-                _loginPacketViewAllCharEntries.Count > 0 ||
-                _loginRuntime.CurrentStep == LoginStep.ViewAllCharacters)
+            if (includeViewAllRoster)
             {
                 _loginPacketViewAllCharEntries.Clear();
                 _loginPacketViewAllCharEntries.AddRange(packetEntries);
-                _loginPacketViewAllCharRosterProfile = new LoginSelectWorldResultProfile
-                {
-                    ResultCode = 0,
-                    Entries = packetEntries,
-                    LoginOpt = _loginPacketViewAllCharRosterProfile?.LoginOpt ?? false,
-                    SlotCount = slotCount,
-                    BuyCharacterCount = buyCharacterCount
-                };
-                _loginPacketViewAllCharExpectedCharacterCount = packetEntries.Length;
-                _loginPacketViewAllCharRemainingServerCount = 0;
+                _loginPacketViewAllCharRosterProfile = _loginBackendSessionManager.ViewAllCharRosterProfile;
+                _loginPacketViewAllCharExpectedCharacterCount = _loginBackendSessionManager.ViewAllExpectedCharacterCount;
+                _loginPacketViewAllCharRemainingServerCount = _loginBackendSessionManager.ViewAllRemainingServerCount;
             }
         }
-
         private LoginSelectWorldCharacterEntry[] CreateLoginPacketCharacterEntries(IReadOnlyList<LoginCharacterRosterEntry> entries)
         {
             if (entries == null || entries.Count == 0)
@@ -8123,6 +8412,67 @@ namespace HaCreator.MapSimulator
             return packetEntries.ToArray();
         }
 
+        private LoginSelectWorldCharacterEntry CreateLoginPacketCharacterEntry(
+            LoginCharacterAccountStore.LoginCharacterAccountEntryState entry,
+            int worldId)
+        {
+            if (entry == null)
+            {
+                return null;
+            }
+
+            CharacterBuild build = CreateLoginCharacterBuildFromAccountState(entry);
+            if (build == null)
+            {
+                return null;
+            }
+
+            LoginAvatarLook avatarLook = ResolveLoginRosterAvatarLook(build, entry.AvatarLookPacket, out byte[] avatarLookPacket);
+            int? worldRank = build.WorldRank > 0 ? build.WorldRank : null;
+            int? previousWorldRank = entry.PreviousWorldRank;
+            int? jobRank = build.JobRank > 0 ? build.JobRank : null;
+            int? previousJobRank = entry.PreviousJobRank;
+
+            return new LoginSelectWorldCharacterEntry
+            {
+                CharacterId = build.Id,
+                WorldId = Math.Max(0, worldId),
+                Name = build.Name ?? string.Empty,
+                Gender = build.Gender,
+                Skin = build.Skin,
+                FaceId = avatarLook?.FaceId ?? build.Face?.ItemId ?? 0,
+                HairId = avatarLook?.HairId ?? build.Hair?.ItemId ?? 0,
+                Level = Math.Max(1, build.Level),
+                JobId = build.Job,
+                SubJob = build.SubJob,
+                Strength = Math.Max(0, build.STR),
+                Dexterity = Math.Max(0, build.DEX),
+                Intelligence = Math.Max(0, build.INT),
+                Luck = Math.Max(0, build.LUK),
+                AbilityPoints = Math.Max(0, build.AP),
+                HitPoints = Math.Max(0, build.HP),
+                MaxHitPoints = Math.Max(1, build.MaxHP),
+                ManaPoints = Math.Max(0, build.MP),
+                MaxManaPoints = Math.Max(0, build.MaxMP),
+                Experience = Math.Max(0L, build.Exp),
+                Fame = Math.Max(0, build.Fame),
+                FieldMapId = entry.FieldMapId,
+                Portal = (byte)Math.Clamp(entry.Portal, 0, byte.MaxValue),
+                PlayTime = 0,
+                OnFamily = false,
+                WorldRank = worldRank,
+                WorldRankMove = worldRank.HasValue && previousWorldRank.HasValue
+                    ? previousWorldRank.Value - worldRank.Value
+                    : null,
+                JobRank = jobRank,
+                JobRankMove = jobRank.HasValue && previousJobRank.HasValue
+                    ? previousJobRank.Value - jobRank.Value
+                    : null,
+                AvatarLook = avatarLook,
+                AvatarLookPacket = avatarLookPacket ?? Array.Empty<byte>()
+            };
+        }
+
         private LoginSelectWorldCharacterEntry CreateLoginPacketCharacterEntry(LoginCharacterRosterEntry entry)
         {
             CharacterBuild build = entry?.Build;
@@ -8131,10 +8481,12 @@ namespace HaCreator.MapSimulator
                 return null;
             }
 
+            LoginAvatarLook avatarLook = entry.AvatarLook != null
+                ? LoginAvatarLookCodec.CloneLook(entry.AvatarLook)
+                : LoginAvatarLookCodec.CreateLook(build);
             byte[] avatarLookPacket = entry.AvatarLookPacket?.Length > 0
                 ? (byte[])entry.AvatarLookPacket.Clone()
-                : LoginAvatarLookCodec.Encode(build);
-            LoginAvatarLookCodec.TryDecode(avatarLookPacket, out LoginAvatarLook avatarLook, out _);
+                : LoginAvatarLookCodec.Encode(avatarLook);
 
             int? worldRank = build.WorldRank > 0 ? build.WorldRank : null;
             int? previousWorldRank = entry.PreviousWorldRank;
@@ -8178,6 +8530,53 @@ namespace HaCreator.MapSimulator
                     : null,
                 AvatarLook = avatarLook,
                 AvatarLookPacket = avatarLookPacket ?? Array.Empty<byte>()
+            };
+        }
+
+        private static LoginSelectWorldCharacterEntry CloneLoginSelectWorldCharacterEntry(LoginSelectWorldCharacterEntry entry, int worldId)
+        {
+            if (entry == null)
+            {
+                return null;
+            }
+
+            return new LoginSelectWorldCharacterEntry
+            {
+                CharacterId = entry.CharacterId,
+                WorldId = Math.Max(0, worldId),
+                Name = entry.Name ?? string.Empty,
+                Gender = entry.Gender,
+                Skin = entry.Skin,
+                FaceId = entry.FaceId,
+                HairId = entry.HairId,
+                Level = entry.Level,
+                JobId = entry.JobId,
+                SubJob = entry.SubJob,
+                Strength = entry.Strength,
+                Dexterity = entry.Dexterity,
+                Intelligence = entry.Intelligence,
+                Luck = entry.Luck,
+                AbilityPoints = entry.AbilityPoints,
+                HitPoints = entry.HitPoints,
+                MaxHitPoints = entry.MaxHitPoints,
+                ManaPoints = entry.ManaPoints,
+                MaxManaPoints = entry.MaxManaPoints,
+                Experience = entry.Experience,
+                Fame = entry.Fame,
+                FieldMapId = entry.FieldMapId,
+                Portal = entry.Portal,
+                PlayTime = entry.PlayTime,
+                OnFamily = entry.OnFamily,
+                WorldRank = entry.WorldRank,
+                WorldRankMove = entry.WorldRankMove,
+                JobRank = entry.JobRank,
+                JobRankMove = entry.JobRankMove,
+                AvatarLook = entry.AvatarLook != null
+                    ? LoginAvatarLookCodec.CloneLook(entry.AvatarLook)
+                    : null,
+                AvatarLookPacket = entry.AvatarLookPacket != null
+                    ? (byte[])entry.AvatarLookPacket.Clone()
+                    : Array.Empty<byte>()
             };
         }
 
@@ -8680,77 +9079,59 @@ namespace HaCreator.MapSimulator
 
 
 
-            CharacterLoader loader = _playerManager?.Loader;
-            LoginCreateCharacterFlowState flow = _loginCreateCharacterFlow;
-            if (loader == null || flow == null)
-
-
-
+            if (!TryBuildCreateCharacterPacketRequest(characterName, out _, out LoginNewCharacterRequest request, out _, out status))
             {
-
-
-
-                status = "The login create-character flow is not ready for live session injection.";
-
-
-
                 return false;
-
-
-
             }
-
-
-
-            CharacterLoader.LoginStarterAvatarCatalog catalog =
-                loader.GetLoginStarterAvatarCatalog(flow.SelectedRace, flow.SelectedGender);
-            if (catalog == null)
-
-
-
-            {
-
-
-
-                status = "Starter avatar data could not be resolved from MakeCharInfo for live session injection.";
-
-
-
-                return false;
-
-
-
-            }
-
-
-
-            int faceId = PickLoginStarterValue(catalog.FaceIds, flow.SelectedFaceIndex, flow.SelectedGender == CharacterGender.Male ? 20000 : 21000);
-            int hairStyleId = PickLoginStarterValue(catalog.HairStyleIds, flow.SelectedHairIndex, flow.SelectedGender == CharacterGender.Male ? 30000 : 31000);
-            int skinValue = (int)PickLoginStarterValue(catalog.Skins, flow.SelectedSkinIndex, SkinColor.Light);
-            int hairColorValue = PickLoginStarterValue(catalog.HairColorIndices, 0, 0);
-            int coatId = PickLoginStarterValue(catalog.CoatIds, flow.SelectedCoatIndex, 1042003);
-            int pantsId = PickLoginStarterValue(catalog.PantsIds, flow.SelectedPantsIndex, 1062007);
-            int shoesId = PickLoginStarterValue(catalog.ShoesIds, flow.SelectedShoesIndex, 1072005);
-            int weaponId = PickLoginStarterValue(catalog.WeaponIds, flow.SelectedWeaponIndex, 1322013);
-
-            LoginNewCharacterRequest request = new(
-                characterName,
-                (int)flow.SelectedRace,
-                flow.SelectedJob?.SubJob ?? 0,
-                (byte)flow.SelectedGender,
-                faceId,
-                hairStyleId,
-                skinValue,
-                hairColorValue,
-                coatId,
-                pantsId,
-                shoesId,
-                weaponId);
 
             return _loginOfficialSessionBridge.TrySendNewCharacterRequest(request, out status);
 
 
 
+        }
+
+
+
+        private bool TryBuildCreateCharacterPacketRequest(
+            string characterName,
+            out LoginCreateCharacterRequestProfile requestProfile,
+            out LoginNewCharacterRequest packetRequest,
+            out byte[] packetPayload,
+            out string status)
+
+
+
+        {
+            requestProfile = null;
+            packetRequest = default;
+            packetPayload = Array.Empty<byte>();
+            status = string.Empty;
+
+            CharacterLoader loader = _playerManager?.Loader;
+            LoginCreateCharacterFlowState flow = _loginCreateCharacterFlow;
+            if (loader == null || flow == null)
+            {
+                status = "The login create-character flow is not ready for packet synthesis.";
+                return false;
+            }
+
+            requestProfile = flow.BuildRequestProfile(loader);
+            if (requestProfile == null)
+            {
+                status = "Starter avatar data could not be resolved from MakeCharInfo for packet synthesis.";
+                return false;
+            }
+
+            LoginNewCharacterRequest request = requestProfile.ToPacketRequest(characterName);
+            packetPayload = LoginOfficialSessionBridgeManager.BuildNewCharacterPacket(request);
+            if (!LoginNewCharacterRequestCodec.TryDecode(packetPayload, out packetRequest, out string decodeError))
+            {
+                status = $"Unable to round-trip the new-character request payload: {decodeError}";
+                return false;
+            }
+
+            status = "Built a packet-shaped create-character request from the active race, job, and avatar selections.";
+            return true;
         }
 
 
@@ -9186,6 +9567,7 @@ namespace HaCreator.MapSimulator
 
 
 
+            LoginAvatarLook avatarLook = entry?.AvatarLook;
             byte[] avatarLookPacket = entry?.AvatarLookPacket != null
 
 
@@ -9194,7 +9576,9 @@ namespace HaCreator.MapSimulator
 
 
 
-                : (build != null ? LoginAvatarLookCodec.Encode(build) : Array.Empty<byte>());
+                : (avatarLook != null
+                    ? LoginAvatarLookCodec.Encode(avatarLook)
+                    : (build != null ? LoginAvatarLookCodec.Encode(build) : Array.Empty<byte>()));
 
 
 
@@ -11314,6 +11698,48 @@ namespace HaCreator.MapSimulator
             return LoginAccountDialogPacketProfileFormatter.BuildDetailBlock(profile);
         }
 
+        private static LoginAccountDialogPacketProfile WithLoginAccountDialogPacketSource(
+            LoginAccountDialogPacketProfile profile,
+            string source)
+        {
+            if (profile == null)
+            {
+                return null;
+            }
+
+            string normalizedSource = string.IsNullOrWhiteSpace(source)
+                ? profile.Source
+                : source.Trim();
+            if (string.Equals(profile.Source, normalizedSource, StringComparison.Ordinal))
+            {
+                return profile;
+            }
+
+            return new LoginAccountDialogPacketProfile
+            {
+                PacketType = profile.PacketType,
+                Source = normalizedSource,
+                Payload = profile.Payload,
+                ResultCode = profile.ResultCode,
+                SecondaryCode = profile.SecondaryCode,
+                AccountId = profile.AccountId,
+                CharacterId = profile.CharacterId,
+                Gender = profile.Gender,
+                GradeCode = profile.GradeCode,
+                AccountFlags = profile.AccountFlags,
+                CountryId = profile.CountryId,
+                ClubId = profile.ClubId,
+                PurchaseExperience = profile.PurchaseExperience,
+                ChatBlockReason = profile.ChatBlockReason,
+                ChatUnblockFileTime = profile.ChatUnblockFileTime,
+                RegisterDateFileTime = profile.RegisterDateFileTime,
+                CharacterCount = profile.CharacterCount,
+                ClientKey = profile.ClientKey,
+                RequestedName = profile.RequestedName,
+                TextValue = profile.TextValue,
+            };
+        }
+
         private static LoginPacketDialogPromptConfiguration BuildClientAccountDialogResultPrompt(
             LoginPacketType packetType,
             LoginAccountDialogPacketProfile packetProfile,
@@ -11959,8 +12385,26 @@ namespace HaCreator.MapSimulator
                 _loginPacketCreateNewCharacterResultProfile.Payload == null ||
                 _loginPacketCreateNewCharacterResultProfile.Payload.Length == 0)
             {
+                if (!TryBuildCreateCharacterPacketRequest(
+                        characterName,
+                        out LoginCreateCharacterRequestProfile createRequestProfile,
+                        out LoginNewCharacterRequest packetRequest,
+                        out byte[] packetPayload,
+                        out string requestStatus))
+                {
+                    _loginCharacterStatusMessage = requestStatus;
+                    SyncLoginCharacterSelectWindow();
+                    SyncLoginCreateCharacterWindow();
+                    return;
+                }
+
                 _loginPacketCreateNewCharacterResultProfile =
-                    BuildGeneratedCreateNewCharacterResultProfile(characterName, characterId);
+                    BuildGeneratedCreateNewCharacterResultProfile(
+                        characterName,
+                        characterId,
+                        createRequestProfile,
+                        packetRequest,
+                        packetPayload);
             }
 
             if (_loginPacketCreateNewCharacterResultProfile == null)
@@ -12154,6 +12598,7 @@ namespace HaCreator.MapSimulator
             _loginPacketSelectWorldResultCode = null;
             _loginPacketSelectWorldTargetWorldId = null;
             _loginPacketSelectWorldTargetChannelIndex = null;
+            _loginBackendSessionManager.Reset();
             _loginPacketSelectWorldResultProfile = null;
             _loginPacketViewAllCharResultProfile = null;
             _loginPacketViewAllCharRosterProfile = null;
@@ -16421,6 +16866,28 @@ namespace HaCreator.MapSimulator
         {
             return -((ownerCharacterId * 10) + slotIndex + 1);
         }
+        internal static bool TryDecodeRemotePetPickupActorId(int actorId, out int ownerCharacterId, out int slotIndex)
+        {
+            ownerCharacterId = 0;
+            slotIndex = -1;
+
+            if (actorId >= -1)
+            {
+                return false;
+            }
+
+            int encodedValue = -actorId - 1;
+            int decodedOwnerId = encodedValue / 10;
+            int decodedSlotIndex = encodedValue % 10;
+            if (decodedOwnerId <= 0 || decodedSlotIndex < 0)
+            {
+                return false;
+            }
+
+            ownerCharacterId = decodedOwnerId;
+            slotIndex = decodedSlotIndex;
+            return true;
+        }
         private static long BuildRemotePetPickupKey(int ownerCharacterId, int slotIndex)
         {
             return ((long)ownerCharacterId << 8) | (uint)(slotIndex + 1);
@@ -20179,10 +20646,16 @@ namespace HaCreator.MapSimulator
                         temporaryPortalDestination.X,
                         temporaryPortalDestination.Y,
                         temporaryPortalDestination.DelayMs,
-                        currentTime);
+                        currentTime,
+                        usePacketOwnedApply: true);
                 }
                 else
                 {
+                    StagePendingCrossMapTeleport(
+                        temporaryPortalDestination.MapId,
+                        targetPortalName: null,
+                        fallbackX: temporaryPortalDestination.X,
+                        fallbackY: temporaryPortalDestination.Y);
                     SetPendingMapSpawnTarget(temporaryPortalDestination.X, temporaryPortalDestination.Y);
                     _gameState.PendingMapChange = true;
                     _gameState.PendingMapId = temporaryPortalDestination.MapId;
@@ -20266,6 +20739,7 @@ namespace HaCreator.MapSimulator
                     return true;
                 }
 
+                StagePendingCrossMapTeleport(nearestPortal.PortalInstance.tm, nearestPortal.PortalInstance.tn);
                 _gameState.PendingMapChange = true;
                 _gameState.PendingMapId = nearestPortal.PortalInstance.tm;
                 _gameState.PendingPortalName = nearestPortal.PortalInstance.tn;
@@ -20334,6 +20808,7 @@ namespace HaCreator.MapSimulator
                     return true;
                 }
 
+                StagePendingCrossMapTeleport(nearestHiddenPortal.tm, nearestHiddenPortal.tn);
                 _gameState.PendingMapChange = true;
                 _gameState.PendingMapId = nearestHiddenPortal.tm;
                 _gameState.PendingPortalName = nearestHiddenPortal.tn;
@@ -20430,8 +20905,17 @@ namespace HaCreator.MapSimulator
                 currentTime,
                 targetPortalIndex,
                 sourcePortal.pn,
-                sourcePortal.tn);
+                sourcePortal.tn,
+                usePacketOwnedApply: true);
             return true;
+        }
+
+        private void StagePendingCrossMapTeleport(int targetMapId, string targetPortalName = null, float? fallbackX = null, float? fallbackY = null)
+        {
+            _pendingCrossMapTeleportTarget = targetMapId > 0
+                ? new PendingCrossMapTeleportTarget(targetMapId, targetPortalName, fallbackX, fallbackY)
+                : null;
+            _packetOwnedTeleportRequestActive = _pendingCrossMapTeleportTarget != null;
         }
 
 
@@ -20442,7 +20926,8 @@ namespace HaCreator.MapSimulator
             int currentTime,
             int portalIndex = -1,
             string sourcePortalName = null,
-            string targetPortalName = null)
+            string targetPortalName = null,
+            bool usePacketOwnedApply = false)
         {
             _sameMapTeleportPending = true;
             _sameMapTeleportStartTime = currentTime;
@@ -20452,11 +20937,13 @@ namespace HaCreator.MapSimulator
                 portalIndex >= 0 ? targetY : targetY - SAME_MAP_TELEPORT_Y_OFFSET,
                 portalIndex,
                 sourcePortalName,
-                targetPortalName);
-            _packetOwnedTeleportRequestActive = portalIndex >= 0;
-            if (portalIndex >= 0)
+                targetPortalName,
+                usePacketOwnedApply);
+            _pendingCrossMapTeleportTarget = null;
+            _packetOwnedTeleportRequestActive = usePacketOwnedApply;
+            if (usePacketOwnedApply)
             {
-                _lastPacketOwnedTeleportPortalIndex = portalIndex;
+                _lastPacketOwnedTeleportPortalIndex = portalIndex >= 0 ? portalIndex : -1;
                 _lastPacketOwnedTeleportSourcePortalName = sourcePortalName;
                 _lastPacketOwnedTeleportTargetPortalName = targetPortalName;
             }
@@ -20603,11 +21090,13 @@ namespace HaCreator.MapSimulator
             SameMapTeleportTarget target = _sameMapTeleportTarget;
             if (target != null)
             {
-                if (target.HasPacketOwnedPortalIndex
-                    && TryApplyPacketOwnedTeleportResult(
-                        succeeded: true,
-                        target.PortalIndex,
-                        out _))
+                if (target.UsesPacketOwnedApply
+                    && (target.HasPacketOwnedPortalIndex
+                        ? TryApplyPacketOwnedTeleportResult(
+                            succeeded: true,
+                            target.PortalIndex,
+                            out _)
+                        : TryApplyPacketOwnedTeleportResult(target.X, target.Y, out _)))
                 {
                 }
                 else
@@ -20626,7 +21115,7 @@ namespace HaCreator.MapSimulator
 
             _sameMapTeleportPending = false;
             _sameMapTeleportTarget = null;
-            _packetOwnedTeleportRequestActive = false;
+            _packetOwnedTeleportRequestActive = _pendingCrossMapTeleportTarget != null;
             ClearPassiveTransferRequest();
         }
 
@@ -20954,6 +21443,8 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            RegisterPacketOwnedStageTransitionObject(mapItem, objInst);
+
 
             bool hiddenByMap = objInst.hide == true;
             bool hasQuestInfo = objInst.QuestInfo != null && objInst.QuestInfo.Count > 0;
@@ -20990,18 +21481,27 @@ namespace HaCreator.MapSimulator
 
         private void ApplyQuestObjectVisibility(BaseDXDrawableItem item)
         {
-            if (item == null || !_questGatedMapObjects.TryGetValue(item, out QuestGatedMapObjectState state))
+            if (item == null)
             {
                 return;
             }
 
+            bool visible = true;
+            if (_questGatedMapObjects.TryGetValue(item, out QuestGatedMapObjectState state))
+            {
+                visible = FieldObjectQuestVisibilityEvaluator.IsVisible(
+                    state.HiddenByMap,
+                    state.QuestInfo,
+                    state.DynamicTags,
+                    _questRuntime.GetCurrentState,
+                    TryGetDynamicObjectTagState);
+            }
 
-            bool visible = FieldObjectQuestVisibilityEvaluator.IsVisible(
-                state.HiddenByMap,
-                state.QuestInfo,
-                state.DynamicTags,
-                _questRuntime.GetCurrentState,
-                TryGetDynamicObjectTagState);
+            if (_packetStageTransitionObjectVisibility.TryGetValue(item, out bool packetVisible))
+            {
+                visible &= packetVisible;
+            }
+
             item.SetVisible(item.IsVisible && visible);
         }
 
@@ -21519,6 +22019,7 @@ namespace HaCreator.MapSimulator
             _playerManager.SetSoundManager(_soundManager);
             _playerManager.SetCurrentMapIdProvider(() => _mapBoard?.MapInfo?.id ?? -1);
             _playerManager.SetCurrentMapInfoProvider(() => _mapBoard?.MapInfo);
+            _playerManager.SetDragonQuestInfoStateProvider(() => _questRuntime.GetDragonQuestInfoState(_playerManager?.Player?.Build));
             _playerManager.SetReactorAttackAreaHandler(TriggerAttackReactors);
             _playerManager.SetAttackHitboxHandler(HandleSpecialFieldAttackHitbox);
 
@@ -22872,7 +23373,7 @@ namespace HaCreator.MapSimulator
                 return;
 
 
-            if (IsSkillRepresentedOnDirectHotkeyBar(skill.SkillId))
+            if (!ShouldShowOffBarSkillCooldownNotification(skill.SkillId))
 
                 return;
 
@@ -22888,7 +23389,7 @@ namespace HaCreator.MapSimulator
 
         private void HandleSkillCooldownBlocked(SkillData skill, int remainingMs, int currentTime)
         {
-            if (skill == null || remainingMs <= 0 || IsSkillRepresentedOnDirectHotkeyBar(skill.SkillId))
+            if (skill == null || remainingMs <= 0 || !ShouldShowOffBarSkillCooldownNotification(skill.SkillId))
                 return;
 
 
@@ -22911,7 +23412,7 @@ namespace HaCreator.MapSimulator
                 return;
 
 
-            if (IsSkillRepresentedOnDirectHotkeyBar(skill.SkillId))
+            if (!ShouldShowOffBarSkillCooldownNotification(skill.SkillId))
 
                 return;
 
@@ -23036,6 +23537,28 @@ namespace HaCreator.MapSimulator
         private bool IsSkillRepresentedOnDirectHotkeyBar(int skillId)
         {
             return skillId > 0 && _playerManager?.Skills?.IsSkillAssignedToDirectHotkey(skillId) == true;
+        }
+
+        private static LoginAvatarLook ResolveLoginRosterAvatarLook(
+            CharacterBuild sourceBuild,
+            byte[] avatarLookPacket,
+            out byte[] resolvedAvatarLookPacket)
+        {
+            resolvedAvatarLookPacket = null;
+
+            if (avatarLookPacket?.Length > 0 &&
+                LoginAvatarLookCodec.TryDecode(avatarLookPacket, out LoginAvatarLook packetAvatarLook, out _))
+            {
+                resolvedAvatarLookPacket = (byte[])avatarLookPacket.Clone();
+                return packetAvatarLook;
+            }
+
+            return sourceBuild != null ? LoginAvatarLookCodec.CreateLook(sourceBuild) : null;
+        }
+
+        private bool ShouldShowOffBarSkillCooldownNotification(int skillId)
+        {
+            return skillId > 0 && !IsSkillRepresentedOnDirectHotkeyBar(skillId);
         }
 
 
@@ -24416,6 +24939,7 @@ namespace HaCreator.MapSimulator
 
 
             _loginPacketSelectWorldResultProfile = decodedProfile;
+            _loginBackendSessionManager.ApplySelectWorldResult(decodedProfile);
             _loginPacketSelectWorldResultCode = decodedProfile != null
                 ? decodedProfile.ResultCode
                 : configuredResultCode;
@@ -25411,7 +25935,10 @@ namespace HaCreator.MapSimulator
 
         private LoginCreateNewCharacterResultProfile BuildGeneratedCreateNewCharacterResultProfile(
             string requestedName = null,
-            int? requestedCharacterId = null)
+            int? requestedCharacterId = null,
+            LoginCreateCharacterRequestProfile createRequestProfile = null,
+            LoginNewCharacterRequest? packetRequest = null,
+            byte[] packetPayload = null)
 
 
         {
@@ -25442,8 +25969,41 @@ namespace HaCreator.MapSimulator
 
 
 
-            LoginCreateCharacterRequestProfile createRequest = _loginCreateCharacterFlow?.BuildRequestProfile(loader);
-            CharacterBuild starterBuild = _loginCreateCharacterFlow?.CreatePreviewBuild(loader) ?? loader.LoadRandom();
+            LoginCreateCharacterRequestProfile createRequest = createRequestProfile ?? _loginCreateCharacterFlow?.BuildRequestProfile(loader);
+            LoginNewCharacterRequest? synthesizedPacketRequest = packetRequest;
+            if (synthesizedPacketRequest == null && !string.IsNullOrWhiteSpace(requestedName))
+            {
+                TryBuildCreateCharacterPacketRequest(
+                    requestedName,
+                    out createRequest,
+                    out LoginNewCharacterRequest rebuiltPacketRequest,
+                    out packetPayload,
+                    out _);
+                synthesizedPacketRequest = rebuiltPacketRequest;
+            }
+
+            CharacterBuild starterBuild;
+            if (createRequest != null && synthesizedPacketRequest != null)
+            {
+                CharacterGender gender = (CharacterGender)synthesizedPacketRequest.Value.Gender;
+                int hairId = loader.ResolveLoginStarterHairId(
+                    gender,
+                    synthesizedPacketRequest.Value.HairStyleId,
+                    synthesizedPacketRequest.Value.HairColorValue);
+                starterBuild = loader.LoadLoginStarterBuild(
+                    gender,
+                    (SkinColor)synthesizedPacketRequest.Value.SkinValue,
+                    synthesizedPacketRequest.Value.FaceId,
+                    hairId,
+                    synthesizedPacketRequest.Value.CoatId,
+                    synthesizedPacketRequest.Value.PantsId,
+                    synthesizedPacketRequest.Value.ShoesId,
+                    synthesizedPacketRequest.Value.WeaponId);
+            }
+            else
+            {
+                starterBuild = _loginCreateCharacterFlow?.CreatePreviewBuild(loader) ?? loader.LoadRandom();
+            }
 
 
 
@@ -25548,9 +26108,13 @@ namespace HaCreator.MapSimulator
                 .ToDictionary(entry => entry.Key, entry => entry.Value.ItemId);
 
             LoginAvatarLook avatarLook = LoginAvatarLookCodec.CreateLook(
-                createRequest?.Gender ?? starterBuild.Gender,
-                createRequest?.Skin ?? starterBuild.Skin,
-                createRequest?.FaceId ?? starterBuild.Face?.ItemId ?? 0,
+                synthesizedPacketRequest is LoginNewCharacterRequest packetGender
+                    ? (CharacterGender)packetGender.Gender
+                    : createRequest?.Gender ?? starterBuild.Gender,
+                synthesizedPacketRequest is LoginNewCharacterRequest packetSkin
+                    ? (SkinColor)packetSkin.SkinValue
+                    : createRequest?.Skin ?? starterBuild.Skin,
+                synthesizedPacketRequest?.FaceId ?? createRequest?.FaceId ?? starterBuild.Face?.ItemId ?? 0,
                 createRequest?.HairId ?? starterBuild.Hair?.ItemId ?? 0,
                 equipmentBySlot);
 
@@ -27793,6 +28357,7 @@ namespace HaCreator.MapSimulator
             _loginTitleStatusMessage = "Enter credentials or let the login packet inbox feed the bootstrap runtime.";
             _nextLoginWorldPopulationUpdateAt = currentTickCount + LoginWorldPopulationUpdateIntervalMs;
             EnsureLoginPacketInboxState(_gameState.IsLoginMap);
+            ClearPendingLoginEntrySound();
 
 
             if (_gameState.IsLoginMap)
@@ -28061,6 +28626,14 @@ namespace HaCreator.MapSimulator
             if (!TryConfigureLoginPacketPayload(message.PacketType, args, out _, out _))
             {
                 return false;
+            }
+
+            if (LoginAccountDialogPacketCodec.Supports(message.PacketType) &&
+                _loginPacketAccountDialogProfiles.TryGetValue(message.PacketType, out LoginAccountDialogPacketProfile packetProfile) &&
+                packetProfile != null)
+            {
+                _loginPacketAccountDialogProfiles[message.PacketType] =
+                    WithLoginAccountDialogPacketSource(packetProfile, message.Source);
             }
 
             DispatchLoginRuntimePacket(message.PacketType, out _);

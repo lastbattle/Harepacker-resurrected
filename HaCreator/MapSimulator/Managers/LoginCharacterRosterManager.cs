@@ -14,6 +14,7 @@ namespace HaCreator.MapSimulator.Managers
             bool canDelete = true,
             int? previousWorldRank = null,
             int? previousJobRank = null,
+            LoginAvatarLook avatarLook = null,
             byte[] avatarLookPacket = null,
             int portal = 0)
         {
@@ -23,6 +24,7 @@ namespace HaCreator.MapSimulator.Managers
             CanDelete = canDelete;
             PreviousWorldRank = previousWorldRank;
             PreviousJobRank = previousJobRank;
+            AvatarLook = LoginAvatarLookCodec.CloneLook(avatarLook);
             AvatarLookPacket = avatarLookPacket != null ? (byte[])avatarLookPacket.Clone() : null;
             Portal = portal;
         }
@@ -33,11 +35,17 @@ namespace HaCreator.MapSimulator.Managers
         public bool CanDelete { get; }
         public int? PreviousWorldRank { get; }
         public int? PreviousJobRank { get; }
+        public LoginAvatarLook AvatarLook { get; }
         public byte[] AvatarLookPacket { get; }
         public int Portal { get; }
 
         public CharacterBuild CreateRuntimeBuild(CharacterLoader loader)
         {
+            if (loader != null && AvatarLook != null)
+            {
+                return loader.LoadFromAvatarLook(AvatarLook, Build);
+            }
+
             if (loader != null &&
                 AvatarLookPacket?.Length > 0 &&
                 LoginAvatarLookCodec.TryDecode(AvatarLookPacket, out LoginAvatarLook avatarLook, out _))

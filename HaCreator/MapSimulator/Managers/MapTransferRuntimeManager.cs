@@ -1,9 +1,20 @@
 using HaCreator.MapSimulator.Character;
 using System;
 using System.Collections.Generic;
+using System.IO;
 
 namespace HaCreator.MapSimulator.Managers
 {
+    public enum MapTransferRuntimePacketResultCode : byte
+    {
+        None = 0,
+        RegisterApplied = 2,
+        DeleteApplied = 3,
+        NoEmptySlot = 5,
+        AlreadyRegistered = 9,
+        CannotSaveDestination = 10
+    }
+
     public enum MapTransferRuntimeRequestType
     {
         Delete = 0,
@@ -32,6 +43,7 @@ namespace HaCreator.MapSimulator.Managers
         public int FocusMapId { get; init; }
         public int FocusSlotIndex { get; init; } = -1;
         public MapTransferRuntimeResultType ResultType { get; init; }
+        public MapTransferRuntimePacketResultCode PacketResultCode { get; init; }
         public bool CanTransferContinent { get; init; }
         public IReadOnlyList<int> FieldList { get; init; } = Array.Empty<int>();
     }
@@ -63,7 +75,7 @@ namespace HaCreator.MapSimulator.Managers
         private sealed class PendingRuntimeResponse
         {
             public string CharacterKey { get; init; }
-            public MapTransferRuntimeResponse Response { get; init; }
+            public byte[] Payload { get; init; } = Array.Empty<byte>();
         }
 
         private readonly MapTransferDestinationStore _store;
@@ -113,10 +125,14 @@ namespace HaCreator.MapSimulator.Managers
             {
                 MapTransferRuntimeRequestType.Register => RegisterDestination(build, request, slots),
                 MapTransferRuntimeRequestType.Delete => DeleteDestination(build, request, slots),
-                _ => new MapTransferRuntimeResponse()
+                _ => new MapTransferRuntimeResponse
+                {
+                    FailureMessage = "Unknown map transfer request."
+                }
             };
 
-            if (!response.Applied)
+            MapTransferRuntimePacketResultCode packetResultCode = response.PacketResultCode;
+            if (packetResultCode == MapTransferRuntimePacketResultCode.None)
             {
                 return new MapTransferRuntimeDispatchResult
                 {
@@ -130,18 +146,7 @@ namespace HaCreator.MapSimulator.Managers
             _pendingResponses.Add(new PendingRuntimeResponse
             {
                 CharacterKey = characterKey,
-                Response = new MapTransferRuntimeResponse
-                {
-                    Applied = true,
-                    FailureMessage = response.FailureMessage,
-                    FocusMapId = response.FocusMapId,
-                    FocusSlotIndex = response.FocusSlotIndex,
-                    ResultType = request.Type == MapTransferRuntimeRequestType.Register
-                        ? MapTransferRuntimeResultType.RegisterApplied
-                        : MapTransferRuntimeResultType.DeleteApplied,
-                    CanTransferContinent = request.Book == MapTransferDestinationBook.Continent,
-                    FieldList = (int[])slots.Clone()
-                }
+                Payload = BuildResponsePayload(request, response, slots)
             });
 
             return new MapTransferRuntimeDispatchResult
@@ -166,10 +171,20 @@ namespace HaCreator.MapSimulator.Managers
                 };
             }
 
-            if (TryDequeueMapTransferResult(build, out MapTransferRuntimeResponse response))
+            if (TryDequeueMapTransferResultPayload(build, out byte[] payload) &&
+                ApplyMapTransferResultPayload(build, payload, out MapTransferRuntimeResponse response))
             {
-                ApplyMapTransferResult(build, response);
-                return response;
+                return new MapTransferRuntimeResponse
+                {
+                    Applied = response.Applied,
+                    FailureMessage = response.FailureMessage,
+                    FocusMapId = dispatchResult.FocusMapId,
+                    FocusSlotIndex = dispatchResult.FocusSlotIndex,
+                    ResultType = response.ResultType,
+                    PacketResultCode = response.PacketResultCode,
+                    CanTransferContinent = response.CanTransferContinent,
+                    FieldList = response.FieldList
+                };
             }
 
             return new MapTransferRuntimeResponse
@@ -181,7 +196,7 @@ namespace HaCreator.MapSimulator.Managers
             };
         }
 
-        public bool TryDequeueMapTransferResult(CharacterBuild build, out MapTransferRuntimeResponse response)
+        public bool TryDequeueMapTransferResultPayload(CharacterBuild build, out byte[] payload)
         {
             string characterKey = ResolveCharacterKey(build);
             for (int i = 0; i < _pendingResponses.Count; i++)
@@ -193,23 +208,28 @@ namespace HaCreator.MapSimulator.Managers
                 }
 
                 _pendingResponses.RemoveAt(i);
-                response = pendingResponse.Response;
+                payload = pendingResponse.Payload;
                 return true;
             }
 
-            response = null;
+            payload = null;
             return false;
         }
 
-        public bool ApplyMapTransferResult(CharacterBuild build, MapTransferRuntimeResponse response)
+        public bool ApplyMapTransferResultPayload(CharacterBuild build, byte[] payload, out MapTransferRuntimeResponse response)
         {
-            if (response == null ||
-                !response.Applied ||
+            response = DecodeResponsePayload(payload);
+            if (response == null)
+            {
+                return false;
+            }
+
+            if (!response.Applied ||
                 response.ResultType == MapTransferRuntimeResultType.None ||
                 response.FieldList == null ||
                 response.FieldList.Count == 0)
             {
-                return false;
+                return true;
             }
 
             CharacterRuntimeBooks runtimeBooks = GetOrCreateBooks(build);
@@ -217,7 +237,6 @@ namespace HaCreator.MapSimulator.Managers
                 ? MapTransferDestinationBook.Continent
                 : MapTransferDestinationBook.Regular;
             int[] slots = GetSlots(runtimeBooks, book);
-
             Array.Fill(slots, EmptyDestinationMapId);
             int maxCount = Math.Min(slots.Length, response.FieldList.Count);
             for (int slotIndex = 0; slotIndex < maxCount; slotIndex++)
@@ -236,6 +255,7 @@ namespace HaCreator.MapSimulator.Managers
             {
                 return new MapTransferRuntimeResponse
                 {
+                    PacketResultCode = MapTransferRuntimePacketResultCode.CannotSaveDestination,
                     FailureMessage = "This destination cannot be saved in a teleport slot."
                 };
             }
@@ -248,6 +268,7 @@ namespace HaCreator.MapSimulator.Managers
                 {
                     return new MapTransferRuntimeResponse
                     {
+                        PacketResultCode = MapTransferRuntimePacketResultCode.NoEmptySlot,
                         FailureMessage = "All saved teleport slots are already filled."
                     };
                 }
@@ -258,6 +279,7 @@ namespace HaCreator.MapSimulator.Managers
             {
                 return new MapTransferRuntimeResponse
                 {
+                    PacketResultCode = MapTransferRuntimePacketResultCode.AlreadyRegistered,
                     FailureMessage = "That map is already registered in this destination book.",
                     FocusMapId = request.MapId,
                     FocusSlotIndex = existingSlotIndex
@@ -268,6 +290,7 @@ namespace HaCreator.MapSimulator.Managers
             {
                 return new MapTransferRuntimeResponse
                 {
+                    PacketResultCode = MapTransferRuntimePacketResultCode.NoEmptySlot,
                     FailureMessage = "All saved teleport slots are already filled."
                 };
             }
@@ -276,6 +299,7 @@ namespace HaCreator.MapSimulator.Managers
             return new MapTransferRuntimeResponse
             {
                 Applied = true,
+                PacketResultCode = MapTransferRuntimePacketResultCode.RegisterApplied,
                 FocusMapId = request.MapId,
                 FocusSlotIndex = targetSlotIndex
             };
@@ -296,8 +320,86 @@ namespace HaCreator.MapSimulator.Managers
             return new MapTransferRuntimeResponse
             {
                 Applied = true,
+                PacketResultCode = MapTransferRuntimePacketResultCode.DeleteApplied,
                 FocusMapId = removedMapId,
                 FocusSlotIndex = targetSlotIndex
+            };
+        }
+
+        private static byte[] BuildResponsePayload(MapTransferRuntimeRequest request, MapTransferRuntimeResponse response, int[] slots)
+        {
+            using MemoryStream stream = new();
+            using BinaryWriter writer = new(stream);
+            writer.Write((byte)response.PacketResultCode);
+            writer.Write(request.Book == MapTransferDestinationBook.Continent);
+            if (response.Applied)
+            {
+                int fieldCount = request.Book == MapTransferDestinationBook.Continent
+                    ? ContinentCapacity
+                    : RegularCapacity;
+                for (int slotIndex = 0; slotIndex < fieldCount; slotIndex++)
+                {
+                    int mapId = slotIndex < slots.Length ? slots[slotIndex] : EmptyDestinationMapId;
+                    writer.Write(mapId);
+                }
+            }
+
+            return stream.ToArray();
+        }
+
+        private static MapTransferRuntimeResponse DecodeResponsePayload(byte[] payload)
+        {
+            if (payload == null || payload.Length < 2)
+            {
+                return null;
+            }
+
+            using MemoryStream stream = new(payload, writable: false);
+            using BinaryReader reader = new(stream);
+            MapTransferRuntimePacketResultCode packetResultCode = (MapTransferRuntimePacketResultCode)reader.ReadByte();
+            bool canTransferContinent = reader.ReadBoolean();
+            int fieldCount = canTransferContinent ? ContinentCapacity : RegularCapacity;
+            List<int> fieldList = new(fieldCount);
+
+            bool applied = packetResultCode == MapTransferRuntimePacketResultCode.RegisterApplied ||
+                           packetResultCode == MapTransferRuntimePacketResultCode.DeleteApplied;
+            if (applied)
+            {
+                for (int slotIndex = 0; slotIndex < fieldCount; slotIndex++)
+                {
+                    if (stream.Position + sizeof(int) > stream.Length)
+                    {
+                        return null;
+                    }
+
+                    fieldList.Add(reader.ReadInt32());
+                }
+            }
+
+            return new MapTransferRuntimeResponse
+            {
+                Applied = applied,
+                FailureMessage = ResolveFailureMessage(packetResultCode),
+                ResultType = packetResultCode switch
+                {
+                    MapTransferRuntimePacketResultCode.RegisterApplied => MapTransferRuntimeResultType.RegisterApplied,
+                    MapTransferRuntimePacketResultCode.DeleteApplied => MapTransferRuntimeResultType.DeleteApplied,
+                    _ => MapTransferRuntimeResultType.None
+                },
+                PacketResultCode = packetResultCode,
+                CanTransferContinent = canTransferContinent,
+                FieldList = fieldList
+            };
+        }
+
+        private static string ResolveFailureMessage(MapTransferRuntimePacketResultCode packetResultCode)
+        {
+            return packetResultCode switch
+            {
+                MapTransferRuntimePacketResultCode.NoEmptySlot => "All saved teleport slots are already filled.",
+                MapTransferRuntimePacketResultCode.AlreadyRegistered => "That map is already registered in this destination book.",
+                MapTransferRuntimePacketResultCode.CannotSaveDestination => "This destination cannot be saved in a teleport slot.",
+                _ => null
             };
         }
 

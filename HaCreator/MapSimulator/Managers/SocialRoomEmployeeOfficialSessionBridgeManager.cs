@@ -1,5 +1,6 @@
 using MapleLib.MapleCryptoLib;
 using MapleLib.PacketLib;
+using HaCreator.MapSimulator.Interaction;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
@@ -102,6 +103,7 @@ namespace HaCreator.MapSimulator.Managers
         public int ListenPort { get; private set; } = DefaultListenPort;
         public string RemoteHost { get; private set; } = IPAddress.Loopback.ToString();
         public int RemotePort { get; private set; }
+        public SocialRoomKind? PreferredKind { get; private set; }
         public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
         public bool HasConnectedSession => _activePair?.InitCompleted == true;
         public int ReceivedCount { get; private set; }
@@ -169,7 +171,7 @@ namespace HaCreator.MapSimulator.Managers
                 .ToArray();
         }
 
-        public void Start(int listenPort, string remoteHost, int remotePort)
+        public void Start(int listenPort, string remoteHost, int remotePort, SocialRoomKind? preferredKind = null)
         {
             lock (_sync)
             {
@@ -180,11 +182,13 @@ namespace HaCreator.MapSimulator.Managers
                     ListenPort = listenPort <= 0 ? DefaultListenPort : listenPort;
                     RemoteHost = string.IsNullOrWhiteSpace(remoteHost) ? IPAddress.Loopback.ToString() : remoteHost.Trim();
                     RemotePort = remotePort;
+                    PreferredKind = preferredKind;
                     _listenerCancellation = new CancellationTokenSource();
                     _listener = new TcpListener(IPAddress.Loopback, ListenPort);
                     _listener.Start();
                     _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
-                    LastStatus = $"Social-room employee official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}.";
+                    LastStatus =
+                        $"Social-room employee official-session bridge listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}{DescribePreferredKindSuffix(preferredKind)}.";
                 }
                 catch (Exception ex)
                 {
@@ -194,7 +198,7 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
-        public bool TryStartFromDiscovery(int listenPort, int remotePort, string processSelector, int? localPort, out string status)
+        public bool TryStartFromDiscovery(int listenPort, int remotePort, string processSelector, int? localPort, SocialRoomKind? preferredKind, out string status)
         {
             int? owningProcessId = null;
             string owningProcessName = null;
@@ -212,8 +216,9 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
-            Start(listenPort, candidate.RemoteEndpoint.Address.ToString(), candidate.RemoteEndpoint.Port);
-            status = $"Social-room employee official-session bridge discovered {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}. {LastStatus}";
+            Start(listenPort, candidate.RemoteEndpoint.Address.ToString(), candidate.RemoteEndpoint.Port, preferredKind);
+            status =
+                $"Social-room employee official-session bridge discovered {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}{DescribePreferredKindSuffix(preferredKind)}. {LastStatus}";
             LastStatus = status;
             return true;
         }
@@ -426,6 +431,7 @@ namespace HaCreator.MapSimulator.Managers
             _listener = null;
             _listenerCancellation?.Dispose();
             _listenerCancellation = null;
+            PreferredKind = null;
 
             BridgePair pair = _activePair;
             _activePair = null;
@@ -640,6 +646,13 @@ namespace HaCreator.MapSimulator.Managers
             return localPort.HasValue
                 ? $"{selectorLabel} on remote port {remotePort} and local port {localPort.Value}"
                 : $"{selectorLabel} on remote port {remotePort}";
+        }
+
+        private static string DescribePreferredKindSuffix(SocialRoomKind? preferredKind)
+        {
+            return preferredKind.HasValue
+                ? $" for {preferredKind.Value}"
+                : string.Empty;
         }
 
         private static bool TryDecodeOpcode(byte[] rawPacket, out int opcode, out byte[] payload)

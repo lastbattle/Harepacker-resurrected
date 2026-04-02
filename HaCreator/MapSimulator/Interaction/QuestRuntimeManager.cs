@@ -60,6 +60,10 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal sealed class QuestRuntimeManager
     {
+        private const int DragonNpcId = 1013000;
+        private const int DragonQuestIdSkipMin = 1200;
+        private const int DragonQuestIdSkipMax = 1399;
+
         private sealed class QuestStateRequirement
         {
             public int QuestId { get; init; }
@@ -246,6 +250,7 @@ namespace HaCreator.MapSimulator.Interaction
         private sealed class QuestProgress
         {
             public QuestStateType State { get; set; }
+            public DateTime StartedAtUtc { get; set; }
             public Dictionary<int, int> MobKills { get; } = new();
         }
 
@@ -504,13 +509,9 @@ namespace HaCreator.MapSimulator.Interaction
 
             string rewardText = BuildRewardText(definition);
             string hintText = BuildHintText(definition, state, startIssues, completionIssues);
-            if (state == QuestStateType.Started && definition.TimeLimitSeconds > 0)
-            {
-                string timeLimitText = $"Time limit: {FormatQuestDuration(definition.TimeLimitSeconds)}";
-                hintText = string.IsNullOrWhiteSpace(hintText)
-                    ? timeLimitText
-                    : $"{hintText}\n{timeLimitText}";
-            }
+            int remainingTimeSeconds = state == QuestStateType.Started && definition.TimeLimitSeconds > 0
+                ? GetRemainingTimeSeconds(definition, progress)
+                : 0;
 
             string npcText = BuildNpcText(definition);
             List<QuestLogLineSnapshot> requirementLines = BuildDetailRequirementLines(definition, state, build);
@@ -559,6 +560,7 @@ namespace HaCreator.MapSimulator.Interaction
                 HasDetailInset = deliveryMetadata.DeliveryType != QuestDetailDeliveryType.None ||
                                  (state == QuestStateType.Started && definition.TimeLimitSeconds > 0),
                 TimeLimitSeconds = state == QuestStateType.Started ? Math.Max(0, definition.TimeLimitSeconds) : 0,
+                RemainingTimeSeconds = remainingTimeSeconds,
                 TimerUiKey = state == QuestStateType.Started ? (definition.TimerUiKey ?? string.Empty) : string.Empty,
                 DeliveryType = deliveryMetadata.DeliveryType,
                 DeliveryActionEnabled = deliveryMetadata.ActionEnabled,
@@ -1031,6 +1033,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             QuestProgress progress = GetOrCreateProgress(questId);
             progress.State = QuestStateType.Started;
+            progress.StartedAtUtc = DateTime.UtcNow;
             progress.MobKills.Clear();
             MarkQuestAlarmUpdated(questId);
 
@@ -1066,6 +1069,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             QuestProgress progress = GetOrCreateProgress(questId);
             progress.State = QuestStateType.Not_Started;
+            progress.StartedAtUtc = DateTime.MinValue;
             progress.MobKills.Clear();
             MarkQuestAlarmUpdated(questId);
 
@@ -1187,6 +1191,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             QuestProgress progress = GetOrCreateProgress(questId);
             progress.State = QuestStateType.Completed;
+            progress.StartedAtUtc = DateTime.MinValue;
             MarkQuestAlarmUpdated(questId);
 
             return new QuestWindowActionResult
@@ -1326,6 +1331,33 @@ namespace HaCreator.MapSimulator.Interaction
                 NoticeText = noticeText,
                 ModalPages = modalPages
             };
+            return true;
+        }
+
+        internal bool TryBuildPacketQuestResultActionNotice(
+            int questId,
+            CharacterBuild build,
+            out string questName,
+            out string noticeText)
+        {
+            EnsureDefinitionsLoaded();
+            if (!_definitions.TryGetValue(questId, out QuestDefinition definition))
+            {
+                questName = $"Quest #{questId}";
+                noticeText = string.Empty;
+                return false;
+            }
+
+            QuestStateType state = GetQuestState(questId);
+            PacketQuestResultTextKind textKind = state == QuestStateType.Not_Started
+                ? PacketQuestResultTextKind.StartDescription
+                : PacketQuestResultTextKind.RewardSummary;
+            IReadOnlyList<string> actionLines = BuildPacketQuestResultActionLines(definition, build, state, textKind);
+
+            questName = definition.Name;
+            noticeText = actionLines.Count == 0
+                ? definition.Name
+                : $"{definition.Name}\n\n{string.Join("\n", actionLines)}";
             return true;
         }
 
@@ -1613,6 +1645,54 @@ namespace HaCreator.MapSimulator.Interaction
             };
         }
 
+        public NpcInteractionState BuildSingleQuestInteractionState(int npcId, string npcName, int questId, CharacterBuild build)
+        {
+            EnsureDefinitionsLoaded();
+            if (!_definitions.TryGetValue(questId, out QuestDefinition definition))
+            {
+                return new NpcInteractionState
+                {
+                    NpcName = string.IsNullOrWhiteSpace(npcName) ? "NPC" : npcName,
+                    Entries = new[]
+                    {
+                        new NpcInteractionEntry
+                        {
+                            EntryId = questId,
+                            QuestId = questId,
+                            Kind = NpcInteractionEntryKind.LockedQuest,
+                            Title = $"Quest #{questId}",
+                            Subtitle = "Unavailable",
+                            Pages = new[]
+                            {
+                                new NpcInteractionPage
+                                {
+                                    Text = $"Quest #{questId} is not available in the loaded quest data."
+                                }
+                            },
+                            PrimaryActionLabel = "OK",
+                            PrimaryActionEnabled = false,
+                            PrimaryActionKind = NpcInteractionActionKind.None
+                        }
+                    },
+                    SelectedEntryId = questId
+                };
+            }
+
+            NpcInteractionEntry entry = CreateNpcQuestEntry(definition, npcId, build)
+                ?? BuildQuestDeliveryInteractionState(questId, build, itemId: 0)?.Entries?.FirstOrDefault();
+            if (entry == null)
+            {
+                return null;
+            }
+
+            return new NpcInteractionState
+            {
+                NpcName = string.IsNullOrWhiteSpace(npcName) ? ResolveNpcName(npcId) : npcName,
+                Entries = new[] { entry },
+                SelectedEntryId = entry.EntryId
+            };
+        }
+
         public QuestActionResult TryPerformPrimaryAction(int questId, int npcId, CharacterBuild build)
         {
             return TryPerformPrimaryAction(questId, npcId, build, null);
@@ -1862,6 +1942,65 @@ namespace HaCreator.MapSimulator.Interaction
             return hasInProgressQuest
                 ? NpcInteractionEntryKind.InProgressQuest
                 : null;
+        }
+
+        public int? GetDragonQuestInfoState(CharacterBuild build)
+        {
+            EnsureDefinitionsLoaded();
+
+            bool hasRewardReadyQuest = false;
+            bool hasPreStartQuest = false;
+
+            foreach (QuestDefinition definition in _definitions.Values)
+            {
+                if (definition.QuestId >= DragonQuestIdSkipMin && definition.QuestId <= DragonQuestIdSkipMax)
+                {
+                    continue;
+                }
+
+                bool matchesStartNpc = definition.StartNpcId == DragonNpcId;
+                bool matchesEndNpc = definition.EndNpcId == DragonNpcId;
+                if (!matchesStartNpc && !matchesEndNpc)
+                {
+                    continue;
+                }
+
+                QuestStateType state = GetQuestState(definition.QuestId);
+                if (state == QuestStateType.Completed)
+                {
+                    continue;
+                }
+
+                if (state == QuestStateType.Started)
+                {
+                    if (EvaluateCompletionIssues(definition, build).Count > 0)
+                    {
+                        return 2;
+                    }
+
+                    hasRewardReadyQuest = true;
+                    continue;
+                }
+
+                if (state == QuestStateType.Not_Started
+                    && matchesStartNpc
+                    && EvaluateStartIssues(definition, build).Count == 0)
+                {
+                    hasPreStartQuest = true;
+                }
+            }
+
+            if (hasPreStartQuest)
+            {
+                return 0;
+            }
+
+            if (hasRewardReadyQuest)
+            {
+                return 1;
+            }
+
+            return null;
         }
 
         private NpcInteractionEntry CreateNpcQuestEntry(QuestDefinition definition, int npcId, CharacterBuild build)
@@ -6959,6 +7098,24 @@ namespace HaCreator.MapSimulator.Interaction
             return hours > 0
                 ? $"{hours}:{minutes:D2}:{seconds:D2}"
                 : $"{minutes}:{seconds:D2}";
+        }
+
+        private static int GetRemainingTimeSeconds(QuestDefinition definition, QuestProgress progress)
+        {
+            int totalSeconds = Math.Max(0, definition?.TimeLimitSeconds ?? 0);
+            if (totalSeconds <= 0)
+            {
+                return 0;
+            }
+
+            if (progress == null || progress.StartedAtUtc == DateTime.MinValue)
+            {
+                return totalSeconds;
+            }
+
+            double elapsedSeconds = Math.Max(0d, (DateTime.UtcNow - progress.StartedAtUtc).TotalSeconds);
+            int remainingSeconds = totalSeconds - (int)Math.Floor(elapsedSeconds);
+            return Math.Max(0, remainingSeconds);
         }
     }
 }

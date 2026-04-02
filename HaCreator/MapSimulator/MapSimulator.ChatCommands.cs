@@ -270,6 +270,7 @@ namespace HaCreator.MapSimulator
                         autoRemotePort,
                         autoProcessSelector,
                         autoLocalPortFilter,
+                        preferredKind: null,
                         out string startStatus)
                         ? ChatCommandHandler.CommandResult.Ok(startStatus)
                         : ChatCommandHandler.CommandResult.Error(startStatus);
@@ -960,7 +961,7 @@ namespace HaCreator.MapSimulator
 
             if (decodedProfile != null)
             {
-                _loginPacketAccountDialogProfiles[packetType] = decodedProfile;
+                _loginPacketAccountDialogProfiles[packetType] = WithLoginAccountDialogPacketSource(decodedProfile, "loginpacket-command");
                 summary = BuildConfiguredLoginAccountDialogPayloadSummary(decodedProfile);
             }
 
@@ -2009,7 +2010,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "engage",
                 "Inspect or drive the dedicated engagement proposal dialog seam",
-                "/engage [open <partnerName> [ringItemId] [message...]|open <proposerName> <partnerName> [ringItemId] [message...]|incoming <proposerName> [ringItemId] [sealItemId] [message...]|accept|dismiss|invitation [neat|sweet|premium]|clear|status]",
+                "/engage [open <partnerName> [ringItemId] [message...]|open <proposerName> <partnerName> [ringItemId] [message...]|incoming <proposerName> [ringItemId] [sealItemId] [message...]|accept|dismiss|invitation [neat|sweet|premium]|wishlist [receive|give|input] [groom|bride]|clear|status]",
                 args =>
                 {
                     _engagementProposalController.UpdateLocalContext(_playerManager?.Player?.Build);
@@ -2098,11 +2099,46 @@ namespace HaCreator.MapSimulator
 
                             return ChatCommandHandler.CommandResult.Ok(invitationMessage);
 
+                        case "wishlist":
+                            WeddingWishListDialogMode wishListMode = WeddingWishListDialogMode.Input;
+                            if (args.Length >= 2 && !Enum.TryParse(args[1], true, out wishListMode))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /engage wishlist [receive|give|input] [groom|bride]");
+                            }
+
+                            WeddingWishListRole? wishListRole = null;
+                            if (args.Length >= 3)
+                            {
+                                if (!Enum.TryParse(args[2], true, out WeddingWishListRole parsedRole))
+                                {
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /engage wishlist [receive|give|input] [groom|bride]");
+                                }
+
+                                wishListRole = parsedRole;
+                            }
+
+                            if (!_engagementProposalController.TryOpenWeddingWishListFromAcceptedProposal(
+                                _weddingWishListController,
+                                uiWindowManager,
+                                _playerManager?.Player?.Build,
+                                uiWindowManager?.InventoryWindow as IInventoryRuntime,
+                                _fontChat,
+                                ShowUtilityFeedbackMessage,
+                                wishListMode,
+                                wishListRole,
+                                () => ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.WeddingWishList),
+                                out string wishListMessage))
+                            {
+                                return ChatCommandHandler.CommandResult.Error(wishListMessage);
+                            }
+
+                            return ChatCommandHandler.CommandResult.Ok(wishListMessage);
+
                         case "clear":
                             return ChatCommandHandler.CommandResult.Ok(_engagementProposalController.Clear(uiWindowManager));
 
                         default:
-                            return ChatCommandHandler.CommandResult.Error("Usage: /engage [open <partnerName> [ringItemId] [message...]|open <proposerName> <partnerName> [ringItemId] [message...]|incoming <proposerName> [ringItemId] [sealItemId] [message...]|accept|dismiss|invitation [neat|sweet|premium]|clear|status]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /engage [open <partnerName> [ringItemId] [message...]|open <proposerName> <partnerName> [ringItemId] [message...]|incoming <proposerName> [ringItemId] [sealItemId] [message...]|accept|dismiss|invitation [neat|sweet|premium]|wishlist [receive|give|input] [groom|bride]|clear|status]");
                     }
                 });
 
@@ -2369,6 +2405,57 @@ namespace HaCreator.MapSimulator
 
                     return ChatCommandHandler.CommandResult.Error("Usage: /guildboss [status|transport [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|healer <y>|pulley <state>|packet <344|345> <value>|packetraw <hex>]");
 
+                });
+            _chat.CommandHandler.RegisterCommand(
+                "guildui",
+                "Inspect or open the dedicated guild ranking, mark, and create-agreement dialogs",
+                "/guildui [status|rank open|mark open|agree open <masterName> <guildName>]",
+                args =>
+                {
+                    if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return ChatCommandHandler.CommandResult.Info(
+                            $"{_guildRankController.DescribeStatus()}{Environment.NewLine}{_guildMarkController.DescribeStatus()}{Environment.NewLine}{_guildCreateAgreementController.DescribeStatus()}");
+                    }
+
+
+                    if (string.Equals(args[0], "rank", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (args.Length < 2 || !string.Equals(args[1], "open", StringComparison.OrdinalIgnoreCase))
+                        {
+                            return ChatCommandHandler.CommandResult.Error("Usage: /guildui rank open");
+                        }
+
+
+                        return ChatCommandHandler.CommandResult.Ok(OpenGuildRankWindow());
+                    }
+
+
+                    if (string.Equals(args[0], "mark", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (args.Length < 2 || !string.Equals(args[1], "open", StringComparison.OrdinalIgnoreCase))
+                        {
+                            return ChatCommandHandler.CommandResult.Error("Usage: /guildui mark open");
+                        }
+
+
+                        return ChatCommandHandler.CommandResult.Ok(OpenGuildMarkWindow());
+                    }
+
+
+                    if (string.Equals(args[0], "agree", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (args.Length < 4 || !string.Equals(args[1], "open", StringComparison.OrdinalIgnoreCase))
+                        {
+                            return ChatCommandHandler.CommandResult.Error("Usage: /guildui agree open <masterName> <guildName>");
+                        }
+
+
+                        return ChatCommandHandler.CommandResult.Ok(OpenGuildCreateAgreementWindow(args[2], string.Join(" ", args.Skip(3))));
+                    }
+
+
+                    return ChatCommandHandler.CommandResult.Error("Usage: /guildui [status|rank open|mark open|agree open <masterName> <guildName>]");
                 });
 
 
@@ -6664,12 +6751,17 @@ namespace HaCreator.MapSimulator
                 "Inspect or inject packet-owned field fade and balloon payloads through the loopback inbox",
                 "/localoverlaypacket [status|start [port]|stop|packet <fade|balloon> [payloadhex=..|payloadb64=..]|packetraw <fade|balloon> <hex>]",
                 HandlePacketOwnedLocalOverlayInboxCommand);
+            _chat.CommandHandler.RegisterCommand(
+                "combopacket",
+                "Inspect or drive packet-owned combo counter and combo-command HUD parity",
+                "/combopacket [status|clear|set <count>|packet <inccombo> [payloadhex=..|payloadb64=..]|packetraw <inccombo> <hex>|inbox [status|start [port]|stop|packet <inccombo> [payloadhex=..|payloadb64=..]|packetraw <inccombo> <hex>]]",
+                HandlePacketOwnedComboCommand);
 
 
             _chat.CommandHandler.RegisterCommand(
                 "localutility",
                 "Inspect or drive packet-authored local utility and event dispatch handlers",
-                    "/localutility [status|inbox [status|start [port]|stop|packet <sitresult|questresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|followfail|directionmode|standalone|damagemeter|hpdec|skillcooltime|231|242|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|1013|1014|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]]|directionmode <on|off|1|0> [delayMs]|standalone <on|off|1|0>|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv]|classcompetition|skillguide|antimacro [status|launch <normal|admin> [first|retry]|notice <noticeType> [antiMacroType]|result <mode> [antiMacroType] [userName]|clear]|apsp [status|seed [characterId]|receive <token>|send <token>|context <receiveToken> [sendToken]|<contextToken> <11|12|13>|text]|followfail [text]|packet <sitresult|questresult|openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|skillguide|antimacro|apspevent|directionmode|standalone|followfail|skillcooltime|231|242|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|1013|1014> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>]",
+                    "/localutility [status|inbox [status|start [port]|stop|packet <sitresult|questresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|follow|followfail|directionmode|standalone|damagemeter|hpdec|skillcooltime|193|231|242|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|1012|1013|1014|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]]|directionmode <on|off|1|0> [delayMs]|standalone <on|off|1|0>|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv]|classcompetition|skillguide|antimacro [status|launch <normal|admin> [first|retry]|notice <noticeType> [antiMacroType]|result <mode> [antiMacroType] [userName]|clear]|apsp [status|seed [characterId]|receive <token>|send <token>|context <receiveToken> [sendToken]|<contextToken> <11|12|13>|text]|follow <status|request <driverId|name> [auto|manual] [keyinput]|ask <requesterId|name>|accept|decline|attach <driverId|name>|detach [transferX transferY]|passengerdetach [requesterId|name] [transferX transferY]>|followfail [reasonCode [driverId]|text]|packet <sitresult|questresult|openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|skillguide|antimacro|apspevent|directionmode|standalone|follow|followfail|193|231|242|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|1012|1013|1014> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>]",
                 HandlePacketOwnedUtilityCommand);
 
             _chat.CommandHandler.RegisterCommand(
@@ -6682,7 +6774,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "localutilitypacket",
                 "Inspect or inject packet-owned local utility and event dispatch payloads through the loopback inbox",
-                    "/localutilitypacket [status|start [port]|stop|packet <sitresult|questresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|followfail|directionmode|standalone|damagemeter|hpdec|skillcooltime|231|242|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|1013|1014|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]]",
+                    "/localutilitypacket [status|start [port]|stop|packet <sitresult|questresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|follow|followfail|directionmode|standalone|damagemeter|hpdec|skillcooltime|193|231|242|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|1012|1013|1014|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]]",
                 HandlePacketOwnedUtilityCommand);
 
 
@@ -7473,6 +7565,171 @@ namespace HaCreator.MapSimulator
                 });
 
 
+
+            _chat.CommandHandler.RegisterCommand(
+                "stagepacket",
+                "Inspect or drive packet-owned CStage and CMapLoadable transition packets",
+                "/stagepacket [status|clear|field <mapId> [portal]|itc|cashshop|backeffect <show|hide> [pageId] [durationMs]|clearbackeffect|objectvisible <name...> <on|off>|packet <141|142|143|144|145|146> [payloadhex=..|payloadb64=..]|packetraw <141|142|143|144|145|146> [hex]]",
+                args =>
+                {
+                    if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
+                    {
+                        _packetStageTransitionRuntime.BindMap(_mapBoard?.MapInfo?.id ?? 0);
+                        return ChatCommandHandler.CommandResult.Info(_packetStageTransitionRuntime.DescribeStatus());
+                    }
+
+                    switch (args[0].ToLowerInvariant())
+                    {
+                        case "clear":
+                            ResetPacketOwnedStageTransitionRuntimeState();
+                            _packetStageTransitionRuntime.BindMap(_mapBoard?.MapInfo?.id ?? 0);
+                            return ChatCommandHandler.CommandResult.Ok(_packetStageTransitionRuntime.DescribeStatus());
+
+                        case "field":
+                            if (args.Length < 2 || !int.TryParse(args[1], out int targetMapId) || targetMapId <= 0)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /stagepacket field <mapId> [portal]");
+                            }
+
+                            string targetPortalName = args.Length > 2
+                                ? string.Join(" ", args.Skip(2))
+                                : string.Empty;
+                            return TryApplyPacketOwnedStageTransitionPacket(
+                                141,
+                                PacketStageTransitionRuntime.BuildSyntheticSetFieldPayload(targetMapId, targetPortalName),
+                                out string setFieldMessage)
+                                ? ChatCommandHandler.CommandResult.Ok(setFieldMessage)
+                                : ChatCommandHandler.CommandResult.Error(setFieldMessage);
+
+                        case "itc":
+                            return TryApplyPacketOwnedStageTransitionPacket(142, Array.Empty<byte>(), out string itcMessage)
+                                ? ChatCommandHandler.CommandResult.Ok(itcMessage)
+                                : ChatCommandHandler.CommandResult.Error(itcMessage);
+
+                        case "cashshop":
+                            return TryApplyPacketOwnedStageTransitionPacket(143, Array.Empty<byte>(), out string cashShopMessage)
+                                ? ChatCommandHandler.CommandResult.Ok(cashShopMessage)
+                                : ChatCommandHandler.CommandResult.Error(cashShopMessage);
+
+                        case "backeffect":
+                            if (args.Length < 2)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /stagepacket backeffect <show|hide> [pageId] [durationMs]");
+                            }
+
+                            byte effect = args[1].ToLowerInvariant() switch
+                            {
+                                "show" => (byte)0,
+                                "hide" => (byte)1,
+                                _ => byte.MaxValue
+                            };
+                            if (effect == byte.MaxValue)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /stagepacket backeffect <show|hide> [pageId] [durationMs]");
+                            }
+
+                            byte pageId = 0;
+                            int durationMs = 0;
+                            if (args.Length >= 3 && !byte.TryParse(args[2], out pageId))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("pageId must be a byte");
+                            }
+
+                            if (args.Length >= 4 && (!int.TryParse(args[3], out durationMs) || durationMs < 0))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("durationMs must be a non-negative integer");
+                            }
+
+                            return TryApplyPacketOwnedStageTransitionPacket(
+                                144,
+                                PacketStageTransitionRuntime.BuildBackEffectPayload(effect, _mapBoard?.MapInfo?.id ?? 0, pageId, durationMs),
+                                out string backEffectMessage)
+                                ? ChatCommandHandler.CommandResult.Ok(backEffectMessage)
+                                : ChatCommandHandler.CommandResult.Error(backEffectMessage);
+
+                        case "clearbackeffect":
+                            return TryApplyPacketOwnedStageTransitionPacket(146, Array.Empty<byte>(), out string clearBackEffectMessage)
+                                ? ChatCommandHandler.CommandResult.Ok(clearBackEffectMessage)
+                                : ChatCommandHandler.CommandResult.Error(clearBackEffectMessage);
+
+                        case "objectvisible":
+                            if (args.Length < 3)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /stagepacket objectvisible <name...> <on|off>");
+                            }
+
+                            bool? objectVisible = args[^1].ToLowerInvariant() switch
+                            {
+                                "1" => true,
+                                "on" => true,
+                                "true" => true,
+                                "0" => false,
+                                "off" => false,
+                                "false" => false,
+                                _ => null
+                            };
+                            if (!objectVisible.HasValue)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /stagepacket objectvisible <name...> <on|off>");
+                            }
+
+                            string objectName = string.Join(" ", args.Skip(1).Take(args.Length - 2));
+                            return TryApplyPacketOwnedStageTransitionPacket(
+                                145,
+                                PacketStageTransitionRuntime.BuildMapObjectVisiblePayload((objectName, objectVisible.Value)),
+                                out string objectVisibilityMessage)
+                                ? ChatCommandHandler.CommandResult.Ok(objectVisibilityMessage)
+                                : ChatCommandHandler.CommandResult.Error(objectVisibilityMessage);
+
+                        case "packet":
+                            if (args.Length < 2
+                                || !int.TryParse(args[1], out int stagePacketType)
+                                || stagePacketType < 141
+                                || stagePacketType > 146)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /stagepacket packet <141|142|143|144|145|146> [payloadhex=..|payloadb64=..]");
+                            }
+
+                            byte[] stagePacketPayload = Array.Empty<byte>();
+                            string packetPayloadError = null;
+                            if (stagePacketType is not 142 and not 143 and not 146)
+                            {
+                                if (args.Length < 3 || !TryParseBinaryPayloadArgument(args[2], out stagePacketPayload, out packetPayloadError))
+                                {
+                                    return ChatCommandHandler.CommandResult.Error(packetPayloadError ?? "Usage: /stagepacket packet <141|142|143|144|145|146> [payloadhex=..|payloadb64=..]");
+                                }
+                            }
+
+                            return TryApplyPacketOwnedStageTransitionPacket(stagePacketType, stagePacketPayload, out string stagePacketMessage)
+                                ? ChatCommandHandler.CommandResult.Ok(stagePacketMessage)
+                                : ChatCommandHandler.CommandResult.Error(stagePacketMessage);
+
+                        case "packetraw":
+                            if (args.Length < 2
+                                || !int.TryParse(args[1], out int rawStagePacketType)
+                                || rawStagePacketType < 141
+                                || rawStagePacketType > 146)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /stagepacket packetraw <141|142|143|144|145|146> [hex]");
+                            }
+
+                            byte[] rawStagePayload = Array.Empty<byte>();
+                            if (rawStagePacketType is not 142 and not 143 and not 146)
+                            {
+                                if (args.Length < 3 || !TryDecodeHexBytes(string.Join(string.Empty, args.Skip(2)), out rawStagePayload))
+                                {
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /stagepacket packetraw <141|142|143|144|145|146> [hex]");
+                                }
+                            }
+
+                            return TryApplyPacketOwnedStageTransitionPacket(rawStagePacketType, rawStagePayload, out string rawStageMessage)
+                                ? ChatCommandHandler.CommandResult.Ok(rawStageMessage)
+                                : ChatCommandHandler.CommandResult.Error(rawStageMessage);
+
+                        default:
+                            return ChatCommandHandler.CommandResult.Error("Usage: /stagepacket [status|clear|field <mapId> [portal]|itc|cashshop|backeffect <show|hide> [pageId] [durationMs]|clearbackeffect|objectvisible <name...> <on|off>|packet <141|142|143|144|145|146> [payloadhex=..|payloadb64=..]|packetraw <141|142|143|144|145|146> [hex]]");
+                    }
+                });
 
             _chat.CommandHandler.RegisterCommand(
                 "fieldstate",

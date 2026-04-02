@@ -19,10 +19,10 @@ namespace HaCreator.MapSimulator.UI
         private const int InputHeight = 16;
         private const int InputMaxLength = 12;
         private const string DefaultAttemptMessageFormat = "Attempt {0} of 2";
-        private static readonly Color InputBackgroundColor = new(255, 255, 255);
-        private static readonly Color InputBorderColor = new(114, 114, 114);
         private static readonly Color InputCaretColor = new(32, 32, 32);
         private static readonly Color InputCompositionColor = new(74, 74, 74);
+        private static readonly Color FallbackInputBackgroundColor = new(255, 255, 255);
+        private static readonly Color FallbackInputBorderColor = new(114, 114, 114);
 
         private sealed class LayoutProfile
         {
@@ -92,12 +92,14 @@ namespace HaCreator.MapSimulator.UI
         private ImeCandidateListState _candidateListState = ImeCandidateListState.Empty;
         private UIObject _submitButton;
         private LayoutProfile _layout;
+        private MouseState _previousMouseState;
         private int _answerCount;
         private int _expiresAt = int.MinValue;
         private int _caretIndex;
         private int _compositionCaretIndex = -1;
         private int _compositionInsertionIndex = -1;
         private int _caretBlinkTick;
+        private bool _inputFocused = true;
 
         public AntiMacroChallengeWindow(string windowName, bool adminVariant, GraphicsDevice graphicsDevice)
             : base(new DXObject(0, 0, CreateFallbackFrameTexture(graphicsDevice), 0))
@@ -112,7 +114,7 @@ namespace HaCreator.MapSimulator.UI
 
         public override string WindowName => _windowName;
         public override bool SupportsDragging => false;
-        public override bool CapturesKeyboardInput => IsVisible;
+        public override bool CapturesKeyboardInput => IsVisible && _inputFocused;
 
         public event Action<string> SubmitRequested;
 
@@ -131,6 +133,7 @@ namespace HaCreator.MapSimulator.UI
         public override void Hide()
         {
             base.Hide();
+            _inputFocused = false;
             ClearCompositionText();
         }
 
@@ -212,6 +215,8 @@ namespace HaCreator.MapSimulator.UI
             _inputText = string.Empty;
             _caretIndex = 0;
             _caretBlinkTick = Environment.TickCount;
+            _inputFocused = true;
+            _previousMouseState = Mouse.GetState();
             ClearCompositionText();
             _submitButton?.SetEnabled(false);
         }
@@ -226,6 +231,7 @@ namespace HaCreator.MapSimulator.UI
             _inputText = string.Empty;
             _caretIndex = 0;
             _caretBlinkTick = Environment.TickCount;
+            _inputFocused = false;
             ClearCompositionText();
             _submitButton?.SetEnabled(false);
             Hide();
@@ -251,6 +257,30 @@ namespace HaCreator.MapSimulator.UI
 
             _submitButton?.SetEnabled(CanSubmitAnswer());
             _previousKeyboardState = keyboardState;
+            _previousMouseState = Mouse.GetState();
+        }
+
+        public override bool CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState, MouseCursorItem mouseCursor, int renderWidth, int renderHeight)
+        {
+            if (!IsVisible)
+            {
+                _previousMouseState = mouseState;
+                return false;
+            }
+
+            bool leftJustPressed = mouseState.LeftButton == ButtonState.Pressed && _previousMouseState.LeftButton == ButtonState.Released;
+            if (leftJustPressed && GetInputBounds().Contains(mouseState.Position))
+            {
+                _inputFocused = true;
+                ClearCompositionText();
+                _caretIndex = ResolveCaretIndexFromMouseX(mouseState.X);
+                _caretBlinkTick = Environment.TickCount;
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+            }
+
+            bool handled = base.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState, mouseCursor, renderWidth, renderHeight);
+            _previousMouseState = mouseState;
+            return handled;
         }
 
         protected override void DrawContents(
@@ -440,7 +470,10 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawInputText(SpriteBatch sprite, Rectangle inputBounds)
         {
-            DrawBox(sprite, inputBounds, InputBackgroundColor, InputBorderColor);
+            if (_frameTexture == null)
+            {
+                DrawBox(sprite, inputBounds, FallbackInputBackgroundColor, FallbackInputBorderColor);
+            }
 
             string displayText = BuildVisibleInputText();
             Vector2 textPosition = new(inputBounds.X + 2, inputBounds.Y - 2);
@@ -745,6 +778,42 @@ namespace HaCreator.MapSimulator.UI
             int start = Math.Clamp(_candidateListState.PageStart, 0, _candidateListState.Candidates.Count);
             int pageSize = _candidateListState.PageSize > 0 ? _candidateListState.PageSize : _candidateListState.Candidates.Count;
             return Math.Max(0, Math.Min(pageSize, _candidateListState.Candidates.Count - start));
+        }
+
+        private Rectangle GetInputBounds()
+        {
+            Rectangle bounds = GetWindowBounds();
+            return new Rectangle(
+                bounds.X + _layout.InputOrigin.X,
+                bounds.Y + _layout.InputOrigin.Y,
+                InputWidth,
+                InputHeight);
+        }
+
+        private int ResolveCaretIndexFromMouseX(int mouseX)
+        {
+            if (_font == null || string.IsNullOrEmpty(_inputText))
+            {
+                return Math.Clamp(mouseX < GetInputBounds().Center.X ? 0 : _inputText.Length, 0, _inputText.Length);
+            }
+
+            float relativeX = mouseX - (GetInputBounds().X + 2);
+            if (relativeX <= 0f)
+            {
+                return 0;
+            }
+
+            for (int i = 1; i <= _inputText.Length; i++)
+            {
+                float width = MeasureTextWidth(_inputText[..i]);
+                if (relativeX < width)
+                {
+                    float previousWidth = MeasureTextWidth(_inputText[..(i - 1)]);
+                    return relativeX - previousWidth <= width - relativeX ? i - 1 : i;
+                }
+            }
+
+            return _inputText.Length;
         }
 
         private static Texture2D CreateFallbackFrameTexture(GraphicsDevice graphicsDevice)

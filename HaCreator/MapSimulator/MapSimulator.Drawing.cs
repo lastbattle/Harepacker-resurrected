@@ -223,6 +223,7 @@ namespace HaCreator.MapSimulator
                 TickCount);
             DrawPacketOwnedFieldFeedbackState(TickCount);
             DrawPacketOwnedLocalOverlayState(TickCount, mapCenterX, mapCenterY);
+            DrawPacketOwnedComboState(TickCount);
             DrawPacketOwnedTutorState(TickCount, mapCenterX, mapCenterY);
 
 

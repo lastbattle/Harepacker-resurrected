@@ -41,7 +41,8 @@ namespace HaCreator.MapSimulator.Fields
         {
             Unresolved,
             WzCandidate,
-            CompatibleShape
+            CompatibleShape,
+            CompatibleDigitContainer
         }
 
         private readonly struct CookieCanvasSprite
@@ -316,6 +317,24 @@ namespace HaCreator.MapSimulator.Fields
                     return;
                 }
             }
+
+            foreach (WzImage image in EnumerateUiImages())
+            {
+                if (image == null)
+                {
+                    continue;
+                }
+
+                string imagePath = $"UI/{image.Name}";
+                if (TryFindCompatibleBitmapDigitContainer(image, imagePath, out WzImageProperty digitContainer, out string digitContainerPath)
+                    && TryLoadCompatibleBitmapNumberStyles(digitContainer))
+                {
+                    _bitmapNumberSourcePath = digitContainerPath;
+                    _usesFallbackBitmapSource = !IsPreferredUiWindowImage(image.Name);
+                    _bitmapRootResolutionKind = CookieBitmapRootResolutionKind.CompatibleDigitContainer;
+                    return;
+                }
+            }
         }
 
         private bool TryLoadPreferredBitmapNumberRoots()
@@ -464,6 +483,75 @@ namespace HaCreator.MapSimulator.Fields
                         _bitmapNumberStyles[i].SignMinusOrigin = ResolveCanvasOrigin(unnamedCanvases[1]);
                     }
                 }
+            }
+
+            return true;
+        }
+
+        private bool TryLoadCompatibleBitmapNumberStyles(WzImageProperty digitContainer)
+        {
+            if (digitContainer == null)
+            {
+                return false;
+            }
+
+            var compatibleStyle = new CookieBitmapNumberStyle();
+            for (int digit = 0; digit < 10; digit++)
+            {
+                WzCanvasProperty digitCanvas = ResolveCookieCanvas(digitContainer[digit.ToString()]);
+                compatibleStyle.Digits[digit] = LoadCanvasTexture(digitCanvas);
+                compatibleStyle.DigitOrigins[digit] = ResolveCanvasOrigin(digitCanvas);
+            }
+
+            if (!compatibleStyle.IsLoaded)
+            {
+                return false;
+            }
+
+            WzCanvasProperty plusCanvas = ResolveNamedCanvas(digitContainer, BitmapNumberSignPlusNames);
+            if (plusCanvas != null)
+            {
+                compatibleStyle.SignPlus = LoadCanvasTexture(plusCanvas);
+                compatibleStyle.SignPlusOrigin = ResolveCanvasOrigin(plusCanvas);
+            }
+
+            WzCanvasProperty minusCanvas = ResolveNamedCanvas(digitContainer, BitmapNumberSignMinusNames);
+            if (minusCanvas != null)
+            {
+                compatibleStyle.SignMinus = LoadCanvasTexture(minusCanvas);
+                compatibleStyle.SignMinusOrigin = ResolveCanvasOrigin(minusCanvas);
+            }
+
+            if (compatibleStyle.SignPlus == null || compatibleStyle.SignMinus == null)
+            {
+                var unnamedCanvases = GetNonDigitCanvases(digitContainer).ToList();
+                if (compatibleStyle.SignPlus == null && unnamedCanvases.Count >= 1)
+                {
+                    compatibleStyle.SignPlus = LoadCanvasTexture(unnamedCanvases[0]);
+                    compatibleStyle.SignPlusOrigin = ResolveCanvasOrigin(unnamedCanvases[0]);
+                }
+
+                if (compatibleStyle.SignMinus == null && unnamedCanvases.Count >= 2)
+                {
+                    compatibleStyle.SignMinus = LoadCanvasTexture(unnamedCanvases[1]);
+                    compatibleStyle.SignMinusOrigin = ResolveCanvasOrigin(unnamedCanvases[1]);
+                }
+            }
+
+            if (compatibleStyle.SignMinus == null)
+            {
+                compatibleStyle.SignMinus = compatibleStyle.SignPlus;
+                compatibleStyle.SignMinusOrigin = compatibleStyle.SignPlusOrigin;
+            }
+
+            for (int i = 0; i < GradeCount; i++)
+            {
+                Array.Copy(compatibleStyle.Digits, _bitmapNumberStyles[i].Digits, compatibleStyle.Digits.Length);
+                Array.Copy(compatibleStyle.DigitOrigins, _bitmapNumberStyles[i].DigitOrigins, compatibleStyle.DigitOrigins.Length);
+                _bitmapNumberStyles[i].SignPlus = compatibleStyle.SignPlus;
+                _bitmapNumberStyles[i].SignPlusOrigin = compatibleStyle.SignPlusOrigin;
+                _bitmapNumberStyles[i].SignMinus = compatibleStyle.SignMinus;
+                _bitmapNumberStyles[i].SignMinusOrigin = compatibleStyle.SignMinusOrigin;
             }
 
             return true;
@@ -659,9 +747,26 @@ namespace HaCreator.MapSimulator.Fields
 
         private static WzImageProperty ResolveCookieDigitContainer(WzImageProperty styleRoot)
         {
-            return HasDigitRange(styleRoot)
-                ? styleRoot
-                : null;
+            if (HasDigitRange(styleRoot))
+            {
+                return styleRoot;
+            }
+
+            if (styleRoot?.WzProperties == null)
+            {
+                return null;
+            }
+
+            foreach (WzImageProperty child in styleRoot.WzProperties)
+            {
+                WzImageProperty resolvedChild = WzInfoTools.GetRealProperty(child) ?? child;
+                if (HasDigitRange(resolvedChild))
+                {
+                    return resolvedChild;
+                }
+            }
+
+            return null;
         }
 
         private static WzCanvasProperty ResolveNamedCanvas(WzImageProperty property, IEnumerable<string> names)
@@ -811,6 +916,32 @@ namespace HaCreator.MapSimulator.Fields
             return sourceRoot != null;
         }
 
+        private static bool TryFindCompatibleBitmapDigitContainer(WzImage image, string currentPath, out WzImageProperty digitContainer, out string digitContainerPath)
+        {
+            digitContainer = null;
+            digitContainerPath = null;
+            if (image == null)
+            {
+                return false;
+            }
+
+            int bestScore = int.MinValue;
+            foreach (WzImageProperty child in image.WzProperties)
+            {
+                string childPath = string.IsNullOrEmpty(currentPath)
+                    ? child?.Name
+                    : $"{currentPath}/{child?.Name}";
+                TryFindCompatibleBitmapDigitContainerRecursive(
+                    WzInfoTools.GetRealProperty(child) ?? child,
+                    childPath,
+                    ref digitContainer,
+                    ref digitContainerPath,
+                    ref bestScore);
+            }
+
+            return digitContainer != null;
+        }
+
         private static void TryFindBitmapNumberRootRecursive(
             WzImageProperty node,
             string currentPath,
@@ -842,6 +973,45 @@ namespace HaCreator.MapSimulator.Fields
                     ? child?.Name ?? string.Empty
                     : $"{currentPath}/{child?.Name}";
                 TryFindBitmapNumberRootRecursive(WzInfoTools.GetRealProperty(child) ?? child, childPath, ref bestRoot, ref bestPath, ref bestScore);
+            }
+        }
+
+        private static void TryFindCompatibleBitmapDigitContainerRecursive(
+            WzImageProperty node,
+            string currentPath,
+            ref WzImageProperty bestContainer,
+            ref string bestPath,
+            ref int bestScore)
+        {
+            if (node == null)
+            {
+                return;
+            }
+
+            int candidateScore = ScoreCompatibleBitmapDigitContainer(node, currentPath);
+            if (candidateScore > bestScore)
+            {
+                bestScore = candidateScore;
+                bestContainer = node;
+                bestPath = currentPath;
+            }
+
+            if (node.WzProperties == null)
+            {
+                return;
+            }
+
+            foreach (WzImageProperty child in node.WzProperties)
+            {
+                string childPath = string.IsNullOrWhiteSpace(currentPath)
+                    ? child?.Name ?? string.Empty
+                    : $"{currentPath}/{child?.Name}";
+                TryFindCompatibleBitmapDigitContainerRecursive(
+                    WzInfoTools.GetRealProperty(child) ?? child,
+                    childPath,
+                    ref bestContainer,
+                    ref bestPath,
+                    ref bestScore);
             }
         }
 
@@ -911,6 +1081,59 @@ namespace HaCreator.MapSimulator.Fields
             return score;
         }
 
+        private static int ScoreCompatibleBitmapDigitContainer(WzImageProperty digitContainer, string path)
+        {
+            if (!HasDigitRange(digitContainer))
+            {
+                return int.MinValue;
+            }
+
+            int totalWidth = 0;
+            int totalHeight = 0;
+            for (int digit = 0; digit < 10; digit++)
+            {
+                WzCanvasProperty canvas = ResolveCookieCanvas(digitContainer[digit.ToString()]);
+                if (canvas == null)
+                {
+                    return int.MinValue;
+                }
+
+                totalWidth += canvas.PngProperty?.Width ?? 0;
+                totalHeight += canvas.PngProperty?.Height ?? 0;
+            }
+
+            float averageWidth = totalWidth / 10f;
+            float averageHeight = totalHeight / 10f;
+
+            int score = 0;
+            score -= (int)Math.Abs(averageWidth - 27f) * 4;
+            score -= (int)Math.Abs(averageHeight - 32f) * 2;
+            score += ResolveNamedCanvas(digitContainer, BitmapNumberSignPlusNames) != null ? 30 : 0;
+            score += ResolveNamedCanvas(digitContainer, BitmapNumberSignMinusNames) != null ? 20 : 0;
+            score += GetNonDigitCanvases(digitContainer).Any() ? 10 : 0;
+
+            if (path.Contains("number2", StringComparison.OrdinalIgnoreCase))
+            {
+                score += 24;
+            }
+            else if (path.Contains("number", StringComparison.OrdinalIgnoreCase))
+            {
+                score += 12;
+            }
+
+            if (path.Contains("result", StringComparison.OrdinalIgnoreCase))
+            {
+                score += 8;
+            }
+
+            if (path.Contains(ClientPreferredBitmapRootHint, StringComparison.OrdinalIgnoreCase))
+            {
+                score += 6;
+            }
+
+            return score;
+        }
+
         private string DescribeBackgroundSource()
         {
             if (string.IsNullOrWhiteSpace(_backgroundSourcePath))
@@ -938,6 +1161,7 @@ namespace HaCreator.MapSimulator.Fields
             {
                 CookieBitmapRootResolutionKind.WzCandidate => "wz-candidate",
                 CookieBitmapRootResolutionKind.CompatibleShape => "compatible-shape",
+                CookieBitmapRootResolutionKind.CompatibleDigitContainer => "compatible-digit-container",
                 _ => "unresolved"
             };
 

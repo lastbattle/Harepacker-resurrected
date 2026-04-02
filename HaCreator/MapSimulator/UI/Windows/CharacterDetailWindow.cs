@@ -41,7 +41,7 @@ namespace HaCreator.MapSimulator.UI
         private const int StatusPaddingX = 8;
         private const int StatusPaddingY = 8;
 
-        private static readonly XnaColor ValueColor = XnaColor.Black;
+        private static readonly XnaColor ValueColor = new XnaColor(64, 64, 64);
         private static readonly XnaColor StatusColor = new XnaColor(64, 64, 64);
         private const int BasicBlackFontHeight = 12;
         private const int TextRasterPadding = 2;
@@ -72,6 +72,19 @@ namespace HaCreator.MapSimulator.UI
             "Fonts",
             "Content",
             Path.Combine("Content", "Fonts")
+        };
+        private static readonly string[] PerUserWindowsFontDirectories =
+        {
+            Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.LocalApplicationData),
+                "Microsoft",
+                "Windows",
+                "Fonts"),
+            Path.Combine(
+                Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData),
+                "Microsoft",
+                "Windows",
+                "Fonts")
         };
         private static readonly string[] MapleInstallRegistrySubKeys =
         {
@@ -650,6 +663,14 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
 
+            foreach (string userFontsDirectory in PerUserWindowsFontDirectories)
+            {
+                if (!string.IsNullOrWhiteSpace(userFontsDirectory))
+                {
+                    yield return userFontsDirectory;
+                }
+            }
+
             foreach (string installDirectory in EnumerateMapleInstallDirectories())
             {
                 yield return installDirectory;
@@ -994,6 +1015,7 @@ namespace HaCreator.MapSimulator.UI
 
         private static class BasicBlackPrivateFontRegistry
         {
+            private const uint PrivateFontResourceFlag = 0x10;
             private static readonly object Sync = new object();
             private static readonly Dictionary<string, RegisteredPrivateFont> RegisteredFonts = new(StringComparer.OrdinalIgnoreCase);
 
@@ -1009,24 +1031,14 @@ namespace HaCreator.MapSimulator.UI
 
                     try
                     {
-                        byte[] fontBytes = File.ReadAllBytes(fontPath);
-                        if (fontBytes.Length == 0)
+                        if (!TryRegisterFileFont(fontPath, out RegisteredPrivateFont registeredFont) &&
+                            !TryRegisterMemoryFont(fontPath, out registeredFont))
                         {
                             resolvedFamilyName = null;
                             return false;
                         }
 
-                        IntPtr fontData = Marshal.AllocCoTaskMem(fontBytes.Length);
-                        Marshal.Copy(fontBytes, 0, fontData, fontBytes.Length);
-
-                        var privateFonts = new SDText.PrivateFontCollection();
-                        privateFonts.AddMemoryFont(fontData, fontBytes.Length);
-
-                        uint fontsAdded = 0;
-                        IntPtr gdiHandle = AddFontMemResourceEx(fontData, (uint)fontBytes.Length, IntPtr.Zero, ref fontsAdded);
-                        RegisteredPrivateFont registeredFont = new RegisteredPrivateFont(fontData, privateFonts, gdiHandle);
                         RegisteredFonts[fontPath] = registeredFont;
-
                         resolvedFamilyName = registeredFont.ResolveFamilyName(preferredFamilyNames);
                         return !string.IsNullOrWhiteSpace(resolvedFamilyName);
                     }
@@ -1037,6 +1049,56 @@ namespace HaCreator.MapSimulator.UI
                     }
                 }
             }
+
+            private static bool TryRegisterFileFont(string fontPath, out RegisteredPrivateFont registeredFont)
+            {
+                registeredFont = null;
+
+                try
+                {
+                    var privateFonts = new SDText.PrivateFontCollection();
+                    privateFonts.AddFontFile(fontPath);
+                    IntPtr gdiHandle = AddFontResourceEx(fontPath, PrivateFontResourceFlag, IntPtr.Zero);
+                    registeredFont = new RegisteredPrivateFont(IntPtr.Zero, privateFonts, gdiHandle);
+                    return privateFonts.Families.Length > 0;
+                }
+                catch
+                {
+                    return false;
+                }
+            }
+
+            private static bool TryRegisterMemoryFont(string fontPath, out RegisteredPrivateFont registeredFont)
+            {
+                registeredFont = null;
+
+                try
+                {
+                    byte[] fontBytes = File.ReadAllBytes(fontPath);
+                    if (fontBytes.Length == 0)
+                    {
+                        return false;
+                    }
+
+                    IntPtr fontData = Marshal.AllocCoTaskMem(fontBytes.Length);
+                    Marshal.Copy(fontBytes, 0, fontData, fontBytes.Length);
+
+                    var privateFonts = new SDText.PrivateFontCollection();
+                    privateFonts.AddMemoryFont(fontData, fontBytes.Length);
+
+                    uint fontsAdded = 0;
+                    IntPtr gdiHandle = AddFontMemResourceEx(fontData, (uint)fontBytes.Length, IntPtr.Zero, ref fontsAdded);
+                    registeredFont = new RegisteredPrivateFont(fontData, privateFonts, gdiHandle);
+                    return privateFonts.Families.Length > 0;
+                }
+                catch
+                {
+                    return false;
+                }
+            }
+
+            [DllImport("gdi32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+            private static extern IntPtr AddFontResourceEx(string lpszFilename, uint fl, IntPtr pdv);
 
             [DllImport("gdi32.dll", CharSet = CharSet.Auto)]
             private static extern IntPtr AddFontMemResourceEx(IntPtr pbFont, uint cbFont, IntPtr pdv, ref uint pcFonts);

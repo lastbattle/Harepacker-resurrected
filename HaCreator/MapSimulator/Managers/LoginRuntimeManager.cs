@@ -165,10 +165,16 @@ namespace HaCreator.MapSimulator.Managers
             PendingStepDelayMs = 0;
             StepChangeAt = int.MinValue;
             PendingTransitionReason = null;
+            CharacterSelectReady = step is LoginStep.CharacterSelect or LoginStep.ViewAllCharacters;
             FieldEntryRequested = step == LoginStep.EnteringField;
             LastEventSummary = string.IsNullOrWhiteSpace(reason)
                 ? $"Forced step to {step}."
                 : $"{reason} -> {step}.";
+        }
+
+        public void SetCharacterSelectReady(bool ready)
+        {
+            CharacterSelectReady = ready;
         }
 
         public void ScheduleStepChange(LoginStep step, int currentTickCount, int delayMs, string reason = null)
