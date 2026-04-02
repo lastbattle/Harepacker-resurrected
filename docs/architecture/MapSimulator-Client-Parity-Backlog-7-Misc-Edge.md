@@ -104,7 +104,6 @@ It does three things that the old notes did not do well:
 - `CQuickslotKeyMappedMan::OnInit` at `0x6c6130`
 - `CField::OnFootHoldInfo` at `0x53a810`
 - `CField::OnRequestFootHoldInfo` at `0x52ddd0`
-- `CRPSGameDlg::OnPacket` at `0x6d9e00`
 - `CField::OnZakumTimer` at `0x530cc0`
 - `CField::OnHontailTimer` at `0x530e70`
 - `CField::OnChaosZakumTimer` at `0x531020`
@@ -192,7 +191,7 @@ This packet cluster is a distinct client owner that the current backlog did not 
 Notes:
 This is another packet-owned surface that the current backlog set does not describe explicitly. IDA shows `CField::OnPacket` and `CUserLocal::OnPacket` owning a broad feedback layer that sits between ordinary gameplay and the existing UI rows: group, whisper, and couple message routing feed status-bar chat and whisper-candidate state; field-effect packets drive screen effects, field sounds, BGM changes, boss HP tags, reward-roulette visuals, and object-state changes; obstacle, warning, and forced-fade packets update map presentation directly; and dedicated boss-timer plus transfer-ignored handlers show that several visible notice/timer flows are owned by packets rather than generic field-rule polling.
 
-### 5. Packet-authored field utility and microgame parity discovered by direct `CField::OnPacket` scan
+### 5. Packet-authored field utility parity discovered by direct `CField::OnPacket` scan
 
 - `CField::OnBlowWeather` at `0x5468f0`
 - `CField::OnAdminResult` at `0x53bc20`
@@ -201,10 +200,9 @@ This is another packet-owned surface that the current backlog set does not descr
 - `CQuickslotKeyMappedMan::OnInit` at `0x6c6130`
 - `CField::OnFootHoldInfo` at `0x53a810`
 - `CField::OnRequestFootHoldInfo` at `0x52ddd0`
-- `CRPSGameDlg::OnPacket` at `0x6d9e00`
 
 Notes:
-The same `CField::OnPacket` decompile exposes another client-owned surface that is still absent from the backlog set. These handlers are not well-described by the existing scripted-field or feedback rows: they cover packet-authored weather/broadcast effects, GM or admin-result dialogs, OX-style quiz state, stalk/follow-result notices, a dedicated quickslot-keymap init path, foothold-info request/reply exchange, and the separate Rock-Paper-Scissors dialog owner. That is a distinct packet bucket between generic field messaging and the broader progression/utility window backlog.
+The same `CField::OnPacket` decompile exposes another client-owned surface that is still absent from the backlog set. These handlers are not well-described by the existing scripted-field or feedback rows: they cover packet-authored weather/broadcast effects, GM or admin-result dialogs, OX-style quiz state, stalk/follow-result notices, a dedicated quickslot-keymap init path, and foothold-info request/reply exchange. `CRPSGameDlg::OnPacket` was part of the same scan, but that unique-modeless microgame owner is now tracked in the dedicated minigame backlog (`MapSimulator-Client-Parity-Backlog-9-Special-Fields-Minigames.md`) instead of being double-counted here. That keeps this bucket focused on true field-owner utilities between generic field messaging and the broader progression/utility window backlog.
 
 ### 6. Stage-transition and map-load presentation parity discovered by direct `CField::OnPacket` decompile
 
