@@ -71,8 +71,8 @@ namespace HaCreator.MapSimulator.UI
         private UIObject _btnNpc;
 
         private bool _bIsCollapsedState = false; // minimised minimap state
-        private int _currentOption = 1;
-        private int _previousExpandedOption = 1;
+        private int _currentOption = ClientOptionExpanded;
+        private int _previousExpandedOption = ClientOptionExpanded;
         private readonly int _minimapImageWidth;
         private readonly int _minimapImageHeight;
         private IReadOnlyList<NpcItem> _npcMarkers = Array.Empty<NpcItem>();
