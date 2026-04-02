@@ -1136,11 +1136,11 @@ namespace HaCreator.MapSimulator
             _lbBottom = 0;
 
 
-            // Clear minimap and status bar (but NOT mouse cursor - it's preserved)
+            // Clear map-scoped UI so the next field rebuild starts from a clean state.
             miniMapUi = null;
             statusBarUi = null;
             statusBarChatUI = null;
-            // Note: mouseCursor is intentionally NOT cleared here - same cursor used across all maps
+            mouseCursor = null;
 
 
             // Clear mirror boundaries
@@ -1442,14 +1442,12 @@ namespace HaCreator.MapSimulator
             });
 
 
-            // Reuse existing cursor if available (cursor is preserved across map changes)
+            // Recreate the cursor with the rest of the UI so it never carries stale render state
+            // or expired pooled textures across map transitions.
             Task t_cursor = Task.Run(() =>
             {
-                if (this.mouseCursor == null)
-                {
-                    WzImageProperty cursorImageProperty = (WzImageProperty)uiBasicImage["Cursor"];
-                    this.mouseCursor = MapSimulatorLoader.CreateMouseCursorFromProperty(_texturePool, cursorImageProperty, 0, 0, _DxDeviceManager.GraphicsDevice, usedProps, false);
-                }
+                WzImageProperty cursorImageProperty = (WzImageProperty)uiBasicImage["Cursor"];
+                this.mouseCursor = MapSimulatorLoader.CreateMouseCursorFromProperty(_texturePool, cursorImageProperty, 0, 0, _DxDeviceManager.GraphicsDevice, usedProps, false);
             });
 
 

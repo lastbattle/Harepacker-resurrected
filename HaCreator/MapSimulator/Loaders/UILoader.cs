@@ -2361,7 +2361,7 @@ namespace HaCreator.MapSimulator.Loaders
                 busyState = MapSimulatorLoader.CreateMapItemFromProperty(texturePool, cursorBusy, 0, 0, new Point(0, 0), device, usedProps, false);
             }
 
-            return new MouseCursorItem(frames, holdState, clickableButtonState, npcHoverState, holdState, forbiddenState, busyState);
+            return new MouseCursorItem(frames, null, clickableButtonState, npcHoverState, holdState, forbiddenState, busyState);
         }
         #endregion
     }

@@ -190,7 +190,7 @@ namespace HaCreator.MapSimulator.Managers
             _minimapUI = null;
             _statusBarUI = null;
             _statusBarChatUI = null;
-            // Note: WindowManager and MouseCursor are typically preserved across map transitions
+            _mouseCursor = null;
         }
 
         #endregion
