@@ -574,6 +574,13 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private static readonly EnumerationOptions RecursiveFontSearchOptions = new()
+        {
+            RecurseSubdirectories = true,
+            IgnoreInaccessible = true,
+            AttributesToSkip = FileAttributes.System | FileAttributes.Hidden
+        };
+
         private static IEnumerable<string> EnumerateCandidateFontPaths(string rootDirectory)
         {
             if (string.IsNullOrWhiteSpace(rootDirectory) || !Directory.Exists(rootDirectory))
@@ -593,7 +600,7 @@ namespace HaCreator.MapSimulator.UI
             IEnumerable<string> recursiveMatches;
             try
             {
-                recursiveMatches = Directory.EnumerateFiles(rootDirectory, "*", SearchOption.AllDirectories);
+                recursiveMatches = Directory.EnumerateFiles(rootDirectory, "*", RecursiveFontSearchOptions);
             }
             catch
             {
