@@ -1608,7 +1608,9 @@ namespace HaCreator.MapSimulator.Loaders
                 MapSimulatorWindowNames.CashShop, AdminShopServiceMode.CashShop,
                 new Point(x + cascade, y + cascade),
                 storageRuntime);
-            RegisterCashServiceStageWindow(manager, device, MapSimulatorWindowNames.CashShopStatus, CashServiceWindowStageKind.CashShop,
+            RegisterCashServiceStageWindow(manager, device, MapSimulatorWindowNames.CashShopStage, CashServiceWindowStageKind.CashShop,
+                new Point(x + cascade, y + cascade));
+            RegisterCashShopStageChildWindows(manager, basicImage, soundUIImage, device,
                 new Point(x + cascade, y + cascade));
             RegisterAdminShopWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
                 MapSimulatorWindowNames.Mts, AdminShopServiceMode.Mts,
@@ -2436,6 +2438,40 @@ namespace HaCreator.MapSimulator.Loaders
             }
         }
 
+        private static void RegisterCashShopStageChildWindows(
+            UIWindowManager manager,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            Point position)
+        {
+            RegisterCashShopStageChildWindow(manager, basicImage, soundUIImage, device, position, MapSimulatorWindowNames.CashShopLocker);
+            RegisterCashShopStageChildWindow(manager, basicImage, soundUIImage, device, position, MapSimulatorWindowNames.CashShopInventory);
+            RegisterCashShopStageChildWindow(manager, basicImage, soundUIImage, device, position, MapSimulatorWindowNames.CashShopList);
+            RegisterCashShopStageChildWindow(manager, basicImage, soundUIImage, device, position, MapSimulatorWindowNames.CashShopStatus);
+            RegisterCashShopStageChildWindow(manager, basicImage, soundUIImage, device, position, MapSimulatorWindowNames.CashShopOneADay);
+        }
+
+        private static void RegisterCashShopStageChildWindow(
+            UIWindowManager manager,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            Point position,
+            string windowName)
+        {
+            if (manager == null || manager.GetWindow(windowName) != null)
+            {
+                return;
+            }
+
+            UIWindowBase window = CreateCashShopStageChildWindow(basicImage, soundUIImage, device, position, windowName);
+            if (window != null)
+            {
+                manager.RegisterCustomWindow(window);
+            }
+        }
+
 
 
         private static void RegisterPlaceholderWindow(
@@ -3083,6 +3119,8 @@ namespace HaCreator.MapSimulator.Loaders
                 ?? uiWindow1Image?["EntrustedShop"] as WzSubProperty;
             WzSubProperty memberShopProperty = uiWindow2Image?["MemberShop"] as WzSubProperty
                 ?? uiWindow1Image?["MemberShop"] as WzSubProperty;
+            WzSubProperty personalShopRoot = uiWindow2Image?["PersonalShop"] as WzSubProperty
+                ?? uiWindow1Image?["PersonalShop"] as WzSubProperty;
             if (memberShopProperty == null)
             {
                 return CreatePlaceholderUtilityWindow(
@@ -3118,7 +3156,113 @@ namespace HaCreator.MapSimulator.Loaders
             window.BindButton(LoadButton(entrustedShopProperty, "BtItem", clickSound, overSound, device), () => runtime.TryAutoListEntrustedShopItem(out _));
             window.BindButton(LoadButton(memberShopProperty, "BtOK", clickSound, overSound, device), runtime.ToggleEntrustedLedgerMode);
             window.BindButton(LoadButton(memberShopProperty, "BtCancel", clickSound, overSound, device), window.Hide);
+            ConfigureEntrustedChildDialog(
+                window,
+                runtime,
+                EntrustedShopChildDialogKind.VisitList,
+                personalShopRoot?["visit"] as WzSubProperty,
+                basicImage,
+                clickSound,
+                overSound,
+                device,
+                parentWidth: 262,
+                parentHeight: 247);
+            ConfigureEntrustedChildDialog(
+                window,
+                runtime,
+                EntrustedShopChildDialogKind.Blacklist,
+                personalShopRoot?["blackList"] as WzSubProperty,
+                basicImage,
+                clickSound,
+                overSound,
+                device,
+                parentWidth: 262,
+                parentHeight: 247);
             return window;
+        }
+
+        private static void ConfigureEntrustedChildDialog(
+            SocialRoomWindow window,
+            SocialRoomRuntime runtime,
+            EntrustedShopChildDialogKind kind,
+            WzSubProperty dialogProperty,
+            WzImage basicImage,
+            WzBinaryProperty clickSound,
+            WzBinaryProperty overSound,
+            GraphicsDevice device,
+            int parentWidth,
+            int parentHeight)
+        {
+            if (window == null || runtime == null || dialogProperty == null)
+            {
+                return;
+            }
+
+            WzCanvasProperty backgroundProperty = dialogProperty["backgrnd"] as WzCanvasProperty;
+            Texture2D frameTexture = backgroundProperty?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device);
+            if (frameTexture == null)
+            {
+                return;
+            }
+
+            Point offset = new Point(
+                (parentWidth - frameTexture.Width) / 2,
+                (parentHeight - frameTexture.Height) / 2);
+            window.RegisterEntrustedChildDialog(kind, frameTexture, offset);
+            AttachEntrustedChildDialogLayer(window, kind, dialogProperty, "backgrnd2", device);
+            AttachEntrustedChildDialogLayer(window, kind, dialogProperty, "backgrnd3", device);
+
+            UIObject closeButton = CreateUserInfoCloseButton(basicImage, clickSound, overSound, device, frameTexture.Width);
+            window.BindEntrustedChildDialogButton(kind, closeButton, () => runtime.CloseEntrustedChildDialog(out _));
+            switch (kind)
+            {
+                case EntrustedShopChildDialogKind.VisitList:
+                    window.BindEntrustedChildDialogButton(
+                        kind,
+                        LoadButton(dialogProperty, "BtSaveName", clickSound, overSound, device),
+                        () => runtime.TryCopySelectedEntrustedVisitName(out _),
+                        snapshot => snapshot?.CanPrimaryAction == true);
+                    window.BindEntrustedChildDialogButton(
+                        kind,
+                        LoadButton(dialogProperty, "BtOK", clickSound, overSound, device),
+                        () => runtime.CloseEntrustedChildDialog(out _));
+                    break;
+                case EntrustedShopChildDialogKind.Blacklist:
+                    window.BindEntrustedChildDialogButton(
+                        kind,
+                        LoadButton(dialogProperty, "BtAdd", clickSound, overSound, device),
+                        () => runtime.TryAddEntrustedBlacklistEntry(null, out _),
+                        snapshot => snapshot?.CanPrimaryAction == true);
+                    window.BindEntrustedChildDialogButton(
+                        kind,
+                        LoadButton(dialogProperty, "BtDelete", clickSound, overSound, device),
+                        () => runtime.TryDeleteSelectedEntrustedBlacklistEntry(out _),
+                        snapshot => snapshot?.CanSecondaryAction == true);
+                    window.BindEntrustedChildDialogButton(
+                        kind,
+                        LoadButton(dialogProperty, "BtOK", clickSound, overSound, device),
+                        () => runtime.CloseEntrustedChildDialog(out _));
+                    break;
+            }
+        }
+
+        private static void AttachEntrustedChildDialogLayer(
+            SocialRoomWindow window,
+            EntrustedShopChildDialogKind kind,
+            WzSubProperty sourceProperty,
+            string canvasName,
+            GraphicsDevice device)
+        {
+            if (window == null || sourceProperty == null)
+            {
+                return;
+            }
+
+            IDXObject layer = LoadWindowCanvasLayerWithOffset(sourceProperty, canvasName, device, out Point offset);
+            if (layer != null)
+            {
+                window.AddEntrustedChildDialogLayer(kind, layer, offset);
+            }
         }
 
 
@@ -3192,9 +3336,11 @@ namespace HaCreator.MapSimulator.Loaders
                     position);
             }
 
-            SocialRoomRuntime runtime = SocialRoomRuntime.CreateTradingRoomSample();
-            SocialRoomWindow window = CreateSocialRoomWindow(tradeProperty, basicImage, soundUIImage, device, position, MapSimulatorWindowNames.CashTradingRoom, runtime);
-            if (window == null)
+            WzBinaryProperty clickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
+            WzBinaryProperty overSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
+
+            Texture2D frameTexture = LoadCanvasTexture(tradeProperty, "backgrnd", device);
+            if (frameTexture == null)
             {
                 return CreatePlaceholderUtilityWindow(
                     basicImage,
@@ -3206,14 +3352,129 @@ namespace HaCreator.MapSimulator.Loaders
                     position);
             }
 
+            CashTradingRoomWindow window = new(new DXObject(0, 0, frameTexture, 0))
+            {
+                Position = position
+            };
+            AttachCanvasLayer(window, tradeProperty, "backgrnd2", device);
+            AttachCanvasLayer(window, tradeProperty, "backgrnd3", device);
+
+            window.BindButton(LoadButton(tradeProperty, "BtTrade", clickSound, overSound, device), window.ToggleTradeLock);
+            window.BindButton(LoadButton(tradeProperty, "BtReset", clickSound, overSound, device), window.ResetTrade);
+            window.BindButton(LoadButton(tradeProperty, "BtCoin", clickSound, overSound, device), window.IncreaseTradeOffer);
+            window.BindButton(LoadButton(tradeProperty, "BtClame", clickSound, overSound, device), window.ToggleTradeAcceptance);
+            window.BindButton(LoadButton(tradeProperty, "BtEnter", clickSound, overSound, device), window.SubmitChatEntry);
+
+            return window;
+        }
+
+        private static UIWindowBase CreateCashShopStageChildWindow(
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            Point position,
+            string windowName)
+        {
+            Texture2D frameTexture = CreateFilledTexture(device, 800, 600, Color.Transparent, Color.Transparent);
+            CashShopStageChildWindow window = new(
+                new DXObject(0, 0, frameTexture, 0),
+                windowName,
+                ResolveCashShopStageChildTitle(windowName))
+            {
+                Position = position
+            };
+
+            WzImage cashShopImage = global::HaCreator.Program.FindImage("ui", "CashShop.img");
+            WzImage picturePlateImage = cashShopImage;
             WzBinaryProperty clickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
             WzBinaryProperty overSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
-            window.BindButton(LoadButton(tradeProperty, "BtTrade", clickSound, overSound, device), () => runtime.ToggleTradeLock(out _));
-            window.BindButton(LoadButton(tradeProperty, "BtReset", clickSound, overSound, device), runtime.ResetTrade);
-            window.BindButton(LoadButton(tradeProperty, "BtCoin", clickSound, overSound, device), runtime.IncreaseTradeOffer);
-            window.BindButton(LoadButton(tradeProperty, "BtClame", clickSound, overSound, device), () => runtime.ToggleTradeAcceptance(out _));
-            window.BindButton(LoadButton(tradeProperty, "BtCancel", clickSound, overSound, device), window.Hide);
+
+            switch (windowName)
+            {
+                case MapSimulatorWindowNames.CashShopLocker:
+                    window.SetContentBounds(new Rectangle(0, 318, 256, 104));
+                    RegisterCashShopStageChildButton(window, (cashShopImage?["CSLocker"] as WzSubProperty), "BtRebate", clickSound, overSound, device, 170, 24, "CCSWnd_Locker previewed the rebate button owner.");
+                    RegisterCashShopStageChildButton(window, (cashShopImage?["CSLocker"] as WzSubProperty), "BtRebate2", clickSound, overSound, device, 170, 51, "CCSWnd_Locker previewed the secondary rebate button owner.");
+                    RegisterCashShopStageChildButton(window, (cashShopImage?["CSLocker"] as WzSubProperty), "BtRefund", clickSound, overSound, device, 170, 78, "CCSWnd_Locker previewed the refund button owner.");
+                    window.SetFallbackLines(
+                        "CCSWnd_Locker owns the shared cash locker selector and its vertical scrollbar.",
+                        "The simulator keeps this owner separate from the catalog surface so locker actions no longer live only inside the parent stage summary.");
+                    break;
+                case MapSimulatorWindowNames.CashShopInventory:
+                    window.SetContentBounds(new Rectangle(0, 426, 246, 163));
+                    RegisterCashShopStageChildButton(window, (cashShopImage?["CSInventory"] as WzSubProperty), "BtExEquip", clickSound, overSound, device, 176, 27, "CCSWnd_Inventory switched to the Equip tab.");
+                    RegisterCashShopStageChildButton(window, (cashShopImage?["CSInventory"] as WzSubProperty), "BtExConsume", clickSound, overSound, device, 176, 54, "CCSWnd_Inventory switched to the Use tab.");
+                    RegisterCashShopStageChildButton(window, (cashShopImage?["CSInventory"] as WzSubProperty), "BtExInstall", clickSound, overSound, device, 176, 81, "CCSWnd_Inventory switched to the Setup tab.");
+                    RegisterCashShopStageChildButton(window, (cashShopImage?["CSInventory"] as WzSubProperty), "BtExEtc", clickSound, overSound, device, 176, 108, "CCSWnd_Inventory switched to the Etc tab.");
+                    RegisterCashShopStageChildButton(window, (cashShopImage?["CSInventory"] as WzSubProperty), "BtExTrunk", clickSound, overSound, device, 176, 135, "CCSWnd_Inventory switched to the locker-access button.");
+                    window.SetFallbackLines(
+                        "CCSWnd_Inventory now exists as its own owner with the recovered tab-button family.",
+                        "Its scrollbar and number-font setup stay separate from the parent cash dialog.");
+                    break;
+                case MapSimulatorWindowNames.CashShopList:
+                    window.SetContentBounds(new Rectangle(275, 95, 412, 430));
+                    AttachCanvasLayer(window, cashShopImage?["CSList"] as WzSubProperty, "Base", device, new Point(279, 99));
+                    window.SetFallbackLines(
+                        "CCSWnd_List owns category/page state, selector focus, and the list plate canvases.",
+                        "The dedicated owner now exists apart from the coarse parent shop surface.");
+                    break;
+                case MapSimulatorWindowNames.CashShopStatus:
+                    window.SetContentBounds(new Rectangle(254, 530, 545, 56));
+                    RegisterCashShopStageChildButton(window, (cashShopImage?["CSStatus"] as WzSubProperty), "BtCharge", clickSound, overSound, device, 248, 13, "CCSWnd_Status previewed the charge button owner.");
+                    RegisterCashShopStageChildButton(window, (cashShopImage?["CSStatus"] as WzSubProperty), "BtCheck", clickSound, overSound, device, 289, 13, "CCSWnd_Status previewed the check-balance button owner.");
+                    RegisterCashShopStageChildButton(window, (cashShopImage?["CSStatus"] as WzSubProperty), "BtCoupon", clickSound, overSound, device, 330, 13, "CCSWnd_Status previewed the coupon button owner.");
+                    RegisterCashShopStageChildButton(window, (cashShopImage?["CSStatus"] as WzSubProperty), "BtExit", clickSound, overSound, device, 378, 15, "CCSWnd_Status previewed the exit button owner.");
+                    window.SetFallbackLines(
+                        "CCSWnd_Status now exists as a dedicated owner with charge, check, coupon, and exit buttons.",
+                        "The cash-balance strip is no longer represented only by the parent stage summary.");
+                    break;
+                case MapSimulatorWindowNames.CashShopOneADay:
+                    window.SetContentBounds(new Rectangle(275, 95, 412, 430));
+                    AttachCanvasLayer(window, picturePlateImage?["PicturePlate"] as WzSubProperty, "NoItem", device, new Point(279, 152));
+                    AttachCanvasLayer(window, picturePlateImage?["PicturePlate"] as WzSubProperty, "NoItem0", device, new Point(279, 152));
+                    AttachCanvasLayer(window, picturePlateImage?["PicturePlate"] as WzSubProperty, "NoItem1", device, new Point(279, 152));
+                    window.SetFallbackLines(
+                        "CCSWnd_OneADay now exists as a dedicated list/plate owner instead of staying folded into the parent shop.",
+                        "It tracks the packet-owned one-a-day state separately even when no daily reward is pending.");
+                    break;
+            }
+
             return window;
+        }
+
+        private static void RegisterCashShopStageChildButton(
+            CashShopStageChildWindow window,
+            WzSubProperty parent,
+            string buttonName,
+            WzBinaryProperty clickSound,
+            WzBinaryProperty overSound,
+            GraphicsDevice device,
+            int x,
+            int y,
+            string actionMessage)
+        {
+            UIObject button = LoadButton(parent, buttonName, clickSound, overSound, device);
+            if (button == null)
+            {
+                return;
+            }
+
+            button.X = x;
+            button.Y = y;
+            window.RegisterButton(button, () => actionMessage);
+        }
+
+        private static string ResolveCashShopStageChildTitle(string windowName)
+        {
+            return windowName switch
+            {
+                MapSimulatorWindowNames.CashShopLocker => "CCSWnd_Locker",
+                MapSimulatorWindowNames.CashShopInventory => "CCSWnd_Inventory",
+                MapSimulatorWindowNames.CashShopList => "CCSWnd_List",
+                MapSimulatorWindowNames.CashShopStatus => "CCSWnd_Status",
+                MapSimulatorWindowNames.CashShopOneADay => "CCSWnd_OneADay",
+                _ => "Cash Shop Child"
+            };
         }
 
 
@@ -3320,6 +3581,39 @@ namespace HaCreator.MapSimulator.Loaders
             if (layer != null)
             {
                 window.AddLayer(layer, offset);
+            }
+        }
+
+        private static void AttachCanvasLayer(CashTradingRoomWindow window, WzSubProperty sourceProperty, string canvasName, GraphicsDevice device)
+        {
+            if (window == null || sourceProperty == null)
+            {
+                return;
+            }
+
+            IDXObject layer = LoadWindowCanvasLayerWithOffset(sourceProperty, canvasName, device, out Point offset);
+            if (layer != null)
+            {
+                window.AddLayer(layer, offset);
+            }
+        }
+
+        private static void AttachCanvasLayer(
+            CashShopStageChildWindow window,
+            WzSubProperty sourceProperty,
+            string canvasName,
+            GraphicsDevice device,
+            Point baseOffset)
+        {
+            if (window == null || sourceProperty == null)
+            {
+                return;
+            }
+
+            IDXObject layer = LoadWindowCanvasLayerWithOffset(sourceProperty, canvasName, device, out Point offset);
+            if (layer != null)
+            {
+                window.AddLayer(layer, new Point(baseOffset.X + offset.X, baseOffset.Y + offset.Y));
             }
         }
 
@@ -3825,6 +4119,20 @@ namespace HaCreator.MapSimulator.Loaders
             {
                 Position = position
             };
+
+            WzSubProperty skillMainProperty = uiWindow2Image?["Skill"]?["main"] as WzSubProperty;
+            if (skillMainProperty != null)
+            {
+                window.SetTooltipTextures(new[]
+                {
+                    LoadCanvasTexture(skillMainProperty, "tip0", device),
+                    LoadCanvasTexture(skillMainProperty, "tip1", device),
+                    LoadCanvasTexture(skillMainProperty, "tip2", device)
+                });
+            }
+
+            WzSubProperty equipTooltipProperty = uiWindow2Image?["ToolTip"]?["Equip"] as WzSubProperty;
+            window.SetCashTooltipTexture(LoadCanvasTexture(equipTooltipProperty, "cash", device));
 
             window.AddLayer(LoadWindowCanvasLayerWithOffset(repairProperty, "backgrnd2", device, out Point overlayOffset), overlayOffset);
             window.AddLayer(LoadWindowCanvasLayerWithOffset(repairProperty, "backgrnd3", device, out Point contentOffset), contentOffset);
@@ -6284,6 +6592,7 @@ namespace HaCreator.MapSimulator.Loaders
             WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
             WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
             Dictionary<int, Texture2D> mainKeyTextures = LoadIndexedCanvasTextures(sourceProperty["key"] as WzSubProperty, device);
+            List<Texture2D> paletteTextures = LoadIndexedCanvasTextureList(sourceProperty["icon"] as WzSubProperty, device).ToList();
             Texture2D[] noticeTextures = LoadIndexedCanvasArray(sourceProperty["notice"] as WzSubProperty, 3, device);
             KeyConfigWindow window = new KeyConfigWindow(
                 new DXObject(0, 0, frameTexture, 0),
@@ -6291,7 +6600,8 @@ namespace HaCreator.MapSimulator.Loaders
                 CreateFilledTexture(device, 1, 1, Color.White, Color.White),
                 mainKeyTextures,
                 mainKeyTextures,
-                noticeTextures)
+                noticeTextures,
+                paletteTextures)
             {
                 Position = position
             };
@@ -6321,7 +6631,8 @@ namespace HaCreator.MapSimulator.Loaders
                         CreateFilledTexture(device, 1, 1, Color.White, Color.White),
                         mainKeyTextures,
                         quickSlotKeyTextures,
-                        noticeTextures)
+                        noticeTextures,
+                        paletteTextures)
                     {
                         Position = position
                     };

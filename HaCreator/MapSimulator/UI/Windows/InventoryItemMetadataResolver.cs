@@ -144,6 +144,16 @@ namespace HaCreator.MapSimulator.UI
                 : false;
         }
 
+        public static bool TryResolveItemTypeName(int itemId, out string typeName)
+        {
+            typeName = null;
+            return global::HaCreator.Program.InfoManager?.ItemNameCache != null
+                   && global::HaCreator.Program.InfoManager.ItemNameCache.TryGetValue(itemId, out Tuple<string, string, string> itemInfo)
+                   && !string.IsNullOrWhiteSpace(itemInfo?.Item1)
+                ? (typeName = itemInfo.Item1) != null
+                : false;
+        }
+
         public static bool TryResolveSpecScript(int itemId, out string script)
         {
             script = null;

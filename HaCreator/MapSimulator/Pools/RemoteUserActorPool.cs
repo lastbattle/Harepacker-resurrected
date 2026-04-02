@@ -932,22 +932,18 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             int[] remainingMaskWords = new int[maskWordCount];
-            bool hasActiveBits = false;
             for (int i = 0; i < maskWordCount; i++)
             {
                 int currentWord = i < currentMaskWords.Length ? currentMaskWords[i] : 0;
                 int resetWord = i < resetMaskWords.Length ? resetMaskWords[i] : 0;
                 int remainingWord = currentWord & ~resetWord;
                 remainingMaskWords[i] = remainingWord;
-                hasActiveBits |= remainingWord != 0;
             }
 
-            actor.TemporaryStats = hasActiveBits
-                ? actor.TemporaryStats with { MaskWords = remainingMaskWords }
-                : default;
+            actor.TemporaryStats = RemoteUserPacketCodec.ApplyResetMask(actor.TemporaryStats, remainingMaskWords);
             actor.TemporaryStatDelay = 0;
             SyncTemporaryStatPresentation(actor);
-            message = hasActiveBits
+            message = actor.TemporaryStats.HasActiveMaskBits
                 ? $"Remote user {packet.CharacterId} temporary-stat mask updated."
                 : $"Remote user {packet.CharacterId} temporary-stat mask cleared.";
             return true;

@@ -50,11 +50,14 @@ namespace HaCreator.MapSimulator
     public sealed class MapSimulatorChatRenderState
     {
         public IReadOnlyList<ChatMessage> Messages { get; init; } = Array.Empty<ChatMessage>();
+        public IReadOnlyList<string> WhisperCandidates { get; init; } = Array.Empty<string>();
         public bool IsActive { get; init; }
+        public bool IsWhisperTargetPickerActive { get; init; }
         public string InputText { get; init; } = string.Empty;
         public int CursorPosition { get; init; }
         public MapSimulatorChatTargetType TargetType { get; init; }
         public string WhisperTarget { get; init; } = string.Empty;
+        public int WhisperTargetPickerSelectionIndex { get; init; } = -1;
         public string LocalPlayerName { get; init; } = string.Empty;
     }
 
@@ -97,6 +100,7 @@ namespace HaCreator.MapSimulator
 
         // Input history settings
         private const int MAX_INPUT_HISTORY = 50;
+        private const int MAX_WHISPER_CANDIDATES = MAX_INPUT_HISTORY;
         #endregion
 
         #region Fields
@@ -116,6 +120,11 @@ namespace HaCreator.MapSimulator
         private string _whisperTarget = string.Empty;
         private string _replyTarget = string.Empty;
         private string _localPlayerName = string.Empty;
+        private readonly List<string> _whisperCandidates = new List<string>();
+        private bool _isWhisperTargetPickerActive;
+        private int _whisperTargetPickerSelectionIndex = -1;
+        private string _savedChatInputBeforeWhisperPicker = string.Empty;
+        private int _savedChatCursorBeforeWhisperPicker;
 
         // Key repeat tracking
         private Keys _lastHeldKey = Keys.None;
@@ -141,6 +150,10 @@ namespace HaCreator.MapSimulator
 
         public Action<string, int> MessageSubmitted { get; set; }
         #endregion
+
+        internal IReadOnlyList<string> WhisperCandidates => _whisperCandidates;
+        internal bool IsWhisperTargetPickerActive => _isWhisperTargetPickerActive;
+        internal int WhisperTargetPickerSelectionIndex => _whisperTargetPickerSelectionIndex;
 
         private enum ChatSubmitDisposition
         {
@@ -235,6 +248,12 @@ namespace HaCreator.MapSimulator
             {
                 if (_isActive)
                 {
+                    if (_isWhisperTargetPickerActive)
+                    {
+                        ConfirmWhisperTargetPicker(tickCount);
+                        return true;
+                    }
+
                     // Send message if there's text
                     if (_inputText.Length > 0)
                     {
@@ -291,6 +310,13 @@ namespace HaCreator.MapSimulator
 
             if (newKeyboardState.IsKeyDown(Keys.Tab) && oldKeyboardState.IsKeyUp(Keys.Tab))
             {
+                if (_isWhisperTargetPickerActive)
+                {
+                    MoveWhisperTargetPickerSelection(
+                        (newKeyboardState.IsKeyDown(Keys.LeftShift) || newKeyboardState.IsKeyDown(Keys.RightShift)) ? -1 : 1);
+                    return true;
+                }
+
                 CycleTarget(newKeyboardState.IsKeyDown(Keys.LeftShift) || newKeyboardState.IsKeyDown(Keys.RightShift) ? -1 : 1);
                 return true;
             }
@@ -302,17 +328,25 @@ namespace HaCreator.MapSimulator
             // Handle Escape to cancel chat
             if (newKeyboardState.IsKeyDown(Keys.Escape))
             {
-                _isActive = false;
-                _inputText.Clear();
-                _cursorPosition = 0;
-                ResetKeyRepeat();
-                ResetHistoryNavigation();
+                if (_isWhisperTargetPickerActive)
+                {
+                    CancelWhisperTargetPicker();
+                    return true;
+                }
+
+                Deactivate();
                 return true;
             }
 
             // Handle Up arrow - browse history (older)
             if (newKeyboardState.IsKeyDown(Keys.Up) && oldKeyboardState.IsKeyUp(Keys.Up))
             {
+                if (_isWhisperTargetPickerActive)
+                {
+                    MoveWhisperTargetPickerSelection(-1);
+                    return true;
+                }
+
                 if (_inputHistory.Count > 0)
                 {
                     // Save current input when starting to browse history
@@ -336,6 +370,12 @@ namespace HaCreator.MapSimulator
             // Handle Down arrow - browse history (newer)
             if (newKeyboardState.IsKeyDown(Keys.Down) && oldKeyboardState.IsKeyUp(Keys.Down))
             {
+                if (_isWhisperTargetPickerActive)
+                {
+                    MoveWhisperTargetPickerSelection(1);
+                    return true;
+                }
+
                 if (_historyIndex > -1)
                 {
                     _historyIndex--;
@@ -413,6 +453,7 @@ namespace HaCreator.MapSimulator
                     {
                         _inputText.Remove(_cursorPosition - 1, 1);
                         _cursorPosition--;
+                        SyncWhisperTargetPickerSelectionFromInput();
                     }
                     _lastHeldKey = Keys.Back;
                     _keyHoldStartTime = tickCount;
@@ -425,6 +466,7 @@ namespace HaCreator.MapSimulator
                     {
                         _inputText.Remove(_cursorPosition - 1, 1);
                         _cursorPosition--;
+                        SyncWhisperTargetPickerSelectionFromInput();
                     }
                     _lastKeyRepeatTime = tickCount;
                 }
@@ -444,6 +486,7 @@ namespace HaCreator.MapSimulator
                     if (_cursorPosition < _inputText.Length)
                     {
                         _inputText.Remove(_cursorPosition, 1);
+                        SyncWhisperTargetPickerSelectionFromInput();
                     }
                     _lastHeldKey = Keys.Delete;
                     _keyHoldStartTime = tickCount;
@@ -455,6 +498,7 @@ namespace HaCreator.MapSimulator
                     if (_cursorPosition < _inputText.Length)
                     {
                         _inputText.Remove(_cursorPosition, 1);
+                        SyncWhisperTargetPickerSelectionFromInput();
                     }
                     _lastKeyRepeatTime = tickCount;
                 }
@@ -502,6 +546,7 @@ namespace HaCreator.MapSimulator
                     {
                         _inputText.Insert(_cursorPosition, c.Value);
                         _cursorPosition++;
+                        SyncWhisperTargetPickerSelectionFromInput();
                         // Track this key for potential repeat
                         _lastHeldKey = key;
                         _keyHoldStartTime = tickCount;
@@ -519,6 +564,7 @@ namespace HaCreator.MapSimulator
                 {
                     _inputText.Insert(_cursorPosition, c.Value);
                     _cursorPosition++;
+                    SyncWhisperTargetPickerSelectionFromInput();
                     _lastKeyRepeatTime = tickCount;
                 }
             }
@@ -731,8 +777,11 @@ namespace HaCreator.MapSimulator
         public void Deactivate()
         {
             _isActive = false;
+            CloseWhisperTargetPicker(restoreDraft: false);
             _inputText.Clear();
             _cursorPosition = 0;
+            ResetKeyRepeat();
+            ResetHistoryNavigation();
         }
 
         public void Activate(int tickCount, string initialText = null)
@@ -788,6 +837,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            AddWhisperCandidate(normalizedTarget);
             _replyTarget = normalizedTarget;
         }
 
@@ -818,11 +868,14 @@ namespace HaCreator.MapSimulator
             return new MapSimulatorChatRenderState
             {
                 Messages = _messages,
+                WhisperCandidates = _whisperCandidates,
                 IsActive = _isActive,
+                IsWhisperTargetPickerActive = _isWhisperTargetPickerActive,
                 InputText = _inputText.ToString(),
                 CursorPosition = _cursorPosition,
                 TargetType = _chatTarget,
                 WhisperTarget = _whisperTarget ?? string.Empty,
+                WhisperTargetPickerSelectionIndex = _whisperTargetPickerSelectionIndex,
                 LocalPlayerName = _localPlayerName
             };
         }
@@ -833,6 +886,63 @@ namespace HaCreator.MapSimulator
         public void ClearMessages()
         {
             _messages.Clear();
+        }
+
+        public void OpenWhisperTargetPicker(int tickCount, string initialTarget = null)
+        {
+            string normalizedInitialTarget = NormalizeChatSpeakerCandidate(initialTarget);
+            if (string.IsNullOrWhiteSpace(normalizedInitialTarget))
+            {
+                normalizedInitialTarget = NormalizeChatSpeakerCandidate(_whisperTarget);
+            }
+
+            if (string.IsNullOrWhiteSpace(normalizedInitialTarget))
+            {
+                normalizedInitialTarget = NormalizeChatSpeakerCandidate(_replyTarget);
+            }
+
+            if (!_isWhisperTargetPickerActive)
+            {
+                _savedChatInputBeforeWhisperPicker = _inputText.ToString();
+                _savedChatCursorBeforeWhisperPicker = _cursorPosition;
+            }
+
+            Activate(tickCount);
+            _isWhisperTargetPickerActive = true;
+            ResetHistoryNavigation();
+
+            if (string.IsNullOrWhiteSpace(normalizedInitialTarget) && _whisperCandidates.Count > 0)
+            {
+                normalizedInitialTarget = _whisperCandidates[0];
+            }
+
+            SetInputText(normalizedInitialTarget);
+            SyncWhisperTargetPickerSelectionFromInput();
+        }
+
+        internal bool ConfirmWhisperTargetPicker(int tickCount)
+        {
+            if (!_isWhisperTargetPickerActive)
+            {
+                return false;
+            }
+
+            string whisperTarget = ResolveWhisperTargetPickerSelection();
+            if (!TryArmWhisperTarget(whisperTarget, tickCount))
+            {
+                return false;
+            }
+
+            CloseWhisperTargetPicker(restoreDraft: false);
+            _isActive = true;
+            _cursorBlinkTimer = tickCount;
+            return true;
+        }
+
+        public void SelectWhisperTargetPickerCandidate(string whisperTarget, int tickCount)
+        {
+            OpenWhisperTargetPicker(tickCount, whisperTarget);
+            ConfirmWhisperTargetPicker(tickCount);
         }
         #endregion
 
@@ -986,9 +1096,13 @@ namespace HaCreator.MapSimulator
                 string[] parts = trimmedMessage.Split(new[] { ' ' }, 3, StringSplitOptions.RemoveEmptyEntries);
                 if (parts.Length == 1)
                 {
-                    if (string.IsNullOrWhiteSpace(_whisperTarget))
+                    if (string.IsNullOrWhiteSpace(_whisperTarget) && _whisperCandidates.Count == 0)
                     {
                         AddClientMessage("Usage: /w <name> [message]", tickCount, ClientChatLogType.Error);
+                    }
+                    else
+                    {
+                        OpenWhisperTargetPicker(tickCount, _whisperTarget);
                     }
 
                     disposition = ChatSubmitDisposition.KeepChatOpen;
@@ -1015,7 +1129,14 @@ namespace HaCreator.MapSimulator
             string replyTarget = !string.IsNullOrWhiteSpace(_replyTarget) ? _replyTarget : _whisperTarget;
             if (string.IsNullOrWhiteSpace(replyTarget))
             {
-                AddClientMessage("No whisper target selected.", tickCount, ClientChatLogType.Error);
+                if (_whisperCandidates.Count == 0)
+                {
+                    AddClientMessage("No whisper target selected.", tickCount, ClientChatLogType.Error);
+                }
+                else
+                {
+                    OpenWhisperTargetPicker(tickCount);
+                }
                 disposition = ChatSubmitDisposition.KeepChatOpen;
                 return true;
             }
@@ -1113,6 +1234,11 @@ namespace HaCreator.MapSimulator
 
             _whisperTarget = normalizedTarget;
             _replyTarget = normalizedTarget;
+            AddWhisperCandidate(normalizedTarget);
+            if (_isWhisperTargetPickerActive)
+            {
+                SyncWhisperTargetPickerSelectionFromInput();
+            }
             return true;
         }
 
@@ -1535,6 +1661,107 @@ namespace HaCreator.MapSimulator
                 MapSimulatorChatTargetType.Expedition => ClientChatLogType.Expedition,
                 _ => ClientChatLogType.All
             };
+        }
+
+        private void AddWhisperCandidate(string whisperTarget)
+        {
+            string normalizedTarget = NormalizeChatSpeakerCandidate(whisperTarget);
+            if (string.IsNullOrWhiteSpace(normalizedTarget))
+            {
+                return;
+            }
+
+            _whisperCandidates.RemoveAll(candidate =>
+                string.Equals(candidate, normalizedTarget, StringComparison.OrdinalIgnoreCase));
+            _whisperCandidates.Insert(0, normalizedTarget);
+            while (_whisperCandidates.Count > MAX_WHISPER_CANDIDATES)
+            {
+                _whisperCandidates.RemoveAt(_whisperCandidates.Count - 1);
+            }
+        }
+
+        private void CancelWhisperTargetPicker()
+        {
+            CloseWhisperTargetPicker(restoreDraft: true);
+        }
+
+        private void CloseWhisperTargetPicker(bool restoreDraft)
+        {
+            _isWhisperTargetPickerActive = false;
+            _whisperTargetPickerSelectionIndex = -1;
+
+            if (restoreDraft)
+            {
+                SetInputText(_savedChatInputBeforeWhisperPicker);
+                _cursorPosition = Math.Clamp(_savedChatCursorBeforeWhisperPicker, 0, _inputText.Length);
+            }
+            else
+            {
+                SetInputText(string.Empty);
+            }
+
+            _savedChatInputBeforeWhisperPicker = string.Empty;
+            _savedChatCursorBeforeWhisperPicker = 0;
+        }
+
+        private void MoveWhisperTargetPickerSelection(int delta)
+        {
+            if (_whisperCandidates.Count == 0)
+            {
+                _whisperTargetPickerSelectionIndex = -1;
+                return;
+            }
+
+            if (_whisperTargetPickerSelectionIndex < 0 || _whisperTargetPickerSelectionIndex >= _whisperCandidates.Count)
+            {
+                _whisperTargetPickerSelectionIndex = delta >= 0 ? 0 : _whisperCandidates.Count - 1;
+            }
+            else
+            {
+                _whisperTargetPickerSelectionIndex =
+                    (_whisperTargetPickerSelectionIndex + delta + _whisperCandidates.Count) % _whisperCandidates.Count;
+            }
+
+            SetInputText(_whisperCandidates[_whisperTargetPickerSelectionIndex]);
+        }
+
+        private string ResolveWhisperTargetPickerSelection()
+        {
+            string typedValue = _inputText.ToString();
+            if (!string.IsNullOrWhiteSpace(typedValue))
+            {
+                return typedValue;
+            }
+
+            return _whisperTargetPickerSelectionIndex >= 0 && _whisperTargetPickerSelectionIndex < _whisperCandidates.Count
+                ? _whisperCandidates[_whisperTargetPickerSelectionIndex]
+                : string.Empty;
+        }
+
+        private void SyncWhisperTargetPickerSelectionFromInput()
+        {
+            if (!_isWhisperTargetPickerActive)
+            {
+                return;
+            }
+
+            string normalizedInput = NormalizeChatSpeakerCandidate(_inputText.ToString());
+            if (string.IsNullOrWhiteSpace(normalizedInput))
+            {
+                _whisperTargetPickerSelectionIndex = _whisperCandidates.Count > 0 ? 0 : -1;
+                return;
+            }
+
+            for (int i = 0; i < _whisperCandidates.Count; i++)
+            {
+                if (string.Equals(_whisperCandidates[i], normalizedInput, StringComparison.OrdinalIgnoreCase))
+                {
+                    _whisperTargetPickerSelectionIndex = i;
+                    return;
+                }
+            }
+
+            _whisperTargetPickerSelectionIndex = -1;
         }
 
         private void SetInputText(string text)

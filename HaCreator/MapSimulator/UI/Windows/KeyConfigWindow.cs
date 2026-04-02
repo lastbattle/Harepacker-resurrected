@@ -49,6 +49,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly List<PageLayer> _quickSlotLayers = new();
         private readonly List<BindingRow> _bindingRows = new();
         private readonly List<BindingRow> _quickSlotRows = new();
+        private readonly List<Texture2D> _paletteTextures = new();
         private readonly Texture2D _highlightTexture;
         private readonly Dictionary<int, Texture2D> _mainKeyTextures;
         private readonly Dictionary<int, Texture2D> _quickSlotKeyTextures;
@@ -80,7 +81,8 @@ namespace HaCreator.MapSimulator.UI
             Texture2D highlightTexture,
             Dictionary<int, Texture2D> mainKeyTextures,
             Dictionary<int, Texture2D> quickSlotKeyTextures,
-            Texture2D[] noticeTextures)
+            Texture2D[] noticeTextures,
+            IEnumerable<Texture2D> paletteTextures = null)
             : base(frame)
         {
             _mainFrame = frame;
@@ -89,6 +91,16 @@ namespace HaCreator.MapSimulator.UI
             _mainKeyTextures = mainKeyTextures ?? new Dictionary<int, Texture2D>();
             _quickSlotKeyTextures = quickSlotKeyTextures ?? _mainKeyTextures;
             _noticeTextures = noticeTextures ?? Array.Empty<Texture2D>();
+            if (paletteTextures != null)
+            {
+                foreach (Texture2D texture in paletteTextures)
+                {
+                    if (texture != null)
+                    {
+                        _paletteTextures.Add(texture);
+                    }
+                }
+            }
             BuildRows();
         }
 
@@ -271,6 +283,11 @@ namespace HaCreator.MapSimulator.UI
             foreach (BindingRow row in GetActiveRows())
             {
                 DrawBindingRow(sprite, row);
+            }
+
+            if (_page == KeyConfigPage.Main)
+            {
+                DrawPaletteGrid(sprite);
             }
 
             DrawStatusNotice(sprite);
@@ -472,6 +489,45 @@ namespace HaCreator.MapSimulator.UI
             }
 
             sprite.DrawString(_font, _statusMessage, new Vector2(Position.X + 18, bottomY), new Color(255, 228, 151));
+        }
+
+        private void DrawPaletteGrid(SpriteBatch sprite)
+        {
+            if (_paletteTextures.Count == 0)
+            {
+                return;
+            }
+
+            const float scale = 0.45f;
+            const int columns = 9;
+            const int cellSize = 15;
+            const int padding = 6;
+            int rows = (int)Math.Ceiling(_paletteTextures.Count / (float)columns);
+            int panelWidth = (columns * cellSize) + (padding * 2);
+            int panelHeight = (rows * cellSize) + (_font.LineSpacing / 2) + (padding * 2);
+            int panelX = Position.X + (CurrentFrame?.Width ?? 622) - panelWidth - 12;
+            int panelY = Position.Y + (CurrentFrame?.Height ?? 374) - panelHeight - 10;
+            Rectangle panelBounds = new(panelX, panelY, panelWidth, panelHeight);
+
+            sprite.Draw(_highlightTexture, panelBounds, new Color(28, 34, 48, 210));
+            sprite.DrawString(_font, "Palette", new Vector2(panelBounds.X + padding, panelBounds.Y + 2), new Color(220, 220, 220), 0f, Vector2.Zero, 0.5f, SpriteEffects.None, 0f);
+
+            int iconOriginY = panelBounds.Y + padding + (_font.LineSpacing / 2);
+            for (int i = 0; i < _paletteTextures.Count; i++)
+            {
+                Texture2D texture = _paletteTextures[i];
+                if (texture == null)
+                {
+                    continue;
+                }
+
+                int column = i % columns;
+                int row = i / columns;
+                Vector2 iconPosition = new(
+                    panelBounds.X + padding + (column * cellSize),
+                    iconOriginY + (row * cellSize));
+                sprite.Draw(texture, iconPosition, null, Color.White, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+            }
         }
 
         private Texture2D GetStatusNoticeTexture()

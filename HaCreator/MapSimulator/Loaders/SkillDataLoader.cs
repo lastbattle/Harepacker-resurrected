@@ -377,11 +377,12 @@ namespace HaCreator.MapSimulator.Loaders
                 }
             }
 
-            formattedDescription = NormalizeSkillText(description, preserveFormatting: true);
-            description = NormalizeSkillText(description);
             int requiredCharacterLevel = ResolveRequiredCharacterLevel(skillEntry);
             List<SkillRequirementDisplayData> requiredSkills = BuildRequiredSkills(skillEntry, stringImage, device);
             ResolveRequiredSkill(requiredSkills, out int requiredSkillId, out int requiredSkillLevel);
+            bool hasExplicitRequirements = requiredSkills.Count > 0;
+            formattedDescription = NormalizeSkillDescriptionForTooltip(description, hasExplicitRequirements, preserveFormatting: true);
+            description = NormalizeSkillDescriptionForTooltip(description, hasExplicitRequirements);
 
             var displayData = new SkillDisplayData
             {
@@ -1172,7 +1173,24 @@ namespace HaCreator.MapSimulator.Loaders
                 : null;
         }
 
+        internal static string NormalizeSkillDescriptionForTooltip(
+            string text,
+            bool hasExplicitRequirements,
+            bool preserveFormatting = false)
+        {
+            string normalized = NormalizeSkillLineBreaks(text);
+            if (hasExplicitRequirements)
+                normalized = RemoveEmbeddedRequirementLines(normalized);
+
+            return FinalizeNormalizedSkillText(normalized, preserveFormatting);
+        }
+
         private static string NormalizeSkillText(string text, bool preserveFormatting = false)
+        {
+            return FinalizeNormalizedSkillText(NormalizeSkillLineBreaks(text), preserveFormatting);
+        }
+
+        private static string NormalizeSkillLineBreaks(string text)
         {
             if (string.IsNullOrWhiteSpace(text))
                 return string.Empty;
@@ -1185,6 +1203,57 @@ namespace HaCreator.MapSimulator.Loaders
                 .Replace('\r', '\n')
                 .Replace('\u00A0', ' ');
 
+            normalized = Regex.Replace(
+                normalized,
+                @"\\+(?=\s*Required\s+Skill\s*:)",
+                "\n",
+                RegexOptions.IgnoreCase);
+
+            return normalized;
+        }
+
+        private static string RemoveEmbeddedRequirementLines(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                return string.Empty;
+
+            string[] lines = text.Split('\n');
+            var keptLines = new List<string>(lines.Length);
+
+            for (int index = 0; index < lines.Length; index++)
+            {
+                string line = lines[index];
+                string trimmed = line.TrimStart();
+                string trimmedWithoutSlash = trimmed.TrimStart('\\').TrimStart();
+                int colonIndex = trimmedWithoutSlash.IndexOf(':');
+                bool isRequirementHeader = colonIndex >= 0 &&
+                                           trimmedWithoutSlash.StartsWith("Required Skill", StringComparison.OrdinalIgnoreCase);
+                if (!isRequirementHeader)
+                {
+                    keptLines.Add(line);
+                    continue;
+                }
+
+                string trailingValue = trimmedWithoutSlash[(colonIndex + 1)..].Trim();
+                if (trailingValue.Length > 0)
+                    continue;
+
+                while (index + 1 < lines.Length && string.IsNullOrWhiteSpace(lines[index + 1]))
+                    index++;
+
+                if (index + 1 < lines.Length)
+                    index++;
+            }
+
+            return string.Join("\n", keptLines);
+        }
+
+        private static string FinalizeNormalizedSkillText(string text, bool preserveFormatting)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+                return string.Empty;
+
+            string normalized = text;
             if (!preserveFormatting)
                 normalized = Regex.Replace(normalized, "#([a-zA-Z])([^#]+)#", "$2");
             normalized = normalized.Replace("##", "#");

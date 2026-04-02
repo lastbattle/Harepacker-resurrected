@@ -55,6 +55,7 @@ namespace HaCreator.MapSimulator.Interaction
         private bool _showTaxInfo;
         private int _nextMemoId = 1;
         private string _lastActionSummary = "Parcel delivery ready.";
+        internal Action<string, int> SocialChatObserved { get; set; }
 
         internal MemoMailboxManager()
         {
@@ -426,6 +427,7 @@ namespace HaCreator.MapSimulator.Interaction
                 DateTimeOffset.Now,
                 isRead: false);
 
+            NotifySocialChatObserved(body);
             ResetDraft();
             return true;
         }
@@ -459,6 +461,7 @@ namespace HaCreator.MapSimulator.Interaction
                 isRead: false,
                 attachmentMeso: attachment?.Kind == MemoAttachmentKind.Meso ? attachment.Meso : 0);
 
+            NotifySocialChatObserved(body);
             ResetDraft();
             return true;
         }
@@ -764,6 +767,16 @@ namespace HaCreator.MapSimulator.Interaction
                    && !string.IsNullOrWhiteSpace(itemInfo.Item2)
                 ? itemInfo.Item2
                 : $"Item {itemId}";
+        }
+
+        private void NotifySocialChatObserved(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return;
+            }
+
+            SocialChatObserved?.Invoke(text.Trim(), Environment.TickCount);
         }
     }
 }

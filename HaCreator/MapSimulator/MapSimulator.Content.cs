@@ -519,7 +519,7 @@ namespace HaCreator.MapSimulator
                 cashShopWindowReload.ResolveStorageExpansionCommoditySerialNumber = ResolveStorageExpansionCommoditySerialNumber;
                 cashShopWindowReload.GetStorageExpansionStatusSummary = GetStorageExpansionStatusSummary;
                 cashShopWindowReload.StorageExpansionResolved = HandleStorageExpansionResolved;
-                cashShopWindowReload.WindowHidden = _ => uiWindowManager.HideWindow(MapSimulatorWindowNames.CashAvatarPreview);
+                cashShopWindowReload.WindowHidden = _ => HideCashShopOwnerFamilyWindows();
             }
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashAvatarPreview) is CashAvatarPreviewWindow cashAvatarPreviewReload
                 && _playerManager?.Player?.Build != null)
@@ -811,6 +811,8 @@ namespace HaCreator.MapSimulator
                 statusBarChatUI.ToggleChatRequested = () => _chat.ToggleActive(Environment.TickCount);
                 statusBarChatUI.CycleChatTargetRequested = delta => _chat.CycleTarget(delta);
                 statusBarChatUI.WhisperTargetRequested = target => _chat.BeginWhisperTo(target, Environment.TickCount);
+                statusBarChatUI.WhisperTargetPickerRequested = () => _chat.OpenWhisperTargetPicker(Environment.TickCount);
+                statusBarChatUI.WhisperTargetPickerCandidateRequested = target => _chat.SelectWhisperTargetPickerCandidate(target, Environment.TickCount);
             }
 
 
@@ -921,7 +923,7 @@ namespace HaCreator.MapSimulator
                 cashShopWindowRebuild.ResolveStorageExpansionCommoditySerialNumber = ResolveStorageExpansionCommoditySerialNumber;
                 cashShopWindowRebuild.GetStorageExpansionStatusSummary = GetStorageExpansionStatusSummary;
                 cashShopWindowRebuild.StorageExpansionResolved = HandleStorageExpansionResolved;
-                cashShopWindowRebuild.WindowHidden = _ => uiWindowManager.HideWindow(MapSimulatorWindowNames.CashAvatarPreview);
+                cashShopWindowRebuild.WindowHidden = _ => HideCashShopOwnerFamilyWindows();
             }
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashAvatarPreview) is CashAvatarPreviewWindow cashAvatarPreviewRebuild
                 && _playerManager?.Player?.Build != null)
@@ -1218,10 +1220,11 @@ namespace HaCreator.MapSimulator
         /// <param name="newBoard">The new map board to load</param>
         /// <param name="newTitle">The new window title</param>
         /// <param name="spawnPortalName">Optional portal name to spawn at</param>
-        private void LoadMapContent(Board newBoard, string newTitle, string spawnPortalName)
+        private void LoadMapContent(Board newBoard, string newTitle, string spawnPortalName, int spawnPortalIndex = -1)
         {
             this._mapBoard = newBoard;
             this._spawnPortalName = spawnPortalName;
+            this._spawnPortalIndex = spawnPortalIndex;
 
 
             // Update window title
@@ -1651,7 +1654,7 @@ namespace HaCreator.MapSimulator
                 cashShopWindow.ResolveStorageExpansionCommoditySerialNumber = ResolveStorageExpansionCommoditySerialNumber;
                 cashShopWindow.GetStorageExpansionStatusSummary = GetStorageExpansionStatusSummary;
                 cashShopWindow.StorageExpansionResolved = HandleStorageExpansionResolved;
-                cashShopWindow.WindowHidden = _ => uiWindowManager.HideWindow(MapSimulatorWindowNames.CashAvatarPreview);
+                cashShopWindow.WindowHidden = _ => HideCashShopOwnerFamilyWindows();
             }
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashAvatarPreview) is CashAvatarPreviewWindow cashAvatarPreviewWindow
                 && _playerManager?.Player?.Build != null)

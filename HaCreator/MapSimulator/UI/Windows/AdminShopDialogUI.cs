@@ -158,7 +158,7 @@ namespace HaCreator.MapSimulator.UI
             public long Price { get; set; }
             public AdminShopCategory Category { get; set; }
             public Texture2D IconTexture { get; set; }
-            public bool SupportsWishlist { get; init; }
+            public bool SupportsWishlist { get; set; }
             public bool Wishlisted { get; set; }
             public AdminShopEntryState State { get; set; }
             public string StateLabel { get; set; } = string.Empty;
@@ -540,6 +540,71 @@ namespace HaCreator.MapSimulator.UI
                 RewardInventoryType = entry.RewardInventoryType,
                 RewardItemId = entry.RewardItemId,
                 IsUserListing = _activePane == AdminShopPane.User
+            };
+        }
+
+        public IReadOnlyList<string> DescribeListOwnerState()
+        {
+            AdminShopPaneState activePaneState = _paneStates[_activePane];
+            AdminShopEntry entry = GetSelectedEntry();
+            List<string> lines = new()
+            {
+                $"{_currentMode} {_activePane} pane: {activePaneState.Entries.Count} row(s), browse {GetBrowseModeLabel(_activeBrowseMode)}, category {_activeCategory}.",
+                entry == null
+                    ? "No catalog entry is currently selected."
+                    : $"{entry.Title} | {entry.PriceLabel} | {entry.StateLabel}",
+                entry == null
+                    ? "Select a Cash Shop row to preview client-owned list details."
+                    : entry.Detail
+            };
+
+            if (!string.IsNullOrWhiteSpace(_footerMessage))
+            {
+                lines.Add(_footerMessage);
+            }
+
+            return lines;
+        }
+
+        public IReadOnlyList<string> DescribeLockerOwnerState()
+        {
+            if (_storageRuntime == null)
+            {
+                return new[]
+                {
+                    "Locker runtime unavailable.",
+                    "The dedicated locker owner is staged but has no shared-account storage snapshot."
+                };
+            }
+
+            return new[]
+            {
+                $"Account {_storageRuntime.AccountLabel} uses {_storageRuntime.GetUsedSlotCount()}/{_storageRuntime.GetSlotLimit()} shared slots.",
+                _storageRuntime.SharedCharacterNames.Count > 0
+                    ? $"Shared with {string.Join(", ", _storageRuntime.SharedCharacterNames.Take(3))}."
+                    : "No shared character names are loaded for the locker owner.",
+                _storageRuntime.CanExpandSlotLimit()
+                    ? "Locker expansion remains available."
+                    : $"Locker expansion has reached the simulator cap at {_storageRuntime.GetSlotLimit()} slots."
+            };
+        }
+
+        public IReadOnlyList<string> DescribeInventoryOwnerState()
+        {
+            if (_inventory == null)
+            {
+                return new[]
+                {
+                    "Inventory runtime unavailable.",
+                    "CCSWnd_Inventory remains present but has no item runtime to enumerate."
+                };
+            }
+
+            return new[]
+            {
+                $"Equip {_inventory.GetSlots(InventoryType.EQUIP).Count}, Use {_inventory.GetSlots(InventoryType.USE).Count}, Setup {_inventory.GetSlots(InventoryType.SETUP).Count}.",
+                $"Etc {_inventory.GetSlots(InventoryType.ETC).Count}, Cash {_inventory.GetSlots(InventoryType.CASH).Count}.",
+                $"Selected cash row: {GetSelectedEntry()?.Title ?? "none"}."
             };
         }
 
@@ -1699,15 +1764,50 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
-                entry.Price = commodity.Price;
-                entry.PriceLabel = FormatPriceLabel(commodity.Price);
-                entry.RewardQuantity = Math.Max(1, commodity.Count);
-                entry.CommoditySerialNumber = commodity.SerialNumber;
-                entry.CommodityOnSale = commodity.OnSale;
-                if (InventoryItemMetadataResolver.TryResolveMaxStackForItem(entry.RewardItemId, out int maxStackSize))
+                ApplyCommodityMetadata(entry, commodity);
+            }
+        }
+
+        private void ApplyCommodityMetadata(AdminShopEntry entry, AdminShopCommodityData commodity)
+        {
+            if (entry == null || commodity == null)
+            {
+                return;
+            }
+
+            entry.Price = commodity.Price;
+            entry.PriceLabel = FormatPriceLabel(commodity.Price);
+            entry.RewardQuantity = Math.Max(1, commodity.Count);
+            entry.CommoditySerialNumber = commodity.SerialNumber;
+            entry.CommodityOnSale = commodity.OnSale;
+            entry.SupportsWishlist &= commodity.OnSale;
+
+            if (commodity.OnSale)
+            {
+                if (entry.State == AdminShopEntryState.PreviewOnly
+                    && string.Equals(entry.StateLabel, "Off sale", StringComparison.Ordinal))
                 {
-                    entry.RewardMaxStackSize = maxStackSize;
+                    entry.State = AdminShopEntryState.Available;
+                    entry.StateLabel = string.Empty;
                 }
+            }
+            else if (entry.State == AdminShopEntryState.Available)
+            {
+                entry.State = AdminShopEntryState.PreviewOnly;
+                entry.StateLabel = "Off sale";
+            }
+
+            if (commodity.PeriodDays > 0
+                && !entry.Detail.Contains("Period:", StringComparison.OrdinalIgnoreCase))
+            {
+                entry.Detail = string.IsNullOrWhiteSpace(entry.Detail)
+                    ? $"Period: {commodity.PeriodDays} day(s)."
+                    : $"{entry.Detail} Period: {commodity.PeriodDays} day(s).";
+            }
+
+            if (InventoryItemMetadataResolver.TryResolveMaxStackForItem(entry.RewardItemId, out int maxStackSize))
+            {
+                entry.RewardMaxStackSize = maxStackSize;
             }
         }
 

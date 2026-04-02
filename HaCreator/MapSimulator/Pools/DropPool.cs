@@ -544,6 +544,7 @@ namespace HaCreator.MapSimulator.Pools
         private Action<DropItem, int, string> _onRemotePetPickedUp;
         private Action<DropItem, int, string> _onRemoteOtherPickedUp;
         private Func<int, int, bool> _partyPickupMembershipEvaluator;
+        private Func<string, IReadOnlyList<IDXObject>> _packetItemVisualResolver;
 
         // Ground level lookup function
         private Func<float, float, float> _getGroundY;
@@ -554,6 +555,7 @@ namespace HaCreator.MapSimulator.Pools
         private IDXObject _mesoIcon;
         private readonly List<IDXObject>[] _mesoAnimationFrames = new List<IDXObject>[] { new(), new(), new(), new() };
         private Dictionary<string, IDXObject> _itemIcons = new Dictionary<string, IDXObject>();
+        private readonly Dictionary<string, List<IDXObject>> _packetItemVisualFrames = new Dictionary<string, List<IDXObject>>(StringComparer.Ordinal);
         #endregion
 
         #region Public Properties
@@ -572,6 +574,7 @@ namespace HaCreator.MapSimulator.Pools
         public void SetGroundLevelLookup(Func<float, float, float> getGroundY) => _getGroundY = getGroundY;
         public void SetSourcePositionResolver(Func<int, Vector2?> resolver) => _sourcePositionResolver = resolver;
         public void SetPartyPickupMembershipEvaluator(Func<int, int, bool> evaluator) => _partyPickupMembershipEvaluator = evaluator;
+        public void SetPacketItemVisualResolver(Func<string, IReadOnlyList<IDXObject>> resolver) => _packetItemVisualResolver = resolver;
         public void SetOnRemotePlayerPickedUp(Action<DropItem, int, string> callback) => _onRemotePlayerPickedUp = callback;
         public void SetOnRemotePetPickedUp(Action<DropItem, int, string> callback) => _onRemotePetPickedUp = callback;
         public void SetOnRemoteOtherPickedUp(Action<DropItem, int, string> callback) => _onRemoteOtherPickedUp = callback;
@@ -2020,7 +2023,8 @@ namespace HaCreator.MapSimulator.Pools
                 drop.Icon = _mesoIcon;
                 ApplyMesoVisuals(drop, packetControlled: true);
             }
-            else if (_itemIcons.TryGetValue(itemId, out IDXObject icon))
+            else if (!TryApplyPacketItemVisuals(drop, itemId)
+                     && _itemIcons.TryGetValue(itemId, out IDXObject icon))
             {
                 drop.Icon = icon;
             }
@@ -2220,6 +2224,31 @@ namespace HaCreator.MapSimulator.Pools
             drop.MesoAnimationLayerCount = drop.UseLayeredMesoAnimation
                 ? Math.Min(frames.Count, iconType + 2)
                 : 0;
+        }
+
+        private bool TryApplyPacketItemVisuals(DropItem drop, string itemId)
+        {
+            if (drop == null || string.IsNullOrWhiteSpace(itemId))
+            {
+                return false;
+            }
+
+            if (!_packetItemVisualFrames.TryGetValue(itemId, out List<IDXObject> frames))
+            {
+                frames = _packetItemVisualResolver?.Invoke(itemId)?
+                    .Where(frame => frame != null)
+                    .ToList();
+                _packetItemVisualFrames[itemId] = frames;
+            }
+
+            if (frames == null || frames.Count == 0)
+            {
+                return false;
+            }
+
+            drop.AnimFrames = frames;
+            drop.Icon = frames[0];
+            return true;
         }
 
         #endregion

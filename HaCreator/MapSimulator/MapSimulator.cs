@@ -550,6 +550,7 @@ namespace HaCreator.MapSimulator
 
         // Portal teleportation - seamless map transitions
         private string _spawnPortalName = null; // The portal name to spawn at (set when loading map)
+        private int _spawnPortalIndex = -1; // The portal index to spawn at when a packet-owned field entry references the destination by slot.
         private int _lastClickTime = 0; // For double-click detection
         private const int DOUBLE_CLICK_TIME_MS = 500; // Time window for double-click
         private PortalItem _lastClickedPortal = null; // Track which visible portal was clicked
@@ -788,6 +789,7 @@ namespace HaCreator.MapSimulator
 
             worldMapWindow.MapRequested -= HandleWorldMapRequested;
             worldMapWindow.MapRequested += HandleWorldMapRequested;
+            worldMapWindow.OnImeCandidateSelected = TrySelectWorldMapImeCandidate;
             worldMapWindow.SetEntries(BuildWorldMapEntries(), _mapBoard?.MapInfo?.id ?? 0, focusedMapId);
             worldMapWindow.SetSearchResults(BuildWorldMapSearchResults(focusedMapId));
             worldMapWindow.SetQuestOverlays(BuildWorldMapQuestOverlays(focusedMapId));
@@ -1486,7 +1488,7 @@ namespace HaCreator.MapSimulator
 
 
 
-        private bool QueueMapTransfer(int targetMapId, string targetPortalName)
+        private bool QueueMapTransfer(int targetMapId, string targetPortalName, int targetPortalIndex = -1)
         {
             if (targetMapId <= 0 || targetMapId == MapConstants.MaxMap || _gameState.PendingMapChange)
             {
@@ -1498,7 +1500,35 @@ namespace HaCreator.MapSimulator
             _gameState.PendingMapChange = true;
             _gameState.PendingMapId = targetMapId;
             _gameState.PendingPortalName = targetPortalName;
+            _gameState.PendingPortalIndex = targetPortalIndex;
             return true;
+        }
+
+        private PortalInstance ResolvePortalByNameOrIndex(IEnumerable<PortalInstance> portals, string portalName, int portalIndex)
+        {
+            if (portals == null)
+            {
+                return null;
+            }
+
+            if (!string.IsNullOrWhiteSpace(portalName))
+            {
+                PortalInstance namedPortal = portals.FirstOrDefault(portal => string.Equals(portal?.pn, portalName, StringComparison.Ordinal));
+                if (namedPortal != null)
+                {
+                    return namedPortal;
+                }
+            }
+
+            if (portalIndex < 0)
+            {
+                return null;
+            }
+
+            return portals
+                .Where(portal => portal != null)
+                .Skip(portalIndex)
+                .FirstOrDefault();
         }
 
         private void PlayLoginEntryGameInSE()
@@ -1869,6 +1899,7 @@ namespace HaCreator.MapSimulator
 
             if (uiWindowManager.GetWindow(MapSimulatorWindowNames.MemoMailbox) is MemoMailboxWindow memoMailboxWindow)
             {
+                _memoMailbox.SocialChatObserved = TryTriggerSpecialistPetSocialFeedback;
                 memoMailboxWindow.SetSnapshotProvider(_memoMailbox.GetSnapshot, _memoMailbox.GetDraftSnapshot);
                 memoMailboxWindow.SetActions(
                     tab => _memoMailbox.SetActiveTab(tab),
@@ -2075,13 +2106,11 @@ namespace HaCreator.MapSimulator
         }
         private bool ShouldTrackInheritedDirectionModeOwner()
         {
-            return (_npcInteractionOverlay?.IsVisible == true)
-                || _gameState.DirectionModeActive
-
-
-                || _scriptedDirectionModeOwnerActive
-                || _specialFieldRuntime.SpecialEffects.Wedding.HasActiveScriptedDialog
-                || _specialFieldRuntime.Minigames.MemoryGame.IsVisible;
+            return _gameState.ShouldInheritDirectionModeOwner(
+                _npcInteractionOverlay?.IsVisible == true,
+                _scriptedDirectionModeOwnerActive,
+                _specialFieldRuntime.SpecialEffects.Wedding.HasActiveScriptedDialog,
+                _specialFieldRuntime.Minigames.MemoryGame.IsVisible);
         }
 
 
@@ -2775,9 +2804,7 @@ namespace HaCreator.MapSimulator
                 statusBarUi.CashShopRequested = ShowCashShopWindow;
                 statusBarUi.MtsRequested = () =>
                 {
-                    uiWindowManager?.HideWindow(MapSimulatorWindowNames.CashShop);
-                    uiWindowManager?.HideWindow(MapSimulatorWindowNames.CashAvatarPreview);
-                    ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.Mts);
+                    OpenCashServiceOwnerFamily(UI.CashServiceStageKind.ItemTradingCenter, resetStageSession: true);
                 };
                 statusBarUi.MenuRequested = () => ToggleStatusBarPopupWindow(MapSimulatorWindowNames.Menu, MapSimulatorWindowNames.System);
                 statusBarUi.SystemRequested = () => ToggleStatusBarPopupWindow(MapSimulatorWindowNames.System, MapSimulatorWindowNames.Menu);
@@ -3255,6 +3282,7 @@ namespace HaCreator.MapSimulator
 
 
             roomWindow.Runtime.BindInventory(inventoryWindow);
+            roomWindow.Runtime.SocialChatObserved = TryTriggerSpecialistPetSocialFeedback;
 
             roomWindow.SetFont(_fontChat);
             ConfigureSocialRoomPersistence(roomWindow.Runtime);
@@ -3831,10 +3859,7 @@ namespace HaCreator.MapSimulator
 
         private void ShowCashShopWindow()
         {
-            SyncCashShopAccountCredit();
-            uiWindowManager?.HideWindow(MapSimulatorWindowNames.Mts);
-            ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.CashShop);
-            ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.CashAvatarPreview);
+            OpenCashServiceOwnerFamily(UI.CashServiceStageKind.CashShop, resetStageSession: true);
         }
 
 
@@ -4778,7 +4803,7 @@ namespace HaCreator.MapSimulator
             }
 
 
-            if (IsLoginRuntimeSceneActive && _loginRuntime.CurrentStep != LoginStep.WorldSelect)
+            if (!string.IsNullOrWhiteSpace(GetWorldChannelSelectorRestrictionMessage(includePendingRequest: false)))
             {
                 return StatusBarPopupCursorHint.Forbidden;
             }
@@ -4786,6 +4811,56 @@ namespace HaCreator.MapSimulator
 
             return StatusBarPopupCursorHint.Normal;
 
+        }
+
+        private string GetWorldChannelSelectorRestrictionMessage(bool includePendingRequest)
+        {
+            if (includePendingRequest && _selectorRequestKind != SelectorRequestKind.None)
+            {
+                return _selectorRequestStatusMessage ?? "A world/channel request is already pending.";
+            }
+
+            if (IsLoginRuntimeSceneActive && _loginRuntime.CurrentStep != LoginStep.WorldSelect)
+            {
+                return $"Login step {_loginRuntime.CurrentStep} blocks world requests.";
+            }
+
+            if (IsLoginRuntimeSceneActive)
+            {
+                return null;
+            }
+
+            string fieldRestrictionMessage = FieldInteractionRestrictionEvaluator.GetChannelShiftRestrictionMessage(_mapBoard?.MapInfo?.fieldLimit ?? 0);
+            if (!string.IsNullOrWhiteSpace(fieldRestrictionMessage))
+            {
+                return fieldRestrictionMessage.Replace("field", "map");
+            }
+
+            if (TryGetActivePacketOwnedAntiMacroWindow(out _) || _packetOwnedAntiMacroAwaitingResult)
+            {
+                return "Channel changes are blocked while the anti-macro challenge is active.";
+            }
+
+            return null;
+        }
+
+        private void SyncUtilityChannelSelectorAvailability()
+        {
+            StatusBarPopupCursorHint channelHint = GetUtilityChannelPopupCursorHint();
+            bool channelEnabled = channelHint == StatusBarPopupCursorHint.Normal;
+
+            statusBarUi?.SetChannelButtonEnabled(channelEnabled);
+
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.System) is StatusBarPopupMenuWindow systemWindow)
+            {
+                systemWindow.SetEntryEnabled("BtChannel", channelEnabled);
+            }
+
+            if (channelHint == StatusBarPopupCursorHint.Forbidden && !IsLoginRuntimeSceneActive)
+            {
+                uiWindowManager?.HideWindow(MapSimulatorWindowNames.WorldSelect);
+                uiWindowManager?.HideWindow(MapSimulatorWindowNames.ChannelSelect);
+            }
         }
 
 
@@ -5323,13 +5398,15 @@ namespace HaCreator.MapSimulator
                     requestAllowed: IsWorldChannelSelectorRequestAllowed(),
                     statusMessage: GetChannelSelectorStatusMessage());
             }
+
+            SyncUtilityChannelSelectorAvailability();
         }
 
 
         private bool IsWorldChannelSelectorRequestAllowed()
         {
             return _selectorRequestKind == SelectorRequestKind.None &&
-                   (!IsLoginRuntimeSceneActive || _loginRuntime.CurrentStep == LoginStep.WorldSelect);
+                   string.IsNullOrWhiteSpace(GetWorldChannelSelectorRestrictionMessage(includePendingRequest: false));
         }
 
         private bool CanRequestLoginViewAllCharacters()
@@ -5723,21 +5800,20 @@ namespace HaCreator.MapSimulator
                 return _selectorRequestStatusMessage;
             }
 
+            string restrictionMessage = GetWorldChannelSelectorRestrictionMessage(includePendingRequest: false);
+            if (!string.IsNullOrWhiteSpace(restrictionMessage))
+            {
+                return restrictionMessage;
+            }
+
 
             if (!string.IsNullOrWhiteSpace(_selectorLastResultMessage))
             {
                 return _selectorLastResultMessage;
             }
 
-
             if (IsLoginRuntimeSceneActive)
             {
-                if (_loginRuntime.CurrentStep != LoginStep.WorldSelect)
-                {
-                    return $"Login step {_loginRuntime.CurrentStep} blocks world requests.";
-                }
-
-
                 if (!_loginRuntime.HasWorldInformation)
                 {
                     return "Using simulator-side world data until WorldInformation is dispatched.";
@@ -5771,9 +5847,10 @@ namespace HaCreator.MapSimulator
             }
 
 
-            if (IsLoginRuntimeSceneActive && _loginRuntime.CurrentStep != LoginStep.WorldSelect)
+            string restrictionMessage = GetWorldChannelSelectorRestrictionMessage(includePendingRequest: false);
+            if (!string.IsNullOrWhiteSpace(restrictionMessage))
             {
-                return $"Login step {_loginRuntime.CurrentStep} blocks channel entry.";
+                return restrictionMessage;
             }
 
 
@@ -9648,7 +9725,7 @@ namespace HaCreator.MapSimulator
 
         private int ResolveStorageExpansionCommoditySerialNumber()
         {
-            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStatus) is CashServiceStageWindow cashServiceStageWindow
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) is CashServiceStageWindow cashServiceStageWindow
                 && cashServiceStageWindow.TryGetPendingCommoditySerialNumber(out int pendingCommoditySerialNumber))
             {
                 return pendingCommoditySerialNumber;
@@ -17724,6 +17801,62 @@ namespace HaCreator.MapSimulator
             return iconCanvas?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(GraphicsDevice);
         }
 
+        private IReadOnlyList<IDXObject> ResolvePacketItemDropVisuals(string itemId)
+        {
+            return int.TryParse(itemId, NumberStyles.Integer, CultureInfo.InvariantCulture, out int resolvedItemId)
+                ? LoadInventoryItemDropFrames(resolvedItemId)
+                : null;
+        }
+
+        private List<IDXObject> LoadInventoryItemDropFrames(int itemId)
+        {
+            WzSubProperty infoProperty = LoadInventoryItemInfoProperty(itemId);
+            WzImageProperty dropProperty = infoProperty?["drop"];
+            if (dropProperty == null || GraphicsDevice == null)
+            {
+                return null;
+            }
+
+            var frames = new List<IDXObject>();
+            LoadItemDropFrames(dropProperty, frames);
+            return frames.Count > 0 ? frames : null;
+        }
+
+        private void LoadItemDropFrames(WzImageProperty property, List<IDXObject> frames)
+        {
+            if (property == null || frames == null)
+            {
+                return;
+            }
+
+            if (property is WzCanvasProperty canvas)
+            {
+                LoadSingleFrame(canvas, frames);
+                return;
+            }
+
+            if (property is not WzSubProperty subProperty)
+            {
+                return;
+            }
+
+            foreach (WzImageProperty child in subProperty.WzProperties.OrderBy(current =>
+                         int.TryParse(current.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int index)
+                             ? index
+                             : int.MaxValue))
+            {
+                switch (child)
+                {
+                    case WzCanvasProperty childCanvas:
+                        LoadSingleFrame(childCanvas, frames);
+                        break;
+                    case WzSubProperty nestedProperty:
+                        LoadItemDropFrames(nestedProperty, frames);
+                        break;
+                }
+            }
+        }
+
 
         private readonly struct ConsumableItemEffect
         {
@@ -19936,9 +20069,10 @@ namespace HaCreator.MapSimulator
                     {
                         PlayPortalSE();
                         _playerManager?.ForceStand();
-                        _gameState.PendingMapChange = true;
-                        _gameState.PendingMapId = targetMapId;
-                        _gameState.PendingPortalName = clickedPortal.PortalInstance.tn;
+                            _gameState.PendingMapChange = true;
+                            _gameState.PendingMapId = targetMapId;
+                            _gameState.PendingPortalName = clickedPortal.PortalInstance.tn;
+                            _gameState.PendingPortalIndex = -1;
                         return;
                     }
                 }
@@ -19988,9 +20122,10 @@ namespace HaCreator.MapSimulator
                     // Double-click detected on hidden portal
                     PlayPortalSE();
                     _playerManager?.ForceStand();
-                    _gameState.PendingMapChange = true;
-                    _gameState.PendingMapId = clickedHiddenPortal.tm;
-                    _gameState.PendingPortalName = clickedHiddenPortal.tn;
+                            _gameState.PendingMapChange = true;
+                            _gameState.PendingMapId = clickedHiddenPortal.tm;
+                            _gameState.PendingPortalName = clickedHiddenPortal.tn;
+                            _gameState.PendingPortalIndex = -1;
                     return;
                 }
 
@@ -20550,6 +20685,12 @@ namespace HaCreator.MapSimulator
                 && WindowsImeCandidateSelectionBridge.TrySelectCandidate(Window.Handle, listIndex, candidateIndex);
         }
 
+        private bool TrySelectWorldMapImeCandidate(int listIndex, int candidateIndex)
+        {
+            return Window != null
+                && WindowsImeCandidateSelectionBridge.TrySelectCandidate(Window.Handle, listIndex, candidateIndex);
+        }
+
 
 
 
@@ -20996,9 +21137,10 @@ namespace HaCreator.MapSimulator
                         fallbackX: temporaryPortalDestination.X,
                         fallbackY: temporaryPortalDestination.Y);
                     SetPendingMapSpawnTarget(temporaryPortalDestination.X, temporaryPortalDestination.Y);
-                    _gameState.PendingMapChange = true;
-                    _gameState.PendingMapId = temporaryPortalDestination.MapId;
-                    _gameState.PendingPortalName = null;
+                            _gameState.PendingMapChange = true;
+                            _gameState.PendingMapId = temporaryPortalDestination.MapId;
+                            _gameState.PendingPortalName = null;
+                            _gameState.PendingPortalIndex = -1;
                 }
 
 
@@ -21080,9 +21222,10 @@ namespace HaCreator.MapSimulator
                 }
 
                 StagePendingCrossMapTeleport(nearestPortal.PortalInstance.tm, nearestPortal.PortalInstance.tn);
-                _gameState.PendingMapChange = true;
-                _gameState.PendingMapId = nearestPortal.PortalInstance.tm;
-                _gameState.PendingPortalName = nearestPortal.PortalInstance.tn;
+                        _gameState.PendingMapChange = true;
+                        _gameState.PendingMapId = nearestPortal.PortalInstance.tm;
+                        _gameState.PendingPortalName = nearestPortal.PortalInstance.tn;
+                        _gameState.PendingPortalIndex = -1;
                 return true;
             }
 
@@ -21150,9 +21293,10 @@ namespace HaCreator.MapSimulator
                 }
 
                 StagePendingCrossMapTeleport(nearestHiddenPortal.tm, nearestHiddenPortal.tn);
-                _gameState.PendingMapChange = true;
-                _gameState.PendingMapId = nearestHiddenPortal.tm;
-                _gameState.PendingPortalName = nearestHiddenPortal.tn;
+                        _gameState.PendingMapChange = true;
+                        _gameState.PendingMapId = nearestHiddenPortal.tm;
+                        _gameState.PendingPortalName = nearestHiddenPortal.tn;
+                        _gameState.PendingPortalIndex = -1;
                 return true;
             }
 
@@ -21344,6 +21488,19 @@ namespace HaCreator.MapSimulator
                 }
             }
 
+            if (!spawnPositionSet && _spawnPortalIndex >= 0)
+            {
+                PortalInstance indexedPortal = ResolvePortalByNameOrIndex(_mapBoard.BoardItems.Portals, null, _spawnPortalIndex);
+                if (indexedPortal != null)
+                {
+                    mapShiftX = indexedPortal.X;
+                    mapShiftY = indexedPortal.Y;
+                    spawnX = indexedPortal.X;
+                    spawnY = indexedPortal.Y;
+                    spawnPositionSet = true;
+                }
+            }
+
 
             if (!spawnPositionSet)
             {
@@ -21526,6 +21683,7 @@ namespace HaCreator.MapSimulator
                 return y - 18;
             });
             _dropPool.SetSourcePositionResolver(ResolveDropPacketSourcePosition);
+            _dropPool.SetPacketItemVisualResolver(ResolvePacketItemDropVisuals);
             _dropPool.SetPartyPickupMembershipEvaluator(AreDropActorsInSameParty);
 
 
@@ -23585,9 +23743,16 @@ namespace HaCreator.MapSimulator
             int cashItemId = state.DeliveryCashItemId ?? 0;
             string targetItemName = string.IsNullOrWhiteSpace(state.TargetItemName) ? $"Item {targetItemId}" : state.TargetItemName;
             string cashItemName = string.IsNullOrWhiteSpace(state.DeliveryCashItemName) ? $"Cash item {cashItemId}" : state.DeliveryCashItemName;
+            bool resolvedCashSlot = TryResolveQuestDeliveryCashItemSlot(
+                cashItemId,
+                out MapleLib.WzLib.WzStructure.Data.ItemStructure.InventoryType deliveryInventoryType,
+                out int deliveryRuntimeSlotIndex,
+                out int deliveryClientSlotIndex);
             if (cashItemId > 0 && HasInventoryItem(cashItemId))
             {
-                bool consumedCashItem = TryConsumeInventoryWindowItem(cashItemId, 1);
+                bool consumedCashItem = resolvedCashSlot
+                    && uiWindowManager?.InventoryWindow is IInventoryRuntime inventoryWindow
+                    && inventoryWindow.TryConsumeItemAtSlot(deliveryInventoryType, deliveryRuntimeSlotIndex, cashItemId, 1);
                 string deliveryMessage = ApplyDeliveryQuestLaunch(questId, targetItemId, Array.Empty<int>());
                 return new QuestWindowActionResult
                 {
@@ -23595,8 +23760,10 @@ namespace HaCreator.MapSimulator
                     Messages = new[]
                     {
                         consumedCashItem
-                            ? $"{deliveryMessage} Consumed {cashItemName} from the cash inventory through the local delivery-item seam and routed the quest-detail {(completionPhase ? "completion" : "accept")} button for {targetItemName} into the delivery owner."
-                            : $"{deliveryMessage} Routed from the quest-detail {(completionPhase ? "completion" : "accept")} delivery button for {targetItemName}, but the simulator could not consume {cashItemName} from the live inventory."
+                            ? $"{deliveryMessage} Consumed {cashItemName} from {deliveryInventoryType} slot #{deliveryClientSlotIndex} through the client-shaped delivery-item seam and routed the quest-detail {(completionPhase ? "completion" : "accept")} button for {targetItemName} into the delivery owner."
+                            : resolvedCashSlot
+                                ? $"{deliveryMessage} Routed from the quest-detail {(completionPhase ? "completion" : "accept")} delivery button for {targetItemName}, but the simulator could not consume {cashItemName} from {deliveryInventoryType} slot #{deliveryClientSlotIndex}."
+                                : $"{deliveryMessage} Routed from the quest-detail {(completionPhase ? "completion" : "accept")} delivery button for {targetItemName}, but no live inventory slot for {cashItemName} could be resolved."
                     }
                 };
             }

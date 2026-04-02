@@ -38,15 +38,22 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            OpenPacketOwnedScriptInteraction(request);
+            string dispatchStatus = OpenPacketOwnedScriptInteraction(request);
+            if (!string.IsNullOrWhiteSpace(dispatchStatus))
+            {
+                message = string.IsNullOrWhiteSpace(message)
+                    ? dispatchStatus
+                    : $"{message} {dispatchStatus}";
+            }
+
             return true;
         }
 
-        private void OpenPacketOwnedScriptInteraction(PacketScriptMessageRuntime.PacketScriptMessageOpenRequest request)
+        private string OpenPacketOwnedScriptInteraction(PacketScriptMessageRuntime.PacketScriptMessageOpenRequest request)
         {
             if (request == null || _npcInteractionOverlay == null)
             {
-                return;
+                return null;
             }
 
             if (request.CloseExistingDialog || request.State == null)
@@ -54,7 +61,7 @@ namespace HaCreator.MapSimulator
                 _npcInteractionOverlay.Close();
                 _activeNpcInteractionNpc = null;
                 _activeNpcInteractionNpcId = 0;
-                return;
+                return DispatchPacketOwnedScriptAutoResponse(request.AutoResponse);
             }
 
             _gameState.EnterDirectionMode();
@@ -70,6 +77,19 @@ namespace HaCreator.MapSimulator
             PublishDynamicObjectTagStatesForScriptNames(publishedScriptNames, currTickCount);
 
             _npcInteractionOverlay.Open(request.State);
+            return DispatchPacketOwnedScriptAutoResponse(request.AutoResponse);
+        }
+
+        private string DispatchPacketOwnedScriptAutoResponse(PacketScriptMessageRuntime.PacketScriptResponsePacket responsePacket)
+        {
+            if (responsePacket == null)
+            {
+                return null;
+            }
+
+            bool dispatched = _packetScriptReplyTransport.TrySendResponse(responsePacket, out string dispatchStatus);
+            _packetScriptMessageRuntime.RecordResponseDispatch(responsePacket, dispatched, dispatchStatus);
+            return dispatchStatus;
         }
 
         private void HandleNpcOverlayInputSubmission(NpcInteractionInputSubmission submission)

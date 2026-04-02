@@ -59,6 +59,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             public int RequiredWeaponCode { get; init; }
             public int ShootRange0 { get; init; }
             public ShootAmmoSelection ResolvedShootAmmoSelection { get; init; }
+            public bool ShootAmmoBypassActive { get; init; }
         }
 
         private sealed class DeferredSkillPayload
@@ -78,6 +79,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             public float? StoredVerticalLaunchSpeed { get; init; }
             public int ShootRange0 { get; init; }
             public ShootAmmoSelection ResolvedShootAmmoSelection { get; init; }
+            public bool ShootAmmoBypassActive { get; init; }
         }
 
         private sealed class DeferredMovingShootExecutionState
@@ -103,6 +105,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             public Vector2? PreferredTargetPosition { get; init; }
             public bool FacingRight { get; init; }
             public ShootAmmoSelection ResolvedShootAmmoSelection { get; init; }
+            public bool ShootAmmoBypassActive { get; init; }
         }
 
         private sealed class QueuedSerialAttack
@@ -507,6 +510,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private readonly Dictionary<int, int> _cooldowns = new(); // skillId -> lastCastTime
         private readonly Dictionary<int, int> _serverCooldownExpireTimes = new(); // skillId -> absolute expire tick
         private readonly HashSet<int> _pendingCooldownCompletionNotifications = new();
+        private readonly HashSet<int> _expiredAuthoritativeCooldowns = new();
         private EnergyChargeRuntimeState _activeEnergyChargeRuntime;
         private PreparedSkill _preparedSkill;
         private int _lastPreparedSkillExclusiveRequestTime = int.MinValue;
@@ -544,6 +548,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public Action<SkillData, int> OnSkillCooldownCompleted;
         public Action<ActiveProjectile, MobItem> OnProjectileHit;
         public ShootAmmoSelection LastResolvedShootAmmoSelection { get; private set; }
+        private bool? _shootAmmoBypassTemporaryStatOverride;
         public Action<ActiveBuff> OnBuffApplied;
         public Action<ActiveBuff> OnBuffExpired;
         public Action<PreparedSkill> OnPreparedSkillStarted;
@@ -709,7 +714,9 @@ namespace HaCreator.MapSimulator.Character.Skills
             foreach (int cooldownSkillId in _cooldowns.Keys.Where(skillId => !validSkillIds.Contains(skillId)).ToList())
             {
                 _cooldowns.Remove(cooldownSkillId);
+                _serverCooldownExpireTimes.Remove(cooldownSkillId);
                 _pendingCooldownCompletionNotifications.Remove(cooldownSkillId);
+                _expiredAuthoritativeCooldowns.Remove(cooldownSkillId);
             }
 
             // Initialize skill levels to 0 (unlearned)
@@ -1735,10 +1742,15 @@ namespace HaCreator.MapSimulator.Character.Skills
                 int overrideRemaining = Math.Max(0, expireTime - currentTime);
                 if (overrideRemaining <= 0)
                 {
-                    _serverCooldownExpireTimes.Remove(skillId);
+                    MarkAuthoritativeCooldownExpired(skillId);
                 }
 
                 return overrideRemaining;
+            }
+
+            if (_expiredAuthoritativeCooldowns.Contains(skillId))
+            {
+                return 0;
             }
 
             if (!_cooldowns.TryGetValue(skillId, out int lastCast))
@@ -1761,7 +1773,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             {
                 if (expireTime <= currentTime)
                 {
-                    _serverCooldownExpireTimes.Remove(skillId);
+                    MarkAuthoritativeCooldownExpired(skillId);
+                    return 0;
                 }
                 else if (_cooldowns.TryGetValue(skillId, out int startTime))
                 {
@@ -1771,6 +1784,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 {
                     return Math.Max(0, expireTime - currentTime);
                 }
+            }
+
+            if (_expiredAuthoritativeCooldowns.Contains(skillId))
+            {
+                return 0;
             }
 
             if (!_cooldowns.TryGetValue(skillId, out _))
@@ -1829,6 +1847,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 ? existingStartTime
                 : currentTime;
             int expireTime = unchecked(currentTime + remainingMs);
+            _expiredAuthoritativeCooldowns.Remove(skillId);
             _cooldowns[skillId] = cooldownStartTime;
             _serverCooldownExpireTimes[skillId] = expireTime;
             _pendingCooldownCompletionNotifications.Add(skillId);
@@ -1850,6 +1869,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             bool hadActiveCooldown = currentTime != int.MinValue && GetCooldownRemaining(skillId, currentTime) > 0;
             _serverCooldownExpireTimes.Remove(skillId);
             _pendingCooldownCompletionNotifications.Remove(skillId);
+            _expiredAuthoritativeCooldowns.Remove(skillId);
             _cooldowns.Remove(skillId);
 
             if (!hadActiveCooldown)
@@ -1937,6 +1957,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             if (levelData.Cooldown > 0)
             {
+                _expiredAuthoritativeCooldowns.Remove(skill.SkillId);
                 _cooldowns[skill.SkillId] = currentTime;
                 _serverCooldownExpireTimes.Remove(skill.SkillId);
                 _pendingCooldownCompletionNotifications.Add(skill.SkillId);
@@ -2013,7 +2034,8 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private bool HasShootAmmoBypassTemporaryStat()
         {
-            return HasActiveTemporaryStatLabel(SoulArrowBuffLabel);
+            return _shootAmmoBypassTemporaryStatOverride
+                ?? HasActiveTemporaryStatLabel(SoulArrowBuffLabel);
         }
 
         private bool TryConsumeShootAmmo(SkillData skill, SkillLevelData levelData)
@@ -4506,7 +4528,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                     StoredVerticalLaunchSpeed = rocketBoosterLaunchSpeed,
                     IsQueuedFinalAttack = isQueuedFinalAttack,
                     IsQueuedSparkAttack = isQueuedSparkAttack,
-                    ShootRange0 = shootRange0Override
+                    ShootRange0 = shootRange0Override,
+                    ShootAmmoBypassActive = HasShootAmmoBypassTemporaryStat()
                 });
                 return true;
             }
@@ -4520,6 +4543,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             preferredTargetMobId ??= ResolveDeferredPreferredTargetMobId(skill, level, currentTime, facingRight, attackOrigin, shootRange0Override);
             Vector2? preferredTargetPosition = preferredTargetPositionOverride
                 ?? ResolveDeferredPreferredTargetPosition(preferredTargetMobId, currentTime);
+            int equippedWeaponCode = GetEquippedWeaponCode();
 
             _deferredSkillPayloads.Enqueue(new DeferredSkillPayload
             {
@@ -4538,7 +4562,15 @@ namespace HaCreator.MapSimulator.Character.Skills
                 IsQueuedFinalAttack = isQueuedFinalAttack,
                 IsQueuedSparkAttack = isQueuedSparkAttack,
                 ShootRange0 = shootRange0Override,
-                ResolvedShootAmmoSelection = LastResolvedShootAmmoSelection?.Snapshot()
+                // `m_movingShootEntry` keeps the queued bullet slot metadata even while a
+                // no-consume buff such as Soul Arrow is active; the consume bypass itself
+                // rides alongside that snapshot as separate entry state.
+                ResolvedShootAmmoSelection = ResolveQueuedShootAmmoSelectionSnapshot(
+                    skill,
+                    skill.GetLevel(level),
+                    equippedWeaponCode,
+                    ignoreAmmoBypassTemporaryStat: true) ?? LastResolvedShootAmmoSelection?.Snapshot(),
+                ShootAmmoBypassActive = HasShootAmmoBypassTemporaryStat()
             });
             return true;
         }
@@ -6053,9 +6085,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 }
 
                 ShootAmmoSelection previousResolvedShootAmmoSelection = LastResolvedShootAmmoSelection?.Snapshot();
+                bool? previousShootAmmoBypassOverride = _shootAmmoBypassTemporaryStatOverride;
                 try
                 {
                     LastResolvedShootAmmoSelection = pending.ResolvedShootAmmoSelection?.Snapshot();
+                    _shootAmmoBypassTemporaryStatOverride = pending.ShootAmmoBypassActive;
                     ExecuteSkillPayload(
                         pending.Skill,
                         pendingLevel,
@@ -6075,6 +6109,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 finally
                 {
                     LastResolvedShootAmmoSelection = previousResolvedShootAmmoSelection;
+                    _shootAmmoBypassTemporaryStatOverride = previousShootAmmoBypassOverride;
                 }
             }
         }
@@ -9710,28 +9745,24 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             if (summon.LastAttackAnimationStartTime != int.MinValue)
             {
-                SkillAnimation attackPrepareAnimation = summon.SkillData?.SummonAttackPrepareAnimation;
-                if (attackPrepareAnimation?.Frames.Count > 0)
+                SkillAnimation attackAnimation = ResolveSummonAttackPlaybackAnimation(summon);
+                int prepareDuration = SummonRuntimeRules.ResolveSummonActionPrepareDurationMs(
+                    summon.SkillData,
+                    summon.CurrentAnimationBranchName);
+                int attackElapsed = currentTime - summon.LastAttackAnimationStartTime;
+                if (prepareDuration > 0 && attackElapsed >= 0 && attackElapsed < prepareDuration)
                 {
-                    int prepareDuration = attackPrepareAnimation.TotalDuration > 0
-                        ? attackPrepareAnimation.TotalDuration
-                        : attackPrepareAnimation.Frames.Sum(frame => frame.Delay);
-                    int attackElapsed = currentTime - summon.LastAttackAnimationStartTime;
-                    if (attackElapsed >= 0 && attackElapsed < prepareDuration)
-                    {
-                        SetSummonActorState(summon, SummonActorState.Prepare, currentTime);
-                        return;
-                    }
+                    SetSummonActorState(summon, SummonActorState.Prepare, currentTime);
+                    return;
                 }
 
-                SkillAnimation attackAnimation = summon.SkillData?.SummonAttackAnimation;
                 if (attackAnimation?.Frames.Count > 0)
                 {
                     int attackDuration = attackAnimation.TotalDuration > 0
                         ? attackAnimation.TotalDuration
                         : attackAnimation.Frames.Sum(frame => frame.Delay);
-                    int attackElapsed = currentTime - summon.LastAttackAnimationStartTime;
-                    if (attackElapsed >= 0 && attackElapsed < attackDuration)
+                    int attackAnimationElapsed = attackElapsed - prepareDuration;
+                    if (attackAnimationElapsed >= 0 && attackAnimationElapsed < attackDuration)
                     {
                         SetSummonActorState(summon, SummonActorState.Attack, currentTime);
                         return;
@@ -9786,6 +9817,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (state != SummonActorState.Attack && state != SummonActorState.Prepare)
             {
                 summon.CurrentAnimationBranchName = null;
+            }
+
+            if (state == SummonActorState.Idle && ShouldClearHealingRobotSupportSuspend(summon))
+            {
+                summon.SupportSuspendUntilTime = int.MinValue;
             }
 
             if (summon.ActorState == state)
@@ -11249,6 +11285,32 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return Math.Max(0, suspendDuration);
+        }
+
+        private static SkillAnimation ResolveSummonAttackPlaybackAnimation(ActiveSummon summon)
+        {
+            SkillData skill = summon?.SkillData;
+            if (skill == null)
+            {
+                return null;
+            }
+
+            if (!string.IsNullOrWhiteSpace(summon.CurrentAnimationBranchName)
+                && skill.SummonNamedAnimations != null
+                && skill.SummonNamedAnimations.TryGetValue(summon.CurrentAnimationBranchName, out SkillAnimation branchAnimation)
+                && branchAnimation?.Frames.Count > 0)
+            {
+                return branchAnimation;
+            }
+
+            return skill.SummonAttackAnimation;
+        }
+
+        private static bool ShouldClearHealingRobotSupportSuspend(ActiveSummon summon)
+        {
+            return summon?.SkillId == HEALING_ROBOT_SKILL_ID
+                   && summon.AssistType == SummonAssistType.Support
+                   && summon.SupportSuspendUntilTime != int.MinValue;
         }
 
         private bool ProcessFriendlySummonBuffSupport(ActiveSummon summon, int currentTime)
@@ -14689,8 +14751,21 @@ namespace HaCreator.MapSimulator.Character.Skills
                 }
 
                 _pendingCooldownCompletionNotifications.Remove(skillId);
+                if (_expiredAuthoritativeCooldowns.Remove(skillId))
+                {
+                    _serverCooldownExpireTimes.Remove(skillId);
+                    _cooldowns.Remove(skillId);
+                }
+
                 OnSkillCooldownCompleted?.Invoke(skill, currentTime);
             }
+        }
+
+        private void MarkAuthoritativeCooldownExpired(int skillId)
+        {
+            _serverCooldownExpireTimes.Remove(skillId);
+            _expiredAuthoritativeCooldowns.Add(skillId);
+            _pendingCooldownCompletionNotifications.Add(skillId);
         }
 
         private void ClearSwallowState()
@@ -15267,7 +15342,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (queuedAttack.RequiredWeaponCode > 0 && GetEquippedWeaponCode() != queuedAttack.RequiredWeaponCode)
                 return;
 
-            ExecuteQueuedShootAttackPath(queuedAttack.ResolvedShootAmmoSelection, () =>
+            ExecuteQueuedShootAttackPath(queuedAttack.ResolvedShootAmmoSelection, queuedAttack.ShootAmmoBypassActive, () =>
             {
                 BeginQueuedFollowUpCast(
                     skill,
@@ -15302,7 +15377,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return;
 
             Vector2 attackOrigin = ResolveQueuedSparkAttackOrigin(queuedAttack, currentTime);
-            ExecuteQueuedShootAttackPath(queuedAttack.ResolvedShootAmmoSelection, () =>
+            ExecuteQueuedShootAttackPath(queuedAttack.ResolvedShootAmmoSelection, queuedAttack.ShootAmmoBypassActive, () =>
             {
                 BeginQueuedFollowUpCast(skill, level, levelData, currentTime, queuedAttack.FacingRight);
                 ExecuteAttackPayload(
@@ -15320,17 +15395,23 @@ namespace HaCreator.MapSimulator.Character.Skills
             });
         }
 
-        private void ExecuteQueuedShootAttackPath(ShootAmmoSelection resolvedShootAmmoSelection, Action execute)
+        private void ExecuteQueuedShootAttackPath(
+            ShootAmmoSelection resolvedShootAmmoSelection,
+            bool shootAmmoBypassActive,
+            Action execute)
         {
             ShootAmmoSelection previousResolvedShootAmmoSelection = LastResolvedShootAmmoSelection?.Snapshot();
+            bool? previousShootAmmoBypassOverride = _shootAmmoBypassTemporaryStatOverride;
             try
             {
                 LastResolvedShootAmmoSelection = resolvedShootAmmoSelection?.Snapshot();
+                _shootAmmoBypassTemporaryStatOverride = shootAmmoBypassActive;
                 execute?.Invoke();
             }
             finally
             {
                 LastResolvedShootAmmoSelection = previousResolvedShootAmmoSelection;
+                _shootAmmoBypassTemporaryStatOverride = previousShootAmmoBypassOverride;
             }
         }
 
@@ -15963,7 +16044,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                     ResolvedShootAmmoSelection = ResolveQueuedShootAmmoSelectionSnapshot(
                         followUpSkill,
                         followUpLevelData,
-                        equippedWeaponCode)
+                        equippedWeaponCode,
+                        ignoreAmmoBypassTemporaryStat: true),
+                    ShootAmmoBypassActive = HasShootAmmoBypassTemporaryStat()
                 });
             }
         }
@@ -16027,13 +16110,14 @@ namespace HaCreator.MapSimulator.Character.Skills
         private ShootAmmoSelection ResolveQueuedShootAmmoSelectionSnapshot(
             SkillData skill,
             SkillLevelData levelData,
-            int weaponCode)
+            int weaponCode,
+            bool ignoreAmmoBypassTemporaryStat = false)
         {
             if (skill == null
                 || !RequiresClientShootAttackValidation(skill)
                 || IsShootSkillNotUsingShootingWeapon(skill.SkillId)
                 || IsShootSkillNotConsumingBullet(skill.SkillId)
-                || HasShootAmmoBypassTemporaryStat()
+                || (!ignoreAmmoBypassTemporaryStat && HasShootAmmoBypassTemporaryStat())
                 || weaponCode <= 0)
             {
                 return null;
@@ -16115,7 +16199,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                 ResolvedShootAmmoSelection = ResolveQueuedShootAmmoSelectionSnapshot(
                     sparkBuff.SkillData,
                     sparkBuff.SkillData?.GetLevel(sparkBuff.Level),
-                    GetEquippedWeaponCode())
+                    GetEquippedWeaponCode(),
+                    ignoreAmmoBypassTemporaryStat: true),
+                ShootAmmoBypassActive = HasShootAmmoBypassTemporaryStat()
             };
         }
 
@@ -16391,7 +16477,9 @@ namespace HaCreator.MapSimulator.Character.Skills
             RefreshBuffControlledFlyingAbility();
 
             _cooldowns.Clear();
+            _serverCooldownExpireTimes.Clear();
             _pendingCooldownCompletionNotifications.Clear();
+            _expiredAuthoritativeCooldowns.Clear();
             _currentCast = null;
             _skillLevels.Clear();
             _skillHotkeys.Clear();

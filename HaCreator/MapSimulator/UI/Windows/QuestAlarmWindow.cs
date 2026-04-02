@@ -320,7 +320,7 @@ namespace HaCreator.MapSimulator.UI
             RefreshFrame(snapshot);
 
             Vector2 titlePosition = new Vector2(Position.X + 19, Position.Y + 5);
-            string title = $"Quest Alarm ({snapshot.Entries.Count})";
+            string title = QuestAlarmOwnerStringPoolText.FormatTitle(snapshot.Entries.Count);
             sprite.DrawString(_font, title, titlePosition, Color.White, 0f, Vector2.Zero, HeaderScale, SpriteEffects.None, 0f);
             DrawHeaderActions(sprite, snapshot);
 
@@ -433,7 +433,7 @@ namespace HaCreator.MapSimulator.UI
             QuestAlarmSnapshot snapshot = _currentSnapshot ?? RefreshFilteredSnapshot();
             if (snapshot.Entries.Count == 0)
             {
-                StatusMessageRequested?.Invoke("There are no active quests registered in Quest Alarm.");
+                StatusMessageRequested?.Invoke(QuestAlarmOwnerStringPoolText.GetEmptyMaximizeNotice());
                 return;
             }
 
@@ -922,11 +922,6 @@ namespace HaCreator.MapSimulator.UI
             {
                 texture = _deleteMouseOverTexture ?? _deleteNormalTexture;
             }
-            else if (_selectedQuestId != questId)
-            {
-                texture = _deleteDisabledTexture ?? _deleteNormalTexture;
-            }
-
             if (texture != null)
             {
                 sprite.Draw(texture, new Vector2(bounds.X, bounds.Y), Color.White);
@@ -991,10 +986,7 @@ namespace HaCreator.MapSimulator.UI
             UpdateButtonStates();
             SavePersistedState();
 
-            if (!string.IsNullOrWhiteSpace(questTitle))
-            {
-                StatusMessageRequested?.Invoke($"Quest Alarm removed '{questTitle}'.");
-            }
+            StatusMessageRequested?.Invoke(QuestAlarmOwnerStringPoolText.FormatDeleteNotice(questTitle));
         }
 
         private void DismissAll(QuestAlarmSnapshot snapshot)

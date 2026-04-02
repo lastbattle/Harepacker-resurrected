@@ -6,7 +6,8 @@ namespace HaCreator.MapSimulator.Interaction
 {
     internal static class QuestClientPacketResultNoticeText
     {
-        // Recovered from CUserLocal::OnQuestResult subtype 12:
+        // Recovered from MapleStory.exe StringPool::ms_aString together with
+        // CUserLocal::OnQuestResult subtype 10/12:
         // 3292 wraps the inventory-category summary, 3293 is the separator,
         // 4552 wraps the negative-meso variant, and category labels resolve
         // through StringPool ids 10, 6791, 11, and 6712.
@@ -17,19 +18,19 @@ namespace HaCreator.MapSimulator.Interaction
         internal const int UseInventoryCategoryStringPoolId = 6791;
         internal const int SetupInventoryCategoryStringPoolId = 11;
         internal const int EtcInventoryCategoryStringPoolId = 6712;
+        internal const int QuestExpiredStringPoolId = 0x1015;
 
-        private const string RewardInventorySeparatorFallback = ", ";
-        private const string RewardInventorySummarySingleFallback = "Check your {0} inventory tab for quest rewards.";
-        private const string RewardInventorySummaryMultipleFallback = "Check your {0} inventory tabs for quest rewards.";
-        private const string RewardInventoryNegativeMesoFallback = "{0}\nThis quest also deducts mesos.";
-        private const string NegativeMesoOnlyFallback = "This quest deducts mesos.";
+        private const string RewardInventorySeparatorText = " or";
+        private const string RewardInventorySummaryText = "{0} item inventory is full.";
+        private const string RewardInventoryNegativeMesoText = "Either you don't have enough Mesos or {0}";
+        private const string QuestExpiredNoticeText = "The [{0}] quest expired because the time limit ended";
 
         internal static bool TryResolveInventoryCategoryLabel(InventoryType inventoryType, out string label, out int stringPoolId)
         {
             switch (inventoryType)
             {
                 case InventoryType.EQUIP:
-                    label = "Equip";
+                    label = "Eqp";
                     stringPoolId = EquipInventoryCategoryStringPoolId;
                     return true;
                 case InventoryType.USE:
@@ -73,30 +74,25 @@ namespace HaCreator.MapSimulator.Interaction
                 labels.Add(label);
             }
 
-            return string.Join(RewardInventorySeparatorFallback, labels);
+            return string.Join(RewardInventorySeparatorText, labels);
         }
 
         internal static string FormatRewardInventoryNotice(IEnumerable<int> itemIds)
         {
             string categoryText = DescribeRewardItemCategories(itemIds);
-            if (string.IsNullOrWhiteSpace(categoryText))
-            {
-                return string.Empty;
-            }
-
-            bool hasMultipleCategories = categoryText.Contains(RewardInventorySeparatorFallback, StringComparison.Ordinal);
-            return string.Format(
-                hasMultipleCategories
-                    ? RewardInventorySummaryMultipleFallback
-                    : RewardInventorySummarySingleFallback,
-                categoryText);
+            return string.Format(RewardInventorySummaryText, categoryText);
         }
 
         internal static string ApplyNegativeMesoWrap(string summaryText)
         {
-            return string.IsNullOrWhiteSpace(summaryText)
-                ? NegativeMesoOnlyFallback
-                : string.Format(RewardInventoryNegativeMesoFallback, summaryText);
+            return string.Format(RewardInventoryNegativeMesoText, summaryText ?? string.Empty);
+        }
+
+        internal static string FormatQuestExpiredNotice(string questName)
+        {
+            return string.Format(
+                QuestExpiredNoticeText,
+                string.IsNullOrWhiteSpace(questName) ? "Unknown" : questName);
         }
     }
 }

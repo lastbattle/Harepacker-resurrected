@@ -19,7 +19,7 @@ using EquipSlotVisualState = HaCreator.MapSimulator.Character.EquipSlotVisualSta
 
 namespace HaCreator.MapSimulator.UI
 {
-    public class EquipUI : UIWindowBase
+    public class EquipUI : UIWindowBase, IEquipmentPendingChangeWindow
     {
         private const int SLOT_SIZE = 32;
         private const int TOOLTIP_PADDING = 8;

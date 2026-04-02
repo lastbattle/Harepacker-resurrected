@@ -4,6 +4,7 @@ using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
 using System.Collections.Generic;
@@ -25,17 +26,49 @@ namespace HaCreator.MapSimulator.UI
             public Point Offset { get; }
         }
 
+        private sealed class EntrustedChildDialogButtonBinding
+        {
+            public EntrustedChildDialogButtonBinding(UIObject button, Action action, Func<EntrustedShopChildDialogSnapshot, bool> enabledResolver)
+            {
+                Button = button;
+                Action = action;
+                EnabledResolver = enabledResolver;
+            }
+
+            public UIObject Button { get; }
+            public Action Action { get; }
+            public Func<EntrustedShopChildDialogSnapshot, bool> EnabledResolver { get; }
+        }
+
+        private sealed class EntrustedChildDialogVisual
+        {
+            public EntrustedChildDialogVisual(EntrustedShopChildDialogKind kind, Texture2D frameTexture, Point offset)
+            {
+                Kind = kind;
+                FrameTexture = frameTexture;
+                Offset = offset;
+            }
+
+            public EntrustedShopChildDialogKind Kind { get; }
+            public Texture2D FrameTexture { get; }
+            public Point Offset { get; }
+            public List<LayerInfo> Layers { get; } = new();
+            public List<EntrustedChildDialogButtonBinding> Buttons { get; } = new();
+        }
+
         private readonly string _windowName;
         private readonly Texture2D _panelTexture;
         private readonly SocialRoomRuntime _runtime;
         private readonly List<LayerInfo> _layers = new List<LayerInfo>();
         private readonly Dictionary<int, CharacterAssembler> _miniRoomAvatarAssemblers = new Dictionary<int, CharacterAssembler>();
         private readonly Dictionary<int, string> _miniRoomAvatarKeys = new Dictionary<int, string>();
+        private readonly Dictionary<EntrustedShopChildDialogKind, EntrustedChildDialogVisual> _entrustedChildDialogVisuals = new Dictionary<EntrustedShopChildDialogKind, EntrustedChildDialogVisual>();
         private SpriteFont _font;
         private Texture2D _miniRoomOmokBlackStoneTexture;
         private Texture2D _miniRoomOmokWhiteStoneTexture;
         private Texture2D _miniRoomOmokLastBlackStoneTexture;
         private Texture2D _miniRoomOmokLastWhiteStoneTexture;
+        private int? _pressedEntrustedChildRowIndex;
 
         private static readonly Color HeaderColor = new Color(79, 54, 18);
         private static readonly Color AccentColor = new Color(201, 145, 52);
@@ -67,6 +100,53 @@ namespace HaCreator.MapSimulator.UI
             {
                 _layers.Add(new LayerInfo(layer, offset));
             }
+        }
+
+        public void RegisterEntrustedChildDialog(EntrustedShopChildDialogKind kind, Texture2D frameTexture, Point offset)
+        {
+            if (frameTexture == null)
+            {
+                return;
+            }
+
+            _entrustedChildDialogVisuals[kind] = new EntrustedChildDialogVisual(kind, frameTexture, offset);
+        }
+
+        public void AddEntrustedChildDialogLayer(EntrustedShopChildDialogKind kind, IDXObject layer, Point offset)
+        {
+            if (layer == null || !_entrustedChildDialogVisuals.TryGetValue(kind, out EntrustedChildDialogVisual visual))
+            {
+                return;
+            }
+
+            visual.Layers.Add(new LayerInfo(layer, offset));
+        }
+
+        public void BindEntrustedChildDialogButton(
+            EntrustedShopChildDialogKind kind,
+            UIObject button,
+            Action action,
+            Func<EntrustedShopChildDialogSnapshot, bool> enabledResolver = null)
+        {
+            if (button == null || !_entrustedChildDialogVisuals.TryGetValue(kind, out EntrustedChildDialogVisual visual))
+            {
+                return;
+            }
+
+            button.X += visual.Offset.X;
+            button.Y += visual.Offset.Y;
+            button.SetVisible(false);
+            AddButton(button);
+            visual.Buttons.Add(new EntrustedChildDialogButtonBinding(button, action, enabledResolver));
+            button.ButtonClickReleased += _ =>
+            {
+                if (_runtime.GetEntrustedChildDialogSnapshot()?.Kind != kind)
+                {
+                    return;
+                }
+
+                action?.Invoke();
+            };
         }
 
         public void SetMiniRoomOmokStoneTextures(
@@ -133,7 +213,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            DrawDefaultContents(sprite);
+            DrawDefaultContents(sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo);
         }
 
         private void DrawMiniRoomContents(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, int tickCount)
@@ -358,7 +438,11 @@ namespace HaCreator.MapSimulator.UI
             return null;
         }
 
-        private void DrawDefaultContents(SpriteBatch sprite)
+        private void DrawDefaultContents(
+            SpriteBatch sprite,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            GameTime gameTime,
+            ReflectionDrawableBoundary drawReflectionInfo)
         {
             Rectangle occupantPanel = new Rectangle(
                 Position.X + 18,
@@ -449,6 +533,8 @@ namespace HaCreator.MapSimulator.UI
                 Math.Max(180, (CurrentFrame?.Width ?? 320) - 40),
                 AccentColor,
                 0.55f);
+
+            DrawEntrustedChildDialog(sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, _runtime.GetEntrustedChildDialogSnapshot());
         }
 
         private void DrawMiniRoomAvatarStrip(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, int tickCount, Rectangle panel)
@@ -513,6 +599,241 @@ namespace HaCreator.MapSimulator.UI
             return _miniRoomAvatarAssemblers.TryGetValue(occupantIndex, out CharacterAssembler assembler)
                 ? assembler?.GetFrameAtTime("stand1", tickCount)
                 : null;
+        }
+
+        private void DrawEntrustedChildDialog(
+            SpriteBatch sprite,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            GameTime gameTime,
+            ReflectionDrawableBoundary drawReflectionInfo,
+            EntrustedShopChildDialogSnapshot snapshot)
+        {
+            UpdateEntrustedChildDialogButtons(snapshot);
+            if (snapshot?.IsOpen != true || !_entrustedChildDialogVisuals.TryGetValue(snapshot.Kind, out EntrustedChildDialogVisual visual))
+            {
+                return;
+            }
+
+            int dialogX = Position.X + visual.Offset.X;
+            int dialogY = Position.Y + visual.Offset.Y;
+            if (visual.FrameTexture != null)
+            {
+                sprite.Draw(visual.FrameTexture, new Rectangle(dialogX, dialogY, visual.FrameTexture.Width, visual.FrameTexture.Height), Color.White);
+            }
+
+            foreach (LayerInfo layer in visual.Layers)
+            {
+                layer.Layer.DrawBackground(
+                    sprite,
+                    skeletonMeshRenderer,
+                    gameTime,
+                    dialogX + layer.Offset.X,
+                    dialogY + layer.Offset.Y,
+                    Color.White,
+                    false,
+                    drawReflectionInfo);
+            }
+
+            Rectangle listBounds = GetEntrustedChildDialogListBounds(visual);
+            DrawText(sprite, snapshot.Title, new Vector2(dialogX + 12, dialogY + 12), HeaderColor, 0.7f);
+            DrawText(sprite, snapshot.Subtitle, new Vector2(dialogX + 12, dialogY + 28), AccentColor, 0.5f);
+
+            if (snapshot.Kind == EntrustedShopChildDialogKind.VisitList)
+            {
+                DrawText(sprite, "Name", new Vector2(listBounds.X + 2, listBounds.Y - 14), MutedColor, 0.46f);
+                DrawText(sprite, "Stay", new Vector2(listBounds.Right - 44, listBounds.Y - 14), MutedColor, 0.46f);
+            }
+            else
+            {
+                DrawText(sprite, "Blocked Names", new Vector2(listBounds.X + 2, listBounds.Y - 14), MutedColor, 0.46f);
+            }
+
+            DrawEntrustedChildDialogEntries(sprite, snapshot, visual, listBounds);
+
+            float statusY = listBounds.Bottom + 8;
+            DrawWrapped(sprite, snapshot.StatusText, dialogX + 12, ref statusY, visual.FrameTexture.Width - 24, ValueColor, 0.46f);
+            statusY = Math.Max(statusY + 2f, dialogY + visual.FrameTexture.Height - 40);
+            DrawWrapped(sprite, snapshot.FooterText, dialogX + 12, ref statusY, visual.FrameTexture.Width - 24, MutedColor, 0.44f);
+        }
+
+        private void DrawEntrustedChildDialogEntries(
+            SpriteBatch sprite,
+            EntrustedShopChildDialogSnapshot snapshot,
+            EntrustedChildDialogVisual visual,
+            Rectangle listBounds)
+        {
+            List<EntrustedShopChildDialogEntrySnapshot> entries = snapshot.Entries ?? new List<EntrustedShopChildDialogEntrySnapshot>();
+            if (entries.Count == 0)
+            {
+                DrawText(sprite, "No rows from the packet owner yet.", new Vector2(listBounds.X + 4, listBounds.Y + 8), MutedColor, 0.48f);
+                return;
+            }
+
+            int rowHeight = 18;
+            int visibleRowCount = Math.Max(1, Math.Min(10, listBounds.Height / rowHeight));
+            int startIndex = ResolveEntrustedChildDialogVisibleStartIndex(snapshot.SelectedIndex, entries.Count, visibleRowCount);
+            for (int row = 0; row < visibleRowCount && startIndex + row < entries.Count; row++)
+            {
+                int entryIndex = startIndex + row;
+                EntrustedShopChildDialogEntrySnapshot entry = entries[entryIndex];
+                Rectangle rowRect = GetEntrustedChildDialogRowBounds(visual, row);
+                Color rowColor = entry.IsSelected ? new Color(255, 235, 181, 220) : new Color(255, 250, 242, 150);
+                sprite.Draw(_panelTexture, rowRect, rowColor);
+
+                DrawText(sprite, entry.PrimaryText, new Vector2(rowRect.X + 4, rowRect.Y + 3), ValueColor, 0.48f);
+                if (snapshot.Kind == EntrustedShopChildDialogKind.VisitList)
+                {
+                    DrawText(sprite, entry.SecondaryText, new Vector2(rowRect.Right - 34, rowRect.Y + 3), entry.IsSelected ? WarningColor : MutedColor, 0.46f);
+                }
+                else
+                {
+                    DrawText(sprite, entry.SecondaryText, new Vector2(rowRect.Right - 20, rowRect.Y + 3), MutedColor, 0.42f);
+                }
+            }
+        }
+
+        private void UpdateEntrustedChildDialogButtons(EntrustedShopChildDialogSnapshot snapshot)
+        {
+            foreach (EntrustedChildDialogVisual visual in _entrustedChildDialogVisuals.Values)
+            {
+                bool isActiveKind = snapshot?.IsOpen == true && snapshot.Kind == visual.Kind;
+                foreach (EntrustedChildDialogButtonBinding binding in visual.Buttons)
+                {
+                    binding.Button.SetVisible(isActiveKind);
+                    binding.Button.SetEnabled(isActiveKind && (binding.EnabledResolver?.Invoke(snapshot) ?? true));
+                }
+            }
+        }
+
+        private Rectangle GetEntrustedChildDialogBounds(EntrustedChildDialogVisual visual)
+        {
+            return new Rectangle(
+                Position.X + visual.Offset.X,
+                Position.Y + visual.Offset.Y,
+                visual.FrameTexture?.Width ?? 0,
+                visual.FrameTexture?.Height ?? 0);
+        }
+
+        private Rectangle GetEntrustedChildDialogListBounds(EntrustedChildDialogVisual visual)
+        {
+            int width = visual.FrameTexture?.Width ?? 0;
+            return new Rectangle(
+                Position.X + visual.Offset.X + 12,
+                Position.Y + visual.Offset.Y + 52,
+                Math.Max(120, width - 24),
+                180);
+        }
+
+        private Rectangle GetEntrustedChildDialogRowBounds(EntrustedChildDialogVisual visual, int visibleRowIndex)
+        {
+            Rectangle listBounds = GetEntrustedChildDialogListBounds(visual);
+            return new Rectangle(
+                listBounds.X,
+                listBounds.Y + (visibleRowIndex * 18),
+                listBounds.Width,
+                16);
+        }
+
+        private static int ResolveEntrustedChildDialogVisibleStartIndex(int selectedIndex, int entryCount, int visibleRowCount)
+        {
+            if (entryCount <= visibleRowCount || selectedIndex < 0)
+            {
+                return 0;
+            }
+
+            return Math.Clamp(selectedIndex - (visibleRowCount / 2), 0, Math.Max(0, entryCount - visibleRowCount));
+        }
+
+        public override bool CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState, MouseCursorItem mouseCursor, int renderWidth, int renderHeight)
+        {
+            EntrustedShopChildDialogSnapshot snapshot = _runtime.GetEntrustedChildDialogSnapshot();
+            if (snapshot?.IsOpen == true &&
+                _entrustedChildDialogVisuals.TryGetValue(snapshot.Kind, out EntrustedChildDialogVisual visual))
+            {
+                UpdateEntrustedChildDialogButtons(snapshot);
+                foreach (EntrustedChildDialogButtonBinding binding in visual.Buttons)
+                {
+                    if (binding.Button.CheckMouseEvent(shiftCenteredX, shiftCenteredY, Position.X, Position.Y, mouseState))
+                    {
+                        mouseCursor?.SetMouseCursorMovedToClickableItem();
+                        return true;
+                    }
+                }
+
+                Rectangle bounds = GetEntrustedChildDialogBounds(visual);
+                if (bounds.Contains(mouseState.X, mouseState.Y))
+                {
+                    mouseCursor?.SetMouseCursorMovedToClickableItem();
+                    HandleEntrustedChildDialogRowSelection(snapshot, visual, mouseState);
+                    return true;
+                }
+            }
+
+            _pressedEntrustedChildRowIndex = null;
+            return base.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState, mouseCursor, renderWidth, renderHeight);
+        }
+
+        protected override IEnumerable<Rectangle> GetAdditionalInteractiveBounds()
+        {
+            foreach (Rectangle bounds in base.GetAdditionalInteractiveBounds())
+            {
+                yield return bounds;
+            }
+
+            EntrustedShopChildDialogSnapshot snapshot = _runtime.GetEntrustedChildDialogSnapshot();
+            if (snapshot?.IsOpen == true &&
+                _entrustedChildDialogVisuals.TryGetValue(snapshot.Kind, out EntrustedChildDialogVisual visual))
+            {
+                yield return GetEntrustedChildDialogBounds(visual);
+            }
+        }
+
+        private void HandleEntrustedChildDialogRowSelection(
+            EntrustedShopChildDialogSnapshot snapshot,
+            EntrustedChildDialogVisual visual,
+            MouseState mouseState)
+        {
+            int rowIndex = ResolveEntrustedChildDialogRowIndex(snapshot, visual, mouseState.X, mouseState.Y);
+            if (mouseState.LeftButton == ButtonState.Pressed)
+            {
+                _pressedEntrustedChildRowIndex = rowIndex >= 0 ? rowIndex : null;
+                return;
+            }
+
+            if (mouseState.LeftButton == ButtonState.Released &&
+                _pressedEntrustedChildRowIndex.HasValue &&
+                _pressedEntrustedChildRowIndex.Value == rowIndex &&
+                rowIndex >= 0)
+            {
+                _runtime.TrySelectEntrustedChildDialogEntry(rowIndex, out _);
+            }
+
+            _pressedEntrustedChildRowIndex = null;
+        }
+
+        private int ResolveEntrustedChildDialogRowIndex(
+            EntrustedShopChildDialogSnapshot snapshot,
+            EntrustedChildDialogVisual visual,
+            int mouseX,
+            int mouseY)
+        {
+            List<EntrustedShopChildDialogEntrySnapshot> entries = snapshot.Entries ?? new List<EntrustedShopChildDialogEntrySnapshot>();
+            if (entries.Count == 0)
+            {
+                return -1;
+            }
+
+            Rectangle listBounds = GetEntrustedChildDialogListBounds(visual);
+            if (!listBounds.Contains(mouseX, mouseY))
+            {
+                return -1;
+            }
+
+            int visibleRowCount = Math.Max(1, Math.Min(10, listBounds.Height / 18));
+            int startIndex = ResolveEntrustedChildDialogVisibleStartIndex(snapshot.SelectedIndex, entries.Count, visibleRowCount);
+            int visibleRow = Math.Clamp((mouseY - listBounds.Y) / 18, 0, visibleRowCount - 1);
+            int entryIndex = startIndex + visibleRow;
+            return entryIndex < entries.Count ? entryIndex : -1;
         }
 
         private void DrawPanel(SpriteBatch sprite, Rectangle rect)

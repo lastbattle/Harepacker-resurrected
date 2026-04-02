@@ -30,7 +30,7 @@ namespace HaCreator.MapSimulator.UI
     /// Structure: UI.wz/UIWindow2.img/Equip/character
     /// Window dimensions: 184x290 pixels
     /// </summary>
-    public class EquipUIBigBang : UIWindowBase
+    public class EquipUIBigBang : UIWindowBase, IEquipmentPendingChangeWindow
     {
         #region Constants
         private const int SLOT_SIZE = 32;

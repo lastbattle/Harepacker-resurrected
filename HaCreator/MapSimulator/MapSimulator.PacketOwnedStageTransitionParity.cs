@@ -1,6 +1,7 @@
 using HaCreator.MapEditor.Instance;
 using HaCreator.MapSimulator.Entities;
 using HaCreator.MapSimulator.Interaction;
+using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.UI;
 using HaSharedLibrary.Render.DX;
 using System;
@@ -13,6 +14,7 @@ namespace HaCreator.MapSimulator
     public partial class MapSimulator
     {
         private readonly PacketStageTransitionRuntime _packetStageTransitionRuntime = new();
+        private readonly StageTransitionPacketInboxManager _stageTransitionPacketInbox = new();
         private readonly Dictionary<string, List<BaseDXDrawableItem>> _packetStageTransitionNamedObjects = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<BaseDXDrawableItem, bool> _packetStageTransitionObjectVisibility = new();
         private int _packetStageTransitionBackEffectStartTick = int.MinValue;
@@ -42,8 +44,18 @@ namespace HaCreator.MapSimulator
                 ClearBackEffect = ClearPacketOwnedBackEffect,
                 OpenCashShop = OpenPacketOwnedCashShopStage,
                 OpenItc = OpenPacketOwnedItcStage,
-                QueueFieldTransfer = QueueMapTransfer
+                QueueFieldTransfer = QueuePacketOwnedFieldTransfer
             };
+        }
+
+        private bool QueuePacketOwnedFieldTransfer(PacketStageFieldTransferRequest request)
+        {
+            if (request.MapId <= 0)
+            {
+                return false;
+            }
+
+            return QueueMapTransfer(request.MapId, request.PortalName, request.PortalIndex);
         }
 
         private void RegisterPacketOwnedStageTransitionObject(BaseDXDrawableItem mapItem, ObjectInstance objInst)
@@ -118,15 +130,13 @@ namespace HaCreator.MapSimulator
         private string OpenPacketOwnedCashShopStage()
         {
             ShowCashShopWindow();
-            return "CStage::OnSetCashShop opened the Cash Shop owner and avatar preview windows.";
+            return "CStage::OnSetCashShop opened the Cash Shop stage, child owners, and avatar preview windows.";
         }
 
         private string OpenPacketOwnedItcStage()
         {
-            uiWindowManager?.HideWindow(MapSimulatorWindowNames.CashShop);
-            uiWindowManager?.HideWindow(MapSimulatorWindowNames.CashAvatarPreview);
-            ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.Mts);
-            return "CStage::OnSetITC opened the ITC/MTS owner window and hid Cash Shop-owned UI.";
+            OpenCashServiceOwnerFamily(UI.CashServiceStageKind.ItemTradingCenter, resetStageSession: true);
+            return "CStage::OnSetITC opened the ITC stage owner and hid Cash Shop-owned UI.";
         }
 
         private string ApplyPacketOwnedBackEffect(PacketBackEffectPacket packet, int currentTick)
@@ -236,6 +246,67 @@ namespace HaCreator.MapSimulator
         {
             BackgroundItem firstBackground = backgrounds_back.FirstOrDefault();
             return firstBackground?.Color.A ?? byte.MaxValue;
+        }
+
+        private string DescribePacketOwnedStageTransitionStatus()
+        {
+            _packetStageTransitionRuntime.BindMap(_mapBoard?.MapInfo?.id ?? 0);
+            return $"{_packetStageTransitionRuntime.DescribeStatus()}{Environment.NewLine}{_stageTransitionPacketInbox.LastStatus}";
+        }
+
+        private void EnsureStageTransitionPacketInboxState(bool shouldRun)
+        {
+            if (!shouldRun)
+            {
+                if (_stageTransitionPacketInbox.IsRunning)
+                {
+                    _stageTransitionPacketInbox.Stop();
+                }
+
+                return;
+            }
+
+            if (_stageTransitionPacketInbox.IsRunning)
+            {
+                return;
+            }
+
+            try
+            {
+                _stageTransitionPacketInbox.Start();
+            }
+            catch (Exception ex)
+            {
+                _stageTransitionPacketInbox.Stop();
+                _chat?.AddErrorMessage($"Stage-transition packet inbox failed to start: {ex.Message}", currTickCount);
+            }
+        }
+
+        private void DrainStageTransitionPacketInbox()
+        {
+            while (_stageTransitionPacketInbox.TryDequeue(out StageTransitionPacketInboxMessage message))
+            {
+                if (message == null)
+                {
+                    continue;
+                }
+
+                bool applied = TryApplyPacketOwnedStageTransitionPacket(message.PacketType, message.Payload, out string detail);
+                _stageTransitionPacketInbox.RecordDispatchResult(message, applied, detail);
+                if (string.IsNullOrWhiteSpace(detail))
+                {
+                    continue;
+                }
+
+                if (applied)
+                {
+                    _chat?.AddSystemMessage(detail, currTickCount);
+                }
+                else
+                {
+                    _chat?.AddErrorMessage(detail, currTickCount);
+                }
+            }
         }
     }
 }

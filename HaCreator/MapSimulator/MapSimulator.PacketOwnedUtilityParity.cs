@@ -1,5 +1,6 @@
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Character.Skills;
+using HaCreator.MapSimulator.Entities;
 using HaCreator.MapSimulator.Fields;
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Managers;
@@ -12,6 +13,7 @@ using MapleLib.WzLib;
 using MapleLib.WzLib.Util;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure;
+using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using System;
@@ -39,6 +41,7 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedApspMaxEventType = 13;
         private const int PacketOwnedLegacyVengeanceSkillId = 3120010;
         private const int PacketOwnedCurrentVengeanceSkillId = 31101003;
+        private static readonly int[] PacketOwnedTimeBombInvincibilityOptionIds = { 20366, 30366, 30371 };
         private const string PacketOwnedApspPromptPrimaryLabel = "OK";
         private const string PacketOwnedApspPromptSecondaryLabel = "Cancel";
         private const int PacketOwnedTutorBalloonScreenMargin = 6;
@@ -66,8 +69,9 @@ namespace HaCreator.MapSimulator
 
         internal readonly record struct PacketOwnedTimeBombInvincibilityOptionLevelData(int DurationMs, int ProbabilityPercent);
 
-        private sealed class PacketOwnedTimeBombInvincibilityOptionDefinition
+        internal sealed class PacketOwnedTimeBombInvincibilityOptionDefinition
         {
+            public string DisplayTemplate { get; init; } = string.Empty;
             public PacketOwnedTimeBombInvincibilityOptionLevelData[] Levels { get; init; } = Array.Empty<PacketOwnedTimeBombInvincibilityOptionLevelData>();
         }
 
@@ -85,6 +89,7 @@ namespace HaCreator.MapSimulator
             };
         private LocalOverlayBalloonSkin _packetOwnedTutorBalloonSkin;
         private readonly Dictionary<int, List<IDXObject>> _packetOwnedTutorCueFramesByIndex = new();
+        private int _packetOwnedTutorLastSummonMessageSequenceId;
         private PacketOwnedBattleshipDurabilityOverrideState _packetOwnedBattleshipDurabilityOverride;
         private int _packetQuestGuideQuestId;
         private int _packetOwnedUtilityRequestTick = int.MinValue;
@@ -102,6 +107,7 @@ namespace HaCreator.MapSimulator
         private bool _lastClassCompetitionLoggedIn;
         private string _lastClassCompetitionAuthKey = string.Empty;
         private string _lastClassCompetitionUrl = string.Empty;
+        private int _lastClassCompetitionAuthResponseTick = int.MinValue;
         private int _lastPacketOwnedOpenUiType = -1;
         private int _lastPacketOwnedOpenUiOption = -1;
         private int _lastPacketOwnedCommoditySerialNumber;
@@ -599,7 +605,12 @@ namespace HaCreator.MapSimulator
                     CompletionPhase = snapshot.CompletionPhase,
                     CanConfirm = snapshot.CanConfirm,
                     IsBlocked = snapshot.IsBlocked,
-                    IsSeriesRepresentative = snapshot.IsSeriesRepresentative
+                    IsSeriesRepresentative = snapshot.IsSeriesRepresentative,
+                    DeliveryCashInventoryType = snapshot.DeliveryCashItemId.HasValue
+                        ? InventoryItemMetadataResolver.ResolveInventoryType(snapshot.DeliveryCashItemId.Value)
+                        : InventoryType.NONE,
+                    DeliveryCashItemRuntimeSlotIndex = snapshot.DeliveryCashItemRuntimeSlotIndex,
+                    DeliveryCashItemClientSlotIndex = snapshot.DeliveryCashItemClientSlotIndex
                 });
             }
 
@@ -637,6 +648,12 @@ namespace HaCreator.MapSimulator
                 string npcName = string.IsNullOrWhiteSpace(state?.TargetNpcName)
                     ? "NPC unavailable"
                     : state.TargetNpcName;
+                int deliveryCashItemId = state?.DeliveryCashItemId ?? 0;
+                bool resolvedDeliverySlot = TryResolveQuestDeliveryCashItemSlot(
+                    deliveryCashItemId,
+                    out InventoryType deliveryInventoryType,
+                    out int deliveryRuntimeSlotIndex,
+                    out int deliveryClientSlotIndex);
                 string statusText = blockedByPacket
                     ? "Blocked by disallowed-delivery packet state"
                     : canConfirm
@@ -665,7 +682,10 @@ namespace HaCreator.MapSimulator
                     CompletionPhase = completionPhase,
                     CanConfirm = canConfirm,
                     IsBlocked = blockedByPacket,
-                    IsSeriesRepresentative = false
+                    IsSeriesRepresentative = false,
+                    DeliveryCashInventoryType = resolvedDeliverySlot ? deliveryInventoryType : InventoryType.NONE,
+                    DeliveryCashItemRuntimeSlotIndex = resolvedDeliverySlot ? deliveryRuntimeSlotIndex : -1,
+                    DeliveryCashItemClientSlotIndex = resolvedDeliverySlot ? deliveryClientSlotIndex : 0
                 });
             }
 
@@ -694,6 +714,45 @@ namespace HaCreator.MapSimulator
             }
         }
 
+        private bool TryResolveQuestDeliveryCashItemSlot(
+            int itemId,
+            out InventoryType inventoryType,
+            out int runtimeSlotIndex,
+            out int clientSlotIndex)
+        {
+            inventoryType = InventoryItemMetadataResolver.ResolveInventoryType(itemId);
+            runtimeSlotIndex = -1;
+            clientSlotIndex = 0;
+            if (itemId <= 0 || inventoryType == InventoryType.NONE || uiWindowManager?.InventoryWindow is not IInventoryRuntime inventoryWindow)
+            {
+                return false;
+            }
+
+            IReadOnlyList<InventorySlotData> slots = inventoryWindow.GetSlots(inventoryType);
+            if (slots == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < slots.Count; i++)
+            {
+                InventorySlotData slot = slots[i];
+                if (slot == null
+                    || slot.IsDisabled
+                    || slot.ItemId != itemId
+                    || Math.Max(0, slot.Quantity) <= 0)
+                {
+                    continue;
+                }
+
+                runtimeSlotIndex = i;
+                clientSlotIndex = i + 1;
+                return true;
+            }
+
+            return false;
+        }
+
         private void HandleQuestDeliveryWindowRequest(QuestDeliveryWindow.DeliveryEntry entry)
         {
             if (entry == null)
@@ -719,10 +778,24 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            NpcInteractionState interactionState = _questRuntime.BuildQuestDeliveryInteractionState(
+            NpcItem targetNpc = FindNpcById(entry.TargetNpcId) ?? CreateNpcPreview(entry.TargetNpcId, includeTooltips: false);
+            string npcName = targetNpc?.NpcInstance?.NpcInfo?.StringName;
+            if (string.IsNullOrWhiteSpace(npcName))
+            {
+                npcName = string.IsNullOrWhiteSpace(entry.NpcName)
+                    ? ResolveNpcDisplayName(entry.TargetNpcId)
+                    : entry.NpcName;
+            }
+
+            NpcInteractionState interactionState = _questRuntime.BuildSingleQuestInteractionState(
+                entry.TargetNpcId,
+                npcName,
                 entry.QuestId,
-                _playerManager?.Player?.Build,
-                _lastDeliveryItemId);
+                _playerManager?.Player?.Build)
+                ?? _questRuntime.BuildQuestDeliveryInteractionState(
+                    entry.QuestId,
+                    _playerManager?.Player?.Build,
+                    _lastDeliveryItemId);
             if (interactionState == null)
             {
                 return;
@@ -730,7 +803,7 @@ namespace HaCreator.MapSimulator
 
             _gameState.EnterDirectionMode();
             _scriptedDirectionModeOwnerActive = true;
-            _activeNpcInteractionNpc = FindNpcById(entry.TargetNpcId);
+            _activeNpcInteractionNpc = targetNpc;
             _activeNpcInteractionNpcId = entry.TargetNpcId;
             IReadOnlyList<string> publishedScriptNames = _activeNpcInteractionNpc != null
                 ? FieldObjectNpcScriptNameResolver.ResolvePublishedScriptNames(_activeNpcInteractionNpc.NpcInstance)
@@ -823,17 +896,21 @@ namespace HaCreator.MapSimulator
             if (shouldRequestAuth)
             {
                 _lastClassCompetitionAuthRequestTick = now;
-                _lastClassCompetitionAuthIssuedTick = now;
+                _lastClassCompetitionAuthIssuedTick = int.MinValue;
+                _lastClassCompetitionAuthResponseTick = Math.Max(0, unchecked(now + 250));
                 _lastClassCompetitionAuthPending = true;
                 _lastClassCompetitionLoggedIn = false;
-                _lastClassCompetitionAuthKey = BuildClassCompetitionAuthKey(now);
-                _lastClassCompetitionUrl = BuildClassCompetitionUrl(_lastClassCompetitionAuthKey);
+                _lastClassCompetitionAuthKey = string.Empty;
+                _lastClassCompetitionUrl = string.Empty;
             }
 
             if (_lastClassCompetitionAuthPending
-                && _lastClassCompetitionOpenTick != int.MinValue
-                && Math.Max(0, unchecked(now - _lastClassCompetitionOpenTick)) >= 250)
+                && _lastClassCompetitionAuthResponseTick != int.MinValue
+                && Math.Max(0, unchecked(now - _lastClassCompetitionAuthResponseTick)) >= 0)
             {
+                _lastClassCompetitionAuthIssuedTick = now;
+                _lastClassCompetitionAuthKey = BuildClassCompetitionAuthKey(now);
+                _lastClassCompetitionUrl = BuildClassCompetitionUrl(_lastClassCompetitionAuthKey);
                 _lastClassCompetitionAuthPending = false;
             }
 
@@ -856,8 +933,20 @@ namespace HaCreator.MapSimulator
         private string BuildClassCompetitionUrl(string authKey)
         {
             int worldId = Math.Max(0, _simulatorWorldId) + 1;
-            int characterId = _playerManager?.Player?.Build?.Id ?? 0;
-            return $"classcompetition://world/{worldId}/character/{characterId}?auth={authKey}";
+            CharacterBuild build = _playerManager?.Player?.Build;
+            int characterId = build?.Id ?? 0;
+            int worldRank = Math.Max(0, build?.WorldRank ?? 0);
+            int jobRank = Math.Max(0, build?.JobRank ?? 0);
+            int jobId = Math.Max(0, build?.Job ?? 0);
+            return string.Format(
+                CultureInfo.InvariantCulture,
+                "classcompetition://world/{0}/ranking?char={1}&job={2}&worldRank={3}&jobRank={4}&auth={5}",
+                worldId,
+                characterId,
+                jobId,
+                worldRank,
+                jobRank,
+                authKey);
         }
 
         private void EnsureLocalUtilityPacketInboxState(bool shouldRun)
@@ -3107,16 +3196,32 @@ namespace HaCreator.MapSimulator
             summon.PositionY = player.Y;
             summon.FacingRight = player.FacingRight;
             summon.LastStateChangeTime = currentTickCount;
-            summon.ActorState = _packetOwnedTutorRuntime.HasVisibleMessage(currentTickCount)
-                ? SummonActorState.Prepare
-                : SummonActorState.Idle;
-            summon.CurrentAnimationBranchName = _packetOwnedTutorRuntime.HasVisibleMessage(currentTickCount)
-                ? "say"
-                : null;
+            bool hasVisibleMessage = _packetOwnedTutorRuntime.HasVisibleMessage(currentTickCount);
+            bool shouldTriggerSayPlayback = hasVisibleMessage
+                && _packetOwnedTutorLastSummonMessageSequenceId != _packetOwnedTutorRuntime.MessageSequenceId
+                && (_packetOwnedTutorRuntime.MessageKind == TutorMessageKind.Text
+                    || _packetOwnedTutorRuntime.ActiveSkillId != TutorRuntime.AranTutorSkillId);
+
+            if (shouldTriggerSayPlayback)
+            {
+                summon.LastAttackAnimationStartTime = _packetOwnedTutorRuntime.ActiveMessageStartedAt == int.MinValue
+                    ? currentTickCount
+                    : _packetOwnedTutorRuntime.ActiveMessageStartedAt;
+                summon.CurrentAnimationBranchName = "say";
+                _packetOwnedTutorLastSummonMessageSequenceId = _packetOwnedTutorRuntime.MessageSequenceId;
+            }
+            else if (!hasVisibleMessage)
+            {
+                summon.LastAttackAnimationStartTime = int.MinValue;
+                summon.CurrentAnimationBranchName = null;
+            }
+
+            summon.ActorState = SummonActorState.Idle;
         }
 
         private void RemovePacketOwnedTutorSummon()
         {
+            _packetOwnedTutorLastSummonMessageSequenceId = 0;
             _summonedPool.TryConsumeSummonByObjectId(_packetOwnedTutorRuntime.ActiveSummonObjectId);
             _summonedPool.TryConsumeSummonByObjectId(TutorRuntime.CygnusTutorObjectId);
             _summonedPool.TryConsumeSummonByObjectId(TutorRuntime.AranTutorObjectId);
@@ -4049,7 +4154,8 @@ namespace HaCreator.MapSimulator
         private int ResolvePacketOwnedTimeBombHitPeriodMs(int baseHitPeriodMs)
         {
             CharacterPart armorPart = ResolvePacketOwnedTimeBombArmorPart();
-            if (armorPart?.ItemOptionIds == null || armorPart.ItemOptionIds.Count == 0)
+            IReadOnlyList<int> itemOptionIds = ResolvePacketOwnedTimeBombArmorItemOptionIds(armorPart);
+            if (itemOptionIds.Count == 0)
             {
                 return Math.Max(0, baseHitPeriodMs);
             }
@@ -4060,8 +4166,8 @@ namespace HaCreator.MapSimulator
                 return Math.Max(0, baseHitPeriodMs);
             }
 
-            var optionLevels = new List<PacketOwnedTimeBombInvincibilityOptionLevelData>(armorPart.ItemOptionIds.Count);
-            foreach (int itemOptionId in armorPart.ItemOptionIds)
+            var optionLevels = new List<PacketOwnedTimeBombInvincibilityOptionLevelData>(itemOptionIds.Count);
+            foreach (int itemOptionId in itemOptionIds)
             {
                 PacketOwnedTimeBombInvincibilityOptionLevelData? optionLevel = ResolvePacketOwnedTimeBombInvincibilityOptionLevel(itemOptionId, equipLevel);
                 if (optionLevel.HasValue)
@@ -4074,6 +4180,27 @@ namespace HaCreator.MapSimulator
                 baseHitPeriodMs,
                 optionLevels,
                 Random.Shared.Next(0, 101));
+        }
+
+        private IReadOnlyList<int> ResolvePacketOwnedTimeBombArmorItemOptionIds(CharacterPart armorPart)
+        {
+            if (armorPart?.ItemOptionIds != null && armorPart.ItemOptionIds.Count > 0)
+            {
+                return armorPart.ItemOptionIds;
+            }
+
+            if (armorPart?.PotentialLines == null || armorPart.PotentialLines.Count == 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            Dictionary<int, PacketOwnedTimeBombInvincibilityOptionDefinition> candidateDefinitions = BuildPacketOwnedTimeBombInvincibilityOptionDefinitions();
+            if (candidateDefinitions.Count == 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            return InferPacketOwnedTimeBombInvincibilityOptionIds(armorPart.PotentialLines, candidateDefinitions);
         }
 
         private CharacterPart ResolvePacketOwnedTimeBombArmorPart()
@@ -4151,6 +4278,54 @@ namespace HaCreator.MapSimulator
             return resolvedHitPeriodMs + additionalDurationMs;
         }
 
+        internal static IReadOnlyList<int> InferPacketOwnedTimeBombInvincibilityOptionIds(
+            IEnumerable<string> potentialLines,
+            IReadOnlyDictionary<int, PacketOwnedTimeBombInvincibilityOptionDefinition> definitions)
+        {
+            if (potentialLines == null || definitions == null || definitions.Count == 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            Dictionary<string, int> normalizedLineLookup = BuildPacketOwnedTimeBombPotentialLineLookup(definitions);
+            if (normalizedLineLookup.Count == 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            var inferredIds = new List<int>();
+            var seenIds = new HashSet<int>();
+            foreach (string potentialLine in potentialLines)
+            {
+                string normalizedLine = NormalizePacketOwnedPotentialLineText(potentialLine);
+                if (normalizedLine.Length == 0
+                    || !normalizedLineLookup.TryGetValue(normalizedLine, out int optionId)
+                    || !seenIds.Add(optionId))
+                {
+                    continue;
+                }
+
+                inferredIds.Add(optionId);
+            }
+
+            return inferredIds;
+        }
+
+        internal static string RenderPacketOwnedTimeBombInvincibilityOptionLine(
+            string displayTemplate,
+            PacketOwnedTimeBombInvincibilityOptionLevelData levelData)
+        {
+            if (string.IsNullOrWhiteSpace(displayTemplate))
+            {
+                return string.Empty;
+            }
+
+            return displayTemplate
+                .Replace("#time", Math.Max(0, levelData.DurationMs / 1000).ToString(CultureInfo.InvariantCulture), StringComparison.OrdinalIgnoreCase)
+                .Replace("#prop", Math.Max(0, levelData.ProbabilityPercent).ToString(CultureInfo.InvariantCulture), StringComparison.OrdinalIgnoreCase)
+                .Trim();
+        }
+
         private PacketOwnedTimeBombInvincibilityOptionLevelData? ResolvePacketOwnedTimeBombInvincibilityOptionLevel(int itemOptionId, int equipLevel)
         {
             PacketOwnedTimeBombInvincibilityOptionDefinition definition = ResolvePacketOwnedTimeBombInvincibilityOptionDefinition(itemOptionId);
@@ -4163,6 +4338,21 @@ namespace HaCreator.MapSimulator
             return levelData.DurationMs > 0 || levelData.ProbabilityPercent > 0
                 ? levelData
                 : null;
+        }
+
+        private Dictionary<int, PacketOwnedTimeBombInvincibilityOptionDefinition> BuildPacketOwnedTimeBombInvincibilityOptionDefinitions()
+        {
+            var definitions = new Dictionary<int, PacketOwnedTimeBombInvincibilityOptionDefinition>();
+            foreach (int itemOptionId in PacketOwnedTimeBombInvincibilityOptionIds)
+            {
+                PacketOwnedTimeBombInvincibilityOptionDefinition definition = ResolvePacketOwnedTimeBombInvincibilityOptionDefinition(itemOptionId);
+                if (definition != null)
+                {
+                    definitions[itemOptionId] = definition;
+                }
+            }
+
+            return definitions;
         }
 
         private PacketOwnedTimeBombInvincibilityOptionDefinition ResolvePacketOwnedTimeBombInvincibilityOptionDefinition(int itemOptionId)
@@ -4184,11 +4374,18 @@ namespace HaCreator.MapSimulator
             }
 
             itemOptionImage.ParseImage();
-            if (itemOptionImage.GetFromPath($"{itemOptionId:D6}/level") is not WzSubProperty levelProperty)
+            WzImageProperty optionRoot = itemOptionImage.GetFromPath($"{itemOptionId:D6}");
+            if (optionRoot == null)
             {
                 return null;
             }
 
+            if (optionRoot["level"] is not WzSubProperty levelProperty)
+            {
+                return null;
+            }
+
+            string displayTemplate = optionRoot["info"]?["string"]?.GetString() ?? string.Empty;
             var levels = new PacketOwnedTimeBombInvincibilityOptionLevelData[21];
             foreach (WzSubProperty levelEntry in levelProperty.WzProperties.OfType<WzSubProperty>())
             {
@@ -4206,10 +4403,76 @@ namespace HaCreator.MapSimulator
 
             var definition = new PacketOwnedTimeBombInvincibilityOptionDefinition
             {
+                DisplayTemplate = displayTemplate,
                 Levels = levels
             };
             _packetOwnedTimeBombInvincibilityOptions[itemOptionId] = definition;
             return definition;
+        }
+
+        private static Dictionary<string, int> BuildPacketOwnedTimeBombPotentialLineLookup(
+            IReadOnlyDictionary<int, PacketOwnedTimeBombInvincibilityOptionDefinition> definitions)
+        {
+            var lookup = new Dictionary<string, int>(StringComparer.Ordinal);
+            foreach ((int optionId, PacketOwnedTimeBombInvincibilityOptionDefinition definition) in definitions)
+            {
+                if (definition?.Levels == null)
+                {
+                    continue;
+                }
+
+                string templateKey = NormalizePacketOwnedPotentialLineText(definition.DisplayTemplate);
+                if (templateKey.Length > 0)
+                {
+                    lookup.TryAdd(templateKey, optionId);
+                }
+
+                for (int level = 1; level < definition.Levels.Length; level++)
+                {
+                    string renderedLine = RenderPacketOwnedTimeBombInvincibilityOptionLine(definition.DisplayTemplate, definition.Levels[level]);
+                    string renderedKey = NormalizePacketOwnedPotentialLineText(renderedLine);
+                    if (renderedKey.Length > 0)
+                    {
+                        lookup.TryAdd(renderedKey, optionId);
+                    }
+                }
+            }
+
+            return lookup;
+        }
+
+        private static string NormalizePacketOwnedPotentialLineText(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return string.Empty;
+            }
+
+            StringBuilder builder = new(text.Length);
+            bool previousWasSpace = false;
+            foreach (char ch in text)
+            {
+                char normalized = char.ToLowerInvariant(ch);
+                if (char.IsLetterOrDigit(normalized) || normalized == '%' || normalized == '#')
+                {
+                    builder.Append(normalized);
+                    previousWasSpace = false;
+                    continue;
+                }
+
+                if (!char.IsWhiteSpace(normalized) && normalized != '.' && normalized != ',' && normalized != ':' && normalized != ';')
+                {
+                    continue;
+                }
+
+                if (!previousWasSpace && builder.Length > 0)
+                {
+                    builder.Append(' ');
+                    previousWasSpace = true;
+                }
+            }
+
+            return builder.ToString().Trim();
         }
 
         private static int NormalizePacketOwnedCooldownSkillId(int skillId, out bool isVehicleSentinel)

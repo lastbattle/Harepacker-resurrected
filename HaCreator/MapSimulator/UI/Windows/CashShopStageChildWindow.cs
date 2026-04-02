@@ -30,12 +30,15 @@ namespace HaCreator.MapSimulator.UI
         private SpriteFont _font;
         private Func<IReadOnlyList<string>> _contentProvider;
         private string _statusMessage = string.Empty;
+        private Rectangle _contentBounds;
+        private Point? _titlePositionOverride;
 
         public CashShopStageChildWindow(IDXObject frame, string windowName, string title)
             : base(frame)
         {
             _windowName = windowName ?? throw new ArgumentNullException(nameof(windowName));
             _title = title ?? string.Empty;
+            _contentBounds = new Rectangle(0, 0, CurrentFrame?.Width ?? 240, CurrentFrame?.Height ?? 140);
         }
 
         public override string WindowName => _windowName;
@@ -80,6 +83,16 @@ namespace HaCreator.MapSimulator.UI
             _statusMessage = statusMessage?.Trim() ?? string.Empty;
         }
 
+        public void SetContentBounds(Rectangle contentBounds)
+        {
+            _contentBounds = contentBounds;
+        }
+
+        public void SetTitlePosition(Point titlePosition)
+        {
+            _titlePositionOverride = titlePosition;
+        }
+
         public void RegisterButton(UIObject button, Func<string> action)
         {
             if (button == null)
@@ -122,7 +135,10 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            Vector2 titleOrigin = new(Position.X + 12, Position.Y + 10);
+            Rectangle contentBounds = ResolveContentBounds();
+            Vector2 titleOrigin = _titlePositionOverride.HasValue
+                ? new Vector2(Position.X + _titlePositionOverride.Value.X, Position.Y + _titlePositionOverride.Value.Y)
+                : new Vector2(Position.X + contentBounds.X + 12, Position.Y + contentBounds.Y + 10);
             sprite.DrawString(_font, _title, titleOrigin, Color.White);
 
             float lineY = titleOrigin.Y + _font.LineSpacing + 6f;
@@ -140,9 +156,13 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
-                foreach (string wrappedLine in WrapText(line, Math.Max(180f, (CurrentFrame?.Width ?? 240) - 24f)))
+                foreach (string wrappedLine in WrapText(line, Math.Max(180f, contentBounds.Width - 24f)))
                 {
-                    sprite.DrawString(_font, wrappedLine, new Vector2(Position.X + 12, lineY), new Color(225, 225, 225));
+                    sprite.DrawString(
+                        _font,
+                        wrappedLine,
+                        new Vector2(Position.X + contentBounds.X + 12, lineY),
+                        new Color(225, 225, 225));
                     lineY += _font.LineSpacing;
                 }
 
@@ -151,13 +171,31 @@ namespace HaCreator.MapSimulator.UI
 
             if (!string.IsNullOrWhiteSpace(_statusMessage))
             {
-                float footerY = Position.Y + Math.Max(20, (CurrentFrame?.Height ?? 140) - (_font.LineSpacing * 2) - 12);
-                foreach (string wrappedLine in WrapText(_statusMessage, Math.Max(180f, (CurrentFrame?.Width ?? 240) - 24f)))
+                float footerY = Position.Y + Math.Max(
+                    contentBounds.Y + 20,
+                    contentBounds.Bottom - (_font.LineSpacing * 2) - 12);
+                foreach (string wrappedLine in WrapText(_statusMessage, Math.Max(180f, contentBounds.Width - 24f)))
                 {
-                    sprite.DrawString(_font, wrappedLine, new Vector2(Position.X + 12, footerY), new Color(255, 223, 149));
+                    sprite.DrawString(
+                        _font,
+                        wrappedLine,
+                        new Vector2(Position.X + contentBounds.X + 12, footerY),
+                        new Color(255, 223, 149));
                     footerY += _font.LineSpacing;
                 }
             }
+        }
+
+        private Rectangle ResolveContentBounds()
+        {
+            int frameWidth = CurrentFrame?.Width ?? 240;
+            int frameHeight = CurrentFrame?.Height ?? 140;
+            if (_contentBounds.Width <= 0 || _contentBounds.Height <= 0)
+            {
+                return new Rectangle(0, 0, frameWidth, frameHeight);
+            }
+
+            return _contentBounds;
         }
 
         private void HandleButtonAction(UIObject button)

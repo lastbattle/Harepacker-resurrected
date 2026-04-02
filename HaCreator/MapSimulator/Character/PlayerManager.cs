@@ -376,7 +376,7 @@ namespace HaCreator.MapSimulator.Character
         /// </summary>
         public void CreatePlayerFromBuild(CharacterBuild build)
         {
-            InitializePlayer(new PlayerCharacter(build));
+            InitializePlayer(new PlayerCharacter(_device, _texturePool, build));
             CompanionEquipment.EnsureDefaults(Loader, build);
 
             // Create SkillManager if we have a SkillLoader
@@ -1380,6 +1380,11 @@ namespace HaCreator.MapSimulator.Character
         public Vector2 GetPlayerPosition()
         {
             return Player?.Position ?? _spawnPoint;
+        }
+
+        public Vector2 GetSpawnPoint()
+        {
+            return _spawnPoint;
         }
 
         /// <summary>

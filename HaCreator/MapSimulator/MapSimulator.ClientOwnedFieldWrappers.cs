@@ -27,7 +27,7 @@ namespace HaCreator.MapSimulator
         {
             None,
             SceneOwner,
-            SafeAreaContract
+            PhotoContract
         }
 
         private readonly struct WeddingPhotoSceneContract
@@ -61,6 +61,7 @@ namespace HaCreator.MapSimulator
         private const string WeddingMapMark = "Wedding";
         private const int AranTutorialMapIdMin = 914000000;
         private const int AranTutorialMapIdMax = 914000500;
+        private const int WeddingPhotoMapRegionPrefix = 680000;
         private const int ClientOwnedLimitedViewDarkCanvasWidth = 1024;
         private const int ClientOwnedLimitedViewDarkCanvasHeight = 768;
         private const int ClientOwnedLimitedViewDarkLayerOffsetX = -512;
@@ -526,6 +527,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            _limitedViewField.SetClientOwnedViewrangeTexture(canvas.GetBitmap());
             _clientOwnedLimitedViewMaskWidth = Math.Max(1f, canvas.PngProperty?.Width ?? ClientOwnedLimitedViewFallbackMaskWidth);
             _clientOwnedLimitedViewMaskHeight = Math.Max(1f, canvas.PngProperty?.Height ?? ClientOwnedLimitedViewFallbackMaskHeight);
 
@@ -709,16 +711,24 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (!string.IsNullOrWhiteSpace(mapInfo.onUserEnter)
-                && mapInfo.onUserEnter.StartsWith(AranTutorialOnUserEnterPrefix, StringComparison.OrdinalIgnoreCase))
+            bool hasAranFieldType = mapInfo.fieldType == FieldType.FIELDTYPE_KILLCOUNT;
+            bool hasAranOnUserEnter = !string.IsNullOrWhiteSpace(mapInfo.onUserEnter)
+                && mapInfo.onUserEnter.StartsWith(AranTutorialOnUserEnterPrefix, StringComparison.OrdinalIgnoreCase);
+            bool inAranTutorialRange = mapInfo.id >= AranTutorialMapIdMin
+                && mapInfo.id <= AranTutorialMapIdMax;
+            bool hasAranMapMark = string.Equals(mapInfo.mapMark, AranTutorialMapMark, StringComparison.OrdinalIgnoreCase);
+
+            if (hasAranFieldType && hasAranOnUserEnter)
             {
                 return true;
             }
 
-            return mapInfo.id >= AranTutorialMapIdMin
-                && mapInfo.id <= AranTutorialMapIdMax
-                && string.Equals(mapInfo.mapMark, AranTutorialMapMark, StringComparison.OrdinalIgnoreCase)
-                && mapInfo.fieldType == FieldType.FIELDTYPE_KILLCOUNT;
+            if (!hasAranFieldType)
+            {
+                return false;
+            }
+
+            return inAranTutorialRange && (hasAranMapMark || hasAranOnUserEnter);
         }
 
         private static bool TryBuildWeddingPhotoSceneContract(MapInfo mapInfo, out WeddingPhotoSceneContract contract)
@@ -740,8 +750,8 @@ namespace HaCreator.MapSimulator
             {
                 TryGetWeddingPhotoSceneSafeArea(mapInfo, out int safeSide, out int safeTop, out int safeBottom);
                 contract = new WeddingPhotoSceneContract(
-                    WeddingPhotoWrapperKind.SafeAreaContract,
-                    $"wedding safe-area contract (mapMark={mapInfo.mapMark})",
+                    WeddingPhotoWrapperKind.PhotoContract,
+                    $"CField_WeddingPhoto photo contract (mapMark={mapInfo.mapMark}, region={mapInfo.id / 1000})",
                     mapInfo.returnMap,
                     safeSide,
                     safeTop,
@@ -764,6 +774,7 @@ namespace HaCreator.MapSimulator
         private static bool HasWeddingPhotoSafeAreaContract(MapInfo mapInfo)
         {
             return mapInfo != null
+                && mapInfo.id / 1000 == WeddingPhotoMapRegionPrefix
                 && string.Equals(mapInfo.mapMark, WeddingMapMark, StringComparison.OrdinalIgnoreCase)
                 && TryGetWeddingPhotoSceneSafeArea(mapInfo, out _, out _, out _);
         }
@@ -780,9 +791,9 @@ namespace HaCreator.MapSimulator
                 return $"fieldType {(int)FieldType.FIELDTYPE_WEDDINGPHOTO}";
             }
 
-            if (contract.Kind == WeddingPhotoWrapperKind.SafeAreaContract)
+            if (contract.Kind == WeddingPhotoWrapperKind.PhotoContract)
             {
-                return $"Wedding safe-area contract (mapMark={mapInfo.mapMark})";
+                return $"CField_WeddingPhoto photo contract (mapMark={mapInfo.mapMark})";
             }
 
             return "scene wrapper";

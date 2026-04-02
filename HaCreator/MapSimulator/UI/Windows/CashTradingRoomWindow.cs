@@ -92,6 +92,20 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        public void BindButton(UIObject button, Action action)
+        {
+            if (button == null)
+            {
+                return;
+            }
+
+            AddButton(button);
+            if (action != null)
+            {
+                button.ButtonClickReleased += _ => action();
+            }
+        }
+
         public void ToggleTradeLock()
         {
             _localLocked = !_localLocked;

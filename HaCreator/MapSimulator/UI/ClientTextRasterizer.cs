@@ -62,6 +62,34 @@ namespace HaCreator.MapSimulator.UI
             "Content",
             Path.Combine("Content", "Fonts")
         };
+        private static readonly string[] DefaultFontFileExtensions =
+        {
+            ".ttf",
+            ".ttc",
+            ".otf"
+        };
+        private static readonly string[] PreferredFontFileNameFragments =
+        {
+            "DotumChe",
+            "Dotum",
+            "DOTOOMCHE",
+            "DOTOOM",
+            "DODUMCHE",
+            "DODUM",
+            "GulimChe",
+            "Gulim",
+            "BatangChe",
+            "Batang"
+        };
+        private static readonly string[] PreferredFontPathFragments =
+        {
+            $"{Path.DirectorySeparatorChar}Fonts{Path.DirectorySeparatorChar}",
+            $"{Path.DirectorySeparatorChar}Font{Path.DirectorySeparatorChar}",
+            $"{Path.DirectorySeparatorChar}Content{Path.DirectorySeparatorChar}Fonts{Path.DirectorySeparatorChar}",
+            $"{Path.DirectorySeparatorChar}Maple{Path.DirectorySeparatorChar}",
+            $"{Path.DirectorySeparatorChar}MapleStory{Path.DirectorySeparatorChar}",
+            $"{Path.DirectorySeparatorChar}Nexon{Path.DirectorySeparatorChar}"
+        };
         private static readonly string[] PerUserWindowsFontDirectories =
         {
             Path.Combine(
@@ -555,33 +583,28 @@ namespace HaCreator.MapSimulator.UI
                 yield break;
             }
 
+            HashSet<string> yieldedPaths = new(StringComparer.OrdinalIgnoreCase);
             foreach (string fileName in DefaultPrivateFontFileCandidates)
             {
                 string directCandidatePath = Path.Combine(rootDirectory, fileName);
-                if (File.Exists(directCandidatePath))
+                if (File.Exists(directCandidatePath) && yieldedPaths.Add(directCandidatePath))
                 {
                     yield return directCandidatePath;
                 }
             }
 
-            IEnumerable<string> recursiveMatches;
-            try
+            foreach (string discoveredFontPath in EnumerateScoredFontPaths(rootDirectory))
             {
-                recursiveMatches = Directory.EnumerateFiles(rootDirectory, "*", RecursiveFontSearchOptions);
-            }
-            catch
-            {
-                yield break;
-            }
-
-            foreach (string recursiveMatch in recursiveMatches)
-            {
-                string fileName = Path.GetFileName(recursiveMatch);
-                if (DefaultPrivateFontFileCandidates.Any(candidate => string.Equals(candidate, fileName, StringComparison.OrdinalIgnoreCase)))
+                if (yieldedPaths.Add(discoveredFontPath))
                 {
-                    yield return recursiveMatch;
+                    yield return discoveredFontPath;
                 }
             }
+        }
+
+        internal static IReadOnlyList<string> EnumerateCandidateFontPathsForTests(string rootDirectory)
+        {
+            return EnumerateCandidateFontPaths(rootDirectory).ToArray();
         }
 
         private static IEnumerable<string> EnumerateDefaultPrivateFontSearchRoots()
@@ -696,6 +719,82 @@ namespace HaCreator.MapSimulator.UI
         private static int QuantizeScale(float scale)
         {
             return (int)Math.Round(Math.Max(0.1f, scale) * 1000f);
+        }
+
+        private static IEnumerable<string> EnumerateScoredFontPaths(string rootDirectory)
+        {
+            IEnumerable<string> recursiveMatches;
+            try
+            {
+                recursiveMatches = Directory.EnumerateFiles(rootDirectory, "*", RecursiveFontSearchOptions);
+            }
+            catch
+            {
+                yield break;
+            }
+
+            List<(string Path, int Score)> scoredPaths = new();
+            foreach (string recursiveMatch in recursiveMatches)
+            {
+                int score = ScoreDiscoveredFontPath(recursiveMatch);
+                if (score < 0)
+                {
+                    continue;
+                }
+
+                scoredPaths.Add((recursiveMatch, score));
+            }
+
+            foreach ((string path, _) in scoredPaths
+                .OrderByDescending(static entry => entry.Score)
+                .ThenBy(static entry => entry.Path, StringComparer.OrdinalIgnoreCase))
+            {
+                yield return path;
+            }
+        }
+
+        private static int ScoreDiscoveredFontPath(string candidatePath)
+        {
+            if (string.IsNullOrWhiteSpace(candidatePath))
+            {
+                return -1;
+            }
+
+            string extension = Path.GetExtension(candidatePath);
+            if (!DefaultFontFileExtensions.Any(candidate => string.Equals(candidate, extension, StringComparison.OrdinalIgnoreCase)))
+            {
+                return -1;
+            }
+
+            string fileName = Path.GetFileName(candidatePath);
+            int score = 0;
+
+            if (DefaultPrivateFontFileCandidates.Any(candidate => string.Equals(candidate, fileName, StringComparison.OrdinalIgnoreCase)))
+            {
+                score += 1000;
+            }
+
+            if (PreferredFontFileNameFragments.Any(fragment => candidatePath.IndexOf(fragment, StringComparison.OrdinalIgnoreCase) >= 0))
+            {
+                score += 200;
+            }
+
+            if (PreferredFontPathFragments.Any(fragment => candidatePath.IndexOf(fragment, StringComparison.OrdinalIgnoreCase) >= 0))
+            {
+                score += 50;
+            }
+
+            if (string.Equals(extension, ".ttc", StringComparison.OrdinalIgnoreCase))
+            {
+                score += 25;
+            }
+
+            if (string.Equals(extension, ".ttf", StringComparison.OrdinalIgnoreCase))
+            {
+                score += 15;
+            }
+
+            return score;
         }
 
         private static IEnumerable<string> EnumerateMapleInstallDirectories()

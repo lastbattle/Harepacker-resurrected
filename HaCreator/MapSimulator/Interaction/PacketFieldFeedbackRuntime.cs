@@ -1073,6 +1073,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static byte[] FilterSwindleBytes(string message)
         {
+            return FilterSwindleBytes(message, SwindleFilteredCharacters);
+        }
+
+        private static byte[] FilterSwindleBytes(string message, ReadOnlySpan<byte> filteredCharacters)
+        {
             if (string.IsNullOrWhiteSpace(message))
             {
                 return Array.Empty<byte>();
@@ -1088,7 +1093,7 @@ namespace HaCreator.MapSimulator.Interaction
                     continue;
                 }
 
-                if (ContainsFilteredSwindleCharacter(value))
+                if (ContainsFilteredSwindleCharacter(value, filteredCharacters))
                 {
                     continue;
                 }
@@ -1159,11 +1164,11 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
-        private static bool ContainsFilteredSwindleCharacter(byte value)
+        private static bool ContainsFilteredSwindleCharacter(byte value, ReadOnlySpan<byte> filteredCharacters)
         {
-            foreach (byte filteredCharacter in SwindleFilteredCharacters)
+            foreach (byte filteredCharacter in filteredCharacters)
             {
-                if (IsSwindleByteEqual(filteredCharacter, value))
+                if (filteredCharacter == value)
                 {
                     return true;
                 }
@@ -1208,6 +1213,17 @@ namespace HaCreator.MapSimulator.Interaction
         internal static string FilterSwindleTextForTest(string message)
         {
             return FilterSwindleText(message);
+        }
+
+        internal static string FilterSwindleTextForTest(string message, string filteredCharacters)
+        {
+            byte[] filterTable = string.IsNullOrEmpty(filteredCharacters)
+                ? Array.Empty<byte>()
+                : SwindleEncoding.GetBytes(filteredCharacters);
+            byte[] filteredBytes = FilterSwindleBytes(message, filterTable);
+            return filteredBytes.Length == 0
+                ? string.Empty
+                : SwindleEncoding.GetString(filteredBytes);
         }
 
         internal static bool ContainsSwindleKeywordForTest(string filteredMessage, string keyword)

@@ -358,8 +358,7 @@ namespace HaCreator.MapSimulator.Character
             return actionName.IndexOf("attack", StringComparison.OrdinalIgnoreCase) >= 0
                    || actionName.IndexOf("stab", StringComparison.OrdinalIgnoreCase) >= 0
                    || actionName.IndexOf("swing", StringComparison.OrdinalIgnoreCase) >= 0
-                   || actionName.IndexOf("shoot", StringComparison.OrdinalIgnoreCase) >= 0
-                   || actionName.IndexOf("shot", StringComparison.OrdinalIgnoreCase) >= 0;
+                   || IsGenericRangedAttackAction(actionName);
         }
 
         private static bool IsGenericRangedAttackAction(string actionName)

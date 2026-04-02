@@ -545,10 +545,14 @@ namespace HaCreator.MapSimulator.Loaders
                     chatUI.InitializeButtons();
                     Texture2D chatEnterTexture = LoadCanvasTexture(chatEnterCanvas, device);
                     chatUI.SetChatEnterTexture(chatEnterTexture);
+                    WzImage uiWindow2DialogImage = Program.FindImage("UI", "UIWindow2.img");
                     (Dictionary<MapSimulatorChatTargetType, Texture2D> chatTargetTextures,
                         Dictionary<MapSimulatorChatTargetType, Point> chatTargetOrigins) =
                         LoadChatTargetTextures(subProperty_chatTarget, device);
                     chatUI.SetChatTargetTextures(chatTargetTextures, chatTargetOrigins);
+                    chatUI.SetWhisperPickerTextures(
+                        LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["list5"] as WzCanvasProperty, device),
+                        LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["list4"] as WzCanvasProperty, device));
                     Vector2 chatTargetLabelPos = ResolveCanvasPosition(chatFrameAnchorOrigin, subProperty_chatTarget?["all"] as WzCanvasProperty).ToVector2();
                     Vector2 chatEnterPos = ResolveCanvasPosition(chatFrameAnchorOrigin, chatEnterCanvas).ToVector2();
                     Rectangle chatEnterBounds = ResolveCanvasBounds(chatFrameAnchorOrigin, chatEnterCanvas);

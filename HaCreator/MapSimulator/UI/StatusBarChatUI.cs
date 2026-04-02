@@ -48,6 +48,12 @@ namespace HaCreator.MapSimulator.UI
             public string WhisperTarget { get; set; }
         }
 
+        private sealed class WhisperPickerHitRegion
+        {
+            public Rectangle Bounds { get; set; }
+            public string WhisperTarget { get; set; }
+        }
+
         public sealed class ChatTargetLabelPlacement
         {
             public Texture2D Texture { get; set; }
@@ -75,6 +81,10 @@ namespace HaCreator.MapSimulator.UI
         private ButtonState _previousLeftButtonState = ButtonState.Released;
         private string _pressedWhisperTarget;
         private readonly List<WhisperTargetHitRegion> _whisperTargetHitRegions = new List<WhisperTargetHitRegion>();
+        private readonly List<WhisperPickerHitRegion> _whisperPickerHitRegions = new List<WhisperPickerHitRegion>();
+        private Rectangle? _whisperPromptBounds;
+        private Texture2D _whisperPickerSelectedTexture;
+        private Texture2D _whisperPickerRowTexture;
 
         private const int ChatMessageDisplayTime = 10000;
         private const int ChatMessageFadeTime = 2000;
@@ -87,6 +97,9 @@ namespace HaCreator.MapSimulator.UI
         private const int ChatWrapIndentSpaces = 5;
         private const int ChatSpecialFirstLineWidthReduction = 38;
         private const int ChatScrollRecentThresholdMs = 5000;
+        private const int WhisperPickerVisibleRows = 6;
+        private const int WhisperPickerRowPadding = 4;
+        private const int WhisperPickerFramePadding = 3;
         private Point _pointNotificationAnchor = new Point(512, 60);
         private Vector2 _chatTargetLabelPos = new Vector2(17, 7);
         private Vector2 _chatEnterPos = new Vector2(4, 2);
@@ -106,6 +119,8 @@ namespace HaCreator.MapSimulator.UI
         public Action CharacterInfoRequested { get; set; }
         public Action MemoMailboxRequested { get; set; }
         public Action<string> WhisperTargetRequested { get; set; }
+        public Action WhisperTargetPickerRequested { get; set; }
+        public Action<string> WhisperTargetPickerCandidateRequested { get; set; }
 
         /// <summary>
         /// Constructor for the status bar chat window
@@ -149,6 +164,12 @@ namespace HaCreator.MapSimulator.UI
         {
             _chatEnterTexture = chatEnterTexture;
             RefreshTextMetrics();
+        }
+
+        public void SetWhisperPickerTextures(Texture2D selectedTexture, Texture2D rowTexture)
+        {
+            _whisperPickerSelectedTexture = selectedTexture;
+            _whisperPickerRowTexture = rowTexture;
         }
 
         public void SetChatTargetTextures(
@@ -325,6 +346,9 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawChatOverlay(SpriteBatch sprite, int tickCount, MapSimulatorChatRenderState chatState)
         {
+            _whisperPickerHitRegions.Clear();
+            _whisperPromptBounds = null;
+
             if (_font == null)
             {
                 return;
@@ -340,6 +364,7 @@ namespace HaCreator.MapSimulator.UI
             if (chatState.IsActive)
             {
                 DrawChatInput(sprite, chatState, tickCount);
+                DrawWhisperTargetPicker(sprite, chatState);
             }
         }
 
@@ -566,11 +591,22 @@ namespace HaCreator.MapSimulator.UI
                 : $"> {chatState.WhisperTarget}";
             if (!string.IsNullOrEmpty(whisperPrompt))
             {
+                Vector2 promptPos = new Vector2(this.Position.X + _chatWhisperPromptPos.X, this.Position.Y + _chatWhisperPromptPos.Y);
                 DrawTextWithShadow(sprite,
                     whisperPrompt,
-                    new Vector2(this.Position.X + _chatWhisperPromptPos.X, this.Position.Y + _chatWhisperPromptPos.Y),
+                    promptPos,
                     new Color(255, 170, 255),
                     Color.Black);
+                Vector2 promptSize = MeasureChatText(whisperPrompt);
+                _whisperPromptBounds = new Rectangle(
+                    (int)Math.Round(promptPos.X),
+                    (int)Math.Round(promptPos.Y) - 1,
+                    Math.Max(1, (int)Math.Ceiling(promptSize.X) + 2),
+                    Math.Max(1, ResolveFontLineSpacing()));
+            }
+            else
+            {
+                _whisperPromptBounds = null;
             }
 
             Vector2 inputPos = SnapToPixel(new Vector2(this.Position.X + _chatInputPos.X, this.Position.Y + _chatInputPos.Y));
@@ -595,6 +631,102 @@ namespace HaCreator.MapSimulator.UI
                     1,
                     _chatCursorHeight),
                 Color.White);
+        }
+
+        private void DrawWhisperTargetPicker(SpriteBatch sprite, MapSimulatorChatRenderState chatState)
+        {
+            if (chatState == null || !chatState.IsWhisperTargetPickerActive || _font == null)
+            {
+                return;
+            }
+
+            IReadOnlyList<string> candidates = chatState.WhisperCandidates ?? Array.Empty<string>();
+            int visibleCount = Math.Min(WhisperPickerVisibleRows, candidates.Count);
+            float maxCandidateWidth = MeasureChatText(chatState.InputText ?? string.Empty).X;
+            for (int i = 0; i < visibleCount; i++)
+            {
+                maxCandidateWidth = Math.Max(maxCandidateWidth, MeasureChatText(candidates[i]).X);
+            }
+
+            int rowHeight = Math.Max(
+                Math.Max(
+                    _whisperPickerSelectedTexture?.Height ?? 0,
+                    _whisperPickerRowTexture?.Height ?? 0),
+                ResolveFontLineSpacing() + WhisperPickerRowPadding);
+            int popupWidth = Math.Max(96, (int)Math.Ceiling(maxCandidateWidth) + (WhisperPickerFramePadding * 2) + 8);
+            int popupHeight = rowHeight * (visibleCount + 1);
+            int popupX = (int)Math.Round(this.Position.X + _chatInputPos.X);
+            int popupY = (int)Math.Round(this.Position.Y + _chatWhisperPromptPos.Y) - popupHeight - 4;
+
+            if (_pixelTexture != null)
+            {
+                sprite.Draw(_pixelTexture,
+                    new Rectangle(popupX - 1, popupY - 1, popupWidth + 2, popupHeight + 2),
+                    new Color(0, 0, 0, 216));
+            }
+
+            DrawWhisperPickerRow(
+                sprite,
+                popupX,
+                popupY,
+                popupWidth,
+                rowHeight,
+                chatState.InputText ?? string.Empty,
+                isSelected: chatState.WhisperTargetPickerSelectionIndex < 0,
+                registerHitRegion: false);
+
+            for (int i = 0; i < visibleCount; i++)
+            {
+                int rowY = popupY + ((i + 1) * rowHeight);
+                DrawWhisperPickerRow(
+                    sprite,
+                    popupX,
+                    rowY,
+                    popupWidth,
+                    rowHeight,
+                    candidates[i],
+                    isSelected: i == chatState.WhisperTargetPickerSelectionIndex,
+                    registerHitRegion: true);
+            }
+        }
+
+        private void DrawWhisperPickerRow(
+            SpriteBatch sprite,
+            int x,
+            int y,
+            int width,
+            int height,
+            string text,
+            bool isSelected,
+            bool registerHitRegion)
+        {
+            Texture2D rowTexture = isSelected ? _whisperPickerSelectedTexture : _whisperPickerRowTexture;
+            if (rowTexture != null)
+            {
+                sprite.Draw(rowTexture, new Rectangle(x, y, width, height), Color.White);
+            }
+            else if (_pixelTexture != null)
+            {
+                sprite.Draw(_pixelTexture,
+                    new Rectangle(x, y, width, height),
+                    isSelected ? new Color(83, 116, 168, 235) : new Color(28, 33, 45, 235));
+            }
+
+            DrawTextWithShadow(
+                sprite,
+                text ?? string.Empty,
+                new Vector2(x + WhisperPickerFramePadding + 1, y + Math.Max(0f, (height - MeasureChatText("Ag").Y) * 0.5f)),
+                isSelected ? Color.White : new Color(244, 240, 227),
+                Color.Black);
+
+            if (registerHitRegion && !string.IsNullOrWhiteSpace(text))
+            {
+                _whisperPickerHitRegions.Add(new WhisperPickerHitRegion
+                {
+                    Bounds = new Rectangle(x, y, width, height),
+                    WhisperTarget = text
+                });
+            }
         }
 
         private void RefreshTextMetrics()
@@ -982,6 +1114,8 @@ namespace HaCreator.MapSimulator.UI
         private bool HandleWhisperTargetClick(MouseState mouseState)
         {
             WhisperTargetHitRegion hoveredRegion = FindWhisperTargetHitRegion(mouseState.X, mouseState.Y);
+            WhisperPickerHitRegion hoveredPickerRegion = FindWhisperPickerHitRegion(mouseState.X, mouseState.Y);
+            bool promptHovered = _whisperPromptBounds?.Contains(mouseState.X, mouseState.Y) == true;
             bool isPressStarted = mouseState.LeftButton == ButtonState.Pressed
                 && _previousLeftButtonState == ButtonState.Released;
             bool isRelease = mouseState.LeftButton == ButtonState.Released
@@ -989,13 +1123,29 @@ namespace HaCreator.MapSimulator.UI
 
             if (isPressStarted)
             {
-                _pressedWhisperTarget = hoveredRegion?.WhisperTarget;
-                return hoveredRegion != null;
+                _pressedWhisperTarget = hoveredRegion?.WhisperTarget ?? hoveredPickerRegion?.WhisperTarget;
+                return hoveredRegion != null || hoveredPickerRegion != null || promptHovered;
             }
 
             if (!isRelease)
             {
-                return !string.IsNullOrWhiteSpace(_pressedWhisperTarget) && hoveredRegion != null;
+                return !string.IsNullOrWhiteSpace(_pressedWhisperTarget)
+                    && (hoveredRegion != null || hoveredPickerRegion != null);
+            }
+
+            if (promptHovered && string.IsNullOrWhiteSpace(_pressedWhisperTarget))
+            {
+                WhisperTargetPickerRequested?.Invoke();
+                return true;
+            }
+
+            if (hoveredPickerRegion != null
+                && !string.IsNullOrWhiteSpace(_pressedWhisperTarget)
+                && string.Equals(_pressedWhisperTarget, hoveredPickerRegion.WhisperTarget, StringComparison.OrdinalIgnoreCase))
+            {
+                _pressedWhisperTarget = null;
+                WhisperTargetPickerCandidateRequested?.Invoke(hoveredPickerRegion.WhisperTarget);
+                return true;
             }
 
             string pressedWhisperTarget = _pressedWhisperTarget;
@@ -1016,6 +1166,20 @@ namespace HaCreator.MapSimulator.UI
             for (int i = 0; i < _whisperTargetHitRegions.Count; i++)
             {
                 WhisperTargetHitRegion region = _whisperTargetHitRegions[i];
+                if (region.Bounds.Contains(mouseX, mouseY))
+                {
+                    return region;
+                }
+            }
+
+            return null;
+        }
+
+        private WhisperPickerHitRegion FindWhisperPickerHitRegion(int mouseX, int mouseY)
+        {
+            for (int i = 0; i < _whisperPickerHitRegions.Count; i++)
+            {
+                WhisperPickerHitRegion region = _whisperPickerHitRegions[i];
                 if (region.Bounds.Contains(mouseX, mouseY))
                 {
                     return region;

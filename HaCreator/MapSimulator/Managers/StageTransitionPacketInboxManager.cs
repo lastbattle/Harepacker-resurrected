@@ -8,13 +8,13 @@ using System.Threading.Tasks;
 
 namespace HaCreator.MapSimulator.Managers
 {
-    public sealed class CashServicePacketInboxMessage
+    public sealed class StageTransitionPacketInboxMessage
     {
-        public CashServicePacketInboxMessage(int packetType, byte[] payload, string source, string rawText)
+        public StageTransitionPacketInboxMessage(int packetType, byte[] payload, string source, string rawText)
         {
             PacketType = packetType;
             Payload = payload ?? Array.Empty<byte>();
-            Source = string.IsNullOrWhiteSpace(source) ? "cash-service-inbox" : source;
+            Source = string.IsNullOrWhiteSpace(source) ? "stagepacket-inbox" : source;
             RawText = rawText ?? string.Empty;
         }
 
@@ -24,11 +24,11 @@ namespace HaCreator.MapSimulator.Managers
         public string RawText { get; }
     }
 
-    public sealed class CashServicePacketInboxManager : IDisposable
+    public sealed class StageTransitionPacketInboxManager : IDisposable
     {
-        public const int DefaultPort = 18486;
+        public const int DefaultPort = 18496;
 
-        private readonly ConcurrentQueue<CashServicePacketInboxMessage> _pendingMessages = new();
+        private readonly ConcurrentQueue<StageTransitionPacketInboxMessage> _pendingMessages = new();
         private readonly object _listenerLock = new();
 
         private TcpListener _listener;
@@ -38,7 +38,7 @@ namespace HaCreator.MapSimulator.Managers
         public int Port { get; private set; } = DefaultPort;
         public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
         public int ReceivedCount { get; private set; }
-        public string LastStatus { get; private set; } = "Cash-service packet inbox inactive.";
+        public string LastStatus { get; private set; } = "Stage-transition packet inbox inactive.";
 
         public void Start(int port = DefaultPort)
         {
@@ -46,7 +46,7 @@ namespace HaCreator.MapSimulator.Managers
             {
                 if (IsRunning)
                 {
-                    LastStatus = $"Cash-service packet inbox already listening on 127.0.0.1:{Port}.";
+                    LastStatus = $"Stage-transition packet inbox already listening on 127.0.0.1:{Port}.";
                     return;
                 }
 
@@ -56,7 +56,7 @@ namespace HaCreator.MapSimulator.Managers
                 _listener = new TcpListener(IPAddress.Loopback, Port);
                 _listener.Start();
                 _listenerTask = Task.Run(() => ListenLoopAsync(_listenerCancellation.Token));
-                LastStatus = $"Cash-service packet inbox listening on 127.0.0.1:{Port}.";
+                LastStatus = $"Stage-transition packet inbox listening on 127.0.0.1:{Port}.";
             }
         }
 
@@ -65,29 +65,21 @@ namespace HaCreator.MapSimulator.Managers
             lock (_listenerLock)
             {
                 StopInternal();
-                LastStatus = "Cash-service packet inbox stopped.";
+                LastStatus = "Stage-transition packet inbox stopped.";
             }
         }
 
-        public void EnqueueLocal(int packetType, byte[] payload, string source)
-        {
-            string packetSource = string.IsNullOrWhiteSpace(source) ? "cash-service-ui" : source;
-            _pendingMessages.Enqueue(new CashServicePacketInboxMessage(packetType, payload, packetSource, packetType.ToString()));
-            ReceivedCount++;
-            LastStatus = $"Queued {DescribePacketType(packetType)} from {packetSource}.";
-        }
-
-        public bool TryDequeue(out CashServicePacketInboxMessage message)
+        public bool TryDequeue(out StageTransitionPacketInboxMessage message)
         {
             return _pendingMessages.TryDequeue(out message);
         }
 
-        public void RecordDispatchResult(CashServicePacketInboxMessage message, bool success, string detail)
+        public void RecordDispatchResult(StageTransitionPacketInboxMessage message, bool success, string detail)
         {
             string summary = DescribePacketType(message?.PacketType ?? 0);
             LastStatus = success
-                ? $"Applied {summary} from {message?.Source ?? "cash-service-inbox"}."
-                : $"Ignored {summary} from {message?.Source ?? "cash-service-inbox"}: {detail}";
+                ? $"Applied {summary} from {message?.Source ?? "stagepacket-inbox"}."
+                : $"Ignored {summary} from {message?.Source ?? "stagepacket-inbox"}: {detail}";
         }
 
         public void Dispose()
@@ -96,6 +88,77 @@ namespace HaCreator.MapSimulator.Managers
             {
                 StopInternal();
             }
+        }
+
+        public static bool TryParseLine(string text, out StageTransitionPacketInboxMessage message, out string error)
+        {
+            message = null;
+            error = null;
+
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                error = "Stage-transition inbox line is empty.";
+                return false;
+            }
+
+            string trimmed = text.Trim();
+            if (trimmed.StartsWith("/stagepacket", StringComparison.OrdinalIgnoreCase))
+            {
+                trimmed = trimmed["/stagepacket".Length..].TrimStart();
+            }
+
+            if (trimmed.Length == 0)
+            {
+                error = "Stage-transition inbox line is empty.";
+                return false;
+            }
+
+            int splitIndex = FindTokenSeparatorIndex(trimmed);
+            string packetToken = splitIndex >= 0 ? trimmed[..splitIndex].Trim() : trimmed;
+            string payloadToken = splitIndex >= 0 ? trimmed[(splitIndex + 1)..].Trim() : string.Empty;
+
+            if (!TryParsePacketType(packetToken, out int packetType))
+            {
+                error = $"Unsupported stage-transition packet '{packetToken}'.";
+                return false;
+            }
+
+            byte[] payload = Array.Empty<byte>();
+            if (packetType is not 142 and not 143 and not 146
+                && !string.IsNullOrWhiteSpace(payloadToken)
+                && !TryParsePayload(payloadToken, out payload, out error))
+            {
+                return false;
+            }
+
+            message = new StageTransitionPacketInboxMessage(packetType, payload, "stagepacket-inbox", text);
+            return true;
+        }
+
+        public static bool TryParsePacketType(string token, out int packetType)
+        {
+            packetType = 0;
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            if (int.TryParse(token, out packetType))
+            {
+                return packetType is >= 141 and <= 146;
+            }
+
+            packetType = token.Trim().ToLowerInvariant() switch
+            {
+                "field" or "setfield" => 141,
+                "itc" or "setitc" => 142,
+                "cashshop" or "setcashshop" => 143,
+                "backeffect" or "setbackeffect" => 144,
+                "objectvisible" or "setmapobjectvisible" => 145,
+                "clearbackeffect" => 146,
+                _ => 0
+            };
+            return packetType != 0;
         }
 
         private async Task ListenLoopAsync(CancellationToken cancellationToken)
@@ -116,7 +179,7 @@ namespace HaCreator.MapSimulator.Managers
             }
             catch (Exception ex)
             {
-                LastStatus = $"Cash-service packet inbox error: {ex.Message}";
+                LastStatus = $"Stage-transition packet inbox error: {ex.Message}";
             }
         }
 
@@ -137,13 +200,13 @@ namespace HaCreator.MapSimulator.Managers
                             break;
                         }
 
-                        if (!TryParseLine(line, out CashServicePacketInboxMessage message, out string error))
+                        if (!TryParseLine(line, out StageTransitionPacketInboxMessage message, out string error))
                         {
-                            LastStatus = $"Ignored cash-service inbox line from {remoteEndpoint}: {error}";
+                            LastStatus = $"Ignored stage-transition inbox line from {remoteEndpoint}: {error}";
                             continue;
                         }
 
-                        _pendingMessages.Enqueue(new CashServicePacketInboxMessage(message.PacketType, message.Payload, remoteEndpoint, line));
+                        _pendingMessages.Enqueue(new StageTransitionPacketInboxMessage(message.PacketType, message.Payload, remoteEndpoint, line));
                         ReceivedCount++;
                         LastStatus = $"Queued {DescribePacketType(message.PacketType)} from {remoteEndpoint}.";
                     }
@@ -160,93 +223,11 @@ namespace HaCreator.MapSimulator.Managers
             }
             catch (Exception ex)
             {
-                LastStatus = $"Cash-service packet inbox client error: {ex.Message}";
+                LastStatus = $"Stage-transition packet inbox client error: {ex.Message}";
             }
         }
 
-        public static bool TryParseLine(string text, out CashServicePacketInboxMessage message, out string error)
-        {
-            message = null;
-            error = null;
-
-            if (string.IsNullOrWhiteSpace(text))
-            {
-                error = "Cash-service inbox line is empty.";
-                return false;
-            }
-
-            string trimmed = text.Trim();
-            if (trimmed.StartsWith("/cashservicepacket", StringComparison.OrdinalIgnoreCase))
-            {
-                trimmed = trimmed["/cashservicepacket".Length..].TrimStart();
-            }
-
-            if (trimmed.Length == 0)
-            {
-                error = "Cash-service inbox line is empty.";
-                return false;
-            }
-
-            int splitIndex = FindTokenSeparatorIndex(trimmed);
-            string packetToken = splitIndex >= 0 ? trimmed[..splitIndex].Trim() : trimmed;
-            string payloadToken = splitIndex >= 0 ? trimmed[(splitIndex + 1)..].Trim() : string.Empty;
-
-            if (!TryParsePacketType(packetToken, out int packetType))
-            {
-                error = $"Unsupported cash-service packet '{packetToken}'.";
-                return false;
-            }
-
-            byte[] payload = Array.Empty<byte>();
-            if (!string.IsNullOrWhiteSpace(payloadToken)
-                && !TryParsePayload(packetType, payloadToken, out payload, out error))
-            {
-                return false;
-            }
-
-            message = new CashServicePacketInboxMessage(packetType, payload, "cash-service-inbox", text);
-            return true;
-        }
-
-        public static bool TryParsePacketType(string token, out int packetType)
-        {
-            packetType = 0;
-            if (string.IsNullOrWhiteSpace(token))
-            {
-                return false;
-            }
-
-            if (int.TryParse(token, out packetType))
-            {
-                return CashServiceStageRuntime.IsCashShopPacket(packetType)
-                    || CashServiceStageRuntime.IsItcPacket(packetType);
-            }
-
-            string normalized = token.Trim().ToLowerInvariant();
-            packetType = normalized switch
-            {
-                "chargeparam" or "cscharge" => 382,
-                "querycash" or "csquery" => 383,
-                "cashitem" or "cashitemresult" => 384,
-                "purchaseexp" => 385,
-                "giftmate" => 386,
-                "duplicateid" => 387,
-                "namechange" => 388,
-                "transferworld" => 390,
-                "gachaponstamp" => 391,
-                "gachaponresult" => 392,
-                "gachaponbonus" => 393,
-                "oneaday" => 395,
-                "freeitemnotice" => 396,
-                "itccharge" => 410,
-                "itcquery" => 411,
-                "normalitem" or "itcnormalitem" => 412,
-                _ => 0
-            };
-            return packetType != 0;
-        }
-
-        private static bool TryParsePayload(int packetType, string text, out byte[] payload, out string error)
+        private static bool TryParsePayload(string text, out byte[] payload, out string error)
         {
             payload = Array.Empty<byte>();
             error = null;
@@ -295,8 +276,6 @@ namespace HaCreator.MapSimulator.Managers
                 }
             }
 
-            string storageError = null;
-
             try
             {
                 payload = Convert.FromHexString(text.Replace(" ", string.Empty, StringComparison.Ordinal));
@@ -304,15 +283,7 @@ namespace HaCreator.MapSimulator.Managers
             }
             catch (FormatException)
             {
-                if ((packetType == 384 || packetType == 412)
-                    && CashShopStorageExpansionPacketCodec.TryBuildPayloadFromText(text, out payload, out storageError))
-                {
-                    return true;
-                }
-
-                error = (packetType == 384 || packetType == 412) && !string.IsNullOrWhiteSpace(storageError)
-                    ? storageError
-                    : "Packet payload must use payloadhex=.., payloadb64=.., or a compact raw hex byte string.";
+                error = "Packet payload must use payloadhex=.., payloadb64=.., or a compact raw hex byte string.";
                 return false;
             }
         }
@@ -334,22 +305,12 @@ namespace HaCreator.MapSimulator.Managers
         {
             return packetType switch
             {
-                382 => "ChargeParam(382)",
-                383 => "QueryCash(383)",
-                384 => "CashItem(384)",
-                385 => "PurchaseExp(385)",
-                386 => "GiftMate(386)",
-                387 => "DuplicateID(387)",
-                388 => "NameChange(388)",
-                390 => "TransferWorld(390)",
-                391 => "GachaponStamp(391)",
-                392 => "GachaponResult(392)",
-                393 => "GachaponResult(393)",
-                395 => "OneADay(395)",
-                396 => "FreeItemNotice(396)",
-                410 => "ITCChargeParam(410)",
-                411 => "ITCQueryCash(411)",
-                412 => "ITCNormalItem(412)",
+                141 => "SetField(141)",
+                142 => "SetITC(142)",
+                143 => "SetCashShop(143)",
+                144 => "SetBackEffect(144)",
+                145 => "SetMapObjectVisible(145)",
+                146 => "ClearBackEffect(146)",
                 _ => $"packet {packetType}"
             };
         }

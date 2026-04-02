@@ -9,6 +9,8 @@ namespace HaCreator.MapSimulator.Character.Skills
     internal static class PreparedSkillHudRules
     {
         private const int MonkeyWaveSkillId = 5311002;
+        private const int WildHunterSwallowSkillId = 33101005;
+        private const int WildHunterSwallowAttackSkillId = 33101007;
         private static readonly HashSet<int> ReleaseTriggeredSkillIds = new()
         {
             2121001,
@@ -21,9 +23,22 @@ namespace HaCreator.MapSimulator.Character.Skills
             MonkeyWaveSkillId,
             WildHunterSwallowSkillId
         };
+        private static readonly HashSet<int> ReleaseArmedTextSkillIds = new()
+        {
+            2121001,
+            2221001,
+            2321001,
+            4341002,
+            4341003,
+            MonkeyWaveSkillId,
+            WildHunterSwallowSkillId
+        };
+        private static readonly HashSet<int> RemoteReleaseFollowUpPayloadSkillIds = new()
+        {
+            WildHunterSwallowAttackSkillId
+        };
 
         private const int SG88SkillId = 35121003;
-        private const int WildHunterSwallowSkillId = 33101005;
         private const int MonkeyWaveFallbackGaugeDurationMs = 1080;
         private static int? _monkeyWaveGaugeDurationMs;
 
@@ -64,13 +79,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return PreparedSkillHudTextVariant.Amplify;
             }
 
-            if (skillId == 4341002
-                || skillId == 4341003
-                || skillId == MonkeyWaveSkillId
-                || skillId == 2121001
-                || skillId == 2221001
-                || skillId == 2321001
-                || skillId == WildHunterSwallowSkillId)
+            if (ReleaseArmedTextSkillIds.Contains(skillId))
             {
                 return PreparedSkillHudTextVariant.ReleaseArmed;
             }
@@ -79,6 +88,12 @@ namespace HaCreator.MapSimulator.Character.Skills
         }
 
         public static bool UsesReleaseTriggeredExecution(int skillId) => ReleaseTriggeredSkillIds.Contains(skillId);
+
+        public static bool UsesRemoteReleaseFollowUpPayload(int skillId)
+        {
+            return UsesReleaseTriggeredExecution(skillId)
+                || RemoteReleaseFollowUpPayloadSkillIds.Contains(skillId);
+        }
 
         public static int ResolveGaugeDuration(int skillId, int authoredDurationMs = 0)
         {

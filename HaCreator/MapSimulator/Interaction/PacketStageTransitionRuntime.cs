@@ -66,6 +66,42 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
+        internal static byte[] BuildOfficialSetFieldPayload(
+            int mapId,
+            byte portalIndex = 0,
+            int channelId = 0,
+            int oldDriverId = 0,
+            byte fieldKey = 0,
+            int hp = 0,
+            bool chaseEnabled = false,
+            int chaseX = 0,
+            int chaseY = 0,
+            long serverFileTime = 0)
+        {
+            using MemoryStream stream = new();
+            using BinaryWriter writer = new(stream, Encoding.Default, leaveOpen: true);
+            writer.Write((short)0); // CClientOptMan::DecodeOpt count
+            writer.Write(channelId);
+            writer.Write(oldDriverId);
+            writer.Write(fieldKey);
+            writer.Write((byte)0); // bCharacterData
+            writer.Write((short)0); // notifier entry count
+            writer.Write((byte)0); // revive flag
+            writer.Write(mapId);
+            writer.Write(portalIndex);
+            writer.Write(hp);
+            writer.Write(chaseEnabled ? (byte)1 : (byte)0);
+            if (chaseEnabled)
+            {
+                writer.Write(chaseX);
+                writer.Write(chaseY);
+            }
+
+            writer.Write(serverFileTime);
+            writer.Flush();
+            return stream.ToArray();
+        }
+
         internal static byte[] BuildSyntheticSetFieldPayload(int mapId, string portalName)
         {
             using MemoryStream stream = new();
@@ -111,18 +147,44 @@ namespace HaCreator.MapSimulator.Interaction
 
         private bool TryApplySetField(byte[] payload, PacketStageTransitionCallbacks callbacks, out string message)
         {
+            if (TryDecodeOfficialSetFieldPayload(payload, out PacketSetFieldPacket officialPacket, out string officialDecodeError))
+            {
+                if (!officialPacket.SupportsFieldTransfer)
+                {
+                    string notifierSuffix = FormatNotifierSuffix(officialPacket.NotifierTitle, officialPacket.NotifierLines);
+                    _stageStatus = $"CStage::OnSetField decoded the official character-data branch for channel {officialPacket.ChannelId}, but CharacterData field entry is not modeled yet{notifierSuffix}.";
+                    message = _stageStatus;
+                    return false;
+                }
+
+                PacketStageFieldTransferRequest request = new(
+                    officialPacket.FieldId,
+                    null,
+                    officialPacket.PortalIndex,
+                    "CStage::OnSetField");
+                bool queued = callbacks.QueueFieldTransfer?.Invoke(request) == true;
+                string notifierSummary = FormatNotifierSuffix(officialPacket.NotifierTitle, officialPacket.NotifierLines);
+                _stageStatus = queued
+                    ? $"CStage::OnSetField queued map {officialPacket.FieldId}{FormatPortalIndexSuffix(officialPacket.PortalIndex)} from the official payload (channel {officialPacket.ChannelId}, fieldKey {officialPacket.FieldKey}){notifierSummary}."
+                    : $"CStage::OnSetField decoded map {officialPacket.FieldId}{FormatPortalIndexSuffix(officialPacket.PortalIndex)} from the official payload, but the simulator could not queue the transfer.";
+                message = _stageStatus;
+                return queued;
+            }
+
             if (!TryDecodeSyntheticSetFieldPayload(payload, out int mapId, out string portalName, out string decodeError))
             {
-                message = $"CStage::OnSetField official payload decoding is not modeled yet. {decodeError}";
+                message = officialDecodeError != null
+                    ? $"CStage::OnSetField payload could not be decoded as the official or legacy helper layout. {officialDecodeError}"
+                    : $"CStage::OnSetField payload could not be decoded. {decodeError}";
                 return false;
             }
 
-            bool queued = callbacks.QueueFieldTransfer?.Invoke(mapId, portalName) == true;
-            _stageStatus = queued
-                ? $"CStage::OnSetField queued map {mapId}{FormatPortalSuffix(portalName)}."
+            bool legacyQueued = callbacks.QueueFieldTransfer?.Invoke(new PacketStageFieldTransferRequest(mapId, portalName, -1, "synthetic-helper")) == true;
+            _stageStatus = legacyQueued
+                ? $"CStage::OnSetField queued map {mapId}{FormatPortalSuffix(portalName)} from the legacy helper payload."
                 : $"CStage::OnSetField ignored map {mapId}{FormatPortalSuffix(portalName)} because the simulator could not queue the transfer.";
             message = _stageStatus;
-            return queued;
+            return legacyQueued;
         }
 
         private bool TryApplySetBackEffect(byte[] payload, int currentTick, PacketStageTransitionCallbacks callbacks, out string message)
@@ -203,6 +265,114 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
+        internal static bool TryDecodeOfficialSetFieldPayload(byte[] payload, out PacketSetFieldPacket packet, out string error)
+        {
+            packet = default;
+            error = null;
+            payload ??= Array.Empty<byte>();
+
+            try
+            {
+                using MemoryStream stream = new(payload, writable: false);
+                using BinaryReader reader = new(stream, Encoding.Default, leaveOpen: false);
+                ushort optionCount = reader.ReadUInt16();
+                Dictionary<uint, int> clientOptions = new(optionCount);
+                for (int i = 0; i < optionCount; i++)
+                {
+                    clientOptions[reader.ReadUInt32()] = reader.ReadInt32();
+                }
+
+                int channelId = reader.ReadInt32();
+                int oldDriverId = reader.ReadInt32();
+                byte fieldKey = reader.ReadByte();
+                bool hasCharacterData = reader.ReadByte() != 0;
+                ushort notifierEntryCount = reader.ReadUInt16();
+                string notifierTitle = string.Empty;
+                List<string> notifierLines = new();
+                if (notifierEntryCount > 0)
+                {
+                    notifierTitle = ReadMapleString(reader);
+                    for (int i = 0; i < notifierEntryCount; i++)
+                    {
+                        notifierLines.Add(ReadMapleString(reader));
+                    }
+                }
+
+                if (hasCharacterData)
+                {
+                    packet = new PacketSetFieldPacket(
+                        clientOptions,
+                        channelId,
+                        oldDriverId,
+                        fieldKey,
+                        hasCharacterData,
+                        notifierTitle,
+                        notifierLines,
+                        false,
+                        0,
+                        0,
+                        0,
+                        false,
+                        0,
+                        0,
+                        0,
+                        (int)(stream.Length - stream.Position));
+                    return true;
+                }
+
+                _ = reader.ReadByte(); // revive flag
+                int fieldId = reader.ReadInt32();
+                byte portalIndex = reader.ReadByte();
+                int hp = reader.ReadInt32();
+                bool chaseEnabled = reader.ReadByte() != 0;
+                int chaseX = 0;
+                int chaseY = 0;
+                if (chaseEnabled)
+                {
+                    chaseX = reader.ReadInt32();
+                    chaseY = reader.ReadInt32();
+                }
+
+                long serverFileTime = reader.ReadInt64();
+                long remaining = stream.Length - stream.Position;
+                if (remaining > 0)
+                {
+                    error = $"Official CStage::OnSetField payload has {remaining} trailing byte(s) after the non-character-data branch.";
+                    return false;
+                }
+
+                if (fieldId <= 0)
+                {
+                    error = $"Official CStage::OnSetField payload contains an invalid field id: {fieldId.ToString(CultureInfo.InvariantCulture)}.";
+                    return false;
+                }
+
+                packet = new PacketSetFieldPacket(
+                    clientOptions,
+                    channelId,
+                    oldDriverId,
+                    fieldKey,
+                    hasCharacterData,
+                    notifierTitle,
+                    notifierLines,
+                    true,
+                    fieldId,
+                    portalIndex,
+                    hp,
+                    chaseEnabled,
+                    chaseX,
+                    chaseY,
+                    serverFileTime,
+                    0);
+                return true;
+            }
+            catch (Exception ex) when (ex is IOException || ex is EndOfStreamException || ex is ArgumentException)
+            {
+                error = $"Official CStage::OnSetField payload could not be decoded: {ex.Message}";
+                return false;
+            }
+        }
+
         internal static bool TryDecodeBackEffectPayload(byte[] payload, out PacketBackEffectPacket packet, out string error)
         {
             packet = default;
@@ -277,6 +447,26 @@ namespace HaCreator.MapSimulator.Interaction
                 : $" via portal '{portalName.Trim()}'";
         }
 
+        private static string FormatPortalIndexSuffix(int portalIndex)
+        {
+            return portalIndex < 0
+                ? string.Empty
+                : $" via portal index {portalIndex.ToString(CultureInfo.InvariantCulture)}";
+        }
+
+        private static string FormatNotifierSuffix(string title, IReadOnlyList<string> lines)
+        {
+            int lineCount = lines?.Count ?? 0;
+            if (lineCount == 0 && string.IsNullOrWhiteSpace(title))
+            {
+                return string.Empty;
+            }
+
+            return string.IsNullOrWhiteSpace(title)
+                ? $" with {lineCount.ToString(CultureInfo.InvariantCulture)} notifier line(s)"
+                : $" with notifier '{title.Trim()}' ({lineCount.ToString(CultureInfo.InvariantCulture)} line(s))";
+        }
+
         private static void WriteMapleString(BinaryWriter writer, string value)
         {
             string text = value ?? string.Empty;
@@ -310,10 +500,30 @@ namespace HaCreator.MapSimulator.Interaction
         internal Func<string> ClearBackEffect { get; init; }
         internal Func<string> OpenCashShop { get; init; }
         internal Func<string> OpenItc { get; init; }
-        internal Func<int, string, bool> QueueFieldTransfer { get; init; }
+        internal Func<PacketStageFieldTransferRequest, bool> QueueFieldTransfer { get; init; }
     }
 
     internal readonly record struct PacketBackEffectPacket(byte Effect, int FieldId, byte PageId, int DurationMs);
 
     internal readonly record struct PacketMapObjectVisibilityEntry(string Name, bool Visible);
+
+    internal readonly record struct PacketStageFieldTransferRequest(int MapId, string PortalName, int PortalIndex, string Source);
+
+    internal readonly record struct PacketSetFieldPacket(
+        IReadOnlyDictionary<uint, int> ClientOptions,
+        int ChannelId,
+        int OldDriverId,
+        byte FieldKey,
+        bool HasCharacterData,
+        string NotifierTitle,
+        IReadOnlyList<string> NotifierLines,
+        bool SupportsFieldTransfer,
+        int FieldId,
+        byte PortalIndex,
+        int Hp,
+        bool ChaseEnabled,
+        int ChaseX,
+        int ChaseY,
+        long ServerFileTime,
+        int TrailingBytes);
 }

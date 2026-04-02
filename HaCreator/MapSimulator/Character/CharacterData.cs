@@ -313,6 +313,9 @@ namespace HaCreator.MapSimulator.Character
                 [2] = "stand1",
                 [3] = "stand2",
                 [4] = "alert",
+                // Client: get_action_name_from_code(17) feeds the same stabO2 afterimage slot
+                // that 1221009 remaps onto before GetMeleeAttackRange/RegisterAfterimage.
+                [17] = "stabO2",
                 [42] = "jump",
                 [43] = "sit",
                 [44] = "prone",
@@ -334,6 +337,7 @@ namespace HaCreator.MapSimulator.Character
                 ["stand1"] = 2,
                 ["stand2"] = 3,
                 ["alert"] = 4,
+                ["stabO2"] = 17,
                 ["jump"] = 42,
                 ["sit"] = 43,
                 ["prone"] = 44,
@@ -950,6 +954,19 @@ namespace HaCreator.MapSimulator.Character
             Pirate
         }
 
+        private enum AutoAssignStrategy
+        {
+            GenericBeginner,
+            BeginnerWarriorLike,
+            Warrior,
+            Magician,
+            BowmanBow,
+            BowmanCrossbowLike,
+            Thief,
+            PirateBrawlerLike,
+            PirateGunslingerLike
+        }
+
         public const int AutoAssignClassBeginner = 0;
         public const int AutoAssignClassWarrior = 1;
         public const int AutoAssignClassMagician = 2;
@@ -1123,13 +1140,40 @@ namespace HaCreator.MapSimulator.Character
         {
             while (AP > 0)
             {
-                bool assigned = AutoAssignClass switch
+                bool assigned = ResolveAutoAssignStrategy() switch
                 {
-                    AutoAssignClassWarrior => TryAutoAssignWarriorPoint(),
-                    AutoAssignClassMagician => TryAutoAssignMagicianPoint(),
-                    AutoAssignClassBowman => TryAutoAssignBowmanPoint(),
-                    AutoAssignClassThief => TryAutoAssignThiefPoint(),
-                    AutoAssignClassPirate => TryAutoAssignPiratePoint(),
+                    AutoAssignStrategy.BeginnerWarriorLike => TryAutoAssignTowardsTarget(
+                        BuffStatType.Dexterity,
+                        Math.Max(1, Level),
+                        BuffStatType.Strength),
+                    AutoAssignStrategy.Warrior => TryAutoAssignTowardsTarget(
+                        BuffStatType.Dexterity,
+                        GetWarriorStyleDexTarget(),
+                        BuffStatType.Strength),
+                    AutoAssignStrategy.Magician => TryAutoAssignTowardsTarget(
+                        BuffStatType.Luck,
+                        GetMagicianLukTarget(),
+                        BuffStatType.Intelligence),
+                    AutoAssignStrategy.BowmanBow => TryAutoAssignTowardsTarget(
+                        BuffStatType.Strength,
+                        GetBowmanStrengthTarget(additionalStrength: 5),
+                        BuffStatType.Dexterity),
+                    AutoAssignStrategy.BowmanCrossbowLike => TryAutoAssignTowardsTarget(
+                        BuffStatType.Strength,
+                        GetBowmanStrengthTarget(additionalStrength: 0),
+                        BuffStatType.Dexterity),
+                    AutoAssignStrategy.Thief => TryAutoAssignTowardsTarget(
+                        BuffStatType.Dexterity,
+                        GetThiefDexTarget(),
+                        BuffStatType.Luck),
+                    AutoAssignStrategy.PirateBrawlerLike => TryAutoAssignTowardsTarget(
+                        BuffStatType.Dexterity,
+                        GetWarriorStyleDexTarget(),
+                        BuffStatType.Strength),
+                    AutoAssignStrategy.PirateGunslingerLike => TryAutoAssignTowardsTarget(
+                        BuffStatType.Strength,
+                        Math.Max(1, Level),
+                        BuffStatType.Dexterity),
                     _ => TryAutoAssignBeginnerPoint()
                 };
 
@@ -1489,39 +1533,132 @@ namespace HaCreator.MapSimulator.Character
             return Random.Shared.Next(min, max + 1);
         }
 
-        private bool TryAutoAssignWarriorPoint()
+        private AutoAssignStrategy ResolveAutoAssignStrategy()
         {
-            return STR % 5 == 0 && DEX < STR / 2
-                ? IncreasePrimaryStat(BuffStatType.Dexterity) || IncreasePrimaryStat(BuffStatType.Strength)
-                : IncreasePrimaryStat(BuffStatType.Strength) || IncreasePrimaryStat(BuffStatType.Dexterity);
+            int absoluteJobId = Math.Abs(Job);
+            if (absoluteJobId == 0 || absoluteJobId == 2001)
+            {
+                return AutoAssignStrategy.BeginnerWarriorLike;
+            }
+
+            return ResolveAutoAssignClass(Job) switch
+            {
+                AutoAssignClassWarrior => AutoAssignStrategy.Warrior,
+                AutoAssignClassMagician => AutoAssignStrategy.Magician,
+                AutoAssignClassBowman => ResolveBowmanAutoAssignStrategy(absoluteJobId),
+                AutoAssignClassThief => AutoAssignStrategy.Thief,
+                AutoAssignClassPirate => ResolvePirateAutoAssignStrategy(absoluteJobId),
+                _ => AutoAssignStrategy.GenericBeginner
+            };
         }
 
-        private bool TryAutoAssignMagicianPoint()
+        private AutoAssignStrategy ResolveBowmanAutoAssignStrategy(int absoluteJobId)
         {
-            return INT % 5 == 0 && LUK < INT / 2
-                ? IncreasePrimaryStat(BuffStatType.Luck) || IncreasePrimaryStat(BuffStatType.Intelligence)
-                : IncreasePrimaryStat(BuffStatType.Intelligence) || IncreasePrimaryStat(BuffStatType.Luck);
+            return GetWeaponCode(GetWeapon()?.ItemId ?? 0) switch
+            {
+                45 => AutoAssignStrategy.BowmanBow,
+                46 or 52 => AutoAssignStrategy.BowmanCrossbowLike,
+                _ => absoluteJobId switch
+                {
+                    300 or 310 or 311 or 312
+                        or 1300 or 1310 or 1311 or 1312 => AutoAssignStrategy.BowmanBow,
+                    320 or 321 or 322
+                        or 3300 or 3310 or 3311 or 3312
+                        or 2002 or 2300 or 2310 or 2311 or 2312 => AutoAssignStrategy.BowmanCrossbowLike,
+                    _ => AutoAssignStrategy.BowmanCrossbowLike
+                }
+            };
         }
 
-        private bool TryAutoAssignBowmanPoint()
+        private AutoAssignStrategy ResolvePirateAutoAssignStrategy(int absoluteJobId)
         {
-            return DEX % 5 == 0 && STR < DEX / 2
-                ? IncreasePrimaryStat(BuffStatType.Strength) || IncreasePrimaryStat(BuffStatType.Dexterity)
-                : IncreasePrimaryStat(BuffStatType.Dexterity) || IncreasePrimaryStat(BuffStatType.Strength);
+            if (IsMechanicAutoAssignJob(absoluteJobId) || IsPirateGunslingerAutoAssignJob(absoluteJobId))
+            {
+                return AutoAssignStrategy.PirateGunslingerLike;
+            }
+
+            if (IsPirateBrawlerAutoAssignJob(absoluteJobId))
+            {
+                return AutoAssignStrategy.PirateBrawlerLike;
+            }
+
+            if (absoluteJobId == 500)
+            {
+                return InferBeginnerPirateAutoAssignStrategy();
+            }
+
+            return AutoAssignStrategy.PirateBrawlerLike;
         }
 
-        private bool TryAutoAssignThiefPoint()
+        private static bool IsMechanicAutoAssignJob(int absoluteJobId)
         {
-            return LUK % 5 == 0 && DEX < LUK / 2
-                ? IncreasePrimaryStat(BuffStatType.Dexterity) || IncreasePrimaryStat(BuffStatType.Luck)
-                : IncreasePrimaryStat(BuffStatType.Luck) || IncreasePrimaryStat(BuffStatType.Dexterity);
+            int jobFamily = absoluteJobId / 100;
+            return jobFamily == 35;
         }
 
-        private bool TryAutoAssignPiratePoint()
+        private static bool IsPirateBrawlerAutoAssignJob(int absoluteJobId)
         {
-            return STR <= DEX
-                ? IncreasePrimaryStat(BuffStatType.Strength) || IncreasePrimaryStat(BuffStatType.Dexterity)
-                : IncreasePrimaryStat(BuffStatType.Dexterity) || IncreasePrimaryStat(BuffStatType.Strength);
+            int jobBranch = absoluteJobId / 10;
+            return jobBranch is 51 or 151 or 53;
+        }
+
+        private static bool IsPirateGunslingerAutoAssignJob(int absoluteJobId)
+        {
+            int jobBranch = absoluteJobId / 10;
+            return jobBranch is 52 or 57;
+        }
+
+        private AutoAssignStrategy InferBeginnerPirateAutoAssignStrategy()
+        {
+            return GetWeaponCode(GetWeapon()?.ItemId ?? 0) switch
+            {
+                48 or 53 => AutoAssignStrategy.PirateBrawlerLike,
+                49 => AutoAssignStrategy.PirateGunslingerLike,
+                _ => DEX > STR
+                    ? AutoAssignStrategy.PirateGunslingerLike
+                    : AutoAssignStrategy.PirateBrawlerLike
+            };
+        }
+
+        private int GetWarriorStyleDexTarget()
+        {
+            int level = Math.Max(1, Level);
+            return level > 20 ? level + 20 : 2 * level;
+        }
+
+        private int GetMagicianLukTarget()
+        {
+            return Math.Max(1, Level) + 3;
+        }
+
+        private int GetBowmanStrengthTarget(int additionalStrength)
+        {
+            return Math.Max(1, Level) + additionalStrength;
+        }
+
+        private int GetThiefDexTarget()
+        {
+            int level = Math.Max(1, Level);
+            return level > 40 ? level + 40 : 2 * level;
+        }
+
+        private bool TryAutoAssignTowardsTarget(BuffStatType targetStat, int targetValue, BuffStatType fallbackStat)
+        {
+            return GetPrimaryStatValue(targetStat) < targetValue
+                ? IncreasePrimaryStat(targetStat) || IncreasePrimaryStat(fallbackStat)
+                : IncreasePrimaryStat(fallbackStat) || IncreasePrimaryStat(targetStat);
+        }
+
+        private int GetPrimaryStatValue(BuffStatType stat)
+        {
+            return stat switch
+            {
+                BuffStatType.Strength => STR,
+                BuffStatType.Dexterity => DEX,
+                BuffStatType.Intelligence => INT,
+                BuffStatType.Luck => LUK,
+                _ => 0
+            };
         }
 
         private bool TryAutoAssignBeginnerPoint()

@@ -1409,7 +1409,7 @@ namespace HaCreator.MapSimulator.UI
                     Color.White);
                 DrawTooltipText(
                     sprite,
-                    $"Level {Math.Max(1, requirement.RequiredLevel)}+",
+                    $"Lv. {Math.Max(1, requirement.RequiredLevel)}+",
                     new Vector2(tooltipX + CLIENT_TOOLTIP_REQUIREMENT_LEVEL_X, rowY + CLIENT_TOOLTIP_REQUIREMENT_LEVEL_Y),
                     new Color(210, 210, 210));
             }

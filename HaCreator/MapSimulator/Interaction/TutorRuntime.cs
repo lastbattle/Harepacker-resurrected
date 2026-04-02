@@ -37,6 +37,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal int ActiveMessageDurationMs { get; private set; }
         internal int ActiveMessageStartedAt { get; private set; } = int.MinValue;
         internal int ActiveMessageExpiresAt { get; private set; } = int.MinValue;
+        internal int MessageSequenceId { get; private set; }
         internal string StatusMessage { get; private set; } = "Tutor runtime idle.";
         internal IReadOnlyCollection<int> ActiveTutorSkillIds => _activeTutorSkillIds;
 
@@ -137,6 +138,7 @@ namespace HaCreator.MapSimulator.Interaction
             ActiveMessageDurationMs = ClampDuration(durationMs <= 0 ? DefaultIndexedDurationMs : durationMs);
             ActiveMessageStartedAt = currentTick;
             ActiveMessageExpiresAt = unchecked(currentTick + ActiveMessageDurationMs);
+            MessageSequenceId++;
             StatusMessage = $"Tutor indexed cue #{LastIndexedMessage} active for {ActiveMessageDurationMs} ms.";
         }
 
@@ -156,6 +158,7 @@ namespace HaCreator.MapSimulator.Interaction
             ActiveMessageDurationMs = ClampDuration(durationMs);
             ActiveMessageStartedAt = currentTick;
             ActiveMessageExpiresAt = unchecked(currentTick + ActiveMessageDurationMs);
+            MessageSequenceId++;
             StatusMessage = $"Tutor text message active for {ActiveMessageDurationMs} ms at width {ActiveMessageWidth}.";
         }
 

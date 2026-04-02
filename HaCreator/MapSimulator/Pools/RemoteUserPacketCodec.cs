@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Character.Skills;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.Physics;
 using HaCreator.MapSimulator.UI;
@@ -211,6 +212,54 @@ namespace HaCreator.MapSimulator.Pools
     public readonly record struct RemoteUserBattlefieldTeamPacket(int CharacterId, int? TeamId);
     public static class RemoteUserPacketCodec
     {
+        private enum RemoteTemporaryStatMaskBit
+        {
+            Speed = 0,
+            ComboCounter = 1,
+            WeaponCharge = 2,
+            Stun = 3,
+            Darkness = 4,
+            Seal = 5,
+            Weakness = 6,
+            Curse = 7,
+            Poison = 8,
+            ShadowPartner = 9,
+            DarkSight = 10,
+            SoulArrow = 11,
+            Morph = 12,
+            Ghost = 13,
+            Attract = 14,
+            SpiritJavelin = 15,
+            BanMap = 16,
+            Barrier = 17,
+            DojangShield = 18,
+            ReverseInput = 19,
+            RespectPImmune = 20,
+            RespectMImmune = 21,
+            DefenseAtt = 22,
+            DefenseState = 23,
+            DojangBerserk = 24,
+            DojangInvincible = 25,
+            WindWalk = 26,
+            RepeatEffect = 27,
+            StopPortion = 28,
+            StopMotion = 29,
+            Fear = 30,
+            MagicShield = 31,
+            Flying = 32,
+            Frozen = 33,
+            SuddenDeath = 34,
+            FinalCut = 35,
+            Cyclone = 36,
+            Sneak = 37,
+            MorewildDamageUp = 38,
+            Mechanic = 39,
+            DarkAura = 40,
+            BlueAura = 41,
+            YellowAura = 42,
+            BlessingArmor = 43
+        }
+
         private const int NewYearCardDefaultItemId = 4300000;
 
         public static bool TryParseEnterField(ReadOnlySpan<byte> payload, out RemoteUserEnterFieldPacket packet, out string error)
@@ -1412,6 +1461,7 @@ namespace HaCreator.MapSimulator.Pools
                 return default;
             }
 
+            int[] maskWords = DecodeTemporaryStatMaskWords(rawPayload.Slice(0, sizeof(int) * 4));
             var reader = new PacketReader(rawPayload);
             reader.ReadBytes(sizeof(int) * 4);
 
@@ -1427,44 +1477,209 @@ namespace HaCreator.MapSimulator.Pools
 
             try
             {
-                speed = reader.ReadByte();
-                reader.ReadByte();
-                reader.ReadInt32();
-                reader.ReadInt32();
-                reader.ReadInt32();
-                reader.ReadInt32();
-                reader.ReadInt32();
-                reader.ReadInt32();
-                reader.ReadInt16();
-                reader.ReadInt32();
-                reader.ReadInt32();
-                hasShadowPartner = true;
-                hasShadowPartner = true;
-                hasDarkSight = true;
-                hasSoulArrow = true;
-                morphId = (ushort)reader.ReadInt16();
-                ghostId = (ushort)reader.ReadInt16();
-                reader.ReadInt32();
-                reader.ReadInt32();
-                reader.ReadInt32();
-                reader.ReadInt32();
-                hasBarrier = true;
-                reader.ReadInt32();
-                reader.ReadInt32();
-                reader.ReadInt32();
-                reader.ReadInt32();
-                reader.ReadInt32();
-                reader.ReadInt32();
-                hasWindWalk = true;
-                reader.ReadInt32();
-                reader.ReadInt32();
-                reader.ReadInt32();
-                reader.ReadInt32();
-                reader.ReadInt32();
-                reader.ReadInt32();
-                reader.ReadInt32();
-                reader.ReadByte();
-                mechanicMode = reader.ReadInt32();
+                if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.Speed))
+                {
+                    speed = reader.ReadByte();
+                }
+
+                if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.ComboCounter))
+                {
+                    reader.ReadByte();
+                }
+
+                if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.WeaponCharge))
+                {
+                    reader.ReadInt32();
+                }
+
+                if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.Stun))
+                {
+                    reader.ReadInt32();
+                }
+
+                if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.Darkness))
+                {
+                    reader.ReadInt32();
+                }
+
+                if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.Seal))
+                {
+                    reader.ReadInt32();
+                }
+
+                if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.Weakness))
+                {
+                    reader.ReadInt32();
+                }
+
+                if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.Curse))
+                {
+                    reader.ReadInt32();
+                }
+
+                if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.Poison))
+                {
+                    reader.ReadInt16();
+                    reader.ReadInt32();
+                }
+
+                if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.ShadowPartner))
+                {
+                    hasShadowPartner = true;
+                    reader.ReadInt32();
+                    hasShadowPartner = true;
+                }
+
+                if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.DarkSight))
+                {
+                    hasDarkSight = true;
+                }
+
+                if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.SoulArrow))
+                {
+                    hasSoulArrow = true;
+                }
+
+                if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.Morph))
+                {
+                    morphId = (ushort)reader.ReadInt16();
+                }
+
+                if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.Ghost))
+                {
+                    ghostId = (ushort)reader.ReadInt16();
+                }
+
+                if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.Attract))
+                {
+                    reader.ReadInt32();
+                }
+
+                if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.SpiritJavelin))
+                {
+                    reader.ReadInt32();
+                }
+
+                if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.BanMap))
+                {
+                    reader.ReadInt32();
+                }
+
+                if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.Barrier))
+                {
+                    hasBarrier = true;
+                    reader.ReadInt32();
+                }
+
+                if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.DojangShield))
+                {
+                    reader.ReadInt32();
+                }
+
+                if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.ReverseInput))
+                {
+                    reader.ReadInt32();
+                }
+
+                if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.RespectPImmune))
+                {
+                    reader.ReadInt32();
+                }
+
+                if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.RespectMImmune))
+                {
+                    reader.ReadInt32();
+                }
+
+                if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.DefenseAtt))
+                {
+                    reader.ReadInt32();
+                }
+
+                if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.DefenseState))
+                {
+                    reader.ReadInt32();
+                }
+
+                if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.WindWalk))
+                {
+                    hasWindWalk = true;
+                }
+
+                if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.RepeatEffect))
+                {
+                    reader.ReadInt32();
+                }
+
+                if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.StopPortion))
+                {
+                    reader.ReadInt32();
+                }
+
+                if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.StopMotion))
+                {
+                    reader.ReadInt32();
+                }
+
+                if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.Fear))
+                {
+                    reader.ReadInt32();
+                }
+
+                if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.MagicShield))
+                {
+                    reader.ReadInt32();
+                }
+
+                if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.Frozen))
+                {
+                    reader.ReadInt32();
+                }
+
+                if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.SuddenDeath))
+                {
+                    reader.ReadInt32();
+                }
+
+                if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.FinalCut))
+                {
+                    reader.ReadInt32();
+                }
+
+                if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.Cyclone))
+                {
+                    reader.ReadByte();
+                }
+
+                if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.Mechanic))
+                {
+                    mechanicMode = reader.ReadInt32();
+                }
+
+                if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.DarkAura))
+                {
+                    reader.ReadInt32();
+                }
+
+                if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.BlueAura))
+                {
+                    reader.ReadInt32();
+                }
+
+                if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.YellowAura))
+                {
+                    reader.ReadInt32();
+                }
+
+                if (reader.RemainingLength > 0)
+                {
+                    reader.ReadByte();
+                }
+
+                if (reader.RemainingLength > 0)
+                {
+                    reader.ReadByte();
+                }
             }
             catch (InvalidOperationException)
             {
@@ -1482,6 +1697,56 @@ namespace HaCreator.MapSimulator.Pools
                 hasBarrier,
                 hasWindWalk,
                 mechanicMode);
+        }
+
+        private static bool IsTemporaryStatActive(int[] maskWords, RemoteTemporaryStatMaskBit bit)
+        {
+            int bitIndex = (int)bit;
+            int wordIndex = bitIndex / 32;
+            int bitOffset = bitIndex % 32;
+            return maskWords != null
+                && wordIndex >= 0
+                && wordIndex < maskWords.Length
+                && ((((uint)maskWords[wordIndex]) >> bitOffset) & 0x1u) != 0;
+        }
+
+        internal static RemoteUserTemporaryStatSnapshot ApplyResetMask(
+            RemoteUserTemporaryStatSnapshot snapshot,
+            int[] remainingMaskWords)
+        {
+            if (remainingMaskWords == null || remainingMaskWords.Length == 0)
+            {
+                return default;
+            }
+
+            bool hasActiveBits = false;
+            for (int i = 0; i < remainingMaskWords.Length; i++)
+            {
+                hasActiveBits |= remainingMaskWords[i] != 0;
+            }
+
+            if (!hasActiveBits)
+            {
+                return default;
+            }
+
+            RemoteUserTemporaryStatKnownState knownState = snapshot.KnownState;
+            RemoteUserTemporaryStatKnownState maskedKnownState = new(
+                IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.Speed) ? knownState.Speed : null,
+                knownState.HasShadowPartner && IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.ShadowPartner),
+                knownState.HasDarkSight && IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.DarkSight),
+                knownState.HasSoulArrow && IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.SoulArrow),
+                IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.Morph) ? knownState.MorphId : null,
+                IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.Ghost) ? knownState.GhostId : null,
+                knownState.HasBarrier && IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.Barrier),
+                knownState.HasWindWalk && IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.WindWalk),
+                IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.Mechanic) ? knownState.MechanicMode : null);
+
+            return snapshot with
+            {
+                MaskWords = remainingMaskWords,
+                KnownState = maskedKnownState
+            };
         }
 
         private static int FindOfficialAvatarLookOffset(ReadOnlySpan<byte> payload, int searchStartOffset, out string error)
@@ -1594,7 +1859,7 @@ namespace HaCreator.MapSimulator.Pools
 
         private static void SkipOfficialPostAttackPayload(ref PacketReader reader, int skillId)
         {
-            if (skillId is 2121001 or 2221001 or 2321001 or 22121000 or 22151001 or 33101007)
+            if (PreparedSkillHudRules.UsesRemoteReleaseFollowUpPayload(skillId))
             {
                 reader.ReadInt32();
             }

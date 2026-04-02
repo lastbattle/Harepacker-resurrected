@@ -370,6 +370,7 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly List<SocialRoomChatEntry> _chatEntries;
         private readonly List<string> _savedVisitors;
         private readonly List<string> _blockedVisitors;
+        private readonly List<EntrustedShopVisitLogEntrySnapshot> _entrustedVisitLogEntries;
         private readonly Queue<string> _pendingVisitorNames;
         private readonly List<InventoryEscrowEntry> _inventoryEscrow;
         private readonly List<SocialRoomRemoteInventoryEntry> _remoteInventoryEntries;
@@ -403,6 +404,10 @@ namespace HaCreator.MapSimulator.Interaction
         private bool _tradeLocalVerificationReady;
         private bool _tradeRemoteVerificationReady;
         private DateTime? _entrustedPermitExpiresAtUtc;
+        private EntrustedShopChildDialogKind? _entrustedChildDialogKind;
+        private int _entrustedVisitListSelectedIndex = -1;
+        private int _entrustedBlacklistSelectedIndex = -1;
+        private string _entrustedChildDialogStatus = string.Empty;
         private int _employeeTemplateId;
         private bool _employeeUseOwnerAnchor = true;
         private int _employeeAnchorOffsetX;
@@ -434,6 +439,7 @@ namespace HaCreator.MapSimulator.Interaction
         private Action<string, SocialRoomRuntimeSnapshot> _persistStateHandler;
         private readonly ShopDialogPacketOwner _shopDialogPacketOwner;
         private IInventoryRuntime _inventoryRuntime;
+        public Action<string, int> SocialChatObserved { get; set; }
 
         private SocialRoomRuntime(
             SocialRoomKind kind,
@@ -460,6 +466,7 @@ namespace HaCreator.MapSimulator.Interaction
             _chatEntries = chatEntries?.Where(entry => entry != null && !string.IsNullOrWhiteSpace(entry.Text)).ToList() ?? new List<SocialRoomChatEntry>();
             _savedVisitors = new List<string>();
             _blockedVisitors = new List<string>();
+            _entrustedVisitLogEntries = new List<EntrustedShopVisitLogEntrySnapshot>();
             _pendingVisitorNames = new Queue<string>(new[] { "Rondo", "Rin", "Maya", "Pia", "Targa", "Rowen" });
             _inventoryEscrow = new List<InventoryEscrowEntry>();
             _remoteInventoryEntries = new List<SocialRoomRemoteInventoryEntry>();
@@ -516,6 +523,7 @@ namespace HaCreator.MapSimulator.Interaction
         public IReadOnlyList<SocialRoomChatEntry> ChatEntries => _chatEntries;
         public IReadOnlyList<SocialRoomSoldItemEntry> SoldItems => _soldItems;
         public IReadOnlyList<SocialRoomRemoteInventoryEntry> RemoteInventoryEntries => _remoteInventoryEntries;
+        public IReadOnlyList<EntrustedShopVisitLogEntrySnapshot> EntrustedVisitLogEntries => _entrustedVisitLogEntries;
         public int RemoteInventoryMeso => _remoteInventoryMeso;
         public int PersonalShopTotalSoldGross => _personalShopTotalSoldGross;
         public int PersonalShopTotalReceivedNet => _personalShopTotalReceivedNet;
@@ -526,6 +534,7 @@ namespace HaCreator.MapSimulator.Interaction
         public int MiniRoomOmokWinnerIndex => _miniRoomOmokWinnerIndex;
         public int MiniRoomOmokLastMoveX => _miniRoomOmokLastMoveX;
         public int MiniRoomOmokLastMoveY => _miniRoomOmokLastMoveY;
+        public EntrustedShopChildDialogSnapshot EntrustedChildDialog => BuildEntrustedChildDialogSnapshot();
 
         public void BindInventory(IInventoryRuntime inventoryRuntime)
         {
@@ -677,6 +686,17 @@ namespace HaCreator.MapSimulator.Interaction
                     })
                     .ToList(),
                 SavedVisitors = _savedVisitors.ToList(),
+                EntrustedVisitListSelectedIndex = _entrustedVisitListSelectedIndex,
+                EntrustedBlacklistSelectedIndex = _entrustedBlacklistSelectedIndex,
+                EntrustedChildDialogStatus = _entrustedChildDialogStatus,
+                EntrustedVisitLogEntries = _entrustedVisitLogEntries
+                    .Select(entry => new EntrustedShopVisitLogEntrySnapshot
+                    {
+                        Name = entry.Name,
+                        StaySeconds = entry.StaySeconds
+                    })
+                    .ToList(),
+                EntrustedChildDialog = BuildEntrustedChildDialogSnapshot(),
                 BlockedVisitors = _blockedVisitors.ToList(),
                 RemoteInventoryMeso = _remoteInventoryMeso,
                 RemoteInventoryEntries = _remoteInventoryEntries
@@ -735,6 +755,12 @@ namespace HaCreator.MapSimulator.Interaction
                 _tradeLocalVerificationReady = source?.TradeLocalVerificationReady ?? _defaultSnapshot.TradeLocalVerificationReady;
                 _tradeRemoteVerificationReady = source?.TradeRemoteVerificationReady ?? _defaultSnapshot.TradeRemoteVerificationReady;
                 _entrustedPermitExpiresAtUtc = source?.EntrustedPermitExpiresAtUtc ?? _defaultSnapshot.EntrustedPermitExpiresAtUtc;
+                _entrustedVisitListSelectedIndex = source?.EntrustedVisitListSelectedIndex ?? _defaultSnapshot.EntrustedVisitListSelectedIndex;
+                _entrustedBlacklistSelectedIndex = source?.EntrustedBlacklistSelectedIndex ?? _defaultSnapshot.EntrustedBlacklistSelectedIndex;
+                _entrustedChildDialogStatus = source?.EntrustedChildDialogStatus ?? _defaultSnapshot.EntrustedChildDialogStatus ?? string.Empty;
+                _entrustedChildDialogKind = source?.EntrustedChildDialog?.IsOpen == true
+                    ? source.EntrustedChildDialog.Kind
+                    : _defaultSnapshot.EntrustedChildDialog?.IsOpen == true ? _defaultSnapshot.EntrustedChildDialog.Kind : null;
                 _employeeTemplateId = Math.Max(0, source?.EmployeeTemplateId ?? _defaultSnapshot.EmployeeTemplateId);
                 _employeeUseOwnerAnchor = source?.EmployeeUseOwnerAnchor ?? _defaultSnapshot.EmployeeUseOwnerAnchor;
                 _employeeAnchorOffsetX = source?.EmployeeAnchorOffsetX ?? _defaultSnapshot.EmployeeAnchorOffsetX;
@@ -811,6 +837,21 @@ namespace HaCreator.MapSimulator.Interaction
                     }
                 }
 
+                _entrustedVisitLogEntries.Clear();
+                foreach (EntrustedShopVisitLogEntrySnapshot entry in source?.EntrustedVisitLogEntries ?? Enumerable.Empty<EntrustedShopVisitLogEntrySnapshot>())
+                {
+                    if (entry == null || string.IsNullOrWhiteSpace(entry.Name))
+                    {
+                        continue;
+                    }
+
+                    _entrustedVisitLogEntries.Add(new EntrustedShopVisitLogEntrySnapshot
+                    {
+                        Name = NormalizeName(entry.Name),
+                        StaySeconds = Math.Max(0, entry.StaySeconds)
+                    });
+                }
+
                 _blockedVisitors.Clear();
                 foreach (string visitor in source?.BlockedVisitors ?? Enumerable.Empty<string>())
                 {
@@ -819,6 +860,9 @@ namespace HaCreator.MapSimulator.Interaction
                         _blockedVisitors.Add(visitor);
                     }
                 }
+
+                _entrustedVisitListSelectedIndex = NormalizeEntrustedDialogSelectionIndex(_entrustedVisitListSelectedIndex, _entrustedVisitLogEntries.Count);
+                _entrustedBlacklistSelectedIndex = NormalizeEntrustedDialogSelectionIndex(_entrustedBlacklistSelectedIndex, _blockedVisitors.Count);
 
                 int[] boardSource = ((source?.MiniRoomOmokBoard?.Count ?? 0) == _miniRoomOmokBoard.Length
                     ? source.MiniRoomOmokBoard
@@ -889,6 +933,11 @@ namespace HaCreator.MapSimulator.Interaction
             RestoreSnapshot(_defaultSnapshot);
         }
 
+        public EntrustedShopChildDialogSnapshot GetEntrustedChildDialogSnapshot()
+        {
+            return BuildEntrustedChildDialogSnapshot();
+        }
+
         public string DescribeStatus()
         {
             RefreshTimedState(DateTime.UtcNow);
@@ -900,6 +949,87 @@ namespace HaCreator.MapSimulator.Interaction
                 SocialRoomKind.TradingRoom => $"{RoomTitle}: state={RoomState}, localMeso={MesoAmount:N0}, remoteMeso={_tradeRemoteOfferMeso:N0}, remoteWallet={_remoteInventoryMeso:N0}, remoteItems={_remoteInventoryEntries.Sum(entry => entry.Quantity)}, lock={FormatTradePartyState(_tradeLocalLocked, _tradeRemoteLocked)}, accept={FormatTradePartyState(_tradeLocalAccepted, _tradeRemoteAccepted)}, crc={DescribeTradeVerificationStatus()}, escrowRows={_inventoryEscrow.Count}",
                 _ => RoomState
             };
+        }
+
+        private EntrustedShopChildDialogSnapshot BuildEntrustedChildDialogSnapshot()
+        {
+            if (Kind != SocialRoomKind.EntrustedShop || !_entrustedChildDialogKind.HasValue)
+            {
+                return null;
+            }
+
+            EntrustedShopChildDialogKind kind = _entrustedChildDialogKind.Value;
+            int selectedIndex = kind == EntrustedShopChildDialogKind.VisitList
+                ? NormalizeEntrustedDialogSelectionIndex(_entrustedVisitListSelectedIndex, _entrustedVisitLogEntries.Count)
+                : NormalizeEntrustedDialogSelectionIndex(_entrustedBlacklistSelectedIndex, _blockedVisitors.Count);
+            List<EntrustedShopChildDialogEntrySnapshot> entries = kind == EntrustedShopChildDialogKind.VisitList
+                ? _entrustedVisitLogEntries
+                    .Select((entry, index) => new EntrustedShopChildDialogEntrySnapshot
+                    {
+                        PrimaryText = entry.Name,
+                        SecondaryText = $"{entry.StaySeconds}s",
+                        IsSelected = index == selectedIndex
+                    })
+                    .ToList()
+                : _blockedVisitors
+                    .Select((entry, index) => new EntrustedShopChildDialogEntrySnapshot
+                    {
+                        PrimaryText = entry,
+                        SecondaryText = $"{index + 1:00}",
+                        IsSelected = index == selectedIndex
+                    })
+                    .ToList();
+            bool canPrimaryAction = kind == EntrustedShopChildDialogKind.VisitList
+                ? HasValidEntrustedVisitListSelection()
+                : _blockedVisitors.Count < 20;
+            bool canSecondaryAction = kind == EntrustedShopChildDialogKind.Blacklist && HasValidEntrustedBlacklistSelection();
+
+            return new EntrustedShopChildDialogSnapshot
+            {
+                IsOpen = true,
+                Kind = kind,
+                OwnerName = ResolveEntrustedChildDialogOwnerName(kind),
+                Title = kind == EntrustedShopChildDialogKind.VisitList ? "Visit List" : "Blacklist",
+                Subtitle = kind == EntrustedShopChildDialogKind.VisitList
+                    ? $"{_entrustedVisitLogEntries.Count} visitor entr{(_entrustedVisitLogEntries.Count == 1 ? "y" : "ies")}"
+                    : $"{_blockedVisitors.Count}/20 blocked entr{(_blockedVisitors.Count == 1 ? "y" : "ies")}",
+                StatusText = string.IsNullOrWhiteSpace(_entrustedChildDialogStatus)
+                    ? kind == EntrustedShopChildDialogKind.VisitList
+                        ? "Select a visit row to enable Save Name."
+                        : "Add remains available until the blacklist reaches 20 entries."
+                    : _entrustedChildDialogStatus,
+                PrimaryActionText = kind == EntrustedShopChildDialogKind.VisitList ? "Save Name" : "Add",
+                SecondaryActionText = kind == EntrustedShopChildDialogKind.VisitList ? "Close" : "Delete",
+                FooterText = kind == EntrustedShopChildDialogKind.VisitList
+                    ? "Save Name copies the selected visitor name to the clipboard."
+                    : "Delete only enables when the selected blacklist row is valid.",
+                CanPrimaryAction = canPrimaryAction,
+                CanSecondaryAction = canSecondaryAction,
+                SelectedIndex = selectedIndex,
+                Entries = entries
+            };
+        }
+
+        private static int NormalizeEntrustedDialogSelectionIndex(int index, int count)
+        {
+            return count <= 0 || index < 0 || index >= count ? -1 : index;
+        }
+
+        private bool HasValidEntrustedVisitListSelection()
+        {
+            return NormalizeEntrustedDialogSelectionIndex(_entrustedVisitListSelectedIndex, _entrustedVisitLogEntries.Count) >= 0;
+        }
+
+        private bool HasValidEntrustedBlacklistSelection()
+        {
+            return NormalizeEntrustedDialogSelectionIndex(_entrustedBlacklistSelectedIndex, _blockedVisitors.Count) >= 0;
+        }
+
+        private static string ResolveEntrustedChildDialogOwnerName(EntrustedShopChildDialogKind kind)
+        {
+            return kind == EntrustedShopChildDialogKind.VisitList
+                ? "CEntrustedShopDlg::CVisitListDlg"
+                : "CEntrustedShopDlg::CBlackListDlg";
         }
 
         public string DescribePacketOwnerStatus()
@@ -2445,11 +2575,22 @@ namespace HaCreator.MapSimulator.Interaction
             AddMiniRoomChatEntry(
                 $"{resolvedSpeaker} : {message.Trim()}",
                 isLocalSpeaker ? SocialRoomChatTone.LocalSpeaker : SocialRoomChatTone.RemoteSpeaker);
+            NotifySocialChatObserved(message);
         }
 
         public void AddMiniRoomSystemMessage(string message, bool isWarning = false)
         {
             AddMiniRoomChatEntry(message, isWarning ? SocialRoomChatTone.Warning : SocialRoomChatTone.System);
+        }
+
+        private void NotifySocialChatObserved(string message)
+        {
+            if (string.IsNullOrWhiteSpace(message))
+            {
+                return;
+            }
+
+            SocialChatObserved?.Invoke(message.Trim(), Environment.TickCount);
         }
 
         private void SetMiniRoomGuestReady(bool isReady, bool persistState)
@@ -2733,12 +2874,18 @@ namespace HaCreator.MapSimulator.Interaction
         {
             int count = reader.ReadShort();
             _savedVisitors.Clear();
+            _entrustedVisitLogEntries.Clear();
             List<string> visitNotes = new();
             for (int i = 0; i < count; i++)
             {
                 string name = NormalizeName(reader.ReadMapleString());
                 int staySeconds = reader.ReadInt();
                 _savedVisitors.Add(name);
+                _entrustedVisitLogEntries.Add(new EntrustedShopVisitLogEntrySnapshot
+                {
+                    Name = name,
+                    StaySeconds = Math.Max(0, staySeconds)
+                });
                 visitNotes.Add($"{name} stayed {staySeconds}s");
             }
 
@@ -2750,7 +2897,12 @@ namespace HaCreator.MapSimulator.Interaction
             _notes[0] = count > 0
                 ? $"Entrusted-shop visit log: {string.Join(", ", visitNotes)}."
                 : "Entrusted-shop visit log: no entries.";
-            StatusMessage = $"Applied entrusted-shop visit-list packet with {count} visitor entr{(count == 1 ? "y" : "ies")}.";
+            _entrustedVisitListSelectedIndex = NormalizeEntrustedDialogSelectionIndex(_entrustedVisitListSelectedIndex, _entrustedVisitLogEntries.Count);
+            _entrustedChildDialogKind = EntrustedShopChildDialogKind.VisitList;
+            _entrustedChildDialogStatus = count > 0
+                ? "CVisitListDlg::OnCreate opened the dedicated visit-list owner. Save Name remains disabled until a visit row is selected."
+                : "CVisitListDlg::OnCreate opened the dedicated visit-list owner with an empty visit log.";
+            StatusMessage = $"Applied entrusted-shop visit-list packet with {count} visitor entr{(count == 1 ? "y" : "ies")} and opened {ResolveEntrustedChildDialogOwnerName(EntrustedShopChildDialogKind.VisitList)}.";
             PersistState();
             message = StatusMessage;
             return true;
@@ -2773,10 +2925,265 @@ namespace HaCreator.MapSimulator.Interaction
             _notes[1] = _blockedVisitors.Count > 0
                 ? $"Entrusted-shop blacklist: {string.Join(", ", _blockedVisitors)}."
                 : "Entrusted-shop blacklist: empty.";
-            StatusMessage = $"Applied entrusted-shop blacklist packet with {_blockedVisitors.Count} entr{(_blockedVisitors.Count == 1 ? "y" : "ies")}.";
+            _entrustedBlacklistSelectedIndex = NormalizeEntrustedDialogSelectionIndex(_entrustedBlacklistSelectedIndex, _blockedVisitors.Count);
+            _entrustedChildDialogKind = EntrustedShopChildDialogKind.Blacklist;
+            _entrustedChildDialogStatus = _blockedVisitors.Count < 20
+                ? "CBlackListDlg::OnCreate opened the dedicated blacklist owner. Add stays enabled while the client-side count remains below 20."
+                : "CBlackListDlg::OnCreate opened the dedicated blacklist owner at the client-side 20-name add limit.";
+            StatusMessage = $"Applied entrusted-shop blacklist packet with {_blockedVisitors.Count} entr{(_blockedVisitors.Count == 1 ? "y" : "ies")} and opened {ResolveEntrustedChildDialogOwnerName(EntrustedShopChildDialogKind.Blacklist)}.";
             PersistState();
             message = StatusMessage;
             return true;
+        }
+
+        public bool TryOpenEntrustedChildDialog(EntrustedShopChildDialogKind kind, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.EntrustedShop)
+            {
+                message = "Entrusted-shop child dialogs only apply to the entrusted shop shell.";
+                return false;
+            }
+
+            _entrustedChildDialogKind = kind;
+            if (kind == EntrustedShopChildDialogKind.VisitList)
+            {
+                _entrustedVisitListSelectedIndex = NormalizeEntrustedDialogSelectionIndex(_entrustedVisitListSelectedIndex, _entrustedVisitLogEntries.Count);
+                _entrustedChildDialogStatus = _entrustedVisitLogEntries.Count > 0
+                    ? "CVisitListDlg reopened from the existing entrusted-shop visit log."
+                    : "CVisitListDlg reopened without packet-fed visit rows.";
+            }
+            else
+            {
+                _entrustedBlacklistSelectedIndex = NormalizeEntrustedDialogSelectionIndex(_entrustedBlacklistSelectedIndex, _blockedVisitors.Count);
+                _entrustedChildDialogStatus = _blockedVisitors.Count < 20
+                    ? "CBlackListDlg reopened from the existing entrusted-shop blacklist."
+                    : "CBlackListDlg reopened at the client-side 20-name add limit.";
+            }
+
+            StatusMessage = $"{ResolveEntrustedChildDialogOwnerName(kind)} reopened from the entrusted-shop runtime snapshot.";
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        public bool CloseEntrustedChildDialog(out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.EntrustedShop || !_entrustedChildDialogKind.HasValue)
+            {
+                message = "No entrusted-shop child dialog is currently open.";
+                return false;
+            }
+
+            EntrustedShopChildDialogKind closingKind = _entrustedChildDialogKind.Value;
+            _entrustedChildDialogKind = null;
+            _entrustedChildDialogStatus = $"{ResolveEntrustedChildDialogOwnerName(closingKind)} closed through SetRet and returned to the parent entrusted-shop shell.";
+            StatusMessage = _entrustedChildDialogStatus;
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        public bool TrySelectEntrustedChildDialogEntry(int index, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.EntrustedShop || !_entrustedChildDialogKind.HasValue)
+            {
+                message = "No entrusted-shop child dialog is available to select.";
+                return false;
+            }
+
+            if (_entrustedChildDialogKind == EntrustedShopChildDialogKind.VisitList)
+            {
+                _entrustedVisitListSelectedIndex = NormalizeEntrustedDialogSelectionIndex(index, _entrustedVisitLogEntries.Count);
+                if (_entrustedVisitListSelectedIndex < 0)
+                {
+                    message = "Visit-list selection cleared.";
+                    return false;
+                }
+
+                EntrustedShopVisitLogEntrySnapshot selectedEntry = _entrustedVisitLogEntries[_entrustedVisitListSelectedIndex];
+                _entrustedChildDialogStatus = $"Selected visit row {_entrustedVisitListSelectedIndex + 1}: {selectedEntry.Name} stayed {selectedEntry.StaySeconds}s.";
+                StatusMessage = _entrustedChildDialogStatus;
+                PersistState();
+                message = StatusMessage;
+                return true;
+            }
+
+            _entrustedBlacklistSelectedIndex = NormalizeEntrustedDialogSelectionIndex(index, _blockedVisitors.Count);
+            if (_entrustedBlacklistSelectedIndex < 0)
+            {
+                message = "Blacklist selection cleared.";
+                return false;
+            }
+
+            string blockedName = _blockedVisitors[_entrustedBlacklistSelectedIndex];
+            _entrustedChildDialogStatus = $"Selected blacklist row {_entrustedBlacklistSelectedIndex + 1}: {blockedName}.";
+            StatusMessage = _entrustedChildDialogStatus;
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        public bool TryCopySelectedEntrustedVisitName(out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.EntrustedShop || _entrustedChildDialogKind != EntrustedShopChildDialogKind.VisitList)
+            {
+                message = "Visit-list Save Name only applies while the entrusted visit-list dialog is open.";
+                return false;
+            }
+
+            if (!HasValidEntrustedVisitListSelection())
+            {
+                message = "Save Name stays disabled until the selected visit-list cell is valid.";
+                return false;
+            }
+
+            EntrustedShopVisitLogEntrySnapshot selectedEntry = _entrustedVisitLogEntries[_entrustedVisitListSelectedIndex];
+            bool clipboardUpdated = false;
+            try
+            {
+                System.Windows.Forms.Clipboard.SetText(selectedEntry.Name);
+                clipboardUpdated = true;
+            }
+            catch
+            {
+                clipboardUpdated = false;
+            }
+
+            _entrustedChildDialogStatus = clipboardUpdated
+                ? $"Save Name copied {selectedEntry.Name} to the clipboard."
+                : $"Save Name resolved {selectedEntry.Name}, but clipboard access is not available in this environment.";
+            StatusMessage = _entrustedChildDialogStatus;
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        public bool TryAddEntrustedBlacklistEntry(string visitorName, out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.EntrustedShop || _entrustedChildDialogKind != EntrustedShopChildDialogKind.Blacklist)
+            {
+                message = "Blacklist add only applies while the entrusted blacklist dialog is open.";
+                return false;
+            }
+
+            if (_blockedVisitors.Count >= 20)
+            {
+                message = "Blacklist add is disabled because the client-side 20-name limit has been reached.";
+                return false;
+            }
+
+            string resolvedName = ResolveEntrustedBlacklistCandidate(visitorName);
+            if (string.IsNullOrWhiteSpace(resolvedName))
+            {
+                message = "No simulated blacklist name is available. Provide one explicitly or select a visit row first.";
+                return false;
+            }
+
+            if (!IsValidEntrustedBlacklistName(resolvedName))
+            {
+                message = $"{resolvedName} is not a valid MapleStory character name for the blacklist prompt.";
+                return false;
+            }
+
+            if (string.Equals(resolvedName, OwnerName, StringComparison.OrdinalIgnoreCase))
+            {
+                message = "The entrusted-shop owner cannot add their own name to the blacklist.";
+                return false;
+            }
+
+            if (_blockedVisitors.Contains(resolvedName, StringComparer.OrdinalIgnoreCase))
+            {
+                message = $"{resolvedName} is already present in the entrusted-shop blacklist.";
+                return false;
+            }
+
+            _blockedVisitors.Add(resolvedName);
+            _entrustedBlacklistSelectedIndex = _blockedVisitors.Count - 1;
+            EnsureMerchantPacketNotes();
+            _notes[1] = $"Entrusted-shop blacklist: {string.Join(", ", _blockedVisitors)}.";
+            _entrustedChildDialogStatus = $"Added {resolvedName} to the entrusted-shop blacklist. Add remains enabled while the count stays below 20.";
+            StatusMessage = _entrustedChildDialogStatus;
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        public bool TryDeleteSelectedEntrustedBlacklistEntry(out string message)
+        {
+            message = null;
+            if (Kind != SocialRoomKind.EntrustedShop || _entrustedChildDialogKind != EntrustedShopChildDialogKind.Blacklist)
+            {
+                message = "Blacklist delete only applies while the entrusted blacklist dialog is open.";
+                return false;
+            }
+
+            if (!HasValidEntrustedBlacklistSelection())
+            {
+                message = "Delete stays disabled until the selected blacklist cell is valid.";
+                return false;
+            }
+
+            string removedName = _blockedVisitors[_entrustedBlacklistSelectedIndex];
+            _blockedVisitors.RemoveAt(_entrustedBlacklistSelectedIndex);
+            _entrustedBlacklistSelectedIndex = NormalizeEntrustedDialogSelectionIndex(_entrustedBlacklistSelectedIndex, _blockedVisitors.Count);
+            EnsureMerchantPacketNotes();
+            _notes[1] = _blockedVisitors.Count > 0
+                ? $"Entrusted-shop blacklist: {string.Join(", ", _blockedVisitors)}."
+                : "Entrusted-shop blacklist: empty.";
+            _entrustedChildDialogStatus = $"Deleted {removedName} from the entrusted-shop blacklist.";
+            StatusMessage = _entrustedChildDialogStatus;
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        private string ResolveEntrustedBlacklistCandidate(string visitorName)
+        {
+            if (!string.IsNullOrWhiteSpace(visitorName))
+            {
+                return NormalizeName(visitorName);
+            }
+
+            if (HasValidEntrustedVisitListSelection())
+            {
+                return _entrustedVisitLogEntries[_entrustedVisitListSelectedIndex].Name;
+            }
+
+            while (_pendingVisitorNames.Count > 0)
+            {
+                string pendingName = NormalizeName(_pendingVisitorNames.Dequeue());
+                if (string.IsNullOrWhiteSpace(pendingName) ||
+                    string.Equals(pendingName, OwnerName, StringComparison.OrdinalIgnoreCase) ||
+                    _blockedVisitors.Contains(pendingName, StringComparer.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                return pendingName;
+            }
+
+            return null;
+        }
+
+        private static bool IsValidEntrustedBlacklistName(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return false;
+            }
+
+            string normalized = value.Trim();
+            if (normalized.Length < 4 || normalized.Length > 12)
+            {
+                return false;
+            }
+
+            return normalized.All(character => char.IsLetterOrDigit(character));
         }
 
         private void EnsureMerchantPacketNotes()

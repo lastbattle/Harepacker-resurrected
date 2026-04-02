@@ -52,30 +52,41 @@ namespace HaCreator.MapSimulator.Interaction
                 byte param = reader.ReadByte();
 
                 PacketScriptSpeaker speaker = ResolveSpeaker(speakerTypeId, speakerTemplateId, findNpcById, activeNpc);
-                NpcInteractionEntry entry = messageType switch
+                PacketScriptDecodeResult decoded = messageType switch
                 {
-                    0 => DecodeSay(reader, speaker, ref speakerTemplateId, param),
-                    1 => DecodeSayImage(reader, speaker, param),
-                    2 => DecodeAskYesNo(reader, speaker, param, false),
-                    3 => DecodeAskText(reader, speaker, param),
-                    4 => DecodeAskNumber(reader, speaker, param),
-                    5 => DecodeAskMenu(reader, speaker, param),
+                    0 => CreateDecodedResult(DecodeSay(reader, speaker, ref speakerTemplateId, param)),
+                    1 => CreateDecodedResult(DecodeSayImage(reader, speaker, param)),
+                    2 => CreateDecodedResult(DecodeAskYesNo(reader, speaker, param, false)),
+                    3 => CreateDecodedResult(DecodeAskText(reader, speaker, param)),
+                    4 => CreateDecodedResult(DecodeAskNumber(reader, speaker, param)),
+                    5 => CreateDecodedResult(DecodeAskMenu(reader, speaker, param)),
                     6 => DecodeAskQuiz(reader, speaker, param),
                     7 => DecodeAskSpeedQuiz(reader, speaker, param),
-                    8 => DecodeAskAvatar(reader, speaker, param, false),
-                    9 => DecodeAskAvatar(reader, speaker, param, true),
+                    8 => CreateDecodedResult(DecodeAskAvatar(reader, speaker, param, false)),
+                    9 => CreateDecodedResult(DecodeAskAvatar(reader, speaker, param, true)),
                     10 => DecodeAskPet(reader, speaker, param, false),
                     11 => DecodeAskPet(reader, speaker, param, true),
-                    12 => DecodeUnsupported(reader, speaker, messageType, param),
-                    13 => DecodeAskYesNo(reader, speaker, param, true),
-                    14 => DecodeAskBoxText(reader, speaker, param),
+                    12 => CreateDecodedResult(DecodeUnsupported(reader, speaker, messageType, param)),
+                    13 => CreateDecodedResult(DecodeAskYesNo(reader, speaker, param, true)),
+                    14 => CreateDecodedResult(DecodeAskBoxText(reader, speaker, param)),
                     15 => DecodeAskSlideMenu(reader, speaker, param),
-                    _ => DecodeUnsupported(reader, speaker, messageType, param)
+                    _ => CreateDecodedResult(DecodeUnsupported(reader, speaker, messageType, param))
                 };
+                NpcInteractionEntry entry = decoded.Entry;
+                PacketScriptResponsePacket autoResponse = decoded.AutoResponse;
 
                 if (stream.Position != stream.Length)
                 {
                     entry = AppendTrailingByteNotice(entry, (int)(stream.Length - stream.Position));
+                }
+
+                if (entry == null)
+                {
+                    request = new PacketScriptMessageOpenRequest(null, speaker.NpcId, CloseExistingDialog: true, AutoResponse: autoResponse);
+                    _activePromptContext = null;
+                    _statusMessage = autoResponse?.Summary ?? $"Closed packet-authored script dialog for {speaker.DisplayName}.";
+                    message = _statusMessage;
+                    return true;
                 }
 
                 request = new PacketScriptMessageOpenRequest(
@@ -86,15 +97,8 @@ namespace HaCreator.MapSimulator.Interaction
                         SelectedEntryId = entry.EntryId,
                         PresentationStyle = NpcInteractionPresentationStyle.PacketScriptUtilDialog
                     },
-                    speaker.NpcId);
-                if (entry == null)
-                {
-                    request = new PacketScriptMessageOpenRequest(null, speaker.NpcId, CloseExistingDialog: true);
-                    _activePromptContext = null;
-                    _statusMessage = $"Closed packet-authored script dialog for {speaker.DisplayName}.";
-                    message = _statusMessage;
-                    return true;
-                }
+                    speaker.NpcId,
+                    AutoResponse: autoResponse);
 
                 _activePromptContext = new PacketScriptPromptContext(
                     speaker.DisplayName,
@@ -289,52 +293,52 @@ namespace HaCreator.MapSimulator.Interaction
                 choices);
         }
 
-        private static NpcInteractionEntry DecodeAskQuiz(BinaryReader reader, PacketScriptSpeaker speaker, byte param)
+        private static PacketScriptDecodeResult DecodeAskQuiz(BinaryReader reader, PacketScriptSpeaker speaker, byte param)
         {
             long startPosition = reader.BaseStream.Position;
             if (TryDecodeAskQuizClientPacket(reader, speaker, param, out NpcInteractionEntry entry))
             {
-                return entry;
+                return CreateDecodedResult(entry);
             }
 
             reader.BaseStream.Position = startPosition;
-            return DecodeAskQuizCompactPacket(reader, speaker, param);
+            return CreateDecodedResult(DecodeAskQuizCompactPacket(reader, speaker, param));
         }
 
-        private static NpcInteractionEntry DecodeAskSpeedQuiz(BinaryReader reader, PacketScriptSpeaker speaker, byte param)
+        private static PacketScriptDecodeResult DecodeAskSpeedQuiz(BinaryReader reader, PacketScriptSpeaker speaker, byte param)
         {
             long startPosition = reader.BaseStream.Position;
             if (TryDecodeAskSpeedQuizClientPacket(reader, speaker, param, out NpcInteractionEntry entry))
             {
-                return entry;
+                return CreateDecodedResult(entry);
             }
 
             reader.BaseStream.Position = startPosition;
-            return DecodeAskSpeedQuizCompactPacket(reader, speaker, param);
+            return CreateDecodedResult(DecodeAskSpeedQuizCompactPacket(reader, speaker, param));
         }
 
-        private static NpcInteractionEntry DecodeAskPet(BinaryReader reader, PacketScriptSpeaker speaker, byte param, bool isPetAll)
+        private static PacketScriptDecodeResult DecodeAskPet(BinaryReader reader, PacketScriptSpeaker speaker, byte param, bool isPetAll)
         {
             long startPosition = reader.BaseStream.Position;
-            if (TryDecodeAskPetClientPacket(reader, speaker, param, isPetAll, out NpcInteractionEntry entry))
+            if (TryDecodeAskPetClientPacket(reader, speaker, param, isPetAll, out PacketScriptDecodeResult decoded))
             {
-                return entry;
+                return decoded;
             }
 
             reader.BaseStream.Position = startPosition;
-            return DecodeAskPetCompactPacket(reader, speaker, param, isPetAll);
+            return CreateDecodedResult(DecodeAskPetCompactPacket(reader, speaker, param, isPetAll));
         }
 
-        private static NpcInteractionEntry DecodeAskSlideMenu(BinaryReader reader, PacketScriptSpeaker speaker, byte param)
+        private static PacketScriptDecodeResult DecodeAskSlideMenu(BinaryReader reader, PacketScriptSpeaker speaker, byte param)
         {
             long startPosition = reader.BaseStream.Position;
-            if (TryDecodeAskSlideMenuClientPacket(reader, speaker, param, out NpcInteractionEntry entry))
+            if (TryDecodeAskSlideMenuClientPacket(reader, speaker, param, out PacketScriptDecodeResult decoded))
             {
-                return entry;
+                return decoded;
             }
 
             reader.BaseStream.Position = startPosition;
-            return DecodeAskSlideMenuCompactPacket(reader, speaker, param);
+            return CreateDecodedResult(DecodeAskSlideMenuCompactPacket(reader, speaker, param));
         }
 
         private static NpcInteractionEntry DecodeAskBoxText(BinaryReader reader, PacketScriptSpeaker speaker, byte param)
@@ -515,10 +519,10 @@ namespace HaCreator.MapSimulator.Interaction
                 choices);
         }
 
-        private static bool TryDecodeAskPetClientPacket(BinaryReader reader, PacketScriptSpeaker speaker, byte param, bool isPetAll, out NpcInteractionEntry entry)
+        private static bool TryDecodeAskPetClientPacket(BinaryReader reader, PacketScriptSpeaker speaker, byte param, bool isPetAll, out PacketScriptDecodeResult result)
         {
             long startPosition = reader.BaseStream.Position;
-            entry = null;
+            result = null;
             try
             {
                 string rawText = ReadMapleString(reader);
@@ -536,7 +540,25 @@ namespace HaCreator.MapSimulator.Interaction
                     _ = reader.ReadByte();
                 }
 
-                entry = CreatePetSelectionEntry(
+                bool autoClose = petSerialNumbers.Count == 0 ||
+                    (isPetAll && !exceptionExists && petSerialNumbers.Count == 1);
+                if (autoClose)
+                {
+                    result = CreateDecodedResult(
+                        null,
+                        CreateAutoResponsePacket(
+                            isPetAll ? 11 : 10,
+                            param,
+                            speaker,
+                            "auto-close",
+                            BuildStatusOnlyResponsePacket(isPetAll ? 11 : 10, 2),
+                            isPetAll
+                                ? $"Auto-closed packet-authored multi-pet prompt for {speaker.DisplayName}: client path does not open `UtilDlgEx_MultiPetEquip` when the packet only exposes the implicit fallback branch."
+                                : $"Auto-closed packet-authored pet prompt for {speaker.DisplayName}: client path does not open `UtilDlgEx_Pet` when the packet exposes no selectable pets."));
+                    return true;
+                }
+
+                result = CreateDecodedResult(CreatePetSelectionEntry(
                     speaker,
                     param,
                     isPetAll,
@@ -552,13 +574,13 @@ namespace HaCreator.MapSimulator.Interaction
                     }).ToList(),
                     petSerialNumbers.Count == 0
                         ? "No pet options were decoded from the packet payload."
-                        : string.Join("\n", petSerialNumbers.Select((serialNumber, index) => $"{index + 1}. {DescribePetOption(serialNumber, index)}")));
+                        : string.Join("\n", petSerialNumbers.Select((serialNumber, index) => $"{index + 1}. {DescribePetOption(serialNumber, index)}"))));
                 return true;
             }
             catch (Exception ex) when (ex is EndOfStreamException || ex is IOException || ex is ArgumentException)
             {
                 reader.BaseStream.Position = startPosition;
-                entry = null;
+                result = null;
                 return false;
             }
         }
@@ -639,22 +661,36 @@ namespace HaCreator.MapSimulator.Interaction
             return $"{itemName} ({itemId})";
         }
 
-        private static bool TryDecodeAskSlideMenuClientPacket(BinaryReader reader, PacketScriptSpeaker speaker, byte param, out NpcInteractionEntry entry)
+        private static bool TryDecodeAskSlideMenuClientPacket(BinaryReader reader, PacketScriptSpeaker speaker, byte param, out PacketScriptDecodeResult result)
         {
             long startPosition = reader.BaseStream.Position;
-            entry = null;
+            result = null;
             try
             {
                 int slideMenuType = reader.ReadInt32();
                 string buttonInfo = ReadMapleString(reader);
+                if (slideMenuType is not (0 or 1))
+                {
+                    result = CreateDecodedResult(
+                        null,
+                        CreateAutoResponsePacket(
+                            15,
+                            param,
+                            speaker,
+                            "cancel",
+                            BuildMenuSelectionResponsePacket(15, accepted: false, selectionId: 0),
+                            $"Auto-cancelled packet-authored slide-menu prompt for {speaker.DisplayName}: client `CScriptMan::OnAskSlideMenu` only opens type 0 (`CSlideMenuDlgEX`) or type 1 (`CSlideMenuDlg`) owners."));
+                    return true;
+                }
+
                 IReadOnlyList<string> options = SplitSlideMenuOptions(buttonInfo);
-                entry = CreateSlideMenuEntry(speaker, param, slideMenuType, buttonInfo, options, "Decoded");
+                result = CreateDecodedResult(CreateSlideMenuEntry(speaker, param, slideMenuType, buttonInfo, options, "Decoded"));
                 return true;
             }
             catch (Exception ex) when (ex is EndOfStreamException || ex is IOException || ex is ArgumentException)
             {
                 reader.BaseStream.Position = startPosition;
-                entry = null;
+                result = null;
                 return false;
             }
         }
@@ -693,8 +729,21 @@ namespace HaCreator.MapSimulator.Interaction
                     choices.Count == 0
                         ? $"Slide-menu type {slideMenuType} did not expose any options."
                         : $"{decodedPrefix} {choices.Count} slide-menu option(s) for type {slideMenuType}.",
+                    slideMenuType switch
+                    {
+                        0 => "Client type 0 opens the extended `CSlideMenuDlgEX` owner backed by `UIWindow(.img|2.img)/SlideMenu/0`.",
+                        1 => "Client type 1 opens the standard `CSlideMenuDlg` owner backed by `UIWindow(.img|2.img)/SlideMenu/1`.",
+                        _ => null
+                    },
                     "WZ data exposes authored slide-menu variants under `UIWindow(.img|2.img)/SlideMenu`."),
                 choices);
+        }
+
+        private static PacketScriptDecodeResult CreateDecodedResult(
+            NpcInteractionEntry entry,
+            PacketScriptResponsePacket autoResponse = null)
+        {
+            return new PacketScriptDecodeResult(entry, autoResponse);
         }
 
         private static NpcInteractionEntry DecodeUnsupported(BinaryReader reader, PacketScriptSpeaker speaker, int messageType, byte param)
@@ -1253,7 +1302,55 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
-        internal sealed record PacketScriptMessageOpenRequest(NpcInteractionState State, int SpeakerNpcId, bool CloseExistingDialog = false);
+        private static byte[] BuildStatusOnlyResponsePacket(int messageType, byte status)
+        {
+            PacketWriter writer = new PacketWriter();
+            writer.WriteShort(OutboundScriptAnswerOpcode);
+            writer.WriteByte((byte)messageType);
+            writer.WriteByte(status);
+            return writer.ToArray();
+        }
+
+        private static byte[] BuildMenuSelectionResponsePacket(int messageType, bool accepted, int selectionId)
+        {
+            PacketWriter writer = new PacketWriter();
+            writer.WriteShort(OutboundScriptAnswerOpcode);
+            writer.WriteByte((byte)messageType);
+            writer.WriteByte(accepted ? (byte)1 : (byte)0);
+            if (accepted)
+            {
+                writer.WriteInt(selectionId);
+            }
+
+            return writer.ToArray();
+        }
+
+        private static PacketScriptResponsePacket CreateAutoResponsePacket(
+            int messageType,
+            byte param,
+            PacketScriptSpeaker speaker,
+            string submittedValue,
+            byte[] rawPacket,
+            string summary)
+        {
+            return new PacketScriptResponsePacket(
+                messageType,
+                param,
+                speaker.TemplateId,
+                speaker.NpcId,
+                submittedValue ?? string.Empty,
+                rawPacket,
+                summary);
+        }
+
+        internal sealed record PacketScriptMessageOpenRequest(
+            NpcInteractionState State,
+            int SpeakerNpcId,
+            bool CloseExistingDialog = false,
+            PacketScriptResponsePacket AutoResponse = null);
+        private sealed record PacketScriptDecodeResult(
+            NpcInteractionEntry Entry,
+            PacketScriptResponsePacket AutoResponse = null);
         internal sealed record PacketScriptResponsePacket(
             int MessageType,
             byte Param,

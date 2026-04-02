@@ -142,6 +142,7 @@ namespace HaCreator.MapSimulator
                 EnsureComboCounterPacketInboxState(shouldRun: false);
                 EnsureLocalOverlayPacketInboxState(shouldRun: false);
                 EnsureLocalUtilityPacketInboxState(shouldRun: false);
+                EnsureStageTransitionPacketInboxState(shouldRun: false);
                 EnsureSummonedPacketInboxState(shouldRun: false);
                 UpdateLoginRuntimeFrame(gameTime, newKeyboardState, newMouseState, isWindowActive);
                 return;
@@ -211,6 +212,8 @@ namespace HaCreator.MapSimulator
             UpdateDirectionModeState(currTickCount);
 
             UpdateWorldChannelSelectorRequestState();
+            EnsureStageTransitionPacketInboxState(shouldRun: _mapBoard?.MapInfo != null);
+            DrainStageTransitionPacketInbox();
             EnsureComboCounterPacketInboxState(shouldRun: true);
             DrainComboCounterPacketInbox();
             UpdatePacketOwnedComboState(currTickCount);
@@ -221,6 +224,7 @@ namespace HaCreator.MapSimulator
             DrainLocalUtilityPacketInbox();
             DrainLocalUtilityOfficialSessionBridge();
             DrainMapTransferOfficialSessionBridge();
+            SyncUtilityChannelSelectorAvailability();
             UpdatePacketOwnedTutorRuntime(currTickCount);
             UpdatePacketOwnedRadioSchedule(currTickCount);
 
@@ -1087,9 +1091,13 @@ namespace HaCreator.MapSimulator
         {
             if (_gameState.PendingMapChange && _loadMapCallback != null)
             {
-                if (_gameState.PendingMapId == _mapBoard.MapInfo.id && !string.IsNullOrEmpty(_gameState.PendingPortalName))
+                if (_gameState.PendingMapId == _mapBoard.MapInfo.id
+                    && (!string.IsNullOrEmpty(_gameState.PendingPortalName) || _gameState.PendingPortalIndex >= 0))
                 {
-                    PortalInstance targetPortal = _mapBoard.BoardItems.Portals.FirstOrDefault(portal => portal.pn == _gameState.PendingPortalName);
+                    PortalInstance targetPortal = ResolvePortalByNameOrIndex(
+                        _mapBoard.BoardItems.Portals,
+                        _gameState.PendingPortalName,
+                        _gameState.PendingPortalIndex);
                     if (targetPortal != null && !_sameMapTeleportPending)
                     {
                         int targetPortalIndex = _portalPool?.GetPortalIndexByName(targetPortal.pn) ?? -1;
@@ -1108,6 +1116,7 @@ namespace HaCreator.MapSimulator
                     _gameState.PendingMapChange = false;
                     _gameState.PendingMapId = -1;
                     _gameState.PendingPortalName = null;
+                    _gameState.PendingPortalIndex = -1;
                 }
                 else
                 {
@@ -1136,6 +1145,7 @@ namespace HaCreator.MapSimulator
                                     ShowFieldRestrictionMessage(entryRestrictionMessage);
                                     _gameState.PendingMapId = -1;
                                     _gameState.PendingPortalName = null;
+                                    _gameState.PendingPortalIndex = -1;
                                     _portalFadeState = PortalFadeState.FadingIn;
                                     _screenEffects.FadeIn(PORTAL_FADE_DURATION_MS, currTickCount);
                                     return true;
@@ -1151,7 +1161,7 @@ namespace HaCreator.MapSimulator
 
                                 UnloadMapContent();
 
-                                LoadMapContent(result.Item1, result.Item2, _gameState.PendingPortalName);
+                                LoadMapContent(result.Item1, result.Item2, _gameState.PendingPortalName, _gameState.PendingPortalIndex);
 
 
 
@@ -1182,6 +1192,7 @@ namespace HaCreator.MapSimulator
                             _gameState.PendingMapId = -1;
 
                             _gameState.PendingPortalName = null;
+                            _gameState.PendingPortalIndex = -1;
 
 
 

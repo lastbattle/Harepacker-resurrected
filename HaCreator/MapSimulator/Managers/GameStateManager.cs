@@ -21,6 +21,11 @@ namespace HaCreator.MapSimulator.Managers
         public int PendingMapId { get; set; } = -1;
 
         /// <summary>
+        /// Target portal index for pending change (-1 = none)
+        /// </summary>
+        public int PendingPortalIndex { get; set; } = -1;
+
+        /// <summary>
         /// Target portal name for pending change
         /// </summary>
         public string PendingPortalName { get; set; } = null;
@@ -112,6 +117,25 @@ namespace HaCreator.MapSimulator.Managers
         public bool IsPlayerInputEnabled => PlayerControlEnabled && !DirectionModeActive;
 
         /// <summary>
+        /// True when later modeless owners should inherit direction-mode ownership from an
+        /// active scripted owner, packet-owned direction mode, or the packet-authored
+        /// CWvsContext stand-alone flag.
+        /// </summary>
+        public bool ShouldInheritDirectionModeOwner(
+            bool npcInteractionVisible,
+            bool scriptedOwnerActive,
+            bool weddingDialogVisible,
+            bool memoryGameVisible)
+        {
+            return npcInteractionVisible
+                   || DirectionModeActive
+                   || StandAloneModeActive
+                   || scriptedOwnerActive
+                   || weddingDialogVisible
+                   || memoryGameVisible;
+        }
+
+        /// <summary>
         /// Enable smooth camera scrolling
         /// </summary>
         public bool UseSmoothCamera { get; set; } = true;
@@ -158,11 +182,12 @@ namespace HaCreator.MapSimulator.Managers
         /// </summary>
         /// <param name="mapId">Target map ID</param>
         /// <param name="portalName">Target portal name to spawn at</param>
-        public void RequestMapChange(int mapId, string portalName = null)
+        public void RequestMapChange(int mapId, string portalName = null, int portalIndex = -1)
         {
             PendingMapChange = true;
             PendingMapId = mapId;
             PendingPortalName = portalName;
+            PendingPortalIndex = portalIndex;
         }
 
         /// <summary>
@@ -173,6 +198,7 @@ namespace HaCreator.MapSimulator.Managers
             PendingMapChange = false;
             PendingMapId = -1;
             PendingPortalName = null;
+            PendingPortalIndex = -1;
         }
 
         /// <summary>

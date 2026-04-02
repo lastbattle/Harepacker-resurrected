@@ -162,6 +162,8 @@ namespace HaCreator.MapSimulator.Interaction
         public bool IsSeriesRepresentative { get; init; }
         public int? DeliveryCashItemId { get; init; }
         public string DeliveryCashItemName { get; init; } = string.Empty;
+        public int DeliveryCashItemRuntimeSlotIndex { get; init; } = -1;
+        public int DeliveryCashItemClientSlotIndex { get; init; }
     }
 
     internal sealed class QuestAlarmEntrySnapshot

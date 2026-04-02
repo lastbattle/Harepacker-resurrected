@@ -483,10 +483,7 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
 
-            if (EquipWindow is EquipUIBigBang equipWindowBigBang && InventoryWindow is InventoryUI inventoryWindow)
-            {
-                equipWindowBigBang.ProcessPendingEquipmentChange(inventoryWindow);
-            }
+            ProcessPendingEquipmentChange(EquipWindow, InventoryWindow as InventoryUI);
 
             SoftKeyboardWindow?.SyncHost(GetActiveSoftKeyboardHost());
             if (SoftKeyboardWindow?.IsVisible == true)
@@ -495,6 +492,15 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return escHandled;
+        }
+
+        internal static void ProcessPendingEquipmentChange(UIWindowBase equipWindow, InventoryUI inventoryWindow)
+        {
+            if (equipWindow is IEquipmentPendingChangeWindow pendingChangeWindow
+                && pendingChangeWindow.HasPendingEquipmentChange)
+            {
+                pendingChangeWindow.ProcessPendingEquipmentChange(inventoryWindow);
+            }
         }
         #endregion
 

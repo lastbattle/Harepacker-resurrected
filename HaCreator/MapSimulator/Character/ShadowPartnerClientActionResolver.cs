@@ -108,12 +108,11 @@ namespace HaCreator.MapSimulator.Character
         {
             var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-            // `LoadShadowPartnerAction` walks the action-specific ghost remap table before
-            // it falls back to the plain `get_action_name_from_code(raw)` lookup. Keep the
-            // ghost-family aliases ahead of an authored raw branch like `fly` or `dead` so
-            // `ghostfly`/`ghost` collapse through the client mapping instead of short-circuiting
-            // on the helper's generic raw action.
-            if (ShouldPreferGhostAliasCandidates(playerActionName))
+            // `LoadShadowPartnerAction` walks action-specific remap rows before it falls back
+            // to the plain `get_action_name_from_code(raw)` lookup. Mirror that client order
+            // for the alias-backed helper families we have recovered so far instead of only
+            // special-casing ghost-family actions.
+            if (ShouldPreferActionSpecificAliasCandidates(playerActionName))
             {
                 foreach (string candidate in EnumerateAliasCandidates(playerActionName))
                 {
@@ -310,10 +309,26 @@ namespace HaCreator.MapSimulator.Character
             }
         }
 
-        private static bool ShouldPreferGhostAliasCandidates(string playerActionName)
+        private static bool ShouldPreferActionSpecificAliasCandidates(string playerActionName)
         {
-            return !string.IsNullOrWhiteSpace(playerActionName)
-                   && playerActionName.StartsWith("ghost", StringComparison.OrdinalIgnoreCase);
+            if (string.IsNullOrWhiteSpace(playerActionName))
+            {
+                return false;
+            }
+
+            if (playerActionName.StartsWith("ghost", StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            if (SharedAliasMap.ContainsKey(playerActionName))
+            {
+                return true;
+            }
+
+            return string.Equals(playerActionName, "ladder2", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(playerActionName, "rope2", StringComparison.OrdinalIgnoreCase)
+                   || playerActionName.StartsWith("alert", StringComparison.OrdinalIgnoreCase);
         }
 
         private static IEnumerable<string> EnumerateHeuristicAttackAliases(

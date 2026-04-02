@@ -8282,34 +8282,62 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "stagepacket",
                 "Inspect or drive packet-owned CStage and CMapLoadable transition packets",
-                "/stagepacket [status|clear|field <mapId> [portal]|itc|cashshop|backeffect <show|hide> [pageId] [durationMs]|clearbackeffect|objectvisible <name...> <on|off>|packet <141|142|143|144|145|146> [payloadhex=..|payloadb64=..]|packetraw <141|142|143|144|145|146> [hex]]",
+                "/stagepacket [status|clear|inbox [status|start [port]|stop]|field <mapId> [portalIndex]|itc|cashshop|backeffect <show|hide> [pageId] [durationMs]|clearbackeffect|objectvisible <name...> <on|off>|packet <141|142|143|144|145|146> [payloadhex=..|payloadb64=..]|packetraw <141|142|143|144|145|146> [hex]]",
                 args =>
                 {
                     if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
                     {
-                        _packetStageTransitionRuntime.BindMap(_mapBoard?.MapInfo?.id ?? 0);
-                        return ChatCommandHandler.CommandResult.Info(_packetStageTransitionRuntime.DescribeStatus());
+                        return ChatCommandHandler.CommandResult.Info(DescribePacketOwnedStageTransitionStatus());
                     }
 
                     switch (args[0].ToLowerInvariant())
                     {
                         case "clear":
                             ResetPacketOwnedStageTransitionRuntimeState();
-                            _packetStageTransitionRuntime.BindMap(_mapBoard?.MapInfo?.id ?? 0);
-                            return ChatCommandHandler.CommandResult.Ok(_packetStageTransitionRuntime.DescribeStatus());
+                            return ChatCommandHandler.CommandResult.Ok(DescribePacketOwnedStageTransitionStatus());
+
+                        case "inbox":
+                            if (args.Length == 1 || string.Equals(args[1], "status", StringComparison.OrdinalIgnoreCase))
+                            {
+                                return ChatCommandHandler.CommandResult.Info(DescribePacketOwnedStageTransitionStatus());
+                            }
+
+                            if (string.Equals(args[1], "start", StringComparison.OrdinalIgnoreCase))
+                            {
+                                int configuredPort = StageTransitionPacketInboxManager.DefaultPort;
+                                if (args.Length >= 3
+                                    && (!int.TryParse(args[2], out configuredPort) || configuredPort <= 0))
+                                {
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /stagepacket inbox start [port]");
+                                }
+
+                                _stageTransitionPacketInbox.Start(configuredPort);
+                                return ChatCommandHandler.CommandResult.Ok(DescribePacketOwnedStageTransitionStatus());
+                            }
+
+                            if (string.Equals(args[1], "stop", StringComparison.OrdinalIgnoreCase))
+                            {
+                                _stageTransitionPacketInbox.Stop();
+                                return ChatCommandHandler.CommandResult.Ok(DescribePacketOwnedStageTransitionStatus());
+                            }
+
+                            return ChatCommandHandler.CommandResult.Error("Usage: /stagepacket inbox [status|start [port]|stop]");
 
                         case "field":
                             if (args.Length < 2 || !int.TryParse(args[1], out int targetMapId) || targetMapId <= 0)
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /stagepacket field <mapId> [portal]");
+                                return ChatCommandHandler.CommandResult.Error("Usage: /stagepacket field <mapId> [portalIndex]");
                             }
 
-                            string targetPortalName = args.Length > 2
-                                ? string.Join(" ", args.Skip(2))
-                                : string.Empty;
+                            byte targetPortalIndex = 0;
+                            if (args.Length >= 3 && !byte.TryParse(args[2], out targetPortalIndex))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /stagepacket field <mapId> [portalIndex]");
+                            }
+
                             return TryApplyPacketOwnedStageTransitionPacket(
                                 141,
-                                PacketStageTransitionRuntime.BuildSyntheticSetFieldPayload(targetMapId, targetPortalName),
+                                PacketStageTransitionRuntime.BuildOfficialSetFieldPayload(targetMapId, targetPortalIndex),
                                 out string setFieldMessage)
                                 ? ChatCommandHandler.CommandResult.Ok(setFieldMessage)
                                 : ChatCommandHandler.CommandResult.Error(setFieldMessage);
@@ -8440,7 +8468,7 @@ namespace HaCreator.MapSimulator
                                 : ChatCommandHandler.CommandResult.Error(rawStageMessage);
 
                         default:
-                            return ChatCommandHandler.CommandResult.Error("Usage: /stagepacket [status|clear|field <mapId> [portal]|itc|cashshop|backeffect <show|hide> [pageId] [durationMs]|clearbackeffect|objectvisible <name...> <on|off>|packet <141|142|143|144|145|146> [payloadhex=..|payloadb64=..]|packetraw <141|142|143|144|145|146> [hex]]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /stagepacket [status|clear|inbox [status|start [port]|stop]|field <mapId> [portalIndex]|itc|cashshop|backeffect <show|hide> [pageId] [durationMs]|clearbackeffect|objectvisible <name...> <on|off>|packet <141|142|143|144|145|146> [payloadhex=..|payloadb64=..]|packetraw <141|142|143|144|145|146> [hex]]");
                     }
                 });
 

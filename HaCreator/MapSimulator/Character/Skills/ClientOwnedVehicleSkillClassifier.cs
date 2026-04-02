@@ -63,6 +63,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             "jump",
             "prone",
             "fly",
+            "swim",
             "tired"
         };
 

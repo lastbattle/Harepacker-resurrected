@@ -51,6 +51,7 @@ namespace HaCreator.MapSimulator.UI
             public InventoryType OutputInventoryType { get; init; }
             public int OutputItemId { get; init; }
             public int OutputQuantity { get; init; }
+            public int UpgradeSlots { get; init; }
             public int RequiredLevel { get; init; }
             public int RequiredSkillLevel { get; init; }
             public int RequiredItemId { get; init; }
@@ -590,9 +591,12 @@ namespace HaCreator.MapSimulator.UI
             }
 
             y = DrawSectionHeader(sprite, selectedRecipe.UsesRandomReward ? "Random Reward Pool" : "Result", detailOrigin, y);
-            string resultText = selectedRecipe.UsesRandomReward
-                ? $"Pool size {selectedRecipe.RandomRewards.Length}"
-                : $"{GetItemName(selectedRecipe.OutputItemId)} x{selectedRecipe.OutputQuantity}";
+            string resultText = FormatResultSummary(
+                selectedRecipe.UsesRandomReward,
+                selectedRecipe.RandomRewards.Length,
+                selectedRecipe.OutputItemId,
+                selectedRecipe.OutputQuantity,
+                selectedRecipe.UpgradeSlots);
             sprite.DrawString(_font, resultText, new Vector2(detailOrigin.X, y), new Color(189, 219, 255));
             y += 18;
 
@@ -1317,6 +1321,27 @@ namespace HaCreator.MapSimulator.UI
                 : $"Client ItemMake recipe for {GetItemName(itemId)}.";
         }
 
+        internal static string FormatResultSummary(
+            bool usesRandomReward,
+            int randomRewardCount,
+            int outputItemId,
+            int outputQuantity,
+            int upgradeSlots)
+        {
+            if (usesRandomReward)
+            {
+                return $"Pool size {Math.Max(0, randomRewardCount)}";
+            }
+
+            string summary = $"{GetItemName(outputItemId)} x{Math.Max(1, outputQuantity)}";
+            if (upgradeSlots > 0)
+            {
+                summary += $"  Slots {upgradeSlots}";
+            }
+
+            return summary;
+        }
+
         private static string CreateRecipeKey(int bucketKey, string recipeName)
         {
             return string.IsNullOrWhiteSpace(recipeName)
@@ -1566,6 +1591,7 @@ namespace HaCreator.MapSimulator.UI
             int categoryKey = GetCategoryKey(outputItemId);
             bool usesRandomReward = randomRewards.Count > 0;
             int outputQuantity = (recipeData["itemNum"] as WzIntProperty)?.Value ?? 1;
+            int upgradeSlots = Math.Max(0, (recipeData["tuc"] as WzIntProperty)?.Value ?? 0);
             int requiredItemId = Math.Max(0, (recipeData["reqItem"] as WzIntProperty)?.Value ?? 0);
             bool authoredHidden = ((recipeData["hide"] as WzIntProperty)?.Value ?? 0) != 0;
             int requiredEquipItemId = Math.Max(0, (recipeData["reqEquip"] as WzIntProperty)?.Value ?? 0);
@@ -1588,6 +1614,7 @@ namespace HaCreator.MapSimulator.UI
                 OutputInventoryType = ResolveInventoryType(outputItemId),
                 OutputItemId = outputItemId,
                 OutputQuantity = Math.Max(1, outputQuantity),
+                UpgradeSlots = upgradeSlots,
                 RequiredLevel = (recipeData["reqLevel"] as WzIntProperty)?.Value ?? 0,
                 RequiredSkillLevel = (recipeData["reqSkillLevel"] as WzIntProperty)?.Value ?? 0,
                 RequiredItemId = requiredItemId,

@@ -103,6 +103,7 @@ namespace HaCreator.MapSimulator.UI {
 
     public class StatusBarUI : BaseDXDrawableItem, IUIObjectEvents {
         private readonly List<UIObject> uiButtons = new List<UIObject>();
+        private readonly UIObject _channelButton = null;
 
         // Character stats display - positions based on IDA Pro analysis of client CUIStatusBar
         // HP text at (163, 4), MP text at (332, 4), EXP text at (332, 20)
@@ -283,6 +284,7 @@ namespace HaCreator.MapSimulator.UI {
             }
             if (obj_Ui_BtChannel != null)
             {
+                _channelButton = obj_Ui_BtChannel;
                 uiButtons.Add(obj_Ui_BtChannel);
                 obj_Ui_BtChannel.ButtonClickReleased += _ => ChannelRequested?.Invoke();
             }
@@ -366,6 +368,11 @@ namespace HaCreator.MapSimulator.UI {
         public Action MenuRequested { get; set; }
         public Action SystemRequested { get; set; }
         public Action ChannelRequested { get; set; }
+
+        public void SetChannelButtonEnabled(bool enabled)
+        {
+            _channelButton?.SetEnabled(enabled);
+        }
 
         /// <summary>
         /// Set the pixel texture for drawing gauge bars

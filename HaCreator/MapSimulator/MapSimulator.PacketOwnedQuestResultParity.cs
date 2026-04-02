@@ -114,7 +114,7 @@ namespace HaCreator.MapSimulator
             string questName = _questRuntime.TryGetQuestName(questId, out string resolvedQuestName)
                 ? resolvedQuestName
                 : $"Quest #{questId}";
-            string expiryMessage = $"Quest timer expired for {questName}.";
+            string expiryMessage = QuestClientPacketResultNoticeText.FormatQuestExpiredNotice(questName);
             _chat?.AddSystemMessage(expiryMessage, currTickCount);
             message = $"{timerMessage} {expiryMessage}";
             return true;

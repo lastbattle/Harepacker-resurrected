@@ -94,6 +94,24 @@ namespace HaCreator.MapSimulator.UI
             _cursorHints[entryName] = cursorHintResolver;
         }
 
+        public void SetEntryEnabled(string entryName, bool enabled)
+        {
+            if (string.IsNullOrWhiteSpace(entryName))
+            {
+                return;
+            }
+
+            for (int i = 0; i < _entries.Count; i++)
+            {
+                PopupEntry entry = _entries[i];
+                if (string.Equals(entry.EntryName, entryName, StringComparison.OrdinalIgnoreCase))
+                {
+                    entry.Button?.SetEnabled(enabled);
+                    return;
+                }
+            }
+        }
+
         public override bool CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState, MouseCursorItem mouseCursor, int renderWidth, int renderHeight)
         {
             if (!IsVisible)

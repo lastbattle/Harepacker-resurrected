@@ -74,6 +74,8 @@ namespace HaCreator.MapSimulator.Effects
         private const int PacketTypeUserMove = 210;
         private const int PacketTypeSetActivePortableChair = 222;
         private const int PacketTypeAvatarModified = 223;
+        private const int PacketTypeTemporaryStatSet = 225;
+        private const int PacketTypeTemporaryStatReset = 226;
         private const int RemoteDelayedLoadWindowMs = 100;
         private const int RemoteDelayedLoadCooltimeMs = 1000;
 
@@ -289,6 +291,10 @@ namespace HaCreator.MapSimulator.Effects
                         return TryApplyRemoteChairPacket(payload, out errorMessage);
                     case PacketTypeAvatarModified:
                         return TryApplyRemoteAvatarModifiedPacket(payload, out errorMessage);
+                    case PacketTypeTemporaryStatSet:
+                        return TryApplyRemoteTemporaryStatSetPacket(payload, out errorMessage);
+                    case PacketTypeTemporaryStatReset:
+                        return TryApplyRemoteTemporaryStatResetPacket(payload, out errorMessage);
                     default:
                         errorMessage = $"Unsupported wedding packet type: {packetType}";
                         return false;
@@ -1080,6 +1086,71 @@ namespace HaCreator.MapSimulator.Effects
             return true;
         }
 
+        private bool TryApplyRemoteTemporaryStatSetPacket(byte[] payload, out string errorMessage)
+        {
+            errorMessage = null;
+            if (!RemoteUserPacketCodec.TryParseTemporaryStatSet(payload, out RemoteUserTemporaryStatSetPacket packet, out errorMessage))
+            {
+                return false;
+            }
+
+            if (!TryResolveParticipantForTemporaryStats(packet.CharacterId, out WeddingRemoteParticipant participant, out errorMessage))
+            {
+                return false;
+            }
+
+            participant.TemporaryStats = packet.TemporaryStats;
+            return true;
+        }
+
+        private bool TryApplyRemoteTemporaryStatResetPacket(byte[] payload, out string errorMessage)
+        {
+            errorMessage = null;
+            if (!RemoteUserPacketCodec.TryParseTemporaryStatReset(payload, out RemoteUserTemporaryStatResetPacket packet, out errorMessage))
+            {
+                return false;
+            }
+
+            if (!TryResolveParticipantForTemporaryStats(packet.CharacterId, out WeddingRemoteParticipant participant, out errorMessage))
+            {
+                return false;
+            }
+
+            int[] currentMaskWords = participant.TemporaryStats.MaskWords ?? Array.Empty<int>();
+            int[] resetMaskWords = packet.MaskWords ?? Array.Empty<int>();
+            int maskWordCount = Math.Max(currentMaskWords.Length, resetMaskWords.Length);
+            if (maskWordCount == 0)
+            {
+                participant.TemporaryStats = default;
+                return true;
+            }
+
+            int[] remainingMaskWords = new int[maskWordCount];
+            for (int i = 0; i < maskWordCount; i++)
+            {
+                int currentWord = i < currentMaskWords.Length ? currentMaskWords[i] : 0;
+                int resetWord = i < resetMaskWords.Length ? resetMaskWords[i] : 0;
+                int remainingWord = currentWord & ~resetWord;
+                remainingMaskWords[i] = remainingWord;
+            }
+
+            participant.TemporaryStats = RemoteUserPacketCodec.ApplyResetMask(participant.TemporaryStats, remainingMaskWords);
+            return true;
+        }
+
+        private bool TryResolveParticipantForTemporaryStats(int characterId, out WeddingRemoteParticipant participant, out string errorMessage)
+        {
+            participant = null;
+            errorMessage = null;
+            if (_participantActors.TryGetValue(characterId, out participant) || TryGetAudienceActorById(characterId, out participant))
+            {
+                return true;
+            }
+
+            errorMessage = $"Wedding remote actor id {characterId} does not exist.";
+            return false;
+        }
+
         private CharacterBuild CreateRemoteBuildFromAvatarLook(string actorName, LoginAvatarLook avatarLook, out string errorMessage)
         {
             errorMessage = null;
@@ -1309,6 +1380,8 @@ namespace HaCreator.MapSimulator.Effects
                 PacketTypeUserMove => "usermove (210)",
                 PacketTypeSetActivePortableChair => "chair (222)",
                 PacketTypeAvatarModified => "avatarmodified (223)",
+                PacketTypeTemporaryStatSet => "tempset (225)",
+                PacketTypeTemporaryStatReset => "tempreset (226)",
                 _ => packetType.ToString(CultureInfo.InvariantCulture)
             };
         }

@@ -183,6 +183,7 @@ namespace HaCreator.MapSimulator.UI
         private IReadOnlyList<int> _compositionClauseOffsets = Array.Empty<int>();
         private int _compositionCursorPosition = -1;
         private ImeCandidateListState _candidateListState = ImeCandidateListState.Empty;
+        internal Func<int, int, bool> OnImeCandidateSelected;
 
         public WorldMapUI(
             IDXObject frame,
@@ -1696,10 +1697,11 @@ namespace HaCreator.MapSimulator.UI
             if (_candidateListState.Vertical)
             {
                 int widestEntryWidth = 0;
-                for (int i = 0; i < _candidateListState.Candidates.Count; i++)
+                for (int i = 0; i < count; i++)
                 {
+                    int candidateIndex = start + i;
                     string numberText = $"{i + 1}.";
-                    string candidateText = _candidateListState.Candidates[i] ?? string.Empty;
+                    string candidateText = _candidateListState.Candidates[candidateIndex] ?? string.Empty;
                     int entryWidth = (int)Math.Ceiling(_font.MeasureString(numberText).X + _font.MeasureString(candidateText).X) + 2;
                     widestEntryWidth = Math.Max(widestEntryWidth, entryWidth);
                 }
@@ -1849,7 +1851,7 @@ namespace HaCreator.MapSimulator.UI
                         sprite.Draw(_searchInputOutlineTexture, rowBounds, new Color(86, 120, 186, 215));
                     }
 
-                    sprite.DrawString(_font, $"{candidateIndex + 1}.", new Vector2(rowBounds.X + 4, rowBounds.Y), selected ? Color.White : new Color(222, 222, 222));
+                    sprite.DrawString(_font, $"{i + 1}.", new Vector2(rowBounds.X + 4, rowBounds.Y), selected ? Color.White : new Color(222, 222, 222));
                     sprite.DrawString(
                         _font,
                         _candidateListState.Candidates[candidateIndex] ?? string.Empty,
@@ -1865,7 +1867,7 @@ namespace HaCreator.MapSimulator.UI
                 {
                     int candidateIndex = start + i;
                     int cellX = candidateBounds.X + 3 + (i * cellWidth);
-                    int numberWidth = (int)Math.Ceiling(_font.MeasureString($"{candidateIndex + 1}.").X);
+                    int numberWidth = (int)Math.Ceiling(_font.MeasureString($"{i + 1}.").X);
                     Rectangle cellBounds = new(cellX - 1, candidateBounds.Y + 1, cellWidth, Math.Max(1, candidateBounds.Height - 2));
                     bool selected = candidateIndex == _candidateListState.Selection;
                     if (selected)
@@ -1873,7 +1875,7 @@ namespace HaCreator.MapSimulator.UI
                         sprite.Draw(_searchInputOutlineTexture, cellBounds, new Color(86, 120, 186, 215));
                     }
 
-                    sprite.DrawString(_font, $"{candidateIndex + 1}.", new Vector2(cellX, textY), selected ? Color.White : new Color(222, 222, 222));
+                    sprite.DrawString(_font, $"{i + 1}.", new Vector2(cellX, textY), selected ? Color.White : new Color(222, 222, 222));
                     sprite.DrawString(
                         _font,
                         _candidateListState.Candidates[candidateIndex] ?? string.Empty,
@@ -2721,7 +2723,7 @@ namespace HaCreator.MapSimulator.UI
             for (int i = 0; i < count; i++)
             {
                 int candidateIndex = start + i;
-                string numberText = $"{candidateIndex + 1}.";
+                string numberText = $"{i + 1}.";
                 string candidateText = _candidateListState.Candidates[candidateIndex] ?? string.Empty;
                 int cellWidth = (int)Math.Ceiling(_font.MeasureString(numberText).X + _font.MeasureString(candidateText).X) + CandidateWindowPadding + 6;
                 widestCell = Math.Max(widestCell, cellWidth);
@@ -2743,10 +2745,41 @@ namespace HaCreator.MapSimulator.UI
 
         private int GetCandidateNumberWidth()
         {
-            int widestIndex = Math.Min(
-                _candidateListState.Candidates.Count,
-                Math.Clamp(_candidateListState.PageStart, 0, _candidateListState.Candidates.Count) + Math.Max(1, GetVisibleCandidateCount()));
-            return (int)Math.Ceiling(_font.MeasureString($"{widestIndex}.").X);
+            int visibleCount = Math.Max(1, GetVisibleCandidateCount());
+            return (int)Math.Ceiling(_font.MeasureString($"{visibleCount}.").X);
+        }
+
+        private bool IsPointInImeCandidateWindow(int mouseX, int mouseY)
+        {
+            Rectangle candidateBounds = GetImeCandidateWindowBounds(BuildOwnerViewport());
+            return !candidateBounds.IsEmpty && candidateBounds.Contains(mouseX, mouseY);
+        }
+
+        private int ResolveImeCandidateIndexFromPoint(int mouseX, int mouseY)
+        {
+            if (!_candidateListState.HasCandidates)
+            {
+                return -1;
+            }
+
+            int start = Math.Clamp(_candidateListState.PageStart, 0, _candidateListState.Candidates.Count);
+            int count = Math.Min(GetVisibleCandidateCount(), _candidateListState.Candidates.Count - start);
+            if (count <= 0)
+            {
+                return -1;
+            }
+
+            Rectangle candidateBounds = GetImeCandidateWindowBounds(BuildOwnerViewport());
+            int localIndex = SkillMacroImeCandidateWindowLayout.HitTestCandidate(
+                candidateBounds,
+                new Point(mouseX, mouseY),
+                _candidateListState.Vertical,
+                count,
+                GetCandidateRowHeight(),
+                GetHorizontalCandidateCellWidth());
+            return localIndex >= 0
+                ? start + localIndex
+                : -1;
         }
 
         private static IReadOnlyList<int> ClampClauseOffsets(IReadOnlyList<int> offsets, int maxLength)
@@ -2801,6 +2834,18 @@ namespace HaCreator.MapSimulator.UI
                 && _previousMouseState.LeftButton == ButtonState.Released;
             if (!leftClicked)
             {
+                return;
+            }
+
+            if (IsPointInImeCandidateWindow(mouseState.X, mouseState.Y))
+            {
+                int candidateIndex = ResolveImeCandidateIndexFromPoint(mouseState.X, mouseState.Y);
+                if (candidateIndex >= 0)
+                {
+                    OnImeCandidateSelected?.Invoke(_candidateListState.ListIndex, candidateIndex);
+                    _caretBlinkTick = Environment.TickCount;
+                }
+
                 return;
             }
 

@@ -8,6 +8,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -27,6 +28,9 @@ namespace HaCreator.MapSimulator.UI
             public bool CanConfirm { get; init; }
             public bool IsBlocked { get; init; }
             public bool IsSeriesRepresentative { get; init; }
+            public InventoryType DeliveryCashInventoryType { get; init; }
+            public int DeliveryCashItemRuntimeSlotIndex { get; init; } = -1;
+            public int DeliveryCashItemClientSlotIndex { get; init; }
         }
 
         private const int VisibleRowCount = 4;
@@ -281,6 +285,9 @@ namespace HaCreator.MapSimulator.UI
             string deliveryItemText = !string.IsNullOrWhiteSpace(entry?.DeliveryCashItemName)
                 ? entry.DeliveryCashItemName
                 : _itemName;
+            string slotText = entry?.DeliveryCashItemClientSlotIndex > 0
+                ? $"Item slot: {entry.DeliveryCashInventoryType} #{entry.DeliveryCashItemClientSlotIndex}"
+                : "Item slot: unresolved";
 
             float left = Position.X + DetailLeft;
             float y = Position.Y + DetailTop;
@@ -292,8 +299,10 @@ namespace HaCreator.MapSimulator.UI
             y += 14f;
             DrawLine(sprite, Truncate($"Delivery item: {deliveryItemText}", 42), new Vector2(left, y), new Color(120, 108, 97), 0.31f);
             y += 14f;
+            DrawLine(sprite, Truncate(slotText, 42), new Vector2(left, y), new Color(120, 108, 97), 0.31f);
+            y += 14f;
 
-            foreach (string line in WrapText(detail, Math.Max(120f, (CurrentFrame?.Width ?? 312) - 36f), 0.34f).Take(4))
+            foreach (string line in WrapText(detail, Math.Max(120f, (CurrentFrame?.Width ?? 312) - 36f), 0.34f).Take(3))
             {
                 DrawLine(sprite, line, new Vector2(left, y), new Color(96, 84, 70), 0.34f);
                 y += 13f;

@@ -201,10 +201,14 @@ namespace HaCreator.MapSimulator.Character
 
         private sealed class MirrorImagePreparedSourceLayer
         {
-            public AvatarRenderLayer RenderLayer { get; init; }
-            public int SourceSignature { get; init; }
-            public Rectangle Bounds { get; init; }
-            public IReadOnlyList<AssembledPart> Parts { get; init; } = Array.Empty<AssembledPart>();
+            public AvatarRenderLayer RenderLayer { get; set; }
+            public int SourceSignature { get; set; }
+            public Rectangle Bounds { get; set; }
+            public Point Origin { get; set; }
+            public int PreparedCurrentTime { get; set; } = int.MinValue;
+            public AvatarRenderLayer OverlayTargetLayer { get; set; } = AvatarRenderLayer.UnderFace;
+            public Texture2D ComposedTexture { get; set; }
+            public IReadOnlyList<AssembledPart> Parts { get; set; } = Array.Empty<AssembledPart>();
         }
 
         private readonly struct AvatarEffectRenderable
@@ -341,6 +345,7 @@ namespace HaCreator.MapSimulator.Character
         private MeleeAfterImageState _activeMeleeAfterImage;
         private readonly HashSet<int> _skillAvatarEffectRenderSuppressionSkillIds = new();
         private readonly Random _faceExpressionRandom = new(Environment.TickCount);
+        private readonly GraphicsDevice _graphicsDevice;
         private int _nextBlinkTime = Environment.TickCount + FACE_BLINK_MIN_INTERVAL_MS;
         private int _blinkExpressionEndTime;
         private int _hitExpressionEndTime;
@@ -450,6 +455,7 @@ namespace HaCreator.MapSimulator.Character
         /// </summary>
         public PlayerCharacter(GraphicsDevice device, TexturePool texturePool, CharacterBuild build)
         {
+            _graphicsDevice = device;
             Build = build; // Can be null for placeholder
             Physics = new CVecCtrl();
 
@@ -2186,6 +2192,7 @@ namespace HaCreator.MapSimulator.Character
         {
             if (_activeMirrorImage != null && _activeMirrorImage.SkillId == skillId)
             {
+                DisposeMirrorImagePreparedSourceLayers(_activeMirrorImage.PreparedSourceLayers);
                 _activeMirrorImage = null;
             }
         }
@@ -3544,7 +3551,6 @@ namespace HaCreator.MapSimulator.Character
                 return;
             }
 
-            PrepareMirrorImageSourceLayers(frame, currentFrameIndex);
             DrawMirrorImageSourceLayers(
                 spriteBatch,
                 skeletonRenderer,
@@ -3577,7 +3583,18 @@ namespace HaCreator.MapSimulator.Character
             for (int layerIndex = 0; layerIndex < layeredParts.Length; layerIndex++)
             {
                 MirrorImagePreparedSourceLayer layer = layeredParts[layerIndex];
-                IReadOnlyList<AssembledPart> parts = layer?.Parts;
+                if (layer == null)
+                {
+                    continue;
+                }
+
+                if (layer.ComposedTexture != null)
+                {
+                    DrawMirrorImagePreparedLayerTexture(spriteBatch, screenX, adjustedY, flip, tint, layer);
+                    continue;
+                }
+
+                IReadOnlyList<AssembledPart> parts = layer.Parts;
                 if (parts == null)
                 {
                     continue;
@@ -3590,7 +3607,29 @@ namespace HaCreator.MapSimulator.Character
             }
         }
 
-        private void PrepareMirrorImageSourceLayers(AssembledFrame frame, int currentFrameIndex)
+        private void DrawMirrorImagePreparedLayerTexture(
+            SpriteBatch spriteBatch,
+            int screenX,
+            int adjustedY,
+            bool flip,
+            Color tint,
+            MirrorImagePreparedSourceLayer layer)
+        {
+            Texture2D texture = layer?.ComposedTexture;
+            if (texture == null)
+            {
+                return;
+            }
+
+            Point origin = layer.Origin;
+            int drawX = flip
+                ? screenX - (texture.Width - origin.X)
+                : screenX - origin.X;
+            int drawY = adjustedY - origin.Y;
+            spriteBatch.Draw(texture, new Vector2(drawX, drawY), null, tint, 0f, Vector2.Zero, 1f, flip ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 0f);
+        }
+
+        private void PrepareMirrorImageSourceLayers(AssembledFrame frame, int currentFrameIndex, int currentTime)
         {
             if (_activeMirrorImage == null)
             {
@@ -3609,7 +3648,8 @@ namespace HaCreator.MapSimulator.Character
             _activeMirrorImage.PreparedFeetOffset = frame.FeetOffset;
             _activeMirrorImage.PreparedSourceLayers = BuildPreparedMirrorImageSourceLayers(
                 frame.AvatarRenderLayers,
-                _activeMirrorImage.PreparedSourceLayers);
+                _activeMirrorImage.PreparedSourceLayers,
+                currentTime);
         }
 
         private void ResetMirrorImagePreparedSourceLayers()
@@ -3622,6 +3662,7 @@ namespace HaCreator.MapSimulator.Character
             _activeMirrorImage.PreparedActionName = null;
             _activeMirrorImage.PreparedFrameIndex = -1;
             _activeMirrorImage.PreparedFeetOffset = 0;
+            DisposeMirrorImagePreparedSourceLayers(_activeMirrorImage.PreparedSourceLayers);
             _activeMirrorImage.PreparedSourceLayers = CreateEmptyMirrorImagePreparedSourceLayers();
         }
 
@@ -3635,6 +3676,10 @@ namespace HaCreator.MapSimulator.Character
                     RenderLayer = (AvatarRenderLayer)layerIndex,
                     SourceSignature = 0,
                     Bounds = Rectangle.Empty,
+                    Origin = Point.Zero,
+                    PreparedCurrentTime = int.MinValue,
+                    OverlayTargetLayer = AvatarRenderLayer.UnderFace,
+                    ComposedTexture = null,
                     Parts = Array.Empty<AssembledPart>()
                 };
             }
@@ -3642,12 +3687,14 @@ namespace HaCreator.MapSimulator.Character
             return layers;
         }
 
-        private static MirrorImagePreparedSourceLayer[] BuildPreparedMirrorImageSourceLayers(
+        private MirrorImagePreparedSourceLayer[] BuildPreparedMirrorImageSourceLayers(
             IReadOnlyList<AssembledPart>[] sourceLayers,
-            MirrorImagePreparedSourceLayer[] existingLayers)
+            MirrorImagePreparedSourceLayer[] existingLayers,
+            int currentTime)
         {
             if (sourceLayers == null || sourceLayers.Length == 0)
             {
+                DisposeMirrorImagePreparedSourceLayers(existingLayers);
                 return CreateEmptyMirrorImagePreparedSourceLayers();
             }
 
@@ -3658,49 +3705,55 @@ namespace HaCreator.MapSimulator.Character
             {
                 IReadOnlyList<AssembledPart> sourceParts = sourceLayers[layerIndex];
                 int sourceSignature = ComputeMirrorImageSourceLayerSignature(sourceParts);
-                if (existingLayers != null
-                    && layerIndex < existingLayers.Length
-                    && existingLayers[layerIndex] != null
-                    && existingLayers[layerIndex].SourceSignature == sourceSignature)
-                {
-                    preparedLayers[layerIndex] = existingLayers[layerIndex];
-                    continue;
-                }
-
+                MirrorImagePreparedSourceLayer existingLayer = existingLayers != null && layerIndex < existingLayers.Length
+                    ? existingLayers[layerIndex]
+                    : null;
                 preparedLayers[layerIndex] = CreatePreparedMirrorImageSourceLayer(
+                    existingLayer,
                     (AvatarRenderLayer)layerIndex,
                     sourceParts,
-                    sourceSignature);
+                    sourceSignature,
+                    currentTime);
             }
 
             for (int layerIndex = sourceLayers.Length; layerIndex < preparedLayers.Length; layerIndex++)
             {
-                preparedLayers[layerIndex] = new MirrorImagePreparedSourceLayer
+                MirrorImagePreparedSourceLayer existingLayer = existingLayers != null && layerIndex < existingLayers.Length
+                    ? existingLayers[layerIndex]
+                    : null;
+                preparedLayers[layerIndex] = ResetPreparedMirrorImageSourceLayer(existingLayer, (AvatarRenderLayer)layerIndex);
+            }
+
+            if (existingLayers != null)
+            {
+                for (int layerIndex = MirrorLayerCount; layerIndex < existingLayers.Length; layerIndex++)
                 {
-                    RenderLayer = (AvatarRenderLayer)layerIndex,
-                    SourceSignature = 0,
-                    Bounds = Rectangle.Empty,
-                    Parts = Array.Empty<AssembledPart>()
-                };
+                    DisposeMirrorImagePreparedSourceLayerTexture(existingLayers[layerIndex]);
+                }
             }
 
             return preparedLayers;
         }
 
-        private static MirrorImagePreparedSourceLayer CreatePreparedMirrorImageSourceLayer(
+        private MirrorImagePreparedSourceLayer CreatePreparedMirrorImageSourceLayer(
+            MirrorImagePreparedSourceLayer existingLayer,
             AvatarRenderLayer renderLayer,
             IReadOnlyList<AssembledPart> sourceParts,
-            int sourceSignature)
+            int sourceSignature,
+            int currentTime)
         {
+            MirrorImagePreparedSourceLayer preparedLayer = existingLayer ?? new MirrorImagePreparedSourceLayer();
             if (sourceParts == null || sourceParts.Count == 0)
             {
-                return new MirrorImagePreparedSourceLayer
-                {
-                    RenderLayer = renderLayer,
-                    SourceSignature = sourceSignature,
-                    Bounds = Rectangle.Empty,
-                    Parts = Array.Empty<AssembledPart>()
-                };
+                return ResetPreparedMirrorImageSourceLayer(preparedLayer, renderLayer, sourceSignature);
+            }
+
+            if (preparedLayer.SourceSignature == sourceSignature && preparedLayer.Parts.Count > 0)
+            {
+                preparedLayer.RenderLayer = renderLayer;
+                preparedLayer.PreparedCurrentTime = currentTime;
+                preparedLayer.OverlayTargetLayer = AvatarRenderLayer.UnderFace;
+                return preparedLayer;
             }
 
             var clonedParts = new AssembledPart[sourceParts.Count];
@@ -3709,13 +3762,36 @@ namespace HaCreator.MapSimulator.Character
                 clonedParts[partIndex] = CloneMirrorImageSourcePart(sourceParts[partIndex]);
             }
 
-            return new MirrorImagePreparedSourceLayer
-            {
-                RenderLayer = renderLayer,
-                SourceSignature = sourceSignature,
-                Bounds = CalculateMirrorImageSourceLayerBounds(clonedParts),
-                Parts = clonedParts
-            };
+            Rectangle bounds = CalculateMirrorImageSourceLayerBounds(clonedParts);
+            Texture2D composedTexture = CreateMirrorImageLayerTexture(clonedParts, bounds);
+            ReplacePreparedMirrorImageSourceLayerTexture(preparedLayer, composedTexture);
+            preparedLayer.RenderLayer = renderLayer;
+            preparedLayer.SourceSignature = sourceSignature;
+            preparedLayer.Bounds = bounds;
+            preparedLayer.Origin = bounds.IsEmpty
+                ? Point.Zero
+                : new Point(-bounds.X, -bounds.Y);
+            preparedLayer.PreparedCurrentTime = currentTime;
+            preparedLayer.OverlayTargetLayer = AvatarRenderLayer.UnderFace;
+            preparedLayer.Parts = clonedParts;
+            return preparedLayer;
+        }
+
+        private MirrorImagePreparedSourceLayer ResetPreparedMirrorImageSourceLayer(
+            MirrorImagePreparedSourceLayer existingLayer,
+            AvatarRenderLayer renderLayer,
+            int sourceSignature = 0)
+        {
+            MirrorImagePreparedSourceLayer preparedLayer = existingLayer ?? new MirrorImagePreparedSourceLayer();
+            DisposeMirrorImagePreparedSourceLayerTexture(preparedLayer);
+            preparedLayer.RenderLayer = renderLayer;
+            preparedLayer.SourceSignature = sourceSignature;
+            preparedLayer.Bounds = Rectangle.Empty;
+            preparedLayer.Origin = Point.Zero;
+            preparedLayer.PreparedCurrentTime = int.MinValue;
+            preparedLayer.OverlayTargetLayer = AvatarRenderLayer.UnderFace;
+            preparedLayer.Parts = Array.Empty<AssembledPart>();
+            return preparedLayer;
         }
 
         private static AssembledPart CloneMirrorImageSourcePart(AssembledPart part)
@@ -3804,6 +3880,113 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return new Rectangle(minX, minY, Math.Max(0, maxX - minX), Math.Max(0, maxY - minY));
+        }
+
+        private Texture2D CreateMirrorImageLayerTexture(IReadOnlyList<AssembledPart> sourceParts, Rectangle bounds)
+        {
+            if (_graphicsDevice == null
+                || sourceParts == null
+                || sourceParts.Count == 0
+                || bounds.Width <= 0
+                || bounds.Height <= 0)
+            {
+                return null;
+            }
+
+            RenderTargetBinding[] previousTargets = _graphicsDevice.GetRenderTargets();
+            Viewport previousViewport = _graphicsDevice.Viewport;
+            var renderTarget = new RenderTarget2D(
+                _graphicsDevice,
+                bounds.Width,
+                bounds.Height,
+                false,
+                SurfaceFormat.Color,
+                DepthFormat.None);
+
+            try
+            {
+                _graphicsDevice.SetRenderTarget(renderTarget);
+                _graphicsDevice.Clear(Color.Transparent);
+
+                using var spriteBatch = new SpriteBatch(_graphicsDevice);
+                spriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone);
+                for (int partIndex = 0; partIndex < sourceParts.Count; partIndex++)
+                {
+                    DrawMirrorImageSourcePartToTexture(spriteBatch, sourceParts[partIndex], bounds);
+                }
+
+                spriteBatch.End();
+                return renderTarget;
+            }
+            catch
+            {
+                renderTarget.Dispose();
+                throw;
+            }
+            finally
+            {
+                if (previousTargets.Length > 0)
+                {
+                    _graphicsDevice.SetRenderTargets(previousTargets);
+                }
+                else
+                {
+                    _graphicsDevice.SetRenderTarget(null);
+                }
+
+                _graphicsDevice.Viewport = previousViewport;
+            }
+        }
+
+        private static void DrawMirrorImageSourcePartToTexture(SpriteBatch spriteBatch, AssembledPart part, Rectangle bounds)
+        {
+            if (part?.Texture == null || !part.IsVisible)
+            {
+                return;
+            }
+
+            int drawX = part.OffsetX - bounds.X;
+            int drawY = part.OffsetY - bounds.Y;
+            Color tint = part.Tint != Color.White ? part.Tint : Color.White;
+            part.Texture.DrawBackground(spriteBatch, null, null, drawX, drawY, tint, false, null);
+        }
+
+        private static void ReplacePreparedMirrorImageSourceLayerTexture(MirrorImagePreparedSourceLayer layer, Texture2D texture)
+        {
+            if (ReferenceEquals(layer?.ComposedTexture, texture))
+            {
+                return;
+            }
+
+            DisposeMirrorImagePreparedSourceLayerTexture(layer);
+            if (layer != null)
+            {
+                layer.ComposedTexture = texture;
+            }
+        }
+
+        private static void DisposeMirrorImagePreparedSourceLayers(MirrorImagePreparedSourceLayer[] layers)
+        {
+            if (layers == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < layers.Length; i++)
+            {
+                DisposeMirrorImagePreparedSourceLayerTexture(layers[i]);
+            }
+        }
+
+        private static void DisposeMirrorImagePreparedSourceLayerTexture(MirrorImagePreparedSourceLayer layer)
+        {
+            if (layer?.ComposedTexture == null)
+            {
+                return;
+            }
+
+            layer.ComposedTexture.Dispose();
+            layer.ComposedTexture = null;
         }
 
         private bool TryGetShadowPartnerAnimation(
@@ -4094,6 +4277,11 @@ namespace HaCreator.MapSimulator.Character
 
             _activeMirrorImage.Visible = true;
             _activeMirrorImage.CurrentOffsetPx = ResolveMirrorImageCurrentOffset(currentTime);
+
+            int animationTime = GetRenderAnimationTime(currentTime);
+            AssembledFrame currentFrame = Assembler?.GetFrameAtTime(CurrentActionName, animationTime);
+            int currentFrameIndex = Assembler?.GetFrameIndexAtTime(CurrentActionName, animationTime) ?? -1;
+            PrepareMirrorImageSourceLayers(currentFrame, currentFrameIndex, currentTime);
         }
 
         private int ResolveShadowPartnerAttackDelayMs(string actionName)

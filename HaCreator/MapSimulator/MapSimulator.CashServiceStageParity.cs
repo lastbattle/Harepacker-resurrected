@@ -1,14 +1,25 @@
-using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.Effects;
+using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.UI;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using System;
+using System.Collections.Generic;
+using System.Globalization;
 using CashServiceOwnerStageKind = HaCreator.MapSimulator.UI.CashServiceStageKind;
 
 namespace HaCreator.MapSimulator
 {
     public partial class MapSimulator
     {
+        private static readonly string[] CashShopChildOwnerWindowNames =
+        {
+            MapSimulatorWindowNames.CashShopLocker,
+            MapSimulatorWindowNames.CashShopInventory,
+            MapSimulatorWindowNames.CashShopList,
+            MapSimulatorWindowNames.CashShopStatus,
+            MapSimulatorWindowNames.CashShopOneADay
+        };
+
         private readonly CashServicePacketInboxManager _cashServicePacketInbox = new();
 
         private void WireCashServiceOwnerWindows()
@@ -23,14 +34,11 @@ namespace HaCreator.MapSimulator
                 cashShopWindow.ResolveStorageExpansionCommoditySerialNumber = ResolveStorageExpansionCommoditySerialNumber;
                 cashShopWindow.GetStorageExpansionStatusSummary = GetStorageExpansionStatusSummary;
                 cashShopWindow.StorageExpansionResolved = HandleStorageExpansionResolved;
-                cashShopWindow.WindowHidden = _ =>
-                {
-                    uiWindowManager.HideWindow(MapSimulatorWindowNames.CashAvatarPreview);
-                    uiWindowManager.HideWindow(MapSimulatorWindowNames.CashShopStatus);
-                };
+                cashShopWindow.WindowHidden = _ => HideCashShopOwnerFamilyWindows();
+                WireCashShopChildOwnerWindows(cashShopWindow);
             }
 
-            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStatus) is CashServiceStageWindow cashShopStageWindow)
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) is CashServiceStageWindow cashShopStageWindow)
             {
                 cashShopStageWindow.SetFont(_fontChat);
                 cashShopStageWindow.SetCharacterBuild(_playerManager?.Player?.Build);
@@ -65,6 +73,13 @@ namespace HaCreator.MapSimulator
                 };
             }
 
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashTradingRoom) is CashTradingRoomWindow cashTradingRoomWindow)
+            {
+                cashTradingRoomWindow.SetFont(_fontChat);
+                cashTradingRoomWindow.SetWalletProvider(() => (int)Math.Clamp(ResolveCurrentCashServiceMesoBalance(), 0L, int.MaxValue));
+                cashTradingRoomWindow.SetTraderNames(_playerManager?.Player?.Build?.Name, "CashTrader");
+            }
+
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.Mts) is AdminShopDialogUI mtsWindow)
             {
                 mtsWindow.SetInventory(inventoryRuntime);
@@ -75,6 +90,131 @@ namespace HaCreator.MapSimulator
                 mtsStageWindow.SetFont(_fontChat);
                 mtsStageWindow.SetCharacterBuild(_playerManager?.Player?.Build);
                 mtsStageWindow.SetInventory(inventoryRuntime);
+            }
+        }
+
+        private void WireCashShopChildOwnerWindows(AdminShopDialogUI cashShopWindow)
+        {
+            if (cashShopWindow == null)
+            {
+                return;
+            }
+
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopLocker) is CashShopStageChildWindow lockerWindow)
+            {
+                lockerWindow.SetFont(_fontChat);
+                lockerWindow.SetContentProvider(cashShopWindow.DescribeLockerOwnerState);
+            }
+
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopInventory) is CashShopStageChildWindow inventoryWindow)
+            {
+                inventoryWindow.SetFont(_fontChat);
+                inventoryWindow.SetContentProvider(cashShopWindow.DescribeInventoryOwnerState);
+            }
+
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopList) is CashShopStageChildWindow listWindow)
+            {
+                listWindow.SetFont(_fontChat);
+                listWindow.SetContentProvider(() => BuildCashShopListOwnerLines(cashShopWindow));
+            }
+
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStatus) is CashShopStageChildWindow statusWindow)
+            {
+                statusWindow.SetFont(_fontChat);
+                statusWindow.SetContentProvider(BuildCashShopStatusOwnerLines);
+            }
+
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopOneADay) is CashShopStageChildWindow oneADayWindow)
+            {
+                oneADayWindow.SetFont(_fontChat);
+                oneADayWindow.SetContentProvider(BuildCashShopOneADayOwnerLines);
+            }
+        }
+
+        private IReadOnlyList<string> BuildCashShopListOwnerLines(AdminShopDialogUI cashShopWindow)
+        {
+            List<string> lines = new(cashShopWindow?.DescribeListOwnerState() ?? Array.Empty<string>());
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) is CashServiceStageWindow stageWindow)
+            {
+                foreach (string recentPacket in stageWindow.GetRecentPacketSummaries())
+                {
+                    lines.Add(recentPacket);
+                }
+            }
+
+            return lines;
+        }
+
+        private IReadOnlyList<string> BuildCashShopStatusOwnerLines()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) is not CashServiceStageWindow stageWindow)
+            {
+                return new[]
+                {
+                    "Cash Shop stage owner unavailable.",
+                    "CCSWnd_Status is waiting for the parent CCashShop stage."
+                };
+            }
+
+            string balanceLine =
+                $"NX {stageWindow.NexonCashBalance.ToString("N0", CultureInfo.InvariantCulture)}  " +
+                $"MP {stageWindow.MaplePointBalance.ToString("N0", CultureInfo.InvariantCulture)}  " +
+                $"Prepaid {stageWindow.PrepaidCashBalance.ToString("N0", CultureInfo.InvariantCulture)}";
+            if (stageWindow.ChargeParam != 0)
+            {
+                balanceLine += $"  Charge {stageWindow.ChargeParam.ToString(CultureInfo.InvariantCulture)}";
+            }
+
+            return new[]
+            {
+                balanceLine,
+                stageWindow.StatusMessage
+            };
+        }
+
+        private IReadOnlyList<string> BuildCashShopOneADayOwnerLines()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) is not CashServiceStageWindow stageWindow)
+            {
+                return new[]
+                {
+                    "One-a-day owner unavailable.",
+                    "CCSWnd_OneADay is waiting for the parent Cash Shop stage."
+                };
+            }
+
+            List<string> lines = new()
+            {
+                stageWindow.IsOneADayPending
+                    ? "Packet 395 has armed the dedicated one-a-day owner."
+                    : "No one-a-day packet is currently pending.",
+                stageWindow.NoticeState
+            };
+
+            foreach (string recentPacket in stageWindow.GetRecentPacketSummaries())
+            {
+                lines.Add(recentPacket);
+            }
+
+            return lines;
+        }
+
+        private void HideCashShopOwnerFamilyWindows()
+        {
+            uiWindowManager?.HideWindow(MapSimulatorWindowNames.CashShop);
+            uiWindowManager?.HideWindow(MapSimulatorWindowNames.CashAvatarPreview);
+            uiWindowManager?.HideWindow(MapSimulatorWindowNames.CashShopStage);
+            for (int i = 0; i < CashShopChildOwnerWindowNames.Length; i++)
+            {
+                uiWindowManager?.HideWindow(CashShopChildOwnerWindowNames[i]);
+            }
+        }
+
+        private void ShowCashShopChildOwnerWindows()
+        {
+            for (int i = 0; i < CashShopChildOwnerWindowNames.Length; i++)
+            {
+                ShowDirectionModeOwnedWindow(CashShopChildOwnerWindowNames[i]);
             }
         }
 
@@ -91,28 +231,29 @@ namespace HaCreator.MapSimulator
             string primaryWindowName = stageKind == CashServiceOwnerStageKind.CashShop
                 ? MapSimulatorWindowNames.CashShop
                 : MapSimulatorWindowNames.Mts;
-            string statusWindowName = stageKind == CashServiceOwnerStageKind.CashShop
-                ? MapSimulatorWindowNames.CashShopStatus
+            string stageWindowName = stageKind == CashServiceOwnerStageKind.CashShop
+                ? MapSimulatorWindowNames.CashShopStage
                 : MapSimulatorWindowNames.MtsStatus;
             string opposingPrimaryWindowName = stageKind == CashServiceOwnerStageKind.CashShop
                 ? MapSimulatorWindowNames.Mts
                 : MapSimulatorWindowNames.CashShop;
-            string opposingStatusWindowName = stageKind == CashServiceOwnerStageKind.CashShop
+            string opposingStageWindowName = stageKind == CashServiceOwnerStageKind.CashShop
                 ? MapSimulatorWindowNames.MtsStatus
-                : MapSimulatorWindowNames.CashShopStatus;
+                : MapSimulatorWindowNames.CashShopStage;
 
             uiWindowManager?.HideWindow(opposingPrimaryWindowName);
-            uiWindowManager?.HideWindow(opposingStatusWindowName);
+            uiWindowManager?.HideWindow(opposingStageWindowName);
             if (stageKind == CashServiceOwnerStageKind.CashShop)
             {
-                ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.CashShopStatus);
+                ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.CashShopStage);
                 ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.CashShop);
                 ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.CashAvatarPreview);
-                SyncCashServiceStageWindowState(MapSimulatorWindowNames.CashShopStatus, stageKind, resetStageSession);
+                ShowCashShopChildOwnerWindows();
+                SyncCashServiceStageWindowState(MapSimulatorWindowNames.CashShopStage, stageKind, resetStageSession);
                 return;
             }
 
-            uiWindowManager?.HideWindow(MapSimulatorWindowNames.CashAvatarPreview);
+            HideCashShopOwnerFamilyWindows();
             ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.MtsStatus);
             ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.Mts);
             SyncCashServiceStageWindowState(MapSimulatorWindowNames.MtsStatus, stageKind, resetStageSession);
@@ -158,7 +299,7 @@ namespace HaCreator.MapSimulator
             }
 
             bool focused = false;
-            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStatus) is CashServiceStageWindow cashShopStageWindow)
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) is CashServiceStageWindow cashShopStageWindow)
             {
                 focused |= cashShopStageWindow.TryFocusCommoditySerialNumber(commoditySerialNumber);
             }
@@ -238,7 +379,7 @@ namespace HaCreator.MapSimulator
             if (stageKind == Managers.CashServiceStageKind.CashShop)
             {
                 OpenCashServiceOwnerFamily(CashServiceOwnerStageKind.CashShop, resetStageSession: false);
-                if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStatus) is not CashServiceStageWindow cashShopStageWindow)
+                if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) is not CashServiceStageWindow cashShopStageWindow)
                 {
                     message = "Cash Shop stage owner is not available in this UI build.";
                     return false;
@@ -265,9 +406,16 @@ namespace HaCreator.MapSimulator
 
         private bool ShouldRunCashServicePacketInbox()
         {
+            bool anyCashShopChildVisible = false;
+            for (int i = 0; i < CashShopChildOwnerWindowNames.Length && !anyCashShopChildVisible; i++)
+            {
+                anyCashShopChildVisible = uiWindowManager?.GetWindow(CashShopChildOwnerWindowNames[i])?.IsVisible == true;
+            }
+
             return uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShop)?.IsVisible == true
-                || uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStatus)?.IsVisible == true
+                || uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage)?.IsVisible == true
                 || uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashAvatarPreview)?.IsVisible == true
+                || anyCashShopChildVisible
                 || uiWindowManager?.GetWindow(MapSimulatorWindowNames.Mts)?.IsVisible == true
                 || uiWindowManager?.GetWindow(MapSimulatorWindowNames.MtsStatus)?.IsVisible == true;
         }

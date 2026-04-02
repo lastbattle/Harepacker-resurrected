@@ -409,7 +409,10 @@ namespace HaCreator.MapSimulator.Pools
                 packet.SkillId,
                 ownerIsLocal,
                 currentTime,
-                ResolveLocalOwnerCancelFamilyDurationMs);
+                ResolveLocalOwnerCancelFamilyDurationMs,
+                _localSkillLevelAccessor,
+                ResolveCancelSkillData,
+                GetCancelSkillCatalog());
 
             RemoveExistingState(packet.SummonedObjectId);
 
@@ -1454,6 +1457,11 @@ namespace HaCreator.MapSimulator.Pools
 
             if (idleState == SummonActorState.Idle)
             {
+                if (ShouldClearPacketOwnedHealingRobotSupportSuspend(state))
+                {
+                    state.Summon.SupportSuspendUntilTime = int.MinValue;
+                }
+
                 state.Summon.CurrentAnimationBranchName = null;
             }
         }
@@ -1468,6 +1476,13 @@ namespace HaCreator.MapSimulator.Pools
             int elapsed = currentTime - animationStartTime;
             int duration = initialDelay + (GetSkillAnimationDuration(animation) ?? 0);
             return elapsed >= 0 && duration > 0 && elapsed < duration;
+        }
+
+        private static bool ShouldClearPacketOwnedHealingRobotSupportSuspend(PacketOwnedSummonState state)
+        {
+            return state?.Summon?.SkillId == HealingRobotSkillId
+                   && state.Summon.AssistType == SummonAssistType.Support
+                   && state.Summon.SupportSuspendUntilTime != int.MinValue;
         }
 
         private static void AdvanceSummonHitPeriod(ActiveSummon summon, int currentTime)
@@ -2181,7 +2196,10 @@ namespace HaCreator.MapSimulator.Pools
             int skillId,
             bool ownerIsLocal,
             int currentTime,
-            Func<int, int, int> localCancelFamilyRemainingDurationAccessor)
+            Func<int, int, int> localCancelFamilyRemainingDurationAccessor,
+            Func<int, int> localSkillLevelAccessor,
+            Func<int, SkillData> getSkillData,
+            IReadOnlyCollection<SkillData> skillCatalog)
         {
             int authoredDurationMs = SummonRuntimeRules.ResolveAuthoredDurationMs(skill, levelData, skillLevel);
             if (authoredDurationMs > 0)
@@ -2195,6 +2213,16 @@ namespace HaCreator.MapSimulator.Pools
                 if (inheritedDurationMs > 0)
                 {
                     return inheritedDurationMs;
+                }
+
+                int inheritedAuthoredDurationMs = ResolveConnectedFamilyAuthoredDurationMs(
+                    skillId,
+                    localSkillLevelAccessor,
+                    getSkillData,
+                    skillCatalog);
+                if (inheritedAuthoredDurationMs > 0)
+                {
+                    return inheritedAuthoredDurationMs;
                 }
             }
 
@@ -2241,7 +2269,12 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
-                if (skill == null || skill.GetLevel(localSkillLevel) != null)
+                SkillData candidateSkill = candidateSkillId == skillId
+                    ? skill
+                    : getSkillData?.Invoke(candidateSkillId);
+                if (skill == null
+                    || skill.GetLevel(localSkillLevel) != null
+                    || candidateSkill?.GetLevel(localSkillLevel) != null)
                 {
                     return localSkillLevel;
                 }
@@ -2270,6 +2303,48 @@ namespace HaCreator.MapSimulator.Pools
                 _localCancelFamilyRemainingDurationAccessor,
                 ResolveCancelSkillData,
                 GetCancelSkillCatalog());
+        }
+
+        internal static int ResolveConnectedFamilyAuthoredDurationMs(
+            int skillId,
+            Func<int, int> localSkillLevelAccessor,
+            Func<int, SkillData> getSkillData,
+            IReadOnlyCollection<SkillData> skillCatalog)
+        {
+            if (skillId <= 0)
+            {
+                return 0;
+            }
+
+            foreach (int candidateSkillId in ClientSkillCancelResolver.ResolveConnectedCancelFamilySkillIds(
+                         skillId,
+                         getSkillData,
+                         skillCatalog))
+            {
+                int localSkillLevel = Math.Max(0, localSkillLevelAccessor?.Invoke(candidateSkillId) ?? 0);
+                if (localSkillLevel <= 0)
+                {
+                    continue;
+                }
+
+                SkillData candidateSkill = getSkillData?.Invoke(candidateSkillId);
+                if (candidateSkill == null)
+                {
+                    continue;
+                }
+
+                SkillLevelData candidateLevelData = candidateSkill.GetLevel(localSkillLevel);
+                int authoredDurationMs = SummonRuntimeRules.ResolveAuthoredDurationMs(
+                    candidateSkill,
+                    candidateLevelData,
+                    localSkillLevel);
+                if (authoredDurationMs > 0)
+                {
+                    return authoredDurationMs;
+                }
+            }
+
+            return 0;
         }
 
         internal static int ResolveInheritedLocalCancelFamilyDurationMs(
@@ -2996,20 +3071,32 @@ namespace HaCreator.MapSimulator.Pools
 
             int elapsed = Math.Max(0, currentTime - summon.StartTime);
             SkillAnimation animation = ResolveSummonAnimation(summon, currentTime, elapsed, out int animationTime);
-            SkillFrame frame = animation?.GetFrameAtTime(animationTime);
-            DrawSummonFrame(spriteBatch, summon, frame, mapShiftX, mapShiftY, centerX, centerY);
+            SkillFrame frame = null;
+            float frameAlpha = 1f;
+            if (animation?.TryGetFrameAtTime(animationTime, out frame, out int frameElapsedMs) == true)
+            {
+                frameAlpha = ResolveSkillFrameAlpha(frame, frameElapsedMs);
+            }
+
+            DrawSummonFrame(spriteBatch, summon, frame, mapShiftX, mapShiftY, centerX, centerY, frameAlpha);
 
             if (state.OneTimeActionClip is PacketOwnedOneTimeActionClip actionClip
                 && TryResolvePacketOwnedOneTimeActionPlayback(actionClip, currentTime, out int actionAnimationTime))
             {
-                SkillFrame actionFrame = actionClip.Animation?.GetFrameAtTime(actionAnimationTime);
-                DrawSummonFrame(spriteBatch, summon, actionFrame, mapShiftX, mapShiftY, centerX, centerY);
+                SkillFrame actionFrame = null;
+                float actionFrameAlpha = 1f;
+                if (actionClip.Animation?.TryGetFrameAtTime(actionAnimationTime, out actionFrame, out int actionFrameElapsedMs) == true)
+                {
+                    actionFrameAlpha = ResolveSkillFrameAlpha(actionFrame, actionFrameElapsedMs);
+                }
+
+                DrawSummonFrame(spriteBatch, summon, actionFrame, mapShiftX, mapShiftY, centerX, centerY, actionFrameAlpha);
             }
         }
 
-        private void DrawSummonFrame(SpriteBatch spriteBatch, ActiveSummon summon, SkillFrame frame, int mapShiftX, int mapShiftY, int centerX, int centerY)
+        private void DrawSummonFrame(SpriteBatch spriteBatch, ActiveSummon summon, SkillFrame frame, int mapShiftX, int mapShiftY, int centerX, int centerY, float frameAlpha = 1f)
         {
-            if (summon == null || frame?.Texture == null)
+            if (summon == null || frame?.Texture == null || frameAlpha <= 0f)
             {
                 return;
             }
@@ -3017,6 +3104,7 @@ namespace HaCreator.MapSimulator.Pools
             int screenX = (int)MathF.Round(summon.PositionX) - mapShiftX + centerX;
             int screenY = (int)MathF.Round(summon.PositionY) - mapShiftY + centerY;
             bool shouldFlip = summon.FacingRight ^ frame.Flip;
+            Color tint = ResolveSummonDrawColor(summon) * MathHelper.Clamp(frameAlpha, 0f, 1f);
 
             frame.Texture.DrawBackground(
                 spriteBatch,
@@ -3024,9 +3112,29 @@ namespace HaCreator.MapSimulator.Pools
                 null,
                 GetFrameDrawX(screenX, frame, shouldFlip),
                 screenY - frame.Origin.Y,
-                ResolveSummonDrawColor(summon),
+                tint,
                 shouldFlip,
                 null);
+        }
+
+        internal static float ResolveSkillFrameAlpha(SkillFrame frame, int frameElapsedMs)
+        {
+            if (frame == null)
+            {
+                return 0f;
+            }
+
+            int startAlpha = Math.Clamp(frame.AlphaStart, 0, 255);
+            int endAlpha = Math.Clamp(frame.AlphaEnd, 0, 255);
+            if (startAlpha == endAlpha)
+            {
+                return startAlpha / 255f;
+            }
+
+            float progress = frame.Delay <= 0
+                ? 1f
+                : MathHelper.Clamp(frameElapsedMs / (float)Math.Max(1, frame.Delay), 0f, 1f);
+            return MathHelper.Lerp(startAlpha, endAlpha, progress) / 255f;
         }
 
         private void DrawProjectile(SpriteBatch spriteBatch, ActiveProjectile projectile, int mapShiftX, int mapShiftY, int centerX, int centerY, int currentTime)

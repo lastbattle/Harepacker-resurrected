@@ -2193,10 +2193,18 @@ namespace HaCreator.MapSimulator.Loaders
 
             WzCanvasProperty compactBackgroundCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/backgrnd/0/back");
             WzCanvasProperty expandedBackgroundCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/backgrnd/1/back");
-            WzCanvasProperty keyNormalCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/key/0/normal/0");
-            WzCanvasProperty keyPressedCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/key/0/pressed/0");
-            WzCanvasProperty keyDisabledCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/key/0/disabled/0");
-            WzCanvasProperty keyHoverCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/key/0/mouseOver/0");
+            WzCanvasProperty capsLockNormalCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/funckey/capslock/normal/0");
+            WzCanvasProperty capsLockPressedCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/funckey/capslock/pressed/0");
+            WzCanvasProperty capsLockDisabledCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/funckey/capslock/disabled/0");
+            WzCanvasProperty capsLockHoverCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/funckey/capslock/mouseOver/0");
+            WzCanvasProperty leftShiftNormalCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/funckey/lshift/normal/0");
+            WzCanvasProperty leftShiftPressedCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/funckey/lshift/pressed/0");
+            WzCanvasProperty leftShiftDisabledCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/funckey/lshift/disabled/0");
+            WzCanvasProperty leftShiftHoverCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/funckey/lshift/mouseOver/0");
+            WzCanvasProperty rightShiftNormalCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/funckey/rshift/normal/0");
+            WzCanvasProperty rightShiftPressedCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/funckey/rshift/pressed/0");
+            WzCanvasProperty rightShiftDisabledCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/funckey/rshift/disabled/0");
+            WzCanvasProperty rightShiftHoverCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/funckey/rshift/mouseOver/0");
             WzCanvasProperty backspaceNormalCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/funckey/backspace/normal/0");
             WzCanvasProperty backspacePressedCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/funckey/backspace/pressed/0");
             WzCanvasProperty backspaceDisabledCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/funckey/backspace/disabled/0");
@@ -2219,10 +2227,18 @@ namespace HaCreator.MapSimulator.Loaders
             WzCanvasProperty closeHoverCanvas = ResolveCanvasProperty(uiWindowImage, "SoftKeyboard/Bt/0/BtClose/mouseOver/0");
 
             if (compactBackgroundCanvas == null
-                || keyNormalCanvas == null
-                || keyPressedCanvas == null
-                || keyDisabledCanvas == null
-                || keyHoverCanvas == null
+                || capsLockNormalCanvas == null
+                || capsLockPressedCanvas == null
+                || capsLockDisabledCanvas == null
+                || capsLockHoverCanvas == null
+                || leftShiftNormalCanvas == null
+                || leftShiftPressedCanvas == null
+                || leftShiftDisabledCanvas == null
+                || leftShiftHoverCanvas == null
+                || rightShiftNormalCanvas == null
+                || rightShiftPressedCanvas == null
+                || rightShiftDisabledCanvas == null
+                || rightShiftHoverCanvas == null
                 || backspaceNormalCanvas == null
                 || backspacePressedCanvas == null
                 || backspaceDisabledCanvas == null
@@ -2249,12 +2265,37 @@ namespace HaCreator.MapSimulator.Loaders
 
             Texture2D compactBackgroundTexture = compactBackgroundCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device);
             Texture2D expandedBackgroundTexture = expandedBackgroundCanvas?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device);
-            Texture2D[] keyTextures =
+            Texture2D[][] keyTextures = new Texture2D[37][];
+            for (int i = 0; i < keyTextures.Length; i++)
             {
-                keyNormalCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device),
-                keyPressedCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device),
-                keyDisabledCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device),
-                keyHoverCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device)
+                keyTextures[i] = new[]
+                {
+                    ResolveCanvasProperty(uiWindowImage, $"SoftKeyboard/key/{i}/normal/0")?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device),
+                    ResolveCanvasProperty(uiWindowImage, $"SoftKeyboard/key/{i}/pressed/0")?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device),
+                    ResolveCanvasProperty(uiWindowImage, $"SoftKeyboard/key/{i}/disabled/0")?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device),
+                    ResolveCanvasProperty(uiWindowImage, $"SoftKeyboard/key/{i}/mouseOver/0")?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device)
+                };
+            }
+            Texture2D[] capsLockTextures =
+            {
+                capsLockNormalCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device),
+                capsLockPressedCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device),
+                capsLockDisabledCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device),
+                capsLockHoverCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device)
+            };
+            Texture2D[] leftShiftTextures =
+            {
+                leftShiftNormalCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device),
+                leftShiftPressedCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device),
+                leftShiftDisabledCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device),
+                leftShiftHoverCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device)
+            };
+            Texture2D[] rightShiftTextures =
+            {
+                rightShiftNormalCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device),
+                rightShiftPressedCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device),
+                rightShiftDisabledCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device),
+                rightShiftHoverCanvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device)
             };
             Texture2D[] backspaceTextures =
             {
@@ -2293,7 +2334,10 @@ namespace HaCreator.MapSimulator.Loaders
             };
 
             if (compactBackgroundTexture == null
-                || keyTextures.Any(texture => texture == null)
+                || keyTextures.Any(textureFamily => textureFamily == null || textureFamily.Any(texture => texture == null))
+                || capsLockTextures.Any(texture => texture == null)
+                || leftShiftTextures.Any(texture => texture == null)
+                || rightShiftTextures.Any(texture => texture == null)
                 || backspaceTextures.Any(texture => texture == null)
                 || enterTextures.Any(texture => texture == null)
                 || minButtonTextures.Any(texture => texture == null)
@@ -2309,6 +2353,9 @@ namespace HaCreator.MapSimulator.Loaders
                 compactBackgroundTexture,
                 expandedBackgroundTexture,
                 keyTextures,
+                capsLockTextures,
+                leftShiftTextures,
+                rightShiftTextures,
                 backspaceTextures,
                 enterTextures,
                 minButtonTextures,

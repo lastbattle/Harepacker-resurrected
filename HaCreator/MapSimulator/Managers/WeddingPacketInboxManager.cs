@@ -73,6 +73,8 @@ namespace HaCreator.MapSimulator.Managers
         private const int PacketTypeUserMove = 210;
         private const int PacketTypeSetActivePortableChair = 222;
         private const int PacketTypeAvatarModified = 223;
+        private const int PacketTypeTemporaryStatSet = 225;
+        private const int PacketTypeTemporaryStatReset = 226;
 
         private readonly ConcurrentQueue<WeddingInboxMessage> _pendingMessages = new();
         private readonly object _listenerLock = new();
@@ -584,6 +586,8 @@ namespace HaCreator.MapSimulator.Managers
                 "210" or "usermove" or "move" => AssignPacketType(PacketTypeUserMove, out packetType),
                 "222" or "chair" or "setchair" => AssignPacketType(PacketTypeSetActivePortableChair, out packetType),
                 "223" or "avatarmod" or "avatarmodified" or "look" => AssignPacketType(PacketTypeAvatarModified, out packetType),
+                "225" or "tempset" or "tempstatset" => AssignPacketType(PacketTypeTemporaryStatSet, out packetType),
+                "226" or "tempreset" or "tempstatreset" => AssignPacketType(PacketTypeTemporaryStatReset, out packetType),
                 _ => int.TryParse(normalized, out packetType)
             };
         }
@@ -603,6 +607,8 @@ namespace HaCreator.MapSimulator.Managers
                 PacketTypeUserMove => "usermove (210)",
                 PacketTypeSetActivePortableChair => "chair (222)",
                 PacketTypeAvatarModified => "avatarmodified (223)",
+                PacketTypeTemporaryStatSet => "tempset (225)",
+                PacketTypeTemporaryStatReset => "tempreset (226)",
                 _ => packetType.ToString(CultureInfo.InvariantCulture)
             };
         }

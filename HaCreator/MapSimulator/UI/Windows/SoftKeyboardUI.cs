@@ -5,6 +5,7 @@ using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
+using System.Collections.Generic;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -48,32 +49,59 @@ namespace HaCreator.MapSimulator.UI
             MouseOver = 3
         }
 
-        private static readonly char[] KeyCharacters = "1234567890QWERTYUIOPASDFGHJKLZXCVBNM".ToCharArray();
+        private enum SoftKeyboardFunctionKey
+        {
+            None = 0,
+            CapsLock = 1,
+            LeftShift = 2,
+            RightShift = 3,
+            Enter = 4,
+            Backspace = 5,
+        }
+
+        private enum SoftKeyboardTabMode
+        {
+            Mixed = 0,
+            Letters = 1,
+            Digits = 2,
+        }
+
+        private static readonly char[] LowercaseKeyCharacters = "1234567890qwertyuiopasdfghjklzxcvbnm-".ToCharArray();
+        private static readonly char[] UppercaseKeyCharacters = "1234567890QWERTYUIOPASDFGHJKLZXCVBNM_".ToCharArray();
         private static readonly int[] RowStarts = { 0, 10, 20, 29 };
-        private static readonly int[] RowLengths = { 10, 10, 9, 7 };
+        private static readonly int[] RowLengths = { 10, 10, 9, 8 };
+        private static readonly Random DigitRandom = new();
+        private static readonly Rectangle[] TabBounds =
+        {
+            new(8, 11, 68, 19),
+            new(77, 11, 68, 19),
+            new(146, 11, 68, 19),
+        };
+
         private const int KeyOriginXRow0 = 24;
         private const int KeyOriginXRow1 = 47;
         private const int KeyOriginXRow2 = 58;
         private const int KeyOriginXRow3 = 74;
         private const int KeyOriginY = 20;
         private const int KeyPitch = 23;
-        private const int BackspaceX = 254;
-        private const int EnterX = 221;
-        private const int ModeButtonY = 4;
-        private const int AlphaButtonX = 182;
-        private const int NumericButtonX = 214;
-        private const int ModeButtonWidth = 26;
-        private const int ModeButtonHeight = 12;
-        private const int MinButtonX = 240;
-        private const int MaxButtonX = 254;
-        private const int CloseButtonX = 268;
+        private const int BackspaceX = 255;
+        private const int CapsLockX = 12;
+        private const int LeftShiftX = 10;
+        private const int RightShiftX = 238;
+        private const int EnterX = 244;
+        private const int MinButtonX = 260;
+        private const int MaxButtonX = 246;
+        private const int CloseButtonX = 274;
         private const int WindowButtonY = 4;
         private const int DefaultWindowButtonSize = 12;
         private const int ExpandedHeaderOffsetY = 17;
 
         private readonly Texture2D _compactBackgroundTexture;
         private readonly Texture2D _expandedBackgroundTexture;
-        private readonly Texture2D[] _keyTextures;
+        private readonly Texture2D[][] _keyTexturesByIndex;
+        private readonly Texture2D[] _capsLockTextures;
+        private readonly Texture2D[] _leftShiftTextures;
+        private readonly Texture2D[] _rightShiftTextures;
         private readonly Texture2D[] _backspaceTextures;
         private readonly Texture2D[] _enterTextures;
         private readonly Texture2D[] _minButtonTextures;
@@ -86,25 +114,32 @@ namespace HaCreator.MapSimulator.UI
         private SpriteFont _font;
         private ISoftKeyboardHost _host;
         private bool _isExpandedLayout;
+        private bool _capsLockEnabled;
+        private bool _shiftEnabled;
         private int _hoveredKeyIndex = -1;
-        private bool _hoveredBackspace;
-        private bool _hoveredEnterButton;
+        private int _pressedKeyIndex = -1;
+        private int _hoveredTabIndex = -1;
+        private int _pressedTabIndex = -1;
+        private SoftKeyboardFunctionKey _hoveredFunctionKey = SoftKeyboardFunctionKey.None;
+        private SoftKeyboardFunctionKey _pressedFunctionKey = SoftKeyboardFunctionKey.None;
         private bool _hoveredCloseButton;
         private bool _hoveredMinButton;
         private bool _hoveredMaxButton;
-        private int _pressedKeyIndex = -1;
-        private bool _pressedBackspace;
-        private bool _pressedEnterButton;
         private bool _pressedCloseButton;
         private bool _pressedMinButton;
         private bool _pressedMaxButton;
+        private SoftKeyboardTabMode _tabMode = SoftKeyboardTabMode.Mixed;
+        private readonly int[] _digitOrder = new int[10];
         private string _statusMessage = string.Empty;
 
         public SoftKeyboardUI(
             IDXObject frame,
             Texture2D compactBackgroundTexture,
             Texture2D expandedBackgroundTexture,
-            Texture2D[] keyTextures,
+            Texture2D[][] keyTexturesByIndex,
+            Texture2D[] capsLockTextures,
+            Texture2D[] leftShiftTextures,
+            Texture2D[] rightShiftTextures,
             Texture2D[] backspaceTextures,
             Texture2D[] enterTextures,
             Texture2D[] minButtonTextures,
@@ -117,7 +152,10 @@ namespace HaCreator.MapSimulator.UI
         {
             _compactBackgroundTexture = compactBackgroundTexture ?? throw new ArgumentNullException(nameof(compactBackgroundTexture));
             _expandedBackgroundTexture = expandedBackgroundTexture ?? compactBackgroundTexture;
-            _keyTextures = ValidateStateTextures(keyTextures, nameof(keyTextures));
+            _keyTexturesByIndex = ValidateKeyTextures(keyTexturesByIndex, nameof(keyTexturesByIndex));
+            _capsLockTextures = ValidateStateTextures(capsLockTextures, nameof(capsLockTextures));
+            _leftShiftTextures = ValidateStateTextures(leftShiftTextures, nameof(leftShiftTextures));
+            _rightShiftTextures = ValidateStateTextures(rightShiftTextures, nameof(rightShiftTextures));
             _backspaceTextures = ValidateStateTextures(backspaceTextures, nameof(backspaceTextures));
             _enterTextures = ValidateStateTextures(enterTextures, nameof(enterTextures));
             _minButtonTextures = ValidateStateTextures(minButtonTextures, nameof(minButtonTextures));
@@ -129,6 +167,7 @@ namespace HaCreator.MapSimulator.UI
             _pixelTexture = new Texture2D(device, 1, 1);
             _pixelTexture.SetData(new[] { Color.White });
 
+            ResetDigitOrder();
             IsVisible = false;
         }
 
@@ -143,11 +182,16 @@ namespace HaCreator.MapSimulator.UI
 
         public void SyncHost(ISoftKeyboardHost host)
         {
-            if (!ReferenceEquals(_host, host))
+            bool hostChanged = !ReferenceEquals(_host, host);
+            if (hostChanged)
             {
                 _host = host;
                 _statusMessage = string.Empty;
                 ResetVisualState();
+                _capsLockEnabled = false;
+                _shiftEnabled = false;
+                _tabMode = ResolveDefaultTabMode(host);
+                ResetDigitOrder();
                 _isExpandedLayout = false;
             }
 
@@ -188,13 +232,16 @@ namespace HaCreator.MapSimulator.UI
             _host = null;
             _statusMessage = string.Empty;
             _isExpandedLayout = false;
+            _capsLockEnabled = false;
+            _shiftEnabled = false;
+            _tabMode = SoftKeyboardTabMode.Mixed;
+            ResetDigitOrder();
             ResetVisualState();
         }
 
         public override void Update(GameTime gameTime)
         {
             base.Update(gameTime);
-
             if (!IsVisible)
             {
                 ResetVisualState();
@@ -224,16 +271,22 @@ namespace HaCreator.MapSimulator.UI
                 sprite.Draw(backgroundTexture, new Vector2(Position.X, Position.Y), Color.White);
             }
 
-            SoftKeyboardKeyMode keyMode = ResolveKeyMode(_host.SoftKeyboardKeyboardType, _host.SoftKeyboardTextLength, _host.SoftKeyboardMaxLength);
-            DrawModeButton(sprite, GetAlphaButtonBounds(), "ABC", IsAlphabeticModeActive(keyMode), disabled: !IsAlphabeticFamilyEnabled(keyMode));
-            DrawModeButton(sprite, GetNumericButtonBounds(), "123", IsNumericModeActive(keyMode), disabled: !IsNumericFamilyEnabled(keyMode));
-            DrawWindowButton(sprite, GetMinButtonBounds(), _minButtonTextures, GetWindowButtonState(_hoveredMinButton, _pressedMinButton), "-");
-            DrawWindowButton(sprite, GetMaxButtonBounds(), _maxButtonTextures, GetWindowButtonState(_hoveredMaxButton, _pressedMaxButton), "+");
-            DrawWindowButton(sprite, GetCloseButtonBounds(), _closeButtonTextures, GetWindowButtonState(_hoveredCloseButton, _pressedCloseButton), "X");
-            DrawBackspace(sprite, GetBackspaceBounds());
-            DrawEnter(sprite, GetEnterBounds());
+            if (_isExpandedLayout)
+            {
+                DrawTabs(sprite);
+            }
 
-            for (int keyIndex = 0; keyIndex < KeyCharacters.Length; keyIndex++)
+            DrawWindowButton(sprite, GetMaxButtonBounds(), _maxButtonTextures, GetWindowButtonState(_hoveredMaxButton, _pressedMaxButton), "+");
+            DrawWindowButton(sprite, GetMinButtonBounds(), _minButtonTextures, GetWindowButtonState(_hoveredMinButton, _pressedMinButton), "-");
+            DrawWindowButton(sprite, GetCloseButtonBounds(), _closeButtonTextures, GetWindowButtonState(_hoveredCloseButton, _pressedCloseButton), "X");
+
+            DrawFunctionKey(sprite, SoftKeyboardFunctionKey.CapsLock, "CAPS");
+            DrawFunctionKey(sprite, SoftKeyboardFunctionKey.LeftShift, "SHIFT");
+            DrawFunctionKey(sprite, SoftKeyboardFunctionKey.RightShift, "SHIFT");
+            DrawFunctionKey(sprite, SoftKeyboardFunctionKey.Enter, "ENTER");
+            DrawFunctionKey(sprite, SoftKeyboardFunctionKey.Backspace, "BS");
+
+            for (int keyIndex = 0; keyIndex < LowercaseKeyCharacters.Length; keyIndex++)
             {
                 DrawKey(sprite, keyIndex);
             }
@@ -283,8 +336,8 @@ namespace HaCreator.MapSimulator.UI
                 _pressedCloseButton = _hoveredCloseButton;
                 _pressedMinButton = _hoveredMinButton;
                 _pressedMaxButton = _hoveredMaxButton;
-                _pressedBackspace = _hoveredBackspace;
-                _pressedEnterButton = _hoveredEnterButton;
+                _pressedTabIndex = _hoveredTabIndex;
+                _pressedFunctionKey = _hoveredFunctionKey;
                 _pressedKeyIndex = _hoveredKeyIndex;
             }
             else if (leftReleased)
@@ -312,17 +365,45 @@ namespace HaCreator.MapSimulator.UI
                     return true;
                 }
 
-                if (_pressedBackspace && _hoveredBackspace)
+                if (_pressedTabIndex >= 0 && _pressedTabIndex == _hoveredTabIndex)
                 {
-                    _host.TryBackspaceSoftKeyboard(out _statusMessage);
+                    _tabMode = (SoftKeyboardTabMode)_pressedTabIndex;
+                    _statusMessage = _tabMode switch
+                    {
+                        SoftKeyboardTabMode.Letters => "Letter tab enabled for the current owner.",
+                        SoftKeyboardTabMode.Digits => "Digit tab enabled with a fresh randomized keypad.",
+                        _ => "Mixed tab enabled for the current owner.",
+                    };
+                    if (_tabMode == SoftKeyboardTabMode.Digits)
+                    {
+                        ResetDigitOrder();
+                    }
+                    ResetPressedState();
+                    return true;
                 }
-                else if (_pressedEnterButton && _hoveredEnterButton && CanSubmit())
+
+                if (_pressedFunctionKey != SoftKeyboardFunctionKey.None && _pressedFunctionKey == _hoveredFunctionKey)
                 {
-                    _host.TrySubmitSoftKeyboard(out _statusMessage);
+                    HandleFunctionKeyRelease(_pressedFunctionKey);
+                    ResetPressedState();
+                    return true;
                 }
-                else if (_pressedKeyIndex >= 0 && _pressedKeyIndex == _hoveredKeyIndex && IsKeyEnabled(_pressedKeyIndex))
+
+                if (_pressedKeyIndex >= 0 && _pressedKeyIndex == _hoveredKeyIndex && IsKeyEnabled(_pressedKeyIndex))
                 {
-                    _host.TryInsertSoftKeyboardCharacter(GetCharacterForKey(_pressedKeyIndex), out _statusMessage);
+                    char value = GetCharacterForKey(_pressedKeyIndex);
+                    if (_host.TryInsertSoftKeyboardCharacter(value, out string errorMessage))
+                    {
+                        _statusMessage = string.Empty;
+                        if (_shiftEnabled)
+                        {
+                            _shiftEnabled = false;
+                        }
+                    }
+                    else
+                    {
+                        _statusMessage = errorMessage ?? string.Empty;
+                    }
                 }
 
                 ResetPressedState();
@@ -331,11 +412,76 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
+        private void DrawTabs(SpriteBatch sprite)
+        {
+            string[] labels = { "Mix", "ABC", "123" };
+            for (int i = 0; i < TabBounds.Length; i++)
+            {
+                Rectangle bounds = TranslateBounds(TabBounds[i]);
+                bool active = _tabMode == (SoftKeyboardTabMode)i;
+                bool hovered = _hoveredTabIndex == i;
+                bool pressed = _pressedTabIndex == i;
+                Color fill = active
+                    ? new Color(248, 224, 153, 215)
+                    : pressed
+                        ? new Color(163, 132, 78, 210)
+                        : hovered
+                            ? new Color(196, 168, 108, 210)
+                            : new Color(80, 88, 102, 180);
+                sprite.Draw(_pixelTexture, bounds, fill);
+                DrawSimpleBorder(sprite, bounds, new Color(44, 34, 20));
+
+                if (_font != null)
+                {
+                    Vector2 size = _font.MeasureString(labels[i]) * 0.5f;
+                    sprite.DrawString(
+                        _font,
+                        labels[i],
+                        new Vector2(bounds.Center.X - (size.X / 2f), bounds.Center.Y - (size.Y / 2f)),
+                        active ? new Color(58, 36, 12) : Color.White,
+                        0f,
+                        Vector2.Zero,
+                        0.5f,
+                        SpriteEffects.None,
+                        0f);
+                }
+            }
+        }
+
+        private void DrawFunctionKey(SpriteBatch sprite, SoftKeyboardFunctionKey key, string fallbackLabel)
+        {
+            Rectangle bounds = GetFunctionKeyBounds(key);
+            Texture2D[] textures = GetFunctionKeyTextures(key);
+            SoftKeyboardVisualState state = GetFunctionKeyState(key);
+            Texture2D texture = textures[(int)state];
+            if (texture != null)
+            {
+                sprite.Draw(texture, new Vector2(bounds.X, bounds.Y), Color.White);
+            }
+
+            if (_font == null)
+            {
+                return;
+            }
+
+            Vector2 size = _font.MeasureString(fallbackLabel) * 0.4f;
+            sprite.DrawString(
+                _font,
+                fallbackLabel,
+                new Vector2(bounds.Center.X - (size.X / 2f), bounds.Center.Y - (size.Y / 2f)),
+                state == SoftKeyboardVisualState.Disabled ? new Color(110, 110, 110) : new Color(60, 45, 25),
+                0f,
+                Vector2.Zero,
+                0.4f,
+                SpriteEffects.None,
+                0f);
+        }
+
         private void DrawKey(SpriteBatch sprite, int keyIndex)
         {
             Rectangle bounds = GetKeyBounds(keyIndex);
             SoftKeyboardVisualState state = GetKeyVisualState(keyIndex);
-            Texture2D texture = _keyTextures[(int)state];
+            Texture2D texture = _keyTexturesByIndex[keyIndex][(int)state];
             if (texture != null)
             {
                 sprite.Draw(texture, new Vector2(bounds.X, bounds.Y), Color.White);
@@ -364,84 +510,6 @@ namespace HaCreator.MapSimulator.UI
                 0f);
         }
 
-        private void DrawBackspace(SpriteBatch sprite, Rectangle bounds)
-        {
-            SoftKeyboardVisualState state = GetBackspaceState();
-            Texture2D texture = _backspaceTextures[(int)state];
-            if (texture != null)
-            {
-                sprite.Draw(texture, new Vector2(bounds.X, bounds.Y), Color.White);
-            }
-            else if (_font != null)
-            {
-                sprite.DrawString(
-                    _font,
-                    "BS",
-                    new Vector2(bounds.X + 3, bounds.Y + 14),
-                    state == SoftKeyboardVisualState.Disabled ? new Color(110, 110, 110) : new Color(60, 45, 25),
-                    0f,
-                    Vector2.Zero,
-                    0.5f,
-                    SpriteEffects.None,
-                    0f);
-            }
-        }
-
-        private void DrawEnter(SpriteBatch sprite, Rectangle bounds)
-        {
-            SoftKeyboardVisualState state = GetEnterState();
-            Texture2D texture = _enterTextures[(int)state];
-            if (texture != null)
-            {
-                sprite.Draw(texture, new Vector2(bounds.X, bounds.Y), Color.White);
-            }
-            else if (_font != null)
-            {
-                sprite.DrawString(
-                    _font,
-                    "Enter",
-                    new Vector2(bounds.X + 3, bounds.Y + 6),
-                    state == SoftKeyboardVisualState.Disabled ? new Color(110, 110, 110) : new Color(60, 45, 25),
-                    0f,
-                    Vector2.Zero,
-                    0.45f,
-                    SpriteEffects.None,
-                    0f);
-            }
-        }
-
-        private void DrawModeButton(SpriteBatch sprite, Rectangle bounds, string label, bool active, bool disabled)
-        {
-            Color fill = disabled
-                ? new Color(88, 88, 88, 170)
-                : active
-                    ? new Color(246, 224, 154, 230)
-                    : new Color(180, 180, 180, 190);
-
-            sprite.Draw(_pixelTexture, bounds, fill);
-            sprite.Draw(_pixelTexture, new Rectangle(bounds.X, bounds.Y, bounds.Width, 1), new Color(38, 38, 38));
-            sprite.Draw(_pixelTexture, new Rectangle(bounds.X, bounds.Bottom - 1, bounds.Width, 1), new Color(38, 38, 38));
-            sprite.Draw(_pixelTexture, new Rectangle(bounds.X, bounds.Y, 1, bounds.Height), new Color(38, 38, 38));
-            sprite.Draw(_pixelTexture, new Rectangle(bounds.Right - 1, bounds.Y, 1, bounds.Height), new Color(38, 38, 38));
-
-            if (_font == null)
-            {
-                return;
-            }
-
-            Vector2 size = _font.MeasureString(label) * 0.45f;
-            sprite.DrawString(
-                _font,
-                label,
-                new Vector2(bounds.Center.X - (size.X / 2f), bounds.Center.Y - (size.Y / 2f)),
-                disabled ? new Color(104, 104, 104) : new Color(48, 36, 18),
-                0f,
-                Vector2.Zero,
-                0.45f,
-                SpriteEffects.None,
-                0f);
-        }
-
         private void DrawWindowButton(SpriteBatch sprite, Rectangle bounds, Texture2D[] textures, SoftKeyboardVisualState state, string fallbackLabel)
         {
             Texture2D texture = textures[(int)state];
@@ -460,10 +528,7 @@ namespace HaCreator.MapSimulator.UI
             };
 
             sprite.Draw(_pixelTexture, bounds, fill);
-            sprite.Draw(_pixelTexture, new Rectangle(bounds.X, bounds.Y, bounds.Width, 1), new Color(52, 20, 20));
-            sprite.Draw(_pixelTexture, new Rectangle(bounds.X, bounds.Bottom - 1, bounds.Width, 1), new Color(52, 20, 20));
-            sprite.Draw(_pixelTexture, new Rectangle(bounds.X, bounds.Y, 1, bounds.Height), new Color(52, 20, 20));
-            sprite.Draw(_pixelTexture, new Rectangle(bounds.Right - 1, bounds.Y, 1, bounds.Height), new Color(52, 20, 20));
+            DrawSimpleBorder(sprite, bounds, new Color(52, 20, 20));
 
             if (_font != null)
             {
@@ -478,6 +543,14 @@ namespace HaCreator.MapSimulator.UI
                     SpriteEffects.None,
                     0f);
             }
+        }
+
+        private void DrawSimpleBorder(SpriteBatch sprite, Rectangle bounds, Color color)
+        {
+            sprite.Draw(_pixelTexture, new Rectangle(bounds.X, bounds.Y, bounds.Width, 1), color);
+            sprite.Draw(_pixelTexture, new Rectangle(bounds.X, bounds.Bottom - 1, bounds.Width, 1), color);
+            sprite.Draw(_pixelTexture, new Rectangle(bounds.X, bounds.Y, 1, bounds.Height), color);
+            sprite.Draw(_pixelTexture, new Rectangle(bounds.Right - 1, bounds.Y, 1, bounds.Height), color);
         }
 
         private SoftKeyboardVisualState GetKeyVisualState(int keyIndex)
@@ -500,39 +573,19 @@ namespace HaCreator.MapSimulator.UI
             return SoftKeyboardVisualState.Normal;
         }
 
-        private SoftKeyboardVisualState GetBackspaceState()
+        private SoftKeyboardVisualState GetFunctionKeyState(SoftKeyboardFunctionKey key)
         {
-            if (_host == null || _host.SoftKeyboardTextLength <= 0)
+            if (!CanUseFunctionKey(key))
             {
                 return SoftKeyboardVisualState.Disabled;
             }
 
-            if (_pressedBackspace)
+            if (IsFunctionKeyLatched(key) || _pressedFunctionKey == key)
             {
                 return SoftKeyboardVisualState.Pressed;
             }
 
-            if (_hoveredBackspace)
-            {
-                return SoftKeyboardVisualState.MouseOver;
-            }
-
-            return SoftKeyboardVisualState.Normal;
-        }
-
-        private SoftKeyboardVisualState GetEnterState()
-        {
-            if (!CanSubmit())
-            {
-                return SoftKeyboardVisualState.Disabled;
-            }
-
-            if (_pressedEnterButton)
-            {
-                return SoftKeyboardVisualState.Pressed;
-            }
-
-            if (_hoveredEnterButton)
+            if (_hoveredFunctionKey == key)
             {
                 return SoftKeyboardVisualState.MouseOver;
             }
@@ -557,7 +610,7 @@ namespace HaCreator.MapSimulator.UI
 
         private bool IsKeyEnabled(int keyIndex)
         {
-            if (_host == null || keyIndex < 0 || keyIndex >= KeyCharacters.Length)
+            if (_host == null || keyIndex < 0 || keyIndex >= LowercaseKeyCharacters.Length)
             {
                 return false;
             }
@@ -568,14 +621,108 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            return keyIndex < 10
+            bool isNumeric = IsNumericKey(keyIndex);
+            bool isAlphabetic = !isNumeric;
+            if (_tabMode == SoftKeyboardTabMode.Digits && isAlphabetic)
+            {
+                return false;
+            }
+
+            if (_tabMode == SoftKeyboardTabMode.Letters && isNumeric)
+            {
+                return false;
+            }
+
+            return isNumeric
                 ? IsNumericFamilyEnabled(keyMode)
                 : IsAlphabeticFamilyEnabled(keyMode);
         }
 
         private char GetCharacterForKey(int keyIndex)
         {
-            return KeyCharacters[Math.Clamp(keyIndex, 0, KeyCharacters.Length - 1)];
+            if (keyIndex < 0 || keyIndex >= LowercaseKeyCharacters.Length)
+            {
+                return '\0';
+            }
+
+            if (IsNumericKey(keyIndex))
+            {
+                return (char)('0' + _digitOrder[keyIndex]);
+            }
+
+            return IsUppercaseActive()
+                ? UppercaseKeyCharacters[keyIndex]
+                : LowercaseKeyCharacters[keyIndex];
+        }
+
+        private void HandleFunctionKeyRelease(SoftKeyboardFunctionKey key)
+        {
+            switch (key)
+            {
+                case SoftKeyboardFunctionKey.CapsLock:
+                    if (CanUseFunctionKey(key))
+                    {
+                        _capsLockEnabled = !_capsLockEnabled;
+                    }
+                    break;
+                case SoftKeyboardFunctionKey.LeftShift:
+                case SoftKeyboardFunctionKey.RightShift:
+                    if (CanUseFunctionKey(key))
+                    {
+                        _shiftEnabled = !_shiftEnabled;
+                    }
+                    break;
+                case SoftKeyboardFunctionKey.Enter:
+                    if (_host.TrySubmitSoftKeyboard(out string submitMessage))
+                    {
+                        _statusMessage = string.Empty;
+                    }
+                    else
+                    {
+                        _statusMessage = submitMessage ?? string.Empty;
+                    }
+                    break;
+                case SoftKeyboardFunctionKey.Backspace:
+                    if (_host.TryBackspaceSoftKeyboard(out string backspaceMessage))
+                    {
+                        _statusMessage = string.Empty;
+                    }
+                    else
+                    {
+                        _statusMessage = backspaceMessage ?? string.Empty;
+                    }
+                    break;
+            }
+        }
+
+        private bool CanUseFunctionKey(SoftKeyboardFunctionKey key)
+        {
+            SoftKeyboardKeyMode mode = ResolveKeyMode();
+            return key switch
+            {
+                SoftKeyboardFunctionKey.CapsLock => IsAlphabeticFamilyEnabled(mode),
+                SoftKeyboardFunctionKey.LeftShift => IsAlphabeticFamilyEnabled(mode),
+                SoftKeyboardFunctionKey.RightShift => IsAlphabeticFamilyEnabled(mode),
+                SoftKeyboardFunctionKey.Enter => CanSubmit(),
+                SoftKeyboardFunctionKey.Backspace => _host?.SoftKeyboardTextLength > 0,
+                _ => false,
+            };
+        }
+
+        private bool IsFunctionKeyLatched(SoftKeyboardFunctionKey key)
+        {
+            return key switch
+            {
+                SoftKeyboardFunctionKey.CapsLock => _capsLockEnabled,
+                SoftKeyboardFunctionKey.LeftShift => _shiftEnabled,
+                SoftKeyboardFunctionKey.RightShift => _shiftEnabled,
+                _ => false,
+            };
+        }
+
+        private bool IsUppercaseActive()
+        {
+            return _capsLockEnabled ^ _shiftEnabled;
         }
 
         private void UpdateHoverState(Point mousePoint)
@@ -583,9 +730,45 @@ namespace HaCreator.MapSimulator.UI
             _hoveredCloseButton = GetCloseButtonBounds().Contains(mousePoint);
             _hoveredMinButton = GetMinButtonBounds().Contains(mousePoint);
             _hoveredMaxButton = GetMaxButtonBounds().Contains(mousePoint);
-            _hoveredBackspace = GetBackspaceBounds().Contains(mousePoint);
-            _hoveredEnterButton = GetEnterBounds().Contains(mousePoint);
+            _hoveredTabIndex = ResolveTabIndex(mousePoint);
+            _hoveredFunctionKey = ResolveFunctionKey(mousePoint);
             _hoveredKeyIndex = ResolveKeyIndex(mousePoint);
+        }
+
+        private int ResolveTabIndex(Point mousePoint)
+        {
+            if (!_isExpandedLayout)
+            {
+                return -1;
+            }
+
+            for (int i = 0; i < TabBounds.Length; i++)
+            {
+                if (TranslateBounds(TabBounds[i]).Contains(mousePoint))
+                {
+                    return i;
+                }
+            }
+
+            return -1;
+        }
+
+        private SoftKeyboardFunctionKey ResolveFunctionKey(Point mousePoint)
+        {
+            foreach (SoftKeyboardFunctionKey key in Enum.GetValues(typeof(SoftKeyboardFunctionKey)))
+            {
+                if (key == SoftKeyboardFunctionKey.None)
+                {
+                    continue;
+                }
+
+                if (GetFunctionKeyBounds(key).Contains(mousePoint))
+                {
+                    return key;
+                }
+            }
+
+            return SoftKeyboardFunctionKey.None;
         }
 
         private int ResolveKeyIndex(Point mousePoint)
@@ -658,33 +841,40 @@ namespace HaCreator.MapSimulator.UI
             }
 
             int column = keyIndex - rowStart;
+            Texture2D normalTexture = _keyTexturesByIndex[keyIndex][0];
             return new Rectangle(
                 Position.X + xBase + (column * KeyPitch),
                 Position.Y + GetKeyboardOriginY() + (row * KeyPitch),
-                _keyTextures[0]?.Width ?? 21,
-                _keyTextures[0]?.Height ?? 22);
+                normalTexture?.Width ?? 21,
+                normalTexture?.Height ?? 22);
         }
 
-        private Rectangle GetBackspaceBounds()
+        private Rectangle GetFunctionKeyBounds(SoftKeyboardFunctionKey key)
         {
-            return new Rectangle(
-                Position.X + BackspaceX,
-                Position.Y + GetKeyboardOriginY(),
-                _backspaceTextures[0]?.Width ?? 21,
-                _backspaceTextures[0]?.Height ?? 45);
+            return key switch
+            {
+                SoftKeyboardFunctionKey.CapsLock => new Rectangle(Position.X + CapsLockX, Position.Y + GetKeyboardOriginY() + KeyPitch, _capsLockTextures[0]?.Width ?? 32, _capsLockTextures[0]?.Height ?? 22),
+                SoftKeyboardFunctionKey.LeftShift => new Rectangle(Position.X + LeftShiftX, Position.Y + GetKeyboardOriginY() + (KeyPitch * 2), _leftShiftTextures[0]?.Width ?? 48, _leftShiftTextures[0]?.Height ?? 22),
+                SoftKeyboardFunctionKey.RightShift => new Rectangle(Position.X + RightShiftX, Position.Y + GetKeyboardOriginY() + (KeyPitch * 2), _rightShiftTextures[0]?.Width ?? 40, _rightShiftTextures[0]?.Height ?? 22),
+                SoftKeyboardFunctionKey.Enter => new Rectangle(Position.X + EnterX, Position.Y + GetKeyboardOriginY() + KeyPitch, _enterTextures[0]?.Width ?? 33, _enterTextures[0]?.Height ?? 22),
+                SoftKeyboardFunctionKey.Backspace => new Rectangle(Position.X + BackspaceX, Position.Y + GetKeyboardOriginY(), _backspaceTextures[0]?.Width ?? 21, _backspaceTextures[0]?.Height ?? 45),
+                _ => Rectangle.Empty,
+            };
         }
 
-        private Rectangle GetEnterBounds()
+        private Texture2D[] GetFunctionKeyTextures(SoftKeyboardFunctionKey key)
         {
-            return new Rectangle(
-                Position.X + EnterX,
-                Position.Y + GetKeyboardOriginY() + (2 * KeyPitch),
-                _enterTextures[0]?.Width ?? 33,
-                _enterTextures[0]?.Height ?? 22);
+            return key switch
+            {
+                SoftKeyboardFunctionKey.CapsLock => _capsLockTextures,
+                SoftKeyboardFunctionKey.LeftShift => _leftShiftTextures,
+                SoftKeyboardFunctionKey.RightShift => _rightShiftTextures,
+                SoftKeyboardFunctionKey.Enter => _enterTextures,
+                SoftKeyboardFunctionKey.Backspace => _backspaceTextures,
+                _ => _backspaceTextures,
+            };
         }
 
-        private Rectangle GetAlphaButtonBounds() => new(Position.X + AlphaButtonX, Position.Y + ModeButtonY, ModeButtonWidth, ModeButtonHeight);
-        private Rectangle GetNumericButtonBounds() => new(Position.X + NumericButtonX, Position.Y + ModeButtonY, ModeButtonWidth, ModeButtonHeight);
         private Rectangle GetMinButtonBounds() => new(Position.X + MinButtonX, Position.Y + WindowButtonY, _minButtonTextures[0]?.Width ?? DefaultWindowButtonSize, _minButtonTextures[0]?.Height ?? DefaultWindowButtonSize);
         private Rectangle GetMaxButtonBounds() => new(Position.X + MaxButtonX, Position.Y + WindowButtonY, _maxButtonTextures[0]?.Width ?? DefaultWindowButtonSize, _maxButtonTextures[0]?.Height ?? DefaultWindowButtonSize);
         private Rectangle GetCloseButtonBounds() => new(Position.X + CloseButtonX, Position.Y + WindowButtonY, _closeButtonTextures[0]?.Width ?? DefaultWindowButtonSize, _closeButtonTextures[0]?.Height ?? DefaultWindowButtonSize);
@@ -773,21 +963,16 @@ namespace HaCreator.MapSimulator.UI
             return keyMode is SoftKeyboardKeyMode.AlphaNumeric or SoftKeyboardKeyMode.NumericOnly;
         }
 
-        private static bool IsAlphabeticModeActive(SoftKeyboardKeyMode keyMode)
+        private static bool IsNumericKey(int keyIndex)
         {
-            return IsAlphabeticFamilyEnabled(keyMode);
-        }
-
-        private static bool IsNumericModeActive(SoftKeyboardKeyMode keyMode)
-        {
-            return IsNumericFamilyEnabled(keyMode);
+            return keyIndex >= 0 && keyIndex <= 9;
         }
 
         private void ResetPressedState()
         {
             _pressedKeyIndex = -1;
-            _pressedBackspace = false;
-            _pressedEnterButton = false;
+            _pressedTabIndex = -1;
+            _pressedFunctionKey = SoftKeyboardFunctionKey.None;
             _pressedCloseButton = false;
             _pressedMinButton = false;
             _pressedMaxButton = false;
@@ -796,8 +981,8 @@ namespace HaCreator.MapSimulator.UI
         private void ResetVisualState()
         {
             _hoveredKeyIndex = -1;
-            _hoveredBackspace = false;
-            _hoveredEnterButton = false;
+            _hoveredTabIndex = -1;
+            _hoveredFunctionKey = SoftKeyboardFunctionKey.None;
             _hoveredCloseButton = false;
             _hoveredMinButton = false;
             _hoveredMaxButton = false;
@@ -827,6 +1012,50 @@ namespace HaCreator.MapSimulator.UI
         private int GetKeyboardOriginY()
         {
             return KeyOriginY + (_isExpandedLayout ? ExpandedHeaderOffsetY : 0);
+        }
+
+        private Rectangle TranslateBounds(Rectangle bounds)
+        {
+            return new Rectangle(Position.X + bounds.X, Position.Y + bounds.Y, bounds.Width, bounds.Height);
+        }
+
+        private static SoftKeyboardTabMode ResolveDefaultTabMode(ISoftKeyboardHost host)
+        {
+            return host?.SoftKeyboardKeyboardType switch
+            {
+                SoftKeyboardKeyboardType.NumericOnly => SoftKeyboardTabMode.Digits,
+                SoftKeyboardKeyboardType.NumericOnlyAlt => SoftKeyboardTabMode.Digits,
+                _ => SoftKeyboardTabMode.Mixed,
+            };
+        }
+
+        private void ResetDigitOrder()
+        {
+            for (int i = 0; i < _digitOrder.Length; i++)
+            {
+                _digitOrder[i] = i;
+            }
+
+            for (int i = _digitOrder.Length - 1; i > 0; i--)
+            {
+                int swapIndex = DigitRandom.Next(i + 1);
+                (_digitOrder[i], _digitOrder[swapIndex]) = (_digitOrder[swapIndex], _digitOrder[i]);
+            }
+        }
+
+        private static Texture2D[][] ValidateKeyTextures(Texture2D[][] textures, string parameterName)
+        {
+            if (textures == null || textures.Length != LowercaseKeyCharacters.Length)
+            {
+                throw new ArgumentException("Expected per-key texture families for the full soft-keyboard layout.", parameterName);
+            }
+
+            for (int i = 0; i < textures.Length; i++)
+            {
+                ValidateStateTextures(textures[i], $"{parameterName}[{i}]");
+            }
+
+            return textures;
         }
 
         private static Texture2D[] ValidateStateTextures(Texture2D[] textures, string parameterName)
