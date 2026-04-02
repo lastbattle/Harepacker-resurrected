@@ -42,13 +42,13 @@
   </ItemGroup>
   <ItemGroup>
     <PackageReference Include="MonoGame.Framework.WindowsDX" Version="3.8.4.1" />
-    <PackageReference Include="NAudio" Version="2.2.1" />
-    <PackageReference Include="NAudio.Asio" Version="2.2.1" />
-    <PackageReference Include="NAudio.Core" Version="2.2.1" />
-    <PackageReference Include="NAudio.Midi" Version="2.2.1" />
-    <PackageReference Include="NAudio.Wasapi" Version="2.2.1" />
-    <PackageReference Include="NAudio.WinForms" Version="2.2.1" />
-    <PackageReference Include="NAudio.WinMM" Version="2.2.1" />
+    <PackageReference Include="NAudio" Version="2.3.0" />
+    <PackageReference Include="NAudio.Asio" Version="2.3.0" />
+    <PackageReference Include="NAudio.Core" Version="2.3.0" />
+    <PackageReference Include="NAudio.Midi" Version="2.3.0" />
+    <PackageReference Include="NAudio.Wasapi" Version="2.3.0" />
+    <PackageReference Include="NAudio.WinForms" Version="2.3.0" />
+    <PackageReference Include="NAudio.WinMM" Version="2.3.0" />
     <PackageReference Include="SharpDX" Version="4.2.0" />
     <PackageReference Include="SharpDX.Direct2D1" Version="4.2.0" />
     <PackageReference Include="SharpDX.Direct3D11" Version="4.2.0" />
