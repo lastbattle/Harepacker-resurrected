@@ -57,6 +57,27 @@ namespace HaCreator.MapSimulator.Interaction
             return message;
         }
 
+        internal bool TryOpenFromMarriageResultPacket(
+            byte[] payload,
+            WeddingInvitationStyle style,
+            string sourceDescription,
+            UIWindowManager windowManager,
+            CharacterBuild build,
+            SpriteFont font,
+            Action<string> feedbackHandler,
+            Action showWindow,
+            out string message)
+        {
+            if (!_runtime.TryOpenFromMarriageResultPacket(payload, style, sourceDescription, out message))
+            {
+                return false;
+            }
+
+            WireWindow(windowManager, build, font, feedbackHandler);
+            showWindow?.Invoke();
+            return true;
+        }
+
         internal string Accept(UIWindowManager windowManager)
         {
             string message = _runtime.Accept();

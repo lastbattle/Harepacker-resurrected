@@ -58,6 +58,15 @@ namespace HaCreator.MapSimulator.Companions
             }
         }
 
+        private sealed class LayerAnimationSequence
+        {
+            public SkillAnimation AppearAnimation { get; init; }
+            public SkillAnimation DefaultAnimation { get; init; }
+
+            public bool HasFrames => (AppearAnimation?.Frames?.Count ?? 0) > 0
+                || (DefaultAnimation?.Frames?.Count ?? 0) > 0;
+        }
+
         private enum DragonQuestInfoState
         {
             PreStart = 0,
@@ -68,10 +77,10 @@ namespace HaCreator.MapSimulator.Companions
 
         private readonly GraphicsDevice _device;
         private readonly Dictionary<int, DragonAnimationSet> _animationCache = new();
-        private readonly Dictionary<int, SkillAnimation> _questInfoAnimationCache = new();
+        private readonly Dictionary<int, LayerAnimationSequence> _questInfoAnimationCache = new();
         private SkillAnimation _dragonFuryAnimation;
         private SkillAnimation _dragonBlinkAnimation;
-        private SkillAnimation _questInfoAnimation;
+        private LayerAnimationSequence _questInfoAnimation;
         private static readonly HashSet<int> HiddenDragonMountIds = new()
         {
             1902040,
@@ -93,8 +102,10 @@ namespace HaCreator.MapSimulator.Companions
         private float _questInfoAlpha;
         private int _lastUpdateTime = int.MinValue;
         private int _lastBlinkStartTime = int.MinValue;
+        private int _questInfoAnimationStartTime = int.MinValue;
         private bool _isSuppressed;
         private bool _isFollowActive;
+        private int _activeFollowReleaseStableFrames;
         private int _activeVerticalFollowState;
         private int _activeVerticalCheckCount;
         private DragonQuestInfoState _questInfoPreviewState = DragonQuestInfoState.Hidden;
@@ -116,6 +127,7 @@ namespace HaCreator.MapSimulator.Companions
         private const float ActiveFollowVerticalStepDivisor = 10f;
         private const float ActiveFollowVerticalStepCap = 17f;
         private const int ActiveFollowVerticalCheckFrames = 5;
+        private const int ActiveFollowReleaseStableFrameCount = 6;
         private const float ActiveFollowEngageDistance = ActiveFollowDistanceX + ActiveFollowStepX;
         private const float ActiveFollowReleaseDistance = ActiveFollowDistanceX;
         private const float PassiveHorizontalResponse = 3.2f;
@@ -169,7 +181,7 @@ namespace HaCreator.MapSimulator.Companions
             float deltaSeconds = GetDeltaSeconds(currentTime);
             UpdateFollowState(owner);
             FollowUpdateFlags followUpdate = UpdateVisualAnchor(deltaSeconds);
-            if ((followUpdate & (FollowUpdateFlags.SnappedToTarget | FollowUpdateFlags.PassiveSettleEffect)) != 0)
+            if ((followUpdate & FollowUpdateFlags.PassiveSettleEffect) != 0)
             {
                 TriggerBlink(owner, currentTime);
             }
@@ -292,8 +304,10 @@ namespace HaCreator.MapSimulator.Companions
             _questInfoAlpha = 0f;
             _lastUpdateTime = int.MinValue;
             _lastBlinkStartTime = int.MinValue;
+            _questInfoAnimationStartTime = int.MinValue;
             _isSuppressed = false;
             _isFollowActive = false;
+            _activeFollowReleaseStableFrames = 0;
             _activeVerticalFollowState = 0;
             _activeVerticalCheckCount = 0;
         }
@@ -469,15 +483,9 @@ namespace HaCreator.MapSimulator.Companions
             return null;
         }
 
-        private static string ResolveBaseActionName(PlayerCharacter owner, DragonAnimationSet animationSet)
+        private string ResolveBaseActionName(PlayerCharacter owner, DragonAnimationSet animationSet)
         {
-            bool useMove = owner.State is PlayerState.Walking
-                or PlayerState.Jumping
-                or PlayerState.Falling
-                or PlayerState.Ladder
-                or PlayerState.Rope
-                or PlayerState.Swimming
-                or PlayerState.Flying;
+            bool useMove = ShouldUseMoveAction(owner);
 
             if (useMove && animationSet.MoveAnimation != null)
             {
@@ -485,6 +493,34 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             return animationSet.StandAnimation != null ? "stand" : animationSet.Animations.Keys.FirstOrDefault();
+        }
+
+        private bool ShouldUseMoveAction(PlayerCharacter owner)
+        {
+            if (owner?.State is PlayerState.Walking
+                or PlayerState.Jumping
+                or PlayerState.Falling
+                or PlayerState.Ladder
+                or PlayerState.Rope
+                or PlayerState.Swimming
+                or PlayerState.Flying)
+            {
+                return true;
+            }
+
+            if (_isFollowActive)
+            {
+                return true;
+            }
+
+            if (Math.Abs(_followVelocity.X) > FollowMinSpeed
+                || Math.Abs(_followVelocity.Y) > FollowMinSpeed)
+            {
+                return true;
+            }
+
+            return Math.Abs(_worldAnchor.X - _visualAnchor.X) > PassiveHoldDistance
+                   || Math.Abs(_worldAnchor.Y - _visualAnchor.Y) > PassiveVerticalHoldDistance;
         }
 
         private void SetCurrentAction(string actionName, int currentTime, bool preserveStartTimeWhenUnchanged = false)
@@ -580,7 +616,6 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             return mapInfo.vanishDragon == true
-                || mapInfo.nofollowCharacter == true
                 || mapInfo.fieldType == FieldType.FIELDTYPE_NODRAGON;
         }
 
@@ -646,20 +681,30 @@ namespace HaCreator.MapSimulator.Companions
                 or PlayerState.Flying;
             bool ownerHasMomentum = owner?.Physics != null
                 && (Math.Abs(owner.Physics.VelocityX) > FollowMinSpeed || Math.Abs(owner.Physics.VelocityY) > FollowMinSpeed);
+            bool shouldEngageActiveFollow = ownerInMotion
+                || ownerHasMomentum
+                || horizontalDelta > ActiveFollowEngageDistance
+                || verticalDelta > ActiveFollowVerticalCheckDistance;
+            bool shouldHoldActiveFollow = ownerInMotion
+                || ownerHasMomentum
+                || horizontalDelta > ActiveFollowReleaseDistance
+                || verticalDelta > ActiveFollowVerticalCheckDistance;
 
             if (_isFollowActive)
             {
-                _isFollowActive = ownerInMotion
-                    || ownerHasMomentum
-                    || horizontalDelta > ActiveFollowReleaseDistance
-                    || verticalDelta > ActiveFollowVerticalCheckDistance;
+                if (shouldHoldActiveFollow)
+                {
+                    _activeFollowReleaseStableFrames = 0;
+                    return;
+                }
+
+                _activeFollowReleaseStableFrames++;
+                _isFollowActive = _activeFollowReleaseStableFrames < ActiveFollowReleaseStableFrameCount;
             }
             else
             {
-                _isFollowActive = ownerInMotion
-                    || ownerHasMomentum
-                    || horizontalDelta > ActiveFollowEngageDistance
-                    || verticalDelta > ActiveFollowVerticalCheckDistance;
+                _activeFollowReleaseStableFrames = 0;
+                _isFollowActive = shouldEngageActiveFollow;
             }
         }
 
@@ -1025,8 +1070,8 @@ namespace HaCreator.MapSimulator.Companions
             bool shouldShowFury = ShouldShowDragonFury(owner);
             _dragonFuryAlpha = shouldShowFury
                 ? Approach(_dragonFuryAlpha, _alpha, deltaSeconds * AlphaFadeRate * 1.5f)
-                : 0f;
-            UpdateQuestInfoLayer(owner);
+                : Approach(_dragonFuryAlpha, 0f, deltaSeconds * AlphaFadeRate * 1.5f);
+            UpdateQuestInfoLayer(owner, currentTime);
         }
 
         private void DrawAuxiliaryLayers(
@@ -1100,16 +1145,21 @@ namespace HaCreator.MapSimulator.Companions
             _dragonBlinkAnimation ??= LoadEffectAnimation("BasicEff.img", "dragonBlink", loop: false);
         }
 
-        private void UpdateQuestInfoLayer(PlayerCharacter owner)
+        private void UpdateQuestInfoLayer(PlayerCharacter owner, int currentTime)
         {
-            if (!TryResolveQuestInfoAnimation(out SkillAnimation animation)
+            if (!TryResolveQuestInfoAnimation(out LayerAnimationSequence animation)
                 || !ShouldShowQuestInfo(owner))
             {
                 _questInfoAlpha = 0f;
                 return;
             }
 
-            _questInfoAnimation = animation;
+            if (!ReferenceEquals(_questInfoAnimation, animation))
+            {
+                _questInfoAnimation = animation;
+                _questInfoAnimationStartTime = currentTime;
+            }
+
             _questInfoAlpha = 1f;
         }
 
@@ -1124,13 +1174,15 @@ namespace HaCreator.MapSimulator.Companions
         {
             if (_questInfoAnimation == null
                 || _questInfoAlpha <= 0.01f
+                || !TryResolveLayerAnimationFrame(_questInfoAnimation, _questInfoAnimationStartTime, currentTime, out _, out _)
                 || !TryResolveQuestInfoAnchor(currentTime, out Vector2 anchor))
             {
                 return;
             }
 
-            DrawAnimationLayer(
+            DrawLayerAnimationSequence(
                 _questInfoAnimation,
+                _questInfoAnimationStartTime,
                 _questInfoAlpha,
                 spriteBatch,
                 skeletonRenderer,
@@ -1139,7 +1191,7 @@ namespace HaCreator.MapSimulator.Companions
                 centerX,
                 centerY,
                 currentTime,
-                anchorOverride: anchor);
+                anchor);
         }
 
         private SkillAnimation LoadEffectAnimation(string imageName, string propertyPath, bool loop)
@@ -1182,7 +1234,85 @@ namespace HaCreator.MapSimulator.Companions
             return !IsExplicitDragonAction(_currentActionName);
         }
 
-        private bool TryResolveQuestInfoAnimation(out SkillAnimation animation)
+        private void DrawLayerAnimationSequence(
+            LayerAnimationSequence animationSequence,
+            int animationStartTime,
+            float alpha,
+            SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonRenderer,
+            int mapShiftX,
+            int mapShiftY,
+            int centerX,
+            int centerY,
+            int currentTime,
+            Vector2 anchor)
+        {
+            if (!TryResolveLayerAnimationFrame(animationSequence, animationStartTime, currentTime, out SkillFrame frame, out float frameAlpha)
+                || frame?.Texture == null)
+            {
+                return;
+            }
+
+            float resolvedAlpha = alpha * frameAlpha;
+            if (resolvedAlpha <= 0.01f)
+            {
+                return;
+            }
+
+            int screenX = (int)anchor.X - mapShiftX + centerX;
+            int screenY = (int)anchor.Y - mapShiftY + centerY;
+            frame.Texture.DrawBackground(spriteBatch, skeletonRenderer, null, screenX, screenY, Color.White * resolvedAlpha, !_facingRight, null);
+        }
+
+        private static bool TryResolveLayerAnimationFrame(
+            LayerAnimationSequence animationSequence,
+            int animationStartTime,
+            int currentTime,
+            out SkillFrame frame,
+            out float frameAlpha)
+        {
+            frame = null;
+            frameAlpha = 0f;
+
+            if (animationSequence == null)
+            {
+                return false;
+            }
+
+            int elapsed = Math.Max(0, currentTime - Math.Max(0, animationStartTime));
+            SkillAnimation appearAnimation = animationSequence.AppearAnimation;
+            if (appearAnimation?.Frames?.Count > 0)
+            {
+                int appearDuration = Math.Max(1, appearAnimation.TotalDuration);
+                if (elapsed < appearDuration
+                    && appearAnimation.TryGetFrameAtTime(elapsed, out frame, out int appearFrameElapsedMs))
+                {
+                    frameAlpha = ResolveFrameAlpha(frame, appearFrameElapsedMs);
+                    return frameAlpha > 0.01f;
+                }
+
+                elapsed = Math.Max(0, elapsed - appearDuration);
+            }
+
+            SkillAnimation defaultAnimation = animationSequence.DefaultAnimation;
+            if (defaultAnimation?.Frames?.Count > 0
+                && defaultAnimation.TryGetFrameAtTime(elapsed, out frame, out int defaultFrameElapsedMs))
+            {
+                frameAlpha = ResolveFrameAlpha(frame, defaultFrameElapsedMs);
+                return frameAlpha > 0.01f;
+            }
+
+            if (appearAnimation?.Frames?.Count > 0
+                && appearAnimation.TryGetFrameAtTime(Math.Max(0, appearAnimation.TotalDuration - 1), out frame, out int finalFrameElapsedMs))
+            {
+                frameAlpha = ResolveFrameAlpha(frame, finalFrameElapsedMs);
+                return frameAlpha > 0.01f;
+            }
+
+            return false;
+        }
+
+        private bool TryResolveQuestInfoAnimation(out LayerAnimationSequence animation)
         {
             animation = null;
             if (_questInfoPreviewState == DragonQuestInfoState.Hidden)
@@ -1208,9 +1338,62 @@ namespace HaCreator.MapSimulator.Companions
                 return false;
             }
 
-            animation = LoadEffectAnimation("BasicEff.img", effectPath, loop: true);
+            animation = LoadLayerAnimationSequence("BasicEff.img", effectPath);
             _questInfoAnimationCache[questState] = animation;
-            return animation != null;
+            return animation?.HasFrames == true;
+        }
+
+        private LayerAnimationSequence LoadLayerAnimationSequence(string imageName, string propertyPath)
+        {
+            WzImage image = global::HaCreator.Program.FindImage("Effect", imageName);
+            if (image == null)
+            {
+                return null;
+            }
+
+            WzImageProperty property = image[propertyPath];
+            if (property is not WzSubProperty subProperty)
+            {
+                return null;
+            }
+
+            SkillAnimation appearAnimation = subProperty["Appear"] is WzSubProperty appearProperty
+                ? LoadAnimation(appearProperty)
+                : null;
+            SkillAnimation defaultAnimation = subProperty["Default"] is WzSubProperty defaultProperty
+                ? LoadAnimation(defaultProperty)
+                : null;
+
+            if (appearAnimation != null)
+            {
+                appearAnimation.Loop = false;
+                appearAnimation.CalculateDuration();
+            }
+
+            if (defaultAnimation != null)
+            {
+                defaultAnimation.Loop = true;
+                defaultAnimation.CalculateDuration();
+            }
+
+            if ((appearAnimation?.Frames?.Count ?? 0) == 0 && (defaultAnimation?.Frames?.Count ?? 0) == 0)
+            {
+                SkillAnimation fallbackAnimation = LoadAnimation(subProperty);
+                if (fallbackAnimation?.Frames?.Count > 0)
+                {
+                    fallbackAnimation.Loop = true;
+                    fallbackAnimation.CalculateDuration();
+                    defaultAnimation = fallbackAnimation;
+                }
+            }
+
+            LayerAnimationSequence sequence = new()
+            {
+                AppearAnimation = appearAnimation?.Frames?.Count > 0 ? appearAnimation : null,
+                DefaultAnimation = defaultAnimation?.Frames?.Count > 0 ? defaultAnimation : null
+            };
+
+            return sequence.HasFrames ? sequence : null;
         }
 
         private bool TryResolveQuestInfoAnchor(int currentTime, out Vector2 anchor)
@@ -1251,7 +1434,7 @@ namespace HaCreator.MapSimulator.Companions
                 return false;
             }
 
-            return !IsExplicitDragonAction(_currentActionName);
+            return true;
         }
 
         private void TriggerBlink(PlayerCharacter owner, int currentTime)
@@ -1288,6 +1471,7 @@ namespace HaCreator.MapSimulator.Companions
             _questInfoPreviewState = nextState;
             _questInfoAnimation = null;
             _questInfoAlpha = 0f;
+            _questInfoAnimationStartTime = int.MinValue;
         }
     }
 }

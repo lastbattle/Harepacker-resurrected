@@ -87,7 +87,7 @@ namespace HaCreator.MapSimulator.Fields
 
         public static string GetSkillCancelRestrictionMessage(MapInfo mapInfo, SkillData skill)
         {
-            if (mapInfo == null || skill == null)
+            if (mapInfo == null)
             {
                 return null;
             }

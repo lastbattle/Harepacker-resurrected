@@ -678,13 +678,13 @@ namespace HaCreator.MapSimulator.UI {
 
             // Job name
             Vector2 jobPos = SnapToPixel(basePosLeft + JOB_TEXT_POS);
-            DrawPlainText(sprite, FormatStatusBarJobLabel(stats.Job), jobPos, JOB_TEXT_COLOR, JOB_TEXT_SCALE, _jobTextMaxWidth);
+            DrawPlainText(sprite, StatusBarLayoutRules.FormatJobLabel(stats.Job), jobPos, JOB_TEXT_COLOR, JOB_TEXT_SCALE, _jobTextMaxWidth);
 
             // Character name - drawn with shadow effect (from IDA: multiple positions for shadow)
             Vector2 namePos = SnapToPixel(basePosLeft + NAME_TEXT_POS);
             DrawDiagonalShadowText(
                 sprite,
-                FormatStatusBarNameLabel(stats.Name),
+                StatusBarLayoutRules.FormatNameLabel(stats.Name),
                 namePos,
                 NAME_TEXT_COLOR,
                 NAME_TEXT_SHADOW_COLOR,
@@ -1521,7 +1521,7 @@ namespace HaCreator.MapSimulator.UI {
             {
                 if (!string.IsNullOrWhiteSpace(lines[i]))
                 {
-                    width = Math.Max(width, ClientTextDrawing.Measure((GraphicsDevice)null, lines[i], 1.0f, _font).X);
+                    width = Math.Max(width, MeasureStatusBarText(lines[i], 1.0f).X);
                 }
             }
 
@@ -1569,7 +1569,7 @@ namespace HaCreator.MapSimulator.UI {
                 foreach (string word in words)
                 {
                     string candidate = string.IsNullOrEmpty(currentLine) ? word : $"{currentLine} {word}";
-                    if (!string.IsNullOrEmpty(currentLine) && ClientTextDrawing.Measure((GraphicsDevice)null, candidate, 1.0f, _font).X > maxWidth)
+                    if (!string.IsNullOrEmpty(currentLine) && MeasureStatusBarText(candidate, 1.0f).X > maxWidth)
                     {
                         lines.Add(currentLine);
                         currentLine = word;
@@ -1602,50 +1602,6 @@ namespace HaCreator.MapSimulator.UI {
                 .Replace("\t", " ");
         }
 
-        private static string SanitizeStatusBarText(string text)
-        {
-            if (string.IsNullOrWhiteSpace(text))
-            {
-                return string.Empty;
-            }
-
-            return string.Join(" ",
-                text
-                    .Replace("\r", " ")
-                    .Replace("\n", " ")
-                    .Replace("\t", " ")
-                    .Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries));
-        }
-
-        private string FormatStatusBarJobLabel(string jobName)
-        {
-            string resolvedName = SanitizeStatusBarText(jobName);
-            if (string.IsNullOrWhiteSpace(resolvedName))
-            {
-                resolvedName = "Beginner";
-            }
-
-            int openParen = resolvedName.IndexOf('(');
-            int closeParen = resolvedName.IndexOf(')', openParen + 1);
-            if (openParen >= 0 && closeParen > openParen + 1)
-            {
-                resolvedName = resolvedName.Substring(openParen + 1, closeParen - openParen - 1).Trim();
-            }
-
-            return resolvedName;
-        }
-
-        private string FormatStatusBarNameLabel(string name)
-        {
-            string resolvedName = SanitizeStatusBarText(name);
-            if (string.IsNullOrWhiteSpace(resolvedName))
-            {
-                resolvedName = "Player";
-            }
-
-            return resolvedName;
-        }
-
         private string ClipTextToWidth(string text, float maxWidth, float scale)
         {
             if (_font == null || string.IsNullOrWhiteSpace(text))
@@ -1670,6 +1626,21 @@ namespace HaCreator.MapSimulator.UI {
             return string.Empty;
         }
 
+        private bool CanUsePixelClippedClientText(SpriteBatch sprite)
+        {
+            return sprite?.GraphicsDevice != null;
+        }
+
+        private string ResolveTextForWidth(SpriteBatch sprite, string text, float scale, float? maxWidth)
+        {
+            if (!maxWidth.HasValue || CanUsePixelClippedClientText(sprite))
+            {
+                return text;
+            }
+
+            return ClipTextToWidth(text, maxWidth.Value, scale);
+        }
+
         private Vector2 GetRightAlignedStatusTextPosition(Vector2 basePos, Vector2 anchorOffset, string text, float bitmapScale, float spriteFontScale)
         {
             float textWidth = MeasureStatusBarTextWidth(text, bitmapScale, spriteFontScale);
@@ -1690,13 +1661,12 @@ namespace HaCreator.MapSimulator.UI {
                 return 0f;
             }
 
-            return ClientTextDrawing.Measure((GraphicsDevice)null, text, spriteFontScale, _font).X;
+            return MeasureStatusBarText(text, spriteFontScale).X;
         }
 
         private Vector2 GetClientLevelTextPosition(Vector2 basePosLeft, string levelText)
         {
-            int digitCount = Math.Clamp(string.IsNullOrEmpty(levelText) ? 1 : levelText.Length, 1, 3);
-            float clientSlotX = LEVEL_TEXT_POS.X - ((digitCount - 1) * 6);
+            float clientSlotX = StatusBarLayoutRules.ResolveLevelSlotX(levelText);
             return SnapToPixel(new Vector2(
                 basePosLeft.X + clientSlotX,
                 basePosLeft.Y + LEVEL_TEXT_POS.Y));
@@ -1857,9 +1827,7 @@ namespace HaCreator.MapSimulator.UI {
             }
 
             Vector2 snappedPosition = SnapToPixel(position);
-            string textToDraw = maxWidth.HasValue
-                ? ClipTextToWidth(text, maxWidth.Value, scale)
-                : text;
+            string textToDraw = ResolveTextForWidth(sprite, text, scale, maxWidth);
             if (string.IsNullOrEmpty(textToDraw))
             {
                 return;
@@ -1870,16 +1838,42 @@ namespace HaCreator.MapSimulator.UI {
 
         private void DrawDiagonalShadowText(SpriteBatch sprite, string text, Vector2 position, Color textColor, Color shadowColor, float scale = 1.0f, float? maxWidth = null)
         {
+            if (_font == null || string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
             Vector2 snappedPosition = SnapToPixel(position);
-            string textToDraw = maxWidth.HasValue
-                ? ClipTextToWidth(text, maxWidth.Value, scale)
-                : text;
+            string textToDraw = ResolveTextForWidth(sprite, text, scale, maxWidth);
             if (string.IsNullOrEmpty(textToDraw))
             {
                 return;
             }
 
-            ClientTextDrawing.DrawOutlined(sprite, textToDraw, snappedPosition, textColor, shadowColor, _font, scale);
+            DrawDiagonalShadowPass(sprite, textToDraw, snappedPosition, new Vector2(-1, -1), shadowColor, scale, maxWidth);
+            DrawDiagonalShadowPass(sprite, textToDraw, snappedPosition, new Vector2(1, -1), shadowColor, scale, maxWidth);
+            DrawDiagonalShadowPass(sprite, textToDraw, snappedPosition, new Vector2(-1, 1), shadowColor, scale, maxWidth);
+            DrawDiagonalShadowPass(sprite, textToDraw, snappedPosition, new Vector2(1, 1), shadowColor, scale, maxWidth);
+            ClientTextDrawing.Draw(sprite, textToDraw, snappedPosition, textColor, scale, _font, maxWidth);
+        }
+
+        private void DrawDiagonalShadowPass(
+            SpriteBatch sprite,
+            string text,
+            Vector2 basePosition,
+            Vector2 shadowOffset,
+            Color shadowColor,
+            float scale,
+            float? maxWidth)
+        {
+            Vector2 shadowPosition = basePosition + shadowOffset;
+            float? clipWidth = maxWidth;
+            if (maxWidth.HasValue)
+            {
+                clipWidth = Math.Max(0f, maxWidth.Value + (basePosition.X - shadowPosition.X));
+            }
+
+            ClientTextDrawing.Draw(sprite, text, shadowPosition, shadowColor, scale, _font, clipWidth);
         }
 
         private Vector2 MeasureStatusBarText(string text, float scale)
@@ -1887,6 +1881,11 @@ namespace HaCreator.MapSimulator.UI {
             if (string.IsNullOrEmpty(text))
             {
                 return Vector2.Zero;
+            }
+
+            if (_clientTextRasterizer != null)
+            {
+                return _clientTextRasterizer.MeasureString(text, scale);
             }
 
             return ClientTextDrawing.Measure((GraphicsDevice)null, text, scale, _font);
@@ -1934,7 +1933,7 @@ namespace HaCreator.MapSimulator.UI {
                     Vector2 charPos = new Vector2(snappedPosition.X + xOffset, snappedPosition.Y);
                     // Draw with slight shadow for visibility
                     ClientTextDrawing.DrawShadowed(sprite, charStr, charPos, Color.White, _font, scale * 0.8f);
-                    Vector2 charSize = ClientTextDrawing.Measure((GraphicsDevice)null, charStr, scale * 0.8f, _font);
+                    Vector2 charSize = MeasureStatusBarText(charStr, scale * 0.8f);
                     xOffset += (int)charSize.X + CHAR_SPACING;
                 }
             }

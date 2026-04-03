@@ -228,7 +228,7 @@ namespace HaCreator.MapSimulator.UI
             base.Update(gameTime);
 
             KeyboardState keyboardState = Keyboard.GetState();
-            if (_fixedStage != LoginCreateCharacterStage.NameSelect || !IsVisible)
+            if (!IsVisible)
             {
                 _softKeyboardActive = false;
                 ClearCompositionText();
@@ -236,6 +236,75 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            if (_fixedStage != LoginCreateCharacterStage.NameSelect)
+            {
+                _softKeyboardActive = false;
+                ClearCompositionText();
+            }
+
+            switch (_fixedStage)
+            {
+                case LoginCreateCharacterStage.RaceSelect:
+                    HandleRaceSelectKeyboardInput(keyboardState);
+                    break;
+                case LoginCreateCharacterStage.AvatarSelect:
+                    HandleAvatarSelectKeyboardInput(keyboardState);
+                    break;
+                case LoginCreateCharacterStage.NameSelect:
+                    HandleNameSelectKeyboardInput(keyboardState);
+                    break;
+            }
+
+            _previousKeyboardState = keyboardState;
+        }
+
+        private void HandleRaceSelectKeyboardInput(KeyboardState keyboardState)
+        {
+            if (_isRaceConfirmationOpen)
+            {
+                if (Pressed(keyboardState, Keys.Enter))
+                {
+                    ConfirmRequested?.Invoke();
+                }
+                else if (Pressed(keyboardState, Keys.Escape))
+                {
+                    CancelRequested?.Invoke();
+                }
+
+                return;
+            }
+
+            if (Pressed(keyboardState, Keys.Escape))
+            {
+                CancelRequested?.Invoke();
+            }
+
+            if (Pressed(keyboardState, Keys.Enter))
+            {
+                ConfirmRequested?.Invoke();
+            }
+
+            TryMoveRaceSelection(keyboardState, Keys.Left, new Point(-1, 0));
+            TryMoveRaceSelection(keyboardState, Keys.Right, new Point(1, 0));
+            TryMoveRaceSelection(keyboardState, Keys.Up, new Point(0, -1));
+            TryMoveRaceSelection(keyboardState, Keys.Down, new Point(0, 1));
+        }
+
+        private void HandleAvatarSelectKeyboardInput(KeyboardState keyboardState)
+        {
+            if (Pressed(keyboardState, Keys.Enter) && !string.IsNullOrWhiteSpace(_checkedName))
+            {
+                ConfirmRequested?.Invoke();
+            }
+
+            if (Pressed(keyboardState, Keys.Escape))
+            {
+                CancelRequested?.Invoke();
+            }
+        }
+
+        private void HandleNameSelectKeyboardInput(KeyboardState keyboardState)
+        {
             if (Pressed(keyboardState, Keys.Enter))
             {
                 DuplicateCheckRequested?.Invoke();
@@ -251,8 +320,63 @@ namespace HaCreator.MapSimulator.UI
                 ClearCompositionText();
                 RemoveLastNameCharacter();
             }
+        }
 
-            _previousKeyboardState = keyboardState;
+        private void TryMoveRaceSelection(KeyboardState keyboardState, Keys key, Point direction)
+        {
+            if (!Pressed(keyboardState, key))
+            {
+                return;
+            }
+
+            if (TryGetRaceSelectionInDirection(direction, out int raceIndex))
+            {
+                RaceSelected?.Invoke(raceIndex);
+            }
+        }
+
+        private bool TryGetRaceSelectionInDirection(Point direction, out int raceIndex)
+        {
+            raceIndex = -1;
+            if (!RaceCardBoundsByRace.TryGetValue(_selectedRace, out Rectangle selectedBounds))
+            {
+                return false;
+            }
+
+            Point selectedCenter = selectedBounds.Center;
+            int bestPrimaryDistance = int.MaxValue;
+            int bestSecondaryDistance = int.MaxValue;
+
+            for (int i = 0; i < LoginCreateCharacterFlowState.SupportedRaces.Length; i++)
+            {
+                LoginCreateCharacterRaceKind candidateRace = LoginCreateCharacterFlowState.SupportedRaces[i];
+                if (candidateRace == _selectedRace || !RaceCardBoundsByRace.TryGetValue(candidateRace, out Rectangle candidateBounds))
+                {
+                    continue;
+                }
+
+                Point candidateCenter = candidateBounds.Center;
+                int deltaX = candidateCenter.X - selectedCenter.X;
+                int deltaY = candidateCenter.Y - selectedCenter.Y;
+                int primaryDelta = direction.X != 0 ? deltaX * direction.X : deltaY * direction.Y;
+                if (primaryDelta <= 0)
+                {
+                    continue;
+                }
+
+                int secondaryDelta = direction.X != 0
+                    ? Math.Abs(deltaY)
+                    : Math.Abs(deltaX);
+                if (primaryDelta < bestPrimaryDistance ||
+                    (primaryDelta == bestPrimaryDistance && secondaryDelta < bestSecondaryDistance))
+                {
+                    bestPrimaryDistance = primaryDelta;
+                    bestSecondaryDistance = secondaryDelta;
+                    raceIndex = i;
+                }
+            }
+
+            return raceIndex >= 0;
         }
 
         protected override void DrawContents(
@@ -938,6 +1062,31 @@ namespace HaCreator.MapSimulator.UI
             }
 
             NameChanged?.Invoke(_displayName + character);
+            return true;
+        }
+
+        bool ISoftKeyboardHost.TryReplaceLastSoftKeyboardCharacter(char character, out string errorMessage)
+        {
+            errorMessage = string.Empty;
+            if (!IsNameInputEditable)
+            {
+                errorMessage = "Name entry is not editable right now.";
+                return false;
+            }
+
+            if (string.IsNullOrEmpty(_displayName))
+            {
+                errorMessage = "Nothing to replace.";
+                return false;
+            }
+
+            if (!SoftKeyboardUI.CanAcceptCharacter(SoftKeyboardKeyboardType.AlphaNumeric, _displayName.Length - 1, NameMaxLength, character))
+            {
+                errorMessage = "That key is disabled for this field.";
+                return false;
+            }
+
+            NameChanged?.Invoke(_displayName[..^1] + character);
             return true;
         }
 

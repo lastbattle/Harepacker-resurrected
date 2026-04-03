@@ -3,6 +3,8 @@ using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure;
 using MapleLib.WzLib.WzStructure.Data;
 using System;
+using System.Collections.Generic;
+using System.Globalization;
 
 namespace HaCreator.MapSimulator.Fields
 {
@@ -24,12 +26,21 @@ namespace HaCreator.MapSimulator.Fields
         private int _footholdGroupCount;
         private int _footholdSegmentCount;
         private bool _hasWzFootholdRoot;
+        private int _contractMapId;
+        private int _linkedContractMapId;
+        private bool _usesLinkedContract;
+        private bool _linkedContractMissing;
         private int _dynamicObjectLayerCount;
         private int _dynamicObjectCount;
         private int _dynamicEnabledObjectCount;
+        private readonly List<string> _authoredDynamicObjectNames = new();
 
         public bool IsActive => _isActive;
         public int MapId => _mapId;
+        public int ContractMapId => _contractMapId;
+        public int LinkedContractMapId => _linkedContractMapId;
+        public bool UsesLinkedContract => _usesLinkedContract;
+        public bool LinkedContractMissing => _linkedContractMissing;
         public int FootholdLayerCount => _footholdLayerCount;
         public int FootholdGroupCount => _footholdGroupCount;
         public int FootholdSegmentCount => _footholdSegmentCount;
@@ -38,7 +49,7 @@ namespace HaCreator.MapSimulator.Fields
         public int DynamicObjectCount => _dynamicObjectCount;
         public int DynamicEnabledObjectCount => _dynamicEnabledObjectCount;
 
-        public void Configure(MapInfo mapInfo, DynamicFootholdSystem dynamicFootholds)
+        public void Configure(MapInfo mapInfo, DynamicFootholdSystem dynamicFootholds, Func<int, WzImage> linkedMapResolver = null)
         {
             dynamicFootholds?.ResetForClientOwnedWrapper();
             Reset();
@@ -50,7 +61,8 @@ namespace HaCreator.MapSimulator.Fields
 
             _isActive = true;
             _mapId = mapInfo.id;
-            LoadMapContractSummary(mapInfo);
+            _contractMapId = mapInfo.id;
+            LoadMapContractSummary(mapInfo, linkedMapResolver);
         }
 
         public string DescribeStatus(DynamicFootholdSystem dynamicFootholds)
@@ -67,14 +79,23 @@ namespace HaCreator.MapSimulator.Fields
                 ? $"map contract has {_dynamicObjectCount} dynamic-tagged object nodes across {_dynamicObjectLayerCount} layers ({_dynamicEnabledObjectCount} enabled)"
                 : "map contract has no dynamic-tagged object nodes";
             string runtimeSummary = dynamicFootholds?.DescribeClientOwnedWrapperState() ?? "platforms=0, active=0, visible=0, moving=0";
+            string contractSummary = _usesLinkedContract
+                ? $"contractMap={_contractMapId} via info/link from map {_mapId}"
+                : _linkedContractMissing
+                    ? $"contractMap unresolved (info/link={_linkedContractMapId}), using local shell map {_mapId}"
+                    : $"contractMap={_contractMapId}";
 
-            return $"Dynamic foothold: active | owner={ClientOwnerName} | map={_mapId} | fieldType={(int)FieldType.FIELDTYPE_DYNAMICFOOTHOLD} | {wzSummary} | {dynamicObjectSummary} | runtime {runtimeSummary}";
+            return $"Dynamic foothold: active | owner={ClientOwnerName} | getFieldType=0x{ClientGetFieldTypeAddress:X} | init=0x{ClientInitStubAddress:X} | map={_mapId} | fieldType={(int)FieldType.FIELDTYPE_DYNAMICFOOTHOLD} | {contractSummary} | {wzSummary} | {dynamicObjectSummary} | runtime {runtimeSummary}";
         }
 
         public void Reset()
         {
             _isActive = false;
             _mapId = 0;
+            _contractMapId = 0;
+            _linkedContractMapId = 0;
+            _usesLinkedContract = false;
+            _linkedContractMissing = false;
             _footholdLayerCount = 0;
             _footholdGroupCount = 0;
             _footholdSegmentCount = 0;
@@ -82,9 +103,22 @@ namespace HaCreator.MapSimulator.Fields
             _dynamicObjectLayerCount = 0;
             _dynamicObjectCount = 0;
             _dynamicEnabledObjectCount = 0;
+            _authoredDynamicObjectNames.Clear();
         }
 
-        private void LoadMapContractSummary(MapInfo mapInfo)
+        public bool TryResolveAuthoredDynamicObjectName(int platformId, out string name)
+        {
+            name = null;
+            if (platformId < 0 || platformId >= _authoredDynamicObjectNames.Count)
+            {
+                return false;
+            }
+
+            name = _authoredDynamicObjectNames[platformId];
+            return !string.IsNullOrWhiteSpace(name);
+        }
+
+        private void LoadMapContractSummary(MapInfo mapInfo, Func<int, WzImage> linkedMapResolver)
         {
             WzImage mapImage = mapInfo?.Image;
             if (mapImage == null)
@@ -92,21 +126,19 @@ namespace HaCreator.MapSimulator.Fields
                 return;
             }
 
-            if (!mapImage.Parsed)
-            {
-                mapImage.ParseImage();
-            }
+            WzImage contractImage = ResolveContractImage(mapInfo, mapImage, linkedMapResolver);
+            EnsureImageParsed(contractImage);
 
-            if (mapImage["foothold"] is not WzImageProperty footholdRoot)
+            if (contractImage["foothold"] is not WzImageProperty footholdRoot)
             {
-                LoadDynamicObjectSummary(mapImage);
+                LoadDynamicObjectSummary(contractImage);
                 return;
             }
 
             _hasWzFootholdRoot = true;
             if (footholdRoot.WzProperties == null)
             {
-                LoadDynamicObjectSummary(mapImage);
+                LoadDynamicObjectSummary(contractImage);
                 return;
             }
 
@@ -125,7 +157,30 @@ namespace HaCreator.MapSimulator.Fields
                 }
             }
 
-            LoadDynamicObjectSummary(mapImage);
+            LoadDynamicObjectSummary(contractImage);
+        }
+
+        private WzImage ResolveContractImage(MapInfo mapInfo, WzImage mapImage, Func<int, WzImage> linkedMapResolver)
+        {
+            EnsureImageParsed(mapImage);
+
+            if (!TryGetLinkedMapId(mapImage, out int linkedMapId))
+            {
+                return mapImage;
+            }
+
+            _linkedContractMapId = linkedMapId;
+            WzImage linkedImage = linkedMapResolver?.Invoke(linkedMapId);
+            if (linkedImage == null)
+            {
+                _linkedContractMissing = true;
+                return mapImage;
+            }
+
+            EnsureImageParsed(linkedImage);
+            _usesLinkedContract = true;
+            _contractMapId = linkedMapId;
+            return linkedImage;
         }
 
         private void LoadDynamicObjectSummary(WzImage mapImage)
@@ -159,6 +214,7 @@ namespace HaCreator.MapSimulator.Fields
 
                     layerHasDynamicObject = true;
                     _dynamicObjectCount++;
+                    _authoredDynamicObjectNames.Add(ResolveDynamicObjectName(rootChild, mapObject, _authoredDynamicObjectNames.Count));
 
                     if (TryReadDynamicFlag(dynamicProperty, out int dynamicFlag) && dynamicFlag != 0)
                     {
@@ -173,6 +229,25 @@ namespace HaCreator.MapSimulator.Fields
             }
         }
 
+        private static void EnsureImageParsed(WzImage image)
+        {
+            if (image != null && !image.Parsed)
+            {
+                image.ParseImage();
+            }
+        }
+
+        private static bool TryGetLinkedMapId(WzImage mapImage, out int linkedMapId)
+        {
+            linkedMapId = 0;
+            if (mapImage?["info"]?["link"] is not WzStringProperty linkProperty)
+            {
+                return false;
+            }
+
+            return int.TryParse(linkProperty.Value, out linkedMapId) && linkedMapId > 0;
+        }
+
         private static bool TryReadDynamicFlag(WzImageProperty dynamicProperty, out int dynamicFlag)
         {
             dynamicFlag = 0;
@@ -183,6 +258,32 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return false;
+        }
+
+        private static string ResolveDynamicObjectName(WzImageProperty layer, WzImageProperty mapObject, int fallbackIndex)
+        {
+            if (TryReadStringProperty(mapObject, "name", out string name)
+                || TryReadStringProperty(mapObject, "objName", out name)
+                || TryReadStringProperty(mapObject, "tag", out name))
+            {
+                return name;
+            }
+
+            string layerName = layer?.Name ?? "layer";
+            string objectName = mapObject?.Name ?? fallbackIndex.ToString(CultureInfo.InvariantCulture);
+            return $"dynamic-{layerName}-{objectName}";
+        }
+
+        private static bool TryReadStringProperty(WzImageProperty parent, string propertyName, out string value)
+        {
+            value = null;
+            if (parent?[propertyName] is not WzStringProperty stringProperty || string.IsNullOrWhiteSpace(stringProperty.Value))
+            {
+                return false;
+            }
+
+            value = stringProperty.Value.Trim();
+            return true;
         }
     }
 }

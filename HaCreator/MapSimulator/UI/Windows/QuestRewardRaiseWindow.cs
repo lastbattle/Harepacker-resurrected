@@ -27,6 +27,7 @@ namespace HaCreator.MapSimulator.UI
         private const int ListHeight = 106;
         private const int RowHeight = 24;
         private const int FooterTop = 210;
+        private const int DragBandHeight = 20;
 
         private readonly Texture2D _pixel;
         private readonly Texture2D _backgroundTopLeft;
@@ -38,6 +39,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D _backgroundBottomLeft;
         private readonly Texture2D _backgroundBottomCenter;
         private readonly Texture2D _backgroundBottomRight;
+        private readonly Texture2D _previewBackdrop;
         private readonly Dictionary<int, Texture2D> _itemIconCache = new();
 
         private Func<int, Texture2D> _itemIconProvider;
@@ -61,6 +63,7 @@ namespace HaCreator.MapSimulator.UI
             Texture2D backgroundBottomLeft,
             Texture2D backgroundBottomCenter,
             Texture2D backgroundBottomRight,
+            Texture2D previewBackdrop,
             GraphicsDevice device)
             : base(frame)
         {
@@ -73,6 +76,7 @@ namespace HaCreator.MapSimulator.UI
             _backgroundBottomLeft = backgroundBottomLeft;
             _backgroundBottomCenter = backgroundBottomCenter;
             _backgroundBottomRight = backgroundBottomRight;
+            _previewBackdrop = previewBackdrop;
             _pixel = new Texture2D(device ?? throw new ArgumentNullException(nameof(device)), 1, 1);
             _pixel.SetData(new[] { Color.White });
         }
@@ -131,6 +135,16 @@ namespace HaCreator.MapSimulator.UI
             Rectangle listBounds = GetListBounds();
             if (listBounds.Contains(mouseState.X, mouseState.Y))
             {
+                if (_group?.Options != null)
+                {
+                    int hoverIndex = (mouseState.Y - listBounds.Y) / RowHeight;
+                    if (hoverIndex >= 0 && hoverIndex < _group.Options.Count)
+                    {
+                        _selectedIndex = hoverIndex;
+                        UpdateButtonStates();
+                    }
+                }
+
                 bool released = mouseState.LeftButton == ButtonState.Released && _previousMouseState.LeftButton == ButtonState.Pressed;
                 if (released && _group?.Options != null)
                 {
@@ -190,6 +204,33 @@ namespace HaCreator.MapSimulator.UI
             DrawPreview(sprite);
             DrawOptions(sprite);
             DrawFooter(sprite);
+        }
+
+        protected override void DrawOverlay(
+            SpriteBatch sprite,
+            SkeletonMeshRenderer skeletonMeshRenderer,
+            GameTime gameTime,
+            int mapShiftX,
+            int mapShiftY,
+            int centerX,
+            int centerY,
+            ReflectionDrawableBoundary drawReflectionInfo,
+            RenderParameters renderParameters,
+            int TickCount)
+        {
+            DrawButtonLabel(sprite, _confirmButton, string.IsNullOrWhiteSpace(_prompt?.ActionLabel) ? "OK" : _prompt.ActionLabel);
+            DrawButtonLabel(sprite, _cancelButton, "Cancel");
+        }
+
+        public override bool CanStartDragAt(int x, int y)
+        {
+            if (!base.CanStartDragAt(x, y))
+            {
+                return false;
+            }
+
+            Rectangle bounds = GetWindowBounds();
+            return y >= bounds.Y && y < bounds.Y + DragBandHeight;
         }
 
         private void ConfigureButton(UIObject button, Action action)
@@ -296,7 +337,19 @@ namespace HaCreator.MapSimulator.UI
         private void DrawPreview(SpriteBatch sprite)
         {
             Rectangle previewBounds = new(Position.X + PreviewLeft, Position.Y + PreviewTop, PreviewSize, PreviewSize);
-            sprite.Draw(_pixel, previewBounds, new Color(255, 250, 241, 230));
+            if (_previewBackdrop != null)
+            {
+                float backdropScale = Math.Min(previewBounds.Width / (float)_previewBackdrop.Width, previewBounds.Height / (float)_previewBackdrop.Height);
+                Vector2 backdropPosition = new(
+                    previewBounds.X + ((previewBounds.Width - (_previewBackdrop.Width * backdropScale)) / 2f),
+                    previewBounds.Y + ((previewBounds.Height - (_previewBackdrop.Height * backdropScale)) / 2f));
+                sprite.Draw(_previewBackdrop, backdropPosition, null, new Color(255, 255, 255, 216), 0f, Vector2.Zero, backdropScale, SpriteEffects.None, 0f);
+            }
+            else
+            {
+                sprite.Draw(_pixel, previewBounds, new Color(255, 250, 241, 230));
+            }
+
             sprite.Draw(_pixel, new Rectangle(previewBounds.X, previewBounds.Y, previewBounds.Width, 1), new Color(124, 102, 74));
             sprite.Draw(_pixel, new Rectangle(previewBounds.X, previewBounds.Bottom - 1, previewBounds.Width, 1), new Color(124, 102, 74));
             sprite.Draw(_pixel, new Rectangle(previewBounds.X, previewBounds.Y, 1, previewBounds.Height), new Color(124, 102, 74));
@@ -306,7 +359,7 @@ namespace HaCreator.MapSimulator.UI
             Texture2D icon = selectedOption != null ? ResolveItemIcon(selectedOption.ItemId) : null;
             if (icon != null)
             {
-                float iconScale = Math.Min(1f, Math.Min((PreviewSize - 12f) / icon.Width, (PreviewSize - 12f) / icon.Height));
+                float iconScale = Math.Min(1f, Math.Min((PreviewSize - 24f) / icon.Width, (PreviewSize - 24f) / icon.Height));
                 Vector2 iconPosition = new(
                     previewBounds.X + ((previewBounds.Width - (icon.Width * iconScale)) / 2f),
                     previewBounds.Y + ((previewBounds.Height - (icon.Height * iconScale)) / 2f));
@@ -355,9 +408,12 @@ namespace HaCreator.MapSimulator.UI
         private void DrawFooter(SpriteBatch sprite)
         {
             string actionLabel = string.IsNullOrWhiteSpace(_prompt?.ActionLabel) ? "Confirm" : _prompt.ActionLabel;
+            QuestRewardChoiceOption selectedOption = GetSelectedOption();
             string footer = _group?.Options == null || _group.Options.Count == 0
                 ? "No valid reward choices remain."
-                : $"Use {actionLabel} to lock in the highlighted reward.";
+                : string.IsNullOrWhiteSpace(selectedOption?.DetailText)
+                    ? $"Use {actionLabel} to lock in the highlighted reward."
+                    : selectedOption.DetailText;
             DrawText(sprite, footer, new Vector2(Position.X + 16, Position.Y + FooterTop), new Color(104, 86, 65), 0.32f);
         }
 
@@ -391,6 +447,19 @@ namespace HaCreator.MapSimulator.UI
             Texture2D icon = _itemIconProvider(itemId);
             _itemIconCache[itemId] = icon;
             return icon;
+        }
+
+        private void DrawButtonLabel(SpriteBatch sprite, UIObject button, string label)
+        {
+            if (!CanDrawWindowText || button == null || !button.ButtonVisible || string.IsNullOrWhiteSpace(label))
+            {
+                return;
+            }
+
+            Vector2 size = MeasureWindowText(null, label, 0.34f);
+            float x = Position.X + button.X + Math.Max(0f, (button.CanvasSnapshotWidth - size.X) / 2f);
+            float y = Position.Y + button.Y + Math.Max(0f, (button.CanvasSnapshotHeight - size.Y) / 2f) - 1f;
+            DrawWindowText(sprite, label, new Vector2(x, y), new Color(70, 49, 31), 0.34f);
         }
 
         private void DrawStretched(SpriteBatch sprite, Texture2D texture, Rectangle destination, Color color)

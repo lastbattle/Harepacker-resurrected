@@ -331,13 +331,13 @@ namespace HaCreator.MapSimulator.Loaders
 
                 WzImageProperty infoProperty = WzInfoTools.GetRealProperty(mobStateProperty["info"]);
                 WzSubProperty infoNode = infoProperty as WzSubProperty;
-                MobAnimationSet.AttackInfoMetadata attackInfo = BuildAttackInfoMetadata(infoProperty);
+                MobAnimationSet.AttackInfoMetadata attackInfo = BuildAttackInfoMetadata(infoProperty, mobStateProperty);
                 if (attackInfo != null)
                 {
                     cached.AttackMetadata[actionName] = attackInfo;
                 }
 
-                WzImageProperty hitNode = ResolveAttackHitNode(infoProperty);
+                WzImageProperty hitNode = ResolveAttackHitNode(infoProperty, mobStateProperty);
                 if (hitNode != null)
                 {
                     List<IDXObject> hitFrames = MapSimulatorLoader.LoadFrames(texturePool, hitNode, 0, 0, device, usedProps);
@@ -571,7 +571,9 @@ namespace HaCreator.MapSimulator.Loaders
             return null;
         }
 
-        internal static MobAnimationSet.AttackInfoMetadata BuildAttackInfoMetadata(WzImageProperty infoProperty)
+        internal static MobAnimationSet.AttackInfoMetadata BuildAttackInfoMetadata(
+            WzImageProperty infoProperty,
+            WzImageProperty attackStateProperty = null)
         {
             WzSubProperty infoNode = WzInfoTools.GetRealProperty(infoProperty) as WzSubProperty;
             if (infoNode == null)
@@ -579,31 +581,46 @@ namespace HaCreator.MapSimulator.Loaders
                 return null;
             }
 
-            WzSubProperty hitNode = ResolveAttackHitNode(infoNode) as WzSubProperty;
-            int nestedHitAttach = ReadOptionalInt(hitNode, int.MinValue, "attach", "bHitAttach", "hitAttach");
-            int nestedFacingAttach = ReadOptionalInt(
-                hitNode,
+            WzImageProperty infoHitNode = WzInfoTools.GetRealProperty(infoNode["hit"]);
+            WzImageProperty[] frameHitMetadataNodes = EnumerateAttackFrameHitNodes(attackStateProperty).ToArray();
+            int explicitInfoHitAttach = ReadOptionalInt(infoHitNode, int.MinValue, "attach", "bHitAttach", "hitAttach");
+            int explicitInfoFacingAttach = ReadOptionalInt(
+                infoHitNode,
                 int.MinValue,
                 "attachfacing",
                 "bFacingAttach",
                 "bFacingAttatch",
                 "facingAttach");
-            int infoHitAttach = ReadOptionalInt(infoNode, int.MinValue, "attach", "bHitAttach", "hitAttach");
-            int infoFacingAttach = ReadOptionalInt(
+            int infoAliasHitAttach = ReadOptionalInt(infoNode, int.MinValue, "attach", "bHitAttach", "hitAttach");
+            int infoAliasFacingAttach = ReadOptionalInt(
                 infoNode,
                 int.MinValue,
                 "attachfacing",
                 "bFacingAttach",
                 "bFacingAttatch",
                 "facingAttach");
-            bool facingAttach = nestedFacingAttach != int.MinValue
-                ? nestedFacingAttach > 0
-                : infoFacingAttach > 0;
-            bool hitAttach = nestedHitAttach != int.MinValue
-                ? nestedHitAttach > 0
-                : infoHitAttach != int.MinValue
-                    ? infoHitAttach > 0
-                    : facingAttach;
+            int nestedHitAttach = ReadOptionalInt(frameHitMetadataNodes, int.MinValue, "attach", "bHitAttach", "hitAttach");
+            int nestedFacingAttach = ReadOptionalInt(
+                frameHitMetadataNodes,
+                int.MinValue,
+                "attachfacing",
+                "bFacingAttach",
+                "bFacingAttatch",
+                "facingAttach");
+            int resolvedFacingAttach = explicitInfoFacingAttach != int.MinValue
+                ? explicitInfoFacingAttach
+                : infoAliasFacingAttach != int.MinValue
+                    ? infoAliasFacingAttach
+                    : nestedFacingAttach;
+            bool facingAttach = resolvedFacingAttach > 0;
+            int resolvedHitAttach = explicitInfoHitAttach != int.MinValue
+                ? explicitInfoHitAttach
+                : infoAliasHitAttach != int.MinValue
+                    ? infoAliasHitAttach
+                    : nestedHitAttach;
+            bool hitAttach = resolvedHitAttach != int.MinValue
+                ? resolvedHitAttach > 0
+                : facingAttach;
             WzSubProperty effectNode = WzInfoTools.GetRealProperty(infoNode["effect"]) as WzSubProperty;
             bool effectFacingAttach = ReadOptionalInt(
                 effectNode,
@@ -662,10 +679,9 @@ namespace HaCreator.MapSimulator.Loaders
             return metadata;
         }
 
-        internal static WzImageProperty ResolveAttackHitNode(WzImageProperty infoProperty)
+        internal static WzImageProperty ResolveAttackHitNode(WzImageProperty infoProperty, WzImageProperty attackStateProperty = null)
         {
-            WzSubProperty infoNode = WzInfoTools.GetRealProperty(infoProperty) as WzSubProperty;
-            return WzInfoTools.GetRealProperty(infoNode?["hit"]);
+            return EnumerateAttackHitNodes(infoProperty, attackStateProperty).FirstOrDefault(HasRenderableHitFrames);
         }
 
         private static int ReadOptionalInt(WzImageProperty parent, int defaultValue, params string[] propertyNames)
@@ -690,6 +706,70 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             return defaultValue;
+        }
+
+        private static int ReadOptionalInt(IEnumerable<WzImageProperty> parents, int defaultValue, params string[] propertyNames)
+        {
+            if (parents == null)
+            {
+                return defaultValue;
+            }
+
+            foreach (WzImageProperty parent in parents)
+            {
+                int value = ReadOptionalInt(parent, int.MinValue, propertyNames);
+                if (value != int.MinValue)
+                {
+                    return value;
+                }
+            }
+
+            return defaultValue;
+        }
+
+        private static IEnumerable<WzImageProperty> EnumerateAttackHitNodes(WzImageProperty infoProperty, WzImageProperty attackStateProperty)
+        {
+            WzSubProperty infoNode = WzInfoTools.GetRealProperty(infoProperty) as WzSubProperty;
+            WzImageProperty infoHitNode = WzInfoTools.GetRealProperty(infoNode?["hit"]);
+            if (infoHitNode != null)
+            {
+                yield return infoHitNode;
+            }
+
+            foreach (WzImageProperty frameHitNode in EnumerateAttackFrameHitNodes(attackStateProperty))
+            {
+                yield return frameHitNode;
+            }
+        }
+
+        private static IEnumerable<WzImageProperty> EnumerateAttackFrameHitNodes(WzImageProperty attackStateProperty)
+        {
+            WzSubProperty attackStateNode = WzInfoTools.GetRealProperty(attackStateProperty) as WzSubProperty;
+            if (attackStateNode == null)
+            {
+                yield break;
+            }
+
+            foreach (WzImageProperty frameProperty in attackStateNode.WzProperties
+                         .Where(property => int.TryParse(property?.Name, out _))
+                         .OrderBy(property => int.Parse(property.Name)))
+            {
+                WzImageProperty frameHitNode = WzInfoTools.GetRealProperty(frameProperty["hit"]);
+                if (frameHitNode != null)
+                {
+                    yield return frameHitNode;
+                }
+            }
+        }
+
+        private static bool HasRenderableHitFrames(WzImageProperty hitNode)
+        {
+            if (hitNode == null)
+            {
+                return false;
+            }
+
+            return hitNode.WzProperties?.Any(property => int.TryParse(property?.Name, out _)) == true;
         }
 
         private static bool TryBuildAttackEffectNode(

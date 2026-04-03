@@ -9,7 +9,7 @@ namespace HaCreator.MapSimulator.Fields
 {
     public sealed class TransportationFieldDefinition
     {
-        public TransportationFieldDefinition(int dockX, int dockY, int awayX, int flip, int moveDurationSeconds, int shipKind, string shipObjectPath)
+        public TransportationFieldDefinition(int dockX, int dockY, int awayX, int flip, int moveDurationSeconds, int shipKind, int routeLayerZ, string shipObjectPath)
         {
             DockX = dockX;
             DockY = dockY;
@@ -17,7 +17,18 @@ namespace HaCreator.MapSimulator.Fields
             Flip = flip;
             MoveDurationSeconds = moveDurationSeconds;
             ShipKind = shipKind;
+            RouteLayerZ = routeLayerZ;
             ShipObjectPath = shipObjectPath ?? string.Empty;
+        }
+
+        public TransportationFieldDefinition(int dockX, int dockY, int awayX, int flip, int moveDurationSeconds, int shipKind, int routeLayerZ)
+            : this(dockX, dockY, awayX, flip, moveDurationSeconds, shipKind, routeLayerZ, string.Empty)
+        {
+        }
+
+        public TransportationFieldDefinition(int dockX, int dockY, int awayX, int flip, int moveDurationSeconds, int shipKind, string shipObjectPath)
+            : this(dockX, dockY, awayX, flip, moveDurationSeconds, shipKind, 0, shipObjectPath)
+        {
         }
 
         public int DockX { get; }
@@ -26,6 +37,7 @@ namespace HaCreator.MapSimulator.Fields
         public int Flip { get; }
         public int MoveDurationSeconds { get; }
         public int ShipKind { get; }
+        public int RouteLayerZ { get; }
         public string ShipObjectPath { get; }
     }
 
@@ -62,6 +74,7 @@ namespace HaCreator.MapSimulator.Fields
             int flip = GetInt(shipObject["f"], 0);
             int moveDurationSeconds = GetInt(shipObject["tMove"], shipKind == 1 ? 2 : 10);
             int awayX = GetInt(shipObject["x0"], dockX - 800);
+            int routeLayerZ = shipKind == 0 ? GetInt(shipObject["z"], 0) : 0;
 
             definition = new TransportationFieldDefinition(
                 dockX,
@@ -70,6 +83,7 @@ namespace HaCreator.MapSimulator.Fields
                 flip,
                 moveDurationSeconds,
                 shipKind,
+                routeLayerZ,
                 shipPath);
             return true;
         }

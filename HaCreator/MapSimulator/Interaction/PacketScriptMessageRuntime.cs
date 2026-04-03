@@ -540,9 +540,9 @@ namespace HaCreator.MapSimulator.Interaction
                     _ = reader.ReadByte();
                 }
 
-                bool autoClose = petSerialNumbers.Count == 0 ||
+                bool implicitFallbackOnly = petSerialNumbers.Count == 0 ||
                     (isPetAll && !exceptionExists && petSerialNumbers.Count == 1);
-                if (autoClose)
+                if (implicitFallbackOnly)
                 {
                     result = CreateDecodedResult(
                         null,
@@ -555,6 +555,23 @@ namespace HaCreator.MapSimulator.Interaction
                             isPetAll
                                 ? $"Auto-closed packet-authored multi-pet prompt for {speaker.DisplayName}: client path does not open `UtilDlgEx_MultiPetEquip` when the packet only exposes the implicit fallback branch."
                                 : $"Auto-closed packet-authored pet prompt for {speaker.DisplayName}: client path does not open `UtilDlgEx_Pet` when the packet exposes no selectable pets."));
+                    return true;
+                }
+
+                if (string.IsNullOrWhiteSpace(rawText))
+                {
+                    long selectedPetSerialNumber = petSerialNumbers[0];
+                    result = CreateDecodedResult(
+                        null,
+                        CreateAutoResponsePacket(
+                            isPetAll ? 11 : 10,
+                            param,
+                            speaker,
+                            selectedPetSerialNumber.ToString(),
+                            BuildPetSelectionResponsePacket(isPetAll ? 11 : 10, selectedPetSerialNumber),
+                            isPetAll
+                                ? $"Auto-accepted packet-authored multi-pet prompt for {speaker.DisplayName}: client path skips `UtilDlgEx_MultiPetEquip` and returns the first resolved pet serial when the packet omits prompt text."
+                                : $"Auto-accepted packet-authored pet prompt for {speaker.DisplayName}: client path skips `UtilDlgEx_Pet` and returns the first resolved pet serial when the packet omits prompt text."));
                     return true;
                 }
 
@@ -1308,6 +1325,16 @@ namespace HaCreator.MapSimulator.Interaction
             writer.WriteShort(OutboundScriptAnswerOpcode);
             writer.WriteByte((byte)messageType);
             writer.WriteByte(status);
+            return writer.ToArray();
+        }
+
+        private static byte[] BuildPetSelectionResponsePacket(int messageType, long petSerialNumber)
+        {
+            PacketWriter writer = new PacketWriter();
+            writer.WriteShort(OutboundScriptAnswerOpcode);
+            writer.WriteByte((byte)messageType);
+            writer.WriteByte(1);
+            writer.WriteLong(petSerialNumber);
             return writer.ToArray();
         }
 

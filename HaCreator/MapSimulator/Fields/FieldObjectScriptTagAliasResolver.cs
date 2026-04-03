@@ -44,7 +44,12 @@ namespace HaCreator.MapSimulator.Fields
                     }
                     else
                     {
-                        AddIfAvailable(camelCaseBaseName + stage, availableTagSet, resolvedTags);
+                        string stageSpecificTag = camelCaseBaseName + stage;
+                        AddIfAvailable(stageSpecificTag, availableTagSet, resolvedTags);
+                        if (!resolvedTags.Contains(stageSpecificTag))
+                        {
+                            AddIfAvailable(camelCaseBaseName, availableTagSet, resolvedTags);
+                        }
                     }
 
                     AddSiblingStageTags(camelCaseBaseName, stage, availableTagSet, resolvedTags, retiredTags);
@@ -82,6 +87,11 @@ namespace HaCreator.MapSimulator.Fields
 
             foreach (string availableTag in availableTags)
             {
+                if (resolvedTags.Contains(availableTag))
+                {
+                    continue;
+                }
+
                 if (!TryParseStageTagCandidate(
                     availableTag,
                     camelCaseBaseName,

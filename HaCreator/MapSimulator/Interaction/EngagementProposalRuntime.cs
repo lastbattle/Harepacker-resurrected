@@ -17,6 +17,16 @@ namespace HaCreator.MapSimulator.Interaction
         internal const int DefaultRingItemId = 2240000;
         internal const int DefaultSealItemId = 4210000;
         internal const int RequestMessageMaxLength = 12;
+        internal const string ClientOwnerTypeName = "CEngageDlg";
+        internal const string PrimaryDialogAssetPath = "UIWindow2.img/MateMessage";
+        internal const string FallbackDialogAssetPath = "UIWindow.img/MateMessage";
+        internal const string AcceptButtonAssetName = "BtSend";
+        internal const int TopBandStringPoolId = 0x196F;
+        internal const int CenterBandStringPoolId = 0x1966;
+        internal const int TextBoxStringPoolId = 0x1967;
+        internal const int BottomBandStringPoolId = 0x1964;
+        internal const int TextCanvasStringPoolId = 0x196E;
+        internal const int AcceptButtonUolStringPoolId = 6497;
 
         private const string DefaultPlayerName = "Player";
         private const string DefaultPartnerName = "Partner";
@@ -115,6 +125,7 @@ namespace HaCreator.MapSimulator.Interaction
             string partnerName,
             int ringItemId = DefaultRingItemId,
             int sealItemId = DefaultSealItemId,
+            string requestMessage = null,
             string customMessage = null)
         {
             _mode = EngagementProposalDialogMode.IncomingProposal;
@@ -122,8 +133,8 @@ namespace HaCreator.MapSimulator.Interaction
             _partnerName = NormalizeName(partnerName, _localCharacterName);
             _ringItemId = ringItemId > 0 ? ringItemId : DefaultRingItemId;
             _sealItemId = sealItemId > 0 ? sealItemId : DefaultSealItemId;
+            _outgoingRequestMessage = NormalizeRequestMessage(requestMessage);
             _customMessage = string.IsNullOrWhiteSpace(customMessage) ? string.Empty : customMessage.Trim();
-            _outgoingRequestMessage = string.Empty;
             _lastPrimaryActionSent = false;
             _lastRequestPacketType = -1;
             _lastRequestPayload = Array.Empty<byte>();
@@ -134,6 +145,57 @@ namespace HaCreator.MapSimulator.Interaction
             ResolveItemMetadata();
             _statusMessage = $"Opened engagement proposal dialog for {_partnerName} from {_proposerName}.";
             return _statusMessage;
+        }
+
+        internal bool TryOpenIncomingProposalFromRequestPayload(
+            string proposerName,
+            string partnerName,
+            int sealItemId,
+            byte[] requestPayload,
+            string customMessage,
+            out string message)
+        {
+            if (!TryDecodeOutgoingRequestPayload(
+                    requestPayload,
+                    out string requestMessage,
+                    out int ringItemId,
+                    out message))
+            {
+                return false;
+            }
+
+            message = OpenIncomingProposal(
+                proposerName,
+                partnerName,
+                ringItemId,
+                sealItemId,
+                requestMessage,
+                customMessage);
+            _statusMessage = $"{message} Decoded request payload [{FormatPayload(requestPayload)}] into note \"{requestMessage}\" and ring {_ringItemName} ({_ringItemId}).";
+            message = _statusMessage;
+            return true;
+        }
+
+        internal bool TryOpenIncomingProposalFromLastRequestPayload(
+            string proposerName,
+            string partnerName,
+            int sealItemId,
+            string customMessage,
+            out string message)
+        {
+            if (_lastRequestPacketType != AcceptPacketType || _lastRequestPayload.Length == 0)
+            {
+                message = "No staged engagement request payload is available. Use /engage open first or reopen the requester-side flow before decoding it into the incoming proposal owner.";
+                return false;
+            }
+
+            return TryOpenIncomingProposalFromRequestPayload(
+                proposerName,
+                partnerName,
+                sealItemId,
+                _lastRequestPayload,
+                customMessage,
+                out message);
         }
 
         internal bool TrySendPrimaryAction(out EngagementProposalResponse response, out string message)
@@ -267,9 +329,10 @@ namespace HaCreator.MapSimulator.Interaction
             string partnerName,
             int ringItemId = DefaultRingItemId,
             int sealItemId = DefaultSealItemId,
+            string requestMessage = null,
             string customMessage = null)
         {
-            return OpenIncomingProposal(proposerName, partnerName, ringItemId, sealItemId, customMessage);
+            return OpenIncomingProposal(proposerName, partnerName, ringItemId, sealItemId, requestMessage, customMessage);
         }
 
         internal EngagementProposalSnapshot BuildSnapshot()
@@ -292,7 +355,17 @@ namespace HaCreator.MapSimulator.Interaction
                 LastRequestPayload = Array.AsReadOnly((byte[])_lastRequestPayload.Clone()),
                 LastResponsePacketType = _lastResponsePacketType,
                 LastResponsePayload = Array.AsReadOnly((byte[])_lastResponsePayload.Clone()),
-                AcceptedProposal = _acceptedProposal
+                AcceptedProposal = _acceptedProposal,
+                ClientOwnerTypeName = ClientOwnerTypeName,
+                PrimaryDialogAssetPath = PrimaryDialogAssetPath,
+                FallbackDialogAssetPath = FallbackDialogAssetPath,
+                AcceptButtonAssetName = AcceptButtonAssetName,
+                TopBandStringPoolId = TopBandStringPoolId,
+                CenterBandStringPoolId = CenterBandStringPoolId,
+                TextBoxStringPoolId = TextBoxStringPoolId,
+                BottomBandStringPoolId = BottomBandStringPoolId,
+                TextCanvasStringPoolId = TextCanvasStringPoolId,
+                AcceptButtonUolStringPoolId = AcceptButtonUolStringPoolId
             };
         }
 
@@ -309,7 +382,11 @@ namespace HaCreator.MapSimulator.Interaction
             string handoffState = snapshot.AcceptedProposal == null
                 ? string.Empty
                 : $" Wedding handoff: {snapshot.AcceptedProposal.ProposerName} + {snapshot.AcceptedProposal.PartnerName} via {snapshot.AcceptedProposal.RingItemName} ({snapshot.AcceptedProposal.RingItemId}) and {snapshot.AcceptedProposal.SealItemName} ({snapshot.AcceptedProposal.SealItemId}).";
-            return $"Engagement proposal {state} ({snapshot.Mode}): {snapshot.ProposerName} -> {snapshot.PartnerName}. {snapshot.StatusMessage}{requestState}{packetState}{handoffState}";
+            string clientEvidence =
+                $" Client owner {snapshot.ClientOwnerTypeName} uses {snapshot.PrimaryDialogAssetPath} with fallback {snapshot.FallbackDialogAssetPath}; " +
+                $"StringPool top/center/textbox/bottom/text ids 0x{snapshot.TopBandStringPoolId:X}/0x{snapshot.CenterBandStringPoolId:X}/0x{snapshot.TextBoxStringPoolId:X}/0x{snapshot.BottomBandStringPoolId:X}/0x{snapshot.TextCanvasStringPoolId:X}, " +
+                $"{snapshot.AcceptButtonAssetName} UOL id 0x{snapshot.AcceptButtonUolStringPoolId:X}.";
+            return $"Engagement proposal {state} ({snapshot.Mode}): {snapshot.ProposerName} -> {snapshot.PartnerName}. {snapshot.StatusMessage}{requestState}{packetState}{handoffState}{clientEvidence}";
         }
 
         private void ResolveItemMetadata()
@@ -351,6 +428,11 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             segments.Add(DefaultIncomingDialogText);
+            if (!string.IsNullOrWhiteSpace(_outgoingRequestMessage))
+            {
+                segments.Add($"Request note: {_outgoingRequestMessage}");
+            }
+
             if (!string.IsNullOrWhiteSpace(_customMessage))
             {
                 segments.Add(_customMessage);
@@ -396,12 +478,74 @@ namespace HaCreator.MapSimulator.Interaction
             return stream.ToArray();
         }
 
+        internal static bool TryDecodeOutgoingRequestPayload(
+            IReadOnlyList<byte> payload,
+            out string requestMessage,
+            out int ringItemId,
+            out string error)
+        {
+            requestMessage = string.Empty;
+            ringItemId = DefaultRingItemId;
+
+            if (payload == null || payload.Count == 0)
+            {
+                error = "Engagement request payload is empty.";
+                return false;
+            }
+
+            byte[] bytes = payload as byte[] ?? payload.ToArray();
+            try
+            {
+                using MemoryStream stream = new(bytes, writable: false);
+                using BinaryReader reader = new(stream, Encoding.Default, leaveOpen: true);
+                byte subtype = reader.ReadByte();
+                if (subtype != RequestPayloadValue)
+                {
+                    error = $"Engagement request payload must start with subtype {RequestPayloadValue:00}, but decoded {subtype:00}.";
+                    return false;
+                }
+
+                requestMessage = NormalizeRequestMessage(ReadMapleString(reader));
+                ringItemId = reader.ReadInt32();
+                if (stream.Position != stream.Length)
+                {
+                    error = $"Engagement request payload has {stream.Length - stream.Position} unexpected trailing bytes.";
+                    return false;
+                }
+
+                error = null;
+                return true;
+            }
+            catch (EndOfStreamException)
+            {
+                error = "Engagement request payload ended before the request note and ring item id could be decoded.";
+                return false;
+            }
+            catch (IOException ex)
+            {
+                error = $"Failed to decode engagement request payload: {ex.Message}";
+                return false;
+            }
+        }
+
         private static void WriteMapleString(BinaryWriter writer, string value)
         {
             string resolvedValue = value ?? string.Empty;
             byte[] bytes = Encoding.Default.GetBytes(resolvedValue);
             writer.Write((ushort)bytes.Length);
             writer.Write(bytes);
+        }
+
+        private static string ReadMapleString(BinaryReader reader)
+        {
+            ushort length = reader.ReadUInt16();
+            byte[] bytes = reader.ReadBytes(length);
+            if (bytes.Length != length)
+            {
+                throw new EndOfStreamException();
+            }
+
+            return Encoding.Default.GetString(bytes);
         }
 
         private static string NormalizeName(string proposedName, string fallbackName)
@@ -516,6 +660,16 @@ namespace HaCreator.MapSimulator.Interaction
         public IReadOnlyList<byte> LastRequestPayload { get; init; } = Array.Empty<byte>();
         public IReadOnlyList<byte> LastResponsePayload { get; init; } = Array.Empty<byte>();
         public EngagementProposalAcceptedSnapshot AcceptedProposal { get; init; }
+        public string ClientOwnerTypeName { get; init; } = string.Empty;
+        public string PrimaryDialogAssetPath { get; init; } = string.Empty;
+        public string FallbackDialogAssetPath { get; init; } = string.Empty;
+        public string AcceptButtonAssetName { get; init; } = string.Empty;
+        public int TopBandStringPoolId { get; init; }
+        public int CenterBandStringPoolId { get; init; }
+        public int TextBoxStringPoolId { get; init; }
+        public int BottomBandStringPoolId { get; init; }
+        public int TextCanvasStringPoolId { get; init; }
+        public int AcceptButtonUolStringPoolId { get; init; }
     }
 
     internal sealed class EngagementProposalAcceptedSnapshot

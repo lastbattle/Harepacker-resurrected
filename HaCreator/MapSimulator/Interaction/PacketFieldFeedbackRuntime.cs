@@ -69,9 +69,28 @@ namespace HaCreator.MapSimulator.Interaction
         private const int BossHpBarWidth = 288;
         private const int BossHpBarHeight = 16;
         private const int BossHpFramePadding = 4;
-        private const string SwindleFilteredCharacterTable = "`'\"!?,./\\|[]{}()+*=~:;<>";
         private static readonly Encoding SwindleEncoding = Encoding.Default;
-        private static readonly byte[] SwindleFilteredCharacters = SwindleEncoding.GetBytes(SwindleFilteredCharacterTable);
+        // Recovered from CCurseProcess::s_FilterChars in the v95 client.
+        private static readonly byte[] SwindleFilteredCharacters =
+        {
+            0x20, // space
+            0x5F, // _
+            0x2D, // -
+            0x3A, // :
+            0x09, // \t
+            0x5E, // ^
+            0x2E, // .
+            0x2C, // ,
+            0x2A, // *
+            0x2F, // /
+            0x3B, // ;
+            0x21, // !
+            0x5C, // \
+            0x27, // '
+            0x22, // "
+            0x60, // `
+            0x2B  // +
+        };
 
         private readonly Dictionary<string, bool> _obstacleStates = new(StringComparer.OrdinalIgnoreCase);
         private Texture2D _pixelTexture;
@@ -1233,7 +1252,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal static string FilterSwindleCharacterTableForTest()
         {
-            return SwindleFilteredCharacterTable;
+            return SwindleEncoding.GetString(SwindleFilteredCharacters);
         }
 
         [DllImport("kernel32.dll")]

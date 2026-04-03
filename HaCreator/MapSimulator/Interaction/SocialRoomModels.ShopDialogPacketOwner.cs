@@ -11,6 +11,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 SocialRoomKind.PersonalShop => new PersonalShopDialogPacketOwner(this),
                 SocialRoomKind.EntrustedShop => new EntrustedShopDialogPacketOwner(this),
+                SocialRoomKind.TradingRoom => new TradingRoomDialogPacketOwner(this),
                 _ => null
             };
         }
@@ -155,6 +156,23 @@ namespace HaCreator.MapSimulator.Interaction
 
                 message = detail;
                 return handled;
+            }
+        }
+
+        private sealed class TradingRoomDialogPacketOwner : ShopDialogPacketOwner
+        {
+            internal TradingRoomDialogPacketOwner(SocialRoomRuntime runtime)
+                : base(runtime)
+            {
+            }
+
+            internal override string OwnerName => "CTradingRoomDlg::OnPacket";
+            protected override string SupportedPacketSummary => "15 put-item, 16 put-money, 17 trade, 21 exceed-limit";
+
+            protected override bool TryDispatchCore(PacketReader reader, byte packetType, out string message, out bool forwarded)
+            {
+                forwarded = false;
+                return Runtime.TryDispatchTradingRoomPacket(Array.Empty<byte>(), reader, packetType, out message);
             }
         }
     }

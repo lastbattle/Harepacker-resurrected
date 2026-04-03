@@ -27,6 +27,8 @@ namespace HaCreator.MapSimulator.UI
         private readonly List<PageLayer> _layers = new();
         private readonly Texture2D _highlightTexture;
         private readonly string _windowName;
+        private IReadOnlyList<Texture2D> _loadingFrames = Array.Empty<Texture2D>();
+        private Point _loadingLayerOffset;
         private Func<RankingWindowSnapshot> _snapshotProvider;
         private RankingWindowSnapshot _currentSnapshot = new();
         private readonly List<string> _wrappedTextBuffer = new();
@@ -52,6 +54,12 @@ namespace HaCreator.MapSimulator.UI
         {
             _snapshotProvider = snapshotProvider;
             _currentSnapshot = RefreshSnapshot();
+        }
+
+        public void SetLoadingFrames(IReadOnlyList<Texture2D> loadingFrames, Point offset)
+        {
+            _loadingFrames = loadingFrames ?? Array.Empty<Texture2D>();
+            _loadingLayerOffset = offset;
         }
 
         public override void SetFont(SpriteFont font)
@@ -101,6 +109,7 @@ namespace HaCreator.MapSimulator.UI
 
             Rectangle navigationBounds = GetNavigationBounds();
             DrawNavigationState(sprite, snapshot, navigationBounds);
+            DrawLoadingLayer(sprite, snapshot, TickCount);
 
             if (snapshot.Entries.Count == 0)
             {
@@ -162,6 +171,26 @@ namespace HaCreator.MapSimulator.UI
 
             DrawWrappedText(sprite, snapshot.NavigationSeedText, bounds.X + 10, bounds.Y + 18, bounds.Width - 20f, Color.White, maxLines: 1);
             DrawWrappedText(sprite, snapshot.NavigationStateText, bounds.X + 10, bounds.Y + 31, bounds.Width - 20f, new Color(215, 215, 215), maxLines: 2);
+        }
+
+        private void DrawLoadingLayer(SpriteBatch sprite, RankingWindowSnapshot snapshot, int tickCount)
+        {
+            if (!snapshot.IsLoading || _loadingFrames.Count == 0)
+            {
+                return;
+            }
+
+            int frameIndex = Math.Abs(tickCount / 120) % _loadingFrames.Count;
+            Texture2D loadingFrame = _loadingFrames[frameIndex];
+            if (loadingFrame == null)
+            {
+                return;
+            }
+
+            sprite.Draw(
+                loadingFrame,
+                new Vector2(Position.X + _loadingLayerOffset.X, Position.Y + _loadingLayerOffset.Y),
+                Color.White);
         }
 
         private Rectangle GetNavigationBounds()

@@ -45,11 +45,14 @@ public static class ClientShootAmmoResolver
         selection = new ShootAmmoSelection();
         int normalizedRequiredAmmoCount = requiredAmmoCount > 0 ? requiredAmmoCount : 1;
 
-        TryResolveCashAmmoSlot(cashSlots, weaponCode, out int cashSlotIndex, out int cashItemId);
+        TryResolveCashAmmoSlot(cashSlots, weaponCode, weaponItemId, out int cashSlotIndex, out int cashItemId);
 
         if (TryResolveActiveBulletSelection(
                 useSlots,
+                weaponCode,
+                weaponItemId,
                 normalizedRequiredAmmoCount,
+                requiredSkillAmmoItemId,
                 out int activeSlotIndex,
                 out int activeBulletItemId))
         {
@@ -66,7 +69,14 @@ public static class ClientShootAmmoResolver
         int fallbackActiveBulletItemId = ResolveActiveBulletItemId(useSlots);
         if (fallbackActiveBulletItemId > 0)
         {
-            if (TryResolveUseAmmoSlotByItemId(useSlots, fallbackActiveBulletItemId, normalizedRequiredAmmoCount, out int fallbackSlotIndex))
+            if (TryResolveUseAmmoSlotByItemId(
+                    useSlots,
+                    weaponCode,
+                    weaponItemId,
+                    fallbackActiveBulletItemId,
+                    normalizedRequiredAmmoCount,
+                    requiredSkillAmmoItemId,
+                    out int fallbackSlotIndex))
             {
                 selection = new ShootAmmoSelection
                 {
@@ -134,7 +144,10 @@ public static class ClientShootAmmoResolver
 
     private static bool TryResolveActiveBulletSelection(
         IReadOnlyList<InventorySlotData> useSlots,
+        int weaponCode,
+        int weaponItemId,
         int requiredAmmoCount,
+        int requiredSkillAmmoItemId,
         out int slotIndex,
         out int itemId)
     {
@@ -151,7 +164,9 @@ public static class ClientShootAmmoResolver
             if (slot?.IsActiveBullet != true
                 || slot.IsDisabled
                 || slot.ItemId <= 0
-                || slot.Quantity < requiredAmmoCount)
+                || slot.Quantity < requiredAmmoCount
+                || !IsCompatibleBulletItem(weaponCode, weaponItemId, slot.ItemId)
+                || !MatchesRequiredSkillAmmoItem(requiredSkillAmmoItemId, slot.ItemId))
             {
                 continue;
             }
@@ -166,12 +181,18 @@ public static class ClientShootAmmoResolver
 
     private static bool TryResolveUseAmmoSlotByItemId(
         IReadOnlyList<InventorySlotData> useSlots,
+        int weaponCode,
+        int weaponItemId,
         int itemId,
         int requiredAmmoCount,
+        int requiredSkillAmmoItemId,
         out int slotIndex)
     {
         slotIndex = -1;
-        if (useSlots == null || itemId <= 0)
+        if (useSlots == null
+            || itemId <= 0
+            || !IsCompatibleBulletItem(weaponCode, weaponItemId, itemId)
+            || !MatchesRequiredSkillAmmoItem(requiredSkillAmmoItemId, itemId))
         {
             return false;
         }
@@ -234,6 +255,7 @@ public static class ClientShootAmmoResolver
     private static void TryResolveCashAmmoSlot(
         IReadOnlyList<InventorySlotData> cashSlots,
         int weaponCode,
+        int weaponItemId,
         out int slotIndex,
         out int itemId)
     {
@@ -251,7 +273,7 @@ public static class ClientShootAmmoResolver
                 || slot.IsDisabled
                 || slot.ItemId <= 0
                 || slot.Quantity <= 0
-                || !IsCompatibleCashBulletItem(weaponCode, slot.ItemId))
+                || !IsCompatibleCashBulletItem(weaponCode, weaponItemId, slot.ItemId))
             {
                 continue;
             }
@@ -277,19 +299,28 @@ public static class ClientShootAmmoResolver
 
     private static bool IsCompatibleBulletItem(int weaponCode, int weaponItemId, int itemId)
     {
+        if (weaponItemId == SpecialArrowWeaponItemId)
+        {
+            return itemId / 1000 == 2060;
+        }
+
         return weaponCode switch
         {
             ArrowWeaponType => itemId / 1000 == 2060,
             CrossbowWeaponType => itemId / 1000 == 2061,
             ThrowingStarWeaponType => itemId / 10000 == 207,
             BulletWeaponType => itemId / 10000 == 233,
-            _ when weaponItemId == SpecialArrowWeaponItemId => itemId / 1000 == 2060,
             _ => false
         };
     }
 
-    private static bool IsCompatibleCashBulletItem(int weaponCode, int itemId)
+    private static bool IsCompatibleCashBulletItem(int weaponCode, int weaponItemId, int itemId)
     {
+        if (weaponItemId == SpecialArrowWeaponItemId)
+        {
+            return itemId / 1000 == 5020;
+        }
+
         return weaponCode switch
         {
             ArrowWeaponType or CrossbowWeaponType => itemId / 1000 == 5020,

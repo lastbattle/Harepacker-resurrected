@@ -38,6 +38,7 @@ namespace HaCreator.MapSimulator.Interaction
                 pane => FocusPane(pane),
                 tabIndex => SetTab(tabIndex),
                 (pane, index) => SelectEntry(pane, index),
+                (pane, delta) => ScrollPane(pane, delta),
                 () => GetSelected(windowManager),
                 () => PutSelected(windowManager),
                 () => EnterSelected(windowManager),
@@ -88,6 +89,8 @@ namespace HaCreator.MapSimulator.Interaction
         internal string SelectEntry(WeddingWishListSelectionPane pane, int index) => _runtime.SelectEntry(pane, index);
 
         internal string MoveSelection(int delta) => _runtime.MoveSelection(delta);
+
+        internal string ScrollPane(WeddingWishListSelectionPane pane, int delta) => _runtime.ScrollPane(pane, delta);
 
         internal string PutSelected(UIWindowManager windowManager)
         {

@@ -889,6 +889,38 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
+        public string ApplyPacketDispatchPayload(byte[] payload)
+        {
+            payload ??= Array.Empty<byte>();
+            if (!MessengerPacketCodec.TryParseClientDispatch(payload, out byte packetSubtype, out byte[] body, out string dispatchError))
+            {
+                return dispatchError ?? "Messenger OnPacket payload could not be decoded.";
+            }
+
+            string result = packetSubtype switch
+            {
+                0 => ApplyPacketPayload(MessengerPacketType.Enter, body),
+                1 => ApplyPacketPayload(MessengerPacketType.SelfEnterResult, body),
+                2 => ApplyPacketLeaveSlotPayload(body),
+                3 => ApplyPacketPayload(MessengerPacketType.Invite, body),
+                4 => ApplyPacketPayload(MessengerPacketType.InviteResult, body),
+                5 => ApplyPacketPayload(MessengerPacketType.Blocked, body),
+                6 => ApplyPacketClientChatPayload(body),
+                7 => ApplyPacketPayload(MessengerPacketType.Avatar, body),
+                8 => ApplyPacketPayload(MessengerPacketType.Migrated, body),
+                _ => $"Messenger OnPacket subtype '{packetSubtype}' is not modeled."
+            };
+
+            if (packetSubtype <= 8)
+            {
+                RecordPacketSummary($"CUIMessenger::OnPacket dispatched subtype {packetSubtype}. {LastPacketSummary}");
+            }
+
+            return result;
+        }
+
+        internal string LastPacketSummary => _lastPacketSummary;
+
         public string SubmitClaim()
         {
             MessengerLogEntryState[] claimableEntries = _logEntries
@@ -1489,6 +1521,59 @@ namespace HaCreator.MapSimulator.Interaction
             RecordPacketSummary(packet.AvatarLook != null
                 ? $"Decoded Messenger enter packet for {resolvedName}, slot {packet.SlotIndex}, CH {packet.Channel}, with AvatarLook."
                 : $"Decoded Messenger enter packet for {resolvedName}, slot {packet.SlotIndex}, CH {packet.Channel}.");
+            return _lastActionSummary;
+        }
+
+        private string ApplyPacketLeaveSlotPayload(byte[] payload)
+        {
+            if (!MessengerPacketCodec.TryParseLeaveSlot(payload, out MessengerLeaveSlotPacket leavePacket, out string leaveError))
+            {
+                return leaveError ?? "Messenger leave-slot packet payload could not be decoded.";
+            }
+
+            return ApplyPacketLeaveSlot(leavePacket);
+        }
+
+        private string ApplyPacketClientChatPayload(byte[] payload)
+        {
+            if (!MessengerPacketCodec.TryParseClientChat(payload, out MessengerClientChatPacket chatPacket, out string chatError))
+            {
+                return chatError ?? "Messenger OnChat payload could not be decoded.";
+            }
+
+            return chatPacket.IsWhisper
+                ? ReceiveRemoteWhisper(chatPacket.ContactName, chatPacket.Message)
+                : ReceiveRoomMessage(chatPacket.ContactName, chatPacket.Message);
+        }
+
+        private string ApplyPacketLeaveSlot(MessengerLeaveSlotPacket packet)
+        {
+            int targetSlot = Math.Clamp(packet.SlotIndex, 0, MaxParticipants - 1);
+            int participantIndex = FindParticipantIndexBySlot(targetSlot);
+            if (participantIndex < 0)
+            {
+                return $"Messenger leave packet slot {packet.SlotIndex} is not active.";
+            }
+
+            MessengerParticipantState participant = _participants[participantIndex];
+            if (participant.IsLocalPlayer)
+            {
+                _lastActionSummary = "Applied decoded Messenger leave packet for the local slot.";
+                AddSystemLog(_lastActionSummary);
+                _participants.RemoveAt(participantIndex);
+                UpdateLocalContext("Player", "Field", 1);
+                _selectedSlot = 0;
+                StartBlink(Environment.TickCount);
+                RecordPacketSummary($"Decoded Messenger leave packet for local slot {packet.SlotIndex}.");
+                return _lastActionSummary;
+            }
+
+            _participants.RemoveAt(participantIndex);
+            _selectedSlot = ResolveSelectedSlotAfterRosterMutation();
+            _lastActionSummary = $"Applied decoded Messenger leave packet for slot {packet.SlotIndex} ({participant.Name}).";
+            AddSystemLog(_lastActionSummary);
+            StartBlink(Environment.TickCount);
+            RecordPacketSummary($"Decoded Messenger leave packet for slot {packet.SlotIndex} ({participant.Name}).");
             return _lastActionSummary;
         }
 

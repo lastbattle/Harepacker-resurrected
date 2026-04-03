@@ -44,6 +44,10 @@ namespace HaCreator.MapSimulator.Fields
         private float _clientOwnedMaskHeight;
         private float _clientOwnedMaskOriginX;
         private float _clientOwnedMaskOriginY;
+        private int _clientOwnedDarkLayerWidth;
+        private int _clientOwnedDarkLayerHeight;
+        private int _clientOwnedDarkLayerOffsetX;
+        private int _clientOwnedDarkLayerOffsetY;
         private Vector2 _clientOwnedScreenMaskCenter;
         #endregion
 
@@ -238,6 +242,14 @@ namespace HaCreator.MapSimulator.Fields
             _clientOwnedImmediateMode = immediateMode;
         }
 
+        public void ConfigureClientOwnedDarkLayer(int width, int height, int offsetX, int offsetY)
+        {
+            _clientOwnedDarkLayerWidth = Math.Max(0, width);
+            _clientOwnedDarkLayerHeight = Math.Max(0, height);
+            _clientOwnedDarkLayerOffsetX = offsetX;
+            _clientOwnedDarkLayerOffsetY = offsetY;
+        }
+
         public void EnableClientOwnedCircleMask(float radius, float width, float height, float originX, float originY)
         {
             ConfigureClientOwnedMask(width, height, originX, originY, immediateMode: true);
@@ -259,6 +271,10 @@ namespace HaCreator.MapSimulator.Fields
             _clientOwnedMaskHeight = 0f;
             _clientOwnedMaskOriginX = 0f;
             _clientOwnedMaskOriginY = 0f;
+            _clientOwnedDarkLayerWidth = 0;
+            _clientOwnedDarkLayerHeight = 0;
+            _clientOwnedDarkLayerOffsetX = 0;
+            _clientOwnedDarkLayerOffsetY = 0;
             _clientOwnedImmediateMode = false;
             _clientOwnedUpdateParityMode = false;
         }
@@ -451,28 +467,40 @@ namespace HaCreator.MapSimulator.Fields
 
             spriteBatch.Draw(_clientOwnedViewrangeTexture, new Vector2(left, top), fogColor);
 
-            if (top > 0)
+            Rectangle darkBounds = GetClientOwnedDarkLayerBounds();
+            int darkLeft = darkBounds.Left;
+            int darkTop = darkBounds.Top;
+            int darkRight = darkBounds.Right;
+            int darkBottom = darkBounds.Bottom;
+
+            if (darkTop < top)
             {
-                spriteBatch.Draw(_pixelTexture, new Rectangle(0, 0, _screenWidth, top), fogColor);
+                spriteBatch.Draw(_pixelTexture, new Rectangle(darkLeft, darkTop, darkBounds.Width, top - darkTop), fogColor);
             }
 
-            if (bottom < _screenHeight)
+            if (bottom < darkBottom)
             {
-                spriteBatch.Draw(_pixelTexture, new Rectangle(0, bottom, _screenWidth, _screenHeight - bottom), fogColor);
+                spriteBatch.Draw(_pixelTexture, new Rectangle(darkLeft, bottom, darkBounds.Width, darkBottom - bottom), fogColor);
             }
 
-            if (left > 0)
+            if (darkLeft < left)
             {
-                int stripTop = Math.Max(0, top);
-                int stripBottom = Math.Min(_screenHeight, bottom);
-                spriteBatch.Draw(_pixelTexture, new Rectangle(0, stripTop, left, stripBottom - stripTop), fogColor);
+                int stripTop = Math.Max(darkTop, top);
+                int stripBottom = Math.Min(darkBottom, bottom);
+                if (stripBottom > stripTop)
+                {
+                    spriteBatch.Draw(_pixelTexture, new Rectangle(darkLeft, stripTop, left - darkLeft, stripBottom - stripTop), fogColor);
+                }
             }
 
-            if (right < _screenWidth)
+            if (right < darkRight)
             {
-                int stripTop = Math.Max(0, top);
-                int stripBottom = Math.Min(_screenHeight, bottom);
-                spriteBatch.Draw(_pixelTexture, new Rectangle(right, stripTop, _screenWidth - right, stripBottom - stripTop), fogColor);
+                int stripTop = Math.Max(darkTop, top);
+                int stripBottom = Math.Min(darkBottom, bottom);
+                if (stripBottom > stripTop)
+                {
+                    spriteBatch.Draw(_pixelTexture, new Rectangle(right, stripTop, darkRight - right, stripBottom - stripTop), fogColor);
+                }
             }
         }
 
@@ -577,6 +605,20 @@ namespace HaCreator.MapSimulator.Fields
             float offsetX = (_clientOwnedMaskWidth * 0.5f) - _clientOwnedMaskOriginX;
             float offsetY = (_clientOwnedMaskHeight * 0.5f) - _clientOwnedMaskOriginY;
             return new Vector2(screenCenterX + offsetX, screenCenterY + offsetY);
+        }
+
+        private Rectangle GetClientOwnedDarkLayerBounds()
+        {
+            if (_clientOwnedDarkLayerWidth <= 0 || _clientOwnedDarkLayerHeight <= 0)
+            {
+                return new Rectangle(0, 0, _screenWidth, _screenHeight);
+            }
+
+            int screenCenterX = (int)MathF.Round(_screenWidth * 0.5f);
+            int screenCenterY = (int)MathF.Round(_screenHeight * 0.5f);
+            int left = screenCenterX + _clientOwnedDarkLayerOffsetX;
+            int top = screenCenterY + _clientOwnedDarkLayerOffsetY;
+            return new Rectangle(left, top, _clientOwnedDarkLayerWidth, _clientOwnedDarkLayerHeight);
         }
         #endregion
 

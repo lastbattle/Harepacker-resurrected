@@ -726,6 +726,18 @@ namespace HaCreator.MapSimulator.Loaders
             if (string.IsNullOrWhiteSpace(propertyName))
                 return null;
 
+            if (string.Equals(propertyName, "ignoreTargetPDP", StringComparison.OrdinalIgnoreCase))
+                return "ignoreMobpdpR";
+
+            if (string.Equals(propertyName, "itemCon", StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(propertyName, "itemConNo", StringComparison.OrdinalIgnoreCase))
+            {
+                return "itemCon";
+            }
+
+            if (string.Equals(propertyName, "itemConsume", StringComparison.OrdinalIgnoreCase))
+                return "itemConsume";
+
             if (string.Equals(propertyName, "lt", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(propertyName, "rb", StringComparison.OrdinalIgnoreCase) ||
                 string.Equals(propertyName, "range", StringComparison.OrdinalIgnoreCase))
@@ -747,6 +759,20 @@ namespace HaCreator.MapSimulator.Loaders
             int level,
             string statKey)
         {
+            if (string.Equals(statKey, "itemCon", StringComparison.OrdinalIgnoreCase))
+            {
+                int originalLength = builder.Length;
+                AppendItemConsumptionStat(builder, skillEntry, levelNode, commonNode, infoNode, level, "itemCon", "itemConNo", "Consumes");
+                return builder.Length != originalLength;
+            }
+
+            if (string.Equals(statKey, "itemConsume", StringComparison.OrdinalIgnoreCase))
+            {
+                int originalLength = builder.Length;
+                AppendItemConsumptionStat(builder, skillEntry, levelNode, commonNode, infoNode, level, "itemConsume", null, "Consumes");
+                return builder.Length != originalLength;
+            }
+
             if (string.Equals(statKey, "range", StringComparison.OrdinalIgnoreCase))
             {
                 int originalLength = builder.Length;
@@ -784,6 +810,35 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             return builder.Length != originalBuilderLength;
+        }
+
+        private static void AppendItemConsumptionStat(
+            StringBuilder builder,
+            WzSubProperty skillEntry,
+            WzImageProperty levelNode,
+            WzImageProperty commonNode,
+            WzImageProperty infoNode,
+            int level,
+            string itemIdPropertyName,
+            string quantityPropertyName,
+            string label)
+        {
+            if (!TryGetLevelNumericValue(skillEntry, levelNode, commonNode, infoNode, itemIdPropertyName, level, out int itemId)
+                || itemId <= 0)
+            {
+                return;
+            }
+
+            int quantity = 1;
+            if (!string.IsNullOrWhiteSpace(quantityPropertyName)
+                && TryGetLevelNumericValue(skillEntry, levelNode, commonNode, infoNode, quantityPropertyName, level, out int resolvedQuantity)
+                && resolvedQuantity > 0)
+            {
+                quantity = resolvedQuantity;
+            }
+
+            string value = FormatFallbackItemConsumptionValue(itemId, quantity);
+            AppendStatLine(builder, label, value);
         }
 
         private static void AppendPercentStat(
@@ -963,6 +1018,52 @@ namespace HaCreator.MapSimulator.Loaders
                 : value.ToString(CultureInfo.InvariantCulture);
         }
 
+        internal static string FormatFallbackItemConsumptionValue(int itemId, int quantity, string resolvedItemName = null)
+        {
+            if (itemId <= 0)
+                return string.Empty;
+
+            string itemName = resolvedItemName != null
+                ? resolvedItemName.Trim()
+                : TryResolveFallbackItemName(itemId);
+            if (string.IsNullOrWhiteSpace(itemName))
+                itemName = $"Item {itemId.ToString(CultureInfo.InvariantCulture)}";
+
+            int count = Math.Max(1, quantity);
+            return count > 1
+                ? $"{itemName} x{count.ToString(CultureInfo.InvariantCulture)}"
+                : itemName;
+        }
+
+        internal static bool TryResolveFallbackStatPresentation(string statKey, int value, out string label, out string formattedValue)
+        {
+            label = null;
+            formattedValue = null;
+
+            if (string.IsNullOrWhiteSpace(statKey)
+                || value == 0
+                || !FallbackSkillStatDefinitions.TryGetValue(statKey, out FallbackSkillStatDefinition definition))
+            {
+                return false;
+            }
+
+            label = definition.Label;
+            formattedValue = definition.IsPercent
+                ? $"{value.ToString(CultureInfo.InvariantCulture)}%"
+                : definition.Formatter != null
+                    ? definition.Formatter(value)
+                    : value.ToString(CultureInfo.InvariantCulture);
+            return !string.IsNullOrWhiteSpace(label) && !string.IsNullOrWhiteSpace(formattedValue);
+        }
+
+        private static string TryResolveFallbackItemName(int itemId)
+        {
+            return InventoryItemMetadataResolver.TryResolveItemName(itemId, out string resolvedName)
+                && !string.IsNullOrWhiteSpace(resolvedName)
+                ? resolvedName.Trim()
+                : string.Empty;
+        }
+
         private static string FormatElementAttributeValue(string value)
         {
             if (string.IsNullOrWhiteSpace(value))
@@ -1019,18 +1120,37 @@ namespace HaCreator.MapSimulator.Loaders
             "mobCount",
             "mpCon",
             "hpCon",
+            "moneyCon",
+            "iceGageCon",
+            "itemCon",
+            "itemConsume",
+            "bulletConsume",
             "cooltime",
             "time",
             "range",
             "mastery",
             "cr",
+            "criticaldamageMin",
+            "criticaldamageMax",
             "prop",
+            "damR",
             "mhpR",
             "mmpR",
+            "pddR",
+            "mddR",
+            "accR",
+            "evaR",
             "asrR",
             "terR",
             "ignoreMobpdpR",
             "bdR",
+            "expR",
+            "dropR",
+            "mesoR",
+            "str",
+            "dex",
+            "int",
+            "luk",
             "pad",
             "mad",
             "pdd",
@@ -1039,13 +1159,18 @@ namespace HaCreator.MapSimulator.Loaders
             "eva",
             "speed",
             "jump",
+            "indieAllStat",
             "indiePad",
             "indieMad",
             "indieAcc",
+            "indieEva",
+            "indieDamR",
             "indieMhp",
             "indieMmp",
             "indieMhpR",
             "indieMmpR",
+            "indieSpeed",
+            "indieJump",
             "hp",
             "mp",
             "padX",
@@ -1054,6 +1179,7 @@ namespace HaCreator.MapSimulator.Loaders
             "bulletSpeed",
             "morph",
             "elemAttr",
+            "ignoreMobDamR",
             "x",
             "y",
             "z"
@@ -1067,17 +1193,34 @@ namespace HaCreator.MapSimulator.Loaders
                 ["mobCount"] = new("mobCount", "Mob Count"),
                 ["mpCon"] = new("mpCon", "MP Cost"),
                 ["hpCon"] = new("hpCon", "HP Cost"),
+                ["moneyCon"] = new("moneyCon", "Meso Cost"),
+                ["iceGageCon"] = new("iceGageCon", "Ice Gauge Cost"),
+                ["bulletConsume"] = new("bulletConsume", "Ammo Cost"),
                 ["cooltime"] = new("cooltime", "Cooldown", formatter: value => $"{value} sec"),
                 ["time"] = new("time", "Duration", formatter: value => $"{value} sec"),
                 ["mastery"] = new("mastery", "Mastery", isPercent: true),
                 ["cr"] = new("cr", "Critical Rate", isPercent: true),
+                ["criticaldamageMin"] = new("criticaldamageMin", "Critical Damage (Min)", isPercent: true),
+                ["criticaldamageMax"] = new("criticaldamageMax", "Critical Damage (Max)", isPercent: true),
                 ["prop"] = new("prop", "Chance", isPercent: true),
+                ["damR"] = new("damR", "Damage Reduction", isPercent: true),
                 ["mhpR"] = new("mhpR", "Max HP", isPercent: true),
                 ["mmpR"] = new("mmpR", "Max MP", isPercent: true),
+                ["pddR"] = new("pddR", "DEF", isPercent: true),
+                ["mddR"] = new("mddR", "Magic DEF", isPercent: true),
+                ["accR"] = new("accR", "Accuracy", isPercent: true),
+                ["evaR"] = new("evaR", "Avoidability", isPercent: true),
                 ["asrR"] = new("asrR", "Abnormal Status Resistance", isPercent: true),
                 ["terR"] = new("terR", "Elemental Resistance", isPercent: true),
                 ["ignoreMobpdpR"] = new("ignoreMobpdpR", "Ignore Enemy DEF", isPercent: true),
                 ["bdR"] = new("bdR", "Boss Damage", isPercent: true),
+                ["expR"] = new("expR", "Bonus EXP", isPercent: true),
+                ["dropR"] = new("dropR", "Drop Rate", isPercent: true),
+                ["mesoR"] = new("mesoR", "Meso Rate", isPercent: true),
+                ["str"] = new("str", "STR", formatter: FormatSignedValue),
+                ["dex"] = new("dex", "DEX", formatter: FormatSignedValue),
+                ["int"] = new("int", "INT", formatter: FormatSignedValue),
+                ["luk"] = new("luk", "LUK", formatter: FormatSignedValue),
                 ["pad"] = new("pad", "PAD", formatter: FormatSignedValue),
                 ["mad"] = new("mad", "MAD", formatter: FormatSignedValue),
                 ["pdd"] = new("pdd", "PDD", formatter: FormatSignedValue),
@@ -1086,13 +1229,18 @@ namespace HaCreator.MapSimulator.Loaders
                 ["eva"] = new("eva", "EVA", formatter: FormatSignedValue),
                 ["speed"] = new("speed", "Speed", formatter: FormatSignedValue),
                 ["jump"] = new("jump", "Jump", formatter: FormatSignedValue),
+                ["indieAllStat"] = new("indieAllStat", "Independent All Stats", formatter: FormatSignedValue),
                 ["indiePad"] = new("indiePad", "Independent PAD", formatter: FormatSignedValue),
                 ["indieMad"] = new("indieMad", "Independent MAD", formatter: FormatSignedValue),
                 ["indieAcc"] = new("indieAcc", "Independent ACC", formatter: FormatSignedValue),
+                ["indieEva"] = new("indieEva", "Independent Avoidability", formatter: FormatSignedValue),
+                ["indieDamR"] = new("indieDamR", "Independent Damage Reduction", isPercent: true),
                 ["indieMhp"] = new("indieMhp", "Independent Max HP", formatter: FormatSignedValue),
                 ["indieMmp"] = new("indieMmp", "Independent Max MP", formatter: FormatSignedValue),
                 ["indieMhpR"] = new("indieMhpR", "Independent Max HP", isPercent: true),
                 ["indieMmpR"] = new("indieMmpR", "Independent Max MP", isPercent: true),
+                ["indieSpeed"] = new("indieSpeed", "Independent Speed", formatter: FormatSignedValue),
+                ["indieJump"] = new("indieJump", "Independent Jump", formatter: FormatSignedValue),
                 ["hp"] = new("hp", "HP Recovery"),
                 ["mp"] = new("mp", "MP Recovery"),
                 ["padX"] = new("padX", "PAD Bonus", formatter: FormatSignedValue),
@@ -1100,6 +1248,7 @@ namespace HaCreator.MapSimulator.Loaders
                 ["bulletCount"] = new("bulletCount", "Bullet Count"),
                 ["bulletSpeed"] = new("bulletSpeed", "Bullet Speed"),
                 ["morph"] = new("morph", "Morph"),
+                ["ignoreMobDamR"] = new("ignoreMobDamR", "Ignore Enemy Damage Reduction", isPercent: true),
                 ["x"] = new("x", "X"),
                 ["y"] = new("y", "Y"),
                 ["z"] = new("z", "Z")

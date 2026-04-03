@@ -90,6 +90,7 @@ namespace HaCreator.MapSimulator
         private const int CHAT_MAX_INPUT_LENGTH = 100;
         // Client ChatLogAdd trims the chat log once it exceeds 0x40 entries.
         internal const int ClientChatLogEntryLimit = 64;
+        internal const int WhisperTargetPickerVisibleRowCount = 6;
         private const int MAX_CHAT_MESSAGES = ClientChatLogEntryLimit;
         private const int CHAT_DISPLAY_LINES = 15;
         private const int CHAT_CURSOR_BLINK_RATE = 500; // Blink every 500ms
@@ -826,6 +827,21 @@ namespace HaCreator.MapSimulator
             Activate(tickCount);
         }
 
+        public void BeginWhisperFromChatLog(string whisperTarget, int tickCount)
+        {
+            WhisperTargetValidationResult validationResult = ValidateWhisperTargetCandidate(
+                whisperTarget,
+                _localPlayerName,
+                out string normalizedTarget);
+            if (validationResult != WhisperTargetValidationResult.Valid)
+            {
+                return;
+            }
+
+            AddWhisperCandidate(normalizedTarget);
+            OpenWhisperTargetPicker(tickCount, normalizedTarget);
+        }
+
         public void RememberWhisperTarget(string whisperTarget)
         {
             WhisperTargetValidationResult validationResult = ValidateWhisperTargetCandidate(
@@ -943,6 +959,19 @@ namespace HaCreator.MapSimulator
         {
             OpenWhisperTargetPicker(tickCount, whisperTarget);
             ConfirmWhisperTargetPicker(tickCount);
+        }
+
+        internal void OffsetWhisperTargetPickerSelection(int delta)
+        {
+            if (!_isWhisperTargetPickerActive || delta == 0)
+            {
+                return;
+            }
+
+            for (int i = 0; i < Math.Abs(delta); i++)
+            {
+                MoveWhisperTargetPickerSelection(Math.Sign(delta));
+            }
         }
         #endregion
 
@@ -1598,22 +1627,29 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            StringInfo info = new(characterName.Trim());
+            string trimmedName = characterName.Trim();
+            StringInfo info = new(trimmedName);
             int textElementCount = info.LengthInTextElements;
-            if (textElementCount < 1 || textElementCount > 13)
+            if (textElementCount < 4 || textElementCount > 12)
             {
                 return false;
             }
 
-            foreach (char c in characterName)
+            int ambiguousCharacterCount = 0;
+            foreach (char c in trimmedName)
             {
                 if (!char.IsLetterOrDigit(c))
                 {
                     return false;
                 }
+
+                if (c == 'I' || c == 'l')
+                {
+                    ambiguousCharacterCount++;
+                }
             }
 
-            return true;
+            return ambiguousCharacterCount < 4;
         }
 
         private static bool TryTrimTrailingChannelSuffix(string text, out string trimmed)
@@ -1723,6 +1759,27 @@ namespace HaCreator.MapSimulator
             }
 
             SetInputText(_whisperCandidates[_whisperTargetPickerSelectionIndex]);
+        }
+
+        internal static int ResolveWhisperTargetPickerFirstVisibleIndex(
+            int selectionIndex,
+            int candidateCount,
+            int visibleRowCount = WhisperTargetPickerVisibleRowCount)
+        {
+            if (candidateCount <= 0)
+            {
+                return 0;
+            }
+
+            int clampedVisibleRowCount = Math.Max(1, visibleRowCount);
+            if (candidateCount <= clampedVisibleRowCount || selectionIndex < 0)
+            {
+                return 0;
+            }
+
+            int maxStartIndex = Math.Max(0, candidateCount - clampedVisibleRowCount);
+            int preferredStartIndex = selectionIndex - clampedVisibleRowCount + 1;
+            return Math.Clamp(preferredStartIndex, 0, maxStartIndex);
         }
 
         private string ResolveWhisperTargetPickerSelection()

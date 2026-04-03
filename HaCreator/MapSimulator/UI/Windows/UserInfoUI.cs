@@ -154,6 +154,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly List<UIObject> _primaryButtons = new List<UIObject>();
         private readonly Dictionary<UserInfoPage, PageVisual> _pageVisuals = new Dictionary<UserInfoPage, PageVisual>();
         private readonly Dictionary<LegacyExpandedPanel, IDXObject> _legacyFrames = new Dictionary<LegacyExpandedPanel, IDXObject>();
+        private readonly List<UIObject> _legacyPetButtons = new List<UIObject>();
         private readonly List<string> _petExceptionEntries = new List<string> { "Meso Bag", "Throwing Star" };
         private readonly string[] _itemPopupEntries = { "Mini Room", "Personal Shop", "Entrusted Shop" };
         private readonly List<string> _wishEntries = new List<string> { "White Scroll", "Brown Work Gloves", "Ilbi Throwing-Star" };
@@ -179,6 +180,17 @@ namespace HaCreator.MapSimulator.UI
         private UIObject _petExceptionButton;
         private UIObject _collectSortButton;
         private UIObject _collectClaimButton;
+        private UIObject _legacyPetShowButton;
+        private UIObject _legacyPetHideButton;
+        private UIObject _legacyRideShowButton;
+        private UIObject _legacyRideHideButton;
+        private UIObject _legacyBookShowButton;
+        private UIObject _legacyBookHideButton;
+        private UIObject _legacyCollectionShowButton;
+        private UIObject _legacyCollectionHideButton;
+        private UIObject _legacyExceptionShowButton;
+        private UIObject _legacyExceptionHideButton;
+        private UIObject _legacyPresentButton;
         private ExceptionPopupVisual _exceptionPopupVisual;
         private UIObject _exceptionRegisterButton;
         private UIObject _exceptionDeleteButton;
@@ -194,6 +206,8 @@ namespace HaCreator.MapSimulator.UI
         private Func<CharacterBuild, MonsterBookSnapshot> _monsterBookSnapshotProvider;
         private Func<CharacterBuild, RankDeltaSnapshot> _rankDeltaProvider;
         private AuxiliaryPopupKind _activePopup;
+        private LegacyExpandedPanel _legacyExpandedPanel;
+        private LegacyCollectionMode _legacyCollectionMode = LegacyCollectionMode.Overview;
         private int _selectedPetTabIndex;
         private int _selectedItemPopupIndex;
         private int _selectedWishIndex;
@@ -243,6 +257,7 @@ namespace HaCreator.MapSimulator.UI
         public Action PersonalShopRequested { get; set; }
         public Action EntrustedShopRequested { get; set; }
         public Func<UserInfoActionContext, string> BookCollectionRequested { get; set; }
+        public Func<UserInfoActionContext, string, string> WishPresentRequested { get; set; }
 
         public override CharacterBuild CharacterBuild
         {
@@ -301,6 +316,25 @@ namespace HaCreator.MapSimulator.UI
             PageVisual visual = GetOrCreateVisual(page);
             visual.Icon = icon;
             visual.IconOffset = new Point(offsetX, offsetY);
+        }
+
+        public void RegisterLegacyFrame(string panelName, IDXObject frame)
+        {
+            if (frame == null)
+            {
+                return;
+            }
+
+            if (!Enum.TryParse(panelName, true, out LegacyExpandedPanel panel) || panel == LegacyExpandedPanel.None)
+            {
+                return;
+            }
+
+            _legacyFrames[panel] = frame;
+            if (!_isBigBang)
+            {
+                ApplyCurrentPageFrame();
+            }
         }
 
         public void InitializePrimaryButtons(UIObject partyButton, UIObject tradeButton, UIObject itemButton, UIObject wishButton, UIObject familyButton)
@@ -371,6 +405,45 @@ namespace HaCreator.MapSimulator.UI
             UpdateButtonStates();
         }
 
+        public void InitializeLegacyButtons(
+            UIObject petShowButton,
+            UIObject petHideButton,
+            UIObject rideShowButton,
+            UIObject rideHideButton,
+            UIObject bookShowButton,
+            UIObject bookHideButton,
+            UIObject collectionShowButton,
+            UIObject collectionHideButton,
+            UIObject exceptionShowButton,
+            UIObject exceptionHideButton,
+            UIObject presentButton)
+        {
+            _legacyPetShowButton = petShowButton;
+            _legacyPetHideButton = petHideButton;
+            _legacyRideShowButton = rideShowButton;
+            _legacyRideHideButton = rideHideButton;
+            _legacyBookShowButton = bookShowButton;
+            _legacyBookHideButton = bookHideButton;
+            _legacyCollectionShowButton = collectionShowButton;
+            _legacyCollectionHideButton = collectionHideButton;
+            _legacyExceptionShowButton = exceptionShowButton;
+            _legacyExceptionHideButton = exceptionHideButton;
+            _legacyPresentButton = presentButton;
+
+            BindActionButton(_legacyPetShowButton, "Pet add-on opened.", () => OpenLegacyPanel(LegacyExpandedPanel.Pet));
+            BindActionButton(_legacyPetHideButton, "Pet add-on closed.", CloseLegacyPanel);
+            BindActionButton(_legacyRideShowButton, "Ride add-on opened.", () => OpenLegacyPanel(LegacyExpandedPanel.Ride));
+            BindActionButton(_legacyRideHideButton, "Ride add-on closed.", CloseLegacyPanel);
+            BindActionButton(_legacyBookShowButton, "Monster Book add-on opened.", () => OpenLegacyCollectionMode(LegacyCollectionMode.Book));
+            BindActionButton(_legacyBookHideButton, "Monster Book add-on closed.", CloseLegacyPanel);
+            BindActionButton(_legacyCollectionShowButton, "Collection add-on opened.", () => OpenLegacyCollectionMode(LegacyCollectionMode.Overview));
+            BindActionButton(_legacyCollectionHideButton, "Collection add-on closed.", CloseLegacyPanel);
+            BindActionButton(_legacyExceptionShowButton, "Pet exception list opened.", ToggleExceptionPopup);
+            BindActionButton(_legacyExceptionHideButton, "Pet exception list closed.", ToggleExceptionPopup);
+            BindActionButton(_legacyPresentButton, "Wish present routing prepared.", PresentWishEntry);
+            UpdateButtonStates();
+        }
+
         public void InitializePetTabButtons(IEnumerable<UIObject> petTabButtons)
         {
             _petTabButtons.Clear();
@@ -393,8 +466,7 @@ namespace HaCreator.MapSimulator.UI
                 AddButton(button);
                 button.ButtonClickReleased += _ =>
                 {
-                    IReadOnlyList<PetRuntime> pets = _petController?.ActivePets;
-                    if (pets == null || capturedIndex >= pets.Count)
+                    if (capturedIndex >= GetAvailablePetSlotCount())
                     {
                         return;
                     }
@@ -630,6 +702,10 @@ namespace HaCreator.MapSimulator.UI
                     break;
                 default:
                     DrawCharacterPage(sprite);
+                    if (!_isBigBang)
+                    {
+                        DrawLegacyExpandedPanel(sprite);
+                    }
                     break;
             }
 
@@ -810,38 +886,62 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawPetPage(SpriteBatch sprite)
         {
-            IReadOnlyList<PetRuntime> pets = _petController?.ActivePets;
-
             DrawSectionHeader(sprite, "Pet");
-            if (pets == null || pets.Count == 0)
+            if (TryGetSelectedLocalPet(out PetRuntime pet, out int localPetCount))
+            {
+                DrawLayer(pet.Definition?.IconRaw ?? pet.Definition?.Icon,
+                    new Point(20, 52),
+                    sprite,
+                    null,
+                    null,
+                    null);
+                DrawLabeledRow(sprite, 50, "Pet", pet.Name, ValueColor, 132);
+                DrawLabeledRow(sprite, 74, "Level", $"Command Lv. {pet.CommandLevel}", MutedColor, 132);
+                DrawLabeledRow(sprite, 98, "Loot", pet.AutoLootEnabled ? "Auto-loot enabled" : "Auto-loot disabled",
+                    pet.AutoLootEnabled ? SuccessColor : WarningColor, 132);
+                DrawLabeledRow(sprite, 122, "Chat", $"Balloon {pet.ChatBalloonStyle}", MutedColor, 132);
+                DrawLabeledRow(sprite, 146, "Active", $"{localPetCount} pet slot(s) populated", SecondaryColor, 132);
+                DrawPlainText(
+                    sprite,
+                    $"Viewing pet {_selectedPetTabIndex + 1} of {localPetCount}.",
+                    new Vector2(Position.X + 20, Position.Y + 174),
+                    MutedColor,
+                    0.56f);
+                return;
+            }
+
+            if (TryGetSelectedRemotePetItemId(out int remotePetItemId, out int remotePetCount))
+            {
+                string petName = ResolveRemotePetDisplayName(remotePetItemId);
+                DrawLabeledRow(sprite, 50, "Pet", petName, ValueColor, 132);
+                DrawLabeledRow(sprite, 74, "Slot", $"Remote pet slot {_selectedPetTabIndex + 1}", MutedColor, 132);
+                DrawLabeledRow(sprite, 98, "Source", "Remote AvatarLook / user packet", SecondaryColor, 132);
+                DrawLabeledRow(sprite, 122, "State", "Live server-owned pet state unavailable", WarningColor, 132);
+                DrawLabeledRow(sprite, 146, "Active", $"{remotePetCount} remote pet slot(s) authored", SecondaryColor, 132);
+                DrawPlainText(
+                    sprite,
+                    $"Viewing remote pet {_selectedPetTabIndex + 1} of {remotePetCount}.",
+                    new Vector2(Position.X + 20, Position.Y + 174),
+                    MutedColor,
+                    0.56f);
+                return;
+            }
+
+            if (IsRemoteInspectionActive())
             {
                 DrawPlainText(sprite,
-                    "No active pets. Summon a simulator pet to populate this page.",
+                    "No remote pet slots were present on the inspected build.",
                     new Vector2(Position.X + 20, Position.Y + 54),
                     MutedColor,
                     0.62f);
                 return;
             }
 
-            PetRuntime pet = pets[Math.Clamp(_selectedPetTabIndex, 0, pets.Count - 1)];
-            DrawLayer(pet.Definition?.IconRaw ?? pet.Definition?.Icon,
-                new Point(20, 52),
-                sprite,
-                null,
-                null,
-                null);
-            DrawLabeledRow(sprite, 50, "Pet", pet.Name, ValueColor, 132);
-            DrawLabeledRow(sprite, 74, "Level", $"Command Lv. {pet.CommandLevel}", MutedColor, 132);
-            DrawLabeledRow(sprite, 98, "Loot", pet.AutoLootEnabled ? "Auto-loot enabled" : "Auto-loot disabled",
-                pet.AutoLootEnabled ? SuccessColor : WarningColor, 132);
-            DrawLabeledRow(sprite, 122, "Chat", $"Balloon {pet.ChatBalloonStyle}", MutedColor, 132);
-            DrawLabeledRow(sprite, 146, "Active", $"{Math.Min(3, pets.Count)} pet slot(s) populated", SecondaryColor, 132);
-            DrawPlainText(
-                sprite,
-                $"Viewing pet {_selectedPetTabIndex + 1} of {Math.Min(3, pets.Count)}.",
-                new Vector2(Position.X + 20, Position.Y + 174),
+            DrawPlainText(sprite,
+                "No active pets. Summon a simulator pet to populate this page.",
+                new Vector2(Position.X + 20, Position.Y + 54),
                 MutedColor,
-                0.56f);
+                0.62f);
         }
 
         private void DrawCollectPage(SpriteBatch sprite)
@@ -1209,7 +1309,7 @@ namespace HaCreator.MapSimulator.UI
 
             DrawPlainText(
                 sprite,
-                "Present sends a local preview only.",
+                "Present routes into the Cash Shop wish-list seam.",
                 new Vector2(popupPosition.X + 12, popupPosition.Y + 112),
                 MutedColor,
                 0.5f);
@@ -1283,6 +1383,15 @@ namespace HaCreator.MapSimulator.UI
 
         private void ApplyCurrentPageFrame()
         {
+            if (!_isBigBang &&
+                _legacyExpandedPanel != LegacyExpandedPanel.None &&
+                _legacyFrames.TryGetValue(_legacyExpandedPanel, out IDXObject legacyFrame) &&
+                legacyFrame != null)
+            {
+                Frame = legacyFrame;
+                return;
+            }
+
             if (_currentPage != UserInfoPage.Character &&
                 _pageVisuals.TryGetValue(_currentPage, out PageVisual visual) &&
                 visual.Frame != null)
@@ -1350,6 +1459,27 @@ namespace HaCreator.MapSimulator.UI
                 _familyButton.SetEnabled(characterPage && !_exceptionPopupOpen);
             }
 
+            if (!_isBigBang)
+            {
+                bool petOpen = _legacyExpandedPanel == LegacyExpandedPanel.Pet;
+                bool rideOpen = _legacyExpandedPanel == LegacyExpandedPanel.Ride;
+                bool collectionOpen = _legacyExpandedPanel == LegacyExpandedPanel.Collection;
+                bool collectionBook = collectionOpen && _legacyCollectionMode == LegacyCollectionMode.Book;
+                bool collectionOverview = collectionOpen && _legacyCollectionMode == LegacyCollectionMode.Overview;
+
+                SetLegacyToggleButtonState(_legacyPetShowButton, !petOpen, !_exceptionPopupOpen);
+                SetLegacyToggleButtonState(_legacyPetHideButton, petOpen, !_exceptionPopupOpen);
+                SetLegacyToggleButtonState(_legacyRideShowButton, !rideOpen, !_exceptionPopupOpen);
+                SetLegacyToggleButtonState(_legacyRideHideButton, rideOpen, !_exceptionPopupOpen);
+                SetLegacyToggleButtonState(_legacyBookShowButton, !collectionBook, !_exceptionPopupOpen);
+                SetLegacyToggleButtonState(_legacyBookHideButton, collectionBook, !_exceptionPopupOpen);
+                SetLegacyToggleButtonState(_legacyCollectionShowButton, !collectionOverview, !_exceptionPopupOpen);
+                SetLegacyToggleButtonState(_legacyCollectionHideButton, collectionOverview, !_exceptionPopupOpen);
+                SetLegacyToggleButtonState(_legacyExceptionShowButton, petOpen && !_exceptionPopupOpen, HasActivePets());
+                SetLegacyToggleButtonState(_legacyExceptionHideButton, petOpen && _exceptionPopupOpen, true);
+                SetLegacyToggleButtonState(_legacyPresentButton, collectionBook && !_exceptionPopupOpen, _wishEntries.Count > 0);
+            }
+
             if (_petExceptionButton != null)
             {
                 bool showPetException = _currentPage == UserInfoPage.Pet;
@@ -1369,6 +1499,21 @@ namespace HaCreator.MapSimulator.UI
                 bool visible = _currentPage == UserInfoPage.Pet && pets != null && i < pets.Count;
                 button.ButtonVisible = visible;
                 button.SetEnabled(visible && !_exceptionPopupOpen);
+                button.SetButtonState(_selectedPetTabIndex == i ? UIObjectState.Pressed : UIObjectState.Normal);
+            }
+
+            for (int i = 0; i < _legacyPetButtons.Count; i++)
+            {
+                UIObject button = _legacyPetButtons[i];
+                if (button == null)
+                {
+                    continue;
+                }
+
+                bool visible = !_isBigBang && _legacyExpandedPanel == LegacyExpandedPanel.Pet;
+                bool enabled = visible && i < (_petController?.ActivePets?.Count ?? 0) && !_exceptionPopupOpen;
+                button.ButtonVisible = visible;
+                button.SetEnabled(enabled);
                 button.SetButtonState(_selectedPetTabIndex == i ? UIObjectState.Pressed : UIObjectState.Normal);
             }
 
@@ -1482,6 +1627,33 @@ namespace HaCreator.MapSimulator.UI
             UpdateButtonStates();
         }
 
+        public void InitializeLegacyPetButtons(IEnumerable<UIObject> petButtons)
+        {
+            _legacyPetButtons.Clear();
+            if (petButtons == null)
+            {
+                return;
+            }
+
+            int petIndex = 0;
+            foreach (UIObject button in petButtons.Where(button => button != null))
+            {
+                int capturedIndex = petIndex;
+                _legacyPetButtons.Add(button);
+                AddButton(button);
+                button.ButtonClickReleased += _ =>
+                {
+                    _selectedPetTabIndex = capturedIndex;
+                    OpenLegacyPanel(LegacyExpandedPanel.Pet);
+                    _statusMessage = $"Viewing pet slot {capturedIndex + 1}.";
+                    UpdateButtonStates();
+                };
+                petIndex++;
+            }
+
+            UpdateButtonStates();
+        }
+
         private void ScrollPopupSelectionDown()
         {
             switch (_activePopup)
@@ -1584,19 +1756,19 @@ namespace HaCreator.MapSimulator.UI
 
         private bool HasActivePets()
         {
-            return !IsRemoteInspectionActive() && _petController?.ActivePets?.Count > 0;
+            return GetAvailablePetSlotCount() > 0;
         }
 
         private void ClampSelectedPetTabIndex()
         {
-            IReadOnlyList<PetRuntime> pets = _petController?.ActivePets;
-            if (pets == null || pets.Count == 0)
+            int petCount = GetAvailablePetSlotCount();
+            if (petCount <= 0)
             {
                 _selectedPetTabIndex = 0;
                 return;
             }
 
-            _selectedPetTabIndex = Math.Clamp(_selectedPetTabIndex, 0, Math.Min(2, pets.Count - 1));
+            _selectedPetTabIndex = Math.Clamp(_selectedPetTabIndex, 0, petCount - 1);
         }
 
         private bool IsPageAvailable(UserInfoPage page)
@@ -1614,6 +1786,13 @@ namespace HaCreator.MapSimulator.UI
 
         private void ToggleExceptionPopup()
         {
+            if (IsRemoteInspectionActive())
+            {
+                _statusMessage = "Pet exception editing is local-only in the simulator.";
+                UpdateButtonStates();
+                return;
+            }
+
             _activePopup = AuxiliaryPopupKind.None;
             _exceptionPopupOpen = !_exceptionPopupOpen;
             if (_exceptionPopupOpen && _petExceptionEntries.Count > 0 && _selectedPetExceptionIndex < 0)
@@ -1775,13 +1954,22 @@ namespace HaCreator.MapSimulator.UI
 
         private void PresentWishEntry()
         {
+            if (_selectedWishIndex < 0 && _wishEntries.Count > 0)
+            {
+                _selectedWishIndex = 0;
+            }
+
             if (_selectedWishIndex < 0 || _selectedWishIndex >= _wishEntries.Count)
             {
                 _statusMessage = "Select a wish entry before previewing a present.";
                 return;
             }
 
-            _statusMessage = $"Present preview prepared for {_wishEntries[_selectedWishIndex]}. Packet-backed gifting still remains.";
+            string wishEntry = _wishEntries[_selectedWishIndex];
+            string message = WishPresentRequested?.Invoke(BuildCurrentActionContext(), wishEntry);
+            _statusMessage = string.IsNullOrWhiteSpace(message)
+                ? $"Present routing prepared for {wishEntry}."
+                : message;
         }
 
         private bool CanClaimCollectReward()
@@ -1955,7 +2143,8 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            if (_exceptionPopupOpen && _currentPage == UserInfoPage.Pet)
+            bool petExceptionOwnerActive = _currentPage == UserInfoPage.Pet || (!_isBigBang && _legacyExpandedPanel == LegacyExpandedPanel.Pet);
+            if (_exceptionPopupOpen && petExceptionOwnerActive)
             {
                 HandleExceptionPopupClick(mouseState.Position);
                 return;
@@ -2055,6 +2244,192 @@ namespace HaCreator.MapSimulator.UI
 
             _activePopup = AuxiliaryPopupKind.None;
             UpdateButtonStates();
+        }
+
+        private void DrawLegacyExpandedPanel(SpriteBatch sprite)
+        {
+            switch (_legacyExpandedPanel)
+            {
+                case LegacyExpandedPanel.Pet:
+                    DrawLegacyPetPanel(sprite);
+                    break;
+                case LegacyExpandedPanel.Ride:
+                    DrawLegacyRidePanel(sprite);
+                    break;
+                case LegacyExpandedPanel.Collection:
+                    DrawLegacyCollectionPanel(sprite);
+                    break;
+            }
+        }
+
+        private void DrawLegacyPetPanel(SpriteBatch sprite)
+        {
+            DrawPlainText(sprite, "Pet", new Vector2(Position.X + 18, Position.Y + 208), HeaderColor, 0.72f);
+            if (TryGetSelectedLocalPet(out PetRuntime pet, out int localPetCount))
+            {
+                DrawLabeledRow(sprite, 230, "Pet", pet.Name, ValueColor, 138);
+                DrawLabeledRow(sprite, 252, "Level", $"Command Lv. {pet.CommandLevel}", SecondaryColor, 138);
+                DrawLabeledRow(sprite, 274, "Loot", pet.AutoLootEnabled ? "Auto-loot enabled" : "Auto-loot disabled", pet.AutoLootEnabled ? SuccessColor : WarningColor, 138);
+                DrawLabeledRow(sprite, 296, "Chat", $"Balloon {pet.ChatBalloonStyle}", MutedColor, 138);
+                DrawLabeledRow(sprite, 318, "Slots", $"{localPetCount} populated", SecondaryColor, 138);
+                return;
+            }
+
+            if (TryGetSelectedRemotePetItemId(out int remotePetItemId, out int remotePetCount))
+            {
+                DrawLabeledRow(sprite, 230, "Pet", ResolveRemotePetDisplayName(remotePetItemId), ValueColor, 138);
+                DrawLabeledRow(sprite, 252, "Slot", $"Remote pet slot {_selectedPetTabIndex + 1}", SecondaryColor, 138);
+                DrawLabeledRow(sprite, 274, "State", "Packet-owned remote slot", MutedColor, 138);
+                DrawLabeledRow(sprite, 296, "Notes", "Pet stats remain approximated locally", WarningColor, 138);
+                DrawLabeledRow(sprite, 318, "Slots", $"{remotePetCount} authored", SecondaryColor, 138);
+                return;
+            }
+
+            if (IsRemoteInspectionActive())
+            {
+                DrawPlainText(sprite, "No remote pet slots were present on the inspected build.", new Vector2(Position.X + 18, Position.Y + 232), MutedColor, 0.56f);
+                return;
+            }
+
+            if (_petController?.ActivePets == null || _petController.ActivePets.Count == 0)
+            {
+                DrawPlainText(sprite, "No active pets are available for the legacy add-on.", new Vector2(Position.X + 18, Position.Y + 232), MutedColor, 0.56f);
+                return;
+            }
+        }
+
+        private int GetAvailablePetSlotCount()
+        {
+            if (IsRemoteInspectionActive())
+            {
+                return Math.Min(3, GetDisplayedBuild()?.RemotePetItemIds?.Count ?? 0);
+            }
+
+            return Math.Min(3, _petController?.ActivePets?.Count ?? 0);
+        }
+
+        private bool TryGetSelectedLocalPet(out PetRuntime pet, out int petCount)
+        {
+            IReadOnlyList<PetRuntime> pets = _petController?.ActivePets;
+            petCount = Math.Min(3, pets?.Count ?? 0);
+            if (IsRemoteInspectionActive() || petCount <= 0)
+            {
+                pet = null;
+                return false;
+            }
+
+            pet = pets[Math.Clamp(_selectedPetTabIndex, 0, petCount - 1)];
+            return pet != null;
+        }
+
+        private bool TryGetSelectedRemotePetItemId(out int petItemId, out int petCount)
+        {
+            IReadOnlyList<int> petItemIds = GetDisplayedBuild()?.RemotePetItemIds;
+            petCount = Math.Min(3, petItemIds?.Count ?? 0);
+            if (!IsRemoteInspectionActive() || petCount <= 0)
+            {
+                petItemId = 0;
+                return false;
+            }
+
+            petItemId = petItemIds[Math.Clamp(_selectedPetTabIndex, 0, petCount - 1)];
+            return petItemId > 0;
+        }
+
+        private static string ResolveRemotePetDisplayName(int petItemId)
+        {
+            return InventoryItemMetadataResolver.TryResolveItemName(petItemId, out string itemName) &&
+                   !string.IsNullOrWhiteSpace(itemName)
+                ? itemName
+                : $"Pet item {petItemId}";
+        }
+
+        private void DrawLegacyRidePanel(SpriteBatch sprite)
+        {
+            CharacterBuild displayBuild = GetDisplayedBuild();
+            string mountName = GetEquippedItemName(EquipSlot.TamingMob, displayBuild);
+            string saddleName = GetEquippedItemName(EquipSlot.Saddle, displayBuild);
+            bool ridingReady = displayBuild?.HasMonsterRiding == true && !string.Equals(mountName, "-", StringComparison.Ordinal);
+
+            DrawPlainText(sprite, "Ride", new Vector2(Position.X + 18, Position.Y + 208), HeaderColor, 0.72f);
+            DrawLabeledRow(sprite, 230, "Status", ridingReady ? "Ride available" : "No active mount slot", ridingReady ? SuccessColor : WarningColor, 138);
+            DrawLabeledRow(sprite, 252, "Mount", mountName, ValueColor, 138);
+            DrawLabeledRow(sprite, 274, "Saddle", saddleName, MutedColor, 138);
+            DrawLabeledRow(sprite, 296, "Skill", displayBuild?.HasMonsterRiding == true ? "Monster Riding learned" : "Monster Riding not learned", SecondaryColor, 138);
+        }
+
+        private void DrawLegacyCollectionPanel(SpriteBatch sprite)
+        {
+            DrawPlainText(
+                sprite,
+                _legacyCollectionMode == LegacyCollectionMode.Book ? "Monster Book" : "Collection",
+                new Vector2(Position.X + 18, Position.Y + 208),
+                HeaderColor,
+                0.72f);
+
+            if (_legacyCollectionMode == LegacyCollectionMode.Book)
+            {
+                MonsterBookSnapshot snapshot = GetMonsterBookSnapshot();
+                DrawLabeledRow(sprite, 230, "Cards", $"{snapshot.OwnedCardTypes}/{snapshot.TotalCardTypes}", ValueColor, 138);
+                DrawLabeledRow(sprite, 252, "Complete", $"{snapshot.CompletedCardTypes}", SecondaryColor, 138);
+                DrawLabeledRow(sprite, 274, "Cover", string.IsNullOrWhiteSpace(snapshot.RegisteredCardName) ? snapshot.Title : snapshot.RegisteredCardName, MutedColor, 138);
+                DrawPlainText(sprite, "Open the dedicated book owner from the collection icon seam.", new Vector2(Position.X + 18, Position.Y + 300), MutedColor, 0.54f);
+                return;
+            }
+
+            List<(string Label, string Value)> entries = BuildCollectEntries().Take(5).ToList();
+            for (int i = 0; i < entries.Count; i++)
+            {
+                (string label, string value) = entries[i];
+                DrawLabeledRow(sprite, 230 + (i * 22), label, value, ValueColor, 138);
+            }
+        }
+
+        private void OpenLegacyPanel(LegacyExpandedPanel panel)
+        {
+            if (panel == LegacyExpandedPanel.None)
+            {
+                CloseLegacyPanel();
+                return;
+            }
+
+            _legacyExpandedPanel = _legacyExpandedPanel == panel ? LegacyExpandedPanel.None : panel;
+            if (_legacyExpandedPanel != LegacyExpandedPanel.Pet)
+            {
+                _exceptionPopupOpen = false;
+            }
+
+            ApplyCurrentPageFrame();
+            UpdateButtonStates();
+        }
+
+        private void OpenLegacyCollectionMode(LegacyCollectionMode mode)
+        {
+            bool sameModeAlreadyOpen = _legacyExpandedPanel == LegacyExpandedPanel.Collection && _legacyCollectionMode == mode;
+            _legacyCollectionMode = mode;
+            _legacyExpandedPanel = sameModeAlreadyOpen ? LegacyExpandedPanel.None : LegacyExpandedPanel.Collection;
+            _exceptionPopupOpen = false;
+            ApplyCurrentPageFrame();
+            UpdateButtonStates();
+        }
+
+        private void CloseLegacyPanel()
+        {
+            _legacyExpandedPanel = LegacyExpandedPanel.None;
+            _exceptionPopupOpen = false;
+            ApplyCurrentPageFrame();
+            UpdateButtonStates();
+        }
+
+        private void SetLegacyToggleButtonState(UIObject button, bool visible, bool enabled)
+        {
+            if (button == null)
+            {
+                return;
+            }
+
+            button.ButtonVisible = visible;
+            button.SetEnabled(visible && enabled);
         }
 
         private AuxiliaryPopupVisual GetActivePopupVisual()

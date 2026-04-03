@@ -44,9 +44,11 @@ namespace HaCreator.MapSimulator.Interaction
     internal sealed record PacketFieldUtilityAdminResult(
         byte Subtype,
         string Title,
+        string Summary,
         string Body,
+        int StringPoolId,
         int ChatLogType,
-        bool ShowPrompt,
+        bool AppendChatLogEntry,
         bool ReloadMinimap,
         bool ToggleMinimap);
 
@@ -55,7 +57,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal Func<int, string> ResolveWeatherItemPath { get; init; }
         internal Action<int, byte, string, string> ApplyWeather { get; init; }
         internal Action<PacketFieldUtilityAdminResult> PresentAdminResult { get; init; }
-        internal Action<string, bool, byte, ushort> PresentQuizState { get; init; }
+        internal Action<bool, byte, ushort> PresentQuizState { get; init; }
         internal Action<int, string, int, int> UpsertStalkTarget { get; init; }
         internal Action<int> RemoveStalkTarget { get; init; }
         internal Action<int[], bool> ApplyQuickslotKeyMap { get; init; }
@@ -241,6 +243,28 @@ namespace HaCreator.MapSimulator.Interaction
             return stream.ToArray();
         }
 
+        internal static byte[] BuildOfficialSessionFootHoldInfoResponsePayload(IReadOnlyList<PacketFieldUtilityFootholdEntry> entries)
+        {
+            using MemoryStream stream = new();
+            using BinaryWriter writer = new(stream, Encoding.Default, leaveOpen: true);
+            if (entries != null)
+            {
+                for (int i = 0; i < entries.Count; i++)
+                {
+                    PacketFieldUtilityFootholdEntry entry = entries[i];
+                    PacketFieldUtilityMovingFootholdState movingState = entry?.MovingState;
+                    writer.Write(entry?.State ?? 0);
+                    writer.Write(movingState?.CurrentX ?? 0);
+                    writer.Write(movingState?.CurrentY ?? 0);
+                    writer.Write(movingState?.ReverseVertical == true ? (byte)1 : (byte)0);
+                    writer.Write(movingState?.ReverseHorizontal == true ? (byte)1 : (byte)0);
+                }
+            }
+
+            writer.Flush();
+            return stream.ToArray();
+        }
+
         private bool TryApplyBlowWeather(byte[] payload, PacketFieldUtilityCallbacks callbacks, out string message)
         {
             using MemoryStream stream = new(payload, writable: false);
@@ -269,7 +293,9 @@ namespace HaCreator.MapSimulator.Interaction
             byte subtype = reader.ReadByte();
             PacketFieldUtilityAdminResult result = DecodeAdminResult(subtype, reader);
             callbacks?.PresentAdminResult?.Invoke(result);
-            _lastAdminSummary = $"Admin result {subtype}: {result.Body}";
+            _lastAdminSummary = string.IsNullOrWhiteSpace(result?.Summary)
+                ? $"Admin result {subtype}."
+                : $"Admin result {subtype}: {result.Summary}";
             _statusMessage = _lastAdminSummary;
             message = _lastAdminSummary;
             return true;
@@ -282,11 +308,7 @@ namespace HaCreator.MapSimulator.Interaction
             bool isQuestion = reader.ReadByte() != 0;
             byte category = reader.ReadByte();
             ushort problemId = reader.ReadUInt16();
-
-            string quizText = problemId == 0
-                ? null
-                : $"{(isQuestion ? "Question" : "Answer")} {category.ToString(CultureInfo.InvariantCulture)}-{problemId.ToString(CultureInfo.InvariantCulture)}";
-            callbacks?.PresentQuizState?.Invoke(quizText, isQuestion, category, problemId);
+            callbacks?.PresentQuizState?.Invoke(isQuestion, category, problemId);
 
             _lastQuizSummary = problemId == 0
                 ? "Cleared packet-authored quiz status."
@@ -438,20 +460,29 @@ namespace HaCreator.MapSimulator.Interaction
             return subtype switch
             {
                 11 => DecodeAdminResultNotice(reader, subtype),
-                18 => new PacketFieldUtilityAdminResult(subtype, "Admin", $"Updated admin-hide flag to {reader.ReadByte()}.", 12, false, false, false),
+                18 => new PacketFieldUtilityAdminResult(subtype, "Admin", $"Updated the admin-hide flag to {reader.ReadByte()}.", string.Empty, -1, 12, false, false, false),
                 21 => DecodeAdminResultMapOrChannel(reader, subtype),
-                40 => new PacketFieldUtilityAdminResult(subtype, "Admin", "Reloaded the minimap.", 12, false, true, false),
-                41 => new PacketFieldUtilityAdminResult(subtype, "Admin", "Toggled the minimap state.", 12, false, false, true),
-                42 => new PacketFieldUtilityAdminResult(subtype, "Admin", reader.ReadByte() != 0 ? string.Empty : "Admin claim is unavailable.", 9, false, false, false),
-                43 => new PacketFieldUtilityAdminResult(subtype, "Admin", reader.ReadByte() != 0 ? "Admin block is enabled." : "Admin block is disabled.", 9, true, false, false),
-                51 or 52 or 53 or 54 or 55 or 56 or 57 => new PacketFieldUtilityAdminResult(subtype, "Admin", ReadMapleString(reader), 11, true, false, false),
-                58 => new PacketFieldUtilityAdminResult(subtype, "Admin", ReadMapleString(reader), 12, true, false, false),
-                71 => new PacketFieldUtilityAdminResult(subtype, "Admin", ReadMapleString(reader), 12, true, false, false),
-                72 => new PacketFieldUtilityAdminResult(subtype, "Admin", ReadMapleString(reader), 11, true, false, false),
-                4 => new PacketFieldUtilityAdminResult(subtype, "Admin", $"Applied admin result subtype 4 (mode={reader.ReadByte()}).", 9, false, false, false),
-                5 => new PacketFieldUtilityAdminResult(subtype, "Admin", $"Applied admin result subtype 5 (mode={reader.ReadByte()}).", 9, false, false, false),
-                6 => new PacketFieldUtilityAdminResult(subtype, "Admin", reader.ReadByte() != 0 ? "Enabled Maple Admin notice mode." : "Disabled Maple Admin notice mode.", 9, false, false, false),
-                _ => new PacketFieldUtilityAdminResult(subtype, "Admin", $"Unhandled admin-result subtype {subtype}.", 12, false, false, false)
+                40 => new PacketFieldUtilityAdminResult(subtype, "Admin", "Reloaded the minimap.", string.Empty, -1, 12, false, true, false),
+                41 => new PacketFieldUtilityAdminResult(subtype, "Admin", "Applied the client minimap-hidden state.", string.Empty, -1, 12, false, false, true),
+                42 => DecodeAdminResultClaimState(reader, subtype),
+                43 => DecodeAdminBlockState(reader, subtype),
+                51 or 52 or 53 or 54 or 55 or 56 or 57 => DecodeChatOnlyAdminResult(reader, subtype, 11),
+                58 => DecodeChatOnlyAdminResult(reader, subtype, 12),
+                71 => DecodeChatOnlyAdminResult(reader, subtype, 12),
+                72 => DecodeChatOnlyAdminResult(reader, subtype, 11),
+                4 => DecodeAdminResultMode(reader, subtype),
+                5 => DecodeAdminResultMode(reader, subtype),
+                6 => new PacketFieldUtilityAdminResult(
+                    subtype,
+                    "Admin",
+                    "Updated Maple Admin notice mode.",
+                    DecodeMapleAdminNoticeMode(reader, out int stringPoolId),
+                    stringPoolId,
+                    9,
+                    true,
+                    false,
+                    false),
+                _ => new PacketFieldUtilityAdminResult(subtype, "Admin", $"Unhandled admin-result subtype {subtype}.", string.Empty, -1, 12, false, false, false)
             };
         }
 
@@ -460,7 +491,17 @@ namespace HaCreator.MapSimulator.Interaction
             string channel = ReadMapleString(reader);
             if (string.IsNullOrWhiteSpace(channel))
             {
-                return new PacketFieldUtilityAdminResult(subtype, "Admin", "Cleared the current admin notice.", 12, false, false, false);
+                string noticeBody = PacketFieldUtilityAdminResultStringPoolText.GetClearAdminNoticeText();
+                return new PacketFieldUtilityAdminResult(
+                    subtype,
+                    "Admin",
+                    "Cleared the current admin notice.",
+                    noticeBody,
+                    PacketFieldUtilityAdminResultStringPoolText.ClearAdminNoticeStringPoolId,
+                    12,
+                    true,
+                    false,
+                    false);
             }
 
             string world = ReadMapleString(reader);
@@ -468,7 +509,7 @@ namespace HaCreator.MapSimulator.Interaction
             string message = string.IsNullOrWhiteSpace(world)
                 ? $"[{channel}] {body}"
                 : $"[{channel}] [{world}] {body}";
-            return new PacketFieldUtilityAdminResult(subtype, "Admin Notice", message, 12, true, false, false);
+            return new PacketFieldUtilityAdminResult(subtype, "Admin Notice", $"Posted admin notice on {channel}.", message, -1, 12, true, false, false);
         }
 
         private static PacketFieldUtilityAdminResult DecodeAdminResultMapOrChannel(BinaryReader reader, byte subtype)
@@ -477,11 +518,113 @@ namespace HaCreator.MapSimulator.Interaction
             if (hasChannel)
             {
                 byte channel = reader.ReadByte();
-                return new PacketFieldUtilityAdminResult(subtype, "Admin", $"Moved to channel {channel}.", 12, false, false, false);
+                bool success = channel <= 0xFD;
+                string target = $"channel {channel}";
+                string body = success
+                    ? PacketFieldUtilityAdminResultStringPoolText.FormatMoveTargetText(target)
+                    : PacketFieldUtilityAdminResultStringPoolText.GetMoveChannelFailureText();
+                return new PacketFieldUtilityAdminResult(
+                    subtype,
+                    "Admin",
+                    "Processed the admin move request.",
+                    body,
+                    success
+                        ? PacketFieldUtilityAdminResultStringPoolText.MoveTargetFormattedStringPoolId
+                        : PacketFieldUtilityAdminResultStringPoolText.MoveChannelFailureStringPoolId,
+                    12,
+                    true,
+                    false,
+                    false);
             }
 
             int mapId = reader.ReadInt32();
-            return new PacketFieldUtilityAdminResult(subtype, "Admin", $"Moved to map {mapId}.", 12, false, false, false);
+            string mapName = PacketFieldUtilityAdminResultStringPoolText.GetMapNameFallback(mapId);
+            string bodyText = PacketFieldUtilityAdminResultStringPoolText.FormatMoveTargetText(mapName);
+            return new PacketFieldUtilityAdminResult(
+                subtype,
+                "Admin",
+                $"Processed the admin map move to {mapId}.",
+                bodyText,
+                PacketFieldUtilityAdminResultStringPoolText.MoveTargetFormattedStringPoolId,
+                12,
+                true,
+                false,
+                false);
+        }
+
+        private static PacketFieldUtilityAdminResult DecodeAdminResultClaimState(BinaryReader reader, byte subtype)
+        {
+            bool enabled = reader.ReadByte() != 0;
+            return enabled
+                ? new PacketFieldUtilityAdminResult(subtype, "Admin", "Updated the admin-claim state.", string.Empty, -1, 9, false, false, false)
+                : new PacketFieldUtilityAdminResult(
+                    subtype,
+                    "Admin",
+                    "Updated the admin-claim state.",
+                    PacketFieldUtilityAdminResultStringPoolText.GetClaimUnavailableText(),
+                    PacketFieldUtilityAdminResultStringPoolText.ClaimUnavailableStringPoolId,
+                    9,
+                    true,
+                    false,
+                    false);
+        }
+
+        private static PacketFieldUtilityAdminResult DecodeAdminBlockState(BinaryReader reader, byte subtype)
+        {
+            bool enabled = reader.ReadByte() != 0;
+            return new PacketFieldUtilityAdminResult(
+                subtype,
+                "Admin",
+                "Updated the admin block state.",
+                PacketFieldUtilityAdminResultStringPoolText.GetAdminBlockText(enabled),
+                enabled
+                    ? PacketFieldUtilityAdminResultStringPoolText.AdminBlockEnabledStringPoolId
+                    : PacketFieldUtilityAdminResultStringPoolText.AdminBlockDisabledStringPoolId,
+                9,
+                true,
+                false,
+                false);
+        }
+
+        private static PacketFieldUtilityAdminResult DecodeChatOnlyAdminResult(BinaryReader reader, byte subtype, int chatLogType)
+        {
+            string body = ReadMapleString(reader);
+            return new PacketFieldUtilityAdminResult(
+                subtype,
+                "Admin",
+                string.IsNullOrWhiteSpace(body) ? $"Received admin subtype {subtype}." : $"Received admin text for subtype {subtype}.",
+                body,
+                -1,
+                chatLogType,
+                !string.IsNullOrWhiteSpace(body),
+                false,
+                false);
+        }
+
+        private static PacketFieldUtilityAdminResult DecodeAdminResultMode(BinaryReader reader, byte subtype)
+        {
+            reader.ReadByte();
+            return new PacketFieldUtilityAdminResult(
+                subtype,
+                "Admin",
+                $"Updated admin mode subtype {subtype}.",
+                PacketFieldUtilityAdminResultStringPoolText.GetModeNotice(subtype),
+                subtype == 4
+                    ? PacketFieldUtilityAdminResultStringPoolText.Mode4StringPoolId
+                    : PacketFieldUtilityAdminResultStringPoolText.Mode5StringPoolId,
+                9,
+                true,
+                false,
+                false);
+        }
+
+        private static string DecodeMapleAdminNoticeMode(BinaryReader reader, out int stringPoolId)
+        {
+            bool enabled = reader.ReadByte() != 0;
+            stringPoolId = enabled
+                ? PacketFieldUtilityAdminResultStringPoolText.MapleAdminNoticeEnabledStringPoolId
+                : PacketFieldUtilityAdminResultStringPoolText.MapleAdminNoticeDisabledStringPoolId;
+            return PacketFieldUtilityAdminResultStringPoolText.GetMapleAdminNoticeModeNotice(enabled);
         }
 
         private static bool Unsupported(PacketFieldUtilityPacketKind kind, out string message)

@@ -46,6 +46,74 @@ namespace HaCreator.MapSimulator.Loaders
             }
         }
 
+        private static UIObject LoadButton(WzImage parent, string buttonName,
+            WzBinaryProperty clickSound, WzBinaryProperty overSound, GraphicsDevice device)
+        {
+            WzSubProperty buttonProperty = parent?[buttonName] as WzSubProperty;
+            if (buttonProperty == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                return new UIObject(buttonProperty, clickSound, overSound, false, Point.Zero, device);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static UIObject LoadIndexedButton(
+            WzSubProperty buttonProperty,
+            WzBinaryProperty clickSound,
+            WzBinaryProperty overSound,
+            GraphicsDevice device,
+            Point fallbackPosition)
+        {
+            if (buttonProperty == null || device == null)
+            {
+                return null;
+            }
+
+            static BaseDXDrawableItem CreateState(WzCanvasProperty canvas, GraphicsDevice graphicsDevice, Point fallback)
+            {
+                if (canvas == null)
+                {
+                    return null;
+                }
+
+                Texture2D texture = canvas.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(graphicsDevice);
+                if (texture == null)
+                {
+                    return null;
+                }
+
+                Point offset = ResolveCanvasOffset(canvas, fallback);
+                return new BaseDXDrawableItem(new DXObject(offset.X, offset.Y, texture), false);
+            }
+
+            try
+            {
+                BaseDXDrawableItem normalState = CreateState(buttonProperty["1"] as WzCanvasProperty ?? buttonProperty["0"] as WzCanvasProperty, device, fallbackPosition);
+                BaseDXDrawableItem disabledState = CreateState(buttonProperty["0"] as WzCanvasProperty ?? buttonProperty["4"] as WzCanvasProperty, device, fallbackPosition) ?? normalState;
+                BaseDXDrawableItem pressedState = CreateState(buttonProperty["2"] as WzCanvasProperty ?? buttonProperty["3"] as WzCanvasProperty, device, fallbackPosition) ?? normalState;
+                BaseDXDrawableItem mouseOverState = CreateState(buttonProperty["3"] as WzCanvasProperty ?? buttonProperty["1"] as WzCanvasProperty, device, fallbackPosition) ?? normalState;
+                if (normalState == null)
+                {
+                    return null;
+                }
+
+                UIObject button = new UIObject(normalState, disabledState, pressedState, mouseOverState);
+                return button;
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
 
         /// <summary>
         /// Load a tab button from WZ property
@@ -1618,6 +1686,8 @@ namespace HaCreator.MapSimulator.Loaders
                 storageRuntime);
             RegisterCashServiceStageWindow(manager, device, MapSimulatorWindowNames.MtsStatus, CashServiceWindowStageKind.ItemTradingCenter,
                 new Point(x + (cascade * 2), y + (cascade * 2)));
+            RegisterItcStageChildWindows(manager, basicImage, soundUIImage, device,
+                new Point(x + (cascade * 2), y + (cascade * 2)));
             RegisterSocialListWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
                 new Point(x + (cascade * 2), y + (cascade * 5)));
             RegisterFamilyChartWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
@@ -1647,6 +1717,8 @@ namespace HaCreator.MapSimulator.Loaders
                 new Point(x + (cascade * 6), y + (cascade * 3)));
             RegisterQuestRewardRaiseWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
                 new Point(x + (cascade * 6), y + (cascade * 3)));
+            RegisterReviveConfirmationWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
+                new Point(x + (cascade * 7), y + (cascade * 3)));
             RegisterRepairDurabilityWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
 
                 new Point(x + (cascade * 6), y + (cascade * 4)));
@@ -2354,10 +2426,13 @@ namespace HaCreator.MapSimulator.Loaders
             CashServiceWindowStageKind stageKind,
             Point position)
         {
-            WzImage cashShopImage = global::HaCreator.Program.FindImage("ui", "CashShop.img");
-            WzSubProperty cashShopBaseProperty = cashShopImage?["Base"] as WzSubProperty;
+            string serviceImageName = stageKind == CashServiceWindowStageKind.CashShop
+                ? "CashShop.img"
+                : "ITC.img";
+            WzImage serviceImage = global::HaCreator.Program.FindImage("ui", serviceImageName);
+            WzSubProperty serviceBaseProperty = serviceImage?["Base"] as WzSubProperty;
 
-            Texture2D frameTexture = LoadCanvasTexture(cashShopBaseProperty, "backgrnd", device);
+            Texture2D frameTexture = LoadCanvasTexture(serviceBaseProperty, "backgrnd", device);
             if (frameTexture == null)
             {
                 Color fallback = stageKind == CashServiceWindowStageKind.CashShop
@@ -2375,12 +2450,12 @@ namespace HaCreator.MapSimulator.Loaders
                 Position = position
             };
 
-            if (cashShopBaseProperty != null)
+            if (stageKind == CashServiceWindowStageKind.CashShop && serviceBaseProperty != null)
             {
                 for (int i = 0; i <= 5; i++)
                 {
                     string backdropName = i == 0 ? "backgrnd" : $"backgrnd{i}";
-                    Texture2D backdropTexture = LoadCanvasTexture(cashShopBaseProperty, backdropName, device);
+                    Texture2D backdropTexture = LoadCanvasTexture(serviceBaseProperty, backdropName, device);
                     if (backdropTexture != null)
                     {
                         window.AddBackdropVariant(i, backdropTexture);
@@ -2450,6 +2525,23 @@ namespace HaCreator.MapSimulator.Loaders
             RegisterCashShopStageChildWindow(manager, basicImage, soundUIImage, device, position, MapSimulatorWindowNames.CashShopList);
             RegisterCashShopStageChildWindow(manager, basicImage, soundUIImage, device, position, MapSimulatorWindowNames.CashShopStatus);
             RegisterCashShopStageChildWindow(manager, basicImage, soundUIImage, device, position, MapSimulatorWindowNames.CashShopOneADay);
+        }
+
+        private static void RegisterItcStageChildWindows(
+            UIWindowManager manager,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            Point position)
+        {
+            RegisterCashShopStageChildWindow(manager, basicImage, soundUIImage, device, position, MapSimulatorWindowNames.ItcCharacter);
+            RegisterCashShopStageChildWindow(manager, basicImage, soundUIImage, device, position, MapSimulatorWindowNames.ItcSale);
+            RegisterCashShopStageChildWindow(manager, basicImage, soundUIImage, device, position, MapSimulatorWindowNames.ItcPurchase);
+            RegisterCashShopStageChildWindow(manager, basicImage, soundUIImage, device, position, MapSimulatorWindowNames.ItcInventory);
+            RegisterCashShopStageChildWindow(manager, basicImage, soundUIImage, device, position, MapSimulatorWindowNames.ItcTab);
+            RegisterCashShopStageChildWindow(manager, basicImage, soundUIImage, device, position, MapSimulatorWindowNames.ItcSubTab);
+            RegisterCashShopStageChildWindow(manager, basicImage, soundUIImage, device, position, MapSimulatorWindowNames.ItcList);
+            RegisterCashShopStageChildWindow(manager, basicImage, soundUIImage, device, position, MapSimulatorWindowNames.ItcStatus);
         }
 
         private static void RegisterCashShopStageChildWindow(
@@ -3385,6 +3477,7 @@ namespace HaCreator.MapSimulator.Loaders
             };
 
             WzImage cashShopImage = global::HaCreator.Program.FindImage("ui", "CashShop.img");
+            WzImage itcImage = global::HaCreator.Program.FindImage("ui", "ITC.img");
             WzImage picturePlateImage = cashShopImage;
             WzBinaryProperty clickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
             WzBinaryProperty overSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
@@ -3414,6 +3507,10 @@ namespace HaCreator.MapSimulator.Loaders
                 case MapSimulatorWindowNames.CashShopList:
                     window.SetContentBounds(new Rectangle(275, 95, 412, 430));
                     AttachCanvasLayer(window, cashShopImage?["CSList"] as WzSubProperty, "Base", device, new Point(279, 99));
+                    RegisterCashShopStageChildButton(window, (cashShopImage?["CSList"] as WzSubProperty), "BtBuy", clickSound, overSound, device, 442, 364, "CCSWnd_List previewed the direct-buy button owner.");
+                    RegisterCashShopStageChildButton(window, (cashShopImage?["CSList"] as WzSubProperty), "BtGift", clickSound, overSound, device, 505, 364, "CCSWnd_List previewed the gift button owner.");
+                    RegisterCashShopStageChildButton(window, (cashShopImage?["CSList"] as WzSubProperty), "BtReserve", clickSound, overSound, device, 568, 364, "CCSWnd_List previewed the reserve button owner.");
+                    RegisterCashShopStageChildButton(window, (cashShopImage?["CSList"] as WzSubProperty), "BtRemove", clickSound, overSound, device, 631, 364, "CCSWnd_List previewed the remove button owner.");
                     window.SetFallbackLines(
                         "CCSWnd_List owns category/page state, selector focus, and the list plate canvases.",
                         "The dedicated owner now exists apart from the coarse parent shop surface.");
@@ -3433,9 +3530,79 @@ namespace HaCreator.MapSimulator.Loaders
                     AttachCanvasLayer(window, picturePlateImage?["PicturePlate"] as WzSubProperty, "NoItem", device, new Point(279, 152));
                     AttachCanvasLayer(window, picturePlateImage?["PicturePlate"] as WzSubProperty, "NoItem0", device, new Point(279, 152));
                     AttachCanvasLayer(window, picturePlateImage?["PicturePlate"] as WzSubProperty, "NoItem1", device, new Point(279, 152));
+                    RegisterCashShopStageChildButton(window, (picturePlateImage?["PicturePlate"] as WzSubProperty), "BtJoin", clickSound, overSound, device, 560, 346, "CCSWnd_OneADay previewed the join button owner.");
+                    RegisterCashShopStageChildButton(window, (picturePlateImage?["PicturePlate"] as WzSubProperty), "BtShortcut", clickSound, overSound, device, 516, 346, "CCSWnd_OneADay previewed the shortcut button owner.");
+                    RegisterCashShopStageChildButton(window, (picturePlateImage?["PicturePlate"] as WzSubProperty), "BtClose", clickSound, overSound, device, 670, 104, "CCSWnd_OneADay previewed the close button owner.");
                     window.SetFallbackLines(
                         "CCSWnd_OneADay now exists as a dedicated list/plate owner instead of staying folded into the parent shop.",
                         "It tracks the packet-owned one-a-day state separately even when no daily reward is pending.");
+                    break;
+                case MapSimulatorWindowNames.ItcCharacter:
+                    window.SetContentBounds(new Rectangle(0, 0, 256, 200));
+                    AttachCanvasLayer(window, (itcImage?["Base"]?["Preview"] as WzSubProperty), "0", device, new Point(20, 56));
+                    window.SetFallbackLines(
+                        "CITCWnd_Char is separated from the trade list just like the client-owned ITC stage.",
+                        "The owner now uses ui/ITC.img/Base/Preview instead of staying text-only.");
+                    break;
+                case MapSimulatorWindowNames.ItcSale:
+                    window.SetContentBounds(new Rectangle(0, 200, 256, 110));
+                    AttachCanvasLayer(window, itcImage?["Sell"] as WzSubProperty, "backgrnd1", device, new Point(0, 200));
+                    RegisterCashShopStageChildButton(window, (itcImage?["Sell"] as WzSubProperty), "BtShoppingBasket", clickSound, overSound, device, 150, 287, "CITCWnd_Sale opened the shopping-basket owner path.");
+                    RegisterCashShopStageChildButton(window, (itcImage?["Sell"] as WzSubProperty), "BtBuy", clickSound, overSound, device, 190, 287, "CITCWnd_Sale staged the selected sale row for direct purchase.");
+                    window.SetFallbackLines(
+                        "CITCWnd_Sale remains a dedicated owner instead of being merged into the broader MTS shell.",
+                        "The owner now uses ui/ITC.img/Sell chrome instead of the generic fallback pane.");
+                    break;
+                case MapSimulatorWindowNames.ItcPurchase:
+                    window.SetContentBounds(new Rectangle(0, 310, 256, 108));
+                    AttachCanvasLayer(window, itcImage?["Buy"] as WzSubProperty, "backgrnd2", device, new Point(0, 310));
+                    RegisterCashShopStageChildButton(window, (itcImage?["Buy"] as WzSubProperty), "BtRegistration", clickSound, overSound, device, 120, 394, "CITCWnd_Purchase armed the registration-owner flow.");
+                    RegisterCashShopStageChildButton(window, (itcImage?["Buy"] as WzSubProperty), "BtSell", clickSound, overSound, device, 206, 394, "CITCWnd_Purchase switched focus back to the sell-owner path.");
+                    window.SetFallbackLines(
+                        "CITCWnd_Purchase stays distinct from the sale owner.",
+                        "Purchase-side result flow and selection state now sit on ui/ITC.img/Buy chrome.");
+                    break;
+                case MapSimulatorWindowNames.ItcInventory:
+                    window.SetContentBounds(new Rectangle(0, 418, 256, 180));
+                    AttachCanvasLayer(window, (itcImage?["Buy"]?["backgrnd4"] as WzSubProperty), "0", device, new Point(0, 418));
+                    window.SetFallbackLines(
+                        "CITCWnd_Inventory now exists as its own owner under CITC.",
+                        "The inventory seam now uses a dedicated ITC-authored chrome panel instead of only text fallback.");
+                    break;
+                case MapSimulatorWindowNames.ItcTab:
+                    window.SetContentBounds(new Rectangle(272, 17, 509, 78));
+                    AttachCanvasLayer(window, itcImage?["Tab"] as WzSubProperty, "1", device, new Point(272, 17));
+                    window.SetFallbackLines(
+                        "CITCWnd_Tab owns the category strip independently from the list and subtab panes.",
+                        "This keeps ITC category resets inside the stage-owned family using ui/ITC.img/Tab.");
+                    break;
+                case MapSimulatorWindowNames.ItcSubTab:
+                    window.SetContentBounds(new Rectangle(273, 98, 509, 48));
+                    AttachCanvasLayer(window, (itcImage?["Sell"]?["Tab"] as WzSubProperty), "0", device, new Point(273, 98));
+                    RegisterCashShopStageChildButton(window, itcImage, "BtSearch", clickSound, overSound, device, 742, 110, "CITCWnd_SubTab opened the dedicated ITC search path.");
+                    window.SetFallbackLines(
+                        "CITCWnd_SubTab keeps search and sort state separate from the main list.",
+                        "The simulator now tracks this owner as part of the staged ITC layout with WZ-backed tab chrome.");
+                    break;
+                case MapSimulatorWindowNames.ItcList:
+                    window.SetContentBounds(new Rectangle(273, 145, 509, 365));
+                    AttachCanvasLayer(window, itcImage?["Sell"] as WzSubProperty, "backgrnd", device, new Point(273, 145));
+                    RegisterCashShopStageChildButton(window, (itcImage?["MyPage"] as WzSubProperty), "BtBuy", clickSound, overSound, device, 574, 487, "CITCWnd_List staged the selected row for immediate buyout.");
+                    RegisterCashShopStageChildButton(window, (itcImage?["MyPage"] as WzSubProperty), "BtDelete", clickSound, overSound, device, 612, 487, "CITCWnd_List staged the selected row for list removal.");
+                    RegisterCashShopStageChildButton(window, (itcImage?["MyPage"] as WzSubProperty), "BtCancel", clickSound, overSound, device, 650, 487, "CITCWnd_List cancelled the current staged list action.");
+                    RegisterCashShopStageChildButton(window, (itcImage?["MyPage"] as WzSubProperty), "BtBuy1", clickSound, overSound, device, 688, 487, "CITCWnd_List switched to the alternate buy-confirm owner.");
+                    window.SetFallbackLines(
+                        "CITCWnd_List owns the current page of normal-item results.",
+                        "Packet 412 now lands on the dedicated ITC list owner path with ui/ITC.img list chrome.");
+                    break;
+                case MapSimulatorWindowNames.ItcStatus:
+                    window.SetContentBounds(new Rectangle(255, 531, 545, 56));
+                    RegisterCashShopStageChildButton(window, itcImage, "BtCharge", clickSound, overSound, device, 254, 535, "CITCWnd_Status previewed the charge button owner.");
+                    RegisterCashShopStageChildButton(window, itcImage, "BtCheck", clickSound, overSound, device, 295, 535, "CITCWnd_Status previewed the check-balance button owner.");
+                    RegisterCashShopStageChildButton(window, itcImage, "BtExit", clickSound, overSound, device, 379, 536, "CITCWnd_Status previewed the exit button owner.");
+                    window.SetFallbackLines(
+                        "CITCWnd_Status now exists as a dedicated balance and status owner.",
+                        "Charge and query-cash results remain attached to CITC rather than generic field UI.");
                     break;
             }
 
@@ -3461,7 +3628,29 @@ namespace HaCreator.MapSimulator.Loaders
 
             button.X = x;
             button.Y = y;
-            window.RegisterButton(button, () => actionMessage);
+            window.RegisterButton(button, buttonName, () => actionMessage);
+        }
+
+        private static void RegisterCashShopStageChildButton(
+            CashShopStageChildWindow window,
+            WzImage parent,
+            string buttonName,
+            WzBinaryProperty clickSound,
+            WzBinaryProperty overSound,
+            GraphicsDevice device,
+            int x,
+            int y,
+            string actionMessage)
+        {
+            UIObject button = LoadButton(parent, buttonName, clickSound, overSound, device);
+            if (button == null)
+            {
+                return;
+            }
+
+            button.X = x;
+            button.Y = y;
+            window.RegisterButton(button, buttonName, () => actionMessage);
         }
 
         private static string ResolveCashShopStageChildTitle(string windowName)
@@ -3473,6 +3662,14 @@ namespace HaCreator.MapSimulator.Loaders
                 MapSimulatorWindowNames.CashShopList => "CCSWnd_List",
                 MapSimulatorWindowNames.CashShopStatus => "CCSWnd_Status",
                 MapSimulatorWindowNames.CashShopOneADay => "CCSWnd_OneADay",
+                MapSimulatorWindowNames.ItcCharacter => "CITCWnd_Char",
+                MapSimulatorWindowNames.ItcSale => "CITCWnd_Sale",
+                MapSimulatorWindowNames.ItcPurchase => "CITCWnd_Purchase",
+                MapSimulatorWindowNames.ItcInventory => "CITCWnd_Inventory",
+                MapSimulatorWindowNames.ItcTab => "CITCWnd_Tab",
+                MapSimulatorWindowNames.ItcSubTab => "CITCWnd_SubTab",
+                MapSimulatorWindowNames.ItcList => "CITCWnd_List",
+                MapSimulatorWindowNames.ItcStatus => "CITCWnd_Status",
                 _ => "Cash Shop Child"
             };
         }
@@ -4132,7 +4329,23 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             WzSubProperty equipTooltipProperty = uiWindow2Image?["ToolTip"]?["Equip"] as WzSubProperty;
-            window.SetCashTooltipTexture(LoadCanvasTexture(equipTooltipProperty, "cash", device));
+            if (equipTooltipProperty != null)
+            {
+                window.SetEquipTooltipAssets(new EquipUIBigBang.EquipTooltipAssets
+                {
+                    CanLabels = LoadCanvasTextureMap(equipTooltipProperty["Can"] as WzSubProperty, device),
+                    CannotLabels = LoadCanvasTextureMap(equipTooltipProperty["Cannot"] as WzSubProperty, device),
+                    PropertyLabels = LoadCanvasTextureMap(equipTooltipProperty["Property"] as WzSubProperty, device),
+                    ItemCategoryLabels = LoadCanvasTextureMap(equipTooltipProperty["ItemCategory"] as WzSubProperty, device),
+                    WeaponCategoryLabels = LoadCanvasTextureMap(equipTooltipProperty["WeaponCategory"] as WzSubProperty, device),
+                    SpeedLabels = LoadCanvasTextureMap(equipTooltipProperty["Speed"] as WzSubProperty, device),
+                    GrowthEnabledLabels = LoadCanvasTextureMap(equipTooltipProperty["GrowthEnabled"] as WzSubProperty, device),
+                    GrowthDisabledLabels = LoadCanvasTextureMap(equipTooltipProperty["GrowthDisabled"] as WzSubProperty, device),
+                    CashLabel = LoadCanvasTexture(equipTooltipProperty, "cash", device),
+                    MesosLabel = LoadCanvasTexture(equipTooltipProperty, "mesos", device),
+                    StarLabel = LoadCanvasTexture(equipTooltipProperty["Star"] as WzSubProperty, "Star", device)
+                });
+            }
 
             window.AddLayer(LoadWindowCanvasLayerWithOffset(repairProperty, "backgrnd2", device, out Point overlayOffset), overlayOffset);
             window.AddLayer(LoadWindowCanvasLayerWithOffset(repairProperty, "backgrnd3", device, out Point contentOffset), contentOffset);
@@ -4184,28 +4397,36 @@ namespace HaCreator.MapSimulator.Loaders
             GraphicsDevice device,
             Point position)
         {
-            Texture2D frameTexture = CreatePlaceholderWindowTexture(device, 312, 389, "Class Competition");
+            WzSubProperty classMatchProperty = uiWindow2Image?["classMatch"] as WzSubProperty;
+            Texture2D frameTexture = LoadCanvasTexture(classMatchProperty, "backgrnd", device)
+                ?? CreatePlaceholderWindowTexture(device, 312, 389, "Class Competition");
             UtilityPanelWindow window = new UtilityPanelWindow(
                 new DXObject(0, 0, frameTexture, 0),
                 MapSimulatorWindowNames.ClassCompetition,
-                "Class Competition")
+                string.Empty)
             {
                 Position = position
             };
 
-
             window.SetStaticLines(
-
                 "Packet-owned owner for CUserLocal::OnOpenClassCompetitionPage.",
-
                 "The client only instantiates the singleton from this packet branch, so the simulator keeps the launch page separate from menu-button routing.");
+            var loadingFrames = new List<UtilityPanelWindow.IndicatorFrame>();
+            for (int i = 0; i < 5; i++)
+            {
+                Texture2D loadingFrame = LoadCanvasTexture(classMatchProperty?["Loading"] as WzSubProperty, i.ToString(), device);
+                if (loadingFrame != null)
+                {
+                    loadingFrames.Add(new UtilityPanelWindow.IndicatorFrame(loadingFrame, 90));
+                }
+            }
 
-
+            window.SetIndicatorFrames(null, loadingFrames, new Point(-116, 136));
 
             WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
-
             WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
-            UIObject okButton = LoadButton(uiWindow2Image?["UtilDlgEx"] as WzSubProperty, "BtOK", btClickSound, btOverSound, device);
+            UIObject okButton = LoadButton(classMatchProperty, "BtOK", btClickSound, btOverSound, device)
+                ?? LoadButton(uiWindow2Image?["UtilDlgEx"] as WzSubProperty, "BtOK", btClickSound, btOverSound, device);
             if (okButton != null)
             {
                 okButton.X = 124;
@@ -7327,6 +7548,7 @@ namespace HaCreator.MapSimulator.Loaders
                 LoadCanvasTexture(backgroundProperty?["bottom"] as WzSubProperty, "left", device),
                 LoadCanvasTexture(backgroundProperty?["bottom"] as WzSubProperty, "center", device),
                 LoadCanvasTexture(backgroundProperty?["bottom"] as WzSubProperty, "right", device),
+                LoadCanvasTexture(raiseProperty?["29"] as WzSubProperty, "0", device),
                 device)
             {
                 Position = position
@@ -7335,8 +7557,10 @@ namespace HaCreator.MapSimulator.Loaders
 
             WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
             WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
-            UIObject okButton = LoadButton(uiWindow2Image?["UtilDlgEx"] as WzSubProperty, "BtOK", btClickSound, btOverSound, device);
-            UIObject cancelButton = LoadButton(uiWindow2Image?["UtilDlgEx"] as WzSubProperty, "BtQNo", btClickSound, btOverSound, device)
+            UIObject okButton = LoadIndexedButton(raiseProperty?["30"] as WzSubProperty, btClickSound, btOverSound, device, new Point(178, 229))
+                ?? LoadButton(uiWindow2Image?["UtilDlgEx"] as WzSubProperty, "BtOK", btClickSound, btOverSound, device);
+            UIObject cancelButton = LoadIndexedButton(raiseProperty?["31"] as WzSubProperty, btClickSound, btOverSound, device, new Point(255, 229))
+                ?? LoadButton(uiWindow2Image?["UtilDlgEx"] as WzSubProperty, "BtQNo", btClickSound, btOverSound, device)
                 ?? LoadButton(uiWindow2Image?["UtilDlgEx"] as WzSubProperty, "BtNo", btClickSound, btOverSound, device);
             window.InitializeButtons(okButton, cancelButton);
 

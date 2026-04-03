@@ -46,5 +46,48 @@ namespace HaCreator.MapSimulator.Interaction
                     _guildNoticeText)
             ];
         }
+
+        internal string ApplyGuildCreateAgreementAcceptance(GuildCreateAgreementAcceptance acceptance)
+        {
+            if (string.IsNullOrWhiteSpace(acceptance.GuildName))
+            {
+                return null;
+            }
+
+            string acceptedGuildName = acceptance.GuildName.Trim();
+            string acceptedMasterName = string.IsNullOrWhiteSpace(acceptance.MasterName)
+                ? _playerName
+                : acceptance.MasterName.Trim();
+
+            _hasGuildMembership = true;
+            _guildName = acceptedGuildName;
+            _packetGuildUiState = new PacketGuildUiState(true, acceptedGuildName, Math.Max(1, _packetGuildUiState?.GuildLevel ?? 1));
+
+            UpdateOrInsertLocalEntry(
+                SocialListTab.Guild,
+                new SocialEntryState(
+                    _playerName,
+                    "Master",
+                    acceptedGuildName,
+                    _locationSummary,
+                    _channel,
+                    true,
+                    true,
+                    false)
+                {
+                    IsLocalPlayer = true
+                });
+
+            _selectedIndexByTab[SocialListTab.Guild] = Math.Max(0, _entriesByTab[SocialListTab.Guild].FindIndex(entry => entry.IsLocalPlayer));
+            _firstVisibleIndexByTab[SocialListTab.Guild] = 0;
+
+            if (_packetOwnedRosterByTab[SocialListTab.Guild])
+            {
+                _lastPacketSyncSummaryByTab[SocialListTab.Guild] =
+                    $"Guild creation agreement accepted for {acceptedGuildName}; local guild row now mirrors the new master-owned guild.";
+            }
+
+            return $"{acceptedMasterName} guild agreement now updates the shared guild seam: guild={acceptedGuildName}, role=Master, Guild Lv. {_packetGuildUiState.Value.GuildLevel}.";
+        }
     }
 }

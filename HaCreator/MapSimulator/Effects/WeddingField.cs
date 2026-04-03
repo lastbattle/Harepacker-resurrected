@@ -57,6 +57,7 @@ namespace HaCreator.MapSimulator.Effects
         private const int CathedralNpcId = 9201011;
         private const int ChapelNpcId = 9201002;
         private const int DialogDurationMs = 5000;
+        private const int DialogFadeInDurationMs = 300;
         private const string ChapelGuestBlessPromptText = "Would you like to give your blessing to the couple?";
         private const string BlessEffectImageName = "BasicEff.img";
         private const string BlessEffectPath = "Wedding";
@@ -763,8 +764,13 @@ namespace HaCreator.MapSimulator.Effects
 
             if (!string.IsNullOrWhiteSpace(actionName))
             {
-                participant.ActionName = actionName.Trim();
+                participant.BaseActionName = actionName.Trim();
+                participant.ActionName = ResolveVisibleParticipantActionName(participant, participant.BaseActionName);
                 participant.HasExplicitAction = true;
+            }
+            else if (string.IsNullOrWhiteSpace(participant.ActionName))
+            {
+                participant.ActionName = ResolveVisibleParticipantActionName(participant, participant.BaseActionName);
             }
         }
 
@@ -797,7 +803,8 @@ namespace HaCreator.MapSimulator.Effects
             participant.FacingRight = sampled.FacingRight;
             if (participant.MovementDrivenActionSelection)
             {
-                participant.ActionName = ResolveRemoteActionName(sampled.Action, participant.Build?.ActivePortableChair?.ItemId ?? 0);
+                participant.BaseActionName = ResolveRemoteActionName(sampled.Action, participant.Build?.ActivePortableChair?.ItemId ?? 0);
+                participant.ActionName = ResolveVisibleParticipantActionName(participant, participant.BaseActionName);
             }
         }
 
@@ -1100,6 +1107,7 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             participant.TemporaryStats = packet.TemporaryStats;
+            ApplyParticipantTemporaryStatPresentation(participant);
             return true;
         }
 
@@ -1135,7 +1143,18 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             participant.TemporaryStats = RemoteUserPacketCodec.ApplyResetMask(participant.TemporaryStats, remainingMaskWords);
+            ApplyParticipantTemporaryStatPresentation(participant);
             return true;
+        }
+
+        private static void ApplyParticipantTemporaryStatPresentation(WeddingRemoteParticipant participant)
+        {
+            if (participant == null)
+            {
+                return;
+            }
+
+            participant.ActionName = ResolveVisibleParticipantActionName(participant, participant.BaseActionName);
         }
 
         private bool TryResolveParticipantForTemporaryStats(int characterId, out WeddingRemoteParticipant participant, out string errorMessage)
@@ -1324,6 +1343,13 @@ namespace HaCreator.MapSimulator.Effects
             };
         }
 
+        private static string ResolveVisibleParticipantActionName(WeddingRemoteParticipant participant, string actionName)
+        {
+            return RemoteUserActorPool.ResolveClientVisibleActionName(
+                actionName,
+                participant?.TemporaryStats.KnownState ?? default);
+        }
+
         private static string ResolveRemoteActionName(Physics.MoveAction moveAction, int portableChairItemId)
         {
             if (portableChairItemId > 0)
@@ -1401,6 +1427,7 @@ namespace HaCreator.MapSimulator.Effects
         {
             System.Diagnostics.Debug.WriteLine($"[WeddingField] OnWeddingProgress: step={step}, groom={groomId}, bride={brideId}");
 
+            DismissCurrentDialog();
 
             _currentStep = step;
             _groomId = groomId;
@@ -1441,6 +1468,7 @@ namespace HaCreator.MapSimulator.Effects
         public void OnWeddingCeremonyEnd(int currentTimeMs)
         {
             System.Diagnostics.Debug.WriteLine("[WeddingField] OnWeddingCeremonyEnd - Starting bless effect");
+            DismissCurrentDialog();
             SetBlessEffect(true, currentTimeMs);
             SetCeremonyCardOverlay(active: true);
             SetCeremonyCelebration(active: true);
@@ -1723,6 +1751,12 @@ namespace HaCreator.MapSimulator.Effects
             _currentDialog = CreateDialogForStep(step, currentTimeMs);
         }
 
+        private void DismissCurrentDialog()
+        {
+            _currentDialog = null;
+            _dialogQueue.Clear();
+        }
+
 
         private WeddingDialog CreateDialogForStep(int step, int currentTimeMs)
         {
@@ -1736,7 +1770,8 @@ namespace HaCreator.MapSimulator.Effects
                         NpcId = _npcId,
                         StartTime = currentTimeMs,
                         Duration = DialogDurationMs,
-                        Mode = WeddingDialogMode.YesNo
+                        Mode = WeddingDialogMode.YesNo,
+                        AllowTimeout = false
                     };
                 }
 
@@ -1760,7 +1795,8 @@ namespace HaCreator.MapSimulator.Effects
                 NpcId = _npcId,
                 StartTime = currentTimeMs,
                 Duration = DialogDurationMs,
-                Mode = WeddingDialogMode.Text
+                Mode = WeddingDialogMode.Text,
+                AllowTimeout = false
             };
         }
 
@@ -2009,7 +2045,8 @@ namespace HaCreator.MapSimulator.Effects
             // Update dialog
             if (_currentDialog != null)
             {
-                if (currentTimeMs - _currentDialog.StartTime > _currentDialog.Duration)
+                if (_currentDialog.AllowTimeout
+                    && currentTimeMs - _currentDialog.StartTime > _currentDialog.Duration)
                 {
                     RespondToCurrentDialog(accepted: false, currentTimeMs);
                 }
@@ -2518,10 +2555,16 @@ namespace HaCreator.MapSimulator.Effects
             // Calculate alpha based on time
             int elapsed = currentTimeMs - _currentDialog.StartTime;
             float alpha = 1f;
-            if (elapsed < 300)
-                alpha = elapsed / 300f;
-            else if (elapsed > _currentDialog.Duration - 300)
-                alpha = (_currentDialog.Duration - elapsed) / 300f;
+            if (elapsed < DialogFadeInDurationMs)
+            {
+                alpha = elapsed / (float)DialogFadeInDurationMs;
+            }
+            else if (_currentDialog.AllowTimeout
+                && elapsed > _currentDialog.Duration - DialogFadeInDurationMs)
+            {
+                alpha = (_currentDialog.Duration - elapsed) / (float)DialogFadeInDurationMs;
+            }
+            alpha = MathHelper.Clamp(alpha, 0f, 1f);
 
 
             Color bgColor = new Color(50, 50, 50, (int)(200 * alpha));
@@ -2641,7 +2684,8 @@ namespace HaCreator.MapSimulator.Effects
             }
             if (!participant.HasExplicitAction || string.IsNullOrWhiteSpace(participant.ActionName))
             {
-                participant.ActionName = CharacterPart.GetActionString(CharacterAction.Stand1);
+                participant.BaseActionName = CharacterPart.GetActionString(CharacterAction.Stand1);
+                participant.ActionName = ResolveVisibleParticipantActionName(participant, participant.BaseActionName);
             }
         }
 
@@ -2738,6 +2782,7 @@ namespace HaCreator.MapSimulator.Effects
         public int StartTime;
         public int Duration;
         public WeddingDialogMode Mode;
+        public bool AllowTimeout;
     }
 
 
@@ -2782,7 +2827,8 @@ namespace HaCreator.MapSimulator.Effects
             Name = name;
             Build = build;
             Assembler = assembler;
-            ActionName = CharacterPart.GetActionString(CharacterAction.Stand1);
+            BaseActionName = CharacterPart.GetActionString(CharacterAction.Stand1);
+            ActionName = BaseActionName;
         }
 
 
@@ -2794,6 +2840,7 @@ namespace HaCreator.MapSimulator.Effects
         public CharacterAssembler Assembler { get; set; }
         public Vector2 Position { get; set; }
         public bool FacingRight { get; set; } = true;
+        public string BaseActionName { get; set; }
         public string ActionName { get; set; }
         public PlayerMovementSyncSnapshot MovementSnapshot { get; set; }
         public int? PortableChairItemId { get; set; }

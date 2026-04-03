@@ -1052,7 +1052,8 @@ namespace HaCreator.MapSimulator.Character
             }
 
             SkillData skill = SkillLoader?.LoadSkill(area.SkillId);
-            if (!ShouldPromoteAffectedAreaAvatarEffect(skill))
+            SkillData[] supportSkills = ResolveAffectedAreaSupportSkills(skill);
+            if (!ShouldPromoteAffectedAreaAvatarEffect(skill, supportSkills))
             {
                 return false;
             }
@@ -1060,6 +1061,7 @@ namespace HaCreator.MapSimulator.Character
             bool ownerIsPartyMember = _affectedAreaOwnerPartyMembershipEvaluator?.Invoke(area.OwnerId) == true;
             if (!RemoteAffectedAreaSupportResolver.CanAffectLocalPlayer(
                     skill,
+                    supportSkills,
                     localPlayerId,
                     area.OwnerId,
                     ownerIsPartyMember))
@@ -1067,7 +1069,7 @@ namespace HaCreator.MapSimulator.Character
                 return false;
             }
 
-            effectSkill = GetOrCreateAffectedAreaAvatarEffectSkill(skill);
+            effectSkill = GetOrCreateAffectedAreaAvatarEffectSkill(skill, supportSkills);
             if (effectSkill == null)
             {
                 return false;
@@ -1077,14 +1079,60 @@ namespace HaCreator.MapSimulator.Character
             return true;
         }
 
-        private static bool ShouldPromoteAffectedAreaAvatarEffect(SkillData skill)
+        private SkillData[] ResolveAffectedAreaSupportSkills(SkillData skill)
         {
-            return (skill?.AffectedEffect?.Frames?.Count > 0
-                    || skill?.AffectedSecondaryEffect?.Frames?.Count > 0)
-                   && RemoteAffectedAreaSupportResolver.IsFriendlyPlayerAreaSkill(skill);
+            if (skill == null || SkillLoader == null)
+            {
+                return Array.Empty<SkillData>();
+            }
+
+            var supportSkills = new List<SkillData>();
+            var visitedSkillIds = new HashSet<int>();
+            CollectAffectedAreaSupportSkills(skill, supportSkills, visitedSkillIds);
+            return supportSkills.ToArray();
         }
 
-        private SkillData GetOrCreateAffectedAreaAvatarEffectSkill(SkillData skill)
+        private void CollectAffectedAreaSupportSkills(
+            SkillData skill,
+            ICollection<SkillData> supportSkills,
+            ISet<int> visitedSkillIds)
+        {
+            if (skill == null)
+            {
+                return;
+            }
+
+            int[] affectedSkillIds = skill.GetAffectedSkillIds();
+            for (int i = 0; i < affectedSkillIds.Length; i++)
+            {
+                int affectedSkillId = affectedSkillIds[i];
+                if (affectedSkillId <= 0 || visitedSkillIds?.Add(affectedSkillId) != true)
+                {
+                    continue;
+                }
+
+                SkillData affectedSkill = SkillLoader?.LoadSkill(affectedSkillId);
+                if (affectedSkill == null)
+                {
+                    continue;
+                }
+
+                supportSkills?.Add(affectedSkill);
+                CollectAffectedAreaSupportSkills(affectedSkill, supportSkills, visitedSkillIds);
+            }
+        }
+
+        private static bool ShouldPromoteAffectedAreaAvatarEffect(
+            SkillData skill,
+            IReadOnlyCollection<SkillData> supportSkills)
+        {
+            return RemoteAffectedAreaSupportResolver.IsFriendlyPlayerAreaSkill(skill)
+                   && AffectedAreaAvatarEffectResolver.HasPromotableAffectedBranch(skill, supportSkills);
+        }
+
+        private SkillData GetOrCreateAffectedAreaAvatarEffectSkill(
+            SkillData skill,
+            IReadOnlyCollection<SkillData> supportSkills)
         {
             if (skill == null)
             {
@@ -1096,38 +1144,12 @@ namespace HaCreator.MapSimulator.Character
                 return cachedSkill;
             }
 
-            SkillAnimation loopingAffectedAnimation = CreateLoopingAvatarEffect(skill.AffectedEffect);
-            SkillAnimation loopingAffectedSecondaryAnimation = CreateLoopingAvatarEffect(skill.AffectedSecondaryEffect);
-            if (loopingAffectedAnimation == null && loopingAffectedSecondaryAnimation == null)
+            SkillData effectSkill = AffectedAreaAvatarEffectResolver.BuildLoopingAvatarEffectSkill(skill, supportSkills);
+            if (effectSkill == null)
             {
                 return null;
             }
 
-            SkillAnimation overlayAnimation = null;
-            SkillAnimation overlaySecondaryAnimation = null;
-            SkillAnimation underFaceAnimation = null;
-            SkillAnimation underFaceSecondaryAnimation = null;
-            AssignAffectedAreaAvatarEffectPlane(
-                loopingAffectedAnimation,
-                ref overlayAnimation,
-                ref overlaySecondaryAnimation,
-                ref underFaceAnimation,
-                ref underFaceSecondaryAnimation);
-            AssignAffectedAreaAvatarEffectPlane(
-                loopingAffectedSecondaryAnimation,
-                ref overlayAnimation,
-                ref overlaySecondaryAnimation,
-                ref underFaceAnimation,
-                ref underFaceSecondaryAnimation);
-
-            SkillData effectSkill = new()
-            {
-                SkillId = skill.SkillId,
-                AvatarOverlayEffect = overlayAnimation,
-                AvatarOverlaySecondaryEffect = overlaySecondaryAnimation,
-                AvatarUnderFaceEffect = underFaceAnimation,
-                AvatarUnderFaceSecondaryEffect = underFaceSecondaryAnimation
-            };
             _affectedAreaAvatarEffectSkillCache[skill.SkillId] = effectSkill;
             return effectSkill;
         }
@@ -1145,47 +1167,6 @@ namespace HaCreator.MapSimulator.Character
         private static int CreateAffectedAreaAvatarEffectId(int objectId)
         {
             return unchecked(AffectedAreaAvatarEffectIdBase + objectId);
-        }
-
-        private static SkillAnimation CreateLoopingAvatarEffect(SkillAnimation animation)
-        {
-            if (animation?.Frames?.Count <= 0)
-            {
-                return null;
-            }
-
-            return new SkillAnimation
-            {
-                Name = animation.Name,
-                Frames = new List<SkillFrame>(animation.Frames),
-                Loop = true,
-                Origin = animation.Origin,
-                ZOrder = animation.ZOrder
-            };
-        }
-
-        private static void AssignAffectedAreaAvatarEffectPlane(
-            SkillAnimation animation,
-            ref SkillAnimation overlayAnimation,
-            ref SkillAnimation overlaySecondaryAnimation,
-            ref SkillAnimation underFaceAnimation,
-            ref SkillAnimation underFaceSecondaryAnimation)
-        {
-            if (animation == null)
-            {
-                return;
-            }
-
-            bool prefersUnderFace = animation.ZOrder < 0;
-            if (prefersUnderFace)
-            {
-                underFaceAnimation ??= animation;
-                underFaceSecondaryAnimation ??= ReferenceEquals(animation, underFaceAnimation) ? null : animation;
-                return;
-            }
-
-            overlayAnimation ??= animation;
-            overlaySecondaryAnimation ??= ReferenceEquals(animation, overlayAnimation) ? null : animation;
         }
 
         internal bool TryApplyMobSkillStatus(int skillId, MobSkillRuntimeData runtimeData, int currentTime, float sourceX = 0f, int elementAttribute = 0)

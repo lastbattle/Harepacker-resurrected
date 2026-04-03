@@ -73,9 +73,12 @@ namespace HaCreator.MapSimulator.Managers
         public string RemoteHost { get; private set; } = IPAddress.Loopback.ToString();
         public int RemotePort { get; private set; }
         public bool IsRunning => _listenerTask != null && !_listenerTask.IsCompleted;
+        public bool HasAttachedClient => _activePair != null;
         public bool HasConnectedSession => _activePair?.InitCompleted == true;
         public int ReceivedCount { get; private set; }
         public int SentCount { get; private set; }
+        public int LastSentOpcode { get; private set; } = -1;
+        public byte[] LastSentRawPacket { get; private set; } = Array.Empty<byte>();
         public string LastStatus { get; private set; } = "Local utility official-session bridge inactive.";
 
         public string DescribeStatus()
@@ -86,7 +89,10 @@ namespace HaCreator.MapSimulator.Managers
             string session = HasConnectedSession
                 ? $"connected session {_activePair?.ClientEndpoint ?? "unknown-client"} -> {_activePair?.RemoteEndpoint ?? "unknown-remote"}"
                 : "no active Maple session";
-            return $"Local utility official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; inbound opcodes=193,253,254,270; outbound opcode=134. {LastStatus}";
+            string lastOutbound = LastSentOpcode >= 0
+                ? $" lastOut={LastSentOpcode}[{Convert.ToHexString(LastSentRawPacket)}]."
+                : string.Empty;
+            return $"Local utility official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; inbound opcodes=193,253,254,270; outbound opcodes=45,134,135.{lastOutbound} {LastStatus}";
         }
 
         public void Start(int listenPort, string remoteHost, int remotePort)
@@ -116,6 +122,19 @@ namespace HaCreator.MapSimulator.Managers
 
         public bool TryStartFromDiscovery(int listenPort, int remotePort, string processSelector, int? localPort, out string status)
         {
+            return TryRefreshFromDiscovery(listenPort, remotePort, processSelector, localPort, out status);
+        }
+
+        public bool TryRefreshFromDiscovery(int listenPort, int remotePort, string processSelector, int? localPort, out string status)
+        {
+            if (HasAttachedClient)
+            {
+                status = $"Local utility official-session bridge is already attached to {RemoteHost}:{RemotePort}; keeping the current live Maple session.";
+                LastStatus = status;
+                return true;
+            }
+
+            int resolvedListenPort = listenPort <= 0 ? DefaultListenPort : listenPort;
             if (!TryResolveProcessSelector(processSelector, out int? owningProcessId, out string owningProcessName, out string selectorError))
             {
                 status = selectorError;
@@ -128,6 +147,19 @@ namespace HaCreator.MapSimulator.Managers
             {
                 LastStatus = status;
                 return false;
+            }
+
+            if (MatchesDiscoveredTargetConfiguration(
+                    IsRunning,
+                    ListenPort,
+                    RemoteHost,
+                    RemotePort,
+                    resolvedListenPort,
+                    candidate.RemoteEndpoint))
+            {
+                status = $"Local utility official-session bridge remains armed for {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}.";
+                LastStatus = status;
+                return true;
             }
 
             Start(listenPort, candidate.RemoteEndpoint.Address.ToString(), candidate.RemoteEndpoint.Port);
@@ -206,6 +238,8 @@ namespace HaCreator.MapSimulator.Managers
             {
                 pair.ServerSession.SendPacket(rawPacket);
                 SentCount++;
+                LastSentOpcode = opcode;
+                LastSentRawPacket = rawPacket;
                 status = $"Injected local utility outbound opcode {opcode} into live session {pair.RemoteEndpoint}.";
                 LastStatus = status;
                 return true;
@@ -225,6 +259,11 @@ namespace HaCreator.MapSimulator.Managers
             payload[sizeof(int)] = autoRequest ? (byte)1 : (byte)0;
             payload[sizeof(int) + sizeof(byte)] = keyInput ? (byte)1 : (byte)0;
             return payload;
+        }
+
+        internal static byte[] BuildFollowCharacterWithdrawPayload()
+        {
+            return Array.Empty<byte>();
         }
 
         public void Dispose()
@@ -427,6 +466,8 @@ namespace HaCreator.MapSimulator.Managers
 
                 ReceivedCount = 0;
                 SentCount = 0;
+                LastSentOpcode = -1;
+                LastSentRawPacket = Array.Empty<byte>();
             }
         }
 
@@ -502,6 +543,28 @@ namespace HaCreator.MapSimulator.Managers
             return trimmed.EndsWith(".exe", StringComparison.OrdinalIgnoreCase)
                 ? trimmed[..^4]
                 : trimmed;
+        }
+
+        private static bool MatchesDiscoveredTargetConfiguration(
+            bool isRunning,
+            int currentListenPort,
+            string currentRemoteHost,
+            int currentRemotePort,
+            int expectedListenPort,
+            IPEndPoint expectedRemoteEndpoint)
+        {
+            if (!isRunning || expectedRemoteEndpoint == null)
+            {
+                return false;
+            }
+
+            if (currentListenPort != expectedListenPort || currentRemotePort != expectedRemoteEndpoint.Port)
+            {
+                return false;
+            }
+
+            return IPAddress.TryParse(currentRemoteHost, out IPAddress currentRemoteAddress)
+                && currentRemoteAddress.Equals(expectedRemoteEndpoint.Address);
         }
 
         private static bool TryResolveDiscoveryCandidate(

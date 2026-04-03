@@ -43,6 +43,7 @@ namespace HaCreator.MapSimulator.Interaction
         private int _resolvedMediaIndex = DefaultMediaIndex;
         private int _messageType;
         private int _draftDurationMs = DefaultDurationMs;
+        private int _activeDurationMs;
         private int _messageStartedAt = int.MinValue;
         private int _lastClientSendResultCode = -1;
         private int _lastClientSendResultStringPoolId = -1;
@@ -106,7 +107,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
-            if (currentTick - _messageStartedAt < _draftDurationMs)
+            if (currentTick - _messageStartedAt < _activeDurationMs)
             {
                 return;
             }
@@ -122,8 +123,10 @@ namespace HaCreator.MapSimulator.Interaction
             int remainingMs = 0;
             if (_showMessage && _messageStartedAt != int.MinValue)
             {
-                remainingMs = Math.Max(0, _draftDurationMs - Math.Max(0, currentTick - _messageStartedAt));
+                remainingMs = Math.Max(0, _activeDurationMs - Math.Max(0, currentTick - _messageStartedAt));
             }
+
+            int totalWaitMs = ResolveSnapshotTotalWaitMs();
 
             return new MapleTvSnapshot
             {
@@ -146,7 +149,7 @@ namespace HaCreator.MapSimulator.Interaction
                 SenderBuild = _senderBuild,
                 ReceiverBuild = _receiverBuild,
                 RemainingMs = remainingMs,
-                TotalWaitMs = _draftDurationMs,
+                TotalWaitMs = totalWaitMs,
                 CanPublish = _draftLines.Any(line => !string.IsNullOrWhiteSpace(line)),
                 CanClear = _showMessage || _queueExists,
                 MirrorsToChat = _itemProfile?.MirrorsToChat ?? false
@@ -358,6 +361,7 @@ namespace HaCreator.MapSimulator.Interaction
             _showMessage = true;
             _queueExists = true;
             _messageStartedAt = currentTick;
+            _activeDurationMs = _draftDurationMs;
             _isSelfMessage = !_useReceiver;
             _messageType = _useReceiver ? 2 : 1;
             _lastClientSendResultCode = -1;
@@ -374,6 +378,7 @@ namespace HaCreator.MapSimulator.Interaction
             _showMessage = false;
             _queueExists = preserveQueue;
             _messageStartedAt = int.MinValue;
+            _activeDurationMs = 0;
             Array.Clear(_displayLines, 0, _displayLines.Length);
             _pendingSendResultFeedback = null;
             _statusMessage = preserveQueue
@@ -497,9 +502,9 @@ namespace HaCreator.MapSimulator.Interaction
                 _showMessage = true;
                 _queueExists = true;
                 _messageStartedAt = currentTick;
+                _activeDurationMs = Math.Max(0, totalWaitTime);
                 // CMapleTVMan::OnSetMessage keeps the packet wait time verbatim and
                 // drives the receiver surface from the packet-owned message type.
-                _draftDurationMs = Math.Max(0, totalWaitTime);
                 _isSelfMessage = !hasReceiverAvatar;
                 _useReceiver = _messageType == 2 || hasReceiverAvatar;
                 _senderBuild = buildResolver?.Invoke(senderLook);
@@ -640,6 +645,16 @@ namespace HaCreator.MapSimulator.Interaction
 
                     break;
             }
+        }
+
+        private int ResolveSnapshotTotalWaitMs()
+        {
+            if (_showMessage || _queueExists)
+            {
+                return _activeDurationMs;
+            }
+
+            return _draftDurationMs;
         }
 
         private string QueueSendResultFeedback(MapleTvSendResultDefinition definition)

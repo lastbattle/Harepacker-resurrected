@@ -51,11 +51,13 @@ namespace HaCreator.MapSimulator.UI
         private string _inputPlaceholder = string.Empty;
         private string _inputValue = string.Empty;
         private int? _noticeTextIndex;
+        private Rectangle? _inputBoundsOverride;
         private UIObject _activePrimaryButton;
         private UIObject _activeSecondaryButton;
         private bool _drawPrimaryButtonLabel;
         private bool _drawSecondaryButtonLabel;
         private LoginUtilityDialogButtonLayout _buttonLayout = LoginUtilityDialogButtonLayout.Ok;
+        private LoginUtilityDialogVisualStyle _visualStyle = LoginUtilityDialogVisualStyle.Default;
         private KeyboardState _previousKeyboardState;
         private bool _inputMasked;
         private int _inputMaxLength;
@@ -138,7 +140,9 @@ namespace HaCreator.MapSimulator.UI
             bool inputMasked = false,
             int inputMaxLength = 0,
             string inputValue = null,
-            SoftKeyboardKeyboardType softKeyboardType = SoftKeyboardKeyboardType.AlphaNumeric)
+            SoftKeyboardKeyboardType softKeyboardType = SoftKeyboardKeyboardType.AlphaNumeric,
+            LoginUtilityDialogVisualStyle visualStyle = LoginUtilityDialogVisualStyle.Default,
+            Rectangle? inputBoundsOverride = null)
         {
             _title = string.IsNullOrWhiteSpace(title) ? "Login Utility" : title;
             _body = body ?? string.Empty;
@@ -154,6 +158,8 @@ namespace HaCreator.MapSimulator.UI
             _inputMaxLength = Math.Max(0, inputMaxLength);
             _inputValue = inputValue ?? string.Empty;
             _softKeyboardType = softKeyboardType;
+            _visualStyle = visualStyle;
+            _inputBoundsOverride = inputBoundsOverride;
             _inputFocused = HasInputField;
             if (!HasInputField)
             {
@@ -379,6 +385,10 @@ namespace HaCreator.MapSimulator.UI
                     _activePrimaryButton = _nowButton ?? _okButton;
                     _activeSecondaryButton = _laterButton;
                     break;
+                case LoginUtilityDialogButtonLayout.EnableDisableSpw:
+                    _activePrimaryButton = _yesButton ?? _okButton;
+                    _activeSecondaryButton = _noButton;
+                    break;
                 case LoginUtilityDialogButtonLayout.RestartExit:
                     _activePrimaryButton = _restartButton ?? _okButton;
                     _activeSecondaryButton = _exitButton;
@@ -408,6 +418,8 @@ namespace HaCreator.MapSimulator.UI
             return _buttonLayout switch
             {
                 LoginUtilityDialogButtonLayout.NowLater => (NowButtonX, NoButtonX),
+                LoginUtilityDialogButtonLayout.EnableDisableSpw => (YesButtonX, NoButtonX),
+                LoginUtilityDialogButtonLayout.YesNo when _visualStyle == LoginUtilityDialogVisualStyle.SecurityYesNo => (YesTightButtonX, NoButtonX),
                 LoginUtilityDialogButtonLayout.YesNo when _drawPrimaryButtonLabel || _drawSecondaryButtonLabel => (YesTightButtonX, NoButtonX),
                 _ => (YesButtonX, NoButtonX),
             };
@@ -596,6 +608,31 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
+        bool ISoftKeyboardHost.TryReplaceLastSoftKeyboardCharacter(char character, out string errorMessage)
+        {
+            errorMessage = string.Empty;
+            if (!HasInputField || !_inputFocused)
+            {
+                errorMessage = "This dialog input field is not focused.";
+                return false;
+            }
+
+            if (string.IsNullOrEmpty(_inputValue))
+            {
+                errorMessage = "Nothing to replace.";
+                return false;
+            }
+
+            if (!SoftKeyboardUI.CanAcceptCharacter(_softKeyboardType, _inputValue.Length - 1, _inputMaxLength, character))
+            {
+                errorMessage = "That key is disabled for this field.";
+                return false;
+            }
+
+            _inputValue = _inputValue[..^1] + character;
+            return true;
+        }
+
         bool ISoftKeyboardHost.TryBackspaceSoftKeyboard(out string errorMessage)
         {
             errorMessage = string.Empty;
@@ -755,6 +792,16 @@ namespace HaCreator.MapSimulator.UI
 
         private Rectangle GetInputBounds()
         {
+            if (_inputBoundsOverride.HasValue)
+            {
+                Rectangle overrideBounds = _inputBoundsOverride.Value;
+                return new Rectangle(
+                    Position.X + overrideBounds.X,
+                    Position.Y + overrideBounds.Y,
+                    overrideBounds.Width,
+                    overrideBounds.Height);
+            }
+
             if (UsesClientNoticeInputLane)
             {
                 return new Rectangle(
@@ -774,7 +821,7 @@ namespace HaCreator.MapSimulator.UI
                 Math.Max(lineSpacing, 18));
         }
 
-        private bool UsesClientNoticeInputLane => HasInputField && _noticeTextIndex.HasValue;
+        private bool UsesClientNoticeInputLane => HasInputField && (_inputBoundsOverride.HasValue || _noticeTextIndex.HasValue);
 
         private void DrawImeCandidateWindow(SpriteBatch sprite)
         {

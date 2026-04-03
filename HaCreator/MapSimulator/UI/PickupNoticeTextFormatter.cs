@@ -38,7 +38,17 @@ namespace HaCreator.MapSimulator.UI
 
     public static class PickupNoticeTextFormatter
     {
-        // IDs recovered from CWvsContext::OnDropPickUpMessage in the v95 client.
+        // StringPool IDs recovered from CWvsContext::OnDropPickUpMessage in the v95 client.
+        private const int MesoScreenStringPoolId = 0x12F;
+        private const int MesoBonusScreenStringPoolId = 0x130;
+        private const int MesoPetChatStringPoolId = 0x1491;
+        private const int ItemMultiScreenStringPoolId = 0x1542;
+        private const int ItemSingleScreenStringPoolId = 0x1543;
+        private const int InventoryFullScreenStringPoolId = 0xBD2;
+        private const int CantPickupScreenStringPoolId = 0x14D9;
+        private const int CantPickupChatStringPoolId = 0x14D3;
+        private const int GenericFailureScreenStringPoolId = 0x134;
+
         public static PickupNoticeSuccessMessages FormatMesoPickup(
             int amount,
             bool pickedByPet = false,
@@ -99,8 +109,15 @@ namespace HaCreator.MapSimulator.UI
                 case DropPickupFailureReason.Unavailable:
                     return FormatUnavailable(dropType, itemName, quantity, mesoAmount, recentPickup, recentActorName);
                 default:
-                    return new PickupNoticeMessagePair(string.Empty, string.Empty);
+                    return new PickupNoticeMessagePair("Unable to pick up the item.", string.Empty);
             }
+        }
+
+        public static PickupMessageType ResolveFailureScreenType(DropPickupFailureReason reason)
+        {
+            return reason == DropPickupFailureReason.InventoryFull
+                ? PickupMessageType.InventoryFull
+                : PickupMessageType.CantPickup;
         }
 
         public static PickupNoticeMessagePair FormatMobPickup(
@@ -171,7 +188,13 @@ namespace HaCreator.MapSimulator.UI
         {
             if (recentPickup == null)
             {
-                return new PickupNoticeMessagePair("Unable to pick up the item.", "Unable to pick up the item.");
+                return FormatRemotePickup(
+                    DropPickupActorKind.Other,
+                    dropType,
+                    null,
+                    itemName,
+                    quantity,
+                    mesoAmount);
             }
 
             return FormatRemotePickup(recentPickup.ActorKind, dropType, recentActorName, itemName, quantity, mesoAmount);

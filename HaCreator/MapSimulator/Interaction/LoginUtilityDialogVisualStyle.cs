@@ -1,6 +1,6 @@
 namespace HaCreator.MapSimulator
 {
-    internal enum LoginUtilityDialogVisualStyle
+    public enum LoginUtilityDialogVisualStyle
     {
         Default = 0,
         SecurityYesNo = 1,

@@ -54,6 +54,8 @@ namespace HaCreator.MapSimulator.UI
             public int MapId { get; init; }
             public string Label { get; init; } = string.Empty;
             public string Description { get; init; } = string.Empty;
+            public bool IsPriorityTarget { get; init; }
+            public int StableOrder { get; init; }
         }
 
         public sealed class WorldMapSurfaceDefinition
@@ -608,6 +610,14 @@ namespace HaCreator.MapSimulator.UI
         public bool HasEntry(int mapId)
         {
             return mapId > 0 && _allEntries.Any(entry => entry.MapId == mapId);
+        }
+
+        public bool CanPresentMapId(int mapId)
+        {
+            return mapId > 0
+                && HasEntry(mapId)
+                && TryResolveSurfaceForMapId(mapId, out WorldMapSurfaceDefinition surface)
+                && TryResolveMapSpot(surface, mapId, out _);
         }
 
         public bool FocusSearchResult(SearchResultKind kind, string label, int mapId, bool enterSearchMode = true)
@@ -1184,20 +1194,25 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            var visibleMapIds = new HashSet<int>();
-            foreach (QuestOverlayEntry overlay in _questOverlays)
+            foreach (IGrouping<int, QuestOverlayEntry> overlayGroup in _questOverlays
+                .Where(entry => entry != null && entry.MapId > 0)
+                .GroupBy(entry => entry.MapId))
             {
-                if (overlay == null || overlay.MapId <= 0 || !visibleMapIds.Add(overlay.MapId))
+                if (!TryResolveMapSpot(surface, overlayGroup.Key, out Point spotAnchor))
                 {
                     continue;
                 }
 
-                if (!TryResolveMapSpot(surface, overlay.MapId, out Point spotAnchor))
+                QuestOverlayEntry[] orderedOverlays = overlayGroup
+                    .OrderByDescending(entry => entry.IsPriorityTarget)
+                    .ThenBy(entry => entry.StableOrder)
+                    .ThenBy(entry => entry.Kind)
+                    .ThenBy(entry => entry.Label, StringComparer.OrdinalIgnoreCase)
+                    .ToArray();
+                for (int i = 0; i < orderedOverlays.Length; i++)
                 {
-                    continue;
+                    DrawSurfaceMarker(sprite, markerFrame.Value, spotAnchor, i);
                 }
-
-                DrawSurfaceMarker(sprite, markerFrame.Value, spotAnchor);
             }
         }
 
@@ -1251,15 +1266,43 @@ namespace HaCreator.MapSimulator.UI
             return false;
         }
 
-        private static void DrawSurfaceMarker(SpriteBatch sprite, OverlayMarkerFrame frame, Point anchor)
+        private static void DrawSurfaceMarker(SpriteBatch sprite, OverlayMarkerFrame frame, Point anchor, int overlayIndex)
         {
             if (frame.Texture == null)
             {
                 return;
             }
 
-            Vector2 drawPosition = new(anchor.X - frame.Origin.X, anchor.Y - frame.Origin.Y);
+            Point overlayOffset = ResolveOverlaySurfaceOffset(overlayIndex);
+            Vector2 drawPosition = new(
+                anchor.X + overlayOffset.X - frame.Origin.X,
+                anchor.Y + overlayOffset.Y - frame.Origin.Y);
             sprite.Draw(frame.Texture, drawPosition, Color.White);
+        }
+
+        private static Point ResolveOverlaySurfaceOffset(int overlayIndex)
+        {
+            return overlayIndex switch
+            {
+                <= 0 => Point.Zero,
+                1 => new Point(-16, -6),
+                2 => new Point(16, -6),
+                3 => new Point(-24, 8),
+                4 => new Point(24, 8),
+                5 => new Point(0, -16),
+                _ => ResolveOverlayRingOffset(overlayIndex)
+            };
+        }
+
+        private static Point ResolveOverlayRingOffset(int overlayIndex)
+        {
+            int ringIndex = Math.Max(0, overlayIndex - 6);
+            int slot = ringIndex % 6;
+            int radius = 24 + ((ringIndex / 6) * 10);
+            double angle = ((Math.PI * 2d) / 6d) * slot;
+            return new Point(
+                (int)Math.Round(Math.Cos(angle) * radius),
+                (int)Math.Round(Math.Sin(angle) * radius * 0.6d) - 8);
         }
 
         private static int GetMaxPageIndex(int count)

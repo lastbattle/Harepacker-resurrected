@@ -86,6 +86,16 @@ namespace HaCreator.MapSimulator.Character
                 ["fly2"] = new[] { "stand1", "stand2", "fly", "jump" },
                 ["fly2Move"] = new[] { "stand1", "stand2", "fly", "jump" },
                 ["fly2Skill"] = new[] { "stand1", "stand2", "fly", "jump" },
+                // The Shadow Partner jobs still publish non-generic raw action names in WZ:
+                // `Skill/411.img/skill/4111005/action/0 = avenger`,
+                // `Skill/1411.img/skill/14111002/action/0 = avenger`,
+                // `Skill/421.img/skill/4211002/action/0 = assaulter`,
+                // and `Skill/421.img/skill/4211006/action/0 = prone2`.
+                // `special/*` only authors generic shoot/stab/prone families, so mirror the
+                // client-owned alias seam here before falling back to the plain raw action name.
+                ["avenger"] = new[] { "shoot1", "shoot2", "shootF" },
+                ["assaulter"] = new[] { "stabO1", "stabO2", "stabOF" },
+                ["prone2"] = new[] { "prone", "proneStab", "stand1", "stand2" },
                 // Client raw actions still include broader attack families such as the
                 // dual-blade, polearm, and crossbow-specific aliases below. Shadow
                 // Partner only authors the generic `special/*` families, so keep
@@ -107,6 +117,7 @@ namespace HaCreator.MapSimulator.Character
             int? rawActionCode = null)
         {
             var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            string rawActionName = null;
 
             // `LoadShadowPartnerAction` walks action-specific remap rows before it falls back
             // to the plain `get_action_name_from_code(raw)` lookup. Mirror that client order
@@ -124,11 +135,21 @@ namespace HaCreator.MapSimulator.Character
             }
 
             if (rawActionCode.HasValue
-                && CharacterPart.TryGetActionStringFromCode(rawActionCode.Value, out string rawActionName)
-                && !string.IsNullOrWhiteSpace(rawActionName)
-                && yielded.Add(rawActionName))
+                && CharacterPart.TryGetActionStringFromCode(rawActionCode.Value, out rawActionName)
+                && !string.IsNullOrWhiteSpace(rawActionName))
             {
-                yield return rawActionName;
+                foreach (string candidate in EnumerateActionSpecificAliasCandidates(rawActionName))
+                {
+                    if (yielded.Add(candidate))
+                    {
+                        yield return candidate;
+                    }
+                }
+
+                if (yielded.Add(rawActionName))
+                {
+                    yield return rawActionName;
+                }
             }
 
             if (!string.IsNullOrWhiteSpace(playerActionName))
@@ -309,6 +330,41 @@ namespace HaCreator.MapSimulator.Character
             }
         }
 
+        public static IReadOnlyList<int> ResolveClientFrameRemap(
+            string playerActionName,
+            string resolvedActionName,
+            int availableFrameCount)
+        {
+            return ResolveClientFrameRemap(playerActionName, null, resolvedActionName, availableFrameCount);
+        }
+
+        public static IReadOnlyList<int> ResolveClientFrameRemap(
+            string playerActionName,
+            string rawActionName,
+            string resolvedActionName,
+            int availableFrameCount)
+        {
+            if (availableFrameCount <= 0
+                || string.IsNullOrWhiteSpace(resolvedActionName))
+            {
+                return Array.Empty<int>();
+            }
+
+            IReadOnlyList<int> rawActionFrameRemap = ResolveSingleActionFrameRemap(rawActionName, resolvedActionName, availableFrameCount);
+            if (rawActionFrameRemap.Count > 0)
+            {
+                return rawActionFrameRemap;
+            }
+
+            IReadOnlyList<int> playerActionFrameRemap = ResolveSingleActionFrameRemap(playerActionName, resolvedActionName, availableFrameCount);
+            if (playerActionFrameRemap.Count > 0)
+            {
+                return playerActionFrameRemap;
+            }
+
+            return Array.Empty<int>();
+        }
+
         private static bool ShouldPreferActionSpecificAliasCandidates(string playerActionName)
         {
             if (string.IsNullOrWhiteSpace(playerActionName))
@@ -329,6 +385,71 @@ namespace HaCreator.MapSimulator.Character
             return string.Equals(playerActionName, "ladder2", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(playerActionName, "rope2", StringComparison.OrdinalIgnoreCase)
                    || playerActionName.StartsWith("alert", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool TryParseIndexedAlertFrame(string playerActionName, int availableFrameCount, out int frameIndex)
+        {
+            frameIndex = 0;
+            if (!playerActionName.StartsWith("alert", StringComparison.OrdinalIgnoreCase)
+                || playerActionName.Length <= "alert".Length)
+            {
+                return false;
+            }
+
+            string suffix = playerActionName["alert".Length..];
+            if (!int.TryParse(suffix, out int indexedAlert)
+                || indexedAlert <= 1)
+            {
+                return false;
+            }
+
+            frameIndex = Math.Clamp(indexedAlert - 1, 0, availableFrameCount - 1);
+            return true;
+        }
+
+        private static IEnumerable<string> EnumerateActionSpecificAliasCandidates(string actionName)
+        {
+            if (!ShouldPreferActionSpecificAliasCandidates(actionName))
+            {
+                yield break;
+            }
+
+            foreach (string candidate in EnumerateAliasCandidates(actionName))
+            {
+                yield return candidate;
+            }
+        }
+
+        private static IReadOnlyList<int> ResolveSingleActionFrameRemap(
+            string actionName,
+            string resolvedActionName,
+            int availableFrameCount)
+        {
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return Array.Empty<int>();
+            }
+
+            if (string.Equals(actionName, "ladder2", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(resolvedActionName, "ladder", StringComparison.OrdinalIgnoreCase))
+            {
+                return new[] { Math.Min(1, availableFrameCount - 1) };
+            }
+
+            if (string.Equals(actionName, "rope2", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(resolvedActionName, "rope", StringComparison.OrdinalIgnoreCase))
+            {
+                return new[] { Math.Min(1, availableFrameCount - 1) };
+            }
+
+            if (actionName.StartsWith("alert", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(resolvedActionName, "alert", StringComparison.OrdinalIgnoreCase)
+                && TryParseIndexedAlertFrame(actionName, availableFrameCount, out int alertFrameIndex))
+            {
+                return new[] { alertFrameIndex };
+            }
+
+            return Array.Empty<int>();
         }
 
         private static IEnumerable<string> EnumerateHeuristicAttackAliases(

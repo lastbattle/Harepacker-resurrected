@@ -12,19 +12,20 @@ namespace HaCreator.MapSimulator.UI
 {
     internal sealed class FamilyTreeWindow : UIWindowBase
     {
+        // CUIFamilyChart::_DrawChartItem reads these from the client's aptNode_ table.
         private static readonly Point[] SlotPositions =
         {
-            new(224, 41),
-            new(223, 93),
-            new(224, 148),
-            new(224, 199),
-            new(367, 200),
-            new(82, 252),
-            new(367, 252),
-            new(15, 304),
-            new(150, 304),
-            new(299, 304),
-            new(434, 304)
+            new(222, 40),
+            new(222, 94),
+            new(222, 146),
+            new(222, 198),
+            new(365, 198),
+            new(80, 250),
+            new(365, 250),
+            new(13, 302),
+            new(148, 302),
+            new(297, 302),
+            new(432, 302)
         };
 
         private const int CenterFocusSlotIndex = 3;
@@ -196,7 +197,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawHeader(SpriteBatch sprite, FamilyTreeSnapshot snapshot)
         {
-            DrawRightAlignedText(sprite, snapshot.TotalMembers.ToString(), 29, 41, 72, new Color(81, 58, 30), 0.55f);
+            DrawRightAlignedText(sprite, snapshot.TotalMembers.ToString("N0"), 29, 41, 72, new Color(81, 58, 30), 0.55f);
             DrawCenteredText(sprite, snapshot.TitleText, new Rectangle(Position.X + 205, Position.Y + 10, 167, 16), Color.White, 0.38f, 0);
             DrawText(sprite, snapshot.JuniorCountText, 295, 80, Color.White, 0.32f);
         }
@@ -220,9 +221,10 @@ namespace HaCreator.MapSimulator.UI
                     plate?.Height ?? MemberPlateHeight);
                 _nodeBounds[node.SlotIndex] = bounds;
 
-                if (node.MemberId == 0 || plate == null)
+                if (node.MemberId == 0)
                 {
                     DrawPlaceholderNode(sprite, node, bounds);
+                    DrawNodeStatistic(sprite, node, bounds);
                     continue;
                 }
 
@@ -239,15 +241,18 @@ namespace HaCreator.MapSimulator.UI
                         drawReflectionInfo);
                 }
 
-                plate.DrawBackground(
-                    sprite,
-                    skeletonMeshRenderer,
-                    gameTime,
-                    Position.X + position.X,
-                    Position.Y + position.Y,
-                    Color.White,
-                    false,
-                    drawReflectionInfo);
+                if (plate != null)
+                {
+                    plate.DrawBackground(
+                        sprite,
+                        skeletonMeshRenderer,
+                        gameTime,
+                        Position.X + position.X,
+                        Position.Y + position.Y,
+                        Color.White,
+                        false,
+                        drawReflectionInfo);
+                }
 
                 DrawNodeText(sprite, node, bounds);
             }
@@ -275,7 +280,13 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            DrawCenteredText(sprite, node.PlaceholderText, bounds, new Color(165, 165, 165), 0.30f, 10);
+            DrawCenteredText(
+                sprite,
+                node.PlaceholderText,
+                new Rectangle(bounds.X, GetClientTextTop(bounds.Y, node.SlotIndex, 11), 133, 12),
+                new Color(165, 165, 165),
+                0.30f,
+                0);
         }
 
         private void DrawNodeText(SpriteBatch sprite, FamilyTreeNodeSnapshot node, Rectangle bounds)
@@ -285,13 +296,34 @@ namespace HaCreator.MapSimulator.UI
                 : new Color(231, 231, 231);
             Color detailColor = new Color(177, 184, 192);
 
-            int nameYOffset = node.IsLeader ? 1 : 0;
-            DrawCenteredText(sprite, node.Name, new Rectangle(bounds.X, bounds.Y + 5 + nameYOffset, 133, 12), nameColor, 0.38f, 0);
-            DrawCenteredText(sprite, node.Detail, new Rectangle(bounds.X - 10, bounds.Y + 20 + nameYOffset, 153, 12), detailColor, 0.30f, 0);
+            DrawCenteredText(
+                sprite,
+                node.Name,
+                new Rectangle(bounds.X, GetClientTextTop(bounds.Y, node.SlotIndex, 5), 133, 12),
+                nameColor,
+                0.38f,
+                0);
+            DrawCenteredText(
+                sprite,
+                node.Detail,
+                new Rectangle(bounds.X - 10, GetClientTextTop(bounds.Y, node.SlotIndex, 20), 153, 12),
+                detailColor,
+                0.30f,
+                0);
+            DrawNodeStatistic(sprite, node, bounds);
+        }
 
+        private void DrawNodeStatistic(SpriteBatch sprite, FamilyTreeNodeSnapshot node, Rectangle bounds)
+        {
             if (!string.IsNullOrWhiteSpace(node.StatisticText))
             {
-                DrawCenteredText(sprite, node.StatisticText, new Rectangle(bounds.X, bounds.Y + 58, 133, 12), new Color(218, 216, 208), 0.30f, 0);
+                DrawCenteredText(
+                    sprite,
+                    node.StatisticText,
+                    new Rectangle(bounds.X, GetClientTextTop(bounds.Y, node.SlotIndex, 58), 133, 12),
+                    new Color(218, 216, 208),
+                    0.30f,
+                    0);
             }
         }
 
@@ -318,6 +350,11 @@ namespace HaCreator.MapSimulator.UI
         private static Rectangle CreateNodeBounds(Point position, int width, int height)
         {
             return new Rectangle(position.X, position.Y, width, height);
+        }
+
+        private static int GetClientTextTop(int slotTop, int slotIndex, int offset)
+        {
+            return slotTop + offset + (slotIndex == 0 ? 1 : 0);
         }
 
         private void ShowFeedback(string message)

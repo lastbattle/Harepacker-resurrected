@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using HaCreator.MapEditor.Instance.Shapes;
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Entities;
+using HaCreator.MapSimulator.Interaction;
 
 namespace HaCreator.MapSimulator.Fields
 {
@@ -184,20 +185,19 @@ namespace HaCreator.MapSimulator.Fields
                    && !string.Equals(player.CurrentActionName, CharacterPart.GetActionString(CharacterAction.Ghost), StringComparison.OrdinalIgnoreCase);
         }
 
-        private static bool HasActiveRideState(PlayerCharacter player)
+        internal static bool HasActiveRideState(PlayerCharacter player)
         {
-            if (player?.Build == null)
+            if (player == null)
             {
                 return false;
             }
 
-            if (player.Build.HasMonsterRiding)
-            {
-                return true;
-            }
-
-            return player.Build.Equipment?.TryGetValue(EquipSlot.TamingMob, out CharacterPart mountPart) == true
-                   && mountPart != null;
+            CharacterPart mountedRenderOwner = player.ResolveMountedStateTamingMobPart();
+            return FollowCharacterEligibilityResolver.ResolveMountedVehicleId(
+                       mountedRenderOwner,
+                       player.CurrentActionName,
+                       mechanicMode: null,
+                       activeMountedRenderOwner: mountedRenderOwner) > 0;
         }
 
         private static FootholdLine ResolvePlayerFoothold(PlayerCharacter player, bool allowAirborneCarry)

@@ -52,7 +52,7 @@ namespace HaCreator.MapSimulator.Interaction
         };
 
         private readonly Dictionary<int, List<InventorySlotData>> _giftListByTab = new();
-        private readonly Dictionary<WeddingWishListSelectionPane, int> _paneStartIndices = new();
+        private readonly Dictionary<(WeddingWishListSelectionPane Pane, int TabIndex), int> _paneStartIndices = new();
         private readonly List<InventorySlotData> _wishListEntries = new();
         private readonly List<InventorySlotData> _candidateEntries = new();
 
@@ -116,7 +116,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 WeddingWishListDialogMode.Receive => WeddingWishListSelectionPane.GiftList,
                 WeddingWishListDialogMode.Give => WeddingWishListSelectionPane.Inventory,
-                WeddingWishListDialogMode.Input => WeddingWishListSelectionPane.WishList,
+                WeddingWishListDialogMode.Input => WeddingWishListSelectionPane.Candidate,
                 _ => WeddingWishListSelectionPane.GiftList
             };
 
@@ -137,7 +137,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 WeddingWishListDialogMode.Receive => WeddingWishListSelectionPane.GiftList,
                 WeddingWishListDialogMode.Give => WeddingWishListSelectionPane.Inventory,
-                WeddingWishListDialogMode.Input => WeddingWishListSelectionPane.WishList,
+                WeddingWishListDialogMode.Input => WeddingWishListSelectionPane.Candidate,
                 _ => WeddingWishListSelectionPane.GiftList
             };
 
@@ -235,7 +235,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return string.Empty;
             }
 
-            _paneStartIndices[pane] = nextStart;
+            _paneStartIndices[CreateViewportKey(pane)] = nextStart;
             if (pane == _activePane)
             {
                 ClampSelectionIntoVisibleRange(pane);
@@ -567,12 +567,12 @@ namespace HaCreator.MapSimulator.Interaction
             int visibleRows = GetVisibleRowCount(pane);
             if (count <= 0 || visibleRows <= 0)
             {
-                _paneStartIndices[pane] = 0;
+                _paneStartIndices[CreateViewportKey(pane)] = 0;
                 return;
             }
 
             int maxStart = Math.Max(0, count - visibleRows);
-            _paneStartIndices[pane] = Math.Clamp(GetFirstVisibleIndex(pane), 0, maxStart);
+            _paneStartIndices[CreateViewportKey(pane)] = Math.Clamp(GetFirstVisibleIndex(pane), 0, maxStart);
         }
 
         private void EnsureSelectionVisible(WeddingWishListSelectionPane pane)
@@ -581,7 +581,7 @@ namespace HaCreator.MapSimulator.Interaction
             int visibleRows = GetVisibleRowCount(pane);
             if (count <= 0 || visibleRows <= 0)
             {
-                _paneStartIndices[pane] = 0;
+                _paneStartIndices[CreateViewportKey(pane)] = 0;
                 return;
             }
 
@@ -590,14 +590,14 @@ namespace HaCreator.MapSimulator.Interaction
             int maxStart = Math.Max(0, count - visibleRows);
             if (selectedIndex < startIndex)
             {
-                _paneStartIndices[pane] = selectedIndex;
+                _paneStartIndices[CreateViewportKey(pane)] = selectedIndex;
                 return;
             }
 
             int endIndex = startIndex + visibleRows - 1;
             if (selectedIndex > endIndex)
             {
-                _paneStartIndices[pane] = Math.Clamp(selectedIndex - visibleRows + 1, 0, maxStart);
+                _paneStartIndices[CreateViewportKey(pane)] = Math.Clamp(selectedIndex - visibleRows + 1, 0, maxStart);
             }
         }
 
@@ -646,7 +646,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private int GetFirstVisibleIndex(WeddingWishListSelectionPane pane)
         {
-            return _paneStartIndices.TryGetValue(pane, out int index)
+            return _paneStartIndices.TryGetValue(CreateViewportKey(pane), out int index)
                 ? index
                 : 0;
         }
@@ -680,6 +680,15 @@ namespace HaCreator.MapSimulator.Interaction
                     _selectedCandidateIndex = index;
                     break;
             }
+        }
+
+        private (WeddingWishListSelectionPane Pane, int TabIndex) CreateViewportKey(WeddingWishListSelectionPane pane)
+        {
+            return pane switch
+            {
+                WeddingWishListSelectionPane.GiftList or WeddingWishListSelectionPane.Inventory => (pane, _selectedTabIndex),
+                _ => (pane, -1)
+            };
         }
 
         private static int ClampIndex(int index, int count)

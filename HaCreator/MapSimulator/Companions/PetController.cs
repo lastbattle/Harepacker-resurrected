@@ -68,6 +68,7 @@ namespace HaCreator.MapSimulator.Companions
     public sealed class PetRuntime
     {
         internal const int AutoSpeakingSkillMask = 1 << (int)PetSkillFlag.Smart;
+        internal const int FoodTamenessGain = 1;
         private const int MinFullness = 0;
         private const int MaxFullness = 100;
         private const int DefaultFullness = 60;
@@ -468,7 +469,7 @@ namespace HaCreator.MapSimulator.Companions
             return ApplyQuestSpeedToMoveSpeed(baseSpeed, _questSpeed);
         }
 
-        internal bool TryFeed(int fullnessIncrease)
+        internal bool TryFeed(int fullnessIncrease, int tamenessGain = FoodTamenessGain)
         {
             if (!CanConsumeFood(fullnessIncrease))
             {
@@ -476,6 +477,11 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             Fullness = Math.Clamp(Fullness + fullnessIncrease, MinFullness, MaxFullness);
+            if (tamenessGain > 0)
+            {
+                AddTameness(tamenessGain);
+            }
+
             return true;
         }
 
@@ -863,6 +869,14 @@ namespace HaCreator.MapSimulator.Companions
 
     public sealed class PetController
     {
+        internal enum PetFoodItemUseFailureReason
+        {
+            None = 0,
+            NoActivePets = 1,
+            NoCompatiblePets = 2,
+            NoHungryCompatiblePets = 3
+        }
+
         internal readonly struct PetFoodItemUsePlan
         {
             public int SlotIndex { get; init; }
@@ -1214,7 +1228,7 @@ namespace HaCreator.MapSimulator.Companions
                 return false;
             }
 
-            return TryPlanFoodItemUse(_activePets, supportedPetItemIds, fullnessIncrease, out plan);
+            return TryPlanFoodItemUse(_activePets, supportedPetItemIds, fullnessIncrease, out plan, out _);
         }
 
         internal bool TryExecuteFoodItemUse(PetFoodItemUsePlan plan, int currentTime, out int fedSlotIndex)
@@ -1257,15 +1271,25 @@ namespace HaCreator.MapSimulator.Companions
             return SelectPetForFoodItem(_activePets, supportedPetItemIds, fullnessIncrease);
         }
 
+        private static PetRuntime SelectPetForFoodItem(
+            IReadOnlyList<PetRuntime> activePets,
+            IReadOnlyCollection<int> supportedPetItemIds,
+            int fullnessIncrease)
+        {
+            return SelectPetForFoodItem(activePets, supportedPetItemIds, fullnessIncrease, out _);
+        }
+
         internal static bool TryPlanFoodItemUse(
             IReadOnlyList<PetRuntime> activePets,
             IReadOnlyCollection<int> supportedPetItemIds,
             int fullnessIncrease,
-            out PetFoodItemUsePlan plan)
+            out PetFoodItemUsePlan plan,
+            out PetFoodItemUseFailureReason failureReason)
         {
             plan = default;
+            failureReason = PetFoodItemUseFailureReason.None;
 
-            PetRuntime pet = SelectPetForFoodItem(activePets, supportedPetItemIds, fullnessIncrease);
+            PetRuntime pet = SelectPetForFoodItem(activePets, supportedPetItemIds, fullnessIncrease, out failureReason);
             if (pet == null)
             {
                 return false;
@@ -1377,10 +1401,12 @@ namespace HaCreator.MapSimulator.Companions
         private static PetRuntime SelectPetForFoodItem(
             IReadOnlyList<PetRuntime> activePets,
             IReadOnlyCollection<int> supportedPetItemIds,
-            int fullnessIncrease)
+            int fullnessIncrease,
+            out PetFoodItemUseFailureReason failureReason)
         {
             if (activePets == null || activePets.Count == 0)
             {
+                failureReason = PetFoodItemUseFailureReason.NoActivePets;
                 return null;
             }
 
@@ -1388,13 +1414,22 @@ namespace HaCreator.MapSimulator.Companions
                 ? activePets.Where(pet => pet != null)
                 : activePets.Where(pet => pet != null && supportedPetItemIds.Contains(pet.ItemId));
 
-            PetRuntime hungryPet = compatiblePets.FirstOrDefault(pet => pet.CanConsumeFood(fullnessIncrease));
+            List<PetRuntime> compatiblePetList = compatiblePets.ToList();
+            if (compatiblePetList.Count == 0)
+            {
+                failureReason = PetFoodItemUseFailureReason.NoCompatiblePets;
+                return null;
+            }
+
+            PetRuntime hungryPet = compatiblePetList.FirstOrDefault(pet => pet.CanConsumeFood(fullnessIncrease));
             if (hungryPet != null)
             {
+                failureReason = PetFoodItemUseFailureReason.None;
                 return hungryPet;
             }
 
-            return compatiblePets.FirstOrDefault();
+            failureReason = PetFoodItemUseFailureReason.NoHungryCompatiblePets;
+            return null;
         }
 
         private static PetRuntime SelectPetForSkillReward(

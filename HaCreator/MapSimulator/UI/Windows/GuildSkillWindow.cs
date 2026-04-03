@@ -543,7 +543,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (entry.CurrentLevel > 0 && entry.DurationMinutes > 0 && entry.RemainingDurationMinutes <= 0)
             {
-                lines.Add(entry.CanRenew ? "State: Inactive" : "State: View only");
+                lines.Add(entry.CanManageSkills ? "State: Inactive" : "State: View only");
             }
 
             return lines;

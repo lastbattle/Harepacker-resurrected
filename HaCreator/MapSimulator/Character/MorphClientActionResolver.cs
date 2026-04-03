@@ -60,6 +60,11 @@ namespace HaCreator.MapSimulator.Character
 
             var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
+            if (ShouldPreferExactPublishedAction(morphPart, actionName) && yielded.Add(actionName))
+            {
+                yield return actionName;
+            }
+
             if (actionName.StartsWith("alert", StringComparison.OrdinalIgnoreCase))
             {
                 foreach (string alertAlias in EnumerateAlertAliases(morphPart, actionName))
@@ -100,6 +105,21 @@ namespace HaCreator.MapSimulator.Character
                     yield return candidate;
                 }
             }
+        }
+
+        private static bool ShouldPreferExactPublishedAction(CharacterPart morphPart, string actionName)
+        {
+            if (morphPart?.Animations == null
+                || string.IsNullOrWhiteSpace(actionName)
+                || !morphPart.Animations.ContainsKey(actionName))
+            {
+                return false;
+            }
+
+            // Keep the client-shaped generic jump request surface promotable onto
+            // authored morph double-jump branches instead of pinning plain jump first.
+            return !string.Equals(actionName, "jump", StringComparison.OrdinalIgnoreCase)
+                   && !string.Equals(actionName, "doubleJump", StringComparison.OrdinalIgnoreCase);
         }
 
         internal static bool IsJumpActionName(string actionName)
@@ -146,6 +166,15 @@ namespace HaCreator.MapSimulator.Character
             }
 
             var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (string genericMeleeAlias in EnumerateGenericMeleeAttackAliases(morphPart, actionName))
+            {
+                if (yielded.Add(genericMeleeAlias))
+                {
+                    yield return genericMeleeAlias;
+                }
+            }
+
             bool prefersArcherAliases = PrefersArcherAttackAliases(actionName);
 
             foreach (string authoredAlias in EnumeratePresentAliases(
@@ -155,6 +184,17 @@ namespace HaCreator.MapSimulator.Character
                 if (yielded.Add(authoredAlias))
                 {
                     yield return authoredAlias;
+                }
+            }
+
+            if (prefersArcherAliases)
+            {
+                foreach (string genericAlias in EnumerateGenericAttackAliases(morphPart, actionName))
+                {
+                    if (yielded.Add(genericAlias))
+                    {
+                        yield return genericAlias;
+                    }
                 }
             }
 
@@ -189,6 +229,24 @@ namespace HaCreator.MapSimulator.Character
                 if (yielded.Add(authoredAlias))
                 {
                     yield return authoredAlias;
+                }
+            }
+        }
+
+        private static IEnumerable<string> EnumerateGenericMeleeAttackAliases(CharacterPart morphPart, string actionName)
+        {
+            if (morphPart?.Animations == null || !IsGenericMeleeAttackAction(actionName))
+            {
+                yield break;
+            }
+
+            foreach (string candidate in CharacterPart.GetActionLookupStrings(actionName))
+            {
+                if (!string.IsNullOrWhiteSpace(candidate)
+                    && IsPublishedGenericMeleeAttackAlias(candidate)
+                    && morphPart.Animations.ContainsKey(candidate))
+                {
+                    yield return candidate;
                 }
             }
         }
@@ -356,9 +414,32 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return actionName.IndexOf("attack", StringComparison.OrdinalIgnoreCase) >= 0
-                   || actionName.IndexOf("stab", StringComparison.OrdinalIgnoreCase) >= 0
-                   || actionName.IndexOf("swing", StringComparison.OrdinalIgnoreCase) >= 0
+                   || IsGenericMeleeAttackAction(actionName)
                    || IsGenericRangedAttackAction(actionName);
+        }
+
+        private static bool IsGenericMeleeAttackAction(string actionName)
+        {
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            return actionName.IndexOf("stab", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("swing", StringComparison.OrdinalIgnoreCase) >= 0
+                   || string.Equals(actionName, "proneStab", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool IsPublishedGenericMeleeAttackAlias(string actionName)
+        {
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            return actionName.IndexOf("stab", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("swing", StringComparison.OrdinalIgnoreCase) >= 0
+                   || string.Equals(actionName, "proneStab", StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool IsGenericRangedAttackAction(string actionName)

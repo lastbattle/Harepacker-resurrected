@@ -230,7 +230,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int DropRate { get; set; }            // dropR bonus rate
         public int MesoRate { get; set; }            // mesoR bonus rate
         public int BossDamageRate { get; set; }      // bdR boss damage bonus rate
-        public int IgnoreDefenseRate { get; set; }   // ignoreMobpdpR monster defense ignore rate
+        public int IgnoreDefenseRate { get; set; }   // ignoreMobpdpR / ignoreMobDamR monster defense or reduction ignore rate
         public List<string> AuthoredPropertyOrder { get; set; } = new();
 
         // Requirements
@@ -1088,6 +1088,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public float OwnerY { get; set; }
         public int? PreferredTargetMobId { get; set; }
         public Vector2? PreferredTargetPosition { get; set; }
+        public bool PreferStoredTargetPosition { get; set; }
         public ShootAmmoSelection ResolvedShootAmmoSelection { get; set; }
         public bool AllowFollowUpQueue { get; set; } = true;
         public bool ForceCritical { get; set; }

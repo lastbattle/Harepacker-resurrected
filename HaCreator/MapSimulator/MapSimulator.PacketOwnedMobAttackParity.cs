@@ -1,5 +1,6 @@
 using System;
 using System.Linq;
+using HaCreator.MapSimulator.AI;
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Managers;
 
@@ -111,7 +112,9 @@ namespace HaCreator.MapSimulator
 
             bool hasMultiTargetOverrides = decodedPacket.MultiTargetForBall?.Count > 0;
             bool hasAreaDelayOverrides = decodedPacket.RandTimeForAreaAttack?.Count > 0;
-            if (!hasMultiTargetOverrides && !hasAreaDelayOverrides)
+            MobTargetInfo lockedTargetOverride = MobMoveAttackPacketCodec.CreateLockedTargetOverride(decodedPacket.LockedTargetInfo);
+            bool hasLockedTargetOverride = lockedTargetOverride?.IsValid == true;
+            if (!hasMultiTargetOverrides && !hasAreaDelayOverrides && !hasLockedTargetOverride)
             {
                 _mobAttackSystem.SetNextAttackPacketOverrides(decodedPacket.MobId, decodedPacket.AttackId, currentTime);
                 message = $"Cleared packet attack overrides for mob {decodedPacket.MobId} attack{decodedPacket.AttackId} from {MobAttackPacketInboxManager.DescribePacketType(packetType)}.";
@@ -122,6 +125,7 @@ namespace HaCreator.MapSimulator
                 decodedPacket.MobId,
                 decodedPacket.AttackId,
                 currentTime,
+                lockedTargetOverride,
                 decodedPacket.MultiTargetForBall,
                 decodedPacket.RandTimeForAreaAttack);
 
@@ -131,7 +135,10 @@ namespace HaCreator.MapSimulator
             string randDelaySummary = hasAreaDelayOverrides
                 ? $"{decodedPacket.RandTimeForAreaAttack.Count} area-delay value(s)"
                 : "no area-delay values";
-            message = $"Queued packet attack overrides for mob {decodedPacket.MobId} attack{decodedPacket.AttackId} from {MobAttackPacketInboxManager.DescribePacketType(packetType)} with {multiTargetSummary} and {randDelaySummary}.";
+            string lockedTargetSummary = hasLockedTargetOverride
+                ? $"locked target {lockedTargetOverride.TargetType}:{lockedTargetOverride.TargetId}"
+                : "no locked target";
+            message = $"Queued packet attack overrides for mob {decodedPacket.MobId} attack{decodedPacket.AttackId} from {MobAttackPacketInboxManager.DescribePacketType(packetType)} with {lockedTargetSummary}, {multiTargetSummary}, and {randDelaySummary}.";
             return true;
         }
 

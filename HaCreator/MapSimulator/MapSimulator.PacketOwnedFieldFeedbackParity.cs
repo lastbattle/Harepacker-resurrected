@@ -213,7 +213,10 @@ namespace HaCreator.MapSimulator
         private bool TryShowPacketOwnedRewardRouletteEffect(int rewardJobIndex, int rewardPartIndex, int rewardLevelIndex)
         {
             bool shownAnyLayer = false;
-            foreach (string propertyPath in EnumeratePacketOwnedRewardRouletteLayerSourcePaths())
+            foreach (string propertyPath in EnumeratePacketOwnedRewardRouletteLayerSourcePaths(
+                rewardJobIndex,
+                rewardPartIndex,
+                rewardLevelIndex))
             {
                 string cacheKey = $"reward-roulette:{propertyPath}";
                 if (!TryGetOrCreatePacketOwnedAnimationFrames(
@@ -602,6 +605,18 @@ namespace HaCreator.MapSimulator
             return EnumeratePacketOwnedRewardRouletteLayerSourcePaths().ToArray();
         }
 
+        internal static IReadOnlyList<string> GetPacketOwnedRewardRouletteLayerSourcePathsForTest(
+            int rewardJobIndex,
+            int rewardPartIndex,
+            int rewardLevelIndex)
+        {
+            return EnumeratePacketOwnedRewardRouletteLayerSourcePaths(
+                    rewardJobIndex,
+                    rewardPartIndex,
+                    rewardLevelIndex)
+                .ToArray();
+        }
+
         internal static IReadOnlyList<string> GetPacketOwnedScreenEffectCandidatesForTest(string descriptor)
         {
             return EnumeratePacketOwnedScreenEffectCandidates(descriptor)
@@ -622,6 +637,53 @@ namespace HaCreator.MapSimulator
             }
 
             foreach (string layerPath in PacketOwnedRewardRouletteLayerPaths)
+            {
+                yield return $"{layerPath}/0";
+            }
+        }
+
+        private static IEnumerable<string> EnumeratePacketOwnedRewardRouletteLayerSourcePaths(
+            int rewardJobIndex,
+            int rewardPartIndex,
+            int rewardLevelIndex)
+        {
+            foreach (string propertyPath in EnumeratePacketOwnedRewardRouletteLayerSourcePaths(
+                PacketOwnedRewardRouletteLayerPaths[0],
+                rewardJobIndex))
+            {
+                yield return propertyPath;
+            }
+
+            foreach (string propertyPath in EnumeratePacketOwnedRewardRouletteLayerSourcePaths(
+                PacketOwnedRewardRouletteLayerPaths[1],
+                rewardPartIndex))
+            {
+                yield return propertyPath;
+            }
+
+            foreach (string propertyPath in EnumeratePacketOwnedRewardRouletteLayerSourcePaths(
+                PacketOwnedRewardRouletteLayerPaths[2],
+                rewardLevelIndex))
+            {
+                yield return propertyPath;
+            }
+        }
+
+        private static IEnumerable<string> EnumeratePacketOwnedRewardRouletteLayerSourcePaths(
+            string layerPath,
+            int requestedIndex)
+        {
+            if (string.IsNullOrWhiteSpace(layerPath))
+            {
+                yield break;
+            }
+
+            if (requestedIndex >= 0)
+            {
+                yield return $"{layerPath}/{requestedIndex.ToString(CultureInfo.InvariantCulture)}";
+            }
+
+            if (requestedIndex != 0)
             {
                 yield return $"{layerPath}/0";
             }

@@ -1,3 +1,4 @@
+using HaCreator.MapSimulator.Interaction;
 using System;
 using System.Collections.Concurrent;
 using System.IO;
@@ -54,12 +55,15 @@ namespace HaCreator.MapSimulator.Managers
         public const int PlayEventSoundClientPacketType = 246;
         public const int PlayMinigameSoundClientPacketType = 247;
         public const int OpenClassCompetitionPagePacketType = 250;
+        public const int MakerResultClientPacketType = PacketOwnedItemMakerResultRuntime.ClientPacketType;
         public const int OpenUiClientPacketType = 251;
         public const int OpenUiWithOptionClientPacketType = 252;
         public const int SetDirectionModeClientPacketType = 253;
         public const int SetStandAloneModeClientPacketType = 254;
         public const int HireTutorClientPacketType = 255;
         public const int TutorMsgClientPacketType = 256;
+        public const int ResignQuestReturnClientPacketType = 259;
+        public const int PassMateNameClientPacketType = 260;
         public const int QuestResultPacketType = 242;
         public const int NotifyHpDecByFieldPacketType = 243;
         public const int NoticeMsgClientPacketType = 263;
@@ -79,6 +83,10 @@ namespace HaCreator.MapSimulator.Managers
         public const int FuncKeyMapInitPacketType = 398;
         public const int PetConsumeItemInitPacketType = 399;
         public const int PetConsumeMpItemInitPacketType = 400;
+        public const int ParcelDialogPacketType = 1015;
+        public const int TrunkDialogPacketType = 1016;
+        public const int MessengerDispatchPacketType = 1017;
+        public const int MarriageResultPacketType = 1018;
 
         private readonly ConcurrentQueue<LocalUtilityPacketInboxMessage> _pendingMessages = new();
         private readonly object _listenerLock = new();
@@ -400,6 +408,58 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
+            if (token.Equals("mapletvset", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("mapletvmessage", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = MapleTvRuntime.PacketTypeSetMessage;
+                return true;
+            }
+
+            if (token.Equals("mapletvclear", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = MapleTvRuntime.PacketTypeClearMessage;
+                return true;
+            }
+
+            if (token.Equals("mapletvresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("mapletvsendresult", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = MapleTvRuntime.PacketTypeSendMessageResult;
+                return true;
+            }
+
+            if (token.Equals("parcel", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("parceldialog", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("parcelpacket", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = ParcelDialogPacketType;
+                return true;
+            }
+
+            if (token.Equals("trunk", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("trunkdialog", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("storage", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = TrunkDialogPacketType;
+                return true;
+            }
+
+            if (token.Equals("messengerdispatch", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("messengeronpacket", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("messengerpacket", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = MessengerDispatchPacketType;
+                return true;
+            }
+
+            if (token.Equals("marriageresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("weddinginvitation", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onmarriageresult", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = MarriageResultPacketType;
+                return true;
+            }
+
             if (token.Equals("antimacro", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("antimacroresult", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("liedetector", StringComparison.OrdinalIgnoreCase))
@@ -415,10 +475,33 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
+            if (token.Equals("makerresult", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onmakerresult", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = MakerResultClientPacketType;
+                return true;
+            }
+
             if (token.Equals("questresult", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("onquestresult", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = QuestResultPacketType;
+                return true;
+            }
+
+            if (token.Equals("resignquest", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("resignquestreturn", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onresignquestreturn", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = ResignQuestReturnClientPacketType;
+                return true;
+            }
+
+            if (token.Equals("passmatename", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("matename", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onpassmatename", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = PassMateNameClientPacketType;
                 return true;
             }
 
@@ -567,10 +650,14 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == RadioSchedulePacketType
                 || packetType == RadioScheduleClientPacketType
                 || packetType == AntiMacroResultPacketType
+                || packetType == InitialQuizTimerRuntime.PacketType
                 || packetType == OpenSkillGuideClientPacketType
                 || packetType == QuestResultPacketType
+                || packetType == ResignQuestReturnClientPacketType
+                || packetType == PassMateNameClientPacketType
                 || packetType == NotifyHpDecByFieldPacketType
                 || packetType == OpenClassCompetitionPagePacketType
+                || packetType == MakerResultClientPacketType
                 || packetType == DamageMeterPacketType
                 || packetType == TimeBombAttackPacketType
                 || packetType == VengeanceSkillApplyPacketType
@@ -580,7 +667,14 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == SkillCooltimeSetPacketType
                 || packetType == FuncKeyMapInitPacketType
                 || packetType == PetConsumeItemInitPacketType
-                || packetType == PetConsumeMpItemInitPacketType;
+                || packetType == PetConsumeMpItemInitPacketType
+                || packetType == MapleTvRuntime.PacketTypeSetMessage
+                || packetType == MapleTvRuntime.PacketTypeClearMessage
+                || packetType == MapleTvRuntime.PacketTypeSendMessageResult
+                || packetType == ParcelDialogPacketType
+                || packetType == TrunkDialogPacketType
+                || packetType == MessengerDispatchPacketType
+                || packetType == MarriageResultPacketType;
         }
 
         public static bool TryDecodeOpcodeFramedPacket(byte[] rawPacket, out int packetType, out byte[] payload, out string error)
@@ -704,6 +798,7 @@ namespace HaCreator.MapSimulator.Managers
                 FollowCharacterFailedPacketType => "FollowCharacterFailed(1009)",
                 RadioSchedulePacketType => "RadioSchedule(1010)",
                 AntiMacroResultPacketType => "AntiMacroResult(1011)",
+                InitialQuizTimerRuntime.PacketType => "InitialQuizStart(43)",
                 FollowCharacterPacketType => "FollowCharacter(1012)",
                 SetDirectionModePacketType => "SetDirectionMode(1013)",
                 SetStandAloneModePacketType => "SetStandAloneMode(1014)",
@@ -713,12 +808,15 @@ namespace HaCreator.MapSimulator.Managers
                 QuestResultPacketType => "OnQuestResult(242)",
                 NotifyHpDecByFieldPacketType => "NotifyHPDecByField(243)",
                 OpenClassCompetitionPagePacketType => "OpenClassCompetitionPage(250)",
+                MakerResultClientPacketType => "OnMakerResult(248)",
                 OpenUiClientPacketType => "OpenUI(251)",
                 OpenUiWithOptionClientPacketType => "OpenUIWithOption(252)",
                 SetDirectionModeClientPacketType => "SetDirectionMode(253)",
                 SetStandAloneModeClientPacketType => "SetStandAloneMode(254)",
                 HireTutorClientPacketType => "HireTutor(255)",
                 TutorMsgClientPacketType => "TutorMsg(256)",
+                ResignQuestReturnClientPacketType => "OnResignQuestReturn(259)",
+                PassMateNameClientPacketType => "OnPassMateName(260)",
                 NoticeMsgClientPacketType => "NoticeMsg(263)",
                 ChatMsgClientPacketType => "ChatMsg(264)",
                 BuffzoneEffectClientPacketType => "BuffzoneEffect(265)",
@@ -737,6 +835,13 @@ namespace HaCreator.MapSimulator.Managers
                 FuncKeyMapInitPacketType => "FuncKeyMapInit(398)",
                 PetConsumeItemInitPacketType => "PetConsumeItemInit(399)",
                 PetConsumeMpItemInitPacketType => "PetConsumeMPItemInit(400)",
+                MapleTvRuntime.PacketTypeSetMessage => "MapleTV SetMessage(405)",
+                MapleTvRuntime.PacketTypeClearMessage => "MapleTV ClearMessage(406)",
+                MapleTvRuntime.PacketTypeSendMessageResult => "MapleTV SendMessageResult(407)",
+                ParcelDialogPacketType => "ParcelDialog OnPacket(1015)",
+                TrunkDialogPacketType => "TrunkDialog OnPacket(1016)",
+                MessengerDispatchPacketType => "Messenger OnPacket(1017)",
+                MarriageResultPacketType => "MarriageResult OnMarriageResult(1018)",
                 _ => $"packet {packetType}"
             };
         }

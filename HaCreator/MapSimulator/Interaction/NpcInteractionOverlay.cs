@@ -185,14 +185,20 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (!windowRect.Contains(mousePoint))
             {
-                Close();
+                if (NpcInteractionPresentationProfile.ShouldCloseWhenClickingOutside(_presentationStyle))
+                {
+                    Close();
+                    return new NpcInteractionOverlayResult(true, null, closeKind: NpcInteractionOverlayCloseKind.Dismissed);
+                }
+
                 return new NpcInteractionOverlayResult(true, null);
             }
 
-            if (GetCloseButtonRectangle(windowRect).Contains(mousePoint))
+            if (NpcInteractionPresentationProfile.ShouldDrawCloseButton(_presentationStyle) &&
+                GetCloseButtonRectangle(windowRect).Contains(mousePoint))
             {
                 Close();
-                return new NpcInteractionOverlayResult(true, null);
+                return new NpcInteractionOverlayResult(true, null, closeKind: NpcInteractionOverlayCloseKind.Dismissed);
             }
 
             Rectangle entryListRect = GetEntryListRectangle(windowRect);
@@ -262,6 +268,12 @@ namespace HaCreator.MapSimulator.Interaction
                 else
                 {
                     Close();
+                    return new NpcInteractionOverlayResult(
+                        true,
+                        null,
+                        closeKind: _presentationStyle == NpcInteractionPresentationStyle.PacketQuestResultUtilDialog
+                            ? NpcInteractionOverlayCloseKind.Completed
+                            : NpcInteractionOverlayCloseKind.Dismissed);
                 }
 
                 return new NpcInteractionOverlayResult(true, null);
@@ -297,7 +309,7 @@ namespace HaCreator.MapSimulator.Interaction
             if (IsKeyReleased(Keys.Escape, keyboardState, previousKeyboardState))
             {
                 Close();
-                return new NpcInteractionOverlayResult(true, null);
+                return new NpcInteractionOverlayResult(true, null, closeKind: NpcInteractionOverlayCloseKind.Dismissed);
             }
 
             NpcInteractionInputRequest inputRequest = GetCurrentInputRequest();
@@ -386,9 +398,12 @@ namespace HaCreator.MapSimulator.Interaction
 
             DrawText(spriteBatch, _npcName, new Vector2(windowRect.X + Padding, windowRect.Y + 10), Color.White);
 
-            Rectangle closeRect = GetCloseButtonRectangle(windowRect);
-            DrawPanel(spriteBatch, closeRect, new Color(130, 51, 51, 255), new Color(255, 220, 220));
-            DrawCenteredText(spriteBatch, "X", closeRect, Color.White);
+            if (NpcInteractionPresentationProfile.ShouldDrawCloseButton(_presentationStyle))
+            {
+                Rectangle closeRect = GetCloseButtonRectangle(windowRect);
+                DrawPanel(spriteBatch, closeRect, new Color(130, 51, 51, 255), new Color(255, 220, 220));
+                DrawCenteredText(spriteBatch, "X", closeRect, Color.White);
+            }
 
             Rectangle entryListRect = GetEntryListRectangle(windowRect);
             if (ShouldDrawEntryList())
@@ -403,16 +418,23 @@ namespace HaCreator.MapSimulator.Interaction
                 ShouldDrawEntryList() ? windowRect.Width - EntryListWidth - (Padding * 3) : windowRect.Width - (Padding * 2),
                 windowRect.Height - 116);
 
-            DrawEntryHeader(spriteBatch, textRect);
+            if (NpcInteractionPresentationProfile.ShouldDrawEntryHeader(_presentationStyle))
+            {
+                DrawEntryHeader(spriteBatch, textRect);
+            }
+
             NpcInteractionInputRequest inputRequest = GetCurrentInputRequest();
             Rectangle bodyRect = new Rectangle(
                 textRect.X,
-                textRect.Y + 38,
+                textRect.Y + (NpcInteractionPresentationProfile.ShouldDrawEntryHeader(_presentationStyle) ? 38 : 0),
                 textRect.Width,
-                textRect.Height - 38 - GetInputPanelHeight(inputRequest));
+                textRect.Height - (NpcInteractionPresentationProfile.ShouldDrawEntryHeader(_presentationStyle) ? 38 : 0) - GetInputPanelHeight(inputRequest));
             DrawWrappedText(spriteBatch, GetCurrentPageText(), bodyRect, new Color(246, 244, 238));
             DrawInputPanel(spriteBatch, bodyRect, inputRequest);
-            DrawPageIndicator(spriteBatch, windowRect);
+            if (NpcInteractionPresentationProfile.ShouldDrawPageIndicator(_presentationStyle))
+            {
+                DrawPageIndicator(spriteBatch, windowRect);
+            }
 
             Rectangle prevRect = GetPrevButtonRectangle(windowRect);
             Rectangle nextRect = GetNextButtonRectangle(windowRect);
@@ -429,7 +451,7 @@ namespace HaCreator.MapSimulator.Interaction
             DrawButton(spriteBatch, nextRect, _currentPage < GetCurrentPages().Count - 1 ? "Next" : "Close", true);
 
             string primaryButtonText = GetPrimaryButtonText();
-            if (!string.IsNullOrEmpty(primaryButtonText))
+            if (NpcInteractionPresentationProfile.ShouldDrawPrimaryButton(_presentationStyle, primaryButtonText))
             {
                 DrawButton(spriteBatch, primaryRect, primaryButtonText, IsPrimaryActionEnabled());
             }
@@ -473,6 +495,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string GetPrimaryButtonText()
         {
+            if (_presentationStyle == NpcInteractionPresentationStyle.PacketQuestResultUtilDialog)
+            {
+                return string.Empty;
+            }
+
             return GetCurrentInputRequest() == null
                 ? SelectedEntry?.PrimaryActionLabel ?? string.Empty
                 : "Send";
@@ -498,7 +525,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private bool ShouldDrawEntryList()
         {
-            return !(_presentationStyle == NpcInteractionPresentationStyle.PacketScriptUtilDialog && _entries.Count <= 1);
+            return NpcInteractionPresentationProfile.ShouldDrawEntryList(_presentationStyle, _entries.Count);
         }
 
         private Color ResolveWindowFillColor()

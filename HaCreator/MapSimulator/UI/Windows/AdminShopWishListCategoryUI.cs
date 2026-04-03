@@ -14,9 +14,6 @@ namespace HaCreator.MapSimulator.UI
         private sealed class CategoryDisplayRow
         {
             public AdminShopDialogUI.WishlistCategoryNode Node { get; init; }
-            public int Depth { get; init; }
-            public bool IsExpanded { get; init; }
-            public bool HasChildren => Node?.Children?.Count > 0;
         }
 
         private const int MainTitleBandHeight = 16;
@@ -31,6 +28,7 @@ namespace HaCreator.MapSimulator.UI
         private const int ScrollBarY = 23;
         private const int CloseButtonX = 180;
         private const int CloseButtonY = 7;
+        private const int OwnerOffsetY = 18;
 
         private readonly Texture2D _backgroundTexture;
         private readonly Texture2D _pixelTexture;
@@ -41,15 +39,14 @@ namespace HaCreator.MapSimulator.UI
         private readonly UIObject _closeButton;
         private readonly List<UIObject> _rowButtons = new();
         private readonly List<CategoryDisplayRow> _categoryRows = new();
-        private readonly HashSet<string> _expandedCategoryKeys = new(StringComparer.OrdinalIgnoreCase);
 
         private SpriteFont _font;
         private AdminShopWishListUI _owner;
         private IReadOnlyList<AdminShopDialogUI.WishlistCategoryNode> _categoryTree = Array.Empty<AdminShopDialogUI.WishlistCategoryNode>();
         private KeyboardState _previousKeyboardState;
         private MouseState _previousMouseState;
-        private Point? _dragStartOffset;
         private string _selectedCategoryKey = "all";
+        private string _activeParentCategoryKey;
         private int _scrollOffset;
 
         public AdminShopWishListCategoryUI(
@@ -101,19 +98,7 @@ namespace HaCreator.MapSimulator.UI
             _owner = owner;
             _categoryTree = owner?.GetWishlistCategoryTree() ?? Array.Empty<AdminShopDialogUI.WishlistCategoryNode>();
             _selectedCategoryKey = owner?.GetSelectedWishlistCategoryKey() ?? "all";
-            _expandedCategoryKeys.Clear();
-            if (owner?.GetExpandedWishlistCategoryKeys() is IReadOnlyCollection<string> expandedKeys)
-            {
-                foreach (string expandedKey in expandedKeys)
-                {
-                    if (!string.IsNullOrWhiteSpace(expandedKey))
-                    {
-                        _expandedCategoryKeys.Add(expandedKey);
-                    }
-                }
-            }
-
-            EnsureCategoryPathExpanded(_selectedCategoryKey);
+            _activeParentCategoryKey = ResolveParentCategoryKey(_selectedCategoryKey);
             RefreshCategoryRows();
             EnsureSelectedCategoryVisible();
             PositionRelativeToOwner(owner);
@@ -124,7 +109,7 @@ namespace HaCreator.MapSimulator.UI
         {
             if (IsVisible)
             {
-                _owner?.OnCategoryAddOnClosed(_selectedCategoryKey, _expandedCategoryKeys, message);
+                _owner?.OnCategoryAddOnClosed(_selectedCategoryKey, Array.Empty<string>(), message);
             }
 
             Hide();
@@ -135,14 +120,13 @@ namespace HaCreator.MapSimulator.UI
             base.Show();
             _previousKeyboardState = Keyboard.GetState();
             _previousMouseState = Mouse.GetState();
-            _dragStartOffset = null;
+            PositionRelativeToOwner(_owner);
             SetRowButtonsActive(true);
         }
 
         public override void Hide()
         {
             base.Hide();
-            _dragStartOffset = null;
             SetRowButtonsActive(false);
         }
 
@@ -163,6 +147,8 @@ namespace HaCreator.MapSimulator.UI
                 Hide();
                 return;
             }
+
+            PositionRelativeToOwner(_owner);
 
             KeyboardState keyboardState = Keyboard.GetState();
             MouseState mouseState = Mouse.GetState();
@@ -218,27 +204,7 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
 
-            Rectangle dragBounds = new Rectangle(Position.X, Position.Y - MainTitleBandHeight, CurrentFrame?.Width ?? 264, (CurrentFrame?.Height ?? 274) + MainTitleBandHeight);
-            if (mouseState.LeftButton == ButtonState.Pressed)
-            {
-                if (_dragStartOffset == null)
-                {
-                    if (!dragBounds.Contains(mouseState.Position))
-                    {
-                        return false;
-                    }
-
-                    _dragStartOffset = new Point(mouseState.X - Position.X, mouseState.Y - Position.Y);
-                }
-
-                Position = new Point(
-                    Math.Clamp(mouseState.X - _dragStartOffset.Value.X, 0, Math.Max(0, renderWidth - dragBounds.Width)),
-                    Math.Clamp(mouseState.Y - _dragStartOffset.Value.Y, MainTitleBandHeight, Math.Max(MainTitleBandHeight, renderHeight - dragBounds.Height)));
-                return true;
-            }
-
-            _dragStartOffset = null;
-            return dragBounds.Contains(mouseState.Position);
+            return GetWindowBounds().Contains(mouseState.Position);
         }
 
         protected override void DrawContents(
@@ -268,7 +234,7 @@ namespace HaCreator.MapSimulator.UI
                 sprite.Draw(_pixelTexture, windowBounds, new Color(74, 134, 186));
             }
 
-            sprite.DrawString(_font, TrimToWidth("CUIAdminShopWishListCategory", 184f), new Vector2(windowBounds.X + CategoryListX, windowBounds.Y + PopupHeaderY), Color.White);
+            sprite.DrawString(_font, TrimToWidth(GetHeaderLabel(), 184f), new Vector2(windowBounds.X + CategoryListX, windowBounds.Y + PopupHeaderY), Color.White);
             for (int row = 0; row < CategoryVisibleRows; row++)
             {
                 int categoryIndex = _scrollOffset + row;
@@ -277,24 +243,27 @@ namespace HaCreator.MapSimulator.UI
                     break;
                 }
 
-                CategoryDisplayRow categoryRow = _categoryRows[categoryIndex];
+                AdminShopDialogUI.WishlistCategoryNode categoryNode = _categoryRows[categoryIndex].Node;
                 Rectangle rowBounds = GetCategoryRowBounds(row);
-                bool selected = string.Equals(categoryRow.Node?.Key, _selectedCategoryKey, StringComparison.OrdinalIgnoreCase);
+                bool selected = string.Equals(categoryNode?.Key, _selectedCategoryKey, StringComparison.OrdinalIgnoreCase);
                 sprite.Draw(_pixelTexture, rowBounds, selected ? new Color(255, 255, 255, 120) : new Color(255, 255, 255, 40));
-                string prefix = categoryRow.HasChildren ? (categoryRow.IsExpanded ? "- " : "+ ") : "  ";
-                string label = prefix + new string(' ', categoryRow.Depth * 2) + categoryRow.Node.Label;
+                string label = categoryNode?.Children?.Count > 0 && !IsShowingChildStage
+                    ? $"> {categoryNode.Label}"
+                    : categoryNode?.Label ?? string.Empty;
                 sprite.DrawString(_font, TrimToWidth(label, 182f), new Vector2(rowBounds.X + 6, rowBounds.Y + 2), selected ? new Color(40, 55, 96) : Color.White);
             }
 
             DrawScrollBar(sprite);
             sprite.DrawString(_font, $"Selected: {TrimToWidth(GetSelectedCategoryLabel(), 172f)}", new Vector2(windowBounds.X + 18, windowBounds.Y + CategoryPopupFooterY - 14), new Color(255, 233, 160));
-            sprite.DrawString(_font, "Left/Right collapse or expand. Enter confirms.", new Vector2(windowBounds.X + 18, windowBounds.Y + CategoryPopupFooterY), new Color(255, 233, 160));
+            sprite.DrawString(_font, TrimToWidth(GetFooterHint(), 212f), new Vector2(windowBounds.X + 18, windowBounds.Y + CategoryPopupFooterY), new Color(255, 233, 160));
         }
 
         protected override IEnumerable<Rectangle> GetAdditionalInteractiveBounds()
         {
-            yield return new Rectangle(Position.X, Position.Y - MainTitleBandHeight, CurrentFrame?.Width ?? 264, (CurrentFrame?.Height ?? 274) + MainTitleBandHeight);
+            yield return GetWindowBounds();
         }
+
+        private bool IsShowingChildStage => TryGetActiveParentNode(out _);
 
         private void HandleKeyboardInput(KeyboardState keyboardState)
         {
@@ -322,41 +291,28 @@ namespace HaCreator.MapSimulator.UI
             }
             else if (WasPressed(keyboardState, Keys.Home))
             {
-                SelectCategoryByRowIndex(0);
+                SelectCategoryByRowIndex(0, false);
             }
             else if (WasPressed(keyboardState, Keys.End))
             {
-                SelectCategoryByRowIndex(_categoryRows.Count - 1);
+                SelectCategoryByRowIndex(_categoryRows.Count - 1, false);
             }
             else if (WasPressed(keyboardState, Keys.Left))
             {
-                CollapseSelectedCategoryOrMoveToParent();
+                ReturnToTopLevel();
             }
-            else if (WasPressed(keyboardState, Keys.Right))
+            else if (WasPressed(keyboardState, Keys.Right) || WasPressed(keyboardState, Keys.Enter))
             {
-                ExpandSelectedCategoryOrMoveToFirstChild();
+                ActivateSelectedCategory(closeOnLeaf: WasPressed(keyboardState, Keys.Enter));
             }
-            else if (WasPressed(keyboardState, Keys.Enter))
-            {
-                HideForOwner($"Wish-list category set to {GetSelectedCategoryLabel()}.");
-            }
-        }
-
-        private void SetSelectedCategory(string categoryKey)
-        {
-            _selectedCategoryKey = string.IsNullOrWhiteSpace(categoryKey) ? "all" : categoryKey;
-            EnsureCategoryPathExpanded(_selectedCategoryKey);
-            RefreshCategoryRows();
-            EnsureSelectedCategoryVisible();
-            _owner?.SyncCategoryAddOnState(_selectedCategoryKey, _expandedCategoryKeys, $"Wish-list category set to {GetSelectedCategoryLabel()}.");
         }
 
         private void SelectVisibleCategory(int rowIndex)
         {
-            SelectCategoryByRowIndex(_scrollOffset + rowIndex);
+            SelectCategoryByRowIndex(_scrollOffset + rowIndex, true);
         }
 
-        private void SelectCategoryByRowIndex(int rowIndex)
+        private void SelectCategoryByRowIndex(int rowIndex, bool activateCategory)
         {
             if (_categoryRows.Count == 0)
             {
@@ -364,7 +320,39 @@ namespace HaCreator.MapSimulator.UI
             }
 
             int normalizedIndex = Math.Clamp(rowIndex, 0, _categoryRows.Count - 1);
-            SetSelectedCategory(_categoryRows[normalizedIndex].Node?.Key);
+            AdminShopDialogUI.WishlistCategoryNode categoryNode = _categoryRows[normalizedIndex].Node;
+            if (categoryNode == null)
+            {
+                return;
+            }
+
+            _selectedCategoryKey = string.IsNullOrWhiteSpace(categoryNode.Key) ? "all" : categoryNode.Key;
+            EnsureSelectedCategoryVisible();
+            _owner?.SyncCategoryAddOnState(_selectedCategoryKey, Array.Empty<string>(), $"Wish-list category staged {GetSelectedCategoryLabel()}.");
+
+            if (activateCategory)
+            {
+                ActivateSelectedCategory(closeOnLeaf: false);
+            }
+        }
+
+        private void ActivateSelectedCategory(bool closeOnLeaf)
+        {
+            AdminShopDialogUI.WishlistCategoryNode selectedNode = FindNode(_categoryTree, _selectedCategoryKey);
+            if (selectedNode?.Children?.Count > 0 && !IsShowingChildStage)
+            {
+                _activeParentCategoryKey = selectedNode.Key;
+                RefreshCategoryRows();
+                _selectedCategoryKey = selectedNode.Children[0].Key;
+                EnsureSelectedCategoryVisible();
+                _owner?.SyncCategoryAddOnState(_selectedCategoryKey, Array.Empty<string>(), $"ToggleAddOn opened {selectedNode.Label} rows.");
+                return;
+            }
+
+            if (closeOnLeaf)
+            {
+                HideForOwner($"Wish-list category set to {GetSelectedCategoryLabel()}.");
+            }
         }
 
         private void MoveCategorySelection(int delta)
@@ -380,7 +368,7 @@ namespace HaCreator.MapSimulator.UI
                 selectedIndex = 0;
             }
 
-            SelectCategoryByRowIndex(selectedIndex + delta);
+            SelectCategoryByRowIndex(selectedIndex + delta, false);
         }
 
         private void ScrollCategories(int delta)
@@ -388,101 +376,42 @@ namespace HaCreator.MapSimulator.UI
             _scrollOffset = Math.Clamp(_scrollOffset + delta, 0, Math.Max(0, _categoryRows.Count - CategoryVisibleRows));
         }
 
+        private void ReturnToTopLevel()
+        {
+            if (!TryGetActiveParentNode(out AdminShopDialogUI.WishlistCategoryNode parentNode))
+            {
+                return;
+            }
+
+            _activeParentCategoryKey = null;
+            RefreshCategoryRows();
+            _selectedCategoryKey = parentNode.Key;
+            EnsureSelectedCategoryVisible();
+            _owner?.SyncCategoryAddOnState(_selectedCategoryKey, Array.Empty<string>(), $"ToggleAddOn returned to {parentNode.Label}.");
+        }
+
         private void RefreshCategoryRows()
         {
             _categoryRows.Clear();
-            foreach (AdminShopDialogUI.WishlistCategoryNode node in _categoryTree)
-            {
-                AppendCategoryRows(node, 0);
-            }
-        }
+            IEnumerable<AdminShopDialogUI.WishlistCategoryNode> nodes = TryGetActiveParentNode(out AdminShopDialogUI.WishlistCategoryNode parentNode)
+                ? parentNode.Children
+                : _categoryTree;
 
-        private void AppendCategoryRows(AdminShopDialogUI.WishlistCategoryNode node, int depth)
-        {
-            if (node == null)
+            foreach (AdminShopDialogUI.WishlistCategoryNode node in nodes ?? Array.Empty<AdminShopDialogUI.WishlistCategoryNode>())
             {
-                return;
-            }
-
-            bool isExpanded = _expandedCategoryKeys.Contains(node.Key);
-            _categoryRows.Add(new CategoryDisplayRow
-            {
-                Node = node,
-                Depth = depth,
-                IsExpanded = isExpanded
-            });
-
-            if (!isExpanded || node.Children == null)
-            {
-                return;
-            }
-
-            foreach (AdminShopDialogUI.WishlistCategoryNode child in node.Children)
-            {
-                AppendCategoryRows(child, depth + 1);
-            }
-        }
-
-        private void EnsureCategoryPathExpanded(string categoryKey)
-        {
-            if (string.IsNullOrWhiteSpace(categoryKey))
-            {
-                categoryKey = "all";
-            }
-
-            if (TryFindCategoryPath(_categoryTree, categoryKey, out List<AdminShopDialogUI.WishlistCategoryNode> path))
-            {
-                foreach (AdminShopDialogUI.WishlistCategoryNode pathNode in path)
+                if (node != null)
                 {
-                    if (pathNode.Children?.Count > 0)
-                    {
-                        _expandedCategoryKeys.Add(pathNode.Key);
-                    }
+                    _categoryRows.Add(new CategoryDisplayRow { Node = node });
                 }
             }
-            else
-            {
-                _expandedCategoryKeys.Add("all");
-            }
+
+            _scrollOffset = Math.Clamp(_scrollOffset, 0, Math.Max(0, _categoryRows.Count - CategoryVisibleRows));
         }
 
-        private void CollapseSelectedCategoryOrMoveToParent()
+        private bool TryGetActiveParentNode(out AdminShopDialogUI.WishlistCategoryNode parentNode)
         {
-            if (!TryFindCategoryPath(_categoryTree, _selectedCategoryKey, out List<AdminShopDialogUI.WishlistCategoryNode> path) || path.Count == 0)
-            {
-                return;
-            }
-
-            AdminShopDialogUI.WishlistCategoryNode selectedNode = path[^1];
-            if (selectedNode.Children?.Count > 0 && _expandedCategoryKeys.Contains(selectedNode.Key))
-            {
-                _expandedCategoryKeys.Remove(selectedNode.Key);
-                RefreshCategoryRows();
-                EnsureSelectedCategoryVisible();
-                _owner?.SyncCategoryAddOnState(_selectedCategoryKey, _expandedCategoryKeys, $"Wish-list category set to {GetSelectedCategoryLabel()}.");
-                return;
-            }
-
-            if (path.Count > 1)
-            {
-                SetSelectedCategory(path[^2].Key);
-            }
-        }
-
-        private void ExpandSelectedCategoryOrMoveToFirstChild()
-        {
-            if (!TryFindCategoryPath(_categoryTree, _selectedCategoryKey, out List<AdminShopDialogUI.WishlistCategoryNode> path) || path.Count == 0)
-            {
-                return;
-            }
-
-            AdminShopDialogUI.WishlistCategoryNode selectedNode = path[^1];
-            if (selectedNode.Children?.Count > 0)
-            {
-                _expandedCategoryKeys.Add(selectedNode.Key);
-                RefreshCategoryRows();
-                SetSelectedCategory(selectedNode.Children[0].Key);
-            }
+            parentNode = FindNode(_categoryTree, _activeParentCategoryKey);
+            return parentNode?.Children?.Count > 0;
         }
 
         private int GetSelectedCategoryRowIndex()
@@ -519,6 +448,39 @@ namespace HaCreator.MapSimulator.UI
             _scrollOffset = Math.Clamp(_scrollOffset, 0, Math.Max(0, _categoryRows.Count - CategoryVisibleRows));
         }
 
+        private string ResolveParentCategoryKey(string categoryKey)
+        {
+            if (string.IsNullOrWhiteSpace(categoryKey) || string.Equals(categoryKey, "all", StringComparison.OrdinalIgnoreCase))
+            {
+                return null;
+            }
+
+            if (!TryFindCategoryPath(_categoryTree, categoryKey, out List<AdminShopDialogUI.WishlistCategoryNode> path) || path.Count < 2)
+            {
+                return null;
+            }
+
+            AdminShopDialogUI.WishlistCategoryNode parentNode = path[^2];
+            return parentNode.Children?.Count > 0 ? parentNode.Key : null;
+        }
+
+        private string GetHeaderLabel()
+        {
+            if (TryGetActiveParentNode(out AdminShopDialogUI.WishlistCategoryNode parentNode))
+            {
+                return TrimToWidth(parentNode.Label, 184f);
+            }
+
+            return "CUIAdminShopWishListCategory";
+        }
+
+        private string GetFooterHint()
+        {
+            return IsShowingChildStage
+                ? "Left returns to category rows. Enter confirms."
+                : "Right opens child rows. Enter confirms.";
+        }
+
         private string GetSelectedCategoryLabel()
         {
             return _owner?.ResolveWishlistCategoryLabel(_selectedCategoryKey) ?? "All";
@@ -528,7 +490,7 @@ namespace HaCreator.MapSimulator.UI
         {
             if (owner != null)
             {
-                Position = new Point(owner.Position.X, owner.Position.Y + 18);
+                Position = new Point(owner.Position.X, owner.Position.Y + OwnerOffsetY);
             }
         }
 
@@ -541,7 +503,7 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private Rectangle GetWindowBounds()
+        private new Rectangle GetWindowBounds()
         {
             return new Rectangle(Position.X, Position.Y, _backgroundTexture?.Width ?? 264, _backgroundTexture?.Height ?? 274);
         }
@@ -621,9 +583,33 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private bool WasPressed(KeyboardState keyboardState, Keys key)
+        private static AdminShopDialogUI.WishlistCategoryNode FindNode(IEnumerable<AdminShopDialogUI.WishlistCategoryNode> nodes, string categoryKey)
         {
-            return keyboardState.IsKeyDown(key) && _previousKeyboardState.IsKeyUp(key);
+            if (nodes == null || string.IsNullOrWhiteSpace(categoryKey))
+            {
+                return null;
+            }
+
+            foreach (AdminShopDialogUI.WishlistCategoryNode node in nodes)
+            {
+                if (node == null)
+                {
+                    continue;
+                }
+
+                if (string.Equals(node.Key, categoryKey, StringComparison.OrdinalIgnoreCase))
+                {
+                    return node;
+                }
+
+                AdminShopDialogUI.WishlistCategoryNode childMatch = FindNode(node.Children, categoryKey);
+                if (childMatch != null)
+                {
+                    return childMatch;
+                }
+            }
+
+            return null;
         }
 
         private static bool TryFindCategoryPath(
@@ -662,6 +648,11 @@ namespace HaCreator.MapSimulator.UI
             bool found = Search(roots);
             path = resolvedPath;
             return found;
+        }
+
+        private bool WasPressed(KeyboardState keyboardState, Keys key)
+        {
+            return keyboardState.IsKeyDown(key) && _previousKeyboardState.IsKeyUp(key);
         }
 
         private static string TrimToWidth(string text, float maxWidth)

@@ -463,6 +463,17 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal sealed class PacketOwnedStoreBankDialogRuntime
     {
+        private sealed class StoreBankItemEntry
+        {
+            internal int ItemId { get; init; }
+            internal string ItemName { get; init; } = string.Empty;
+            internal string Title { get; init; } = string.Empty;
+            internal InventoryType InventoryType { get; init; }
+            internal int Quantity { get; init; }
+            internal byte SlotType { get; init; }
+            internal bool HasCashSerialNumber { get; init; }
+        }
+
         private readonly struct StoreInventoryGroup
         {
             internal StoreInventoryGroup(InventoryType inventoryType, int flagMask)
@@ -476,6 +487,7 @@ namespace HaCreator.MapSimulator.Interaction
         }
 
         private readonly List<string> _recentNotes = new();
+        private readonly List<StoreBankItemEntry> _decodedItems = new();
         private readonly Dictionary<InventoryType, int> _decodedCountsByType = new();
         private static readonly StoreInventoryGroup[] StoreInventoryGroups =
         {
@@ -559,6 +571,7 @@ namespace HaCreator.MapSimulator.Interaction
                     ? $"NPC template: {_npcTemplateId.ToString(CultureInfo.InvariantCulture)} | Slot count: {_slotCount.ToString(CultureInfo.InvariantCulture)} | Money: {_money.ToString(CultureInfo.InvariantCulture)} | Flags: 0x{_dbcharFlagMask.ToString("X", CultureInfo.InvariantCulture)}"
                     : "No decoded SetStoreBankDlg payload is staged.",
                 BuildDecodedInventorySummary(),
+                BuildDecodedItemPreview(),
                 HasPendingGetAllRequest
                     ? (_pendingGetAllFee > 0
                         ? $"Pending get-all modal: {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s), fee {_pendingGetAllFee.ToString(CultureInfo.InvariantCulture)} (StringPool 0xDC4)."
@@ -696,7 +709,10 @@ namespace HaCreator.MapSimulator.Interaction
 
         private bool TryParseOpenPayload(byte[] payload)
         {
+            Dictionary<InventoryType, int> previousCountsByType = new(_decodedCountsByType);
+            List<StoreBankItemEntry> previousItems = new(_decodedItems);
             _decodedCountsByType.Clear();
+            _decodedItems.Clear();
             if (payload.Length < sizeof(int) + sizeof(byte) + sizeof(long))
             {
                 return false;
@@ -708,6 +724,7 @@ namespace HaCreator.MapSimulator.Interaction
             _slotCount = reader.ReadByte();
             long flags = reader.ReadInt64();
             _dbcharFlagMask = (int)flags;
+            HashSet<InventoryType> decodedGroups = new();
             _money = (flags & 2L) != 0 && stream.Length - stream.Position >= sizeof(int)
                 ? reader.ReadInt32()
                 : 0;
@@ -725,7 +742,43 @@ namespace HaCreator.MapSimulator.Interaction
                     return false;
                 }
 
-                _decodedCountsByType[group.InventoryType] = reader.ReadByte();
+                int groupCount = reader.ReadByte();
+                decodedGroups.Add(group.InventoryType);
+                _decodedCountsByType[group.InventoryType] = groupCount;
+                for (int itemIndex = 0; itemIndex < groupCount; itemIndex++)
+                {
+                    if (!TryReadStoreBankItem(reader, group.InventoryType, out StoreBankItemEntry entry))
+                    {
+                        return false;
+                    }
+
+                    _decodedItems.Add(entry);
+                }
+            }
+
+            // CStoreBankDlg::SetItems reuses existing rows for inventory groups that are absent
+            // from the new dbchar flag mask instead of dropping them from the dialog outright.
+            for (int i = 0; i < StoreInventoryGroups.Length; i++)
+            {
+                InventoryType inventoryType = StoreInventoryGroups[i].InventoryType;
+                if (decodedGroups.Contains(inventoryType))
+                {
+                    continue;
+                }
+
+                if (previousCountsByType.TryGetValue(inventoryType, out int previousCount))
+                {
+                    _decodedCountsByType[inventoryType] = previousCount;
+                }
+
+                for (int itemIndex = 0; itemIndex < previousItems.Count; itemIndex++)
+                {
+                    StoreBankItemEntry previousItem = previousItems[itemIndex];
+                    if (previousItem.InventoryType == inventoryType)
+                    {
+                        _decodedItems.Add(previousItem);
+                    }
+                }
             }
 
             return true;
@@ -757,6 +810,58 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return segments.Count > 0 ? string.Join(", ", segments) : "no type counts";
+        }
+
+        private string BuildDecodedItemPreview()
+        {
+            if (_decodedItems.Count == 0)
+            {
+                return "Decoded item rows: none surfaced in the staged payload.";
+            }
+
+            List<string> preview = new();
+            foreach (InventoryType inventoryType in new[]
+                     {
+                         InventoryType.EQUIP,
+                         InventoryType.USE,
+                         InventoryType.SETUP,
+                         InventoryType.ETC,
+                         InventoryType.CASH
+                     })
+            {
+                List<string> names = new();
+                for (int i = 0; i < _decodedItems.Count; i++)
+                {
+                    StoreBankItemEntry item = _decodedItems[i];
+                    if (item.InventoryType != inventoryType)
+                    {
+                        continue;
+                    }
+
+                    string quantitySuffix = item.Quantity > 1 ? $" x{item.Quantity.ToString(CultureInfo.InvariantCulture)}" : string.Empty;
+                    string slotSuffix = item.SlotType == 1
+                        ? " [equip]"
+                        : item.SlotType == 3
+                            ? " [pet]"
+                            : item.HasCashSerialNumber
+                                ? " [recharge]"
+                                : string.Empty;
+                    names.Add($"{item.ItemName}{quantitySuffix}{slotSuffix}");
+                    if (names.Count >= 2)
+                    {
+                        break;
+                    }
+                }
+
+                if (names.Count > 0)
+                {
+                    preview.Add($"{inventoryType}:{string.Join(", ", names)}");
+                }
+            }
+
+            return preview.Count > 0
+                ? $"Decoded item rows: {string.Join(" | ", preview)}"
+                : $"Decoded item rows: {_decodedItems.Count.ToString(CultureInfo.InvariantCulture)} row(s) decoded, but none mapped into supported inventory previews.";
         }
 
         private string BuildShipmentPromptSummary()
@@ -792,6 +897,204 @@ namespace HaCreator.MapSimulator.Interaction
                 _recentNotes.RemoveAt(_recentNotes.Count - 1);
             }
         }
+
+        private static bool TryReadStoreBankItem(BinaryReader reader, InventoryType expectedInventoryType, out StoreBankItemEntry entry)
+        {
+            entry = null;
+            Stream stream = reader.BaseStream;
+            if (stream.Length - stream.Position < sizeof(byte) + sizeof(int) + sizeof(byte) + sizeof(long))
+            {
+                return false;
+            }
+
+            byte slotType = reader.ReadByte();
+            if (slotType is not 1 and not 2 and not 3)
+            {
+                return false;
+            }
+
+            int itemId = reader.ReadInt32();
+            bool hasCashSerialNumber = reader.ReadByte() != 0;
+            if (hasCashSerialNumber)
+            {
+                if (stream.Length - stream.Position < sizeof(long))
+                {
+                    return false;
+                }
+
+                _ = reader.ReadInt64();
+            }
+
+            if (stream.Length - stream.Position < sizeof(long))
+            {
+                return false;
+            }
+
+            _ = reader.ReadInt64();
+
+            int quantity = 1;
+            string title = string.Empty;
+            switch (slotType)
+            {
+                case 1:
+                    if (!TryReadEquipBody(reader, hasCashSerialNumber, out title))
+                    {
+                        return false;
+                    }
+
+                    break;
+
+                case 2:
+                    if (!TryReadBundleBody(reader, itemId, out quantity, out title))
+                    {
+                        return false;
+                    }
+
+                    break;
+
+                case 3:
+                    if (!TryReadPetBody(reader, out title))
+                    {
+                        return false;
+                    }
+
+                    break;
+            }
+
+            InventoryType resolvedInventoryType = InventoryItemMetadataResolver.ResolveInventoryType(itemId);
+            if (resolvedInventoryType == InventoryType.NONE)
+            {
+                resolvedInventoryType = expectedInventoryType;
+            }
+
+            string itemName = InventoryItemMetadataResolver.TryResolveItemName(itemId, out string resolvedName)
+                ? resolvedName
+                : $"Item {itemId.ToString(CultureInfo.InvariantCulture)}";
+            if (!string.IsNullOrWhiteSpace(title) && !string.Equals(title, itemName, StringComparison.OrdinalIgnoreCase))
+            {
+                itemName = $"{itemName} ({title})";
+            }
+
+            entry = new StoreBankItemEntry
+            {
+                ItemId = itemId,
+                ItemName = itemName,
+                Title = title,
+                InventoryType = resolvedInventoryType,
+                Quantity = Math.Max(1, quantity),
+                SlotType = slotType,
+                HasCashSerialNumber = hasCashSerialNumber
+            };
+            return true;
+        }
+
+        private static bool TryReadEquipBody(BinaryReader reader, bool hasCashSerialNumber, out string title)
+        {
+            title = string.Empty;
+            Stream stream = reader.BaseStream;
+            const int equipStatsByteLength = (sizeof(byte) * 2) + (sizeof(short) * 15);
+            if (stream.Length - stream.Position < equipStatsByteLength)
+            {
+                return false;
+            }
+
+            stream.Position += equipStatsByteLength;
+            if (!TryReadMapleString(reader, out title))
+            {
+                return false;
+            }
+
+            const int tailLength = sizeof(short) + (sizeof(byte) * 2) + (sizeof(int) * 3) + (sizeof(byte) * 2) + (sizeof(short) * 5);
+            if (stream.Length - stream.Position < tailLength + sizeof(long) + sizeof(int))
+            {
+                return false;
+            }
+
+            stream.Position += tailLength;
+            if (!hasCashSerialNumber)
+            {
+                if (stream.Length - stream.Position < sizeof(long))
+                {
+                    return false;
+                }
+
+                stream.Position += sizeof(long);
+            }
+
+            stream.Position += sizeof(long) + sizeof(int);
+            return true;
+        }
+
+        private static bool TryReadBundleBody(BinaryReader reader, int itemId, out int quantity, out string title)
+        {
+            quantity = 1;
+            title = string.Empty;
+            Stream stream = reader.BaseStream;
+            if (stream.Length - stream.Position < sizeof(ushort))
+            {
+                return false;
+            }
+
+            quantity = Math.Max(1, (int)reader.ReadUInt16());
+            if (!TryReadMapleString(reader, out title))
+            {
+                return false;
+            }
+
+            if (stream.Length - stream.Position < sizeof(short))
+            {
+                return false;
+            }
+
+            _ = reader.ReadInt16();
+            if (itemId / 10000 is 207 or 233)
+            {
+                if (stream.Length - stream.Position < sizeof(long))
+                {
+                    return false;
+                }
+
+                _ = reader.ReadInt64();
+            }
+
+            return true;
+        }
+
+        private static bool TryReadPetBody(BinaryReader reader, out string title)
+        {
+            title = string.Empty;
+            Stream stream = reader.BaseStream;
+            const int petNameLength = 13;
+            const int petTailLength = sizeof(byte) + sizeof(short) + sizeof(byte) + sizeof(long) + sizeof(short) + sizeof(ushort) + sizeof(int) + sizeof(short);
+            if (stream.Length - stream.Position < petNameLength + petTailLength)
+            {
+                return false;
+            }
+
+            byte[] petNameBytes = reader.ReadBytes(petNameLength);
+            title = Encoding.ASCII.GetString(petNameBytes).TrimEnd('\0', ' ');
+            stream.Position += petTailLength;
+            return true;
+        }
+
+        private static bool TryReadMapleString(BinaryReader reader, out string value)
+        {
+            value = string.Empty;
+            Stream stream = reader.BaseStream;
+            if (stream.Length - stream.Position < sizeof(short))
+            {
+                return false;
+            }
+
+            short length = reader.ReadInt16();
+            if (length < 0 || stream.Length - stream.Position < length)
+            {
+                return false;
+            }
+
+            value = Encoding.ASCII.GetString(reader.ReadBytes(length)).Trim();
+            return true;
+        }
     }
 
     internal sealed class PacketOwnedBattleRecordRuntime
@@ -803,7 +1106,6 @@ namespace HaCreator.MapSimulator.Interaction
         private int _packetCount423;
         private int _lastPacketType = -1;
         private int _pageIndex;
-        private bool _armedBySetupPacket;
 
         internal bool IsOpen { get; private set; }
         internal bool OnCalc { get; private set; }
@@ -844,12 +1146,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 case 420:
                     _packetCount420++;
-                    ResetSession(clearNotes: false);
-                    IsOpen = true;
-                    OnCalc = true;
-                    DotTrackingEnabled = true;
-                    _armedBySetupPacket = true;
-                    StatusMessage = "Battle-record packet 420 armed a fresh DOT-tracking session before the manager's 421/422 handlers run.";
+                    StatusMessage = "CField forwarded packet 420 into CBattleRecordMan, but the v95 client decompile shows no 420 branch inside CBattleRecordMan::OnPacket itself.";
                     break;
 
                 case 421:
@@ -879,21 +1176,13 @@ namespace HaCreator.MapSimulator.Interaction
                     }
                     else
                     {
-                        if (!_armedBySetupPacket)
-                        {
-                            OnCalc = true;
-                            DotTrackingEnabled = true;
-                        }
-
-                        IsOpen = true;
-                        StatusMessage = "CBattleRecordMan accepted the server-on-calc request result and kept battle-record collection active.";
+                        StatusMessage = "CBattleRecordMan accepted the server-on-calc request result. The client decompile only flips m_bServerOnCalc here; it does not open the window or arm m_bOnCalc in packet 422.";
                     }
                     break;
 
                 case 423:
                     _packetCount423++;
-                    ResetSession(clearNotes: false);
-                    StatusMessage = "Battle-record packet 423 tore down the active manager session and cleared the DOT aggregate state.";
+                    StatusMessage = "CField forwarded packet 423 into CBattleRecordMan, but the v95 client decompile shows no 423 branch inside CBattleRecordMan::OnPacket itself.";
                     break;
 
                 default:
@@ -912,7 +1201,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 "Packet-owned owner: CBattleRecordMan::OnPacket (420-423).",
                 $"Page: {ResolvePageName()} | Window: {(IsOpen ? "open" : "closed")}",
-                $"Calc flags: onCalc={OnCalc}, serverOnCalc={ServerOnCalc}, dot={DotTrackingEnabled}, armed420={_armedBySetupPacket}",
+                $"Calc flags: onCalc={OnCalc}, serverOnCalc={ServerOnCalc}, dot={DotTrackingEnabled}, ready421={OnCalc && ServerOnCalc}",
                 $"Packets: 420={_packetCount420.ToString(CultureInfo.InvariantCulture)}, 421={_packetCount421.ToString(CultureInfo.InvariantCulture)}, 422={_packetCount422.ToString(CultureInfo.InvariantCulture)}, 423={_packetCount423.ToString(CultureInfo.InvariantCulture)}"
             };
 
@@ -951,6 +1240,13 @@ namespace HaCreator.MapSimulator.Interaction
 
         private bool TryApplyDotDamageInfo(byte[] payload, out string message)
         {
+            if (!OnCalc || !ServerOnCalc)
+            {
+                StatusMessage = "CBattleRecordMan ignored DOT damage info because m_bOnCalc and m_bServerOnCalc were not both armed yet.";
+                message = StatusMessage;
+                return true;
+            }
+
             if (payload.Length < (sizeof(int) * 2) + sizeof(byte))
             {
                 message = "Battle-record packet 421 requires damage, hit count, and an attr-rate flag.";
@@ -970,13 +1266,6 @@ namespace HaCreator.MapSimulator.Interaction
                 }
 
                 attrRate = BitConverter.ToInt32(payload, 9);
-            }
-
-            if (!OnCalc || !ServerOnCalc)
-            {
-                StatusMessage = "CBattleRecordMan ignored DOT damage info because m_bOnCalc and m_bServerOnCalc were not both armed yet.";
-                message = StatusMessage;
-                return true;
             }
 
             if (hitCount > 0)
@@ -1008,7 +1297,6 @@ namespace HaCreator.MapSimulator.Interaction
             LastDotDamage = 0;
             LastDotHitCount = 0;
             LastAttrRate = null;
-            _armedBySetupPacket = false;
             if (clearNotes)
             {
                 _recentNotes.Clear();

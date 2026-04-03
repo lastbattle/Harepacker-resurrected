@@ -269,6 +269,54 @@ namespace HaCreator.MapSimulator.Managers
             return true;
         }
 
+        public bool BindAccountIdForAccount(string accountName, int accountId)
+        {
+            if (accountId <= 0)
+            {
+                return false;
+            }
+
+            string normalizedAccountName = string.IsNullOrWhiteSpace(accountName)
+                ? "explorergm"
+                : accountName.Trim();
+            Dictionary<int, PersistedAccountState> statesByWorld = new();
+
+            foreach (PersistedAccountState persistedState in _accountsByKey.Values
+                         .Where(state =>
+                             state != null &&
+                             (state.AccountId == accountId ||
+                              string.Equals(
+                                  string.IsNullOrWhiteSpace(state.AccountName) ? "explorergm" : state.AccountName.Trim(),
+                                  normalizedAccountName,
+                                  StringComparison.OrdinalIgnoreCase)))
+                         .OrderBy(state => Math.Max(0, state.WorldId))
+                         .ThenByDescending(state => state.AccountId == accountId))
+            {
+                int worldId = Math.Max(0, persistedState.WorldId);
+                if (!statesByWorld.ContainsKey(worldId))
+                {
+                    statesByWorld[worldId] = ClonePersistedState(persistedState);
+                }
+            }
+
+            if (statesByWorld.Count == 0)
+            {
+                return false;
+            }
+
+            foreach ((int worldId, PersistedAccountState persistedState) in statesByWorld)
+            {
+                PersistedAccountState reboundState = ClonePersistedState(persistedState);
+                reboundState.AccountId = accountId;
+                reboundState.AccountName = normalizedAccountName;
+                _accountsByKey[ResolveAccountKey(normalizedAccountName, worldId, accountId)] = reboundState;
+                _accountsByKey[ResolveAccountKey(normalizedAccountName, worldId)] = ClonePersistedState(reboundState);
+            }
+
+            SaveToDisk();
+            return true;
+        }
+
         private PersistedAccountState TryGetPersistedState(string accountName, int worldId, int? accountId)
         {
             string accountIdKey = ResolveAccountKey(accountName, worldId, accountId);

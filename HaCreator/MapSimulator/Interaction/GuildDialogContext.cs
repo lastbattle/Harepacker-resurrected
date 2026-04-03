@@ -16,7 +16,12 @@ namespace HaCreator.MapSimulator.Interaction
         string MasterName,
         string LevelRange,
         string MemberSummary,
-        string Notice);
+        string Notice,
+        int? MarkBackground = null,
+        int? MarkBackgroundColor = null,
+        int? Mark = null,
+        int? MarkColor = null,
+        bool IsPacketOwned = false);
 
     internal readonly record struct GuildMarkSelection(
         int MarkBackground,

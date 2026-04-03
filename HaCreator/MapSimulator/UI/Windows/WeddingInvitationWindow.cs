@@ -15,7 +15,6 @@ namespace HaCreator.MapSimulator.UI
         private readonly GraphicsDevice _device;
         private readonly Texture2D _pixel;
         private readonly IReadOnlyDictionary<WeddingInvitationStyle, Texture2D> _backgrounds;
-        private readonly ClientTextRasterizer _nameTextRasterizer;
 
         private SpriteFont _font;
         private UIObject _acceptButton;
@@ -25,6 +24,8 @@ namespace HaCreator.MapSimulator.UI
         private Func<string> _dismissHandler;
         private Action<string> _feedbackHandler;
         private WeddingInvitationSnapshot _lastSnapshot = new();
+        private ClientTextRasterizer _basicBlackTextRasterizer;
+        private string _basicBlackFontFamily = string.Empty;
 
         internal WeddingInvitationWindow(
             IReadOnlyDictionary<WeddingInvitationStyle, Texture2D> backgrounds,
@@ -34,7 +35,6 @@ namespace HaCreator.MapSimulator.UI
             _backgrounds = backgrounds ?? throw new ArgumentNullException(nameof(backgrounds));
             _device = device ?? throw new ArgumentNullException(nameof(device));
             _pixel = CreateFilledTexture(device, 1, 1, new Color(245, 233, 220));
-            _nameTextRasterizer = new ClientTextRasterizer(device);
         }
 
         public override string WindowName => MapSimulatorWindowNames.WeddingInvitation;
@@ -106,7 +106,7 @@ namespace HaCreator.MapSimulator.UI
             int TickCount)
         {
             DrawBackground(sprite, _lastSnapshot.Style);
-            if (_font == null)
+            if (!CanDrawNames())
             {
                 return;
             }
@@ -149,13 +149,46 @@ namespace HaCreator.MapSimulator.UI
             }
 
             Vector2 drawPosition = new(Position.X + offsetX, Position.Y + offsetY);
-            if (_nameTextRasterizer != null)
+            if (_lastSnapshot.UseClientBasicBlackFont)
             {
-                _nameTextRasterizer.DrawString(sprite, name, drawPosition, Color.Black);
-                return;
+                ClientTextRasterizer rasterizer = EnsureBasicBlackTextRasterizer();
+                if (rasterizer != null)
+                {
+                    rasterizer.DrawString(sprite, name, drawPosition, Color.Black);
+                    return;
+                }
             }
 
-            ClientTextDrawing.Draw(sprite, name, drawPosition, Color.Black, 1.0f, _font);
+            if (_font != null)
+            {
+                ClientTextDrawing.Draw(sprite, name, drawPosition, Color.Black, 1.0f, _font);
+            }
+        }
+
+        private bool CanDrawNames()
+        {
+            if (_lastSnapshot.UseClientBasicBlackFont)
+            {
+                return true;
+            }
+
+            return _font != null;
+        }
+
+        private ClientTextRasterizer EnsureBasicBlackTextRasterizer()
+        {
+            string requestedFamily = string.IsNullOrWhiteSpace(_lastSnapshot.RequestedNameFontFamily)
+                ? null
+                : _lastSnapshot.RequestedNameFontFamily;
+            if (_basicBlackTextRasterizer != null
+                && string.Equals(_basicBlackFontFamily, requestedFamily, StringComparison.Ordinal))
+            {
+                return _basicBlackTextRasterizer;
+            }
+
+            _basicBlackTextRasterizer = new ClientTextRasterizer(_device, requestedFamily);
+            _basicBlackFontFamily = requestedFamily ?? string.Empty;
+            return _basicBlackTextRasterizer;
         }
 
         private WeddingInvitationSnapshot RefreshSnapshot()

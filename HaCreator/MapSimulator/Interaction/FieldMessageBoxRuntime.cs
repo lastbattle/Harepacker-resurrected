@@ -30,6 +30,9 @@ namespace HaCreator.MapSimulator.Interaction
         private const string ClientMessageBoxPropertyName = "messageBox";
         private const string ChalkboardSamplePropertyName = "sample";
         private const string InfoPropertyName = "info";
+        private const string TextPropertyName = "text";
+        private const string MessagePropertyName = "message";
+        private const string MessageRectPropertyName = "messageRect";
         private const string UiPropertyName = "ui";
         private const string UiTopPropertyName = "t";
         private const string UiCenterPropertyName = "c";
@@ -444,10 +447,10 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             WzSubProperty infoProperty = itemProperty[InfoPropertyName] as WzSubProperty;
-            WzSubProperty resolvedItemProperty = TryLoadResolvedVisualProperty(itemId, out WzSubProperty sharedProperty)
+            WzImageProperty resolvedItemProperty = TryLoadResolvedVisualProperty(itemId, out WzImageProperty sharedProperty)
                 ? sharedProperty
                 : itemProperty;
-            WzSubProperty resolvedInfoProperty = resolvedItemProperty[InfoPropertyName] as WzSubProperty;
+            WzSubProperty resolvedInfoProperty = (resolvedItemProperty as WzSubProperty)?[InfoPropertyName] as WzSubProperty;
             Texture2D iconTexture = LoadCanvasTexture(infoProperty?["iconRaw"] as WzCanvasProperty)
                                     ?? LoadCanvasTexture(infoProperty?["icon"] as WzCanvasProperty);
             iconTexture ??= LoadCanvasTexture(resolvedInfoProperty?["iconRaw"] as WzCanvasProperty)
@@ -456,6 +459,7 @@ namespace HaCreator.MapSimulator.Interaction
             bool usingResolvedSharedProperty = !ReferenceEquals(resolvedItemProperty, itemProperty);
             if (TryLoadClientMessageBoxVisual(
                     resolvedItemProperty,
+                    null,
                     itemId,
                     iconTexture,
                     allowChalkboardSampleFallback: !usingResolvedSharedProperty,
@@ -467,6 +471,7 @@ namespace HaCreator.MapSimulator.Interaction
             if (!ReferenceEquals(resolvedItemProperty, itemProperty) &&
                 TryLoadClientMessageBoxVisual(
                     itemProperty,
+                    null,
                     itemId,
                     iconTexture,
                     allowChalkboardSampleFallback: true,
@@ -481,7 +486,8 @@ namespace HaCreator.MapSimulator.Interaction
         }
 
         private bool TryLoadClientMessageBoxVisual(
-            WzSubProperty itemProperty,
+            WzImageProperty itemProperty,
+            string resolvedPath,
             int itemId,
             Texture2D iconTexture,
             bool allowChalkboardSampleFallback,
@@ -489,9 +495,16 @@ namespace HaCreator.MapSimulator.Interaction
         {
             visual = null;
 
+            if (TryResolveClientMessageBoxProperty(itemProperty, resolvedPath, out WzImageProperty clientMessageBoxProperty) &&
+                TryLoadVisualFromImageProperty(clientMessageBoxProperty, ClientMessageBoxPropertyName, out visual))
+            {
+                visual = visual with { IconTexture = iconTexture ?? visual.IconTexture };
+                return true;
+            }
+
             foreach (string candidatePath in GetPreferredVisualPropertyPaths(itemId))
             {
-                if (!TryLoadVisualAtPath(itemProperty, candidatePath, out visual))
+                if (!TryLoadVisualAtPath(itemProperty as WzSubProperty, candidatePath, out visual))
                 {
                     continue;
                 }
@@ -507,7 +520,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             foreach (string candidatePath in GetFallbackVisualPropertyPaths(itemId))
             {
-                if (!TryLoadVisualAtPath(itemProperty, candidatePath, out visual))
+                if (!TryLoadVisualAtPath(itemProperty as WzSubProperty, candidatePath, out visual))
                 {
                     continue;
                 }
@@ -564,7 +577,7 @@ namespace HaCreator.MapSimulator.Interaction
             return false;
         }
 
-        private bool TryLoadResolvedVisualProperty(int itemId, out WzSubProperty itemProperty)
+        private bool TryLoadResolvedVisualProperty(int itemId, out WzImageProperty itemProperty)
         {
             itemProperty = null;
             if (!InventoryItemMetadataResolver.TryResolveItemInfoPath(itemId, out string path) ||
@@ -576,7 +589,7 @@ namespace HaCreator.MapSimulator.Interaction
             return TryLoadPropertyByWzPath(path.Trim(), out itemProperty);
         }
 
-        private bool TryLoadPropertyByWzPath(string path, out WzSubProperty property)
+        private bool TryLoadPropertyByWzPath(string path, out WzImageProperty property)
         {
             property = null;
             if (!TryParseWzPropertyPath(path, out string category, out string imagePath, out string propertyPath))
@@ -601,8 +614,36 @@ namespace HaCreator.MapSimulator.Interaction
                 }
             }
 
-            property = current as WzSubProperty;
+            property = current as WzImageProperty;
             return property != null;
+        }
+
+        private static bool TryResolveClientMessageBoxProperty(WzImageProperty itemProperty, string resolvedPath, out WzImageProperty messageBoxProperty)
+        {
+            messageBoxProperty = null;
+            if (itemProperty == null)
+            {
+                return false;
+            }
+
+            if (string.Equals(itemProperty.Name, ClientMessageBoxPropertyName, StringComparison.OrdinalIgnoreCase))
+            {
+                messageBoxProperty = itemProperty.GetLinkedWzImageProperty();
+                return messageBoxProperty != null;
+            }
+
+            if (itemProperty is not WzSubProperty subProperty)
+            {
+                return false;
+            }
+
+            if (subProperty[ClientMessageBoxPropertyName] is not WzImageProperty directProperty)
+            {
+                return false;
+            }
+
+            messageBoxProperty = directProperty.GetLinkedWzImageProperty();
+            return messageBoxProperty != null;
         }
 
         private static bool TryParseWzPropertyPath(string path, out string category, out string imagePath, out string propertyPath)
@@ -684,19 +725,7 @@ namespace HaCreator.MapSimulator.Interaction
                 current = childProperty;
             }
 
-            string layoutKey = pathSegments[^1];
-            WzImageProperty linked = current.GetLinkedWzImageProperty();
-            if (linked is WzCanvasProperty canvas && TryLoadVisualFromCanvas(canvas, layoutKey, out visual))
-            {
-                return true;
-            }
-
-            if (linked is WzSubProperty subProperty && TryLoadVisualFromProperty(subProperty, layoutKey, out visual))
-            {
-                return true;
-            }
-
-            return false;
+            return TryLoadVisualFromImageProperty(current, pathSegments[^1], out visual);
         }
 
         private bool TryLoadNamedVisual(WzSubProperty parent, string propertyName, string layoutKey, out MessageBoxVisual visual)
@@ -709,16 +738,29 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (parent[propertyName] is WzImageProperty property)
             {
-                WzImageProperty linked = property.GetLinkedWzImageProperty();
-                if (linked is WzCanvasProperty canvas && TryLoadVisualFromCanvas(canvas, layoutKey, out visual))
-                {
-                    return true;
-                }
+                return TryLoadVisualFromImageProperty(property, layoutKey, out visual);
+            }
 
-                if (linked is WzSubProperty subProperty && TryLoadVisualFromProperty(subProperty, layoutKey, out visual))
-                {
-                    return true;
-                }
+            return false;
+        }
+
+        private bool TryLoadVisualFromImageProperty(WzImageProperty property, string layoutKey, out MessageBoxVisual visual)
+        {
+            visual = null;
+            if (property == null)
+            {
+                return false;
+            }
+
+            WzImageProperty linked = property.GetLinkedWzImageProperty();
+            if (linked is WzCanvasProperty canvas && TryLoadVisualFromCanvas(canvas, layoutKey, property, out visual))
+            {
+                return true;
+            }
+
+            if (linked is WzSubProperty subProperty && TryLoadVisualFromProperty(subProperty, layoutKey, out visual))
+            {
+                return true;
             }
 
             return false;
@@ -738,6 +780,11 @@ namespace HaCreator.MapSimulator.Interaction
                 return true;
             }
 
+            if (TryLoadUiBoardVisual(property, out visual))
+            {
+                return true;
+            }
+
             foreach (WzImageProperty child in property.WzProperties)
             {
                 if (child is not WzImageProperty nestedCandidate)
@@ -746,10 +793,20 @@ namespace HaCreator.MapSimulator.Interaction
                 }
 
                 WzImageProperty linked = nestedCandidate.GetLinkedWzImageProperty();
-                if (linked is WzSubProperty nestedProperty &&
-                    TryCollectFrames(nestedProperty, layoutKey, out List<Texture2D> nestedTextures, out List<Point> nestedOrigins, out List<int> nestedDelays, out MessageBoxTextLayout nestedLayout))
+                if (linked is not WzSubProperty nestedProperty)
+                {
+                    continue;
+                }
+
+                if (TryCollectFrames(nestedProperty, layoutKey, out List<Texture2D> nestedTextures, out List<Point> nestedOrigins, out List<int> nestedDelays, out MessageBoxTextLayout nestedLayout))
                 {
                     visual = new MessageBoxVisual(nestedTextures, nestedOrigins, nestedDelays, null, nestedLayout);
+                    return true;
+                }
+
+                if (string.Equals(nestedCandidate.Name, UiPropertyName, StringComparison.OrdinalIgnoreCase) &&
+                    TryLoadUiBoardVisual(nestedProperty, out visual))
+                {
                     return true;
                 }
             }
@@ -757,7 +814,7 @@ namespace HaCreator.MapSimulator.Interaction
             return false;
         }
 
-        private bool TryLoadVisualFromCanvas(WzCanvasProperty canvas, string propertyName, out MessageBoxVisual visual)
+        private bool TryLoadVisualFromCanvas(WzCanvasProperty canvas, string propertyName, WzImageProperty sourceProperty, out MessageBoxVisual visual)
         {
             visual = null;
             if (canvas == null)
@@ -773,7 +830,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             Point origin = ResolveCanvasOrigin(canvas, texture);
             int delay = ResolveCanvasDelay(canvas, null);
-            MessageBoxTextLayout textLayout = ResolveTextLayout(propertyName, texture);
+            MessageBoxTextLayout textLayout = ResolveTextLayout(propertyName, texture, sourceProperty);
             visual = new MessageBoxVisual(new[] { texture }, new[] { origin }, new[] { delay }, null, textLayout);
             return true;
         }
@@ -841,15 +898,7 @@ namespace HaCreator.MapSimulator.Interaction
                 _graphicsDevice.Viewport = previousViewport;
             }
 
-            MessageBoxTextLayout textLayout = new(
-                PaddingLeft: Math.Clamp((width - centerTexture.Width) / 2 + 6, 6, Math.Max(6, width / 4)),
-                PaddingTop: topTexture.Height + 4,
-                PaddingRight: Math.Clamp((width - centerTexture.Width) / 2 + 6, 6, Math.Max(6, width / 4)),
-                PaddingBottom: bottomTexture.Height + 4,
-                CenterHorizontally: true,
-                CenterVertically: true,
-                MaxLineCount: 3,
-                TextColor: Color.White);
+            MessageBoxTextLayout textLayout = BuildUiBoardTextLayout(width, height, centerTexture, topTexture.Height, bottomTexture.Height);
             visual = new MessageBoxVisual(new[] { (Texture2D)boardTexture }, new[] { new Point(width / 2, height) }, new[] { DefaultFrameDelayMs }, null, textLayout);
             return true;
         }
@@ -919,7 +968,7 @@ namespace HaCreator.MapSimulator.Interaction
                 resolvedLayoutKey = orderedCanvases[0].Canvas.Name;
             }
 
-            textLayout = ResolveTextLayout(resolvedLayoutKey, textures[0]);
+            textLayout = ResolveTextLayout(resolvedLayoutKey, textures[0], property);
 
             return textures.Count > 0;
         }
@@ -955,8 +1004,13 @@ namespace HaCreator.MapSimulator.Interaction
             return itemId is >= 5370000 and <= 5370002;
         }
 
-        private static MessageBoxTextLayout ResolveTextLayout(string propertyName, Texture2D texture)
+        private static MessageBoxTextLayout ResolveTextLayout(string propertyName, Texture2D texture, WzImageProperty sourceProperty)
         {
+            if (TryResolveMetadataBackedTextLayout(sourceProperty, texture, out MessageBoxTextLayout metadataLayout))
+            {
+                return metadataLayout;
+            }
+
             if (TryResolveTextureBackedTextLayout(texture, out MessageBoxTextLayout textureBackedLayout))
             {
                 return textureBackedLayout;
@@ -1001,6 +1055,137 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return MessageBoxTextLayout.Default;
+        }
+
+        private static bool TryResolveMetadataBackedTextLayout(WzImageProperty sourceProperty, Texture2D texture, out MessageBoxTextLayout layout)
+        {
+            layout = default;
+            if (texture == null || sourceProperty is not WzSubProperty subProperty)
+            {
+                return false;
+            }
+
+            foreach (string candidateName in new[] { TextPropertyName, MessagePropertyName, MessageRectPropertyName })
+            {
+                if (TryResolveLayoutRect(subProperty[candidateName], out Rectangle textRect))
+                {
+                    layout = BuildRectBackedTextLayout(texture, textRect);
+                    return true;
+                }
+            }
+
+            if (TryResolveLayoutRect(subProperty, out Rectangle inlineRect))
+            {
+                layout = BuildRectBackedTextLayout(texture, inlineRect);
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryResolveLayoutRect(WzImageProperty property, out Rectangle rect)
+        {
+            rect = Rectangle.Empty;
+            if (property == null)
+            {
+                return false;
+            }
+
+            if (property is WzSubProperty subProperty)
+            {
+                if (TryReadVector(subProperty, "lt", out Point lt) &&
+                    TryReadVector(subProperty, "rb", out Point rb))
+                {
+                    rect = new Rectangle(lt.X, lt.Y, rb.X - lt.X, rb.Y - lt.Y);
+                    return rect.Width > 0 && rect.Height > 0;
+                }
+
+                int? x = TryReadInt(subProperty["x"]);
+                int? y = TryReadInt(subProperty["y"]);
+                int? width = TryReadInt(subProperty["width"]) ?? TryReadInt(subProperty["w"]);
+                int? height = TryReadInt(subProperty["height"]) ?? TryReadInt(subProperty["h"]);
+                if (x.HasValue && y.HasValue && width.HasValue && height.HasValue &&
+                    width.Value > 0 &&
+                    height.Value > 0)
+                {
+                    rect = new Rectangle(x.Value, y.Value, width.Value, height.Value);
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static MessageBoxTextLayout BuildRectBackedTextLayout(Texture2D texture, Rectangle textRect)
+        {
+            int paddingLeft = Math.Clamp(textRect.Left, 0, texture.Width);
+            int paddingTop = Math.Clamp(textRect.Top, 0, texture.Height);
+            int paddingRight = Math.Clamp(texture.Width - textRect.Right, 0, texture.Width);
+            int paddingBottom = Math.Clamp(texture.Height - textRect.Bottom, 0, texture.Height);
+            int lineCount = textRect.Height <= 0
+                ? 1
+                : Math.Max(1, Math.Min(MaxBodyLineCount, textRect.Height / 14));
+            return new MessageBoxTextLayout(
+                paddingLeft,
+                paddingTop,
+                paddingRight,
+                paddingBottom,
+                CenterHorizontally: true,
+                CenterVertically: true,
+                MaxLineCount: lineCount,
+                TextColor: new Color(244, 246, 232));
+        }
+
+        private static bool TryReadVector(WzSubProperty property, string name, out Point point)
+        {
+            point = Point.Zero;
+            if (property?[name] is not WzVectorProperty vectorProperty)
+            {
+                return false;
+            }
+
+            point = new Point(vectorProperty.X?.Value ?? 0, vectorProperty.Y?.Value ?? 0);
+            return true;
+        }
+
+        private static MessageBoxTextLayout BuildUiBoardTextLayout(int boardWidth, int boardHeight, Texture2D centerTexture, int topHeight, int bottomHeight)
+        {
+            int horizontalInset = Math.Clamp((boardWidth - (centerTexture?.Width ?? 0)) / 2 + 6, 6, Math.Max(6, boardWidth / 4));
+            int paddingTop = Math.Max(6, topHeight + 4);
+            int paddingBottom = Math.Max(6, bottomHeight + 4);
+            int maxLineCount = 3;
+            Color textColor = Color.White;
+
+            if (centerTexture != null && TryResolveTextureBackedTextLayout(centerTexture, out MessageBoxTextLayout centerLayout))
+            {
+                horizontalInset = Math.Max(horizontalInset, centerLayout.PaddingLeft);
+                paddingTop = Math.Max(paddingTop, topHeight + centerLayout.PaddingTop);
+                paddingBottom = Math.Max(paddingBottom, bottomHeight + centerLayout.PaddingBottom);
+                maxLineCount = Math.Max(3, centerLayout.MaxLineCount);
+                textColor = centerLayout.TextColor;
+            }
+            else if (centerTexture != null)
+            {
+                int verticalInset = centerTexture.Height >= 36 ? 8 : 6;
+                paddingTop = Math.Max(paddingTop, topHeight + verticalInset);
+                paddingBottom = Math.Max(paddingBottom, bottomHeight + verticalInset);
+            }
+
+            int availableHeight = Math.Max(1, boardHeight - paddingTop - paddingBottom);
+            if (centerTexture != null && centerTexture.Height > 0)
+            {
+                maxLineCount = Math.Max(1, Math.Min(maxLineCount, Math.Max(1, availableHeight / Math.Max(1, centerTexture.Height / 3))));
+            }
+
+            return new MessageBoxTextLayout(
+                PaddingLeft: horizontalInset,
+                PaddingTop: paddingTop,
+                PaddingRight: horizontalInset,
+                PaddingBottom: paddingBottom,
+                CenterHorizontally: true,
+                CenterVertically: true,
+                MaxLineCount: maxLineCount,
+                TextColor: textColor);
         }
 
         private static bool TryResolveTextureBackedTextLayout(Texture2D texture, out MessageBoxTextLayout layout)
@@ -1060,6 +1245,41 @@ namespace HaCreator.MapSimulator.Interaction
         internal static float ComputeLeaveFadeAlphaForTest(int elapsedMs)
         {
             return ComputeLeaveFadeAlpha(elapsedMs);
+        }
+
+        internal static (int PaddingLeft, int PaddingTop, int PaddingRight, int PaddingBottom, int MaxLineCount) ComputeMetadataBackedTextLayoutForTest(
+            int textureWidth,
+            int textureHeight,
+            int left,
+            int top,
+            int right,
+            int bottom)
+        {
+            using Texture2D texture = new Texture2D(GraphicsDeviceServiceForTests.Instance, textureWidth, textureHeight);
+            WzSubProperty textProperty = new(TextPropertyName);
+            textProperty.AddProperty(new WzVectorProperty("lt", left, top));
+            textProperty.AddProperty(new WzVectorProperty("rb", right, bottom));
+
+            WzSubProperty messageBoxProperty = new(ClientMessageBoxPropertyName);
+            messageBoxProperty.AddProperty(textProperty);
+
+            MessageBoxTextLayout layout = ResolveTextLayout(ClientMessageBoxPropertyName, texture, messageBoxProperty);
+            return (layout.PaddingLeft, layout.PaddingTop, layout.PaddingRight, layout.PaddingBottom, layout.MaxLineCount);
+        }
+
+        internal static (int PaddingLeft, int PaddingTop, int PaddingRight, int PaddingBottom, int MaxLineCount) ComputeUiBoardTextLayoutForTest(
+            int boardWidth,
+            int boardHeight,
+            int centerWidth,
+            int centerHeight,
+            int topHeight,
+            int bottomHeight)
+        {
+            using Texture2D centerTexture = centerWidth > 0 && centerHeight > 0
+                ? new Texture2D(GraphicsDeviceServiceForTests.Instance, centerWidth, centerHeight)
+                : null;
+            MessageBoxTextLayout layout = BuildUiBoardTextLayout(boardWidth, boardHeight, centerTexture, topHeight, bottomHeight);
+            return (layout.PaddingLeft, layout.PaddingTop, layout.PaddingRight, layout.PaddingBottom, layout.MaxLineCount);
         }
 
         private bool TryCreateLeaveSnapshot(FieldMessageBoxEntry entry, out Texture2D snapshotTexture, out Point snapshotOrigin)
@@ -1511,6 +1731,33 @@ namespace HaCreator.MapSimulator.Interaction
             return source == FieldMessageBoxRuntime.MessageBoxEntrySource.PacketEnterField
                 ? "packet-owned"
                 : "local";
+        }
+    }
+
+    internal static class GraphicsDeviceServiceForTests
+    {
+        private static GraphicsDevice _instance;
+
+        internal static GraphicsDevice Instance
+        {
+            get
+            {
+                if (_instance != null)
+                {
+                    return _instance;
+                }
+
+                PresentationParameters presentationParameters = new()
+                {
+                    BackBufferWidth = 1,
+                    BackBufferHeight = 1,
+                    DeviceWindowHandle = IntPtr.Zero,
+                    PresentationInterval = PresentInterval.Immediate,
+                    IsFullScreen = false
+                };
+                _instance = new GraphicsDevice(GraphicsAdapter.DefaultAdapter, GraphicsProfile.Reach, presentationParameters);
+                return _instance;
+            }
         }
     }
 }

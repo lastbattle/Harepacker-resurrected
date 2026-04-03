@@ -630,6 +630,41 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
+        bool ISoftKeyboardHost.TryReplaceLastSoftKeyboardCharacter(char character, out string errorMessage)
+        {
+            errorMessage = string.Empty;
+            if (_busy || _focusedField == LoginFieldFocus.None)
+            {
+                errorMessage = "This field is not editable right now.";
+                return false;
+            }
+
+            string value = GetFocusedFieldValue();
+            if (string.IsNullOrEmpty(value))
+            {
+                errorMessage = "Nothing to replace.";
+                return false;
+            }
+
+            if (!SoftKeyboardUI.CanAcceptCharacter(SoftKeyboardKeyboardType.AlphaNumeric, value.Length - 1, 16, character))
+            {
+                errorMessage = "That key is disabled for this field.";
+                return false;
+            }
+
+            switch (_focusedField)
+            {
+                case LoginFieldFocus.Account:
+                    _accountName = value[..^1] + character;
+                    break;
+                case LoginFieldFocus.Password:
+                    _password = value[..^1] + character;
+                    break;
+            }
+
+            return true;
+        }
+
         bool ISoftKeyboardHost.TryBackspaceSoftKeyboard(out string errorMessage)
         {
             errorMessage = string.Empty;

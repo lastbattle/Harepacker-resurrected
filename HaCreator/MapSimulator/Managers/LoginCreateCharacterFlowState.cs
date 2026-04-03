@@ -164,10 +164,15 @@ namespace HaCreator.MapSimulator.Managers
                 ? CurrentJobs[SelectedJobIndex]
                 : CurrentJobs.FirstOrDefault();
 
-        public void Start()
+        public bool UseCharSaleRequest { get; private set; }
+
+        public void Start(bool useCharSaleRequest = false)
         {
+            UseCharSaleRequest = useCharSaleRequest;
             Stage = LoginCreateCharacterStage.RaceSelect;
-            StatusMessage = "Choose the race family for the new character.";
+            StatusMessage = useCharSaleRequest
+                ? "Choose the race family for the new character. This extra-character branch will use the client opcode-23 create request."
+                : "Choose the race family for the new character.";
             CheckedName = string.Empty;
             IsRaceConfirmationOpen = false;
         }
@@ -346,7 +351,12 @@ namespace HaCreator.MapSimulator.Managers
                 request.WeaponId);
         }
 
-        public LoginCreateCharacterRequestProfile BuildRequestProfile(CharacterLoader loader, bool useCharSaleRequest = false)
+        public LoginCreateCharacterRequestProfile BuildRequestProfile(CharacterLoader loader)
+        {
+            return BuildRequestProfile(loader, UseCharSaleRequest);
+        }
+
+        public LoginCreateCharacterRequestProfile BuildRequestProfile(CharacterLoader loader, bool useCharSaleRequest)
         {
             CharacterLoader.LoginStarterAvatarCatalog catalog = loader?.GetLoginStarterAvatarCatalog(SelectedRace, SelectedGender);
             if (catalog == null)

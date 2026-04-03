@@ -54,6 +54,7 @@ namespace HaCreator.MapSimulator.Interaction
     {
         public int QuestId { get; init; }
         public string Title { get; init; } = string.Empty;
+        public string HeaderNoteText { get; init; } = string.Empty;
         public QuestStateType State { get; init; }
         public string SummaryText { get; init; } = string.Empty;
         public string RequirementText { get; init; } = string.Empty;
@@ -110,6 +111,7 @@ namespace HaCreator.MapSimulator.Interaction
         public bool CompletionPhase { get; init; }
         public string ActionLabel { get; init; } = string.Empty;
         public int? NpcId { get; init; }
+        public QuestRewardRaiseOwnerContext OwnerContext { get; init; }
         public IReadOnlyList<QuestRewardChoiceGroup> Groups { get; init; } = Array.Empty<QuestRewardChoiceGroup>();
     }
 
@@ -125,6 +127,20 @@ namespace HaCreator.MapSimulator.Interaction
         public int ItemId { get; init; }
         public string Label { get; init; } = string.Empty;
         public string DetailText { get; init; } = string.Empty;
+    }
+
+    internal enum QuestRewardRaiseWindowMode
+    {
+        Selection,
+        PiecePlacement
+    }
+
+    internal sealed class QuestRewardRaiseOwnerContext
+    {
+        public int OwnerItemId { get; init; }
+        public QuestRewardRaiseWindowMode WindowMode { get; init; }
+        public int MaxDropCount { get; init; } = 1;
+        public int InitialQrData { get; init; }
     }
 
     internal sealed class QuestWorldMapTarget

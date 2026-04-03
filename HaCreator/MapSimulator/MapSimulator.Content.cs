@@ -173,6 +173,16 @@ namespace HaCreator.MapSimulator
                 _soundManager.RegisterSound(SkillCooldownNoticeSoundKey, cooldownNoticeSound);
             }
 
+            // `CWvsContext::OpenBook` and `CloseBook` both request StringPool id `0x924`.
+            // The exact localized descriptor is still unresolved, so prefer the short WZ-backed UI cue here.
+            WzBinaryProperty bookLifecycleSound = soundUiImage?["WorldmapOpen"] as WzBinaryProperty
+                ?? soundUiImage?["WorldmapClose"] as WzBinaryProperty
+                ?? soundUiImage?["BtMouseClick"] as WzBinaryProperty;
+            if (bookLifecycleSound != null)
+            {
+                _soundManager.RegisterSound(BookDialogLifecycleSoundKey, bookLifecycleSound);
+            }
+
 
             // Load meso icons from Item.wz/Special/0900.img
 
@@ -376,6 +386,10 @@ namespace HaCreator.MapSimulator
                 if (!_gameState.IsLoginMap && !_mapBoard.MapInfo.hideMinimap && !_gameState.IsCashShopMap)
                 {
                     miniMapUi = MapSimulatorLoader.CreateMinimapFromProperty(uiWindow1Image, uiWindow2Image, uiBasicImage, _mapBoard, GraphicsDevice, UserScreenScaleFactor, _mapBoard.MapInfo.strMapName, _mapBoard.MapInfo.strStreetName, soundUIImage, _gameState.IsBigBangUpdate);
+                    if (_packetFieldUtilityMinimapHiddenByAdminResult)
+                    {
+                        miniMapUi?.EnsureCollapsed();
+                    }
                 }
             });
 
@@ -482,6 +496,7 @@ namespace HaCreator.MapSimulator
             WireWorldChannelSelectorWindows();
             WireRecommendWorldWindow();
             WireQuestLogWindowData();
+            WireQuestRewardRaiseWindow();
             WireMemoMailboxWindowData();
             WireFamilyChartWindowData();
             WireSocialListWindowData();
@@ -753,6 +768,7 @@ namespace HaCreator.MapSimulator
             RegisterChatCommands();
             RegisterRemoteUserChatCommand();
             RegisterSummonedPacketChatCommand();
+            RegisterMobAttackPacketChatCommand();
             RegisterAnimationDisplayerChatCommand();
 
 
@@ -814,6 +830,7 @@ namespace HaCreator.MapSimulator
                 statusBarChatUI.WhisperTargetRequested = target => _chat.BeginWhisperTo(target, Environment.TickCount);
                 statusBarChatUI.WhisperTargetPickerRequested = () => _chat.OpenWhisperTargetPicker(Environment.TickCount);
                 statusBarChatUI.WhisperTargetPickerCandidateRequested = target => _chat.SelectWhisperTargetPickerCandidate(target, Environment.TickCount);
+                statusBarChatUI.WhisperTargetPickerSelectionDeltaRequested = delta => _chat.OffsetWhisperTargetPickerSelection(delta);
             }
 
 
@@ -845,9 +862,12 @@ namespace HaCreator.MapSimulator
             {
                 bookCollectionWindow.CharacterBuild = _playerManager?.Player?.Build ?? _loginCharacterRoster.SelectedEntry?.Build;
                 bookCollectionWindow.SetFont(_fontDebugValues);
+                // The dedicated book owner should stay on the Monster Book runtime path.
                 bookCollectionWindow.SetCollectionSnapshotProvider(null);
                 bookCollectionWindow.SetMonsterBookSnapshotProvider(BuildActiveMonsterBookSnapshot);
                 bookCollectionWindow.SetMonsterBookRegistrationHandler(ApplyActiveMonsterBookRegistration);
+                bookCollectionWindow.OpenRequested = HandleBookCollectionOpened;
+                bookCollectionWindow.ClosingRequested = HandleBookCollectionClosing;
                 bookCollectionWindow.CloseRequested = HandleBookCollectionClosed;
 
             }
@@ -1197,6 +1217,7 @@ namespace HaCreator.MapSimulator
             // Deactivate chat input (but preserve message history)
             _chat.Deactivate();
             _npcInteractionOverlay?.Close();
+            ClearAnimationDisplayerLocalQuestDeliveryOwner();
             _activeNpcInteractionNpc = null;
             _activeNpcInteractionNpcId = 0;
             _npcQuestFeedback.Clear();
@@ -1462,6 +1483,10 @@ namespace HaCreator.MapSimulator
                 if (!_gameState.IsLoginMap && !_mapBoard.MapInfo.hideMinimap && !_gameState.IsCashShopMap)
                 {
                     miniMapUi = MapSimulatorLoader.CreateMinimapFromProperty(uiWindow1Image, uiWindow2Image, uiBasicImage, _mapBoard, GraphicsDevice, UserScreenScaleFactor, _mapBoard.MapInfo.strMapName, _mapBoard.MapInfo.strStreetName, soundUIImage, _gameState.IsBigBangUpdate);
+                    if (_packetFieldUtilityMinimapHiddenByAdminResult)
+                    {
+                        miniMapUi?.EnsureCollapsed();
+                    }
                 }
                 taskStopwatch.Stop();
                 Debug.WriteLine($"[MapLoad] Minimap task finished in {taskStopwatch.ElapsedMilliseconds} ms");
@@ -1579,6 +1604,7 @@ namespace HaCreator.MapSimulator
             WireWorldChannelSelectorWindows();
             WireRecommendWorldWindow();
             WireQuestLogWindowData();
+            WireQuestRewardRaiseWindow();
             WireMemoMailboxWindowData();
             WireFamilyChartWindowData();
             WireSocialListWindowData();

@@ -60,6 +60,7 @@ namespace HaCreator.MapSimulator.Fields
         // Client data symbol CSnowBall::ms_anDelay at MapleStory.exe RVA 0x8568E4.
         private static readonly int[] ms_anDelay = { 150, 200, 250, 300, 350, 400, 450, 500, 0, -500 };
         private const int TouchRequestIntervalMs = 300;
+        private const int TouchImpactMagnitude = 300;
         private const string TeamStory = "Story";
         private const string TeamMaple = "Maple";
         // CField_SnowBall::OnSnowBallMsg -> StringPool ids 0xD75-0xD77.
@@ -434,6 +435,7 @@ namespace HaCreator.MapSimulator.Fields
         private int _touchPacketSequence;
         private int _lastTouchRequestTime;
         private int _lastTouchRequestTeam = -1;
+        private Action _applyLocalTouchImpact;
         private readonly Random _random = new();
         private int? _lastPacketType;
         #endregion
@@ -695,6 +697,11 @@ namespace HaCreator.MapSimulator.Fields
             _localPlayerPosition = localWorldPosition;
         }
 
+        public void SetLocalTouchImpactCallback(Action callback)
+        {
+            _applyLocalTouchImpact = callback;
+        }
+
         public bool TryPeekTouchPacketRequest(out TouchPacketRequest request)
         {
             if (_pendingTouchPacketRequests.Count > 0)
@@ -762,7 +769,7 @@ namespace HaCreator.MapSimulator.Fields
                         return true;
 
                     case PacketTypeTouch:
-                        OnSnowBallTouch(GetTouchedSnowBallTeam(_localPlayerPosition ?? Vector2.Zero), currentTickCount);
+                        OnSnowBallTouch(currentTickCount);
                         return true;
 
                     default:
@@ -919,32 +926,19 @@ namespace HaCreator.MapSimulator.Fields
         /// OnSnowBallTouch - Packet type 341
         /// Player entered/exited snowball zone
         /// </summary>
-        public void OnSnowBallTouch(int team)
+        public void OnSnowBallTouch()
         {
-            OnSnowBallTouch(team, Environment.TickCount);
+            OnSnowBallTouch(Environment.TickCount);
         }
 
-        private void OnSnowBallTouch(int team, int currentTickCount)
+        private void OnSnowBallTouch(int currentTickCount)
         {
             if (_pendingTouchPacketRequests.Count > 0)
             {
-                Queue<TouchPacketRequest> retainedRequests = new();
-                while (_pendingTouchPacketRequests.Count > 0)
-                {
-                    TouchPacketRequest request = _pendingTouchPacketRequests.Dequeue();
-                    if (request.Team != team)
-                    {
-                        retainedRequests.Enqueue(request);
-                    }
-                }
-
-                while (retainedRequests.Count > 0)
-                {
-                    _pendingTouchPacketRequests.Enqueue(retainedRequests.Dequeue());
-                }
+                _pendingTouchPacketRequests.Dequeue();
             }
-
             _lastTouchImpactTime = currentTickCount;
+            _applyLocalTouchImpact?.Invoke();
         }
         public bool TryConsumeTouchPacketRequest(out TouchPacketRequest request)
         {

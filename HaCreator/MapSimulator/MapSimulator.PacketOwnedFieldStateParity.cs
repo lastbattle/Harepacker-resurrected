@@ -245,6 +245,7 @@ namespace HaCreator.MapSimulator
             {
                 QuestId = state.QuestId,
                 Title = state.Title,
+                HeaderNoteText = state.HeaderNoteText,
                 State = state.State,
                 SummaryText = state.SummaryText,
                 RequirementText = state.RequirementText,

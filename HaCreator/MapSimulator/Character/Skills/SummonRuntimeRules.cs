@@ -101,6 +101,13 @@ namespace HaCreator.MapSimulator.Character.Skills
             return false;
         }
 
+        public static bool IsSitdownHealingSupportSummon(SkillData skill)
+        {
+            return skill != null
+                   && HasMinionAbilityToken(skill.MinionAbility, "heal")
+                   && string.Equals(skill.SummonCondition, "whenUserLieDown", StringComparison.OrdinalIgnoreCase);
+        }
+
         public static bool UsesReactiveDamageTriggerSummon(SkillData skill)
         {
             return skill != null

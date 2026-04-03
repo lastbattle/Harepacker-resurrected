@@ -13,6 +13,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal const string ClientOwnerEntryPoint = "CWvsContext::OnMarriageResult";
         internal const int ClientOpenResultSubtype = 15;
         internal const string ClientPresentationMode = "DoModal";
+        internal const WeddingInvitationStyle DefaultPacketOpenStyle = WeddingInvitationStyle.Neat;
         internal const int DefaultClientDialogType = 1;
         internal const int AlternateClientDialogType = 2;
         internal const string PrimaryInvitationAssetPath = "UIWindow2.img/Wedding/Invitation";
@@ -156,6 +157,7 @@ namespace HaCreator.MapSimulator.Interaction
                 Style = _style,
                 AcceptButtonLabel = DefaultAcceptLabel,
                 HasAcceptFocus = _isOpen,
+                UseClientBasicBlackFont = true,
                 LastOpenUsedMarriageResultPacket = _lastOpenUsedMarriageResultPacket,
                 ClientOwnerTypeName = ClientOwnerTypeName,
                 ClientOwnerEntryPoint = ClientOwnerEntryPoint,
@@ -239,7 +241,7 @@ namespace HaCreator.MapSimulator.Interaction
                 : DefaultClientDialogType;
         }
 
-        private static bool TryDecodeMarriageResultOpenPayload(
+        internal static bool TryDecodeMarriageResultOpenPayload(
             byte[] payload,
             out string groomName,
             out string brideName,
@@ -335,6 +337,7 @@ namespace HaCreator.MapSimulator.Interaction
         public bool CanAccept { get; init; }
         public bool LastAccepted { get; init; }
         public bool HasAcceptFocus { get; init; }
+        public bool UseClientBasicBlackFont { get; init; }
         public bool LastOpenUsedMarriageResultPacket { get; init; }
         public int ClientDialogType { get; init; } = WeddingInvitationRuntime.DefaultClientDialogType;
         public int ClientOpenResultSubtype { get; init; }

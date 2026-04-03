@@ -9,7 +9,11 @@ namespace HaCreator.MapSimulator.UI
 {
     internal sealed class AntiMacroEditControl
     {
+        internal const int ClientControlId = 1000;
+        internal const int ClientFontStringPoolId = 0x1A25;
+
         private static readonly Color InputCaretColor = new(32, 32, 32);
+        private static readonly Color InputTextColor = Color.Black;
         private static readonly Color InputCompositionColor = new(74, 74, 74);
         private static readonly Color InputCompositionUnderlineColor = new(74, 74, 74);
         private static readonly Color InputBackgroundColor = Color.White;
@@ -83,6 +87,8 @@ namespace HaCreator.MapSimulator.UI
             _caretBlinkTick = Environment.TickCount;
         }
 
+        public int ControlId => ClientControlId;
+        public int FontStringPoolId => ClientFontStringPoolId;
         public bool HasFocus { get; private set; }
         public string Text => _inputText;
 
@@ -109,8 +115,7 @@ namespace HaCreator.MapSimulator.UI
         {
             _inputText = string.Empty;
             _caretIndex = 0;
-            _caretBlinkTick = Environment.TickCount;
-            HasFocus = true;
+            ActivateByOwner();
             ClearCompositionText();
         }
 
@@ -126,10 +131,17 @@ namespace HaCreator.MapSimulator.UI
         public void SetFocus(bool focused)
         {
             HasFocus = focused;
+            _caretBlinkTick = Environment.TickCount;
             if (!focused)
             {
                 ClearCompositionText();
             }
+        }
+
+        public void ActivateByOwner()
+        {
+            HasFocus = true;
+            _caretBlinkTick = Environment.TickCount;
         }
 
         public void FocusAtMouseX(int mouseX, Rectangle ownerBounds)
@@ -220,6 +232,11 @@ namespace HaCreator.MapSimulator.UI
 
         public void HandleKeyboardInput(KeyboardState keyboardState, KeyboardState previousKeyboardState)
         {
+            if (!HasFocus)
+            {
+                return;
+            }
+
             bool ctrlHeld = keyboardState.IsKeyDown(Keys.LeftControl) || keyboardState.IsKeyDown(Keys.RightControl);
 
             if (ctrlHeld && Pressed(keyboardState, previousKeyboardState, Keys.V))
@@ -289,7 +306,7 @@ namespace HaCreator.MapSimulator.UI
             return !string.IsNullOrWhiteSpace(_inputText) && remainingSeconds > 0;
         }
 
-        public void Draw(SpriteBatch sprite, Rectangle ownerBounds)
+        public void Draw(SpriteBatch sprite, Rectangle ownerBounds, bool drawChrome)
         {
             if (_font == null)
             {
@@ -297,7 +314,10 @@ namespace HaCreator.MapSimulator.UI
             }
 
             Rectangle inputBounds = GetBounds(ownerBounds);
-            DrawBox(sprite, inputBounds, InputBackgroundColor, InputBorderColor);
+            if (drawChrome)
+            {
+                DrawBox(sprite, inputBounds, InputBackgroundColor, InputBorderColor);
+            }
 
             Vector2 textPosition = new(inputBounds.X + 2, inputBounds.Y - 2);
             InputVisualState visualState = BuildInputVisualState(Math.Max(1, inputBounds.Width - 4));
@@ -305,7 +325,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 if (visualState.VisibleCommittedPrefix.Length > 0)
                 {
-                    sprite.DrawString(_font, visualState.VisibleCommittedPrefix, textPosition, Color.Black);
+                    sprite.DrawString(_font, visualState.VisibleCommittedPrefix, textPosition, InputTextColor);
                 }
 
                 float committedPrefixWidth = MeasureTextWidth(visualState.VisibleCommittedPrefix);
@@ -319,7 +339,7 @@ namespace HaCreator.MapSimulator.UI
                 if (visualState.VisibleCommittedSuffix.Length > 0)
                 {
                     Vector2 suffixPosition = compositionPosition + new Vector2(MeasureTextWidth(visualState.VisibleComposition), 0f);
-                    sprite.DrawString(_font, visualState.VisibleCommittedSuffix, suffixPosition, Color.Black);
+                    sprite.DrawString(_font, visualState.VisibleCommittedSuffix, suffixPosition, InputTextColor);
                 }
             }
 

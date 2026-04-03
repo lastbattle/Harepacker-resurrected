@@ -24,6 +24,13 @@ namespace HaCreator.MapSimulator.UI
         private const int CATEGORY_ROW_HEIGHT = 18;
         private const int CATEGORY_COLUMN_GAP = 4;
         private const int CATEGORY_PANEL_PADDING = 6;
+        private const int ClientCategoryRowTop = 56;
+        private const int ClientCategoryRowStride = 22;
+        private const int ClientCategoryRowWidth = 192;
+        private const int ClientCategoryButtonLeft = 15;
+        private const int ClientCategoryButtonTopInset = 5;
+        private const int ClientCategoryTextLeft = 31;
+        private const int ClientCategoryCountRight = 188;
         private const int TAB_AVAILABLE = 0;
         private const int TAB_IN_PROGRESS = 1;
         private const int TAB_COMPLETED = 2;
@@ -63,6 +70,8 @@ namespace HaCreator.MapSimulator.UI
         private Texture2D _categoryLegendTexture;
         private Texture2D _categoryLegendInnerTexture;
         private Texture2D[] _categoryLegendSheetTextures = Array.Empty<Texture2D>();
+        private Texture2D[] _categoryExpandButtonTextures = Array.Empty<Texture2D>();
+        private Texture2D[] _categoryCollapseButtonTextures = Array.Empty<Texture2D>();
         private Texture2D _pixel;
         private readonly GraphicsDevice _graphicsDevice;
         private readonly Dictionary<int, Texture2D> _itemIconCache = new();
@@ -272,6 +281,12 @@ namespace HaCreator.MapSimulator.UI
             SetCategoryLegendTextures(categoryLegendTexture, null);
         }
 
+        public void SetCategoryButtonTextures(Texture2D[] expandButtonTextures, Texture2D[] collapseButtonTextures)
+        {
+            _categoryExpandButtonTextures = expandButtonTextures?.Where(static texture => texture != null).ToArray() ?? Array.Empty<Texture2D>();
+            _categoryCollapseButtonTextures = collapseButtonTextures?.Where(static texture => texture != null).ToArray() ?? Array.Empty<Texture2D>();
+        }
+
         public void SetQuestIcons(Texture2D available, Texture2D inProgress, Texture2D completed)
         {
             _iconAvailable = available;
@@ -405,6 +420,7 @@ namespace HaCreator.MapSimulator.UI
             int TickCount)
         {
             base.DrawOverlay(sprite, skeletonMeshRenderer, gameTime, mapShiftX, mapShiftY, centerX, centerY, drawReflectionInfo, renderParameters, TickCount);
+            DrawCategoryButtons(sprite);
             DrawCategoryButtonLabels(sprite);
             DrawHoveredItemTooltip(sprite);
         }
@@ -865,7 +881,10 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            sprite.Draw(_pixel, panelRect, new Color(7, 16, 29, 188));
+            if (!HasClientCategoryButtonArt())
+            {
+                sprite.Draw(_pixel, panelRect, new Color(7, 16, 29, 188));
+            }
 
             IReadOnlyList<QuestAreaFilterEntry> areaFilters = GetVisibleAreaFilters();
             if (areaFilters.Count == 0)
@@ -893,6 +912,22 @@ namespace HaCreator.MapSimulator.UI
                 _categoryLegendVisible = false;
                 return true;
             }
+
+            for (int i = 0; i < _categoryButtonSlots.Count; i++)
+            {
+                CategoryButtonSlot slot = _categoryButtonSlots[i];
+                if (!slot.IsVisible || slot.Entry == null)
+                {
+                    continue;
+                }
+
+                if (slot.ButtonBounds.Contains(mouseX, mouseY) || slot.Bounds.Contains(mouseX, mouseY))
+                {
+                    ToggleCategoryButton(i);
+                    return true;
+                }
+            }
+
             return true;
         }
 
@@ -926,7 +961,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void EnsureCategoryButtonSlots()
         {
-            if (_categoryButtonSlots.Count > 0 || _graphicsDevice == null)
+            if (_categoryButtonSlots.Count > 0)
             {
                 return;
             }
@@ -938,17 +973,7 @@ namespace HaCreator.MapSimulator.UI
 
             for (int i = 0; i < slotCount; i++)
             {
-                Rectangle cellRect = GetCategoryCellRectangle(panelRect, i / columnCount, i % columnCount, columnCount);
-                UIObject button = UiButtonFactory.CreateQuestCategoryButton(
-                    _graphicsDevice,
-                    Math.Max(56, cellRect.Width),
-                    Math.Max(14, cellRect.Height));
-                button.SetVisible(false);
-
-                int slotIndex = i;
-                button.ButtonClickReleased += _ => ToggleCategoryButton(slotIndex);
-                AddButton(button);
-                _categoryButtonSlots.Add(new CategoryButtonSlot(button));
+                _categoryButtonSlots.Add(new CategoryButtonSlot());
             }
         }
 
@@ -987,7 +1012,6 @@ namespace HaCreator.MapSimulator.UI
             int totalRows = (int)Math.Ceiling(areaFilters.Count / (float)columnCount);
             int maxOffset = Math.Max(0, totalRows - visibleRows);
             _categoryScrollOffset = Math.Clamp(_categoryScrollOffset, 0, maxOffset);
-            HashSet<int> hiddenAreaCodes = GetHiddenAreaCodes((QuestLogTabType)_currentTab);
 
             for (int i = 0; i < pageSize && i < _categoryButtonSlots.Count; i++)
             {
@@ -1000,11 +1024,7 @@ namespace HaCreator.MapSimulator.UI
                 QuestAreaFilterEntry entry = areaFilters[entryIndex];
                 Rectangle rowRect = GetCategoryCellRectangle(panelRect, i / columnCount, i % columnCount, columnCount);
                 CategoryButtonSlot slot = _categoryButtonSlots[i];
-                slot.Assign(entry, rowRect);
-                slot.Button.X = rowRect.X - Position.X;
-                slot.Button.Y = rowRect.Y - Position.Y;
-                slot.Button.SetVisible(true);
-                slot.Button.SetButtonState(hiddenAreaCodes.Contains(entry.AreaCode) ? UIObjectState.Normal : UIObjectState.Pressed);
+                slot.Assign(entry, rowRect, GetCategoryButtonRectangle(rowRect));
             }
         }
 
@@ -1064,7 +1084,13 @@ namespace HaCreator.MapSimulator.UI
 
             int columnCount = GetCategoryColumnCount(width);
             int rowCount = Math.Max(1, Math.Min(4, (int)Math.Ceiling(GetVisibleAreaFilters().Count / (float)columnCount)));
-            int height = (rowCount * CATEGORY_ROW_HEIGHT) + (CATEGORY_PANEL_PADDING * 2);
+            int height = HasClientCategoryButtonArt()
+                ? rowCount * ClientCategoryRowStride
+                : (rowCount * CATEGORY_ROW_HEIGHT) + (CATEGORY_PANEL_PADDING * 2);
+            if (HasClientCategoryButtonArt())
+            {
+                y = Position.Y + ClientCategoryRowTop;
+            }
             if (_categoryPanelDockToBottom)
             {
                 y = GetCategoryPanelBottom(tabRect) - height;
@@ -1077,7 +1103,9 @@ namespace HaCreator.MapSimulator.UI
         {
             int windowWidth = CurrentFrame?.Width ?? 240;
             int width = Math.Max(80, windowWidth - 12);
-            int height = (4 * CATEGORY_ROW_HEIGHT) + (CATEGORY_PANEL_PADDING * 2);
+            int height = HasClientCategoryButtonArt()
+                ? 4 * ClientCategoryRowStride
+                : (4 * CATEGORY_ROW_HEIGHT) + (CATEGORY_PANEL_PADDING * 2);
             return new Rectangle(0, 0, width, height);
         }
 
@@ -1137,9 +1165,15 @@ namespace HaCreator.MapSimulator.UI
             }
 
             HashSet<int> hiddenAreaCodes = GetHiddenAreaCodes((QuestLogTabType)_currentTab);
+            IReadOnlyList<CategoryButtonSlot> visibleSlots = _categoryButtonSlots
+                .Where(slot => slot.IsVisible && slot.Entry != null)
+                .OrderBy(slot => slot.Bounds.Y)
+                .ThenBy(slot => slot.Bounds.X)
+                .ToArray();
+
             foreach (CategoryButtonSlot slot in _categoryButtonSlots)
             {
-                if (!slot.Button.ButtonVisible || slot.Entry == null)
+                if (!slot.IsVisible || slot.Entry == null)
                 {
                     continue;
                 }
@@ -1151,20 +1185,75 @@ namespace HaCreator.MapSimulator.UI
                 Vector2 countMeasure = ClientTextDrawing.Measure((GraphicsDevice)null, countText, countScale, _font);
                 Color labelColor = enabled ? new Color(70, 45, 24) : new Color(106, 98, 88);
                 Color countColor = enabled ? new Color(108, 76, 42) : new Color(128, 120, 108);
+                int textX = HasClientCategoryButtonArt() ? bounds.X + ClientCategoryTextLeft : bounds.X + 6;
+                int textY = HasClientCategoryButtonArt()
+                    ? bounds.Y + GetCategoryRowTextTopOffset(visibleSlots, slot)
+                    : bounds.Y + 3;
+                int countRight = HasClientCategoryButtonArt() ? bounds.X + ClientCategoryCountRight : bounds.Right - 5;
 
                 DrawText(
                     sprite,
                     Truncate(slot.Entry.AreaName, 14),
-                    new Vector2(bounds.X + 6, bounds.Y + 3),
+                    new Vector2(textX, textY),
                     labelColor,
                     0.38f,
-                    bounds.Width - 14 - (int)countMeasure.X);
+                    Math.Max(16, countRight - textX - 6 - (int)countMeasure.X));
                 DrawText(
                     sprite,
                     countText,
-                    new Vector2(bounds.Right - 5 - countMeasure.X, bounds.Y + 3),
+                    new Vector2(countRight - countMeasure.X, textY),
                     countColor,
                     countScale);
+            }
+        }
+
+        private void DrawCategoryButtons(SpriteBatch sprite)
+        {
+            if (_categoryLegendVisible)
+            {
+                return;
+            }
+
+            HashSet<int> hiddenAreaCodes = GetHiddenAreaCodes((QuestLogTabType)_currentTab);
+            IReadOnlyList<CategoryButtonSlot> visibleSlots = _categoryButtonSlots
+                .Where(slot => slot.IsVisible && slot.Entry != null)
+                .OrderBy(slot => slot.Bounds.Y)
+                .ThenBy(slot => slot.Bounds.X)
+                .ToArray();
+
+            foreach (CategoryButtonSlot slot in _categoryButtonSlots)
+            {
+                if (!slot.IsVisible || slot.Entry == null)
+                {
+                    continue;
+                }
+
+                bool hidden = hiddenAreaCodes.Contains(slot.Entry.AreaCode);
+                bool hovered = slot.ButtonBounds.Contains(_lastMousePosition);
+                if (HasClientCategoryButtonArt())
+                {
+                    Texture2D rowTexture = ResolveCategoryRowTexture(visibleSlots, slot);
+                    if (rowTexture != null)
+                    {
+                        int rowY = slot.Bounds.Y + Math.Max(0, (slot.Bounds.Height - rowTexture.Height) / 2);
+                        sprite.Draw(rowTexture, new Vector2(slot.Bounds.X, rowY), Color.White);
+                    }
+                }
+
+                Texture2D buttonTexture = ResolveCategoryButtonTexture(hidden, hovered);
+                if (buttonTexture != null)
+                {
+                    sprite.Draw(buttonTexture, new Vector2(slot.ButtonBounds.X, slot.ButtonBounds.Y), Color.White);
+                    continue;
+                }
+
+                Color fill = hidden ? new Color(244, 228, 194) : new Color(228, 205, 166);
+                Color border = hidden ? new Color(160, 118, 72) : new Color(149, 105, 59);
+                sprite.Draw(_pixel, slot.ButtonBounds, fill);
+                sprite.Draw(_pixel, new Rectangle(slot.ButtonBounds.X, slot.ButtonBounds.Y, slot.ButtonBounds.Width, 1), border);
+                sprite.Draw(_pixel, new Rectangle(slot.ButtonBounds.X, slot.ButtonBounds.Bottom - 1, slot.ButtonBounds.Width, 1), border);
+                sprite.Draw(_pixel, new Rectangle(slot.ButtonBounds.X, slot.ButtonBounds.Y, 1, slot.ButtonBounds.Height), border);
+                sprite.Draw(_pixel, new Rectangle(slot.ButtonBounds.Right - 1, slot.ButtonBounds.Y, 1, slot.ButtonBounds.Height), border);
             }
         }
 
@@ -1223,17 +1312,47 @@ namespace HaCreator.MapSimulator.UI
 
         private int GetCategoryColumnCount(int panelWidth)
         {
+            if (HasClientCategoryButtonArt())
+            {
+                return 1;
+            }
+
             int contentWidth = Math.Max(1, panelWidth - (CATEGORY_PANEL_PADDING * 2));
             return contentWidth >= 180 ? 2 : 1;
         }
 
         private Rectangle GetCategoryCellRectangle(Rectangle panelRect, int rowIndex, int columnIndex, int columnCount)
         {
+            if (HasClientCategoryButtonArt())
+            {
+                int rowWidth = Math.Min(panelRect.Width, ClientCategoryRowWidth);
+                int rowX = panelRect.X + Math.Max(0, (panelRect.Width - rowWidth) / 2);
+                return new Rectangle(rowX, panelRect.Y + (rowIndex * ClientCategoryRowStride), rowWidth, ClientCategoryRowStride);
+            }
+
             int availableWidth = panelRect.Width - (CATEGORY_PANEL_PADDING * 2) - ((columnCount - 1) * CATEGORY_COLUMN_GAP);
             int cellWidth = Math.Max(56, availableWidth / columnCount);
             int x = panelRect.X + CATEGORY_PANEL_PADDING + (columnIndex * (cellWidth + CATEGORY_COLUMN_GAP));
             int y = panelRect.Y + CATEGORY_PANEL_PADDING + (rowIndex * CATEGORY_ROW_HEIGHT);
             return new Rectangle(x, y, cellWidth, CATEGORY_ROW_HEIGHT - 2);
+        }
+
+        private Rectangle GetCategoryButtonRectangle(Rectangle rowRect)
+        {
+            if (HasClientCategoryButtonArt())
+            {
+                Texture2D buttonTexture = ResolveCategoryButtonTexture(hidden: false, hovered: false)
+                    ?? ResolveCategoryButtonTexture(hidden: true, hovered: false);
+                int width = buttonTexture?.Width ?? 13;
+                int height = buttonTexture?.Height ?? 12;
+                return new Rectangle(
+                    rowRect.X + ClientCategoryButtonLeft,
+                    rowRect.Y + ClientCategoryButtonTopInset,
+                    width,
+                    height);
+            }
+
+            return rowRect;
         }
 
         private Rectangle ResolveCategoryLegendInnerRectangle(Rectangle panelRect)
@@ -1301,7 +1420,85 @@ namespace HaCreator.MapSimulator.UI
 
         private int GetVisibleCategoryRowCount(Rectangle panelRect)
         {
+            if (HasClientCategoryButtonArt())
+            {
+                return Math.Max(1, panelRect.Height / ClientCategoryRowStride);
+            }
+
             return Math.Max(1, (panelRect.Height - (CATEGORY_PANEL_PADDING * 2)) / CATEGORY_ROW_HEIGHT);
+        }
+
+        private bool HasClientCategoryButtonArt()
+        {
+            return _categoryExpandButtonTextures.Length > 0 || _categoryCollapseButtonTextures.Length > 0;
+        }
+
+        private Texture2D ResolveCategoryButtonTexture(bool hidden, bool hovered)
+        {
+            Texture2D[] textures = hidden ? _categoryExpandButtonTextures : _categoryCollapseButtonTextures;
+            if (textures.Length == 0)
+            {
+                return null;
+            }
+
+            int index = hovered && textures.Length > 3 ? 3 : 0;
+            return textures[Math.Clamp(index, 0, textures.Length - 1)];
+        }
+
+        private Texture2D ResolveCategoryRowTexture(IReadOnlyList<CategoryButtonSlot> visibleSlots, CategoryButtonSlot slot)
+        {
+            if (_categoryLegendSheetTextures.Length == 0 || visibleSlots == null || visibleSlots.Count == 0)
+            {
+                return null;
+            }
+
+            int slotIndex = FindCategorySlotIndex(visibleSlots, slot);
+            if (slotIndex < 0)
+            {
+                return _categoryLegendSheetTextures[Math.Clamp(Math.Min(1, _categoryLegendSheetTextures.Length - 1), 0, _categoryLegendSheetTextures.Length - 1)];
+            }
+
+            int textureIndex = visibleSlots.Count switch
+            {
+                <= 1 => Math.Min(1, _categoryLegendSheetTextures.Length - 1),
+                2 => slotIndex == 0 ? 0 : Math.Min(2, _categoryLegendSheetTextures.Length - 1),
+                _ => slotIndex == 0
+                    ? 0
+                    : slotIndex == visibleSlots.Count - 1
+                        ? Math.Min(2, _categoryLegendSheetTextures.Length - 1)
+                        : Math.Min(1, _categoryLegendSheetTextures.Length - 1)
+            };
+
+            return _categoryLegendSheetTextures[Math.Clamp(textureIndex, 0, _categoryLegendSheetTextures.Length - 1)];
+        }
+
+        private static int GetCategoryRowTextTopOffset(IReadOnlyList<CategoryButtonSlot> visibleSlots, CategoryButtonSlot slot)
+        {
+            if (visibleSlots == null || visibleSlots.Count == 0)
+            {
+                return 4;
+            }
+
+            int slotIndex = FindCategorySlotIndex(visibleSlots, slot);
+            return slotIndex == visibleSlots.Count - 1 ? 3 : 4;
+        }
+
+        private static int FindCategorySlotIndex(IReadOnlyList<CategoryButtonSlot> visibleSlots, CategoryButtonSlot slot)
+        {
+            if (visibleSlots == null)
+            {
+                return -1;
+            }
+
+            for (int i = 0; i < visibleSlots.Count; i++)
+            {
+                if (ReferenceEquals(visibleSlots[i], slot))
+                {
+                    return i;
+                }
+            }
+
+            return -1;
         }
 
         private IReadOnlyList<QuestAreaFilterEntry> GetVisibleAreaFilters()
@@ -1929,27 +2126,23 @@ namespace HaCreator.MapSimulator.UI
 
     internal sealed class CategoryButtonSlot
     {
-        public CategoryButtonSlot(UIObject button)
-        {
-            Button = button;
-            Bounds = Rectangle.Empty;
-        }
-
-        public UIObject Button { get; }
+        public bool IsVisible => Entry != null;
         public QuestAreaFilterEntry Entry { get; private set; }
         public Rectangle Bounds { get; private set; }
+        public Rectangle ButtonBounds { get; private set; }
 
-        public void Assign(QuestAreaFilterEntry entry, Rectangle bounds)
+        public void Assign(QuestAreaFilterEntry entry, Rectangle bounds, Rectangle buttonBounds)
         {
             Entry = entry;
             Bounds = bounds;
+            ButtonBounds = buttonBounds;
         }
 
         public void Clear()
         {
             Entry = null;
             Bounds = Rectangle.Empty;
-            Button?.SetVisible(false);
+            ButtonBounds = Rectangle.Empty;
         }
     }
 }

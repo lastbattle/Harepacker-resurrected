@@ -83,6 +83,24 @@ namespace HaCreator.MapSimulator.UI
             (new[] { "expBuff", "expR" }, "EXP"),
             (new[] { "dropRate", "dropR" }, "Item Drop Rate")
         };
+        private static readonly (string Key, string Label)[] InfoFlatEffectKeys =
+        {
+            ("incSTR", "STR"),
+            ("incDEX", "DEX"),
+            ("incINT", "INT"),
+            ("incLUK", "LUK"),
+            ("incMHP", "Max HP"),
+            ("incMMP", "Max MP"),
+            ("incPAD", "Weapon ATT"),
+            ("incMAD", "Magic ATT"),
+            ("incPDD", "Weapon DEF"),
+            ("incMDD", "Magic DEF"),
+            ("incACC", "Accuracy"),
+            ("incEVA", "Avoidability"),
+            ("incSpeed", "Speed"),
+            ("incJump", "Jump"),
+            ("incCraft", "Craft")
+        };
 
         public static InventoryType ResolveInventoryType(int itemId)
         {
@@ -194,6 +212,21 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
+        public static bool TryResolveNpcReference(int itemId, out int npcId)
+        {
+            npcId = 0;
+
+            WzSubProperty itemProperty = LoadItemProperty(itemId);
+            if (TryResolveNpcValue(itemProperty?["spec"] as WzSubProperty, out int resolvedNpcId)
+                || TryResolveNpcValue(itemProperty?["info"] as WzSubProperty, out resolvedNpcId))
+            {
+                npcId = resolvedNpcId;
+                return true;
+            }
+
+            return false;
+        }
+
         public static bool TryResolveItemInfoPath(int itemId, out string path)
         {
             path = null;
@@ -301,7 +334,9 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
 
+            List<string> effectLines = BuildEffectLines(itemId, itemProperty, infoProperty, specProperty);
             List<string> metadataLines = BuildMetadataLines(
+                itemId,
                 infoProperty,
                 isNotForSale,
                 isQuestItem,
@@ -325,7 +360,7 @@ namespace HaCreator.MapSimulator.UI
                 Price = TryGetPositiveInt(infoProperty?["price"]),
                 UnitPrice = TryGetPositiveDouble(infoProperty?["unitPrice"]),
                 ExpirationDateUtc = expirationDateUtc,
-                EffectLines = BuildEffectLines(specProperty),
+                EffectLines = effectLines,
                 MetadataLines = metadataLines
             };
         }
@@ -423,6 +458,19 @@ namespace HaCreator.MapSimulator.UI
             itemImage.ParseImage();
             string itemNodeName = category == "Character" ? itemId.ToString("D8") : itemId.ToString("D7");
             return itemImage[itemNodeName] as WzSubProperty;
+        }
+
+        private static bool TryResolveNpcValue(WzSubProperty property, out int npcId)
+        {
+            npcId = 0;
+            int resolvedNpcId = GetIntValue(property?["npc"]);
+            if (resolvedNpcId <= 0)
+            {
+                return false;
+            }
+
+            npcId = resolvedNpcId;
+            return true;
         }
 
         private static uint ComputeItemCommonCrc(int itemId, WzSubProperty itemProperty)
@@ -596,9 +644,15 @@ namespace HaCreator.MapSimulator.UI
             return crc;
         }
 
-        private static List<string> BuildEffectLines(WzSubProperty specProperty)
+        private static List<string> BuildEffectLines(int itemId, WzSubProperty itemProperty, WzSubProperty infoProperty, WzSubProperty specProperty)
         {
             List<string> effectLines = new();
+            AppendInfoEffectLines(effectLines, infoProperty);
+            AppendPetFoodEffectLine(effectLines, specProperty);
+            AppendScriptedUseEffectLines(effectLines, specProperty);
+            AppendPickupModifierEffectLines(effectLines, specProperty);
+            AppendMobEffectLines(effectLines, itemProperty?["mob"] as WzSubProperty);
+
             if (specProperty == null)
             {
                 return effectLines;
@@ -628,6 +682,7 @@ namespace HaCreator.MapSimulator.UI
             AppendThawEffectLine(effectLines, specProperty["thaw"]);
             AppendCrossContinentEffectLine(effectLines, specProperty["ignoreContinent"]);
             AppendReturnMapRecordEffectLine(effectLines, specProperty["returnMapQR"]);
+            AppendMobEffectLines(effectLines, specProperty["mob"] as WzSubProperty);
 
             int? durationMs = TryGetPositiveInt(specProperty["time"]);
             if (durationMs.HasValue)
@@ -649,6 +704,7 @@ namespace HaCreator.MapSimulator.UI
         }
 
         private static List<string> BuildMetadataLines(
+            int itemId,
             WzSubProperty infoProperty,
             bool isNotForSale,
             bool isQuestItem,
@@ -680,6 +736,9 @@ namespace HaCreator.MapSimulator.UI
             {
                 metadataLines.Add($"Expires {expirationDateUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)}");
             }
+
+            AppendInfoMetadataLines(metadataLines, itemId, infoProperty);
+            AppendMonsterBookMetadataLines(metadataLines, infoProperty);
 
             if (isTradeBlocked)
             {
@@ -763,6 +822,20 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private static void AppendInfoEffectLines(List<string> effectLines, WzSubProperty infoProperty)
+        {
+            if (infoProperty == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < InfoFlatEffectKeys.Length; i++)
+            {
+                (string key, string label) = InfoFlatEffectKeys[i];
+                AppendStatEffectLine(effectLines, label, TryGetPositiveInt(infoProperty[key]), isPercent: false);
+            }
+        }
+
         private static void AppendCureEffectLine(List<string> effectLines, WzSubProperty specProperty)
         {
             List<string> curedStatuses = new();
@@ -836,6 +909,104 @@ namespace HaCreator.MapSimulator.UI
             effectLines.Add($"Attack Speed {FormatSignedValue(booster)}");
         }
 
+        private static void AppendPetFoodEffectLine(List<string> effectLines, WzSubProperty specProperty)
+        {
+            int fullnessIncrease = GetIntValue(specProperty?["inc"]);
+            if (fullnessIncrease <= 0 || !HasNumericChildEntries(specProperty, "inc"))
+            {
+                return;
+            }
+
+            effectLines.Add($"Pet Fullness {FormatSignedValue(fullnessIncrease)}");
+        }
+
+        private static void AppendScriptedUseEffectLines(List<string> effectLines, WzSubProperty specProperty)
+        {
+            if (specProperty == null)
+            {
+                return;
+            }
+
+            int npcId = GetIntValue(specProperty["npc"]);
+            if (npcId > 0)
+            {
+                string npcName = ResolveNpcName(npcId);
+                effectLines.Add(string.IsNullOrWhiteSpace(npcName)
+                    ? $"Opens NPC #{npcId.ToString(CultureInfo.InvariantCulture)}"
+                    : $"Opens NPC: {npcName}");
+            }
+
+            string scriptName = (specProperty["script"] as WzStringProperty)?.Value?.Trim();
+            if (!string.IsNullOrWhiteSpace(scriptName))
+            {
+                effectLines.Add($"Uses script: {scriptName}");
+            }
+        }
+
+        private static void AppendPickupModifierEffectLines(List<string> effectLines, WzSubProperty specProperty)
+        {
+            if (specProperty == null)
+            {
+                return;
+            }
+
+            int mesoPickupModifier = GetIntValue(specProperty["mesoupbyitem"]);
+            int itemPickupModifier = GetIntValue(specProperty["itemupbyitem"]);
+            int procChance = GetIntValue(specProperty["prob"]);
+            string chanceSuffix = procChance > 0 ? $" ({procChance.ToString(CultureInfo.InvariantCulture)}% chance)" : string.Empty;
+
+            if (mesoPickupModifier > 0)
+            {
+                effectLines.Add($"Meso Pickup Modifier: {mesoPickupModifier.ToString(CultureInfo.InvariantCulture)}{chanceSuffix}");
+            }
+
+            if (itemPickupModifier <= 0)
+            {
+                return;
+            }
+
+            int itemCode = GetIntValue(specProperty["itemCode"]);
+            string targetItemLabel = itemCode > 0
+                ? ResolveTooltipItemLabel(itemCode)
+                : string.Empty;
+            effectLines.Add(string.IsNullOrWhiteSpace(targetItemLabel)
+                ? $"Item Pickup Modifier: {itemPickupModifier.ToString(CultureInfo.InvariantCulture)}{chanceSuffix}"
+                : $"Item Pickup Modifier: {itemPickupModifier.ToString(CultureInfo.InvariantCulture)} ({targetItemLabel}){chanceSuffix}");
+        }
+
+        private static void AppendMobEffectLines(List<string> effectLines, WzSubProperty mobProperty)
+        {
+            if (mobProperty?.WzProperties == null)
+            {
+                return;
+            }
+
+            HashSet<string> seenLines = new(StringComparer.Ordinal);
+            foreach (WzImageProperty child in mobProperty.WzProperties)
+            {
+                if (child is not WzSubProperty mobEntry)
+                {
+                    continue;
+                }
+
+                int mobId = GetIntValue(mobEntry["id"]);
+                if (mobId <= 0)
+                {
+                    continue;
+                }
+
+                string mobLabel = ResolveMobTooltipLabel(mobId);
+                int probability = GetIntValue(mobEntry["prob"]);
+                string line = probability > 0 && probability < 100
+                    ? $"Summons: {mobLabel} ({probability.ToString(CultureInfo.InvariantCulture)}%)"
+                    : $"Summons: {mobLabel}";
+                if (seenLines.Add(line))
+                {
+                    effectLines.Add(line);
+                }
+            }
+        }
+
         private static int? ResolveFirstPositiveInt(WzSubProperty specProperty, params string[] keys)
         {
             if (specProperty == null || keys == null)
@@ -894,6 +1065,143 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private static void AppendInfoMetadataLines(List<string> metadataLines, int itemId, WzSubProperty infoProperty)
+        {
+            if (infoProperty == null)
+            {
+                return;
+            }
+
+            int? successRate = TryGetPositiveInt(infoProperty["success"]);
+            if (successRate.HasValue)
+            {
+                metadataLines.Add($"Success Rate: {successRate.Value.ToString(CultureInfo.InvariantCulture)}%");
+            }
+
+            int? curseRate = TryGetPositiveInt(infoProperty["cursed"]);
+            if (curseRate.HasValue)
+            {
+                metadataLines.Add($"Destroyed on Failure: {curseRate.Value.ToString(CultureInfo.InvariantCulture)}%");
+            }
+
+            AppendSkillBookMetadataLines(metadataLines, infoProperty);
+            AppendRequiredMapMetadataLines(metadataLines, infoProperty);
+        }
+
+        private static void AppendSkillBookMetadataLines(List<string> metadataLines, WzSubProperty infoProperty)
+        {
+            if (infoProperty == null)
+            {
+                return;
+            }
+
+            int? masterLevel = TryGetPositiveInt(infoProperty["masterLevel"]);
+            if (masterLevel.HasValue)
+            {
+                metadataLines.Add($"Master Level: {masterLevel.Value.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            int? requiredSkillLevel = TryGetPositiveInt(infoProperty["reqSkillLevel"]);
+            if (requiredSkillLevel.HasValue)
+            {
+                metadataLines.Add($"Required Skill Level: {requiredSkillLevel.Value.ToString(CultureInfo.InvariantCulture)}");
+            }
+
+            if (infoProperty["skill"] is not WzSubProperty skillProperty || skillProperty.WzProperties == null)
+            {
+                return;
+            }
+
+            HashSet<string> seenSkills = new(StringComparer.Ordinal);
+            foreach (WzImageProperty child in skillProperty.WzProperties)
+            {
+                int skillId = GetIntValue(child);
+                if (skillId <= 0)
+                {
+                    continue;
+                }
+
+                string skillLine = ResolveSkillTooltipLine(skillId);
+                if (seenSkills.Add(skillLine))
+                {
+                    metadataLines.Add(skillLine);
+                }
+            }
+        }
+
+        private static void AppendRequiredMapMetadataLines(List<string> metadataLines, WzSubProperty infoProperty)
+        {
+            if (infoProperty?["reqMap"] is not WzSubProperty reqMapProperty || reqMapProperty.WzProperties == null)
+            {
+                return;
+            }
+
+            List<string> mapNames = new();
+            foreach (WzImageProperty child in reqMapProperty.WzProperties)
+            {
+                if (!int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int mapId) || mapId <= 0)
+                {
+                    continue;
+                }
+
+                string mapName = ResolveMapName(mapId);
+                mapNames.Add(string.IsNullOrWhiteSpace(mapName)
+                    ? mapId.ToString(CultureInfo.InvariantCulture)
+                    : mapName);
+            }
+
+            if (mapNames.Count > 0)
+            {
+                metadataLines.Add($"Usable In: {string.Join(", ", mapNames)}");
+            }
+        }
+
+        private static void AppendMonsterBookMetadataLines(List<string> metadataLines, WzSubProperty infoProperty)
+        {
+            if (infoProperty == null)
+            {
+                return;
+            }
+
+            int mobId = GetIntValue(infoProperty["mob"]);
+            if (mobId <= 0)
+            {
+                return;
+            }
+
+            string mobLabel = ResolveMobTooltipLabel(mobId);
+            bool isMonsterBookCard = GetIntValue(infoProperty["monsterBook"]) == 1;
+            metadataLines.Add(isMonsterBookCard
+                ? $"Monster Book Card: {mobLabel}"
+                : $"Associated Mob: {mobLabel}");
+        }
+
+        private static bool HasNumericChildEntries(WzSubProperty property, params string[] ignoredNames)
+        {
+            if (property?.WzProperties == null)
+            {
+                return false;
+            }
+
+            HashSet<string> ignored = ignoredNames != null && ignoredNames.Length > 0
+                ? new HashSet<string>(ignoredNames, StringComparer.OrdinalIgnoreCase)
+                : null;
+            foreach (WzImageProperty child in property.WzProperties)
+            {
+                if (child == null || (ignored != null && ignored.Contains(child.Name)))
+                {
+                    continue;
+                }
+
+                if (int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out _) && GetIntValue(child) > 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
         private static string ResolveMapName(int mapId)
         {
             if (global::HaCreator.Program.InfoManager?.MapsNameCache == null)
@@ -934,6 +1242,74 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return string.Empty;
+        }
+
+        private static string ResolveNpcName(int npcId)
+        {
+            if (global::HaCreator.Program.InfoManager?.NpcNameCache == null)
+            {
+                return string.Empty;
+            }
+
+            string key = npcId.ToString(CultureInfo.InvariantCulture);
+            return global::HaCreator.Program.InfoManager.NpcNameCache.TryGetValue(key, out Tuple<string, string> npcInfo)
+                   && npcInfo != null
+                ? npcInfo.Item1?.Trim() ?? string.Empty
+                : string.Empty;
+        }
+
+        private static string ResolveMobName(int mobId)
+        {
+            if (global::HaCreator.Program.InfoManager?.MobNameCache == null)
+            {
+                return string.Empty;
+            }
+
+            string key = mobId.ToString(CultureInfo.InvariantCulture);
+            return global::HaCreator.Program.InfoManager.MobNameCache.TryGetValue(key, out string mobName)
+                   && !string.IsNullOrWhiteSpace(mobName)
+                ? mobName.Trim()
+                : string.Empty;
+        }
+
+        private static string ResolveMobTooltipLabel(int mobId)
+        {
+            string mobName = ResolveMobName(mobId);
+            return string.IsNullOrWhiteSpace(mobName)
+                ? $"Mob #{mobId.ToString(CultureInfo.InvariantCulture)}"
+                : mobName;
+        }
+
+        private static string ResolveTooltipItemLabel(int itemId)
+        {
+            if (TryResolveItemName(itemId, out string itemName) && !string.IsNullOrWhiteSpace(itemName))
+            {
+                return itemName.Trim();
+            }
+
+            return $"Item #{itemId.ToString(CultureInfo.InvariantCulture)}";
+        }
+
+        private static string ResolveSkillTooltipLine(int skillId)
+        {
+            string skillName = ResolveSkillName(skillId);
+            return string.IsNullOrWhiteSpace(skillName)
+                ? $"Skill: #{skillId.ToString(CultureInfo.InvariantCulture)}"
+                : $"Skill: {skillName}";
+        }
+
+        private static string ResolveSkillName(int skillId)
+        {
+            if (global::HaCreator.Program.InfoManager?.SkillNameCache == null)
+            {
+                return string.Empty;
+            }
+
+            string key = skillId.ToString(CultureInfo.InvariantCulture);
+            return global::HaCreator.Program.InfoManager.SkillNameCache.TryGetValue(key, out Tuple<string, string> skillInfo)
+                   && skillInfo != null
+                ? skillInfo.Item1?.Trim() ?? string.Empty
+                : string.Empty;
         }
 
         private static string FormatDuration(int durationMs)

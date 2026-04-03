@@ -6,6 +6,21 @@ namespace HaCreator.MapSimulator.Pools
 {
     internal static class PacketOwnedSummonUpdateRules
     {
+        public static SummonMovementStyle ResolveEffectiveMovementStyle(ActiveSummon summon)
+        {
+            if (summon == null)
+            {
+                return SummonMovementStyle.Stationary;
+            }
+
+            if (summon.MovementStyle != SummonMovementStyle.Stationary)
+            {
+                return summon.MovementStyle;
+            }
+
+            return SummonMovementResolver.ResolveStyle(summon.MoveAbility);
+        }
+
         public static bool ShouldResolveBodyContact(
             ActiveSummon summon,
             bool registersAsPuppet,
@@ -50,8 +65,9 @@ namespace HaCreator.MapSimulator.Pools
 
             float elapsedSeconds = Math.Max(0f, (currentTime - summon.StartTime) / 1000f);
             Vector2 resolvedOwnerPosition = ownerPosition ?? new Vector2(summon.AnchorX, summon.AnchorY);
+            SummonMovementStyle movementStyle = ResolveEffectiveMovementStyle(summon);
 
-            return summon.MovementStyle switch
+            return movementStyle switch
             {
                 SummonMovementStyle.GroundFollow => new Vector2(
                     resolvedOwnerPosition.X + (ownerFacingRight ? 70f : -70f),
@@ -84,7 +100,7 @@ namespace HaCreator.MapSimulator.Pools
                 return targetPosition;
             }
 
-            return summon.MovementStyle switch
+            return ResolveEffectiveMovementStyle(summon) switch
             {
                 SummonMovementStyle.GroundFollow => new Vector2(
                     MoveTowards(summon.PositionX, targetPosition.X, 220f * deltaTimeSeconds),
@@ -94,6 +110,60 @@ namespace HaCreator.MapSimulator.Pools
                     MoveTowards(summon.PositionY, targetPosition.Y, 300f * deltaTimeSeconds)),
                 _ => targetPosition
             };
+        }
+
+        public static bool ShouldUseAnchorBoundPassiveFallback(ActiveSummon summon)
+        {
+            return SummonMovementResolver.IsAnchorBound(ResolveEffectiveMovementStyle(summon));
+        }
+
+        public static bool ShouldEmitPassiveEffectFromMotion(ActiveSummon summon)
+        {
+            return ShouldUseAnchorBoundPassiveFallback(summon);
+        }
+
+        public static SummonActorState ResolveIdleActorState(ActiveSummon summon, int currentTime, int teslaCoilSkillId)
+        {
+            if (summon?.SkillData == null)
+            {
+                return SummonActorState.Idle;
+            }
+
+            if (summon.SkillId == teslaCoilSkillId
+                && summon.SkillData.SummonAttackPrepareAnimation?.Frames.Count > 0
+                && (summon.TeslaCoilState == 1
+                    || summon.TeslaCoilState == 2
+                    || summon.LastAttackAnimationStartTime == int.MinValue))
+            {
+                return SummonActorState.Prepare;
+            }
+
+            if (summon.ActorState == SummonActorState.Spawn
+                && IsSpawnAnimationActive(summon, currentTime))
+            {
+                return SummonActorState.Spawn;
+            }
+
+            return SummonActorState.Idle;
+        }
+
+        private static bool IsSpawnAnimationActive(ActiveSummon summon, int currentTime)
+        {
+            SkillAnimation spawnAnimation = summon?.SkillData?.SummonSpawnAnimation;
+            if (spawnAnimation?.Frames.Count <= 0)
+            {
+                return false;
+            }
+
+            int spawnDuration = spawnAnimation.TotalDuration;
+            if (spawnDuration <= 0)
+            {
+                spawnAnimation.CalculateDuration();
+                spawnDuration = spawnAnimation.TotalDuration;
+            }
+
+            return spawnDuration > 0
+                   && currentTime - summon.StartTime < spawnDuration;
         }
 
         private static float MoveTowards(float current, float target, float maxDelta)

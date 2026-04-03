@@ -21,6 +21,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Text;
 
 namespace HaCreator.MapSimulator
@@ -35,6 +36,13 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedRadioCompleteStringPoolId = 0x14D0;
         private const int PacketOwnedRadioTrackTemplateStringPoolId = 0x1501;
         private const int PacketOwnedRadioAudioTemplateStringPoolId = 0x1502;
+        private const int PacketOwnedRadioCreateLayerContextSlot = 3562;
+        private const int PacketOwnedRadioCreateLayerLeftMargin = 40;
+        private const string PacketOwnedRadioUiCanvasPathOn = "UI/UIWindow.img/Radio/On";
+        private const string PacketOwnedRadioUiCanvasPathOff = "UI/UIWindow.img/Radio/Off/0";
+        private const int PacketOwnedClassCompetitionAuthRefreshIntervalMs = 180000;
+        private const int PacketOwnedClassCompetitionAuthLifetimeMs = 300000;
+        private const int PacketOwnedClassCompetitionSyntheticAuthResponseDelayMs = 250;
         private const int PacketOwnedApspFollowUpOpcode = 195;
         private const int PacketOwnedApspFollowUpResponseCode = 6;
         private const int PacketOwnedApspMinEventType = 11;
@@ -81,6 +89,7 @@ namespace HaCreator.MapSimulator
         private readonly TutorRuntime _packetOwnedTutorRuntime = new();
         private readonly LocalUtilityPacketInboxManager _localUtilityPacketInbox = new();
         private readonly LocalUtilityOfficialSessionBridgeManager _localUtilityOfficialSessionBridge = new();
+        private readonly LocalUtilityPacketTransportManager _localUtilityPacketOutbox = new();
         private static readonly IReadOnlyDictionary<int, int[]> PacketOwnedSkillIdAliasCandidates =
             new Dictionary<int, int[]>
             {
@@ -113,11 +122,16 @@ namespace HaCreator.MapSimulator
         private int _lastPacketOwnedCommoditySerialNumber;
         private int _lastPacketOwnedCommodityRequestTick = int.MinValue;
         private string _lastPacketOwnedNoticeMessage;
+        private int _lastPacketOwnedNoticeTick = int.MinValue;
         private string _lastPacketOwnedChatMessage;
         private string _lastPacketOwnedBuffzoneMessage;
+        private int _lastPacketOwnedBuffzoneTick = int.MinValue;
         private string _lastPacketOwnedAskApspMessage;
+        private int _lastPacketOwnedAskApspTick = int.MinValue;
         private string _lastPacketOwnedSkillGuideMessage;
+        private int _lastPacketOwnedSkillGuideTick = int.MinValue;
         private string _lastPacketOwnedFollowFailureMessage;
+        private int _lastPacketOwnedFollowFailureTick = int.MinValue;
         private int? _lastPacketOwnedFollowFailureReason;
         private int _lastPacketOwnedFollowFailureDriverId;
         private bool _lastPacketOwnedFollowFailureClearedPending;
@@ -134,7 +148,9 @@ namespace HaCreator.MapSimulator
         private int _lastPacketOwnedApspFollowUpContextToken;
         private int _lastPacketOwnedApspFollowUpResponseCode;
         private string _lastPacketOwnedEventSoundDescriptor;
+        private int _lastPacketOwnedEventSoundTick = int.MinValue;
         private string _lastPacketOwnedMinigameSoundDescriptor;
+        private int _lastPacketOwnedMinigameSoundTick = int.MinValue;
         private MonoGameBgmPlayer _packetOwnedRadioAudio;
         private string _lastPacketOwnedRadioTrackDescriptor;
         private string _lastPacketOwnedRadioResolvedTrackDescriptor;
@@ -148,6 +164,17 @@ namespace HaCreator.MapSimulator
         private int _lastPacketOwnedRadioLastPollTick = int.MinValue;
         private bool _localUtilityPacketInboxEnabled = EnablePacketConnectionsByDefault;
         private int _localUtilityPacketInboxConfiguredPort = LocalUtilityPacketInboxManager.DefaultPort;
+        private bool _localUtilityOfficialSessionBridgeEnabled;
+        private bool _localUtilityOfficialSessionBridgeUseDiscovery;
+        private int _localUtilityOfficialSessionBridgeConfiguredListenPort = LocalUtilityOfficialSessionBridgeManager.DefaultListenPort;
+        private string _localUtilityOfficialSessionBridgeConfiguredRemoteHost = "127.0.0.1";
+        private int _localUtilityOfficialSessionBridgeConfiguredRemotePort;
+        private string _localUtilityOfficialSessionBridgeConfiguredProcessSelector;
+        private int? _localUtilityOfficialSessionBridgeConfiguredLocalPort;
+        private const int LocalUtilityOfficialSessionBridgeDiscoveryRefreshIntervalMs = 2000;
+        private int _nextLocalUtilityOfficialSessionBridgeDiscoveryRefreshAt;
+        private bool _localUtilityPacketOutboxEnabled;
+        private int _localUtilityPacketOutboxConfiguredPort = LocalUtilityPacketTransportManager.DefaultPort;
 
         private static readonly string[] UniqueModelessUtilityWindowNames =
         {
@@ -331,6 +358,15 @@ namespace HaCreator.MapSimulator
                 _lastDeliveryQuestId,
                 _lastDeliveryItemId,
                 _lastDeliveryDisallowedQuestIds);
+            if (entries.Count == 0)
+            {
+                string emptyMessage = _lastDeliveryQuestId > 0
+                    ? $"Quest delivery suppressed quest #{_lastDeliveryQuestId} because no packet-worthy target with a usable NPC survived the packet-owned filter."
+                    : $"{itemName} delivery could not surface a packet-worthy quest target with a usable NPC.";
+                ShowUtilityFeedbackMessage(emptyMessage);
+                return emptyMessage;
+            }
+
             questDeliveryWindow.Configure(_lastDeliveryQuestId, _lastDeliveryItemId, entries, _packetOwnedUtilityRequestTick);
             ShowWindow(MapSimulatorWindowNames.QuestDelivery, questDeliveryWindow, trackDirectionModeOwner: true);
             return $"Opened packet-authored quest delivery for {itemName}.";
@@ -592,6 +628,12 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
+                if (snapshot.IsBlocked || snapshot.TargetNpcId <= 0)
+                {
+                    appendedQuestIds.Remove(snapshot.QuestId);
+                    continue;
+                }
+
                 entries.Add(new QuestDeliveryWindow.DeliveryEntry
                 {
                     QuestId = snapshot.QuestId,
@@ -639,6 +681,11 @@ namespace HaCreator.MapSimulator
                 bool matchingItem = state?.TargetItemId == itemId && itemId > 0;
                 bool isDeliveryAction = state?.DeliveryType is QuestDetailDeliveryType.Accept or QuestDetailDeliveryType.Complete;
                 if (!blockedByPacket && (!matchingItem || !isDeliveryAction))
+                {
+                    continue;
+                }
+
+                if (blockedByPacket || (state?.TargetNpcId ?? 0) <= 0)
                 {
                     continue;
                 }
@@ -698,22 +745,6 @@ namespace HaCreator.MapSimulator
                 .ToArray();
         }
 
-        private static void AppendQuestIds(HashSet<int> questIds, QuestLogSnapshot snapshot)
-        {
-            if (questIds == null || snapshot?.Entries == null)
-            {
-                return;
-            }
-
-            for (int i = 0; i < snapshot.Entries.Count; i++)
-            {
-                if (snapshot.Entries[i]?.QuestId > 0)
-                {
-                    questIds.Add(snapshot.Entries[i].QuestId);
-                }
-            }
-        }
-
         private bool TryResolveQuestDeliveryCashItemSlot(
             int itemId,
             out InventoryType inventoryType,
@@ -768,7 +799,18 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            OpenPacketQuestDeliveryNpcInteraction(entry);
+            HandleQuestWindowActionResult(HandleQuestDeliveryLocalHandoff(
+                entry.QuestId,
+                entry.CompletionPhase,
+                sourceContext: "packet-authored quest-delivery owner",
+                localHandoff: () =>
+                {
+                    OpenPacketQuestDeliveryNpcInteraction(entry);
+                    return $"Opened packet-authored quest delivery interaction for {entry.Title}.";
+                },
+                resolvedInventoryType: entry.DeliveryCashInventoryType,
+                resolvedRuntimeSlotIndex: entry.DeliveryCashItemRuntimeSlotIndex,
+                resolvedClientSlotIndex: entry.DeliveryCashItemClientSlotIndex));
         }
 
         private void OpenPacketQuestDeliveryNpcInteraction(QuestDeliveryWindow.DeliveryEntry entry)
@@ -805,6 +847,7 @@ namespace HaCreator.MapSimulator
             _scriptedDirectionModeOwnerActive = true;
             _activeNpcInteractionNpc = targetNpc;
             _activeNpcInteractionNpcId = entry.TargetNpcId;
+            TryRegisterAnimationDisplayerQuestDeliveryLocalUserState(_lastDeliveryItemId, out _);
             IReadOnlyList<string> publishedScriptNames = _activeNpcInteractionNpc != null
                 ? FieldObjectNpcScriptNameResolver.ResolvePublishedScriptNames(_activeNpcInteractionNpc.NpcInstance)
                 : FieldObjectNpcScriptNameResolver.ResolvePublishedScriptNames(entry.TargetNpcId);
@@ -822,17 +865,19 @@ namespace HaCreator.MapSimulator
             RefreshClassCompetitionRuntimeState();
             var lines = new List<string>();
             var build = _playerManager?.Player?.Build;
+            string serverSeed = ResolveClassCompetitionServerSeed();
             lines.Add("Packet-authored web owner mirroring CUserLocal::OnOpenClassCompetitionPage and CClassCompetition.");
             lines.Add("Constructor shape: CWebWnd, 312x389 owner bounds, close/OK dismissal only, and a loading layer while auth is pending.");
 
             string authState = _lastClassCompetitionAuthIssuedTick == int.MinValue
-                ? "No class-competition auth key has been seeded yet."
+                ? "No class-competition auth response has populated the local cache yet."
                 : _lastClassCompetitionAuthPending
-                    ? $"Auth key seeded at {_lastClassCompetitionAuthIssuedTick}, loading page is still pending."
+                    ? $"Auth response landed at {_lastClassCompetitionAuthIssuedTick}, but the owner is still waiting to navigate."
                     : _lastClassCompetitionLoggedIn
-                        ? $"Auth key seeded at {_lastClassCompetitionAuthIssuedTick}, navigation completed at {_lastClassCompetitionNavigateTick}."
-                        : $"Auth key seeded at {_lastClassCompetitionAuthIssuedTick}, navigation has not completed yet.";
+                        ? $"Auth response landed at {_lastClassCompetitionAuthIssuedTick} and navigation completed at {_lastClassCompetitionNavigateTick}."
+                        : $"Auth response landed at {_lastClassCompetitionAuthIssuedTick}, but navigation has not completed yet.";
             lines.Add(authState);
+            lines.Add($"Synthetic server seed: {serverSeed}");
 
             if (!string.IsNullOrWhiteSpace(_lastClassCompetitionUrl))
             {
@@ -843,7 +888,7 @@ namespace HaCreator.MapSimulator
             {
                 lines.Add($"{build.Name}  Lv.{Math.Max(1, build.Level)}  {build.JobName}");
                 lines.Add($"Map {(_mapBoard?.MapInfo?.id ?? 0)}  Fame {build.Fame}  HP {Math.Max(0, build.HP)}/{Math.Max(1, build.MaxHP)}");
-                lines.Add($"World rank seed: {(build.WorldRank > 0 ? $"#{build.WorldRank}" : "local only")}  Job rank seed: {(build.JobRank > 0 ? $"#{build.JobRank}" : "local only")}");
+                lines.Add($"Local ladder context: world {(build.WorldRank > 0 ? $"#{build.WorldRank}" : "local only")}  job {(build.JobRank > 0 ? $"#{build.JobRank}" : "local only")}");
                 lines.Add($"Combat seed: PAD {build.TotalAttack}  MAD {build.TotalMagicAttack}  ACC {build.TotalAccuracy}  EVA {build.TotalAvoidability}");
             }
             else
@@ -851,7 +896,7 @@ namespace HaCreator.MapSimulator
                 lines.Add("No active player build is bound to the simulator.");
             }
 
-            lines.Add("This owner still has no live server-fed ladder payload, so standings remain seeded from the active local build instead of a remote page response.");
+            lines.Add("This owner still has no live server-fed auth or ladder payload, so navigation stays synthetic and standings remain seeded from the active local build instead of a remote page response.");
 
             if (_lastClassCompetitionOpenTick != int.MinValue)
             {
@@ -875,7 +920,10 @@ namespace HaCreator.MapSimulator
             string authStamp = _lastClassCompetitionAuthRequestTick == int.MinValue
                 ? "auth request idle"
                 : $"auth request: {_lastClassCompetitionAuthRequestTick} ({Math.Max(0, unchecked(currTickCount - _lastClassCompetitionAuthRequestTick))}ms ago)";
-            return $"{requestStamp}, {authStamp}";
+            string cacheStamp = _lastClassCompetitionAuthIssuedTick == int.MinValue
+                ? "auth cache: empty"
+                : $"auth cache: {_lastClassCompetitionAuthIssuedTick} ({Math.Max(0, unchecked(currTickCount - _lastClassCompetitionAuthIssuedTick))}ms old)";
+            return $"{requestStamp}, {authStamp}, {cacheStamp}";
         }
 
         private void RefreshClassCompetitionRuntimeState(bool forceAuthRequest = false)
@@ -887,21 +935,22 @@ namespace HaCreator.MapSimulator
 
             int now = Environment.TickCount;
             bool authExpired = _lastClassCompetitionAuthIssuedTick == int.MinValue
-                || Math.Max(0, unchecked(now - _lastClassCompetitionAuthIssuedTick)) >= 300000;
+                || Math.Max(0, unchecked(now - _lastClassCompetitionAuthIssuedTick)) >= PacketOwnedClassCompetitionAuthLifetimeMs;
             bool shouldRequestAuth = forceAuthRequest
                 || _lastClassCompetitionAuthRequestTick == int.MinValue
-                || Math.Max(0, unchecked(now - _lastClassCompetitionAuthRequestTick)) >= 180000
+                || Math.Max(0, unchecked(now - _lastClassCompetitionAuthRequestTick)) >= PacketOwnedClassCompetitionAuthRefreshIntervalMs
                 || authExpired;
 
             if (shouldRequestAuth)
             {
                 _lastClassCompetitionAuthRequestTick = now;
                 _lastClassCompetitionAuthIssuedTick = int.MinValue;
-                _lastClassCompetitionAuthResponseTick = Math.Max(0, unchecked(now + 250));
+                _lastClassCompetitionAuthResponseTick = Math.Max(0, unchecked(now + PacketOwnedClassCompetitionSyntheticAuthResponseDelayMs));
                 _lastClassCompetitionAuthPending = true;
                 _lastClassCompetitionLoggedIn = false;
                 _lastClassCompetitionAuthKey = string.Empty;
                 _lastClassCompetitionUrl = string.Empty;
+                _lastClassCompetitionNavigateTick = int.MinValue;
             }
 
             if (_lastClassCompetitionAuthPending
@@ -926,27 +975,68 @@ namespace HaCreator.MapSimulator
         private string BuildClassCompetitionAuthKey(int issuedAtTick)
         {
             int buildId = _playerManager?.Player?.Build?.Id ?? 0;
-            int mapId = _mapBoard?.MapInfo?.id ?? 0;
-            return $"msim-{buildId:x8}-{mapId:x8}-{issuedAtTick:x8}";
+            int worldId = Math.Max(0, _simulatorWorldId) + 1;
+            int channelId = Math.Max(0, _simulatorChannelIndex) + 1;
+            return $"msim-cc-{worldId:x2}{channelId:x2}-{buildId:x8}-{issuedAtTick:x8}";
         }
 
         private string BuildClassCompetitionUrl(string authKey)
         {
-            int worldId = Math.Max(0, _simulatorWorldId) + 1;
-            CharacterBuild build = _playerManager?.Player?.Build;
-            int characterId = build?.Id ?? 0;
-            int worldRank = Math.Max(0, build?.WorldRank ?? 0);
-            int jobRank = Math.Max(0, build?.JobRank ?? 0);
-            int jobId = Math.Max(0, build?.Job ?? 0);
+            string serverSeed = ResolveClassCompetitionServerSeed();
             return string.Format(
                 CultureInfo.InvariantCulture,
-                "classcompetition://world/{0}/ranking?char={1}&job={2}&worldRank={3}&jobRank={4}&auth={5}",
-                worldId,
-                characterId,
-                jobId,
-                worldRank,
-                jobRank,
+                "classcompetition://{0}/ranking?auth={1}",
+                serverSeed,
                 authKey);
+        }
+
+        private string ResolveClassCompetitionServerSeed()
+        {
+            string worldLabel = $"world{Math.Max(0, _simulatorWorldId) + 1}";
+            string channelLabel = $"ch{Math.Max(0, _simulatorChannelIndex) + 1}";
+            if (_loginWorldInfoPacketProfiles.TryGetValue(Math.Max(0, _simulatorWorldId), out LoginWorldInfoPacketProfile worldProfile))
+            {
+                if (!string.IsNullOrWhiteSpace(worldProfile.WorldName))
+                {
+                    worldLabel = SanitizeClassCompetitionSeedToken(worldProfile.WorldName);
+                }
+
+                int channelIndex = Math.Max(0, _simulatorChannelIndex);
+                LoginWorldInfoChannelPacketProfile channelProfile = worldProfile.Channels?
+                    .FirstOrDefault(candidate => candidate != null && candidate.ChannelId == channelIndex);
+                if (!string.IsNullOrWhiteSpace(channelProfile?.Name))
+                {
+                    channelLabel = SanitizeClassCompetitionSeedToken(channelProfile.Name);
+                }
+            }
+
+            return $"{worldLabel}/{channelLabel}";
+        }
+
+        private static string SanitizeClassCompetitionSeedToken(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return "local";
+            }
+
+            var builder = new StringBuilder(text.Length);
+            for (int i = 0; i < text.Length; i++)
+            {
+                char current = text[i];
+                if (char.IsLetterOrDigit(current))
+                {
+                    builder.Append(char.ToLowerInvariant(current));
+                }
+                else if (builder.Length > 0 && builder[^1] != '-')
+                {
+                    builder.Append('-');
+                }
+            }
+
+            return builder.Length == 0
+                ? "local"
+                : builder.ToString().Trim('-');
         }
 
         private void EnsureLocalUtilityPacketInboxState(bool shouldRun)
@@ -1043,7 +1133,162 @@ namespace HaCreator.MapSimulator
 
         private string DescribeLocalUtilityOfficialSessionBridgeStatus()
         {
-            return _localUtilityOfficialSessionBridge.DescribeStatus();
+            string enabledText = _localUtilityOfficialSessionBridgeEnabled ? "enabled" : "disabled";
+            string modeText = _localUtilityOfficialSessionBridgeUseDiscovery ? "auto-discovery" : "direct proxy";
+            string configuredTarget = _localUtilityOfficialSessionBridgeUseDiscovery
+                ? _localUtilityOfficialSessionBridgeConfiguredLocalPort.HasValue
+                    ? $"discover remote port {_localUtilityOfficialSessionBridgeConfiguredRemotePort} with local port {_localUtilityOfficialSessionBridgeConfiguredLocalPort.Value}"
+                    : $"discover remote port {_localUtilityOfficialSessionBridgeConfiguredRemotePort}"
+                : $"{_localUtilityOfficialSessionBridgeConfiguredRemoteHost}:{_localUtilityOfficialSessionBridgeConfiguredRemotePort}";
+            string processText = string.IsNullOrWhiteSpace(_localUtilityOfficialSessionBridgeConfiguredProcessSelector)
+                ? string.Empty
+                : $" for {_localUtilityOfficialSessionBridgeConfiguredProcessSelector}";
+            string listeningText = _localUtilityOfficialSessionBridge.IsRunning
+                ? $"listening on 127.0.0.1:{_localUtilityOfficialSessionBridge.ListenPort}"
+                : $"configured for 127.0.0.1:{_localUtilityOfficialSessionBridgeConfiguredListenPort}";
+            return $"Local utility packet session bridge {enabledText}, {modeText}, {listeningText}, target {configuredTarget}{processText}. {_localUtilityOfficialSessionBridge.DescribeStatus()}";
+        }
+
+        private void EnsureLocalUtilityOfficialSessionBridgeState(bool shouldRun)
+        {
+            if (!shouldRun || !_localUtilityOfficialSessionBridgeEnabled)
+            {
+                if (_localUtilityOfficialSessionBridge.IsRunning)
+                {
+                    _localUtilityOfficialSessionBridge.Stop();
+                }
+
+                return;
+            }
+
+            if (_localUtilityOfficialSessionBridgeConfiguredListenPort <= 0
+                || _localUtilityOfficialSessionBridgeConfiguredListenPort > ushort.MaxValue)
+            {
+                if (_localUtilityOfficialSessionBridge.IsRunning)
+                {
+                    _localUtilityOfficialSessionBridge.Stop();
+                }
+
+                _localUtilityOfficialSessionBridgeEnabled = false;
+                _localUtilityOfficialSessionBridgeConfiguredListenPort = LocalUtilityOfficialSessionBridgeManager.DefaultListenPort;
+                return;
+            }
+
+            if (_localUtilityOfficialSessionBridgeUseDiscovery)
+            {
+                if (_localUtilityOfficialSessionBridgeConfiguredRemotePort <= 0
+                    || _localUtilityOfficialSessionBridgeConfiguredRemotePort > ushort.MaxValue)
+                {
+                    if (_localUtilityOfficialSessionBridge.IsRunning)
+                    {
+                        _localUtilityOfficialSessionBridge.Stop();
+                    }
+
+                    return;
+                }
+
+                _localUtilityOfficialSessionBridge.TryRefreshFromDiscovery(
+                    _localUtilityOfficialSessionBridgeConfiguredListenPort,
+                    _localUtilityOfficialSessionBridgeConfiguredRemotePort,
+                    _localUtilityOfficialSessionBridgeConfiguredProcessSelector,
+                    _localUtilityOfficialSessionBridgeConfiguredLocalPort,
+                    out _);
+                return;
+            }
+
+            if (_localUtilityOfficialSessionBridgeConfiguredRemotePort <= 0
+                || _localUtilityOfficialSessionBridgeConfiguredRemotePort > ushort.MaxValue
+                || string.IsNullOrWhiteSpace(_localUtilityOfficialSessionBridgeConfiguredRemoteHost))
+            {
+                if (_localUtilityOfficialSessionBridge.IsRunning)
+                {
+                    _localUtilityOfficialSessionBridge.Stop();
+                }
+
+                return;
+            }
+
+            if (_localUtilityOfficialSessionBridge.IsRunning
+                && _localUtilityOfficialSessionBridge.ListenPort == _localUtilityOfficialSessionBridgeConfiguredListenPort
+                && string.Equals(_localUtilityOfficialSessionBridge.RemoteHost, _localUtilityOfficialSessionBridgeConfiguredRemoteHost, StringComparison.OrdinalIgnoreCase)
+                && _localUtilityOfficialSessionBridge.RemotePort == _localUtilityOfficialSessionBridgeConfiguredRemotePort)
+            {
+                return;
+            }
+
+            if (_localUtilityOfficialSessionBridge.IsRunning)
+            {
+                _localUtilityOfficialSessionBridge.Stop();
+            }
+
+            _localUtilityOfficialSessionBridge.Start(
+                _localUtilityOfficialSessionBridgeConfiguredListenPort,
+                _localUtilityOfficialSessionBridgeConfiguredRemoteHost,
+                _localUtilityOfficialSessionBridgeConfiguredRemotePort);
+        }
+
+        private void RefreshLocalUtilityOfficialSessionBridgeDiscovery(int currentTickCount)
+        {
+            if (!_localUtilityOfficialSessionBridgeEnabled
+                || !_localUtilityOfficialSessionBridgeUseDiscovery
+                || _localUtilityOfficialSessionBridgeConfiguredRemotePort <= 0
+                || _localUtilityOfficialSessionBridgeConfiguredRemotePort > ushort.MaxValue
+                || _localUtilityOfficialSessionBridge.HasAttachedClient
+                || currentTickCount < _nextLocalUtilityOfficialSessionBridgeDiscoveryRefreshAt)
+            {
+                return;
+            }
+
+            _nextLocalUtilityOfficialSessionBridgeDiscoveryRefreshAt =
+                currentTickCount + LocalUtilityOfficialSessionBridgeDiscoveryRefreshIntervalMs;
+            _localUtilityOfficialSessionBridge.TryRefreshFromDiscovery(
+                _localUtilityOfficialSessionBridgeConfiguredListenPort,
+                _localUtilityOfficialSessionBridgeConfiguredRemotePort,
+                _localUtilityOfficialSessionBridgeConfiguredProcessSelector,
+                _localUtilityOfficialSessionBridgeConfiguredLocalPort,
+                out _);
+        }
+
+        private void EnsureLocalUtilityPacketOutboxState(bool shouldRun)
+        {
+            if (!shouldRun || !_localUtilityPacketOutboxEnabled)
+            {
+                if (_localUtilityPacketOutbox.IsRunning)
+                {
+                    _localUtilityPacketOutbox.Stop();
+                }
+
+                return;
+            }
+
+            if (_localUtilityPacketOutbox.IsRunning && _localUtilityPacketOutbox.Port == _localUtilityPacketOutboxConfiguredPort)
+            {
+                return;
+            }
+
+            if (_localUtilityPacketOutbox.IsRunning)
+            {
+                _localUtilityPacketOutbox.Stop();
+            }
+
+            try
+            {
+                _localUtilityPacketOutbox.Start(_localUtilityPacketOutboxConfiguredPort);
+            }
+            catch
+            {
+                _localUtilityPacketOutbox.Stop();
+                throw;
+            }
+        }
+
+        private string DescribeLocalUtilityPacketOutboxStatus()
+        {
+            string enabledText = _localUtilityPacketOutboxEnabled ? "enabled" : "disabled";
+            string listeningText = _localUtilityPacketOutbox.IsRunning
+                ? $"listening on 127.0.0.1:{_localUtilityPacketOutbox.Port}"
+                : $"configured for 127.0.0.1:{_localUtilityPacketOutboxConfiguredPort}";
+            return $"Local utility packet outbox {enabledText}, {listeningText}, sent {_localUtilityPacketOutbox.SentCount} packet(s).";
         }
 
         private bool TryApplyPacketOwnedUtilityPacket(int packetType, byte[] payload, out string message)
@@ -1101,6 +1346,9 @@ namespace HaCreator.MapSimulator
                 case PacketOwnedAntiMacroPacketType:
                     return TryApplyPacketOwnedAntiMacroPayload(payload, out message);
 
+                case InitialQuizTimerRuntime.PacketType:
+                    return TryApplyPacketOwnedInitialQuizPayload(payload, out message);
+
                 case LocalUtilityPacketInboxManager.OpenSkillGuideClientPacketType:
                     message = ApplyPacketOwnedSkillGuideLaunch();
                     return true;
@@ -1119,6 +1367,12 @@ namespace HaCreator.MapSimulator
                 case LocalUtilityPacketInboxManager.QuestResultPacketType:
                     return TryApplyPacketOwnedQuestResultPayload(payload, out message);
 
+                case LocalUtilityPacketInboxManager.ResignQuestReturnClientPacketType:
+                    return TryApplyPacketOwnedResignQuestReturnPayload(payload, out message);
+
+                case LocalUtilityPacketInboxManager.PassMateNameClientPacketType:
+                    return TryApplyPacketOwnedPassMateNamePayload(payload, out message);
+
                 case LocalUtilityPacketInboxManager.SetDirectionModePacketType:
                     return TryApplyPacketOwnedDirectionModePayload(payload, out message);
 
@@ -1135,6 +1389,9 @@ namespace HaCreator.MapSimulator
                 case LocalUtilityPacketInboxManager.OpenClassCompetitionPagePacketType:
                     message = ApplyClassCompetitionPageLaunch();
                     return true;
+
+                case LocalUtilityPacketInboxManager.MakerResultClientPacketType:
+                    return TryApplyPacketOwnedMakerResultPayload(payload, out message);
 
                 case LocalUtilityPacketInboxManager.DamageMeterPacketType:
                     return TryApplyPacketOwnedDamageMeterPayload(payload, out message);
@@ -1156,6 +1413,9 @@ namespace HaCreator.MapSimulator
 
                 case LocalUtilityPacketInboxManager.SkillCooltimeSetPacketType:
                     return TryApplyPacketOwnedSkillCooltimePayload(payload, out message);
+
+                case LocalUtilityPacketInboxManager.MarriageResultPacketType:
+                    return TryApplyPacketOwnedMarriageResultPayload(payload, out message);
 
                 case LocalUtilityPacketInboxManager.FuncKeyMapInitPacketType:
                     return TryApplyPacketOwnedFuncKeyInitPayload(payload, out message);
@@ -1253,6 +1513,131 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
+        private bool TryApplyPacketOwnedResignQuestReturnPayload(byte[] payload, out string message)
+        {
+            message = null;
+            if (payload == null || payload.Length < sizeof(ushort))
+            {
+                message = "Resign-quest payload must contain a quest id.";
+                return false;
+            }
+
+            using var stream = new MemoryStream(payload, writable: false);
+            using var reader = new BinaryReader(stream, Encoding.ASCII, leaveOpen: false);
+
+            int questId = reader.ReadUInt16();
+            if (stream.Position != stream.Length)
+            {
+                message = $"Resign-quest payload has {stream.Length - stream.Position} trailing byte(s).";
+                return false;
+            }
+
+            StampPacketOwnedUtilityRequestState();
+            string questName = _questRuntime.TryGetQuestName(questId, out string resolvedQuestName)
+                ? resolvedQuestName
+                : $"Quest #{questId}";
+            bool removedFromAlarm = uiWindowManager?.GetWindow(MapSimulatorWindowNames.QuestAlarm) is QuestAlarmWindow questAlarmWindow
+                && questAlarmWindow.RemoveQuestFromPacketAlarmList(questId);
+
+            RefreshQuestUiState();
+            message = removedFromAlarm
+                ? $"Registered packet-owned quest resign return for {questName} and removed it from the Quest Alarm list."
+                : $"Registered packet-owned quest resign return for {questName}; the quest was not locally tracked in Quest Alarm.";
+            return true;
+        }
+
+        private bool TryApplyPacketOwnedPassMateNamePayload(byte[] payload, out string message)
+        {
+            message = null;
+            if (payload == null || payload.Length < sizeof(ushort) + sizeof(short))
+            {
+                message = "Pass-mate-name payload must contain a quest id and mate name.";
+                return false;
+            }
+
+            using var stream = new MemoryStream(payload, writable: false);
+            using var reader = new BinaryReader(stream, Encoding.ASCII, leaveOpen: false);
+
+            int questId = reader.ReadUInt16();
+            if (!TryReadPacketOwnedAsciiString(reader, out string mateName))
+            {
+                message = "Pass-mate-name payload is missing the mate name string.";
+                return false;
+            }
+
+            if (stream.Position != stream.Length)
+            {
+                message = $"Pass-mate-name payload has {stream.Length - stream.Position} trailing byte(s).";
+                return false;
+            }
+
+            StampPacketOwnedUtilityRequestState();
+            _questRuntime.SetPacketOwnedQuestMateName(questId, mateName);
+            RefreshQuestUiState();
+
+            string questName = _questRuntime.TryGetQuestName(questId, out string resolvedQuestName)
+                ? resolvedQuestName
+                : $"Quest #{questId}";
+            message = string.IsNullOrWhiteSpace(mateName)
+                ? $"Cleared the packet-owned mate name for {questName}."
+                : $"Stored the packet-owned mate name '{mateName}' for {questName}.";
+            return true;
+        }
+
+        private bool TryApplyPacketOwnedMakerResultPayload(byte[] payload, out string message)
+        {
+            message = null;
+            if (!PacketOwnedItemMakerResultRuntime.TryDecode(payload, out PacketOwnedItemMakerResult packetResult, out string decodeError))
+            {
+                message = decodeError ?? "Maker-result payload could not be decoded.";
+                return false;
+            }
+
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ItemMaker) is not ItemMakerUI itemMakerWindow)
+            {
+                message = "Maker-result packet arrived, but the Item Maker window is unavailable.";
+                return false;
+            }
+
+            StampPacketOwnedUtilityRequestState();
+            return itemMakerWindow.TryApplyPacketOwnedResult(packetResult, out message);
+        }
+
+        private static bool TryReadPacketOwnedAsciiString(BinaryReader reader, out string value)
+        {
+            value = string.Empty;
+            Stream stream = reader?.BaseStream;
+            if (stream == null || stream.Length - stream.Position < sizeof(short))
+            {
+                return false;
+            }
+
+            short length = reader.ReadInt16();
+            if (length < 0 || stream.Length - stream.Position < length)
+            {
+                return false;
+            }
+
+            value = Encoding.ASCII.GetString(reader.ReadBytes(length)).Trim();
+            return true;
+        }
+
+        private static void AppendQuestIds(HashSet<int> questIds, QuestLogSnapshot snapshot)
+        {
+            if (questIds == null || snapshot?.Entries == null)
+            {
+                return;
+            }
+
+            foreach (QuestLogEntrySnapshot entry in snapshot.Entries)
+            {
+                if (entry != null && entry.QuestId > 0)
+                {
+                    questIds.Add(entry.QuestId);
+                }
+            }
+        }
+
         private string BuildPacketOwnedChairCorrectionMessage(PlayerCharacter player, int seatIndex, string reason, int currentTick)
         {
             if (_packetOwnedLocalUtilityContext.TryEmitChairGetUpRequest(currentTick, player?.HP ?? 0, timeIntervalMs: 0, out PacketOwnedLocalUtilityOutboundRequest request))
@@ -1263,7 +1648,12 @@ namespace HaCreator.MapSimulator
                     return $"Packet-owned sit result returned seat {seatIndex}, but {reason}. Forced a stand-up correction, emitted GetUpFromChairRequest(0) as opcode {request.Opcode} [{payloadHex}], and dispatched it through the live local-utility bridge. {dispatchStatus}";
                 }
 
-                return $"Packet-owned sit result returned seat {seatIndex}, but {reason}. Forced a stand-up correction and emitted GetUpFromChairRequest(0) as opcode {request.Opcode} [{payloadHex}], but it remained simulator-owned because no live local-utility bridge accepted the outbound packet. {dispatchStatus}";
+                if (_localUtilityPacketOutbox.TrySendOutboundPacket(request.Opcode, request.Payload, out string outboxStatus))
+                {
+                    return $"Packet-owned sit result returned seat {seatIndex}, but {reason}. Forced a stand-up correction, emitted GetUpFromChairRequest(0) as opcode {request.Opcode} [{payloadHex}], and dispatched it through the generic local-utility outbox transport after the live bridge path was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus}";
+                }
+
+                return $"Packet-owned sit result returned seat {seatIndex}, but {reason}. Forced a stand-up correction and emitted GetUpFromChairRequest(0) as opcode {request.Opcode} [{payloadHex}], but it remained simulator-owned because neither the live local-utility bridge nor the generic outbox transport accepted the outbound packet. Bridge: {dispatchStatus} Outbox: {outboxStatus}";
             }
 
             return $"Packet-owned sit result returned seat {seatIndex}, but {reason}. Forced a stand-up correction, but the simulated CWvsContext gate suppressed GetUpFromChairRequest(0).";
@@ -1815,17 +2205,12 @@ namespace HaCreator.MapSimulator
             _lastPacketOwnedCommoditySerialNumber = Math.Max(0, commoditySerialNumber);
             _lastPacketOwnedCommodityRequestTick = Environment.TickCount;
 
-            string shopMessage = ShowPacketOwnedWindow(MapSimulatorWindowNames.CashShop, "Cash Shop");
-            bool focusedCommodity = false;
-            if (_lastPacketOwnedCommoditySerialNumber > 0
-                && uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShop) is AdminShopDialogUI cashShopWindow)
-            {
-                focusedCommodity = cashShopWindow.TryFocusCommoditySerialNumber(_lastPacketOwnedCommoditySerialNumber);
-            }
+            OpenCashServiceOwnerFamily(UI.CashServiceStageKind.CashShop, resetStageSession: false);
+            bool focusedCommodity = TryFocusCashServiceCommodity(_lastPacketOwnedCommoditySerialNumber);
 
             string message = focusedCommodity
-                ? $"Stored packet-owned commodity SN {_lastPacketOwnedCommoditySerialNumber}, requested shop migration, and focused the matching Cash Shop row. {shopMessage}"
-                : $"Stored packet-owned commodity SN {_lastPacketOwnedCommoditySerialNumber} and requested shop migration. {shopMessage}";
+                ? $"Stored packet-owned commodity SN {_lastPacketOwnedCommoditySerialNumber}, requested shop migration, opened the staged Cash Shop owner family, and focused the matching Cash Shop row."
+                : $"Stored packet-owned commodity SN {_lastPacketOwnedCommoditySerialNumber}, requested shop migration, and opened the staged Cash Shop owner family.";
             ShowUtilityFeedbackMessage(message);
             return message;
         }
@@ -2031,6 +2416,11 @@ namespace HaCreator.MapSimulator
             ShowWindow(MapSimulatorWindowNames.Radio, radioWindow, trackDirectionModeOwner: ShouldTrackInheritedDirectionModeOwner());
         }
 
+        private bool ShouldUsePacketOwnedRadioLeftInset()
+        {
+            return miniMapUi != null && !miniMapUi.IsCollapsed;
+        }
+
         private IReadOnlyList<string> BuildPacketOwnedRadioWindowLines()
         {
             List<string> lines = new();
@@ -2053,6 +2443,8 @@ namespace HaCreator.MapSimulator
             }
 
             lines.Add($"Resolved source: {_lastPacketOwnedRadioResolvedDescriptor}");
+            lines.Add(DescribePacketOwnedRadioCreateLayerState());
+            lines.Add($"HUD art path: {PacketOwnedRadioUiCanvasPathOn}/*, {PacketOwnedRadioUiCanvasPathOff}");
             lines.Add($"Session elapsed: {elapsedMs / 1000f:0.0}s");
             lines.Add($"Playback position: {playheadMs / 1000f:0.0}s");
             lines.Add(_lastPacketOwnedRadioTimeValue > 0
@@ -2078,8 +2470,8 @@ namespace HaCreator.MapSimulator
         private string BuildPacketOwnedRadioWindowFooter()
         {
             return IsPacketOwnedRadioPlaying()
-                ? "Client parity: packet-owned radio session active."
-                : "Client parity: waiting for OnRadioSchedule.";
+                ? $"Client parity: CRadioManager owns playback, UI, and chat; CUIRadio::CreateLayer uses CWvsContext[{PacketOwnedRadioCreateLayerContextSlot}] != 0 for bLeft."
+                : $"Client parity: waiting for OnRadioSchedule; CUIRadio::CreateLayer bLeft is sourced from CWvsContext[{PacketOwnedRadioCreateLayerContextSlot}] != 0.";
         }
 
         private string GetPacketOwnedRadioTrackName()
@@ -2109,6 +2501,13 @@ namespace HaCreator.MapSimulator
                 ? "radio track"
                 : value.Trim();
             return $"\"{normalizedValue.Replace("\"", "\\\"", StringComparison.Ordinal)}\"";
+        }
+
+        private string DescribePacketOwnedRadioCreateLayerState()
+        {
+            bool bLeft = ShouldUsePacketOwnedRadioLeftInset();
+            int nMargin = bLeft ? PacketOwnedRadioCreateLayerLeftMargin : 0;
+            return $"CreateLayer: bLeft={(bLeft ? 1 : 0)} via CWvsContext[{PacketOwnedRadioCreateLayerContextSlot}] proxy, nMargin={nMargin}, Origin_RT => x=-3-width-{nMargin}, y=+3";
         }
 
         private static bool TryResolvePacketOwnedRadioTrack(
@@ -2329,6 +2728,7 @@ namespace HaCreator.MapSimulator
         {
             StampPacketOwnedUtilityRequestState();
             _lastPacketOwnedNoticeMessage = message?.Trim() ?? string.Empty;
+            _lastPacketOwnedNoticeTick = Environment.TickCount;
             if (!string.IsNullOrWhiteSpace(_lastPacketOwnedNoticeMessage))
             {
                 TryPlayPacketOwnedNoticeSound();
@@ -2362,6 +2762,11 @@ namespace HaCreator.MapSimulator
             if (chatLogType.HasValue)
             {
                 _chat?.AddClientChatMessage(_lastPacketOwnedChatMessage, Environment.TickCount, chatLogType.Value, null, channelId);
+                if (ShouldTriggerPetSpecialistFeedbackForClientChatLogType(chatLogType.Value))
+                {
+                    TryTriggerSpecialistPetSocialFeedback(_lastPacketOwnedChatMessage, Environment.TickCount);
+                }
+
                 return $"Queued packet-owned chat line (type {chatLogType.Value}): {_lastPacketOwnedChatMessage}";
             }
 
@@ -2382,6 +2787,12 @@ namespace HaCreator.MapSimulator
                 route.ChatLogType,
                 route.WhisperTargetCandidate,
                 route.ChannelId);
+
+            if (ShouldTriggerPetSpecialistFeedbackForClientChatLogType(route.ChatLogType))
+            {
+                TryTriggerSpecialistPetSocialFeedback(route.Line, Environment.TickCount);
+            }
+
             string line = route.Line;
             return $"Queued packet-owned chat line: {line}";
         }
@@ -2442,18 +2853,14 @@ namespace HaCreator.MapSimulator
             }
 
             int normalizedSkillId = ResolvePacketOwnedLocalSkillId(skillId);
-            if (!_playerManager.Skills.TryApplyPacketOwnedMeleeAttack(
-                    normalizedSkillId,
-                    currTickCount,
-                    action,
-                    out SkillData skill,
-                    out int level,
-                    out string resolvedActionName,
-                    out string errorMessage))
-            {
-                ShowUtilityFeedbackMessage(errorMessage);
-                return errorMessage;
-            }
+            bool appliedPacketOwnedAttack = _playerManager.Skills.TryApplyPacketOwnedMeleeAttack(
+                normalizedSkillId,
+                currTickCount,
+                action,
+                out SkillData skill,
+                out int level,
+                out string resolvedActionName,
+                out string errorMessage);
 
             int resolvedHitPeriodMs = Math.Max(0, hitPeriodMs);
             int appliedHitPeriodMs = impactPercent > 0
@@ -2484,7 +2891,9 @@ namespace HaCreator.MapSimulator
             string actionSummary = string.IsNullOrWhiteSpace(resolvedActionName)
                 ? Math.Max(0, action).ToString(CultureInfo.InvariantCulture)
                 : $"{Math.Max(0, action)} => {resolvedActionName}";
-            string message = $"Applied packet-owned Time Bomb attack for {skillName} Lv.{level} (action {actionSummary}, hit {appliedHitPeriodMs} ms, impact {Math.Max(0, impactPercent)}%, damage {Math.Max(0, damage)}).";
+            string message = appliedPacketOwnedAttack
+                ? $"Applied packet-owned Time Bomb attack for {skillName} Lv.{level} (action {actionSummary}, hit {appliedHitPeriodMs} ms, impact {Math.Max(0, impactPercent)}%, damage {Math.Max(0, damage)})."
+                : $"Applied packet-owned Time Bomb reaction for {skillName} without a resolved melee-attack branch ({errorMessage}) (action {Math.Max(0, action)}, hit {appliedHitPeriodMs} ms, impact {Math.Max(0, impactPercent)}%, damage {Math.Max(0, damage)}).";
             ShowUtilityFeedbackMessage(message);
             return message;
         }
@@ -2695,6 +3104,7 @@ namespace HaCreator.MapSimulator
             _lastPacketOwnedBuffzoneMessage = string.IsNullOrWhiteSpace(message)
                 ? "Buff-zone effect triggered."
                 : message.Trim();
+            _lastPacketOwnedBuffzoneTick = Environment.TickCount;
             ShowUtilityFeedbackMessage(_lastPacketOwnedBuffzoneMessage);
             return _lastPacketOwnedBuffzoneMessage;
         }
@@ -2708,6 +3118,7 @@ namespace HaCreator.MapSimulator
             _lastPacketOwnedAskApspMessage = string.IsNullOrWhiteSpace(message)
                 ? "Packet-owned AP/SP event prompt triggered."
                 : message.Trim();
+            _lastPacketOwnedAskApspTick = Environment.TickCount;
             ShowUtilityFeedbackMessage(_lastPacketOwnedAskApspMessage);
             return _lastPacketOwnedAskApspMessage;
         }
@@ -2718,7 +3129,10 @@ namespace HaCreator.MapSimulator
 
             if (!enabled)
             {
-                _packetOwnedTutorRuntime.ApplyRemoval("packet-owned tutor branch requested removal.");
+                int requestedSkillId = ResolvePacketOwnedTutorSkillId();
+                _packetOwnedTutorRuntime.ApplyRemovalRequest(
+                    requestedSkillId,
+                    "packet-owned tutor branch requested removal.");
                 RemovePacketOwnedTutorSummon();
                 ShowUtilityFeedbackMessage(_packetOwnedTutorRuntime.StatusMessage);
                 return _packetOwnedTutorRuntime.StatusMessage;
@@ -2728,11 +3142,12 @@ namespace HaCreator.MapSimulator
             // before allocating and initializing the next one.
             RemovePacketOwnedTutorSummon();
             int skillId = ResolvePacketOwnedTutorSkillId();
-            _packetOwnedTutorRuntime.ApplyHire(skillId, currTickCount);
+            int actorHeight = ResolvePacketOwnedTutorActorHeight(skillId);
+            _packetOwnedTutorRuntime.ApplyHireRequest(skillId, actorHeight, currTickCount);
             string summonDetail = EnsurePacketOwnedTutorSummon(currTickCount);
             string message = string.IsNullOrWhiteSpace(summonDetail)
-                ? $"Activated packet-owned {DescribePacketOwnedTutorVariant(skillId)} tutor ownership."
-                : $"Activated packet-owned {DescribePacketOwnedTutorVariant(skillId)} tutor ownership. {summonDetail}";
+                ? $"Activated packet-owned {DescribePacketOwnedTutorVariant(skillId)} tutor ownership at height {actorHeight}."
+                : $"Activated packet-owned {DescribePacketOwnedTutorVariant(skillId)} tutor ownership at height {actorHeight}. {summonDetail}";
             ShowUtilityFeedbackMessage(message);
             return message;
         }
@@ -2782,6 +3197,7 @@ namespace HaCreator.MapSimulator
             if (guideGrade <= 0)
             {
                 _lastPacketOwnedSkillGuideMessage = $"{skillWindowMessage} The current job does not expose an Aran skill-guide page.";
+                _lastPacketOwnedSkillGuideTick = Environment.TickCount;
                 ShowUtilityFeedbackMessage(_lastPacketOwnedSkillGuideMessage);
                 return _lastPacketOwnedSkillGuideMessage;
             }
@@ -2789,6 +3205,7 @@ namespace HaCreator.MapSimulator
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.AranSkillGuide) is not AranSkillGuideUI aranSkillGuideWindow)
             {
                 _lastPacketOwnedSkillGuideMessage = $"{skillWindowMessage} Aran skill-guide owner is not available in this UI build.";
+                _lastPacketOwnedSkillGuideTick = Environment.TickCount;
                 ShowUtilityFeedbackMessage(_lastPacketOwnedSkillGuideMessage);
                 return _lastPacketOwnedSkillGuideMessage;
             }
@@ -2799,6 +3216,7 @@ namespace HaCreator.MapSimulator
                 aranSkillGuideWindow,
                 trackDirectionModeOwner: ShouldTrackInheritedDirectionModeOwner());
             _lastPacketOwnedSkillGuideMessage = $"{skillWindowMessage} Opened the packet-owned current skill guide at Aran grade {guideGrade}.";
+            _lastPacketOwnedSkillGuideTick = Environment.TickCount;
             ShowUtilityFeedbackMessage(_lastPacketOwnedSkillGuideMessage);
             return _lastPacketOwnedSkillGuideMessage;
         }
@@ -2840,6 +3258,7 @@ namespace HaCreator.MapSimulator
             {
                 _packetOwnedApspPromptActive = false;
                 _lastPacketOwnedAskApspMessage = $"Suppressed packet-owned AP/SP helper prompt because context token {contextToken} did not match the active local context {expectedContextToken}.";
+                _lastPacketOwnedAskApspTick = Environment.TickCount;
                 message = _lastPacketOwnedAskApspMessage;
                 ShowUtilityFeedbackMessage(message);
                 return false;
@@ -2849,6 +3268,7 @@ namespace HaCreator.MapSimulator
             {
                 _packetOwnedApspPromptActive = false;
                 _lastPacketOwnedAskApspMessage = $"Packet-owned AP/SP helper prompt rejected unsupported event type {eventType}.";
+                _lastPacketOwnedAskApspTick = Environment.TickCount;
                 message = _lastPacketOwnedAskApspMessage;
                 ShowUtilityFeedbackMessage(message);
                 return false;
@@ -2860,6 +3280,7 @@ namespace HaCreator.MapSimulator
             _lastPacketOwnedApspFollowUpContextToken = 0;
             _lastPacketOwnedApspFollowUpResponseCode = 0;
             _lastPacketOwnedAskApspMessage = $"Opened packet-owned AP/SP helper prompt for context {contextToken}, event {eventType}, StringPool 0x{PacketOwnedApspPromptStringPoolId:X}.";
+            _lastPacketOwnedAskApspTick = Environment.TickCount;
             ShowLoginUtilityDialog(
                 "AP/SP Helper",
                 BuildPacketOwnedApspPromptBody(contextToken, eventType),
@@ -2883,6 +3304,7 @@ namespace HaCreator.MapSimulator
             _lastPacketOwnedApspFollowUpResponseCode = PacketOwnedApspFollowUpResponseCode;
             _lastPacketOwnedAskApspMessage =
                 $"Accepted packet-owned AP/SP helper event {_packetOwnedApspPromptEventType}; simulated outpacket {PacketOwnedApspFollowUpOpcode} ({_lastPacketOwnedApspFollowUpContextToken}, {PacketOwnedApspFollowUpResponseCode}).";
+            _lastPacketOwnedAskApspTick = Environment.TickCount;
             _packetOwnedApspPromptActive = false;
             HideLoginUtilityDialog();
             ShowUtilityFeedbackMessage(_lastPacketOwnedAskApspMessage);
@@ -2898,6 +3320,7 @@ namespace HaCreator.MapSimulator
 
             _lastPacketOwnedAskApspMessage =
                 $"Declined packet-owned AP/SP helper event {_packetOwnedApspPromptEventType}; outpacket {PacketOwnedApspFollowUpOpcode} was not emitted.";
+            _lastPacketOwnedAskApspTick = Environment.TickCount;
             _packetOwnedApspPromptActive = false;
             HideLoginUtilityDialog();
             ShowUtilityFeedbackMessage(_lastPacketOwnedAskApspMessage);
@@ -3053,24 +3476,31 @@ namespace HaCreator.MapSimulator
             if (_packetOwnedTutorRuntime.HasVisibleIndexedCue(currentTickCount))
             {
                 int remainingMs = Math.Max(0, unchecked(_packetOwnedTutorRuntime.ActiveMessageExpiresAt - currentTickCount));
-                return $"Tutor: {variant}, cue #{Math.Max(0, _packetOwnedTutorRuntime.LastIndexedMessage)} ({remainingMs} ms left).";
+                return BuildPacketOwnedTutorStatusWithRegisteredVariants(
+                    $"Tutor: {variant}, cue #{Math.Max(0, _packetOwnedTutorRuntime.LastIndexedMessage)} ({remainingMs} ms left).");
             }
 
-            return $"Tutor: {variant}, waiting for message.";
+            return BuildPacketOwnedTutorStatusWithRegisteredVariants($"Tutor: {variant}, waiting for message.");
         }
 
         private string DescribePacketOwnedTutorKnownVariants()
         {
-            string variants = _packetOwnedTutorRuntime.DescribeActiveTutorVariants();
-            return string.Equals(variants, "none", StringComparison.Ordinal)
-                ? string.Empty
-                : string.Join(
-                    ", ",
-                    variants
-                        .Split(new[] { ", " }, StringSplitOptions.RemoveEmptyEntries)
-                        .Select(value => int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int skillId)
-                            ? DescribePacketOwnedTutorVariant(skillId)
-                            : value));
+            if (!_packetOwnedTutorRuntime.HasRegisteredTutorVariants)
+            {
+                return string.Empty;
+            }
+
+            return string.Join(
+                ", ",
+                _packetOwnedTutorRuntime.RegisteredTutorSkillIds.Select(skillId => $"{DescribePacketOwnedTutorVariant(skillId)} ({skillId.ToString(CultureInfo.InvariantCulture)})"));
+        }
+
+        private string BuildPacketOwnedTutorStatusWithRegisteredVariants(string baseStatus)
+        {
+            string knownVariants = DescribePacketOwnedTutorKnownVariants();
+            return string.IsNullOrWhiteSpace(knownVariants)
+                ? baseStatus
+                : $"{baseStatus} Registered variants: {knownVariants}.";
         }
 
         private void LoadPacketOwnedTutorAssets()
@@ -3096,6 +3526,28 @@ namespace HaCreator.MapSimulator
                 Arrow = LoadUiArrowSprite(tutorialBalloonSource["arrow"] as WzCanvasProperty),
                 TextColor = Color.Black
             };
+        }
+
+        private static int ResolvePacketOwnedTutorActorHeight(int skillId)
+        {
+            int normalizedSkillId = Math.Max(0, skillId);
+            if (normalizedSkillId <= 0)
+            {
+                return TutorRuntime.AranTutorHeight;
+            }
+
+            string skillImageName = $"{normalizedSkillId / 1000}.img";
+            WzImage skillImage = Program.FindImage("Skill", skillImageName);
+            WzIntProperty heightProperty =
+                skillImage?["skill"]?[normalizedSkillId.ToString(CultureInfo.InvariantCulture)]?["summon"]?["height"] as WzIntProperty;
+            if (heightProperty?.Value is int height && height > 0)
+            {
+                return height;
+            }
+
+            return normalizedSkillId == TutorRuntime.CygnusTutorSkillId
+                ? TutorRuntime.CygnusTutorHeight
+                : TutorRuntime.AranTutorHeight;
         }
 
         private string EnsurePacketOwnedTutorSummon(int currentTickCount)
@@ -3578,6 +4030,20 @@ namespace HaCreator.MapSimulator
                 out status);
         }
 
+        private bool TryMirrorPacketOwnedFollowWithdrawToOfficialSession(out string status)
+        {
+            status = null;
+            if (!_localUtilityOfficialSessionBridge.HasConnectedSession)
+            {
+                return true;
+            }
+
+            return _localUtilityOfficialSessionBridge.TrySendOutboundPacket(
+                LocalFollowCharacterRuntime.FollowWithdrawOpcode,
+                LocalUtilityOfficialSessionBridgeManager.BuildFollowCharacterWithdrawPayload(),
+                out status);
+        }
+
         private void AcceptPacketOwnedFollowCharacterPrompt()
         {
             if (_localFollowRuntime.IncomingRequesterId <= 0)
@@ -3655,6 +4121,16 @@ namespace HaCreator.MapSimulator
                 ? _localFollowRuntime.DeclineIncomingRequest(requester)
                 : _localFollowRuntime.DeclineIncomingRequest(LocalFollowUserSnapshot.Missing(_localFollowRuntime.IncomingRequesterId));
             HideLoginUtilityDialog();
+            if (!TryMirrorPacketOwnedFollowWithdrawToOfficialSession(out string bridgeStatus))
+            {
+                message = $"{message} {bridgeStatus}".Trim();
+                _chat?.AddErrorMessage(bridgeStatus, currTickCount);
+            }
+            else if (!string.IsNullOrWhiteSpace(bridgeStatus))
+            {
+                message = $"{message} {bridgeStatus}".Trim();
+            }
+
             ShowUtilityFeedbackMessage(message);
         }
 
@@ -3664,6 +4140,7 @@ namespace HaCreator.MapSimulator
             _lastPacketOwnedFollowFailureMessage = string.IsNullOrWhiteSpace(message)
                 ? "Packet-owned follow-character request failed."
                 : message.Trim();
+            _lastPacketOwnedFollowFailureTick = Environment.TickCount;
             _lastPacketOwnedFollowFailureReason = null;
             _lastPacketOwnedFollowFailureDriverId = 0;
             _lastPacketOwnedFollowFailureClearedPending = false;
@@ -3725,6 +4202,7 @@ namespace HaCreator.MapSimulator
             _lastPacketOwnedFollowFailureMessage = string.IsNullOrWhiteSpace(info.Message)
                 ? "Packet-owned follow-character request failed."
                 : info.Message.Trim();
+            _lastPacketOwnedFollowFailureTick = Environment.TickCount;
             _localFollowRuntime.ApplyFollowFailure(info);
 
             if (info.ClearsPendingRequest)
@@ -4020,10 +4498,12 @@ namespace HaCreator.MapSimulator
             if (minigame)
             {
                 _lastPacketOwnedMinigameSoundDescriptor = resolvedDescriptor;
+                _lastPacketOwnedMinigameSoundTick = Environment.TickCount;
             }
             else
             {
                 _lastPacketOwnedEventSoundDescriptor = resolvedDescriptor;
+                _lastPacketOwnedEventSoundTick = Environment.TickCount;
             }
 
             string message = $"Played packet-owned {(minigame ? "minigame" : "event")} sound {resolvedDescriptor}.";
@@ -4966,16 +5446,19 @@ namespace HaCreator.MapSimulator
             int currentTickCount = Environment.TickCount;
             if (args.Length == 0)
             {
-                return ChatCommandHandler.CommandResult.Info($"{DescribeLocalUtilityPacketInboxStatus()} {DescribePacketOwnedUtilityDispatchStatus(currentTickCount)} {_localUtilityPacketInbox.LastStatus} {DescribeLocalUtilityOfficialSessionBridgeStatus()}");
+                return ChatCommandHandler.CommandResult.Info($"{DescribeLocalUtilityPacketInboxStatus()} {DescribeLocalUtilityPacketOutboxStatus()} {DescribePacketOwnedUtilityDispatchStatus(currentTickCount)} {_localUtilityPacketInbox.LastStatus} {_localUtilityPacketOutbox.LastStatus} {DescribeLocalUtilityOfficialSessionBridgeStatus()}");
             }
 
             switch (args[0].ToLowerInvariant())
             {
                 case "status":
-                    return ChatCommandHandler.CommandResult.Info($"{DescribeLocalUtilityPacketInboxStatus()} {DescribePacketOwnedUtilityDispatchStatus(currentTickCount)} {_localUtilityPacketInbox.LastStatus} {DescribeLocalUtilityOfficialSessionBridgeStatus()}");
+                    return ChatCommandHandler.CommandResult.Info($"{DescribeLocalUtilityPacketInboxStatus()} {DescribeLocalUtilityPacketOutboxStatus()} {DescribePacketOwnedUtilityDispatchStatus(currentTickCount)} {_localUtilityPacketInbox.LastStatus} {_localUtilityPacketOutbox.LastStatus} {DescribeLocalUtilityOfficialSessionBridgeStatus()}");
 
                 case "inbox":
                     return HandlePacketOwnedUtilityInboxCommand(args);
+
+                case "outbox":
+                    return HandlePacketOwnedUtilityOutboxCommand(args);
 
                 case "directionmode":
                     if (args.Length < 2 || !TryParsePacketOwnedBooleanToken(args[1], out bool directionModeEnabled))
@@ -5255,8 +5738,71 @@ namespace HaCreator.MapSimulator
 
                 default:
                     return ChatCommandHandler.CommandResult.Error(
-                        "Usage: /localutility [status|inbox [status|start [port]|stop|packet <sitresult|questresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|follow|followfail|directionmode|standalone|damagemeter|timebomb|vengeance|exjablin|hpdec|skillcooltime|193|231|242|243|246|247|250|251|252|262|263|264|265|266|267|268|270|271|272|273|274|275|276|1011|1012|1013|1014|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]|packetclientraw <hex>]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|directionmode <on|off|1|0> [delayMs]|standalone <on|off|1|0>|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel|type19|whisper:name|whisperout:name] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv]|classcompetition|skillguide|antimacro [status|launch <normal|admin> [first|retry]|notice <noticeType> [antiMacroType]|result <mode> [antiMacroType] [userName]|clear]|apsp [status|seed [characterId]|receive <token>|send <token>|context <receiveToken> [sendToken]|<contextToken> <11|12|13>|text]|follow <status|request <driverId|name> [auto|manual] [keyinput]|ask <requesterId|name>|accept|decline|attach <driverId|name>|detach [transferX transferY]|passengerdetach [requesterId|name] [transferX transferY]>|followfail [reasonCode [driverId]|text]|packet <sitresult|questresult|openui|openuiwithoption|commodity|fade|balloon|damagemeter|timebomb|vengeance|exjablin|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|directionmode|standalone|follow|followfail|193|231|242|243|250|251|252|255|256|262|263|264|265|266|267|268|270|271|272|273|274|275|276|1011|1012|1013|1014> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]");
+                        "Usage: /localutility [status|inbox [status|start [port]|stop|packet <sitresult|questresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|follow|followfail|directionmode|standalone|damagemeter|timebomb|vengeance|exjablin|hpdec|skillcooltime|193|231|242|243|246|247|250|251|252|262|263|264|265|266|267|268|270|271|272|273|274|275|276|1011|1012|1013|1014|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]|packetclientraw <hex>]|outbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|directionmode <on|off|1|0> [delayMs]|standalone <on|off|1|0>|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel|type19|whisper:name|whisperout:name] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv]|classcompetition|skillguide|antimacro [status|launch <normal|admin> [first|retry]|notice <noticeType> [antiMacroType]|result <mode> [antiMacroType] [userName]|clear]|apsp [status|seed [characterId]|receive <token>|send <token>|context <receiveToken> [sendToken]|<contextToken> <11|12|13>|text]|follow <status|request <driverId|name> [auto|manual] [keyinput]|withdraw|ask <requesterId|name>|accept|decline|attach <driverId|name>|detach [transferX transferY]|passengerdetach [requesterId|name] [transferX transferY]>|followfail [reasonCode [driverId]|text]|packet <sitresult|questresult|openui|openuiwithoption|commodity|fade|balloon|damagemeter|timebomb|vengeance|exjablin|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|directionmode|standalone|follow|followfail|193|231|242|243|250|251|252|255|256|262|263|264|265|266|267|268|270|271|272|273|274|275|276|1011|1012|1013|1014> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]");
             }
+        }
+
+        private bool TryApplyPacketOwnedMarriageResultPayload(byte[] payload, out string message)
+        {
+            message = null;
+            if (_weddingInvitationController.TryOpenFromMarriageResultPacket(
+                payload,
+                WeddingInvitationRuntime.DefaultPacketOpenStyle,
+                "packet-owned marriage-result handoff",
+                uiWindowManager,
+                _playerManager?.Player?.Build,
+                _fontChat,
+                ShowUtilityFeedbackMessage,
+                () => ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.WeddingInvitation),
+                out string invitationMessage))
+            {
+                message = invitationMessage;
+                return true;
+            }
+
+            if (WeddingInvitationRuntime.TryDecodeMarriageResultOpenPayload(payload, out _, out _, out _, out string decodeMessage))
+            {
+                message = $"{decodeMessage} The packet-owned owner is now wired, but the simulator still defaults the invitation skin to {WeddingInvitationRuntime.DefaultPacketOpenStyle} because subtype {WeddingInvitationRuntime.ClientOpenResultSubtype} only carries groom, bride, and dialog-type fields.";
+                return false;
+            }
+
+            message = invitationMessage;
+            return false;
+        }
+
+        private ChatCommandHandler.CommandResult HandlePacketOwnedUtilityOutboxCommand(string[] args)
+        {
+            int offset = args.Length > 0 && string.Equals(args[0], "outbox", StringComparison.OrdinalIgnoreCase) ? 1 : 0;
+            int currentTickCount = Environment.TickCount;
+            const string usage = "Usage: /localutility outbox [status|start [port]|stop]";
+
+            if (args.Length <= offset || string.Equals(args[offset], "status", StringComparison.OrdinalIgnoreCase))
+            {
+                return ChatCommandHandler.CommandResult.Info($"{DescribeLocalUtilityPacketOutboxStatus()} {DescribePacketOwnedUtilityDispatchStatus(currentTickCount)} {_localUtilityPacketOutbox.LastStatus}");
+            }
+
+            if (string.Equals(args[offset], "start", StringComparison.OrdinalIgnoreCase))
+            {
+                int port = LocalUtilityPacketTransportManager.DefaultPort;
+                if (args.Length > offset + 1 && (!int.TryParse(args[offset + 1], out port) || port <= 0 || port > ushort.MaxValue))
+                {
+                    return ChatCommandHandler.CommandResult.Error(usage);
+                }
+
+                _localUtilityPacketOutboxConfiguredPort = port;
+                _localUtilityPacketOutboxEnabled = true;
+                EnsureLocalUtilityPacketOutboxState(shouldRun: true);
+                return ChatCommandHandler.CommandResult.Ok($"{DescribeLocalUtilityPacketOutboxStatus()} {DescribePacketOwnedUtilityDispatchStatus(currentTickCount)} {_localUtilityPacketOutbox.LastStatus}");
+            }
+
+            if (string.Equals(args[offset], "stop", StringComparison.OrdinalIgnoreCase))
+            {
+                _localUtilityPacketOutboxEnabled = false;
+                EnsureLocalUtilityPacketOutboxState(shouldRun: false);
+                return ChatCommandHandler.CommandResult.Ok($"{DescribeLocalUtilityPacketOutboxStatus()} {DescribePacketOwnedUtilityDispatchStatus(currentTickCount)} {_localUtilityPacketOutbox.LastStatus}");
+            }
+
+            return ChatCommandHandler.CommandResult.Error(usage);
         }
 
         private ChatCommandHandler.CommandResult HandlePacketOwnedUtilityInboxCommand(string[] args)
@@ -5275,7 +5821,7 @@ namespace HaCreator.MapSimulator
                 int port = LocalUtilityPacketInboxManager.DefaultPort;
                 if (args.Length > offset + 1 && (!int.TryParse(args[offset + 1], out port) || port <= 0 || port > ushort.MaxValue))
                 {
-                    return ChatCommandHandler.CommandResult.Error($"Usage: {usagePrefix} [status|start [port]|stop|packet <sitresult|questresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|radio|skillguide|antimacro|apspevent|follow|followfail|directionmode|standalone|damagemeter|timebomb|vengeance|exjablin|hpdec|skillcooltime|193|231|242|243|246|247|250|251|252|261|262|263|264|265|266|267|268|270|271|272|273|274|275|276|1011|1012|1013|1014|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]|packetclientraw <hex>]");
+                    return ChatCommandHandler.CommandResult.Error($"Usage: {usagePrefix} [status|start [port]|stop|packet <sitresult|questresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|radio|skillguide|antimacro|apspevent|follow|followfail|directionmode|standalone|damagemeter|timebomb|vengeance|exjablin|hpdec|skillcooltime|marriageresult|193|231|242|243|246|247|250|251|252|261|262|263|264|265|266|267|268|270|271|272|273|274|275|276|1011|1012|1013|1014|1018|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]|packetclientraw <hex>]");
                 }
 
                 _localUtilityPacketInboxConfiguredPort = port;
@@ -5306,7 +5852,7 @@ namespace HaCreator.MapSimulator
             }
 
             return ChatCommandHandler.CommandResult.Error(
-                $"Usage: {usagePrefix} [status|start [port]|stop|packet <sitresult|questresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|radio|skillguide|antimacro|apspevent|follow|followfail|directionmode|standalone|damagemeter|timebomb|vengeance|exjablin|hpdec|skillcooltime|193|231|242|243|246|247|250|251|252|261|262|263|264|265|266|267|268|270|271|272|273|274|275|276|1011|1012|1013|1014|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]|packetclientraw <hex>]");
+                $"Usage: {usagePrefix} [status|start [port]|stop|packet <sitresult|questresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|radio|skillguide|antimacro|apspevent|follow|followfail|directionmode|standalone|damagemeter|timebomb|vengeance|exjablin|hpdec|skillcooltime|marriageresult|193|231|242|243|246|247|250|251|252|261|262|263|264|265|266|267|268|270|271|272|273|274|275|276|1011|1012|1013|1014|1018|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]|packetclientraw <hex>]");
         }
 
         private ChatCommandHandler.CommandResult HandlePacketOwnedUtilityPacketCommand(string[] args, bool rawHex)
@@ -5435,11 +5981,15 @@ namespace HaCreator.MapSimulator
                 case "followfail":
                     applied = TryApplyPacketOwnedFollowCharacterFailedPayload(payload, out message);
                     break;
+                case "marriageresult":
+                case "weddinginvitation":
+                    applied = TryApplyPacketOwnedMarriageResultPayload(payload, out message);
+                    break;
                 default:
                     return ChatCommandHandler.CommandResult.Error(
                         rawHex
-                        ? "Usage: /localutility packetraw <sitresult|questresult|openui|openuiwithoption|commodity|fade|balloon|damagemeter|timebomb|vengeance|exjablin|hpdec|notice|chat|buffzone|eventsound|minigamesound|radio|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|directionmode|standalone|follow|followfail|skillcooltime|193|231|242|243|246|247|250|251|252|255|256|261|262|263|264|265|266|267|268|270|271|272|273|274|275|276|1011|1012|1013|1014> <hex>"
-                        : "Usage: /localutility packet <sitresult|questresult|openui|openuiwithoption|commodity|fade|balloon|damagemeter|timebomb|vengeance|exjablin|hpdec|notice|chat|buffzone|eventsound|minigamesound|radio|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|directionmode|standalone|follow|followfail|skillcooltime|193|231|242|243|246|247|250|251|252|255|256|261|262|263|264|265|266|267|268|270|271|272|273|274|275|276|1011|1012|1013|1014> [payloadhex=..|payloadb64=..]");
+                        ? "Usage: /localutility packetraw <sitresult|questresult|openui|openuiwithoption|commodity|fade|balloon|damagemeter|timebomb|vengeance|exjablin|hpdec|notice|chat|buffzone|eventsound|minigamesound|radio|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|directionmode|standalone|follow|followfail|skillcooltime|marriageresult|193|231|242|243|246|247|250|251|252|255|256|261|262|263|264|265|266|267|268|270|271|272|273|274|275|276|1011|1012|1013|1014|1018> <hex>"
+                        : "Usage: /localutility packet <sitresult|questresult|openui|openuiwithoption|commodity|fade|balloon|damagemeter|timebomb|vengeance|exjablin|hpdec|notice|chat|buffzone|eventsound|minigamesound|radio|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|directionmode|standalone|follow|followfail|skillcooltime|marriageresult|193|231|242|243|246|247|250|251|252|255|256|261|262|263|264|265|266|267|268|270|271|272|273|274|275|276|1011|1012|1013|1014|1018> [payloadhex=..|payloadb64=..]");
             }
 
             return applied
@@ -5508,8 +6058,15 @@ namespace HaCreator.MapSimulator
                     return ChatCommandHandler.CommandResult.Error("Usage: /localutility session start <listenPort> <serverHost> <serverPort>");
                 }
 
-                _localUtilityOfficialSessionBridge.Start(listenPort, args[2], remotePort);
-                return ChatCommandHandler.CommandResult.Ok(_localUtilityOfficialSessionBridge.LastStatus);
+                _localUtilityOfficialSessionBridgeEnabled = true;
+                _localUtilityOfficialSessionBridgeUseDiscovery = false;
+                _localUtilityOfficialSessionBridgeConfiguredListenPort = listenPort;
+                _localUtilityOfficialSessionBridgeConfiguredRemoteHost = args[2];
+                _localUtilityOfficialSessionBridgeConfiguredRemotePort = remotePort;
+                _localUtilityOfficialSessionBridgeConfiguredProcessSelector = null;
+                _localUtilityOfficialSessionBridgeConfiguredLocalPort = null;
+                EnsureLocalUtilityOfficialSessionBridgeState(shouldRun: true);
+                return ChatCommandHandler.CommandResult.Ok(DescribeLocalUtilityOfficialSessionBridgeStatus());
             }
 
             if (string.Equals(args[0], "startauto", StringComparison.OrdinalIgnoreCase))
@@ -5535,15 +6092,34 @@ namespace HaCreator.MapSimulator
                     localPortFilter = parsedLocalPort;
                 }
 
-                return _localUtilityOfficialSessionBridge.TryStartFromDiscovery(autoListenPort, autoRemotePort, processSelector, localPortFilter, out string startStatus)
-                    ? ChatCommandHandler.CommandResult.Ok(startStatus)
+                _localUtilityOfficialSessionBridgeEnabled = true;
+                _localUtilityOfficialSessionBridgeUseDiscovery = true;
+                _localUtilityOfficialSessionBridgeConfiguredListenPort = autoListenPort;
+                _localUtilityOfficialSessionBridgeConfiguredRemotePort = autoRemotePort;
+                _localUtilityOfficialSessionBridgeConfiguredRemoteHost = IPAddress.Loopback.ToString();
+                _localUtilityOfficialSessionBridgeConfiguredProcessSelector = processSelector;
+                _localUtilityOfficialSessionBridgeConfiguredLocalPort = localPortFilter;
+                _nextLocalUtilityOfficialSessionBridgeDiscoveryRefreshAt = 0;
+
+                return _localUtilityOfficialSessionBridge.TryRefreshFromDiscovery(
+                        autoListenPort,
+                        autoRemotePort,
+                        processSelector,
+                        localPortFilter,
+                        out string startStatus)
+                    ? ChatCommandHandler.CommandResult.Ok($"{startStatus} {DescribeLocalUtilityOfficialSessionBridgeStatus()}")
                     : ChatCommandHandler.CommandResult.Error(startStatus);
             }
 
             if (string.Equals(args[0], "stop", StringComparison.OrdinalIgnoreCase))
             {
+                _localUtilityOfficialSessionBridgeEnabled = false;
+                _localUtilityOfficialSessionBridgeUseDiscovery = false;
+                _localUtilityOfficialSessionBridgeConfiguredRemotePort = 0;
+                _localUtilityOfficialSessionBridgeConfiguredProcessSelector = null;
+                _localUtilityOfficialSessionBridgeConfiguredLocalPort = null;
                 _localUtilityOfficialSessionBridge.Stop();
-                return ChatCommandHandler.CommandResult.Ok(_localUtilityOfficialSessionBridge.LastStatus);
+                return ChatCommandHandler.CommandResult.Ok(DescribeLocalUtilityOfficialSessionBridgeStatus());
             }
 
             return ChatCommandHandler.CommandResult.Error("Usage: /localutility session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]");
@@ -5586,6 +6162,22 @@ namespace HaCreator.MapSimulator
                     return ChatCommandHandler.CommandResult.Ok(string.IsNullOrWhiteSpace(requestBridgeStatus)
                         ? requestMessage
                         : $"{requestMessage} {requestBridgeStatus}".Trim());
+
+                case "withdraw":
+                    StampPacketOwnedUtilityRequestState();
+                    if (!_localFollowRuntime.TryWithdrawOutgoingRequest(currTickCount, ResolvePacketOwnedRemoteCharacterName, out string withdrawMessage))
+                    {
+                        return ChatCommandHandler.CommandResult.Error(withdrawMessage);
+                    }
+
+                    if (!TryMirrorPacketOwnedFollowWithdrawToOfficialSession(out string withdrawBridgeStatus))
+                    {
+                        return ChatCommandHandler.CommandResult.Error($"{withdrawMessage} {withdrawBridgeStatus}".Trim());
+                    }
+
+                    return ChatCommandHandler.CommandResult.Ok(string.IsNullOrWhiteSpace(withdrawBridgeStatus)
+                        ? withdrawMessage
+                        : $"{withdrawMessage} {withdrawBridgeStatus}".Trim());
 
                 case "ask":
                     if (args.Length < 2 || !TryResolvePacketOwnedRemoteCharacterToken(args[1], out int requesterId, out _)
@@ -5722,7 +6314,7 @@ namespace HaCreator.MapSimulator
                 }
 
                 default:
-                    return ChatCommandHandler.CommandResult.Error("Usage: /localutility follow <status|request <driverId|name> [auto|manual] [keyinput]|ask <requesterId|name>|accept|decline|attach <driverId|name>|detach [transferX transferY]|passengerdetach [requesterId|name] [transferX transferY]>");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /localutility follow <status|request <driverId|name> [auto|manual] [keyinput]|withdraw|ask <requesterId|name>|accept|decline|attach <driverId|name>|detach [transferX transferY]|passengerdetach [requesterId|name] [transferX transferY]>");
             }
         }
 
@@ -5735,9 +6327,14 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            CharacterPart mountPart = null;
-            player.Build?.Equipment?.TryGetValue(EquipSlot.TamingMob, out mountPart);
-            bool isMounted = FollowCharacterEligibilityResolver.IsMountedState(mountPart, player.CurrentActionName);
+            CharacterPart equippedMountPart = null;
+            player.Build?.Equipment?.TryGetValue(EquipSlot.TamingMob, out equippedMountPart);
+            CharacterPart mountedStateMountPart = player.ResolveMountedStateTamingMobPart();
+            bool isMounted = FollowCharacterEligibilityResolver.ResolveMountedVehicleId(
+                equippedMountPart,
+                player.CurrentActionName,
+                mechanicMode: null,
+                activeMountedRenderOwner: mountedStateMountPart) > 0;
             bool isImmovable = player.State == PlayerState.Sitting
                 || player.IsMovementLockedBySkillTransform
                 || player.GmFlyMode
@@ -5792,9 +6389,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            CharacterPart mountPart = null;
-            actor.Build?.Equipment?.TryGetValue(EquipSlot.TamingMob, out mountPart);
-            bool isMounted = FollowCharacterEligibilityResolver.IsMountedState(mountPart, actor.ActionName);
+            bool isMounted = actor.RidingVehicleId > 0;
             bool hasMorphTemplate = actor.HasMorphTemplate
                 || actor.Build?.Body?.Type == CharacterPartType.Morph;
             bool isGhost = FollowCharacterEligibilityResolver.IsGhostAction(actor.ActionName);

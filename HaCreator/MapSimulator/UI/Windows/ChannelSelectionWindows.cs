@@ -411,12 +411,12 @@ namespace HaCreator.MapSimulator.UI
 
         private void UpdateWorldButtonLayout()
         {
-            const int columnCount = 3;
-            const int rowCount = 8;
-            const int startX = 18;
-            const int startY = 20;
-            const int columnSpacing = 112;
-            const int rowSpacing = 22;
+            const int columnCount = 6;
+            const int rowCount = 6;
+            const int startX = 0;
+            const int startY = 0;
+            const int columnSpacing = 96;
+            const int rowSpacing = 26;
             const int viewButtonY = 238;
             const int viewChoiceX = 78;
             const int viewAllX = 192;
@@ -909,7 +909,9 @@ namespace HaCreator.MapSimulator.UI
         private readonly int _selectionFrameDelayMs;
         private SpriteFont _font;
         private int _worldId;
+        private int _currentChannelIndex;
         private int _channelIndex;
+        private int _channelCount;
         private int _hideAtTick;
 
         public ChannelShiftWindow(
@@ -941,12 +943,19 @@ namespace HaCreator.MapSimulator.UI
             _font = font;
         }
 
-        public void BeginShift(int worldId, int channelIndex, int durationMs = 1200)
+        public void BeginShift(int worldId, int currentChannelIndex, int channelIndex, int channelCount, int durationMs = 1200)
         {
             _worldId = worldId;
+            _currentChannelIndex = Math.Max(0, currentChannelIndex);
             _channelIndex = channelIndex;
+            _channelCount = Math.Max(0, Math.Min(channelCount, _channelIcons.Count));
             _hideAtTick = Environment.TickCount + Math.Max(1, durationMs);
             Show();
+        }
+
+        public void BeginShift(int worldId, int channelIndex, int durationMs = 1200)
+        {
+            BeginShift(worldId, channelIndex, channelIndex, _channelIcons.Count, durationMs);
         }
 
         public override void Update(GameTime gameTime)
@@ -979,6 +988,12 @@ namespace HaCreator.MapSimulator.UI
                 sprite.Draw(_overlayTexture3, new Vector2(Position.X + _overlayOffset3.X, Position.Y + _overlayOffset3.Y), Color.White);
             }
 
+            if (_worldBadges.TryGetValue(_worldId, out Texture2D badgeTexture))
+            {
+                float badgeY = Position.Y + 40f - (badgeTexture.Height / 2f);
+                sprite.Draw(badgeTexture, new Vector2(Position.X + 16, badgeY), Color.White);
+            }
+
             if (_font != null)
             {
                 SelectorWindowDrawing.DrawShadowedText(
@@ -995,20 +1010,50 @@ namespace HaCreator.MapSimulator.UI
                     new Color(220, 220, 220));
             }
 
-            if (_worldBadges.TryGetValue(_worldId, out Texture2D badgeTexture))
+            int channelCount = _channelCount > 0
+                ? _channelCount
+                : _channelIcons.Count;
+            for (int channelIndex = 0; channelIndex < channelCount; channelIndex++)
             {
-                sprite.Draw(badgeTexture, new Vector2(Position.X + 18, Position.Y + 18), Color.White);
-            }
-
-            Texture2D rowTexture = GetSelectionFrame(TickCount);
-            if (rowTexture != null)
-            {
-                Vector2 rowPosition = new Vector2(Position.X + 148, Position.Y + 88);
-                sprite.Draw(rowTexture, rowPosition, Color.White);
-
-                if (_channelIcons.TryGetValue(_channelIndex, out Texture2D channelTexture))
+                if (!_channelIcons.TryGetValue(channelIndex, out Texture2D channelTexture) || channelTexture == null)
                 {
-                    sprite.Draw(channelTexture, rowPosition + new Vector2(8f, 5f), Color.White);
+                    continue;
+                }
+
+                Rectangle rowBounds = GetChannelRowBounds(channelIndex);
+                sprite.Draw(channelTexture, new Vector2(Position.X + rowBounds.X, Position.Y + rowBounds.Y), Color.White);
+
+                if (channelIndex == _channelIndex)
+                {
+                    Texture2D selectionFrame = GetSelectionFrame(TickCount);
+                    if (selectionFrame != null)
+                    {
+                        sprite.Draw(selectionFrame, new Vector2(Position.X + rowBounds.X - 2, Position.Y + rowBounds.Y - 3), Color.White);
+                    }
+                }
+
+                if (_font == null)
+                {
+                    continue;
+                }
+
+                if (channelIndex == _currentChannelIndex)
+                {
+                    SelectorWindowDrawing.DrawShadowedText(
+                        sprite,
+                        _font,
+                        "Current",
+                        new Vector2(Position.X + rowBounds.X + 29, Position.Y + rowBounds.Y + 1),
+                        new Color(255, 228, 151));
+                }
+                else if (channelIndex == _channelIndex)
+                {
+                    SelectorWindowDrawing.DrawShadowedText(
+                        sprite,
+                        _font,
+                        "Next",
+                        new Vector2(Position.X + rowBounds.X + 33, Position.Y + rowBounds.Y + 1),
+                        new Color(163, 226, 255));
                 }
             }
         }
@@ -1022,6 +1067,13 @@ namespace HaCreator.MapSimulator.UI
 
             int frameIndex = Math.Abs(tickCount / _selectionFrameDelayMs) % _selectionFrames.Count;
             return _selectionFrames[frameIndex];
+        }
+
+        private static Rectangle GetChannelRowBounds(int channelIndex)
+        {
+            int x = 11 + (70 * (channelIndex % 5));
+            int y = 55 + (20 * (channelIndex / 5));
+            return new Rectangle(x, y, 68, 20);
         }
     }
 

@@ -44,6 +44,7 @@ namespace HaCreator.MapSimulator.Interaction
             string partnerName,
             int ringItemId,
             int sealItemId,
+            string requestMessage,
             string customMessage,
             UIWindowManager windowManager,
             CharacterBuild build,
@@ -51,9 +52,63 @@ namespace HaCreator.MapSimulator.Interaction
             Action<string> feedbackHandler,
             Action showWindow)
         {
-            string message = _runtime.OpenProposal(proposerName, partnerName, ringItemId, sealItemId, customMessage);
+            string message = _runtime.OpenProposal(proposerName, partnerName, ringItemId, sealItemId, requestMessage, customMessage);
             ShowWindow(windowManager, build, font, feedbackHandler, showWindow);
             return message;
+        }
+
+        internal bool TryOpenIncomingProposalFromLastRequestPayload(
+            string proposerName,
+            string partnerName,
+            int sealItemId,
+            string customMessage,
+            UIWindowManager windowManager,
+            CharacterBuild build,
+            SpriteFont font,
+            Action<string> feedbackHandler,
+            Action showWindow,
+            out string message)
+        {
+            if (!_runtime.TryOpenIncomingProposalFromLastRequestPayload(
+                    proposerName,
+                    partnerName,
+                    sealItemId,
+                    customMessage,
+                    out message))
+            {
+                return false;
+            }
+
+            ShowWindow(windowManager, build, font, feedbackHandler, showWindow);
+            return true;
+        }
+
+        internal bool TryOpenIncomingProposalFromRequestPayload(
+            string proposerName,
+            string partnerName,
+            int sealItemId,
+            byte[] requestPayload,
+            string customMessage,
+            UIWindowManager windowManager,
+            CharacterBuild build,
+            SpriteFont font,
+            Action<string> feedbackHandler,
+            Action showWindow,
+            out string message)
+        {
+            if (!_runtime.TryOpenIncomingProposalFromRequestPayload(
+                    proposerName,
+                    partnerName,
+                    sealItemId,
+                    requestPayload,
+                    customMessage,
+                    out message))
+            {
+                return false;
+            }
+
+            ShowWindow(windowManager, build, font, feedbackHandler, showWindow);
+            return true;
         }
 
         internal string OpenOutgoingProposal(

@@ -139,6 +139,7 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly MemoMailboxManager _memoMailbox;
         private int _openCount;
         private int _noticeCount;
+        private int _arrivalNoticeCount;
         private int _deliveryCount;
         private int _removalCount;
         private string _lastAlarmSender = string.Empty;
@@ -175,8 +176,8 @@ namespace HaCreator.MapSimulator.Interaction
                 case 26:
                     _openCount++;
                     IsOpen = true;
-                    _memoMailbox.SetActiveTab(ParcelDialogTab.Receive);
-                    StatusMessage = "CParcelDlg packet 26 opened the packet-owned package popup path.";
+                    _memoMailbox.SetActiveTab(ParcelDialogTab.QuickSend);
+                    StatusMessage = "CParcelDlg packet 26 opened the packet-owned quick-delivery owner.";
                     message = StatusMessage;
                     return true;
                 case 27:
@@ -237,7 +238,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal string DescribeStatus()
         {
             MemoMailboxSnapshot snapshot = _memoMailbox.GetSnapshot();
-            return $"Parcel packet-owner {(IsOpen ? "open" : "idle")}. Rows={snapshot.Entries.Count}, unread={snapshot.UnreadCount}, claimable={snapshot.ClaimableCount}, packets open={_openCount}, delivery={_deliveryCount}, remove={_removalCount}, notice={_noticeCount}. Last subtype={LastSubtype.ToString(CultureInfo.InvariantCulture)}. {StatusMessage}";
+            return $"Parcel packet-owner {(IsOpen ? "open" : "idle")}. Rows={snapshot.Entries.Count}, unread={snapshot.UnreadCount}, claimable={snapshot.ClaimableCount}, packets open={_openCount}, delivery={_deliveryCount}, remove={_removalCount}, notice={_noticeCount}, arrival={_arrivalNoticeCount}. Last subtype={LastSubtype.ToString(CultureInfo.InvariantCulture)}. {StatusMessage}";
         }
 
         private bool TryApplyOpenPacket(byte[] payload, out string message)
@@ -248,13 +249,24 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            bool quickMode = payload[1] != 0;
+            bool modeTwoOpen = payload[1] != 0;
+            if (!PacketOwnedParcelPacketCodec.TryDecodeSessionPayload(payload.AsSpan(2), out PacketOwnedParcelSessionDecodeResult session, out string error))
+            {
+                message = $"Parcel dialog packet 8 could not decode the CTabReceive::SetParcel payload. {error}";
+                return false;
+            }
+
             _openCount++;
             IsOpen = true;
-            _memoMailbox.SetActiveTab(quickMode ? ParcelDialogTab.QuickSend : ParcelDialogTab.Receive);
-            StatusMessage = quickMode
-                ? "CParcelDlg packet 8 opened the packet-owned quick-delivery owner."
-                : "CParcelDlg packet 8 opened the packet-owned receive/send owner.";
+            _memoMailbox.ReplacePacketOwnedParcelSession(session.ReceiveEntries, ParcelDialogTab.Receive, out string sessionMessage);
+            if (session.ArrivalNoticeEntries.Count > 0)
+            {
+                _arrivalNoticeCount += session.ArrivalNoticeEntries.Count;
+                _lastAlarmSender = session.ArrivalNoticeEntries[0].Sender ?? string.Empty;
+            }
+
+            string arrivalSummary = DescribeArrivalNoticeSummary(session.ArrivalNoticeEntries);
+            StatusMessage = $"CParcelDlg packet 8 opened the packet-owned receive owner through {(modeTwoOpen ? "mode 2" : "mode 0")} and applied {session.ReceiveEntries.Count.ToString(CultureInfo.InvariantCulture)} receive row(s){arrivalSummary}. {sessionMessage}";
             message = StatusMessage;
             return true;
         }
@@ -281,61 +293,24 @@ namespace HaCreator.MapSimulator.Interaction
 
         private bool TryApplyDeliverPacket(byte[] payload, out string message)
         {
-            using MemoryStream stream = new(payload, 1, payload.Length - 1, writable: false);
-            using BinaryReader reader = new(stream, Encoding.ASCII, leaveOpen: false);
-            if (!TryReadPacketString(reader, out string sender)
-                || !TryReadPacketString(reader, out string subject)
-                || !TryReadPacketString(reader, out string body))
+            if (!PacketOwnedParcelPacketCodec.TryDecodeSingleEntryPayload(payload.AsSpan(1), out PacketOwnedParcelDecodedEntry entry, out string error))
             {
-                message = "Parcel dialog packet 24 is missing sender, subject, or body strings.";
+                message = $"Parcel dialog packet 24 could not decode the PARCEL::Decode payload. {error}";
                 return false;
             }
 
-            if (stream.Length - stream.Position < sizeof(byte))
+            bool delivered = _memoMailbox.TryDeliverDecodedPacketOwnedParcel(entry, out message);
+            if (!delivered)
             {
-                message = "Parcel dialog packet 24 is missing the flags byte.";
                 return false;
             }
 
-            byte flags = reader.ReadByte();
-            int attachmentItemId = 0;
-            int attachmentQuantity = 0;
-            int attachmentMeso = 0;
-
-            if ((flags & ParcelFlagHasItem) != 0)
-            {
-                if (stream.Length - stream.Position < sizeof(int) * 2)
-                {
-                    message = "Parcel dialog packet 24 reported an item attachment without id and quantity.";
-                    return false;
-                }
-
-                attachmentItemId = reader.ReadInt32();
-                attachmentQuantity = Math.Max(1, reader.ReadInt32());
-            }
-
-            if ((flags & ParcelFlagHasMeso) != 0)
-            {
-                if (stream.Length - stream.Position < sizeof(int))
-                {
-                    message = "Parcel dialog packet 24 reported a meso attachment without amount.";
-                    return false;
-                }
-
-                attachmentMeso = Math.Max(0, reader.ReadInt32());
-            }
-
-            return TryDeliverPacketOwnedParcel(
-                sender,
-                subject,
-                body,
-                (flags & ParcelFlagRead) != 0,
-                (flags & ParcelFlagKeep) != 0,
-                (flags & ParcelFlagClaimed) != 0,
-                attachmentItemId,
-                attachmentQuantity,
-                attachmentMeso,
-                out message);
+            IsOpen = true;
+            LastSubtype = 24;
+            _deliveryCount++;
+            StatusMessage = $"CParcelDlg packet 24 decoded PARCEL::Decode payload serial {entry.ParcelSerial.ToString(CultureInfo.InvariantCulture)} from {entry.Sender}.";
+            message = StatusMessage;
+            return true;
         }
 
         private bool TryApplyAlarmPacket(byte[] payload, bool expectsSender, out string message)
@@ -362,6 +337,22 @@ namespace HaCreator.MapSimulator.Interaction
                 : $"CParcelDlg packet {LastSubtype.ToString(CultureInfo.InvariantCulture)} raised the packet-owned empty-sender parcel alarm branch (attachment={hasAttachment}).";
             message = StatusMessage;
             return true;
+        }
+
+        private static string DescribeArrivalNoticeSummary(IReadOnlyList<PacketOwnedParcelDecodedEntry> arrivalEntries)
+        {
+            if (arrivalEntries == null || arrivalEntries.Count == 0)
+            {
+                return string.Empty;
+            }
+
+            string sender = arrivalEntries[0]?.Sender;
+            if (string.IsNullOrWhiteSpace(sender))
+            {
+                return $", plus {arrivalEntries.Count.ToString(CultureInfo.InvariantCulture)} arrival notice(s)";
+            }
+
+            return $", plus {arrivalEntries.Count.ToString(CultureInfo.InvariantCulture)} arrival notice(s) led by {sender}";
         }
 
         private static bool TryReadPacketString(BinaryReader reader, out string value)

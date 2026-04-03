@@ -82,6 +82,7 @@ namespace HaCreator.MapSimulator.Combat
         private sealed class PendingAttackPacketOverrides
         {
             public int AttackId { get; set; }
+            public MobTargetInfo LockedTarget { get; set; }
             public List<Point> MultiTargetForBall { get; set; }
             public List<int> RandTimeForAreaAttack { get; set; }
             public int ExpireTime { get; set; }
@@ -170,6 +171,7 @@ namespace HaCreator.MapSimulator.Combat
             int mobPoolId,
             int attackId,
             int currentTime,
+            MobTargetInfo lockedTarget = null,
             IReadOnlyList<Point> multiTargetForBall = null,
             IReadOnlyList<int> randTimeForAreaAttack = null,
             int lifetimeMs = 5000)
@@ -179,9 +181,10 @@ namespace HaCreator.MapSimulator.Combat
                 return;
             }
 
+            bool hasLockedTarget = lockedTarget?.IsValid == true;
             bool hasMultiTargetOverrides = multiTargetForBall != null && multiTargetForBall.Count > 0;
             bool hasAreaDelayOverrides = randTimeForAreaAttack != null && randTimeForAreaAttack.Count > 0;
-            if (!hasMultiTargetOverrides && !hasAreaDelayOverrides)
+            if (!hasLockedTarget && !hasMultiTargetOverrides && !hasAreaDelayOverrides)
             {
                 _pendingAttackPacketOverrides.Remove(mobPoolId);
                 return;
@@ -190,6 +193,7 @@ namespace HaCreator.MapSimulator.Combat
             _pendingAttackPacketOverrides[mobPoolId] = new PendingAttackPacketOverrides
             {
                 AttackId = attackId,
+                LockedTarget = hasLockedTarget ? lockedTarget.Clone() : null,
                 MultiTargetForBall = hasMultiTargetOverrides ? new List<Point>(multiTargetForBall) : null,
                 RandTimeForAreaAttack = hasAreaDelayOverrides ? new List<int>(randTimeForAreaAttack) : null,
                 ExpireTime = lifetimeMs > 0 ? currentTime + lifetimeMs : 0
@@ -232,14 +236,20 @@ namespace HaCreator.MapSimulator.Combat
 
             _scheduledMobActions[actionKey] = currentTime + Math.Max(attack.Cooldown, 2500);
             PendingAttackPacketOverrides packetOverrides = TryConsumeAttackPacketOverrides(mobItem, attack, currentTime);
-            MobTargetInfo targetInfo = ResolveAttackTarget(mobItem, playerX, playerY);
-            float? targetX = targetInfo?.TargetX;
-            float? targetY = targetInfo?.TargetY;
+            MobTargetInfo targetInfo = ResolveAttackTarget(
+                mobItem,
+                playerX,
+                playerY,
+                currentTime,
+                packetOverrides?.LockedTarget);
             if (UsesLockedTargetResolution(attack, targetInfo) &&
                 !CanQueueLockedTargetAttack(mobItem, attack, targetInfo, currentTime))
             {
                 targetInfo = null;
             }
+
+            float? targetX = targetInfo?.TargetX;
+            float? targetY = targetInfo?.TargetY;
 
             ScheduleSourceAttackEffects(mobItem, attack, currentTime, targetX);
 
@@ -2435,25 +2445,24 @@ namespace HaCreator.MapSimulator.Combat
             return searchRect.Intersects(paddedRect);
         }
 
-        private MobTargetInfo ResolveAttackTarget(MobItem mobItem, float? playerX, float? playerY)
+        private MobTargetInfo ResolveAttackTarget(
+            MobItem mobItem,
+            float? playerX,
+            float? playerY,
+            int currentTime,
+            MobTargetInfo packetTargetOverride = null)
         {
-            MobTargetInfo target = mobItem?.AI?.Target;
-            if (target?.IsValid == true)
+            MobTargetInfo packetTarget = ResolveLiveTarget(packetTargetOverride, currentTime, playerX, playerY);
+            if (packetTarget?.IsValid == true)
             {
-                MobTargetInfo resolvedTarget = target.Clone();
-                if (resolvedTarget.TargetType == MobTargetType.Summoned)
-                {
-                    PuppetInfo puppet = FindTargetPuppet(resolvedTarget);
-                    if (puppet != null)
-                    {
-                        resolvedTarget.TargetId = puppet.ObjectId;
-                        resolvedTarget.TargetSlotIndex = puppet.SummonSlotIndex;
-                        resolvedTarget.TargetX = puppet.X;
-                        resolvedTarget.TargetY = puppet.Y;
-                    }
-                }
+                return packetTarget;
+            }
 
-                return resolvedTarget;
+            MobTargetInfo target = mobItem?.AI?.Target;
+            MobTargetInfo liveTarget = ResolveLiveTarget(target, currentTime, playerX, playerY);
+            if (liveTarget?.IsValid == true)
+            {
+                return liveTarget;
             }
 
             if (playerX.HasValue && playerY.HasValue)
@@ -2468,6 +2477,77 @@ namespace HaCreator.MapSimulator.Combat
             }
 
             return null;
+        }
+
+        private MobTargetInfo ResolveLiveTarget(
+            MobTargetInfo targetInfo,
+            int currentTime,
+            float? fallbackPlayerX,
+            float? fallbackPlayerY)
+        {
+            if (targetInfo?.IsValid != true)
+            {
+                return null;
+            }
+
+            MobTargetInfo resolvedTarget = targetInfo.Clone();
+            switch (resolvedTarget.TargetType)
+            {
+                case MobTargetType.Player:
+                    Rectangle playerHitbox = _playerHitboxAccessor?.Invoke() ?? Rectangle.Empty;
+                    if (!playerHitbox.IsEmpty)
+                    {
+                        resolvedTarget.TargetX = (playerHitbox.Left + playerHitbox.Right) * 0.5f;
+                        resolvedTarget.TargetY = playerHitbox.Bottom;
+                        return resolvedTarget;
+                    }
+
+                    if (fallbackPlayerX.HasValue && fallbackPlayerY.HasValue)
+                    {
+                        resolvedTarget.TargetX = fallbackPlayerX.Value;
+                        resolvedTarget.TargetY = fallbackPlayerY.Value;
+                        return resolvedTarget;
+                    }
+
+                    return null;
+
+                case MobTargetType.Summoned:
+                    PuppetInfo puppet = FindTargetPuppet(resolvedTarget);
+                    if (puppet == null)
+                    {
+                        return null;
+                    }
+
+                    resolvedTarget.TargetId = puppet.ObjectId;
+                    resolvedTarget.TargetSlotIndex = puppet.SummonSlotIndex;
+                    resolvedTarget.TargetX = puppet.X;
+                    resolvedTarget.TargetY = puppet.Y;
+                    return resolvedTarget;
+
+                case MobTargetType.Mob:
+                    MobItem targetMob = _mobAccessor?.Invoke(resolvedTarget.TargetId);
+                    if (targetMob?.AI == null || targetMob.AI.IsDead)
+                    {
+                        return null;
+                    }
+
+                    Rectangle targetHitbox = targetMob.GetBodyHitbox(currentTime);
+                    if (!targetHitbox.IsEmpty)
+                    {
+                        resolvedTarget.TargetX = (targetHitbox.Left + targetHitbox.Right) * 0.5f;
+                        resolvedTarget.TargetY = targetHitbox.Bottom;
+                    }
+                    else
+                    {
+                        resolvedTarget.TargetX = targetMob.CurrentX;
+                        resolvedTarget.TargetY = targetMob.CurrentY;
+                    }
+
+                    return resolvedTarget;
+
+                default:
+                    return null;
+            }
         }
 
         private bool TryApplyPuppetHit(

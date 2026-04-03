@@ -36,6 +36,11 @@ namespace HaCreator.MapSimulator.Character.Skills
             return chargeElement > 0;
         }
 
+        internal static bool IsKnownChargeSkillId(int skillId)
+        {
+            return Array.IndexOf(KnownChargeSkillIds, skillId) >= 0;
+        }
+
         internal static bool TryResolveChargeElementFromTemporaryStatPayload(ReadOnlySpan<byte> payload, out int chargeElement)
         {
             chargeElement = 0;
@@ -45,20 +50,30 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         internal static bool TryResolveChargeSkillIdFromTemporaryStatPayload(ReadOnlySpan<byte> payload, out int chargeSkillId)
         {
+            return TryResolveChargeSkillIdFromTemporaryStatPayload(payload, 0, out chargeSkillId);
+        }
+
+        internal static bool TryResolveChargeSkillIdFromTemporaryStatPayload(
+            ReadOnlySpan<byte> payload,
+            int startOffset,
+            out int chargeSkillId)
+        {
             chargeSkillId = 0;
-            if (payload.Length < sizeof(int))
+            if (payload.Length < sizeof(int)
+                || startOffset < 0
+                || startOffset > payload.Length - sizeof(int))
             {
                 return false;
             }
 
             int matchedChargeSkillId = 0;
-            for (int offset = 0; offset <= payload.Length - sizeof(int); offset++)
+            for (int offset = startOffset; offset <= payload.Length - sizeof(int); offset++)
             {
                 int candidateSkillId = payload[offset]
                     | (payload[offset + 1] << 8)
                     | (payload[offset + 2] << 16)
                     | (payload[offset + 3] << 24);
-                if (Array.IndexOf(KnownChargeSkillIds, candidateSkillId) < 0)
+                if (!IsKnownChargeSkillId(candidateSkillId))
                 {
                     continue;
                 }

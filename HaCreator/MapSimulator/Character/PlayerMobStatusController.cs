@@ -21,12 +21,14 @@ namespace HaCreator.MapSimulator.Character
         Attract,
         ReverseInput,
         Undead,
-        Polymorph
+        Polymorph,
+        StopPotion,
+        Fear
     }
 
     internal readonly struct PlayerMobStatusFrameState
     {
-        public static readonly PlayerMobStatusFrameState Default = new(1f, 0f, false, false, false, false, 0, false, false, 100, 100, 100);
+        public static readonly PlayerMobStatusFrameState Default = new(1f, 0f, false, false, false, false, 0, false, false, false, 100, 100, 100);
 
         public PlayerMobStatusFrameState(
             float moveSpeedMultiplier,
@@ -38,6 +40,7 @@ namespace HaCreator.MapSimulator.Character
             int forcedHorizontalDirection,
             bool hpRecoveryReversed,
             bool pickupBlocked,
+            bool recoveryBlocked,
             int maxHpPercentCap,
             int maxMpPercentCap,
             int hpRecoveryDamagePercent)
@@ -51,6 +54,7 @@ namespace HaCreator.MapSimulator.Character
             ForcedHorizontalDirection = forcedHorizontalDirection;
             HpRecoveryReversed = hpRecoveryReversed;
             PickupBlocked = pickupBlocked;
+            RecoveryBlocked = recoveryBlocked;
             MaxHpPercentCap = maxHpPercentCap;
             MaxMpPercentCap = maxMpPercentCap;
             HpRecoveryDamagePercent = hpRecoveryDamagePercent;
@@ -65,6 +69,7 @@ namespace HaCreator.MapSimulator.Character
         public int ForcedHorizontalDirection { get; }
         public bool HpRecoveryReversed { get; }
         public bool PickupBlocked { get; }
+        public bool RecoveryBlocked { get; }
         public int MaxHpPercentCap { get; }
         public int MaxMpPercentCap { get; }
         public int HpRecoveryDamagePercent { get; }
@@ -151,6 +156,7 @@ namespace HaCreator.MapSimulator.Character
             bool inputReversed = HasStatus(PlayerMobStatusEffect.ReverseInput);
             bool hpRecoveryReversed = HasStatus(PlayerMobStatusEffect.Undead);
             int forcedHorizontalDirection = ResolveForcedHorizontalDirection();
+            bool recoveryBlocked = HasStatus(PlayerMobStatusEffect.StopPotion);
             int maxVitalPercentCap = ResolveCurseVitalCapPercent();
             int hpRecoveryDamagePercent = ResolveUndeadRecoveryDamagePercent();
 
@@ -164,6 +170,7 @@ namespace HaCreator.MapSimulator.Character
                 forcedHorizontalDirection,
                 hpRecoveryReversed,
                 pickupBlocked,
+                recoveryBlocked,
                 maxVitalPercentCap,
                 maxVitalPercentCap,
                 hpRecoveryDamagePercent);
@@ -290,6 +297,12 @@ namespace HaCreator.MapSimulator.Character
                         ResolveTickInterval(runtimeData, 1000),
                         runtimeData.Count);
                     return true;
+                case 135:
+                    ApplyStatus(PlayerMobStatusEffect.StopPotion, runtimeData.DurationMs, currentTime, 1);
+                    return true;
+                case 136:
+                    ApplyStatus(PlayerMobStatusEffect.Fear, runtimeData.DurationMs, currentTime, ResolveFearDirection(sourceX));
+                    return true;
                 case 172:
                 case 173:
                     return ApplyPolymorphStatus(runtimeData, currentTime);
@@ -324,7 +337,7 @@ namespace HaCreator.MapSimulator.Character
         {
             return skillId switch
             {
-                120 or 121 or 122 or 123 or 124 or 125 or 126 or 128 or 129 or 131 or 132 or 133 or 136 or 137 => true,
+                120 or 121 or 122 or 123 or 124 or 125 or 126 or 128 or 129 or 131 or 132 or 133 or 135 or 136 or 137 => true,
                 _ => false
             };
         }
@@ -461,7 +474,10 @@ namespace HaCreator.MapSimulator.Character
         {
             if (!_entries.TryGetValue(PlayerMobStatusEffect.Attract, out PlayerMobStatusEntry entry))
             {
-                return 0;
+                if (!_entries.TryGetValue(PlayerMobStatusEffect.Fear, out entry))
+                {
+                    return 0;
+                }
             }
 
             return entry.Value switch
@@ -517,6 +533,12 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return _player.FacingRight ? 1 : -1;
+        }
+
+        private int ResolveFearDirection(float sourceX)
+        {
+            int towardSource = ResolveSeduceDirection(sourceX);
+            return -towardSource;
         }
 
         private void RemoveExpiredEffects(int currentTime)

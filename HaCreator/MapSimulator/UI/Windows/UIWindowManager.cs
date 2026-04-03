@@ -209,6 +209,44 @@ namespace HaCreator.MapSimulator.UI
             RegisterWindow(window);
         }
 
+        public bool RemoveWindow(string windowName)
+        {
+            return windowsByName.TryGetValue(windowName, out UIWindowBase window) && RemoveWindow(window);
+        }
+
+        public bool RemoveWindow(UIWindowBase window)
+        {
+            if (window == null || !windows.Remove(window))
+            {
+                return false;
+            }
+
+            if (windowsByName.TryGetValue(window.WindowName, out UIWindowBase registeredWindow) && ReferenceEquals(registeredWindow, window))
+            {
+                windowsByName.Remove(window.WindowName);
+            }
+
+            if (ReferenceEquals(_focusedWindow, window))
+            {
+                _focusedWindow = null;
+                for (int i = windows.Count - 1; i >= 0; i--)
+                {
+                    if (windows[i].IsVisible)
+                    {
+                        _focusedWindow = windows[i];
+                        break;
+                    }
+                }
+            }
+
+            if (ReferenceEquals(_draggingWindow, window))
+            {
+                _draggingWindow = null;
+            }
+
+            return true;
+        }
+
         /// <summary>
         /// Register a window with the manager
         /// </summary>
@@ -967,12 +1005,15 @@ namespace HaCreator.MapSimulator.UI
 
             if (equipWindow.HasDraggedCompanionItem)
             {
-                if (!equipWindow.TryCommitDraggedCompanionRemoval(out InventorySlotData slotData) || slotData == null)
+                if (!equipWindow.TryCommitDraggedCompanionRemoval(out InventorySlotData slotData))
                 {
                     return false;
                 }
 
-                inventoryWindow.AddItem(inventoryType, slotData);
+                if (slotData != null)
+                {
+                    inventoryWindow.AddItem(inventoryType, slotData);
+                }
                 return true;
             }
 

@@ -1,6 +1,5 @@
 using System;
 using System.Collections.Generic;
-using System.Linq;
 
 namespace HaCreator.MapSimulator.Interaction
 {
@@ -29,6 +28,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal bool IsActive { get; private set; }
         internal int ActiveSkillId { get; private set; }
         internal int ActiveSummonObjectId { get; private set; }
+        internal int ActiveActorHeight { get; private set; }
         internal int LastHireTick { get; private set; } = int.MinValue;
         internal TutorMessageKind MessageKind { get; private set; }
         internal int LastIndexedMessage { get; private set; } = -1;
@@ -39,9 +39,11 @@ namespace HaCreator.MapSimulator.Interaction
         internal int ActiveMessageExpiresAt { get; private set; } = int.MinValue;
         internal int MessageSequenceId { get; private set; }
         internal string StatusMessage { get; private set; } = "Tutor runtime idle.";
-        internal IReadOnlyCollection<int> ActiveTutorSkillIds => _activeTutorSkillIds;
+        internal IReadOnlyList<int> RegisteredTutorSkillIds => _registeredTutorSkillIds;
+        internal bool HasRegisteredTutorVariants => _registeredTutorSkillIds.Count > 0;
+        internal int RegisteredTutorVariantCount => _registeredTutorSkillIds.Count;
 
-        private readonly HashSet<int> _activeTutorSkillIds = new();
+        private readonly List<int> _registeredTutorSkillIds = new();
 
         internal bool HasVisibleMessage(int currentTick)
         {
@@ -86,6 +88,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal int ResolveActorHeight()
         {
+            if (ActiveActorHeight > 0)
+            {
+                return ActiveActorHeight;
+            }
+
             return ActiveSkillId == CygnusTutorSkillId ? CygnusTutorHeight : AranTutorHeight;
         }
 
@@ -94,32 +101,41 @@ namespace HaCreator.MapSimulator.Interaction
             return skillId == CygnusTutorSkillId ? CygnusTutorObjectId : AranTutorObjectId;
         }
 
-        internal void ApplyHire(int skillId, int currentTick)
+        internal void ApplyHireRequest(int requestedSkillId, int actorHeight, int currentTick)
         {
-            if (skillId > 0)
+            int normalizedSkillId = NormalizeTutorSkillId(requestedSkillId);
+            if (normalizedSkillId > 0)
             {
-                _activeTutorSkillIds.Add(skillId);
+                RemoveRegisteredTutorVariant(normalizedSkillId);
+                _registeredTutorSkillIds.Add(normalizedSkillId);
             }
 
             IsActive = true;
-            ActiveSkillId = skillId;
-            ActiveSummonObjectId = ResolveSummonObjectId(skillId);
+            ActiveSkillId = normalizedSkillId;
+            ActiveSummonObjectId = ResolveSummonObjectId(normalizedSkillId);
+            ActiveActorHeight = actorHeight > 0
+                ? actorHeight
+                : normalizedSkillId == CygnusTutorSkillId
+                    ? CygnusTutorHeight
+                    : AranTutorHeight;
             LastHireTick = currentTick;
             ClearMessage();
-            StatusMessage = $"Tutor actor active with skill {skillId}.";
+            StatusMessage = $"Tutor actor active with skill {normalizedSkillId} at height {ResolveActorHeight()}.";
         }
 
-        internal void ApplyRemoval(string reason = null)
+        internal void ApplyRemovalRequest(int requestedSkillId, string reason = null)
         {
+            int normalizedSkillId = NormalizeTutorSkillId(requestedSkillId);
             bool hadActor = IsActive;
-            if (ActiveSkillId > 0)
+            if (normalizedSkillId > 0)
             {
-                _activeTutorSkillIds.Remove(ActiveSkillId);
+                RemoveRegisteredTutorVariant(normalizedSkillId);
             }
 
             IsActive = false;
             ActiveSkillId = 0;
             ActiveSummonObjectId = 0;
+            ActiveActorHeight = 0;
             LastHireTick = int.MinValue;
             ClearMessage();
             StatusMessage = hadActor
@@ -186,17 +202,41 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string DescribeActiveTutorVariants()
         {
-            if (_activeTutorSkillIds.Count == 0)
+            if (_registeredTutorSkillIds.Count == 0)
             {
                 return "none";
             }
 
-            return string.Join(", ", _activeTutorSkillIds.OrderBy(skillId => skillId));
+            return string.Join(", ", _registeredTutorSkillIds);
+        }
+
+        internal bool HasRegisteredTutorVariant(int skillId)
+        {
+            return skillId > 0 && _registeredTutorSkillIds.Contains(skillId);
+        }
+
+        private void RemoveRegisteredTutorVariant(int skillId)
+        {
+            if (skillId <= 0)
+            {
+                return;
+            }
+
+            int index = _registeredTutorSkillIds.IndexOf(skillId);
+            if (index >= 0)
+            {
+                _registeredTutorSkillIds.RemoveAt(index);
+            }
         }
 
         private static int ClampDuration(int durationMs)
         {
             return Math.Clamp(durationMs <= 0 ? DefaultIndexedDurationMs : durationMs, MinMessageDurationMs, MaxMessageDurationMs);
+        }
+
+        private static int NormalizeTutorSkillId(int skillId)
+        {
+            return skillId > 0 ? skillId : 0;
         }
     }
 }

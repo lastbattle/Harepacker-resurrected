@@ -30,6 +30,7 @@ namespace HaCreator.MapSimulator.Managers
             public int CardItemId { get; init; }
             public string CardItemName { get; init; } = string.Empty;
             public int MobId { get; init; }
+            public bool ConsumeOnPickup { get; init; }
             public string Name { get; init; } = string.Empty;
             public int Level { get; init; }
             public int MaxHp { get; init; }
@@ -63,6 +64,7 @@ namespace HaCreator.MapSimulator.Managers
         private const int MaximumGradeCount = 9;
         private List<MonsterBookCardDefinition> _catalog;
         private Dictionary<int, MonsterBookCardDefinition> _catalogByMobId;
+        private Dictionary<int, MonsterBookCardDefinition> _catalogByItemId;
 
         public MonsterBookManager(string storageFilePath = null)
         {
@@ -168,8 +170,8 @@ namespace HaCreator.MapSimulator.Managers
                 Title = "Monster Book",
                 Subtitle = build == null
                     ? "Monster card ownership is unavailable because there is no active character build."
-                    : "Card ownership is persisted per character and built from the WZ-backed monster-card catalog, with chapter tabs derived from the client's 0238xxxx card buckets, client-shaped right-tab detail panes, a singular local registered-card slot, pickup-backed Monster Card ownership, and WZ-backed reward/habitat naming.",
-                StatusText = "The Monster Book owner now routes the overview tab, the nine chapter tabs, the four right-tab detail panes, local search focus and cycling, and register or release context actions through the dedicated Monster Book runtime. Ownership now follows picked-up Monster Card drops sourced from the WZ-backed card catalog, while packet-authored save flow and real server drop authorship still remain outside this simulator runtime.",
+                    : "Card ownership is persisted per character and built from the WZ-backed monster-card catalog, with chapter tabs derived from the client's 0238xxxx card buckets, client-shaped right-tab detail panes, a singular local registered-card slot, pickup-backed consume-on-pickup Monster Card ownership, and WZ-backed reward/habitat naming.",
+                StatusText = "The Monster Book owner now routes the overview tab, the nine chapter tabs, the four right-tab detail panes, local search focus and cycling, and register or release context actions through the dedicated Monster Book runtime. Ownership now follows picked-up consume-on-pickup Monster Card drops sourced from the WZ-backed card catalog, while packet-authored save flow and real server drop authorship still remain outside this simulator runtime.",
                 TotalCardTypes = cards.Count,
                 OwnedCardTypes = ownedCardTypes,
                 CompletedCardTypes = completedCardTypes,
@@ -217,8 +219,7 @@ namespace HaCreator.MapSimulator.Managers
                 return GetSnapshot(build);
             }
 
-            MonsterBookCardDefinition definition = EnsureCatalog().FirstOrDefault(entry => entry.CardItemId == itemId);
-            if (definition == null)
+            if (!EnsureCatalogByItemId().TryGetValue(itemId, out MonsterBookCardDefinition definition) || definition == null)
             {
                 return GetSnapshot(build);
             }
@@ -241,6 +242,17 @@ namespace HaCreator.MapSimulator.Managers
 
             cardItemId = definition.CardItemId;
             return cardItemId > 0;
+        }
+
+        public bool IsConsumeOnPickupCardItem(int itemId)
+        {
+            if (itemId <= 0)
+            {
+                return false;
+            }
+
+            return EnsureCatalogByItemId().TryGetValue(itemId, out MonsterBookCardDefinition definition)
+                && definition?.ConsumeOnPickup == true;
         }
 
         public MonsterBookSnapshot SetRegisteredCard(CharacterBuild build, int mobId, bool registered)
@@ -313,6 +325,9 @@ namespace HaCreator.MapSimulator.Managers
                 _catalogByMobId = _catalog
                     .GroupBy(card => card.MobId)
                     .ToDictionary(group => group.Key, group => group.First(), EqualityComparer<int>.Default);
+                _catalogByItemId = _catalog
+                    .GroupBy(card => card.CardItemId)
+                    .ToDictionary(group => group.Key, group => group.First(), EqualityComparer<int>.Default);
                 return _catalog;
             }
         }
@@ -321,6 +336,12 @@ namespace HaCreator.MapSimulator.Managers
         {
             EnsureCatalog();
             return _catalogByMobId ?? new Dictionary<int, MonsterBookCardDefinition>();
+        }
+
+        private Dictionary<int, MonsterBookCardDefinition> EnsureCatalogByItemId()
+        {
+            EnsureCatalog();
+            return _catalogByItemId ?? new Dictionary<int, MonsterBookCardDefinition>();
         }
 
         private static List<MonsterBookCardDefinition> LoadCatalog()
@@ -354,6 +375,7 @@ namespace HaCreator.MapSimulator.Managers
                     }
 
                     WzSubProperty infoProperty = cardProperty["info"] as WzSubProperty;
+                    WzSubProperty specProperty = cardProperty["spec"] as WzSubProperty;
                     int mobId = ReadInt(infoProperty?["mob"]);
                     if (mobId <= 0)
                     {
@@ -376,6 +398,7 @@ namespace HaCreator.MapSimulator.Managers
                         CardItemId = cardItemId,
                         CardItemName = cardItemName,
                         MobId = mobId,
+                        ConsumeOnPickup = ReadInt(specProperty?["consumeOnPickup"]) != 0,
                         Name = string.IsNullOrWhiteSpace(mobName) ? $"Mob #{mobId}" : mobName,
                         Level = Math.Max(0, level),
                         MaxHp = Math.Max(0, maxHp),

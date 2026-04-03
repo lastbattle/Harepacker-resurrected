@@ -286,6 +286,18 @@ namespace HaCreator.MapSimulator.UI
             return !string.IsNullOrWhiteSpace(message);
         }
 
+        public IReadOnlyList<string> DescribeCharacterOwnerState() => BuildCharacterPane();
+        public IReadOnlyList<string> DescribeLockerOwnerState() => BuildLockerPane();
+        public IReadOnlyList<string> DescribeInventoryOwnerState() => BuildInventoryPane();
+        public IReadOnlyList<string> DescribeTabOwnerState() => BuildTabPane();
+        public IReadOnlyList<string> DescribeSubTabOwnerState() => BuildSubTabPane();
+        public IReadOnlyList<string> DescribeListOwnerState() => BuildListPane();
+        public IReadOnlyList<string> DescribeBestOwnerState() => BuildBestPane();
+        public IReadOnlyList<string> DescribeStatusOwnerState() => BuildStatusPane();
+        public IReadOnlyList<string> DescribeSearchOwnerState() => BuildSearchPane();
+        public IReadOnlyList<string> DescribeSaleOwnerState() => BuildSalePane();
+        public IReadOnlyList<string> DescribePurchaseOwnerState() => BuildPurchasePane();
+
         protected override void DrawContents(
             SpriteBatch sprite,
             SkeletonMeshRenderer skeletonMeshRenderer,

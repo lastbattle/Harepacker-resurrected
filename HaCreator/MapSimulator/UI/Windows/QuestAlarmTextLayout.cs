@@ -104,29 +104,10 @@ namespace HaCreator.MapSimulator.UI
                 return ellipsis;
             }
 
-            string bestCandidate = ellipsis;
-            foreach (string segment in BuildPreferredSegments(trimmed))
+            int preferredBreakIndex = ResolvePreferredTruncationIndex(trimmed, maxWidth, measureWidth, ellipsisWidth);
+            if (preferredBreakIndex > 0)
             {
-                string normalizedSegment = segment.TrimEnd();
-                if (normalizedSegment.Length == 0)
-                {
-                    continue;
-                }
-
-                string candidate = normalizedSegment + ellipsis;
-                if (measureWidth(candidate) <= maxWidth)
-                {
-                    bestCandidate = candidate;
-                }
-                else
-                {
-                    break;
-                }
-            }
-
-            if (!string.Equals(bestCandidate, ellipsis, StringComparison.Ordinal))
-            {
-                return bestCandidate;
+                return trimmed[..preferredBreakIndex].TrimEnd() + ellipsis;
             }
 
             StringBuilder builder = new();
@@ -142,6 +123,37 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return builder.Length == 0 ? ellipsis : builder + ellipsis;
+        }
+
+        private static int ResolvePreferredTruncationIndex(string text, float maxWidth, Func<string, float> measureWidth, float ellipsisWidth)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return 0;
+            }
+
+            int bestIndex = 0;
+            for (int i = 0; i < text.Length; i++)
+            {
+                if (!PreferredTokenBreakCharacters.Contains(text[i]))
+                {
+                    continue;
+                }
+
+                int candidateIndex = i + 1;
+                string candidate = text[..candidateIndex].TrimEnd();
+                if (candidate.Length == 0)
+                {
+                    continue;
+                }
+
+                if (measureWidth(candidate) + ellipsisWidth <= maxWidth)
+                {
+                    bestIndex = candidateIndex;
+                }
+            }
+
+            return bestIndex;
         }
 
         private static IEnumerable<string> TokenizeBlock(string block, float maxWidth, Func<string, float> measureWidth)
@@ -229,33 +241,5 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private static IEnumerable<string> BuildPreferredSegments(string text)
-        {
-            StringBuilder builder = new();
-            for (int i = 0; i < text.Length; i++)
-            {
-                builder.Append(text[i]);
-                yield return builder.ToString();
-            }
-
-            foreach (string segment in SplitAtPreferredBreaks(text))
-            {
-                if (string.IsNullOrEmpty(segment))
-                {
-                    continue;
-                }
-
-                if (builder.Length == 0)
-                {
-                    builder.Append(segment);
-                }
-                else if (builder.Length < text.Length)
-                {
-                    builder.Append(segment);
-                }
-
-                yield return builder.ToString();
-            }
-        }
     }
 }

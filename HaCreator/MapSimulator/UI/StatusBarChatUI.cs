@@ -83,6 +83,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly List<WhisperTargetHitRegion> _whisperTargetHitRegions = new List<WhisperTargetHitRegion>();
         private readonly List<WhisperPickerHitRegion> _whisperPickerHitRegions = new List<WhisperPickerHitRegion>();
         private Rectangle? _whisperPromptBounds;
+        private Rectangle? _whisperPickerBounds;
         private Texture2D _whisperPickerSelectedTexture;
         private Texture2D _whisperPickerRowTexture;
 
@@ -121,6 +122,7 @@ namespace HaCreator.MapSimulator.UI
         public Action<string> WhisperTargetRequested { get; set; }
         public Action WhisperTargetPickerRequested { get; set; }
         public Action<string> WhisperTargetPickerCandidateRequested { get; set; }
+        public Action<int> WhisperTargetPickerSelectionDeltaRequested { get; set; }
 
         /// <summary>
         /// Constructor for the status bar chat window
@@ -348,6 +350,7 @@ namespace HaCreator.MapSimulator.UI
         {
             _whisperPickerHitRegions.Clear();
             _whisperPromptBounds = null;
+            _whisperPickerBounds = null;
 
             if (_font == null)
             {
@@ -642,10 +645,18 @@ namespace HaCreator.MapSimulator.UI
 
             IReadOnlyList<string> candidates = chatState.WhisperCandidates ?? Array.Empty<string>();
             int visibleCount = Math.Min(WhisperPickerVisibleRows, candidates.Count);
+            int firstVisibleIndex = MapSimulatorChat.ResolveWhisperTargetPickerFirstVisibleIndex(
+                chatState.WhisperTargetPickerSelectionIndex,
+                candidates.Count,
+                WhisperPickerVisibleRows);
             float maxCandidateWidth = MeasureChatText(chatState.InputText ?? string.Empty).X;
             for (int i = 0; i < visibleCount; i++)
             {
-                maxCandidateWidth = Math.Max(maxCandidateWidth, MeasureChatText(candidates[i]).X);
+                int candidateIndex = firstVisibleIndex + i;
+                if (candidateIndex >= 0 && candidateIndex < candidates.Count)
+                {
+                    maxCandidateWidth = Math.Max(maxCandidateWidth, MeasureChatText(candidates[candidateIndex]).X);
+                }
             }
 
             int rowHeight = Math.Max(
@@ -657,6 +668,7 @@ namespace HaCreator.MapSimulator.UI
             int popupHeight = rowHeight * (visibleCount + 1);
             int popupX = (int)Math.Round(this.Position.X + _chatInputPos.X);
             int popupY = (int)Math.Round(this.Position.Y + _chatWhisperPromptPos.Y) - popupHeight - 4;
+            _whisperPickerBounds = new Rectangle(popupX, popupY, popupWidth, popupHeight);
 
             if (_pixelTexture != null)
             {
@@ -677,6 +689,12 @@ namespace HaCreator.MapSimulator.UI
 
             for (int i = 0; i < visibleCount; i++)
             {
+                int candidateIndex = firstVisibleIndex + i;
+                if (candidateIndex < 0 || candidateIndex >= candidates.Count)
+                {
+                    continue;
+                }
+
                 int rowY = popupY + ((i + 1) * rowHeight);
                 DrawWhisperPickerRow(
                     sprite,
@@ -684,8 +702,8 @@ namespace HaCreator.MapSimulator.UI
                     rowY,
                     popupWidth,
                     rowHeight,
-                    candidates[i],
-                    isSelected: i == chatState.WhisperTargetPickerSelectionIndex,
+                    candidates[candidateIndex],
+                    isSelected: candidateIndex == chatState.WhisperTargetPickerSelectionIndex,
                     registerHitRegion: true);
             }
         }
@@ -1204,12 +1222,18 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            int steps = Math.Max(1, Math.Abs(scrollDelta) / 120);
+            if (_whisperPickerBounds?.Contains(mouseState.X, mouseState.Y) == true)
+            {
+                WhisperTargetPickerSelectionDeltaRequested?.Invoke(scrollDelta > 0 ? -steps : steps);
+                return;
+            }
+
             if (!GetChatInteractionBounds().Contains(mouseState.X, mouseState.Y))
             {
                 return;
             }
 
-            int steps = Math.Max(1, Math.Abs(scrollDelta) / 120);
             if (scrollDelta > 0)
             {
                 _scrollOffset += steps;

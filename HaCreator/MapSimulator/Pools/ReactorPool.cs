@@ -62,6 +62,7 @@ namespace HaCreator.MapSimulator.Pools
     public class ReactorSpawnPoint
     {
         public int SpawnId { get; set; }
+        public int? PacketObjectId { get; set; }
         public string ReactorId { get; set; }
         public float X { get; set; }
         public float Y { get; set; }
@@ -70,6 +71,7 @@ namespace HaCreator.MapSimulator.Pools
         public int RespawnTimeMs { get; set; }
         public ReactorActivationType ActivationTypeOverride { get; set; }
         public bool CanRespawn { get; set; } = true;
+        public bool IsPacketOwned { get; set; }
 
         // Runtime state
         public bool IsActive { get; set; }
@@ -84,6 +86,7 @@ namespace HaCreator.MapSimulator.Pools
     public class ReactorRuntimeData
     {
         public int PoolId { get; set; }
+        public int? PacketObjectId { get; set; }
         public ReactorState State { get; set; }
         public int StateFrame { get; set; }
         public int StateStartTime { get; set; }
@@ -97,6 +100,11 @@ namespace HaCreator.MapSimulator.Pools
         public ReactorType ReactorType { get; set; } = ReactorType.UNKNOWN;
         public int ActivatingPlayerId { get; set; }
         public bool CanRespawn { get; set; } = true;
+        public bool IsPacketOwned { get; set; }
+        public bool PacketLeavePending { get; set; }
+        public int PacketHitStartTime { get; set; }
+        public int PacketStateEndTime { get; set; }
+        public int PacketProperEventIndex { get; set; } = -1;
         internal ReactorActivationTypeMask SupportedActivationTypes { get; set; } = ReactorActivationTypeMask.None;
         public int? RequiredItemId { get; set; }
         public int? RequiredQuestId { get; set; }
@@ -133,6 +141,7 @@ namespace HaCreator.MapSimulator.Pools
         private ReactorItem[] _reactors;
         private readonly Dictionary<int, ReactorRuntimeData> _reactorData = new Dictionary<int, ReactorRuntimeData>();
         private readonly Dictionary<string, List<int>> _reactorsByName = new Dictionary<string, List<int>>(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<int, int> _reactorIndicesByPacketObjectId = new Dictionary<int, int>();
         private readonly List<ReactorSpawnPoint> _spawnPoints = new List<ReactorSpawnPoint>();
         #endregion
 
@@ -204,6 +213,7 @@ namespace HaCreator.MapSimulator.Pools
                 var data = new ReactorRuntimeData
                 {
                     PoolId = poolId,
+                    PacketObjectId = null,
                     State = ReactorState.Idle,
                     StateFrame = 0,
                     StateStartTime = currentTick,
@@ -217,6 +227,11 @@ namespace HaCreator.MapSimulator.Pools
                     ActivationValue = 0,
                     SupportedActivationTypes = interactionMetadata.SupportedActivationTypes,
                     CanRespawn = true,
+                    IsPacketOwned = false,
+                    PacketLeavePending = false,
+                    PacketHitStartTime = 0,
+                    PacketStateEndTime = 0,
+                    PacketProperEventIndex = -1,
                     RequiredItemId = interactionMetadata.RequiredItemId,
                     RequiredQuestId = interactionMetadata.RequiredQuestId,
                     RequiredQuestState = interactionMetadata.RequiredQuestState,
@@ -226,20 +241,13 @@ namespace HaCreator.MapSimulator.Pools
                 _reactorData[i] = data;
 
                 // Add to name lookup
-                if (!string.IsNullOrEmpty(instance.Name))
-                {
-                    if (!_reactorsByName.TryGetValue(instance.Name, out var indices))
-                    {
-                        indices = new List<int>();
-                        _reactorsByName[instance.Name] = indices;
-                    }
-                    indices.Add(i);
-                }
+                AddReactorNameLookup(instance.Name, i);
 
                 // Create spawn point
                 var spawnPoint = new ReactorSpawnPoint
                 {
                     SpawnId = i,
+                    PacketObjectId = null,
                     ReactorId = instance.ReactorInfo?.ID ?? "0",
                     X = instance.X,
                     Y = instance.Y,
@@ -247,6 +255,7 @@ namespace HaCreator.MapSimulator.Pools
                     Name = instance.Name,
                     RespawnTimeMs = instance.ReactorTime > 0 ? instance.ReactorTime : DEFAULT_RESPAWN_TIME,
                     IsActive = true,
+                    IsPacketOwned = false,
                     CurrentReactor = reactor
                 };
                 _spawnPoints.Add(spawnPoint);
@@ -271,6 +280,7 @@ namespace HaCreator.MapSimulator.Pools
             _reactors = null;
             _reactorData.Clear();
             _reactorsByName.Clear();
+            _reactorIndicesByPacketObjectId.Clear();
             _spawnPoints.Clear();
             _nextPoolId = 1;
         }
@@ -317,6 +327,11 @@ namespace HaCreator.MapSimulator.Pools
         public ReactorRuntimeData GetReactorData(int index)
         {
             return _reactorData.TryGetValue(index, out var data) ? data : null;
+        }
+
+        public bool TryGetReactorIndexByPacketObjectId(int packetObjectId, out int index)
+        {
+            return _reactorIndicesByPacketObjectId.TryGetValue(packetObjectId, out index);
         }
 
         /// <summary>
@@ -840,6 +855,7 @@ namespace HaCreator.MapSimulator.Pools
 
             data.State = ReactorState.Destroyed;
             data.StateStartTime = currentTick;
+            data.PacketLeavePending = false;
             PublishScriptState(reactor, data, isEnabled: false, currentTick);
 
             // Update spawn point
@@ -851,6 +867,9 @@ namespace HaCreator.MapSimulator.Pools
                 spawnPoint.NextSpawnTime = currentTick + spawnPoint.RespawnTimeMs;
                 spawnPoint.CurrentReactor = null;
             }
+
+            UntrackPacketObjectId(data.PacketObjectId);
+            RemoveReactorNameLookup(reactor?.ReactorInstance?.Name, index);
 
             _onReactorDestroyed?.Invoke(reactor, playerId);
 
@@ -879,6 +898,10 @@ namespace HaCreator.MapSimulator.Pools
             data.Alpha = 1f;
             data.ActivationType = data.PrimaryActivationType;
             data.ActivationValue = 0;
+            data.PacketLeavePending = false;
+            data.PacketHitStartTime = 0;
+            data.PacketStateEndTime = 0;
+            data.PacketProperEventIndex = -1;
             PublishScriptState(reactor, data, isEnabled: false, currentTick);
         }
 
@@ -1094,6 +1117,8 @@ namespace HaCreator.MapSimulator.Pools
                 // Update arrays (this is simplified - in practice you'd resize the array)
                 spawnPoint.CurrentReactor = newReactor;
                 spawnPoint.IsActive = true;
+                newReactor.SetWorldPosition((int)Math.Round(spawnPoint.X), (int)Math.Round(spawnPoint.Y));
+                newReactor.SetFlipState(spawnPoint.Flip);
 
                 // Reset runtime data
                 if (_reactorData.TryGetValue(spawnIndex, out var data))
@@ -1115,8 +1140,17 @@ namespace HaCreator.MapSimulator.Pools
                     data.Alpha = 1f;
                     data.ActivationValue = 0;
                     data.CanRespawn = spawnPoint.CanRespawn;
+                    data.PacketObjectId = spawnPoint.PacketObjectId;
+                    data.IsPacketOwned = spawnPoint.IsPacketOwned;
+                    data.PacketLeavePending = false;
+                    data.PacketHitStartTime = 0;
+                    data.PacketStateEndTime = 0;
+                    data.PacketProperEventIndex = -1;
                     data.ScriptStatePublished = false;
                 }
+
+                AddReactorNameLookup(newReactor?.ReactorInstance?.Name, spawnIndex);
+                TrackPacketObjectId(spawnIndex, spawnPoint.PacketObjectId);
 
                 _onReactorSpawned?.Invoke(newReactor);
             }
@@ -1150,6 +1184,7 @@ namespace HaCreator.MapSimulator.Pools
                 var spawnPoint = new ReactorSpawnPoint
                 {
                     SpawnId = _spawnPoints.Count,
+                    PacketObjectId = null,
                     ReactorId = reactorId,
                     X = x,
                     Y = y,
@@ -1158,7 +1193,8 @@ namespace HaCreator.MapSimulator.Pools
                     RespawnTimeMs = DEFAULT_RESPAWN_TIME,
                     IsActive = false,
                     ActivationTypeOverride = activationTypeOverride,
-                    CanRespawn = canRespawn
+                    CanRespawn = canRespawn,
+                    IsPacketOwned = false
                 };
 
                 _spawnPoints.Add(spawnPoint);
@@ -1167,6 +1203,7 @@ namespace HaCreator.MapSimulator.Pools
                 var data = new ReactorRuntimeData
                 {
                     PoolId = _nextPoolId++,
+                    PacketObjectId = null,
                     State = ReactorState.Respawning,
                     StateFrame = 0,
                     StateStartTime = currentTick,
@@ -1179,7 +1216,12 @@ namespace HaCreator.MapSimulator.Pools
                     ActivationValue = 0,
                     SupportedActivationTypes = ToActivationMask(
                         activationTypeOverride == ReactorActivationType.None ? ReactorActivationType.Touch : activationTypeOverride),
-                    CanRespawn = canRespawn
+                    CanRespawn = canRespawn,
+                    IsPacketOwned = false,
+                    PacketLeavePending = false,
+                    PacketHitStartTime = 0,
+                    PacketStateEndTime = 0,
+                    PacketProperEventIndex = -1
                 };
                 _reactorData[spawnPoint.SpawnId] = data;
 
@@ -1190,6 +1232,181 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return spawnedIndices;
+        }
+
+        public bool TryEnterPacketOwnedReactor(
+            int packetObjectId,
+            string reactorId,
+            int initialState,
+            int x,
+            int y,
+            bool flip,
+            string name,
+            int currentTick,
+            out int reactorIndex,
+            out string message)
+        {
+            reactorIndex = -1;
+
+            if (packetObjectId <= 0)
+            {
+                message = "Packet-owned reactor enter is missing a valid reactor object id.";
+                return false;
+            }
+
+            if (string.IsNullOrWhiteSpace(reactorId))
+            {
+                message = $"Packet-owned reactor {packetObjectId} enter is missing a valid template id.";
+                return false;
+            }
+
+            if (TryGetReactorIndexByPacketObjectId(packetObjectId, out int existingIndex))
+            {
+                ApplyPacketReactorState(existingIndex, initialState, x, y, flip, currentTick);
+                reactorIndex = existingIndex;
+                message = $"Updated packet-owned reactor {packetObjectId} as template {reactorId} at ({x}, {y}).";
+                return true;
+            }
+
+            var spawnPoint = new ReactorSpawnPoint
+            {
+                SpawnId = _spawnPoints.Count,
+                PacketObjectId = packetObjectId,
+                ReactorId = reactorId,
+                X = x,
+                Y = y,
+                Flip = flip,
+                Name = string.IsNullOrWhiteSpace(name) ? $"packet_{packetObjectId}" : name,
+                RespawnTimeMs = 0,
+                ActivationTypeOverride = ReactorActivationType.None,
+                CanRespawn = false,
+                IsPacketOwned = true,
+                IsActive = false
+            };
+
+            _spawnPoints.Add(spawnPoint);
+            _reactorData[spawnPoint.SpawnId] = new ReactorRuntimeData
+            {
+                PoolId = _nextPoolId++,
+                PacketObjectId = packetObjectId,
+                State = ReactorState.Respawning,
+                StateStartTime = currentTick,
+                VisualState = initialState,
+                RequiredHits = 1,
+                Alpha = 1f,
+                PrimaryActivationType = ReactorActivationType.None,
+                ActivationType = ReactorActivationType.None,
+                CanRespawn = false,
+                IsPacketOwned = true,
+                PacketLeavePending = false,
+                PacketHitStartTime = 0,
+                PacketStateEndTime = currentTick + 800,
+                PacketProperEventIndex = -1
+            };
+
+            ReactorItem reactor = SpawnReactor(spawnPoint.SpawnId, currentTick);
+            if (reactor == null)
+            {
+                _reactorData.Remove(spawnPoint.SpawnId);
+                _spawnPoints.RemoveAt(_spawnPoints.Count - 1);
+                message = $"Failed to spawn packet-owned reactor template {reactorId} for object {packetObjectId}.";
+                return false;
+            }
+
+            ApplyPacketReactorState(spawnPoint.SpawnId, initialState, x, y, flip, currentTick);
+            TrackPacketObjectId(spawnPoint.SpawnId, packetObjectId);
+            reactorIndex = spawnPoint.SpawnId;
+            message = $"Spawned packet-owned reactor {packetObjectId} as template {reactorId} at ({x}, {y}).";
+            return true;
+        }
+
+        public bool TryChangePacketOwnedReactorState(
+            int packetObjectId,
+            int state,
+            int x,
+            int y,
+            int hitStartDelayMs,
+            int properEventIndex,
+            int stateEndDelayTicks,
+            int currentTick,
+            out string message)
+        {
+            if (!TryGetReactorIndexByPacketObjectId(packetObjectId, out int index))
+            {
+                message = $"Packet-owned reactor {packetObjectId} is not active in the current pool.";
+                return false;
+            }
+
+            ReactorRuntimeData data = GetReactorData(index);
+            ReactorItem reactor = GetReactor(index);
+            if (data == null || reactor == null)
+            {
+                message = $"Packet-owned reactor {packetObjectId} could not be resolved in the current pool.";
+                return false;
+            }
+
+            ApplyPacketReactorState(index, state, x, y, reactor.ReactorInstance?.Flip ?? false, currentTick);
+            data.PacketHitStartTime = hitStartDelayMs > 0 ? currentTick + hitStartDelayMs : 0;
+            data.PacketProperEventIndex = properEventIndex;
+            data.PacketStateEndTime = stateEndDelayTicks > 0 ? currentTick + (stateEndDelayTicks * 100) : 0;
+            data.State = hitStartDelayMs > 0 ? ReactorState.Activated : ReactorState.Active;
+            data.StateStartTime = currentTick;
+            message = $"Applied packet-owned reactor state {state} to object {packetObjectId} at ({x}, {y}).";
+            return true;
+        }
+
+        public bool TryMovePacketOwnedReactor(int packetObjectId, int x, int y, int currentTick, out string message)
+        {
+            if (!TryGetReactorIndexByPacketObjectId(packetObjectId, out int index))
+            {
+                message = $"Packet-owned reactor {packetObjectId} is not active in the current pool.";
+                return false;
+            }
+
+            ReactorRuntimeData data = GetReactorData(index);
+            ReactorItem reactor = GetReactor(index);
+            if (data == null || reactor == null)
+            {
+                message = $"Packet-owned reactor {packetObjectId} could not be resolved in the current pool.";
+                return false;
+            }
+
+            reactor.SetWorldPosition(x, y);
+            if (index < _spawnPoints.Count)
+            {
+                _spawnPoints[index].X = x;
+                _spawnPoints[index].Y = y;
+            }
+
+            data.StateStartTime = currentTick;
+            message = $"Moved packet-owned reactor {packetObjectId} to ({x}, {y}).";
+            return true;
+        }
+
+        public bool TryLeavePacketOwnedReactor(int packetObjectId, int state, int x, int y, int currentTick, out string message)
+        {
+            if (!TryGetReactorIndexByPacketObjectId(packetObjectId, out int index))
+            {
+                message = $"Packet-owned reactor {packetObjectId} is not active in the current pool.";
+                return false;
+            }
+
+            ReactorRuntimeData data = GetReactorData(index);
+            ReactorItem reactor = GetReactor(index);
+            if (data == null || reactor == null)
+            {
+                message = $"Packet-owned reactor {packetObjectId} could not be resolved in the current pool.";
+                return false;
+            }
+
+            ApplyPacketReactorState(index, state, x, y, reactor.ReactorInstance?.Flip ?? false, currentTick);
+            data.PacketLeavePending = true;
+            data.PacketProperEventIndex = -2;
+            data.PacketHitStartTime = reactor.HasAuthoredEventInfo(state) ? currentTick : currentTick + 400;
+            data.PacketStateEndTime = 0;
+            data.CanRespawn = false;
+            message = $"Queued packet-owned reactor {packetObjectId} for leave-field removal from ({x}, {y}).";
+            return true;
         }
         #endregion
 
@@ -1211,6 +1428,35 @@ namespace HaCreator.MapSimulator.Pools
                 if (reactor != null)
                 {
                     data.StateFrame = reactor.GetCurrentFrameIndex(currentTick);
+                }
+
+                if (data.IsPacketOwned)
+                {
+                    if (data.PacketLeavePending)
+                    {
+                        if (currentTick >= data.PacketHitStartTime)
+                        {
+                            DestroyReactor(index, playerId: 0, currentTick);
+                        }
+
+                        continue;
+                    }
+
+                    if (data.State == ReactorState.Activated
+                        && data.PacketHitStartTime > 0
+                        && currentTick >= data.PacketHitStartTime)
+                    {
+                        data.State = ReactorState.Active;
+                        data.StateStartTime = currentTick;
+                    }
+
+                    if (data.PacketStateEndTime > 0
+                        && currentTick >= data.PacketStateEndTime
+                        && data.State == ReactorState.Activated)
+                    {
+                        data.State = ReactorState.Active;
+                        data.StateStartTime = currentTick;
+                    }
                 }
 
                 switch (data.State)
@@ -1467,6 +1713,84 @@ namespace HaCreator.MapSimulator.Pools
             data.RequiredQuestId = interactionMetadata.RequiredQuestId;
             data.RequiredQuestState = interactionMetadata.RequiredQuestState;
             data.ScriptNames = interactionMetadata.ScriptNames;
+        }
+
+        private void ApplyPacketReactorState(int index, int state, int x, int y, bool flip, int currentTick)
+        {
+            ReactorRuntimeData data = GetReactorData(index);
+            ReactorItem reactor = GetReactor(index);
+            if (data == null || reactor == null)
+            {
+                return;
+            }
+
+            reactor.SetWorldPosition(x, y);
+            reactor.SetFlipState(flip);
+            reactor.SetAnimationState(state, currentTick);
+            data.VisualState = state;
+            data.StateFrame = 0;
+            data.StateStartTime = currentTick;
+            data.Alpha = 1f;
+            data.PacketLeavePending = false;
+
+            if (index < _spawnPoints.Count)
+            {
+                ReactorSpawnPoint spawnPoint = _spawnPoints[index];
+                spawnPoint.X = x;
+                spawnPoint.Y = y;
+                spawnPoint.Flip = flip;
+                spawnPoint.IsActive = true;
+                spawnPoint.CurrentReactor = reactor;
+            }
+        }
+
+        private void TrackPacketObjectId(int index, int? packetObjectId)
+        {
+            if (packetObjectId is int objectId && objectId > 0)
+            {
+                _reactorIndicesByPacketObjectId[objectId] = index;
+            }
+        }
+
+        private void UntrackPacketObjectId(int? packetObjectId)
+        {
+            if (packetObjectId is int objectId && objectId > 0)
+            {
+                _reactorIndicesByPacketObjectId.Remove(objectId);
+            }
+        }
+
+        private void AddReactorNameLookup(string name, int index)
+        {
+            if (string.IsNullOrEmpty(name))
+            {
+                return;
+            }
+
+            if (!_reactorsByName.TryGetValue(name, out List<int> indices))
+            {
+                indices = new List<int>();
+                _reactorsByName[name] = indices;
+            }
+
+            if (!indices.Contains(index))
+            {
+                indices.Add(index);
+            }
+        }
+
+        private void RemoveReactorNameLookup(string name, int index)
+        {
+            if (string.IsNullOrEmpty(name) || !_reactorsByName.TryGetValue(name, out List<int> indices))
+            {
+                return;
+            }
+
+            indices.Remove(index);
+            if (indices.Count == 0)
+            {
+                _reactorsByName.Remove(name);
+            }
         }
 
         private static bool SupportsActivationType(ReactorRuntimeData data, ReactorActivationType activationType)

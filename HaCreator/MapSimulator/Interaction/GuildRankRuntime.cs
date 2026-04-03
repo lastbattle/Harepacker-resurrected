@@ -29,12 +29,12 @@ namespace HaCreator.MapSimulator.Interaction
             string guildName = string.IsNullOrWhiteSpace(dialogContext.GuildName)
                 ? (string.IsNullOrWhiteSpace(build?.GuildName) ? "Maple GM" : build.GuildName.Trim())
                 : dialogContext.GuildName.Trim();
-            int rosterWeight = Math.Max(0, dialogContext.RankTitles?.Count ?? 0) * 250;
-            int points = Math.Max(1000, ((build?.Level ?? 30) * 173) + 250 + rosterWeight);
-            GuildRankEntryState localEntry = _entries.FirstOrDefault(entry =>
-                string.Equals(entry.GuildName, guildName, StringComparison.OrdinalIgnoreCase));
             GuildMarkSelection resolvedMarkSelection = localGuildMarkSelection
                 ?? new GuildMarkSelection(1000, 5, 2000, 11, 0);
+            UpsertSeedEntries(dialogContext, guildName, resolvedMarkSelection);
+
+            int points = ResolveLocalPoints(build, dialogContext, guildName);
+            GuildRankEntryState localEntry = FindEntry(guildName);
             if (localEntry == null)
             {
                 _entries.Add(new GuildRankEntryState(
@@ -127,6 +127,131 @@ namespace HaCreator.MapSimulator.Interaction
         private int GetTotalPages()
         {
             return Math.Max(1, (int)Math.Ceiling(_entries.Count / (float)PageSize));
+        }
+
+        private void UpsertSeedEntries(
+            GuildDialogContext dialogContext,
+            string localGuildName,
+            GuildMarkSelection localGuildMarkSelection)
+        {
+            if (dialogContext.RankingEntries == null || dialogContext.RankingEntries.Count == 0)
+            {
+                return;
+            }
+
+            for (int i = 0; i < dialogContext.RankingEntries.Count; i++)
+            {
+                GuildRankingSeedEntry seedEntry = dialogContext.RankingEntries[i];
+                if (string.IsNullOrWhiteSpace(seedEntry.GuildName))
+                {
+                    continue;
+                }
+
+                bool isLocalGuild = string.Equals(seedEntry.GuildName.Trim(), localGuildName, StringComparison.OrdinalIgnoreCase);
+                GuildRankEntryState existing = FindEntry(seedEntry.GuildName);
+                if (existing == null)
+                {
+                    GuildMarkSelection markSelection = isLocalGuild
+                        ? localGuildMarkSelection
+                        : ResolveFallbackMarkSelection(i);
+                    _entries.Add(new GuildRankEntryState(
+                        seedEntry.GuildName.Trim(),
+                        ResolveSeedPoints(seedEntry, i),
+                        markSelection.MarkBackground,
+                        markSelection.MarkBackgroundColor,
+                        markSelection.Mark,
+                        markSelection.MarkColor));
+                    continue;
+                }
+
+                existing.Points = Math.Max(existing.Points, ResolveSeedPoints(seedEntry, i));
+                if (isLocalGuild)
+                {
+                    existing.MarkBackground = localGuildMarkSelection.MarkBackground;
+                    existing.MarkBackgroundColor = localGuildMarkSelection.MarkBackgroundColor;
+                    existing.Mark = localGuildMarkSelection.Mark;
+                    existing.MarkColor = localGuildMarkSelection.MarkColor;
+                }
+            }
+        }
+
+        private int ResolveLocalPoints(CharacterBuild build, GuildDialogContext dialogContext, string guildName)
+        {
+            GuildRankingSeedEntry localSeed = dialogContext.RankingEntries?.FirstOrDefault(entry =>
+                string.Equals(entry.GuildName, guildName, StringComparison.OrdinalIgnoreCase)) ?? default;
+            if (!string.IsNullOrWhiteSpace(localSeed.GuildName))
+            {
+                return ResolveSeedPoints(localSeed, 0);
+            }
+
+            int rosterWeight = Math.Max(0, dialogContext.RankTitles?.Count ?? 0) * 250;
+            return Math.Max(1000, ((build?.Level ?? 30) * 173) + 250 + rosterWeight);
+        }
+
+        private GuildRankEntryState FindEntry(string guildName)
+        {
+            return _entries.FirstOrDefault(entry =>
+                string.Equals(entry.GuildName, guildName?.Trim(), StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static int ResolveSeedPoints(GuildRankingSeedEntry seedEntry, int seedIndex)
+        {
+            int guildLevel = ParseFirstInteger(seedEntry.LevelRange, 1);
+            (int onlineCount, int totalCount) = ParseMemberSummary(seedEntry.MemberSummary);
+            int noticeWeight = string.IsNullOrWhiteSpace(seedEntry.Notice)
+                ? 0
+                : Math.Min(2400, seedEntry.Notice.Trim().Length * 18);
+            int masterWeight = string.IsNullOrWhiteSpace(seedEntry.MasterName)
+                ? 0
+                : Math.Min(1200, seedEntry.MasterName.Trim().Length * 27);
+            int basePoints = (guildLevel * 5000) + (totalCount * 850) + (onlineCount * 420) + noticeWeight + masterWeight;
+            return Math.Max(1000, basePoints - (seedIndex * 225));
+        }
+
+        private static (int OnlineCount, int TotalCount) ParseMemberSummary(string memberSummary)
+        {
+            if (string.IsNullOrWhiteSpace(memberSummary))
+            {
+                return (1, 1);
+            }
+
+            string[] parts = memberSummary.Split('/');
+            if (parts.Length < 2)
+            {
+                int singleValue = ParseFirstInteger(memberSummary, 1);
+                return (singleValue, Math.Max(1, singleValue));
+            }
+
+            int onlineCount = ParseFirstInteger(parts[0], 1);
+            int totalCount = ParseFirstInteger(parts[1], onlineCount);
+            return (Math.Max(0, onlineCount), Math.Max(1, totalCount));
+        }
+
+        private static int ParseFirstInteger(string text, int fallback)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return fallback;
+            }
+
+            string digits = new(text.Where(char.IsDigit).ToArray());
+            return int.TryParse(digits, out int value)
+                ? value
+                : fallback;
+        }
+
+        private static GuildMarkSelection ResolveFallbackMarkSelection(int seedIndex)
+        {
+            GuildMarkSelection[] seedSelections =
+            [
+                new GuildMarkSelection(1001, 3, 2002, 11, 0),
+                new GuildMarkSelection(1004, 9, 3004, 6, 1),
+                new GuildMarkSelection(1007, 5, 5001, 15, 3),
+                new GuildMarkSelection(1010, 13, 4003, 3, 2),
+                new GuildMarkSelection(1003, 8, 9002, 9, 4),
+                new GuildMarkSelection(1009, 16, 5006, 2, 3)
+            ];
+            return seedSelections[Math.Abs(seedIndex) % seedSelections.Length];
         }
 
         private void EnsureSeedData()

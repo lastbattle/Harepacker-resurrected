@@ -265,6 +265,29 @@ namespace HaCreator.MapSimulator.Animation
             float offsetY,
             int currentTimeMs)
         {
+            return RegisterUserState(
+                registrationKey: ownerId,
+                ownerId,
+                startFrames,
+                repeatFrames,
+                endFrames,
+                getTargetPosition,
+                offsetX,
+                offsetY,
+                currentTimeMs);
+        }
+
+        public int RegisterUserState(
+            int registrationKey,
+            int ownerId,
+            List<IDXObject> startFrames,
+            List<IDXObject> repeatFrames,
+            List<IDXObject> endFrames,
+            Func<Vector2> getTargetPosition,
+            float offsetX,
+            float offsetY,
+            int currentTimeMs)
+        {
             if (ownerId <= 0 || getTargetPosition == null)
             {
                 return -1;
@@ -277,23 +300,28 @@ namespace HaCreator.MapSimulator.Animation
 
             for (int i = _userStateAnimations.Count - 1; i >= 0; i--)
             {
-                if (_userStateAnimations[i].OwnerId == ownerId)
+                if (_userStateAnimations[i].RegistrationKey == registrationKey)
                 {
                     _userStateAnimations.RemoveAt(i);
                 }
             }
 
             var animation = new UserStateAnimation();
-            animation.Initialize(ownerId, startFrames, repeatFrames, endFrames, getTargetPosition, offsetX, offsetY, currentTimeMs);
+            animation.Initialize(registrationKey, ownerId, startFrames, repeatFrames, endFrames, getTargetPosition, offsetX, offsetY, currentTimeMs);
             _userStateAnimations.Add(animation);
-            return ownerId;
+            return registrationKey;
         }
 
         public bool RemoveUserState(int ownerId, int currentTimeMs)
         {
+            return RemoveUserStateByRegistrationKey(ownerId, currentTimeMs);
+        }
+
+        public bool RemoveUserStateByRegistrationKey(int registrationKey, int currentTimeMs)
+        {
             for (int i = _userStateAnimations.Count - 1; i >= 0; i--)
             {
-                if (_userStateAnimations[i].OwnerId == ownerId)
+                if (_userStateAnimations[i].RegistrationKey == registrationKey)
                 {
                     if (_userStateAnimations[i].BeginEndPhase(currentTimeMs))
                     {
@@ -310,9 +338,14 @@ namespace HaCreator.MapSimulator.Animation
 
         public bool HasUserState(int ownerId)
         {
+            return HasUserStateByRegistrationKey(ownerId);
+        }
+
+        public bool HasUserStateByRegistrationKey(int registrationKey)
+        {
             for (int i = 0; i < _userStateAnimations.Count; i++)
             {
-                if (_userStateAnimations[i].OwnerId == ownerId)
+                if (_userStateAnimations[i].RegistrationKey == registrationKey)
                 {
                     return true;
                 }
@@ -956,9 +989,11 @@ namespace HaCreator.MapSimulator.Animation
         private bool _finished;
         private UserStatePhase _phase;
 
+        public int RegistrationKey { get; private set; }
         public int OwnerId { get; private set; }
 
         public void Initialize(
+            int registrationKey,
             int ownerId,
             List<IDXObject> startFrames,
             List<IDXObject> repeatFrames,
@@ -968,6 +1003,7 @@ namespace HaCreator.MapSimulator.Animation
             float offsetY,
             int currentTimeMs)
         {
+            RegistrationKey = registrationKey;
             OwnerId = ownerId;
             _startFrames = startFrames;
             _repeatFrames = repeatFrames;

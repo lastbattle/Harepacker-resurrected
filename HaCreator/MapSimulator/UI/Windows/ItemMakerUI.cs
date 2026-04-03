@@ -106,6 +106,25 @@ namespace HaCreator.MapSimulator.UI
         private const int AllCategoryKey = -1;
         private const int HiddenCategoryKey = 999;
         private static readonly int[] ClientRecipeBuckets = { 0, 1, 2, 4, 8, 16 };
+        private static readonly HashSet<int> HiddenUnlockHintItemIds = new()
+        {
+            4031966,
+            4031967,
+            4031968,
+            4031969,
+            4031970,
+            4031971,
+            4031972,
+            4031973,
+            4031974,
+            4031975,
+            4031976,
+            4031977,
+            4031978,
+            4031979,
+            4032502,
+            4032503
+        };
 
         private readonly List<BackgroundLayer> _backgroundLayers = new();
         private readonly List<ItemMakerRecipe> _allRecipes = new();
@@ -166,6 +185,33 @@ namespace HaCreator.MapSimulator.UI
             _font = font;
         }
 
+        internal bool TryApplyPacketOwnedResult(PacketOwnedItemMakerResult packetResult, out string message)
+        {
+            if (packetResult == null)
+            {
+                message = "Item Maker result is unavailable.";
+                return false;
+            }
+
+            if (packetResult.RepresentsSuccessfulCraft)
+            {
+                string itemName = GetItemName(packetResult.TargetItemId);
+                int quantity = Math.Max(1, packetResult.TargetItemCount);
+                message = $"Packet-owned maker result created {itemName} x{quantity}.";
+            }
+            else if (packetResult.DisassembledItemId > 0)
+            {
+                message = $"Packet-owned maker result disassembled item {packetResult.DisassembledItemId}.";
+            }
+            else
+            {
+                message = $"Packet-owned maker result code {packetResult.ResultCode} subtype {packetResult.ResultType}.";
+            }
+
+            RefreshStatusMessage(message);
+            return packetResult.ResultCode <= 1;
+        }
+
         public void SetInventory(IInventoryRuntime inventory)
         {
             _inventory = inventory;
@@ -205,6 +251,21 @@ namespace HaCreator.MapSimulator.UI
             {
                 RefreshStatusMessage(overrideStatusMessage);
             }
+        }
+
+        public void ApplyPacketOwnedResult(string statusMessage, bool refreshSlotState)
+        {
+            _isCrafting = false;
+            _craftingRecipeIndex = -1;
+
+            if (refreshSlotState)
+            {
+                _selectedRecipeIndex = -1;
+                _recipeScrollOffset = 0;
+            }
+
+            RebuildVisiblePages();
+            RefreshStatusMessage(statusMessage);
         }
 
         public void ApplyLaunchContext(string npcFunctionText)
@@ -1734,11 +1795,11 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
-            // ItemMake carries a set of quest-etc gated maker hints without an explicit hide
-            // property on the row itself. Keep `hide` authoritative when present, but preserve a
-            // narrow unlock-gate fallback for those 403xxxx hint items instead of treating every
-            // reqItem recipe as hidden again.
-            return requiredItemId / 10000 == 403;
+            // ItemMake carries a narrow WZ-authored set of hidden-hint reqItem rows without an
+            // explicit hide property on the row itself. Keep `hide` authoritative when present,
+            // and only treat those observed hint items as hidden instead of widening the fallback
+            // to every 403xxxx quest item.
+            return HiddenUnlockHintItemIds.Contains(requiredItemId);
         }
 
         private void RebuildVisiblePages()

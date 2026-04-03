@@ -3,11 +3,14 @@ using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.UI;
 using HaCreator.MapSimulator.Character;
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
 
 namespace HaCreator.MapSimulator
 {
@@ -23,6 +26,7 @@ namespace HaCreator.MapSimulator
         private readonly PacketFieldUtilityRuntime _packetFieldUtilityRuntime = new();
         private readonly Dictionary<int, PacketFieldUtilityStalkMarkerState> _packetFieldUtilityStalkTargets = new();
         private readonly List<PacketFieldUtilityFootholdEntry> _packetFieldUtilityFootholdEntries = new();
+        private readonly Dictionary<int, string> _packetFieldUtilityFootholdNamesBySerial = new();
         private int[] _packetFieldUtilityQuickslotKeyCodes;
         private bool _packetFieldUtilityWeatherOverrideActive;
         private int _packetFieldUtilityWeatherItemId;
@@ -30,7 +34,13 @@ namespace HaCreator.MapSimulator
         private string _packetFieldUtilityWeatherPath;
         private string _packetFieldUtilityWeatherMessage;
         private string _packetFieldUtilityQuizSummary;
+        private string _packetFieldUtilityQuizDisplayText;
+        private int _packetFieldUtilityQuizDisplayExpiresAt;
+        private int _packetFieldUtilityQuizTimerExpiresAt;
+        private Texture2D _packetFieldUtilityStatusNoticeIcon;
+        private bool _packetFieldUtilityMinimapHiddenByAdminResult;
         private string _packetFieldUtilityFootholdRequestSummary = "No packet-owned foothold-info request has been handled.";
+        private string _packetFieldUtilityFootholdOfficialResponseSummary = "No packet-owned foothold-info response payload has been prepared.";
 
         private bool TryApplyPacketOwnedFieldUtilityPacket(int packetType, byte[] payload, out string message)
         {
@@ -155,51 +165,50 @@ namespace HaCreator.MapSimulator
 
         private void PresentPacketOwnedAdminResult(PacketFieldUtilityAdminResult result)
         {
-            if (result == null || string.IsNullOrWhiteSpace(result.Body))
+            if (result == null)
             {
                 return;
             }
 
-            _chat?.AddClientChatMessage(result.Body, currTickCount, result.ChatLogType);
-            if (result.ShowPrompt)
+            if (result.AppendChatLogEntry && !string.IsNullOrWhiteSpace(result.Body))
             {
-                ShowConnectionNoticePrompt(new LoginPacketDialogPromptConfiguration
-                {
-                    Owner = LoginPacketDialogOwner.ConnectionNotice,
-                    Title = result.Title ?? "Admin",
-                    Body = result.Body,
-                    NoticeVariant = ConnectionNoticeWindowVariant.Notice,
-                    DurationMs = 5000
-                });
+                _chat?.AddClientChatMessage(result.Body, currTickCount, result.ChatLogType);
             }
 
             if (result.ReloadMinimap)
             {
                 _mapBoard?.RegenerateMinimap();
-                ShowUtilityFeedbackMessage("Reloaded the minimap after packet-owned admin result.");
+                if (_packetFieldUtilityMinimapHiddenByAdminResult)
+                {
+                    miniMapUi?.EnsureCollapsed();
+                }
             }
 
             if (result.ToggleMinimap)
             {
-                miniMapUi?.MinimiseOrMaximiseMinimap(currTickCount);
+                _packetFieldUtilityMinimapHiddenByAdminResult = true;
+                miniMapUi?.EnsureCollapsed();
             }
         }
 
-        private void PresentPacketOwnedQuizState(string quizText, bool isQuestion, byte category, ushort problemId)
+        private void PresentPacketOwnedQuizState(bool isQuestion, byte category, ushort problemId)
         {
-            _packetFieldUtilityQuizSummary = problemId == 0
-                ? null
-                : $"{(isQuestion ? "Question" : "Answer")} {category}-{problemId}: {quizText}";
-
             if (problemId == 0)
             {
-                ShowUtilityFeedbackMessage("Cleared packet-authored quiz status.");
+                _packetFieldUtilityQuizSummary = null;
+                _packetFieldUtilityQuizDisplayText = null;
+                _packetFieldUtilityQuizDisplayExpiresAt = 0;
+                _packetFieldUtilityQuizTimerExpiresAt = 0;
                 return;
             }
 
-            string message = quizText ?? $"{(isQuestion ? "Question" : "Answer")} {category}-{problemId}";
-            _chat?.AddClientChatMessage($"[Quiz] {message}", currTickCount, 12);
-            ShowUtilityFeedbackMessage($"Packet-authored quiz {(isQuestion ? "question" : "answer")}: {message}");
+            PacketOwnedQuizPresentation presentation = ResolvePacketOwnedQuizPresentation(isQuestion, category, problemId);
+            _packetFieldUtilityQuizSummary = presentation.Summary;
+            _packetFieldUtilityQuizDisplayText = presentation.DisplayText;
+            _packetFieldUtilityQuizDisplayExpiresAt = currTickCount + 5000;
+            _packetFieldUtilityQuizTimerExpiresAt = presentation.StartEventTimer
+                ? currTickCount + 30000
+                : 0;
         }
 
         private void UpsertPacketOwnedStalkTarget(int characterId, string name, int x, int y)
@@ -340,6 +349,7 @@ namespace HaCreator.MapSimulator
             if (entries != null)
             {
                 _packetFieldUtilityFootholdEntries.AddRange(entries);
+                CachePacketOwnedFootholdNames(entries);
             }
 
             for (int i = 0; i < _packetFieldUtilityFootholdEntries.Count; i++)
@@ -355,7 +365,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            if (!TryResolvePacketOwnedDynamicPlatform(entry.Name, out DynamicPlatform platform))
+            if (!TryResolvePacketOwnedDynamicPlatform(entry, out DynamicPlatform platform))
             {
                 return;
             }
@@ -374,6 +384,54 @@ namespace HaCreator.MapSimulator
                 platform.MovingDown = !entry.MovingState.ReverseVertical;
                 platform.MovingRight = !entry.MovingState.ReverseHorizontal;
             }
+        }
+
+        private void CachePacketOwnedFootholdNames(IReadOnlyList<PacketFieldUtilityFootholdEntry> entries)
+        {
+            if (entries == null)
+            {
+                return;
+            }
+
+            foreach (PacketFieldUtilityFootholdEntry entry in entries)
+            {
+                if (entry == null || string.IsNullOrWhiteSpace(entry.Name) || entry.FootholdSerialNumbers == null)
+                {
+                    continue;
+                }
+
+                string normalizedName = entry.Name.Trim();
+                foreach (int serialNumber in entry.FootholdSerialNumbers)
+                {
+                    if (serialNumber >= 0)
+                    {
+                        _packetFieldUtilityFootholdNamesBySerial[serialNumber] = normalizedName;
+                    }
+                }
+            }
+        }
+
+        private bool TryResolvePacketOwnedDynamicPlatform(PacketFieldUtilityFootholdEntry entry, out DynamicPlatform platform)
+        {
+            platform = null;
+            if (entry?.FootholdSerialNumbers != null && _dynamicFootholds != null)
+            {
+                foreach (int serialNumber in entry.FootholdSerialNumbers)
+                {
+                    if (serialNumber < 0)
+                    {
+                        continue;
+                    }
+
+                    platform = _dynamicFootholds.GetPlatform(serialNumber);
+                    if (platform != null)
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return TryResolvePacketOwnedDynamicPlatform(entry?.Name, out platform);
         }
 
         private bool TryResolvePacketOwnedDynamicPlatform(string name, out DynamicPlatform platform)
@@ -398,9 +456,13 @@ namespace HaCreator.MapSimulator
         private string HandlePacketOwnedFootholdInfoRequest()
         {
             IReadOnlyList<PacketFieldUtilityFootholdEntry> snapshot = BuildPacketOwnedFootholdSnapshot();
+            byte[] officialResponsePayload = PacketFieldUtilityRuntime.BuildOfficialSessionFootHoldInfoResponsePayload(snapshot);
             _packetFieldUtilityFootholdRequestSummary = snapshot.Count == 0
                 ? "Received packet-owned foothold-info request; no dynamic foothold entries were available to snapshot."
                 : $"Received packet-owned foothold-info request; prepared {snapshot.Count} dynamic foothold snapshot entr{(snapshot.Count == 1 ? "y" : "ies")} for the current runtime.";
+            _packetFieldUtilityFootholdOfficialResponseSummary = snapshot.Count == 0
+                ? "Prepared an empty client-shaped foothold-info response payload."
+                : $"Prepared client-shaped foothold-info response payload ({officialResponsePayload.Length} byte{(officialResponsePayload.Length == 1 ? string.Empty : "s")}, hex={Convert.ToHexString(officialResponsePayload)}).";
             return _packetFieldUtilityFootholdRequestSummary;
         }
 
@@ -421,7 +483,7 @@ namespace HaCreator.MapSimulator
                 }
 
                 entries.Add(new PacketFieldUtilityFootholdEntry(
-                    $"platform-{i}",
+                    ResolvePacketOwnedDynamicPlatformSnapshotName(i),
                     platform.IsActive ? 2 : 0,
                     new[] { i },
                     new PacketFieldUtilityMovingFootholdState(
@@ -437,6 +499,23 @@ namespace HaCreator.MapSimulator
             }
 
             return entries;
+        }
+
+        private string ResolvePacketOwnedDynamicPlatformSnapshotName(int platformId)
+        {
+            if (_packetFieldUtilityFootholdNamesBySerial.TryGetValue(platformId, out string packetName)
+                && !string.IsNullOrWhiteSpace(packetName))
+            {
+                return packetName;
+            }
+
+            if (_dynamicFootholdField.TryResolveAuthoredDynamicObjectName(platformId, out string authoredName)
+                && !string.IsNullOrWhiteSpace(authoredName))
+            {
+                return authoredName;
+            }
+
+            return $"platform-{platformId}";
         }
 
         private void AppendPacketOwnedStalkTrackedUserMarkers(Dictionary<string, MinimapTrackedUserState> trackedUsers)
@@ -465,7 +544,7 @@ namespace HaCreator.MapSimulator
             if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
             {
                 return ChatCommandHandler.CommandResult.Info(
-                    $"{_packetFieldUtilityRuntime.DescribeStatus()}{Environment.NewLine}{_packetFieldUtilityFootholdRequestSummary}");
+                    $"{_packetFieldUtilityRuntime.DescribeStatus()}{Environment.NewLine}{_packetFieldUtilityFootholdRequestSummary}{Environment.NewLine}{_packetFieldUtilityFootholdOfficialResponseSummary}");
             }
 
             if (string.Equals(args[0], "clear", StringComparison.OrdinalIgnoreCase))
@@ -473,13 +552,19 @@ namespace HaCreator.MapSimulator
                 _packetFieldUtilityRuntime.Clear();
                 _packetFieldUtilityStalkTargets.Clear();
                 _packetFieldUtilityFootholdEntries.Clear();
+                _packetFieldUtilityFootholdNamesBySerial.Clear();
                 _packetFieldUtilityQuickslotKeyCodes = null;
                 _packetFieldUtilityWeatherOverrideActive = false;
                 _packetFieldUtilityWeatherItemId = 0;
                 _packetFieldUtilityWeatherPath = null;
                 _packetFieldUtilityWeatherMessage = null;
                 _packetFieldUtilityQuizSummary = null;
+                _packetFieldUtilityQuizDisplayText = null;
+                _packetFieldUtilityQuizDisplayExpiresAt = 0;
+                _packetFieldUtilityQuizTimerExpiresAt = 0;
+                _packetFieldUtilityMinimapHiddenByAdminResult = false;
                 _packetFieldUtilityFootholdRequestSummary = "No packet-owned foothold-info request has been handled.";
+                _packetFieldUtilityFootholdOfficialResponseSummary = "No packet-owned foothold-info response payload has been prepared.";
                 ApplyPacketOwnedQuickslotBindings(null, useDefault: true);
                 uiWindowManager?.QuickSlotWindow?.SetPrimaryBarKeyLabels(null);
                 _fieldEffects?.StopWeather();
@@ -682,6 +767,123 @@ namespace HaCreator.MapSimulator
             };
 
             return Enum.IsDefined(typeof(PacketFieldUtilityPacketKind), kind);
+        }
+
+        private sealed record PacketOwnedQuizPresentation(string Summary, string DisplayText, bool StartEventTimer);
+
+        private PacketOwnedQuizPresentation ResolvePacketOwnedQuizPresentation(bool isQuestion, byte category, ushort problemId)
+        {
+            if (!TryResolvePacketOwnedQuizProblem(category, problemId, out WzSubProperty problemProperty))
+            {
+                string fallback = $"{(isQuestion ? "Question" : "Answer")} {category}-{problemId}";
+                return new PacketOwnedQuizPresentation(
+                    $"Packet-authored quiz {(isQuestion ? "question" : "answer")} {category}-{problemId} is unavailable in Etc/OXQuiz.img.",
+                    fallback,
+                    isQuestion);
+            }
+
+            if (isQuestion)
+            {
+                string questionText = NormalizePacketOwnedQuizText(problemProperty["q"]?.GetString());
+                string displayText = string.IsNullOrWhiteSpace(questionText)
+                    ? $"Question {category}-{problemId}"
+                    : questionText;
+                return new PacketOwnedQuizPresentation(
+                    $"Packet-authored quiz question {category}-{problemId}: {displayText}",
+                    displayText,
+                    true);
+            }
+
+            int answerValue = problemProperty["a"]?.GetInt() ?? -1;
+            string detailText = NormalizePacketOwnedQuizText(problemProperty["d"]?.GetString());
+            string answerPrefix = answerValue switch
+            {
+                0 => "[X]",
+                1 => "[O]",
+                _ => "[?]"
+            };
+            string answerDisplayText = string.IsNullOrWhiteSpace(detailText)
+                ? answerPrefix
+                : $"{detailText} {answerPrefix}";
+            return new PacketOwnedQuizPresentation(
+                $"Packet-authored quiz answer {category}-{problemId}: {answerDisplayText}",
+                answerDisplayText,
+                false);
+        }
+
+        private static bool TryResolvePacketOwnedQuizProblem(byte category, ushort problemId, out WzSubProperty problemProperty)
+        {
+            problemProperty = null;
+            if (category == 0 || problemId == 0)
+            {
+                return false;
+            }
+
+            WzImage oxQuizImage = Program.FindImage("Etc", "OXQuiz.img");
+            if (oxQuizImage == null)
+            {
+                return false;
+            }
+
+            if (!oxQuizImage.Parsed)
+            {
+                oxQuizImage.ParseImage();
+            }
+
+            problemProperty = oxQuizImage[category.ToString(CultureInfo.InvariantCulture)]?[problemId.ToString(CultureInfo.InvariantCulture)] as WzSubProperty;
+            return problemProperty != null;
+        }
+
+        private static string NormalizePacketOwnedQuizText(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return string.Empty;
+            }
+
+            return value
+                .Replace("\r\n", "\n", StringComparison.Ordinal)
+                .Replace('\r', '\n')
+                .Trim();
+        }
+
+        private void DrawPacketOwnedQuizNotice(int currentTickCount)
+        {
+            if (string.IsNullOrWhiteSpace(_packetFieldUtilityQuizDisplayText)
+                || _fontChat == null
+                || currentTickCount >= _packetFieldUtilityQuizDisplayExpiresAt)
+            {
+                return;
+            }
+
+            string displayText = _packetFieldUtilityQuizDisplayText;
+            if (_packetFieldUtilityQuizTimerExpiresAt > currentTickCount)
+            {
+                int remainingSeconds = Math.Max(0, (_packetFieldUtilityQuizTimerExpiresAt - currentTickCount + 999) / 1000);
+                displayText = $"{displayText} ({remainingSeconds}s)";
+            }
+
+            Vector2 textSize = _fontChat.MeasureString(displayText);
+            float iconWidth = _packetFieldUtilityStatusNoticeIcon?.Width ?? 0f;
+            float iconHeight = _packetFieldUtilityStatusNoticeIcon?.Height ?? 0f;
+            float totalWidth = textSize.X + (iconWidth > 0f ? iconWidth + 8f : 0f);
+            float drawX = (_renderParams.RenderWidth - totalWidth) * 0.5f;
+            float drawY = statusBarUi != null
+                ? statusBarUi.Position.Y + 14f
+                : MathF.Max(8f, _renderParams.RenderHeight - 72f);
+
+            if (_packetFieldUtilityStatusNoticeIcon != null)
+            {
+                _spriteBatch.Draw(
+                    _packetFieldUtilityStatusNoticeIcon,
+                    new Vector2(drawX, drawY + MathF.Max(0f, (textSize.Y - iconHeight) * 0.5f)),
+                    Color.White);
+                drawX += iconWidth + 8f;
+            }
+
+            Vector2 textPosition = new(drawX, drawY);
+            _spriteBatch.DrawString(_fontChat, displayText, textPosition + Vector2.One, Color.Black);
+            _spriteBatch.DrawString(_fontChat, displayText, textPosition, new Color(255, 246, 181));
         }
     }
 }

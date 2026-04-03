@@ -126,6 +126,12 @@ namespace HaCreator.MapSimulator.UI
             _editControl.SetFocus(false);
         }
 
+        public override void Show()
+        {
+            base.Show();
+            _editControl.ActivateByOwner();
+        }
+
         public void ConfigureVisualAssets(
             Texture2D frameTexture,
             IReadOnlyList<Texture2D> digitTextures,
@@ -283,7 +289,7 @@ namespace HaCreator.MapSimulator.UI
             DrawChallengeTexture(sprite, challengeBounds);
             DrawCountdown(sprite, bounds, tickCount);
             DrawAttemptMessage(sprite, bounds);
-            _editControl.Draw(sprite, bounds);
+            _editControl.Draw(sprite, bounds, drawChrome: true);
             _editControl.DrawImeCandidateWindow(sprite, bounds);
         }
 

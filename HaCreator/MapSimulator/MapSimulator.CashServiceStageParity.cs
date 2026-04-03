@@ -5,6 +5,7 @@ using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Linq;
 using CashServiceOwnerStageKind = HaCreator.MapSimulator.UI.CashServiceStageKind;
 
 namespace HaCreator.MapSimulator
@@ -20,15 +21,29 @@ namespace HaCreator.MapSimulator
             MapSimulatorWindowNames.CashShopOneADay
         };
 
+        private static readonly string[] ItcChildOwnerWindowNames =
+        {
+            MapSimulatorWindowNames.ItcCharacter,
+            MapSimulatorWindowNames.ItcSale,
+            MapSimulatorWindowNames.ItcPurchase,
+            MapSimulatorWindowNames.ItcInventory,
+            MapSimulatorWindowNames.ItcTab,
+            MapSimulatorWindowNames.ItcSubTab,
+            MapSimulatorWindowNames.ItcList,
+            MapSimulatorWindowNames.ItcStatus
+        };
+
         private readonly CashServicePacketInboxManager _cashServicePacketInbox = new();
 
         private void WireCashServiceOwnerWindows()
         {
             IInventoryRuntime inventoryRuntime = uiWindowManager?.InventoryWindow as IInventoryRuntime;
+            IStorageRuntime storageRuntime = uiWindowManager?.GetWindow(MapSimulatorWindowNames.Trunk) as IStorageRuntime;
 
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShop) is AdminShopDialogUI cashShopWindow)
             {
                 cashShopWindow.SetInventory(inventoryRuntime);
+                cashShopWindow.SetStorageRuntime(storageRuntime);
                 cashShopWindow.SetCashBalances(_loginAccountCashShopNxCredit);
                 cashShopWindow.TryConsumeCashBalance = TryConsumeLoginAccountCashShopNxCredit;
                 cashShopWindow.ResolveStorageExpansionCommoditySerialNumber = ResolveStorageExpansionCommoditySerialNumber;
@@ -43,6 +58,7 @@ namespace HaCreator.MapSimulator
                 cashShopStageWindow.SetFont(_fontChat);
                 cashShopStageWindow.SetCharacterBuild(_playerManager?.Player?.Build);
                 cashShopStageWindow.SetInventory(inventoryRuntime);
+                cashShopStageWindow.SetStorageRuntime(storageRuntime);
             }
 
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashAvatarPreview) is CashAvatarPreviewWindow cashAvatarPreviewWindow
@@ -83,6 +99,7 @@ namespace HaCreator.MapSimulator
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.Mts) is AdminShopDialogUI mtsWindow)
             {
                 mtsWindow.SetInventory(inventoryRuntime);
+                mtsWindow.SetStorageRuntime(storageRuntime);
             }
 
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.MtsStatus) is CashServiceStageWindow mtsStageWindow)
@@ -90,7 +107,10 @@ namespace HaCreator.MapSimulator
                 mtsStageWindow.SetFont(_fontChat);
                 mtsStageWindow.SetCharacterBuild(_playerManager?.Player?.Build);
                 mtsStageWindow.SetInventory(inventoryRuntime);
+                mtsStageWindow.SetStorageRuntime(storageRuntime);
             }
+
+            WireItcChildOwnerWindows();
         }
 
         private void WireCashShopChildOwnerWindows(AdminShopDialogUI cashShopWindow)
@@ -104,30 +124,152 @@ namespace HaCreator.MapSimulator
             {
                 lockerWindow.SetFont(_fontChat);
                 lockerWindow.SetContentProvider(cashShopWindow.DescribeLockerOwnerState);
+                lockerWindow.SetLockerStateProvider(() =>
+                {
+                    AdminShopDialogUI.LockerOwnerSnapshot snapshot = cashShopWindow.GetLockerOwnerSnapshot();
+                    return new CashShopStageChildWindow.LockerOwnerState
+                    {
+                        AccountLabel = snapshot.AccountLabel,
+                        UsedSlotCount = snapshot.UsedSlotCount,
+                        SlotLimit = snapshot.SlotLimit,
+                        CanExpand = snapshot.CanExpand,
+                        ScrollOffset = 0,
+                        WheelRange = 208,
+                        HasNumberFont = true,
+                        SharedCharacterNames = snapshot.SharedCharacterNames
+                    };
+                });
             }
 
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopInventory) is CashShopStageChildWindow inventoryWindow)
             {
                 inventoryWindow.SetFont(_fontChat);
                 inventoryWindow.SetContentProvider(cashShopWindow.DescribeInventoryOwnerState);
+                inventoryWindow.SetInventoryStateProvider(() =>
+                {
+                    AdminShopDialogUI.InventoryOwnerSnapshot snapshot = cashShopWindow.GetInventoryOwnerSnapshot();
+                    return new CashShopStageChildWindow.InventoryOwnerState
+                    {
+                        EquipCount = snapshot.EquipCount,
+                        UseCount = snapshot.UseCount,
+                        SetupCount = snapshot.SetupCount,
+                        EtcCount = snapshot.EtcCount,
+                        CashCount = snapshot.CashCount,
+                        ScrollOffset = 0,
+                        WheelRange = 140,
+                        HasNumberFont = true,
+                        SelectedEntryTitle = snapshot.SelectedEntryTitle
+                    };
+                });
+                inventoryWindow.SetExternalAction("BtExTrunk", () =>
+                {
+                    ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.CashShopLocker);
+                    return "CCSWnd_Inventory routed trunk access back to CCSWnd_Locker.";
+                });
             }
 
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopList) is CashShopStageChildWindow listWindow)
             {
                 listWindow.SetFont(_fontChat);
                 listWindow.SetContentProvider(() => BuildCashShopListOwnerLines(cashShopWindow));
+                listWindow.SetExternalAction("BtBuy", () => cashShopWindow.ExecuteCashStageListAction("BtBuy"));
+                listWindow.SetExternalAction("BtGift", () => cashShopWindow.ExecuteCashStageListAction("BtGift"));
+                listWindow.SetExternalAction("BtReserve", () => cashShopWindow.ExecuteCashStageListAction("BtReserve"));
+                listWindow.SetExternalAction("BtRemove", () => cashShopWindow.ExecuteCashStageListAction("BtRemove"));
+                listWindow.SetListStateProvider(() =>
+                {
+                    AdminShopDialogUI.ListOwnerSnapshot snapshot = cashShopWindow.GetListOwnerSnapshot();
+                    List<CashShopStageChildWindow.ListOwnerEntryState> entries = new();
+                    for (int i = 0; i < snapshot.VisibleEntries.Count; i++)
+                    {
+                        AdminShopDialogUI.OwnerEntrySnapshot entry = snapshot.VisibleEntries[i];
+                        entries.Add(new CashShopStageChildWindow.ListOwnerEntryState
+                        {
+                            Title = entry.Title,
+                            Detail = entry.Detail,
+                            Seller = entry.Seller,
+                            PriceLabel = entry.PriceLabel,
+                            StateLabel = entry.StateLabel,
+                            IsSelected = entry.IsSelected
+                        });
+                    }
+
+                    IReadOnlyList<string> recentPackets = uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) is CashServiceStageWindow stageWindow
+                        ? stageWindow.GetRecentPacketSummaries()
+                        : Array.Empty<string>();
+                    return new CashShopStageChildWindow.ListOwnerState
+                    {
+                        PaneLabel = snapshot.PaneLabel,
+                        BrowseModeLabel = snapshot.BrowseModeLabel,
+                        CategoryLabel = snapshot.CategoryLabel,
+                        FooterMessage = snapshot.FooterMessage,
+                        SelectedEntryDetail = snapshot.VisibleEntries.FirstOrDefault(entry => entry.IsSelected)?.Detail ?? string.Empty,
+                        SelectedIndex = snapshot.SelectedIndex,
+                        ScrollOffset = snapshot.ScrollOffset,
+                        TotalCount = snapshot.TotalCount,
+                        PlateFocusIndex = snapshot.SelectedIndex >= 0 ? snapshot.SelectedIndex - snapshot.ScrollOffset : -1,
+                        HasKeyFocusCanvas = true,
+                        VisibleEntries = entries,
+                        RecentPackets = recentPackets
+                    };
+                });
             }
 
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStatus) is CashShopStageChildWindow statusWindow)
             {
                 statusWindow.SetFont(_fontChat);
                 statusWindow.SetContentProvider(BuildCashShopStatusOwnerLines);
+                statusWindow.SetStatusStateProvider(() =>
+                {
+                    if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) is not CashServiceStageWindow stageWindow)
+                    {
+                        return null;
+                    }
+
+                    return new CashShopStageChildWindow.StatusOwnerState
+                    {
+                        NexonCashBalance = stageWindow.NexonCashBalance,
+                        MaplePointBalance = stageWindow.MaplePointBalance,
+                        PrepaidCashBalance = stageWindow.PrepaidCashBalance,
+                        ChargeParam = stageWindow.ChargeParam,
+                        StatusMessage = stageWindow.StatusMessage
+                    };
+                });
+                statusWindow.SetExternalAction("BtCharge", () => "CCSWnd_Status kept the dedicated charge button armed; live billing flow remains outside the simulator.");
+                statusWindow.SetExternalAction("BtCheck", () => BuildCashShopStatusOwnerLines()[0]);
+                statusWindow.SetExternalAction("BtCoupon", () => "CCSWnd_Status routed into the coupon-registration seam; packet-backed coupon redemption still remains unimplemented.");
+                statusWindow.SetExternalAction("BtExit", () =>
+                {
+                    HideCashShopOwnerFamilyWindows();
+                    return "CCSWnd_Status closed the parent CCashShop owner family.";
+                });
             }
 
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopOneADay) is CashShopStageChildWindow oneADayWindow)
             {
                 oneADayWindow.SetFont(_fontChat);
                 oneADayWindow.SetContentProvider(BuildCashShopOneADayOwnerLines);
+                oneADayWindow.SetOneADayStateProvider(() =>
+                {
+                    if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage) is not CashServiceStageWindow stageWindow)
+                    {
+                        return null;
+                    }
+
+                    return new CashShopStageChildWindow.OneADayOwnerState
+                    {
+                        IsPending = stageWindow.IsOneADayPending,
+                        NoticeState = stageWindow.NoticeState,
+                        SelectorIndex = stageWindow.IsOneADayPending ? 0 : 1,
+                        Hour = 0,
+                        Minute = stageWindow.IsOneADayPending ? 0 : 59,
+                        Second = stageWindow.IsOneADayPending ? 30 : 0,
+                        RecentPackets = stageWindow.GetRecentPacketSummaries()
+                    };
+                });
+                oneADayWindow.SetExternalAction("BtJoin", () => "CCSWnd_OneADay joined the packet-armed reward session preview.");
+                oneADayWindow.SetExternalAction("BtShortcut", () => "CCSWnd_OneADay switched focus to the shortcut-help plate owner.");
+                oneADayWindow.SetExternalAction("BtClose", () => "CCSWnd_OneADay dismissed the current reward plate preview.");
             }
         }
 
@@ -199,11 +341,164 @@ namespace HaCreator.MapSimulator
             return lines;
         }
 
+        private void WireItcChildOwnerWindows()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.Mts) is not AdminShopDialogUI mtsWindow
+                || uiWindowManager.GetWindow(MapSimulatorWindowNames.MtsStatus) is not CashServiceStageWindow mtsStageWindow)
+            {
+                return;
+            }
+
+            if (uiWindowManager.GetWindow(MapSimulatorWindowNames.ItcCharacter) is CashShopStageChildWindow characterWindow)
+            {
+                characterWindow.SetFont(_fontChat);
+                characterWindow.SetContentProvider(mtsStageWindow.DescribeCharacterOwnerState);
+            }
+
+            if (uiWindowManager.GetWindow(MapSimulatorWindowNames.ItcSale) is CashShopStageChildWindow saleWindow)
+            {
+                saleWindow.SetFont(_fontChat);
+                saleWindow.SetContentProvider(mtsStageWindow.DescribeSaleOwnerState);
+            }
+
+            if (uiWindowManager.GetWindow(MapSimulatorWindowNames.ItcPurchase) is CashShopStageChildWindow purchaseWindow)
+            {
+                purchaseWindow.SetFont(_fontChat);
+                purchaseWindow.SetContentProvider(mtsStageWindow.DescribePurchaseOwnerState);
+            }
+
+            if (uiWindowManager.GetWindow(MapSimulatorWindowNames.ItcInventory) is CashShopStageChildWindow inventoryWindow)
+            {
+                inventoryWindow.SetFont(_fontChat);
+                inventoryWindow.SetContentProvider(mtsWindow.DescribeInventoryOwnerState);
+                inventoryWindow.SetInventoryStateProvider(() =>
+                {
+                    AdminShopDialogUI.InventoryOwnerSnapshot snapshot = mtsWindow.GetInventoryOwnerSnapshot();
+                    return new CashShopStageChildWindow.InventoryOwnerState
+                    {
+                        EquipCount = snapshot.EquipCount,
+                        UseCount = snapshot.UseCount,
+                        SetupCount = snapshot.SetupCount,
+                        EtcCount = snapshot.EtcCount,
+                        CashCount = snapshot.CashCount,
+                        ScrollOffset = 0,
+                        WheelRange = 158,
+                        HasNumberFont = true,
+                        SelectedEntryTitle = snapshot.SelectedEntryTitle
+                    };
+                });
+            }
+
+            if (uiWindowManager.GetWindow(MapSimulatorWindowNames.ItcTab) is CashShopStageChildWindow tabWindow)
+            {
+                tabWindow.SetFont(_fontChat);
+                tabWindow.SetContentProvider(mtsStageWindow.DescribeTabOwnerState);
+            }
+
+            if (uiWindowManager.GetWindow(MapSimulatorWindowNames.ItcSubTab) is CashShopStageChildWindow subTabWindow)
+            {
+                subTabWindow.SetFont(_fontChat);
+                subTabWindow.SetContentProvider(mtsStageWindow.DescribeSubTabOwnerState);
+            }
+
+            if (uiWindowManager.GetWindow(MapSimulatorWindowNames.ItcList) is CashShopStageChildWindow listWindow)
+            {
+                listWindow.SetFont(_fontChat);
+                listWindow.SetContentProvider(() => BuildItcListOwnerLines(mtsWindow, mtsStageWindow));
+                listWindow.SetListStateProvider(() =>
+                {
+                    AdminShopDialogUI.ListOwnerSnapshot snapshot = mtsWindow.GetListOwnerSnapshot();
+                    List<CashShopStageChildWindow.ListOwnerEntryState> entries = new();
+                    for (int i = 0; i < snapshot.VisibleEntries.Count; i++)
+                    {
+                        AdminShopDialogUI.OwnerEntrySnapshot entry = snapshot.VisibleEntries[i];
+                        entries.Add(new CashShopStageChildWindow.ListOwnerEntryState
+                        {
+                            Title = entry.Title,
+                            Detail = entry.Detail,
+                            Seller = entry.Seller,
+                            PriceLabel = entry.PriceLabel,
+                            StateLabel = entry.StateLabel,
+                            IsSelected = entry.IsSelected
+                        });
+                    }
+
+                    return new CashShopStageChildWindow.ListOwnerState
+                    {
+                        PaneLabel = snapshot.PaneLabel,
+                        BrowseModeLabel = snapshot.BrowseModeLabel,
+                        CategoryLabel = snapshot.CategoryLabel,
+                        FooterMessage = snapshot.FooterMessage,
+                        SelectedEntryDetail = snapshot.VisibleEntries.FirstOrDefault(entry => entry.IsSelected)?.Detail ?? string.Empty,
+                        SelectedIndex = snapshot.SelectedIndex,
+                        ScrollOffset = snapshot.ScrollOffset,
+                        TotalCount = snapshot.TotalCount,
+                        PlateFocusIndex = snapshot.SelectedIndex >= 0 ? snapshot.SelectedIndex - snapshot.ScrollOffset : -1,
+                        HasKeyFocusCanvas = true,
+                        VisibleEntries = entries,
+                        RecentPackets = mtsStageWindow.GetRecentPacketSummaries()
+                    };
+                });
+            }
+
+            if (uiWindowManager.GetWindow(MapSimulatorWindowNames.ItcStatus) is CashShopStageChildWindow statusWindow)
+            {
+                statusWindow.SetFont(_fontChat);
+                statusWindow.SetContentProvider(BuildItcStatusOwnerLines);
+                statusWindow.SetStatusStateProvider(() => new CashShopStageChildWindow.StatusOwnerState
+                {
+                    NexonCashBalance = mtsStageWindow.NexonCashBalance,
+                    MaplePointBalance = mtsStageWindow.MaplePointBalance,
+                    PrepaidCashBalance = mtsStageWindow.PrepaidCashBalance,
+                    ChargeParam = mtsStageWindow.ChargeParam,
+                    StatusMessage = mtsStageWindow.StatusMessage
+                });
+            }
+        }
+
+        private IReadOnlyList<string> BuildItcListOwnerLines(AdminShopDialogUI mtsWindow, CashServiceStageWindow mtsStageWindow)
+        {
+            List<string> lines = new(mtsWindow?.DescribeListOwnerState() ?? Array.Empty<string>());
+            foreach (string recentPacket in mtsStageWindow?.GetRecentPacketSummaries() ?? Array.Empty<string>())
+            {
+                lines.Add(recentPacket);
+            }
+
+            return lines;
+        }
+
+        private IReadOnlyList<string> BuildItcStatusOwnerLines()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.MtsStatus) is not CashServiceStageWindow stageWindow)
+            {
+                return new[]
+                {
+                    "ITC stage owner unavailable.",
+                    "CITCWnd_Status is waiting for the parent CITC stage."
+                };
+            }
+
+            string balanceLine =
+                $"NX {stageWindow.NexonCashBalance.ToString("N0", CultureInfo.InvariantCulture)}  " +
+                $"MP {stageWindow.MaplePointBalance.ToString("N0", CultureInfo.InvariantCulture)}";
+            if (stageWindow.ChargeParam != 0)
+            {
+                balanceLine += $"  Charge {stageWindow.ChargeParam.ToString(CultureInfo.InvariantCulture)}";
+            }
+
+            return new[]
+            {
+                balanceLine,
+                stageWindow.StatusMessage
+            };
+        }
+
         private void HideCashShopOwnerFamilyWindows()
         {
             uiWindowManager?.HideWindow(MapSimulatorWindowNames.CashShop);
             uiWindowManager?.HideWindow(MapSimulatorWindowNames.CashAvatarPreview);
             uiWindowManager?.HideWindow(MapSimulatorWindowNames.CashShopStage);
+            uiWindowManager?.HideWindow(MapSimulatorWindowNames.CashTradingRoom);
             for (int i = 0; i < CashShopChildOwnerWindowNames.Length; i++)
             {
                 uiWindowManager?.HideWindow(CashShopChildOwnerWindowNames[i]);
@@ -218,6 +513,24 @@ namespace HaCreator.MapSimulator
             }
         }
 
+        private void HideItcOwnerFamilyWindows()
+        {
+            uiWindowManager?.HideWindow(MapSimulatorWindowNames.Mts);
+            uiWindowManager?.HideWindow(MapSimulatorWindowNames.MtsStatus);
+            for (int i = 0; i < ItcChildOwnerWindowNames.Length; i++)
+            {
+                uiWindowManager?.HideWindow(ItcChildOwnerWindowNames[i]);
+            }
+        }
+
+        private void ShowItcChildOwnerWindows()
+        {
+            for (int i = 0; i < ItcChildOwnerWindowNames.Length; i++)
+            {
+                ShowDirectionModeOwnedWindow(ItcChildOwnerWindowNames[i]);
+            }
+        }
+
         private void ShowItcWindow()
         {
             OpenCashServiceOwnerFamily(CashServiceOwnerStageKind.ItemTradingCenter, resetStageSession: true);
@@ -227,24 +540,9 @@ namespace HaCreator.MapSimulator
         {
             SyncCashShopAccountCredit();
             WireCashServiceOwnerWindows();
-
-            string primaryWindowName = stageKind == CashServiceOwnerStageKind.CashShop
-                ? MapSimulatorWindowNames.CashShop
-                : MapSimulatorWindowNames.Mts;
-            string stageWindowName = stageKind == CashServiceOwnerStageKind.CashShop
-                ? MapSimulatorWindowNames.CashShopStage
-                : MapSimulatorWindowNames.MtsStatus;
-            string opposingPrimaryWindowName = stageKind == CashServiceOwnerStageKind.CashShop
-                ? MapSimulatorWindowNames.Mts
-                : MapSimulatorWindowNames.CashShop;
-            string opposingStageWindowName = stageKind == CashServiceOwnerStageKind.CashShop
-                ? MapSimulatorWindowNames.MtsStatus
-                : MapSimulatorWindowNames.CashShopStage;
-
-            uiWindowManager?.HideWindow(opposingPrimaryWindowName);
-            uiWindowManager?.HideWindow(opposingStageWindowName);
             if (stageKind == CashServiceOwnerStageKind.CashShop)
             {
+                HideItcOwnerFamilyWindows();
                 ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.CashShopStage);
                 ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.CashShop);
                 ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.CashAvatarPreview);
@@ -256,6 +554,7 @@ namespace HaCreator.MapSimulator
             HideCashShopOwnerFamilyWindows();
             ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.MtsStatus);
             ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.Mts);
+            ShowItcChildOwnerWindows();
             SyncCashServiceStageWindowState(MapSimulatorWindowNames.MtsStatus, stageKind, resetStageSession);
         }
 
@@ -269,6 +568,7 @@ namespace HaCreator.MapSimulator
             stageWindow.SetFont(_fontChat);
             stageWindow.SetCharacterBuild(_playerManager?.Player?.Build);
             stageWindow.SetInventory(uiWindowManager.InventoryWindow as IInventoryRuntime);
+            stageWindow.SetStorageRuntime(uiWindowManager.GetWindow(MapSimulatorWindowNames.Trunk) as IStorageRuntime);
 
             if (resetStageSession)
             {
@@ -386,12 +686,15 @@ namespace HaCreator.MapSimulator
                 }
 
                 bool applied = cashShopStageWindow.TryApplyPacket(packetType, payload, currTickCount, out message);
+                bool storageApplied = TryApplyCashShopStorageExpansionPacketResult(packetType, payload, out string storageMessage);
+                bool balanceApplied = TryApplyCashShopBalancePacket(packetType, payload, out string balanceMessage);
                 if (packetType == 384)
                 {
                     TryFocusCashServiceCommodity(_lastPacketOwnedCommoditySerialNumber);
                 }
 
-                return applied;
+                message = CombineCashServicePacketMessages(message, storageMessage, balanceMessage);
+                return applied || storageApplied || balanceApplied;
             }
 
             OpenCashServiceOwnerFamily(CashServiceOwnerStageKind.ItemTradingCenter, resetStageSession: false);
@@ -404,6 +707,100 @@ namespace HaCreator.MapSimulator
             return mtsStageWindow.TryApplyPacket(packetType, payload, currTickCount, out message);
         }
 
+        private bool TryApplyCashShopStorageExpansionPacketResult(int packetType, byte[] payload, out string message)
+        {
+            message = null;
+            if (packetType != 384
+                || uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShop) is not AdminShopDialogUI cashShopWindow
+                || !cashShopWindow.HasPendingStorageExpansionRequest
+                || !CashShopStorageExpansionPacketCodec.TryDecodePayload(payload, out CashShopStorageExpansionPacketResult packetResult)
+                || packetResult == null)
+            {
+                return false;
+            }
+
+            bool applied = cashShopWindow.TryApplyPacketOwnedStorageExpansionResult(
+                new AdminShopDialogUI.PacketOwnedStorageExpansionResult
+                {
+                    CommoditySerialNumber = packetResult.CommoditySerialNumber,
+                    ResultSubtype = packetResult.ResultSubtype,
+                    FailureReason = packetResult.FailureReason,
+                    NxPrice = packetResult.NxPrice,
+                    SlotLimitAfterResult = packetResult.SlotLimitAfterResult,
+                    ConsumeCash = packetResult.ConsumeCash,
+                    Message = packetResult.Message
+                },
+                out string storageMessage);
+
+            message = string.IsNullOrWhiteSpace(storageMessage)
+                ? CashShopStorageExpansionPacketCodec.BuildSummary(packetResult)
+                : storageMessage;
+            return applied;
+        }
+
+        private bool TryApplyCashShopBalancePacket(int packetType, byte[] payload, out string message)
+        {
+            message = null;
+            if (packetType != 383
+                || !TryReadCashShopBalancePayload(payload, out long nexonCash, out _, out _)
+                || nexonCash < 0)
+            {
+                return false;
+            }
+
+            _loginAccountCashShopNxCredit = nexonCash;
+            PersistLoginCharacterRosterToAccountStore(
+                _loginCharacterRoster.Entries,
+                _loginCharacterRoster.SlotCount,
+                _loginCharacterRoster.BuyCharacterCount);
+            SyncCashShopAccountCredit();
+            message = $"Account NX synced from packet-owned QueryCash to {_loginAccountCashShopNxCredit.ToString("N0", CultureInfo.InvariantCulture)}.";
+            return true;
+        }
+
+        private static bool TryReadCashShopBalancePayload(byte[] payload, out long nexonCash, out long maplePoint, out long prepaidCash)
+        {
+            nexonCash = 0;
+            maplePoint = 0;
+            prepaidCash = 0;
+
+            if (payload == null || payload.Length < sizeof(int) * 3)
+            {
+                return false;
+            }
+
+            try
+            {
+                nexonCash = Math.Max(0L, BitConverter.ToInt32(payload, 0));
+                maplePoint = Math.Max(0L, BitConverter.ToInt32(payload, sizeof(int)));
+                prepaidCash = Math.Max(0L, BitConverter.ToInt32(payload, sizeof(int) * 2));
+                return true;
+            }
+            catch
+            {
+                nexonCash = 0;
+                maplePoint = 0;
+                prepaidCash = 0;
+                return false;
+            }
+        }
+
+        private static string CombineCashServicePacketMessages(params string[] messages)
+        {
+            List<string> combined = new();
+            foreach (string part in messages)
+            {
+                if (!string.IsNullOrWhiteSpace(part))
+                {
+                    combined.Add(part.Trim());
+                }
+            }
+
+            return combined.Count == 0
+                ? string.Empty
+                : string.Join(" ", combined.Distinct(StringComparer.Ordinal));
+        }
+
         private bool ShouldRunCashServicePacketInbox()
         {
             bool anyCashShopChildVisible = false;
@@ -412,12 +809,19 @@ namespace HaCreator.MapSimulator
                 anyCashShopChildVisible = uiWindowManager?.GetWindow(CashShopChildOwnerWindowNames[i])?.IsVisible == true;
             }
 
+            bool anyItcChildVisible = false;
+            for (int i = 0; i < ItcChildOwnerWindowNames.Length && !anyItcChildVisible; i++)
+            {
+                anyItcChildVisible = uiWindowManager?.GetWindow(ItcChildOwnerWindowNames[i])?.IsVisible == true;
+            }
+
             return uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShop)?.IsVisible == true
                 || uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShopStage)?.IsVisible == true
                 || uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashAvatarPreview)?.IsVisible == true
                 || anyCashShopChildVisible
                 || uiWindowManager?.GetWindow(MapSimulatorWindowNames.Mts)?.IsVisible == true
-                || uiWindowManager?.GetWindow(MapSimulatorWindowNames.MtsStatus)?.IsVisible == true;
+                || uiWindowManager?.GetWindow(MapSimulatorWindowNames.MtsStatus)?.IsVisible == true
+                || anyItcChildVisible;
         }
     }
 }

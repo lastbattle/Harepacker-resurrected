@@ -47,7 +47,51 @@ namespace HaCreator.MapSimulator.UI
         {
             public string Key { get; init; } = string.Empty;
             public string Label { get; init; } = string.Empty;
+            public string ParentKey { get; init; } = string.Empty;
+            public int ClientStringPoolId { get; init; } = -1;
+            public int ClientChildStageIndex { get; init; } = -1;
             public IReadOnlyList<WishlistCategoryNode> Children { get; init; } = Array.Empty<WishlistCategoryNode>();
+        }
+
+        public sealed class OwnerEntrySnapshot
+        {
+            public string Title { get; init; } = string.Empty;
+            public string Detail { get; init; } = string.Empty;
+            public string Seller { get; init; } = string.Empty;
+            public string PriceLabel { get; init; } = string.Empty;
+            public string StateLabel { get; init; } = string.Empty;
+            public bool IsSelected { get; init; }
+        }
+
+        public sealed class ListOwnerSnapshot
+        {
+            public string PaneLabel { get; init; } = string.Empty;
+            public string BrowseModeLabel { get; init; } = string.Empty;
+            public string CategoryLabel { get; init; } = string.Empty;
+            public string FooterMessage { get; init; } = string.Empty;
+            public int SelectedIndex { get; init; } = -1;
+            public int ScrollOffset { get; init; }
+            public int TotalCount { get; init; }
+            public IReadOnlyList<OwnerEntrySnapshot> VisibleEntries { get; init; } = Array.Empty<OwnerEntrySnapshot>();
+        }
+
+        public sealed class LockerOwnerSnapshot
+        {
+            public string AccountLabel { get; init; } = string.Empty;
+            public int UsedSlotCount { get; init; }
+            public int SlotLimit { get; init; }
+            public bool CanExpand { get; init; }
+            public IReadOnlyList<string> SharedCharacterNames { get; init; } = Array.Empty<string>();
+        }
+
+        public sealed class InventoryOwnerSnapshot
+        {
+            public int EquipCount { get; init; }
+            public int UseCount { get; init; }
+            public int SetupCount { get; init; }
+            public int EtcCount { get; init; }
+            public int CashCount { get; init; }
+            public string SelectedEntryTitle { get; init; } = string.Empty;
         }
 
         public sealed class StorageExpansionResolution
@@ -57,6 +101,9 @@ namespace HaCreator.MapSimulator.UI
             public int FailureReason { get; init; }
             public long NxPrice { get; init; }
             public int SlotLimitAfterResult { get; init; }
+            public bool IsPacketOwned { get; init; }
+            public int PacketType { get; init; }
+            public bool CashAlreadySettled { get; init; }
             public string Message { get; init; } = string.Empty;
         }
 
@@ -226,6 +273,15 @@ namespace HaCreator.MapSimulator.UI
             public string Key { get; init; } = string.Empty;
             public string Label { get; init; } = string.Empty;
             public Func<AdminShopEntry, bool> Matches { get; init; }
+        }
+
+        private sealed class WishlistCategoryClientDefinition
+        {
+            public string Key { get; init; } = string.Empty;
+            public string FallbackLabel { get; init; } = string.Empty;
+            public int StringPoolId { get; init; } = -1;
+            public int ChildStageIndex { get; init; } = -1;
+            public IReadOnlyList<WishlistCategoryClientDefinition> Children { get; init; } = Array.Empty<WishlistCategoryClientDefinition>();
         }
 
         private sealed class WishlistSearchIndexEntry
@@ -566,6 +622,45 @@ namespace HaCreator.MapSimulator.UI
             return lines;
         }
 
+        public ListOwnerSnapshot GetListOwnerSnapshot()
+        {
+            AdminShopPaneState activePaneState = _paneStates[_activePane];
+            int scrollOffset = Math.Clamp(activePaneState.ScrollOffset, 0, Math.Max(0, activePaneState.Entries.Count - 1));
+            int selectedIndex = activePaneState.SelectedIndex;
+            List<OwnerEntrySnapshot> visibleEntries = new();
+            for (int row = 0; row < MaxVisibleRows; row++)
+            {
+                int entryIndex = scrollOffset + row;
+                if (entryIndex >= activePaneState.Entries.Count)
+                {
+                    break;
+                }
+
+                AdminShopEntry entry = activePaneState.Entries[entryIndex];
+                visibleEntries.Add(new OwnerEntrySnapshot
+                {
+                    Title = entry.Title ?? string.Empty,
+                    Detail = entry.Detail ?? string.Empty,
+                    Seller = entry.Seller ?? string.Empty,
+                    PriceLabel = entry.PriceLabel ?? string.Empty,
+                    StateLabel = entry.StateLabel ?? string.Empty,
+                    IsSelected = entryIndex == selectedIndex
+                });
+            }
+
+            return new ListOwnerSnapshot
+            {
+                PaneLabel = _activePane.ToString(),
+                BrowseModeLabel = GetBrowseModeLabel(_activeBrowseMode),
+                CategoryLabel = _activeCategory.ToString(),
+                FooterMessage = _footerMessage ?? string.Empty,
+                SelectedIndex = selectedIndex,
+                ScrollOffset = scrollOffset,
+                TotalCount = activePaneState.Entries.Count,
+                VisibleEntries = visibleEntries
+            };
+        }
+
         public IReadOnlyList<string> DescribeLockerOwnerState()
         {
             if (_storageRuntime == null)
@@ -589,6 +684,23 @@ namespace HaCreator.MapSimulator.UI
             };
         }
 
+        public LockerOwnerSnapshot GetLockerOwnerSnapshot()
+        {
+            if (_storageRuntime == null)
+            {
+                return new LockerOwnerSnapshot();
+            }
+
+            return new LockerOwnerSnapshot
+            {
+                AccountLabel = _storageRuntime.AccountLabel ?? string.Empty,
+                UsedSlotCount = _storageRuntime.GetUsedSlotCount(),
+                SlotLimit = _storageRuntime.GetSlotLimit(),
+                CanExpand = _storageRuntime.CanExpandSlotLimit(),
+                SharedCharacterNames = _storageRuntime.SharedCharacterNames?.ToArray() ?? Array.Empty<string>()
+            };
+        }
+
         public IReadOnlyList<string> DescribeInventoryOwnerState()
         {
             if (_inventory == null)
@@ -608,10 +720,60 @@ namespace HaCreator.MapSimulator.UI
             };
         }
 
+        public InventoryOwnerSnapshot GetInventoryOwnerSnapshot()
+        {
+            if (_inventory == null)
+            {
+                return new InventoryOwnerSnapshot();
+            }
+
+            return new InventoryOwnerSnapshot
+            {
+                EquipCount = _inventory.GetSlots(InventoryType.EQUIP).Count,
+                UseCount = _inventory.GetSlots(InventoryType.USE).Count,
+                SetupCount = _inventory.GetSlots(InventoryType.SETUP).Count,
+                EtcCount = _inventory.GetSlots(InventoryType.ETC).Count,
+                CashCount = _inventory.GetSlots(InventoryType.CASH).Count,
+                SelectedEntryTitle = GetSelectedEntry()?.Title ?? string.Empty
+            };
+        }
+
         public string SubmitSelectedEntryPreviewRequest()
         {
             SubmitSelectedEntryRequest();
             return _footerMessage;
+        }
+
+        public string ExecuteCashStageListAction(string actionKey)
+        {
+            AdminShopEntry entry = GetSelectedEntry();
+            if (entry == null)
+            {
+                _footerMessage = "Select a Cash Shop row before using the dedicated list-owner buttons.";
+                UpdateActionButtonStates();
+                return _footerMessage;
+            }
+
+            switch (actionKey)
+            {
+                case "BtBuy":
+                    SubmitSelectedEntryRequest();
+                    return _footerMessage;
+                case "BtGift":
+                    _footerMessage = _activePane == AdminShopPane.User
+                        ? $"CCSWnd_List staged the selected user listing for the client gift-preview path: {entry.Title}."
+                        : $"CCSWnd_List staged the selected NPC offer for the client gift-preview path: {entry.Title}.";
+                    UpdateActionButtonStates();
+                    return _footerMessage;
+                case "BtReserve":
+                    return SetSelectedEntryWishlistState(true);
+                case "BtRemove":
+                    return SetSelectedEntryWishlistState(false);
+                default:
+                    _footerMessage = $"Unknown cash-stage list action '{actionKey}'.";
+                    UpdateActionButtonStates();
+                    return _footerMessage;
+            }
         }
 
         public void SetStorageRuntime(IStorageRuntime storageRuntime)
@@ -786,6 +948,43 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return TryApplyWishlistSearchResult(results[0].EntryKey, categoryIndex, out message);
+        }
+
+        private string SetSelectedEntryWishlistState(bool wishlisted)
+        {
+            AdminShopEntry entry = GetSelectedEntry();
+            if (entry == null)
+            {
+                _footerMessage = "No Cash Shop entry is selected for the wish-list owner.";
+                UpdateActionButtonStates();
+                return _footerMessage;
+            }
+
+            if (_activePane != AdminShopPane.Npc || !entry.SupportsWishlist)
+            {
+                _footerMessage = $"{entry.Title} does not route through the client wish-list owner seam.";
+                UpdateActionButtonStates();
+                return _footerMessage;
+            }
+
+            string entryKey = GetEntryKey(entry);
+            HashSet<string> wishlistedEntries = _wishlistedEntryKeys[_currentMode];
+            if (wishlisted)
+            {
+                entry.Wishlisted = true;
+                wishlistedEntries.Add(entryKey);
+                _footerMessage = $"CCSWnd_List staged {entry.Title} for the dedicated wish-list owner.";
+            }
+            else
+            {
+                entry.Wishlisted = false;
+                wishlistedEntries.Remove(entryKey);
+                _footerMessage = $"CCSWnd_List cleared {entry.Title} from the dedicated wish-list owner.";
+            }
+
+            PersistEntrySessionState(entry);
+            UpdateActionButtonStates();
+            return _footerMessage;
         }
 
         public override void Show()
@@ -3599,6 +3798,9 @@ namespace HaCreator.MapSimulator.UI
             string footerMessage,
             int resultSubtype,
             int failureReason,
+            bool isPacketOwned = false,
+            int packetType = 0,
+            bool cashAlreadySettled = false,
             bool markPurchased = false)
         {
             if (entry != null)
@@ -3620,6 +3822,9 @@ namespace HaCreator.MapSimulator.UI
                 FailureReason = failureReason,
                 NxPrice = Math.Max(0L, entry?.Price ?? 0L),
                 SlotLimitAfterResult = _storageRuntime?.GetSlotLimit() ?? 0,
+                IsPacketOwned = isPacketOwned,
+                PacketType = Math.Max(0, packetType),
+                CashAlreadySettled = cashAlreadySettled,
                 Message = footerMessage ?? string.Empty
             });
 
@@ -3705,7 +3910,10 @@ namespace HaCreator.MapSimulator.UI
                         "Retry",
                         "The packet-authored storage-expansion result did not advance the storage slot limit.",
                         StorageExpansionResultSubtype.Rejected,
-                        StorageExpansionFailureReason.ExpansionFailed);
+                        StorageExpansionFailureReason.ExpansionFailed,
+                        isPacketOwned: true,
+                        packetType: packetResult.PacketType,
+                        cashAlreadySettled: !packetResult.ConsumeCash);
                     message = _footerMessage;
                     return false;
                 }
@@ -3720,6 +3928,9 @@ namespace HaCreator.MapSimulator.UI
                     footerMessage,
                     StorageExpansionResultSubtype.Success,
                     StorageExpansionFailureReason.None,
+                    isPacketOwned: true,
+                    packetType: packetResult.PacketType,
+                    cashAlreadySettled: !packetResult.ConsumeCash,
                     markPurchased: true);
                 message = _footerMessage;
                 return true;
@@ -3734,7 +3945,10 @@ namespace HaCreator.MapSimulator.UI
                 "Rejected",
                 rejectionMessage,
                 StorageExpansionResultSubtype.Rejected,
-                Math.Max(StorageExpansionFailureReason.None, packetResult.FailureReason));
+                Math.Max(StorageExpansionFailureReason.None, packetResult.FailureReason),
+                isPacketOwned: true,
+                packetType: packetResult.PacketType,
+                cashAlreadySettled: !packetResult.ConsumeCash);
             message = _footerMessage;
             return true;
         }
@@ -3955,14 +4169,14 @@ namespace HaCreator.MapSimulator.UI
 
             return categoryKey.ToLowerInvariant() switch
             {
-                "equip" or "equip.weapon" or "equip.accessory" or "equip.pet" => AdminShopCategory.Equip,
-                "use" or "use.coupon" or "use.travel" or "use.projectile" or "use.pet" => AdminShopCategory.Use,
-                "setup" or "setup.chair" or "setup.decor" => AdminShopCategory.Setup,
+                "equip" or "equip.hat" or "equip.face" or "equip.eye" or "equip.earring" or "equip.top" or "equip.bottom" or "equip.shoes" or "equip.glove" or "equip.cape" or "equip.weapon" => AdminShopCategory.Equip,
+                "use" or "use.coupon" or "use.travel" or "use.projectile" or "use.pet" or "use.utility" => AdminShopCategory.Use,
+                "setup" or "setup.chair" or "setup.mount" or "setup.decor" or "setup.effect" => AdminShopCategory.Setup,
                 "etc" or "etc.crafting" or "etc.utility" => AdminShopCategory.Etc,
                 "cash" or "cash.expand" or "cash.consume" => AdminShopCategory.Cash,
                 "recipe" or "recipe.anvil" => AdminShopCategory.Recipe,
                 "scroll" or "scroll.enhance" => AdminShopCategory.Scroll,
-                "special" or "special.style" or "special.utility" => AdminShopCategory.Special,
+                "special" or "special.hair" or "special.face" or "special.skin" or "special.lens" or "special.style" or "special.utility" => AdminShopCategory.Special,
                 "package" or "package.bundle" => AdminShopCategory.Package,
                 _ => AdminShopCategory.All
             };
@@ -4115,106 +4329,107 @@ namespace HaCreator.MapSimulator.UI
 
         private static IReadOnlyList<WishlistCategoryNode> BuildWishlistCategoryTree()
         {
-            return new[]
+            // CUIAdminShopWishListCategory::OnCreate pushes 11 top-level rows and then
+            // four child stages sourced from StringPool ids:
+            // stage 1 = 5 rows, stage 2 = 4 rows, stage 3 = 6 rows, stage 4 = 10 rows.
+            // The simulator still falls back to authored English labels until those
+            // StringPool texts are decoded, but the row ordering and group ownership now
+            // match the client constructor instead of a free-form hierarchy.
+            WishlistCategoryClientDefinition[] definitions =
             {
-                new WishlistCategoryNode
+                new WishlistCategoryClientDefinition { Key = "all", FallbackLabel = "All", StringPoolId = 634 },
+                new WishlistCategoryClientDefinition
                 {
-                    Key = "all",
-                    Label = "All",
+                    Key = "use",
+                    FallbackLabel = "Use",
+                    StringPoolId = 637,
+                    ChildStageIndex = 1,
                     Children = new[]
                     {
-                        new WishlistCategoryNode
-                        {
-                            Key = "equip",
-                            Label = "Equip",
-                            Children = new[]
-                            {
-                                new WishlistCategoryNode { Key = "equip.weapon", Label = "Weapon" },
-                                new WishlistCategoryNode { Key = "equip.accessory", Label = "Accessory" },
-                                new WishlistCategoryNode { Key = "equip.pet", Label = "Pet equip" }
-                            }
-                        },
-                        new WishlistCategoryNode
-                        {
-                            Key = "use",
-                            Label = "Use",
-                            Children = new[]
-                            {
-                                new WishlistCategoryNode { Key = "use.coupon", Label = "Coupon" },
-                                new WishlistCategoryNode { Key = "use.travel", Label = "Travel" },
-                                new WishlistCategoryNode { Key = "use.projectile", Label = "Projectile" },
-                                new WishlistCategoryNode { Key = "use.pet", Label = "Pet use" }
-                            }
-                        },
-                        new WishlistCategoryNode
-                        {
-                            Key = "setup",
-                            Label = "Set-up",
-                            Children = new[]
-                            {
-                                new WishlistCategoryNode { Key = "setup.chair", Label = "Chair" },
-                                new WishlistCategoryNode { Key = "setup.decor", Label = "Decor" }
-                            }
-                        },
-                        new WishlistCategoryNode
-                        {
-                            Key = "etc",
-                            Label = "Etc",
-                            Children = new[]
-                            {
-                                new WishlistCategoryNode { Key = "etc.crafting", Label = "Crafting" },
-                                new WishlistCategoryNode { Key = "etc.utility", Label = "Utility" }
-                            }
-                        },
-                        new WishlistCategoryNode
-                        {
-                            Key = "cash",
-                            Label = "Cash",
-                            Children = new[]
-                            {
-                                new WishlistCategoryNode { Key = "cash.expand", Label = "Expansion" },
-                                new WishlistCategoryNode { Key = "cash.consume", Label = "Cash use" }
-                            }
-                        },
-                        new WishlistCategoryNode
-                        {
-                            Key = "recipe",
-                            Label = "Recipe",
-                            Children = new[]
-                            {
-                                new WishlistCategoryNode { Key = "recipe.anvil", Label = "Recipe item" }
-                            }
-                        },
-                        new WishlistCategoryNode
-                        {
-                            Key = "scroll",
-                            Label = "Scroll",
-                            Children = new[]
-                            {
-                                new WishlistCategoryNode { Key = "scroll.enhance", Label = "Enhance" }
-                            }
-                        },
-                        new WishlistCategoryNode
-                        {
-                            Key = "special",
-                            Label = "Special",
-                            Children = new[]
-                            {
-                                new WishlistCategoryNode { Key = "special.style", Label = "Style" },
-                                new WishlistCategoryNode { Key = "special.utility", Label = "Utility" }
-                            }
-                        },
-                        new WishlistCategoryNode
-                        {
-                            Key = "package",
-                            Label = "Package",
-                            Children = new[]
-                            {
-                                new WishlistCategoryNode { Key = "package.bundle", Label = "Bundle" }
-                            }
-                        }
+                        new WishlistCategoryClientDefinition { Key = "use.coupon", FallbackLabel = "Coupon", StringPoolId = 653 },
+                        new WishlistCategoryClientDefinition { Key = "use.travel", FallbackLabel = "Travel", StringPoolId = 654 },
+                        new WishlistCategoryClientDefinition { Key = "use.projectile", FallbackLabel = "Projectile", StringPoolId = 655 },
+                        new WishlistCategoryClientDefinition { Key = "use.pet", FallbackLabel = "Pet", StringPoolId = 656 },
+                        new WishlistCategoryClientDefinition { Key = "use.utility", FallbackLabel = "Utility", StringPoolId = 6755 }
+                    }
+                },
+                new WishlistCategoryClientDefinition
+                {
+                    Key = "setup",
+                    FallbackLabel = "Set-up",
+                    StringPoolId = 639,
+                    ChildStageIndex = 2,
+                    Children = new[]
+                    {
+                        new WishlistCategoryClientDefinition { Key = "setup.chair", FallbackLabel = "Chair", StringPoolId = 657 },
+                        new WishlistCategoryClientDefinition { Key = "setup.mount", FallbackLabel = "Mount", StringPoolId = 658 },
+                        new WishlistCategoryClientDefinition { Key = "setup.decor", FallbackLabel = "Decor", StringPoolId = 659 },
+                        new WishlistCategoryClientDefinition { Key = "setup.effect", FallbackLabel = "Effect", StringPoolId = 660 }
+                    }
+                },
+                new WishlistCategoryClientDefinition { Key = "etc", FallbackLabel = "Etc", StringPoolId = 640 },
+                new WishlistCategoryClientDefinition { Key = "cash", FallbackLabel = "Cash", StringPoolId = 649 },
+                new WishlistCategoryClientDefinition { Key = "recipe", FallbackLabel = "Recipe", StringPoolId = 642 },
+                new WishlistCategoryClientDefinition { Key = "scroll", FallbackLabel = "Scroll", StringPoolId = 641 },
+                new WishlistCategoryClientDefinition { Key = "package", FallbackLabel = "Package", StringPoolId = 644 },
+                new WishlistCategoryClientDefinition { Key = "pet", FallbackLabel = "Pet", StringPoolId = 643 },
+                new WishlistCategoryClientDefinition
+                {
+                    Key = "special",
+                    FallbackLabel = "Special",
+                    StringPoolId = 651,
+                    ChildStageIndex = 3,
+                    Children = new[]
+                    {
+                        new WishlistCategoryClientDefinition { Key = "special.hair", FallbackLabel = "Hair", StringPoolId = 618 },
+                        new WishlistCategoryClientDefinition { Key = "special.face", FallbackLabel = "Face", StringPoolId = 619 },
+                        new WishlistCategoryClientDefinition { Key = "special.skin", FallbackLabel = "Skin", StringPoolId = 620 },
+                        new WishlistCategoryClientDefinition { Key = "special.lens", FallbackLabel = "Lens", StringPoolId = 621 },
+                        new WishlistCategoryClientDefinition { Key = "special.style", FallbackLabel = "Style", StringPoolId = 622 },
+                        new WishlistCategoryClientDefinition { Key = "special.utility", FallbackLabel = "Utility", StringPoolId = 623 }
+                    }
+                },
+                new WishlistCategoryClientDefinition
+                {
+                    Key = "equip",
+                    FallbackLabel = "Equip",
+                    StringPoolId = 652,
+                    ChildStageIndex = 4,
+                    Children = new[]
+                    {
+                        new WishlistCategoryClientDefinition { Key = "equip.hat", FallbackLabel = "Hat", StringPoolId = 624 },
+                        new WishlistCategoryClientDefinition { Key = "equip.face", FallbackLabel = "Face accessory", StringPoolId = 625 },
+                        new WishlistCategoryClientDefinition { Key = "equip.eye", FallbackLabel = "Eye accessory", StringPoolId = 626 },
+                        new WishlistCategoryClientDefinition { Key = "equip.earring", FallbackLabel = "Earring", StringPoolId = 627 },
+                        new WishlistCategoryClientDefinition { Key = "equip.top", FallbackLabel = "Top / Overall", StringPoolId = 628 },
+                        new WishlistCategoryClientDefinition { Key = "equip.bottom", FallbackLabel = "Bottom", StringPoolId = 629 },
+                        new WishlistCategoryClientDefinition { Key = "equip.shoes", FallbackLabel = "Shoes", StringPoolId = 630 },
+                        new WishlistCategoryClientDefinition { Key = "equip.glove", FallbackLabel = "Glove", StringPoolId = 631 },
+                        new WishlistCategoryClientDefinition { Key = "equip.cape", FallbackLabel = "Cape", StringPoolId = 632 },
+                        new WishlistCategoryClientDefinition { Key = "equip.weapon", FallbackLabel = "Weapon", StringPoolId = 633 }
                     }
                 }
+            };
+
+            return definitions.Select(definition => CreateWishlistCategoryNode(definition, string.Empty)).ToArray();
+        }
+
+        private static WishlistCategoryNode CreateWishlistCategoryNode(WishlistCategoryClientDefinition definition, string parentKey)
+        {
+            if (definition == null)
+            {
+                return null;
+            }
+
+            return new WishlistCategoryNode
+            {
+                Key = definition.Key,
+                Label = definition.FallbackLabel,
+                ParentKey = parentKey ?? string.Empty,
+                ClientStringPoolId = definition.StringPoolId,
+                ClientChildStageIndex = definition.ChildStageIndex,
+                Children = definition.Children?.Select(child => CreateWishlistCategoryNode(child, definition.Key)).Where(child => child != null).ToArray()
+                           ?? Array.Empty<WishlistCategoryNode>()
             };
         }
 
@@ -4222,24 +4437,6 @@ namespace HaCreator.MapSimulator.UI
         {
             WishlistCategoryLeafDefinition[] leaves =
             {
-                new WishlistCategoryLeafDefinition
-                {
-                    Key = "equip.weapon",
-                    Label = "Weapon",
-                    Matches = entry => MatchesCategory(entry, AdminShopCategory.Equip) && IsWeaponEntry(entry)
-                },
-                new WishlistCategoryLeafDefinition
-                {
-                    Key = "equip.accessory",
-                    Label = "Accessory",
-                    Matches = entry => MatchesCategory(entry, AdminShopCategory.Equip) && IsAccessoryEntry(entry)
-                },
-                new WishlistCategoryLeafDefinition
-                {
-                    Key = "equip.pet",
-                    Label = "Pet equip",
-                    Matches = entry => MatchesCategory(entry, AdminShopCategory.Equip) && IsPetEntry(entry)
-                },
                 new WishlistCategoryLeafDefinition
                 {
                     Key = "use.coupon",
@@ -4261,8 +4458,14 @@ namespace HaCreator.MapSimulator.UI
                 new WishlistCategoryLeafDefinition
                 {
                     Key = "use.pet",
-                    Label = "Pet use",
-                    Matches = entry => MatchesCategory(entry, AdminShopCategory.Use) && ContainsAny(entry, "pet", "snack")
+                    Label = "Pet",
+                    Matches = entry => MatchesCategory(entry, AdminShopCategory.Use) && IsPetEntry(entry)
+                },
+                new WishlistCategoryLeafDefinition
+                {
+                    Key = "use.utility",
+                    Label = "Utility",
+                    Matches = entry => MatchesCategory(entry, AdminShopCategory.Use) && !ContainsAny(entry, "coupon", "ticket", "teleport", "rock", "travel", "star", "knife", "pet", "snack")
                 },
                 new WishlistCategoryLeafDefinition
                 {
@@ -4272,9 +4475,21 @@ namespace HaCreator.MapSimulator.UI
                 },
                 new WishlistCategoryLeafDefinition
                 {
+                    Key = "setup.mount",
+                    Label = "Mount",
+                    Matches = entry => MatchesCategory(entry, AdminShopCategory.Setup) && (IsItemIdInRange(entry.RewardItemId, 1900000, 1919999) || ContainsAny(entry, "mount", "saddle"))
+                },
+                new WishlistCategoryLeafDefinition
+                {
                     Key = "setup.decor",
                     Label = "Decor",
-                    Matches = entry => MatchesCategory(entry, AdminShopCategory.Setup) && !ContainsAny(entry, "chair")
+                    Matches = entry => MatchesCategory(entry, AdminShopCategory.Setup) && !IsItemIdInRange(entry.RewardItemId, 3010000, 3019999) && !ContainsAny(entry, "chair", "mount", "saddle", "effect")
+                },
+                new WishlistCategoryLeafDefinition
+                {
+                    Key = "setup.effect",
+                    Label = "Effect",
+                    Matches = entry => MatchesCategory(entry, AdminShopCategory.Setup) && ContainsAny(entry, "effect", "label ring", "name tag", "weather")
                 },
                 new WishlistCategoryLeafDefinition
                 {
@@ -4314,21 +4529,111 @@ namespace HaCreator.MapSimulator.UI
                 },
                 new WishlistCategoryLeafDefinition
                 {
+                    Key = "pet",
+                    Label = "Pet",
+                    Matches = entry => IsPetEntry(entry)
+                },
+                new WishlistCategoryLeafDefinition
+                {
+                    Key = "special.hair",
+                    Label = "Hair",
+                    Matches = entry => MatchesCategory(entry, AdminShopCategory.Special) && (IsItemIdInRange(entry.RewardItemId, 5150000, 5159999) || ContainsAny(entry, "hair"))
+                },
+                new WishlistCategoryLeafDefinition
+                {
+                    Key = "special.face",
+                    Label = "Face",
+                    Matches = entry => MatchesCategory(entry, AdminShopCategory.Special) && (IsItemIdInRange(entry.RewardItemId, 5160000, 5169999) || ContainsAny(entry, "face"))
+                },
+                new WishlistCategoryLeafDefinition
+                {
+                    Key = "special.skin",
+                    Label = "Skin",
+                    Matches = entry => MatchesCategory(entry, AdminShopCategory.Special) && (IsItemIdInRange(entry.RewardItemId, 5170000, 5179999) || ContainsAny(entry, "skin"))
+                },
+                new WishlistCategoryLeafDefinition
+                {
+                    Key = "special.lens",
+                    Label = "Lens",
+                    Matches = entry => MatchesCategory(entry, AdminShopCategory.Special) && ContainsAny(entry, "lens", "eye color", "color lens")
+                },
+                new WishlistCategoryLeafDefinition
+                {
                     Key = "special.style",
                     Label = "Style",
-                    Matches = entry => MatchesCategory(entry, AdminShopCategory.Special) && ContainsAny(entry, "hair", "face", "style", "lens", "cosmetic")
+                    Matches = entry => MatchesCategory(entry, AdminShopCategory.Special) && ContainsAny(entry, "style", "cosmetic", "makeover")
                 },
                 new WishlistCategoryLeafDefinition
                 {
                     Key = "special.utility",
                     Label = "Utility",
-                    Matches = entry => MatchesCategory(entry, AdminShopCategory.Special) && !ContainsAny(entry, "hair", "face", "style", "lens", "cosmetic")
+                    Matches = entry => MatchesCategory(entry, AdminShopCategory.Special) && !ContainsAny(entry, "hair", "face", "skin", "lens", "eye color", "style", "cosmetic", "makeover")
                 },
                 new WishlistCategoryLeafDefinition
                 {
                     Key = "package.bundle",
                     Label = "Bundle",
                     Matches = entry => MatchesCategory(entry, AdminShopCategory.Package) && (entry.MaxRequestCount > 1 || ContainsAny(entry, "bundle", "pack", "box"))
+                },
+                new WishlistCategoryLeafDefinition
+                {
+                    Key = "equip.hat",
+                    Label = "Hat",
+                    Matches = entry => MatchesCategory(entry, AdminShopCategory.Equip) && HasItemPrefix(entry, 100)
+                },
+                new WishlistCategoryLeafDefinition
+                {
+                    Key = "equip.face",
+                    Label = "Face accessory",
+                    Matches = entry => MatchesCategory(entry, AdminShopCategory.Equip) && HasItemPrefix(entry, 101)
+                },
+                new WishlistCategoryLeafDefinition
+                {
+                    Key = "equip.eye",
+                    Label = "Eye accessory",
+                    Matches = entry => MatchesCategory(entry, AdminShopCategory.Equip) && HasItemPrefix(entry, 102)
+                },
+                new WishlistCategoryLeafDefinition
+                {
+                    Key = "equip.earring",
+                    Label = "Earring",
+                    Matches = entry => MatchesCategory(entry, AdminShopCategory.Equip) && HasItemPrefix(entry, 103)
+                },
+                new WishlistCategoryLeafDefinition
+                {
+                    Key = "equip.top",
+                    Label = "Top / Overall",
+                    Matches = entry => MatchesCategory(entry, AdminShopCategory.Equip) && HasItemPrefix(entry, 104, 105)
+                },
+                new WishlistCategoryLeafDefinition
+                {
+                    Key = "equip.bottom",
+                    Label = "Bottom",
+                    Matches = entry => MatchesCategory(entry, AdminShopCategory.Equip) && HasItemPrefix(entry, 106)
+                },
+                new WishlistCategoryLeafDefinition
+                {
+                    Key = "equip.shoes",
+                    Label = "Shoes",
+                    Matches = entry => MatchesCategory(entry, AdminShopCategory.Equip) && HasItemPrefix(entry, 107)
+                },
+                new WishlistCategoryLeafDefinition
+                {
+                    Key = "equip.glove",
+                    Label = "Glove",
+                    Matches = entry => MatchesCategory(entry, AdminShopCategory.Equip) && HasItemPrefix(entry, 108)
+                },
+                new WishlistCategoryLeafDefinition
+                {
+                    Key = "equip.cape",
+                    Label = "Cape",
+                    Matches = entry => MatchesCategory(entry, AdminShopCategory.Equip) && HasItemPrefix(entry, 109, 110)
+                },
+                new WishlistCategoryLeafDefinition
+                {
+                    Key = "equip.weapon",
+                    Label = "Weapon",
+                    Matches = entry => MatchesCategory(entry, AdminShopCategory.Equip) && IsWeaponEntry(entry)
                 }
             };
 
@@ -4374,7 +4679,7 @@ namespace HaCreator.MapSimulator.UI
         {
             int itemId = entry?.RewardItemId ?? 0;
             int prefix = itemId / 10000;
-            return itemId > 0 && ((prefix >= 130 && prefix <= 159) || (prefix >= 121 && prefix <= 124));
+            return itemId > 0 && ((prefix >= 130 && prefix <= 159) || (prefix >= 170 && prefix <= 171) || (prefix >= 121 && prefix <= 124));
         }
 
         private static bool IsAccessoryEntry(AdminShopEntry entry)
@@ -4386,7 +4691,21 @@ namespace HaCreator.MapSimulator.UI
 
         private static bool IsPetEntry(AdminShopEntry entry)
         {
-            return entry != null && (IsItemIdInRange(entry.RewardItemId, 1800000, 1809999) || ContainsAny(entry, "pet"));
+            return entry != null && (IsItemIdInRange(entry.RewardItemId, 1800000, 1809999)
+                                     || IsItemIdInRange(entry.RewardItemId, 5000000, 5009999)
+                                     || ContainsAny(entry, "pet", "snack"));
+        }
+
+        private static bool HasItemPrefix(AdminShopEntry entry, params int[] prefixes)
+        {
+            int itemId = entry?.RewardItemId ?? 0;
+            if (itemId <= 0 || prefixes == null || prefixes.Length == 0)
+            {
+                return false;
+            }
+
+            int prefix = itemId / 10000;
+            return prefixes.Contains(prefix);
         }
 
         private static bool IsCraftingEntry(AdminShopEntry entry)

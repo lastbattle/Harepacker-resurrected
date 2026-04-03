@@ -81,6 +81,7 @@ namespace HaCreator.MapSimulator.UI
         private const int NAME_FIELD_TEXT_INSET_X = 4;
         private const int NAME_FIELD_TEXT_INSET_Y = 0;
         private const float NAME_FIELD_COUNTER_SCALE = 0.55f;
+        private const int OWNER_TOOLTIP_MARGIN = 4;
         private static readonly Color NameFieldCounterColor = new(196, 196, 178);
 
         // WZ `Skill/macro/check` resolves to (161, 235) inside the owner.
@@ -135,6 +136,8 @@ namespace HaCreator.MapSimulator.UI
         private Texture2D _contentTexture;
         private Point _contentOffset;
         private Texture2D _checkboxTexture;
+        private ClientTextRasterizer _candidateTextRasterizer;
+        private ClientTextRasterizer _candidateSelectedTextRasterizer;
 
         // Checkbox state
         private bool _notifyPartyMembers = false;
@@ -355,6 +358,8 @@ namespace HaCreator.MapSimulator.UI
         public override void SetFont(SpriteFont font)
         {
             _font = font;
+            _candidateTextRasterizer = null;
+            _candidateSelectedTextRasterizer = null;
         }
 
         /// <summary>
@@ -509,6 +514,7 @@ namespace HaCreator.MapSimulator.UI
         {
             base.DrawOverlay(sprite, skeletonMeshRenderer, gameTime, mapShiftX, mapShiftY, centerX, centerY, drawReflectionInfo, renderParameters, TickCount);
 
+            DrawOwnerButtonTooltip(sprite);
             DrawSoftKeyboard(sprite);
             DrawImeCandidateWindow(sprite);
         }
@@ -657,16 +663,43 @@ namespace HaCreator.MapSimulator.UI
                     new Vector2(fieldX, fieldY - _font.LineSpacing - 2),
                     _ownerNoticeColor);
             }
-            else if (ShouldShowChangeNameTooltip())
-            {
-                sprite.DrawString(
-                    _font,
-                    SkillMacroOwnerStringPoolText.GetSaveButtonTooltip(),
-                    new Vector2(fieldX, fieldY - _font.LineSpacing - 2),
-                    new Color(216, 226, 183));
-            }
 
             DrawNameByteCounter(sprite, fieldRect);
+        }
+
+        private void DrawOwnerButtonTooltip(SpriteBatch sprite)
+        {
+            if (_font == null || !ShouldShowChangeNameTooltip())
+            {
+                return;
+            }
+
+            string tooltipText = SkillMacroOwnerStringPoolText.GetSaveButtonTooltip();
+            if (string.IsNullOrWhiteSpace(tooltipText))
+            {
+                return;
+            }
+
+            Rectangle buttonBounds = GetButtonBounds(_btnOK);
+            Vector2 textSize = _font.MeasureString(tooltipText);
+            int tooltipX = buttonBounds.Right - (int)Math.Ceiling(textSize.X);
+            int tooltipY = buttonBounds.Y - _font.LineSpacing - OWNER_TOOLTIP_MARGIN;
+
+            if (tooltipX < Position.X)
+            {
+                tooltipX = Position.X;
+            }
+
+            if (tooltipY < Position.Y)
+            {
+                tooltipY = buttonBounds.Bottom + OWNER_TOOLTIP_MARGIN;
+            }
+
+            sprite.DrawString(
+                _font,
+                tooltipText,
+                new Vector2(tooltipX, tooltipY),
+                new Color(216, 226, 183));
         }
 
         private void DrawNameByteCounter(SpriteBatch sprite, Rectangle fieldRect)
@@ -1967,14 +2000,32 @@ namespace HaCreator.MapSimulator.UI
         {
             bool ctrl = keyboardState.IsKeyDown(Keys.LeftControl) || keyboardState.IsKeyDown(Keys.RightControl);
 
-            if (keyboardState.IsKeyDown(Keys.Back) && _previousKeyboardState.IsKeyUp(Keys.Back) && _editingCursorPosition > 0)
+            if (keyboardState.IsKeyDown(Keys.Back) && _previousKeyboardState.IsKeyUp(Keys.Back))
             {
-                RemoveCharacterBeforeCursor();
+                if (_compositionText.Length > 0)
+                {
+                    ClearCompositionText();
+                    _validationMessage = string.Empty;
+                    _caretBlinkTick = Environment.TickCount;
+                }
+                else if (_editingCursorPosition > 0)
+                {
+                    RemoveCharacterBeforeCursor();
+                }
             }
 
-            if (keyboardState.IsKeyDown(Keys.Delete) && _previousKeyboardState.IsKeyUp(Keys.Delete) && _editingCursorPosition < _editingMacroName.Length)
+            if (keyboardState.IsKeyDown(Keys.Delete) && _previousKeyboardState.IsKeyUp(Keys.Delete))
             {
-                RemoveCharacterAtCursor();
+                if (_compositionText.Length > 0)
+                {
+                    ClearCompositionText();
+                    _validationMessage = string.Empty;
+                    _caretBlinkTick = Environment.TickCount;
+                }
+                else if (_editingCursorPosition < _editingMacroName.Length)
+                {
+                    RemoveCharacterAtCursor();
+                }
             }
 
             if (keyboardState.IsKeyDown(Keys.Left) && _previousKeyboardState.IsKeyUp(Keys.Left))
@@ -2175,12 +2226,13 @@ namespace HaCreator.MapSimulator.UI
                         sprite.Draw(_textPixelTexture, rowBounds, new Color(89, 108, 147, 220));
                     }
 
-                    sprite.DrawString(_font, numberText, new Vector2(rowBounds.X + 4, rowBounds.Y), selected ? Color.White : new Color(222, 222, 222));
-                    sprite.DrawString(
-                        _font,
+                    DrawCandidateWindowText(sprite, numberText, new Vector2(rowBounds.X + 4, rowBounds.Y), selected ? Color.White : new Color(222, 222, 222), selected);
+                    DrawCandidateWindowText(
+                        sprite,
                         _candidateListState.Candidates[candidateIndex] ?? string.Empty,
                         new Vector2(rowBounds.X + 8 + numberWidth, rowBounds.Y),
-                        selected ? Color.White : new Color(240, 235, 200));
+                        selected ? Color.White : new Color(240, 235, 200),
+                        selected);
                 }
             }
             else
@@ -2200,12 +2252,13 @@ namespace HaCreator.MapSimulator.UI
                         sprite.Draw(_textPixelTexture, cellBounds, new Color(89, 108, 147, 220));
                     }
 
-                    sprite.DrawString(_font, numberText, new Vector2(cellX, textY), selected ? Color.White : new Color(222, 222, 222));
-                    sprite.DrawString(
-                        _font,
+                    DrawCandidateWindowText(sprite, numberText, new Vector2(cellX, textY), selected ? Color.White : new Color(222, 222, 222), selected);
+                    DrawCandidateWindowText(
+                        sprite,
                         _candidateListState.Candidates[candidateIndex] ?? string.Empty,
                         new Vector2(cellX + numberWidth + 3, textY),
-                        selected ? Color.White : new Color(240, 235, 200));
+                        selected ? Color.White : new Color(240, 235, 200),
+                        selected);
                 }
             }
         }
@@ -2232,7 +2285,10 @@ namespace HaCreator.MapSimulator.UI
                     int candidateIndex = start + i;
                     string numberText = $"{i + 1}.";
                     string candidateText = _candidateListState.Candidates[candidateIndex] ?? string.Empty;
-                    int entryWidth = (int)Math.Ceiling(_font.MeasureString(numberText).X + _font.MeasureString(candidateText).X) + 2;
+                    int entryWidth = (int)Math.Ceiling(
+                        MeasureCandidateWindowText(numberText).X
+                        + MeasureCandidateWindowText(candidateText).X)
+                        + 2;
                     widestEntryWidth = Math.Max(widestEntryWidth, entryWidth);
                 }
 
@@ -2422,7 +2478,62 @@ namespace HaCreator.MapSimulator.UI
         private int GetCandidateNumberWidth()
         {
             int widestIndex = Math.Max(1, GetVisibleCandidateCount());
-            return (int)Math.Ceiling(_font.MeasureString($"{widestIndex}.").X);
+            return (int)Math.Ceiling(MeasureCandidateWindowText($"{widestIndex}.").X);
+        }
+
+        private Vector2 MeasureCandidateWindowText(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return Vector2.Zero;
+            }
+
+            ClientTextRasterizer rasterizer = EnsureCandidateWindowTextRasterizer(selected: false);
+            return rasterizer?.MeasureString(text) ?? _font?.MeasureString(text) ?? Vector2.Zero;
+        }
+
+        private void DrawCandidateWindowText(SpriteBatch sprite, string text, Vector2 position, Color color, bool selected)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            ClientTextRasterizer rasterizer = EnsureCandidateWindowTextRasterizer(selected);
+            if (rasterizer != null)
+            {
+                rasterizer.DrawString(sprite, text, position, color);
+                return;
+            }
+
+            if (_font != null)
+            {
+                sprite.DrawString(_font, text, position, color);
+            }
+        }
+
+        private ClientTextRasterizer EnsureCandidateWindowTextRasterizer(bool selected)
+        {
+            if (_graphicsDevice == null || _font == null)
+            {
+                return null;
+            }
+
+            float basePointSize = Math.Max(1f, _font.LineSpacing);
+            if (selected)
+            {
+                _candidateSelectedTextRasterizer ??= new ClientTextRasterizer(
+                    _graphicsDevice,
+                    basePointSize: basePointSize,
+                    fontStyle: System.Drawing.FontStyle.Bold);
+                return _candidateSelectedTextRasterizer;
+            }
+
+            _candidateTextRasterizer ??= new ClientTextRasterizer(
+                _graphicsDevice,
+                basePointSize: basePointSize,
+                fontStyle: System.Drawing.FontStyle.Regular);
+            return _candidateTextRasterizer;
         }
 
         private bool ShouldUseCompositionClauseAnchor()

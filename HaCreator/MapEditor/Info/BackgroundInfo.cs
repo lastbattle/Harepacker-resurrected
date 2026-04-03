@@ -160,7 +160,7 @@ namespace HaCreator.MapEditor.Info
         {
             const int DEFAULT_RX = -5;
             const int DEFAULT_RY = -5;
-            return CreateInstance(board, x, y, z, DEFAULT_RX, DEFAULT_RY, 0, 0, 0, 255, false, flip, 0, null, false);
+            return CreateInstance(board, x, y, z, DEFAULT_RX, DEFAULT_RY, 0, 0, 0, 255, false, flip, 0, 0, null, false);
         }
 
         /// <summary>
@@ -182,7 +182,7 @@ namespace HaCreator.MapEditor.Info
         /// <param name="spineAni"></param>
         /// <param name="spineRandomStart"></param>
         /// <returns></returns>
-        public BoardItem CreateInstance(Board board, int x, int y, int z, int rx, int ry, int cx, int cy, BackgroundType type, int a, bool front, bool flip, int screenMode, 
+        public BoardItem CreateInstance(Board board, int x, int y, int z, int rx, int ry, int cx, int cy, BackgroundType type, int a, bool front, bool flip, int page, int screenMode, 
             string spineAni, bool spineRandomStart)
         {
             if (spineAni == null) // if one isnt set already, via pre-existing object in map. It probably means its created via BackgroundPanel
@@ -193,8 +193,14 @@ namespace HaCreator.MapEditor.Info
                     spineAni = wzSpineAnimationItem.SkeletonData.Animations[0].Name; // actually we should allow the user to select, but nexon only places 1 animation for now
                 }
             }
-            return new BackgroundInstance(this, board, x, y, z, rx, ry, cx, cy, type, a, front, flip, screenMode, 
+            return new BackgroundInstance(this, board, x, y, z, rx, ry, cx, cy, type, a, front, flip, page, screenMode, 
                 spineAni, spineRandomStart);
+        }
+
+        public BoardItem CreateInstance(Board board, int x, int y, int z, int rx, int ry, int cx, int cy, BackgroundType type, int a, bool front, bool flip, int page,
+            string spineAni, bool spineRandomStart)
+        {
+            return CreateInstance(board, x, y, z, rx, ry, cx, cy, type, a, front, flip, page, 0, spineAni, spineRandomStart);
         }
 
 

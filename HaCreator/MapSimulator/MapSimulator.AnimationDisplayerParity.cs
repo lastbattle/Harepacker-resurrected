@@ -1,5 +1,6 @@
 using HaCreator.MapSimulator.Pools;
 using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Interaction;
 using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
@@ -15,6 +16,8 @@ namespace HaCreator.MapSimulator
         private const string AnimationDisplayerNewYearEffectUol = "Effect/ItemEff.img/4300000";
         private const string AnimationDisplayerFireCrackerEffectUol = "Effect/OnUserEff.img/itemEffect/firework/5680024";
         private const string AnimationDisplayerGenericUserStateEffectUol = "Effect/OnUserEff.img/character";
+        private const string AnimationDisplayerQuestDeliveryEffectBaseUol = "Effect/OnUserEff.img/itemEffect/quest";
+        private const int AnimationDisplayerQuestDeliveryFallbackEffectItemId = 2430071;
         private const int AnimationDisplayerUserStateOffsetY = -70;
         private const int AnimationDisplayerTransientLayerWidth = 800;
         private const int AnimationDisplayerTransientLayerHeight = 600;
@@ -34,6 +37,7 @@ namespace HaCreator.MapSimulator
 
         private readonly Dictionary<string, List<IDXObject>> _animationDisplayerEffectCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly List<int> _packetOwnedAnimationDisplayerAreaAnimationIds = new();
+        private int _animationDisplayerLocalQuestDeliveryItemId;
 
         internal enum AnimationDisplayerTransientEffectKind
         {
@@ -47,7 +51,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "socialanim",
                 "Exercise the shared social or event animation-displayer runtime",
-                "/socialanim <status|clear|newyear|firecracker|userstate> [...]",
+                "/socialanim <status|clear|newyear|firecracker|userstate|questdelivery> [...]",
                 HandleAnimationDisplayerChatCommand);
         }
 
@@ -109,14 +113,41 @@ namespace HaCreator.MapSimulator
                 return ChatCommandHandler.CommandResult.Error("Usage: /socialanim userstate <local|characterId> <on|off>");
             }
 
-            return ChatCommandHandler.CommandResult.Error("Usage: /socialanim <status|clear|newyear|firecracker|userstate> [...]");
+            if (string.Equals(args[0], "questdelivery", StringComparison.OrdinalIgnoreCase))
+            {
+                if (args.Length < 2)
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /socialanim questdelivery <itemId|clear>");
+                }
+
+                if (string.Equals(args[1], "clear", StringComparison.OrdinalIgnoreCase))
+                {
+                    ClearAnimationDisplayerLocalQuestDeliveryOwner();
+                    return ChatCommandHandler.CommandResult.Ok("Cleared animation-displayer quest-delivery user-state layer for the local user.");
+                }
+
+                if (!int.TryParse(args[1], NumberStyles.Integer, CultureInfo.InvariantCulture, out int itemId) || itemId <= 0)
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /socialanim questdelivery <itemId|clear>");
+                }
+
+                bool registered = TryRegisterAnimationDisplayerQuestDeliveryLocalUserState(itemId, out int resolvedItemId);
+                return registered
+                    ? ChatCommandHandler.CommandResult.Ok($"Registered animation-displayer quest-delivery layer for local user using item {resolvedItemId}.")
+                    : ChatCommandHandler.CommandResult.Error($"Quest-delivery animation frames could not be loaded for item {itemId}.");
+            }
+
+            return ChatCommandHandler.CommandResult.Error("Usage: /socialanim <status|clear|newyear|firecracker|userstate|questdelivery> [...]");
         }
 
         private string DescribeAnimationDisplayerStatus()
         {
             int localCharacterId = _playerManager?.Player?.Build?.Id ?? 0;
             bool localUserStateActive = localCharacterId > 0 && _animationEffects.HasUserState(localCharacterId);
-            return $"Animation displayer parity: userStates={_animationEffects.UserStateCount}, areaAnimations={_animationEffects.AreaAnimationCount}, localUserState={(localUserStateActive ? "active" : "idle")}, localFade={(_packetOwnedFieldFadeOverlay.IsActive ? "active" : "idle")}.";
+            string localQuestDelivery = _animationDisplayerLocalQuestDeliveryItemId > 0
+                ? _animationDisplayerLocalQuestDeliveryItemId.ToString(CultureInfo.InvariantCulture)
+                : "idle";
+            return $"Animation displayer parity: userStates={_animationEffects.UserStateCount}, areaAnimations={_animationEffects.AreaAnimationCount}, localUserState={(localUserStateActive ? "active" : "idle")}, localQuestDelivery={localQuestDelivery}, localFade={(_packetOwnedFieldFadeOverlay.IsActive ? "active" : "idle")}.";
         }
 
         private void ClearAnimationDisplayerState()
@@ -124,6 +155,7 @@ namespace HaCreator.MapSimulator
             _animationEffects.ClearUserStates();
             _animationEffects.ClearAreaAnimations();
             _packetOwnedAnimationDisplayerAreaAnimationIds.Clear();
+            _animationDisplayerLocalQuestDeliveryItemId = 0;
             ResetAnimationDisplayerLocalFadeLayer();
         }
 
@@ -228,6 +260,98 @@ namespace HaCreator.MapSimulator
                        currTickCount) >= 0;
         }
 
+        private bool TryRegisterAnimationDisplayerQuestDeliveryLocalUserState(int itemId)
+        {
+            return TryRegisterAnimationDisplayerQuestDeliveryLocalUserState(itemId, out _);
+        }
+
+        private bool TryRegisterAnimationDisplayerQuestDeliveryLocalUserState(int itemId, out int resolvedItemId)
+        {
+            resolvedItemId = 0;
+            PlayerCharacter player = _playerManager?.Player;
+            if (player?.Build?.Id <= 0)
+            {
+                return false;
+            }
+
+            bool registered = TryRegisterAnimationDisplayerQuestDeliveryUserState(
+                player.Build.Id,
+                itemId,
+                () => _playerManager?.Player?.Position ?? player.Position,
+                out resolvedItemId);
+            if (registered)
+            {
+                _animationDisplayerLocalQuestDeliveryItemId = resolvedItemId;
+            }
+
+            return registered;
+        }
+
+        private bool TryRegisterAnimationDisplayerQuestDeliveryUserState(
+            int ownerCharacterId,
+            int itemId,
+            Func<Vector2> getPosition,
+            out int resolvedItemId)
+        {
+            resolvedItemId = 0;
+            if (ownerCharacterId <= 0 || getPosition == null || itemId <= 0)
+            {
+                return false;
+            }
+
+            if (!TryResolveAnimationDisplayerQuestDeliveryEffectUol(itemId, out string effectUol, out resolvedItemId))
+            {
+                return false;
+            }
+
+            WzImageProperty sourceProperty = ResolveAnimationDisplayerProperty(effectUol);
+            if (!TryLoadAnimationDisplayerQuestDeliveryPhaseFrames(
+                    sourceProperty,
+                    out List<IDXObject> startFrames,
+                    out List<IDXObject> repeatFrames,
+                    out List<IDXObject> endFrames))
+            {
+                return false;
+            }
+
+            return _animationEffects.RegisterUserState(
+                       ownerCharacterId,
+                       startFrames,
+                       repeatFrames,
+                       endFrames,
+                       getPosition,
+                       offsetX: 0f,
+                       offsetY: AnimationDisplayerUserStateOffsetY,
+                       currTickCount) >= 0;
+        }
+
+        private bool TryResolveAnimationDisplayerQuestDeliveryEffectUol(int itemId, out string effectUol, out int resolvedItemId)
+        {
+            effectUol = null;
+            resolvedItemId = 0;
+
+            string[] candidateUols = EnumerateAnimationDisplayerQuestDeliveryEffectUols(itemId);
+            for (int i = 0; i < candidateUols.Length; i++)
+            {
+                string candidate = candidateUols[i];
+                if (string.IsNullOrWhiteSpace(candidate) || ResolveAnimationDisplayerProperty(candidate) == null)
+                {
+                    continue;
+                }
+
+                effectUol = candidate;
+                string[] segments = candidate.Split('/');
+                if (segments.Length > 0)
+                {
+                    int.TryParse(segments[^1], NumberStyles.Integer, CultureInfo.InvariantCulture, out resolvedItemId);
+                }
+
+                return true;
+            }
+
+            return false;
+        }
+
         private void SyncAnimationDisplayerRemoteUserState(int characterId)
         {
             if (characterId <= 0)
@@ -273,7 +397,47 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
+        private bool TryLoadAnimationDisplayerQuestDeliveryPhaseFrames(
+            WzImageProperty sourceProperty,
+            out List<IDXObject> startFrames,
+            out List<IDXObject> repeatFrames,
+            out List<IDXObject> endFrames)
+        {
+            startFrames = null;
+            repeatFrames = null;
+            endFrames = null;
+
+            sourceProperty = sourceProperty?.GetLinkedWzImageProperty() ?? sourceProperty;
+            if (sourceProperty == null)
+            {
+                return false;
+            }
+
+            List<Point> frameSizes = GetAnimationDisplayerFrameSizes(sourceProperty);
+            ResolveAnimationDisplayerQuestDeliveryPhaseRanges(
+                frameSizes,
+                out int startIndex,
+                out int startCount,
+                out int repeatIndex,
+                out int repeatCount,
+                out int endIndex,
+                out int endCount);
+
+            startFrames = LoadAnimationDisplayerFrameRange(sourceProperty, startIndex, startCount);
+            repeatFrames = LoadAnimationDisplayerFrameRange(sourceProperty, repeatIndex, repeatCount);
+            endFrames = LoadAnimationDisplayerFrameRange(sourceProperty, endIndex, endCount);
+            return Animation.AnimationEffects.HasFrames(startFrames)
+                || Animation.AnimationEffects.HasFrames(repeatFrames)
+                || Animation.AnimationEffects.HasFrames(endFrames);
+        }
+
         private List<IDXObject> LoadAnimationDisplayerFrames(string effectUol)
+        {
+            WzImageProperty property = ResolveAnimationDisplayerProperty(effectUol);
+            return LoadPacketOwnedAnimationFrames(property);
+        }
+
+        private WzImageProperty ResolveAnimationDisplayerProperty(string effectUol)
         {
             if (string.IsNullOrWhiteSpace(effectUol))
             {
@@ -291,8 +455,137 @@ namespace HaCreator.MapSimulator
             string imageName = segments[1];
             string propertyPath = string.Join("/", segments, 2, segments.Length - 2);
             WzImage image = Program.FindImage(category, imageName);
-            WzImageProperty property = ResolvePacketOwnedPropertyPath(image, propertyPath);
-            return LoadPacketOwnedAnimationFrames(property);
+            return ResolvePacketOwnedPropertyPath(image, propertyPath);
+        }
+
+        private List<IDXObject> LoadAnimationDisplayerFrameRange(WzImageProperty sourceProperty, int startIndex, int frameCount)
+        {
+            if (sourceProperty == null || frameCount <= 0)
+            {
+                return null;
+            }
+
+            sourceProperty = sourceProperty.GetLinkedWzImageProperty() ?? sourceProperty;
+            List<IDXObject> frames = new();
+            int sharedDelay = sourceProperty["delay"]?.GetInt() ?? 90;
+
+            for (int i = 0; i < frameCount; i++)
+            {
+                int frameIndex = startIndex + i;
+                if (sourceProperty[frameIndex.ToString(CultureInfo.InvariantCulture)] is not WzCanvasProperty frameCanvas)
+                {
+                    break;
+                }
+
+                List<IDXObject> frame = LoadPacketOwnedCanvasFrame(frameCanvas, sharedDelay);
+                if (!Animation.AnimationEffects.HasFrames(frame))
+                {
+                    continue;
+                }
+
+                frames.AddRange(frame);
+            }
+
+            return frames.Count > 0 ? frames : null;
+        }
+
+        private static List<Point> GetAnimationDisplayerFrameSizes(WzImageProperty sourceProperty)
+        {
+            var frameSizes = new List<Point>();
+            if (sourceProperty == null)
+            {
+                return frameSizes;
+            }
+
+            sourceProperty = sourceProperty.GetLinkedWzImageProperty() ?? sourceProperty;
+            for (int i = 0; ; i++)
+            {
+                if (sourceProperty[i.ToString(CultureInfo.InvariantCulture)] is not WzCanvasProperty frameCanvas)
+                {
+                    break;
+                }
+
+                frameSizes.Add(new Point(frameCanvas.PngProperty.Width, frameCanvas.PngProperty.Height));
+            }
+
+            return frameSizes;
+        }
+
+        internal static string BuildAnimationDisplayerQuestDeliveryEffectUol(int itemId)
+        {
+            return itemId > 0
+                ? $"{AnimationDisplayerQuestDeliveryEffectBaseUol}/{itemId.ToString(CultureInfo.InvariantCulture)}"
+                : null;
+        }
+
+        internal static string[] EnumerateAnimationDisplayerQuestDeliveryEffectUols(int itemId)
+        {
+            if (itemId <= 0)
+            {
+                return Array.Empty<string>();
+            }
+
+            string directUol = BuildAnimationDisplayerQuestDeliveryEffectUol(itemId);
+            if (itemId == AnimationDisplayerQuestDeliveryFallbackEffectItemId)
+            {
+                return string.IsNullOrWhiteSpace(directUol)
+                    ? Array.Empty<string>()
+                    : new[] { directUol };
+            }
+
+            string fallbackUol = BuildAnimationDisplayerQuestDeliveryEffectUol(AnimationDisplayerQuestDeliveryFallbackEffectItemId);
+            return string.IsNullOrWhiteSpace(directUol)
+                ? new[] { fallbackUol }
+                : new[] { directUol, fallbackUol };
+        }
+
+        internal static void ResolveAnimationDisplayerQuestDeliveryPhaseRanges(
+            IReadOnlyList<Point> frameSizes,
+            out int startIndex,
+            out int startCount,
+            out int repeatIndex,
+            out int repeatCount,
+            out int endIndex,
+            out int endCount)
+        {
+            startIndex = 0;
+            startCount = 0;
+            repeatIndex = 0;
+            repeatCount = 0;
+            endIndex = 0;
+            endCount = 0;
+
+            if (frameSizes == null || frameSizes.Count == 0)
+            {
+                return;
+            }
+
+            int firstMaxIndex = 0;
+            int lastMaxIndex = 0;
+            long maxArea = long.MinValue;
+
+            for (int i = 0; i < frameSizes.Count; i++)
+            {
+                Point size = frameSizes[i];
+                long area = (long)Math.Max(0, size.X) * Math.Max(0, size.Y);
+                if (area > maxArea)
+                {
+                    maxArea = area;
+                    firstMaxIndex = i;
+                    lastMaxIndex = i;
+                }
+                else if (area == maxArea)
+                {
+                    lastMaxIndex = i;
+                }
+            }
+
+            startIndex = 0;
+            startCount = firstMaxIndex;
+            repeatIndex = firstMaxIndex;
+            repeatCount = Math.Max(1, lastMaxIndex - firstMaxIndex + 1);
+            endIndex = repeatIndex + repeatCount;
+            endCount = Math.Max(0, frameSizes.Count - endIndex);
         }
 
         private Rectangle ResolveAnimationDisplayerArea(string[] args, int startIndex)
@@ -405,6 +698,25 @@ namespace HaCreator.MapSimulator
         internal static IReadOnlyList<(int UpdateIntervalMs, int UpdateCount)> GetAnimationDisplayerFireCrackerBurstSchedule()
         {
             return AnimationDisplayerFireCrackerBurstSchedule;
+        }
+
+        private void ClearAnimationDisplayerLocalQuestDeliveryOwner()
+        {
+            int localCharacterId = _playerManager?.Player?.Build?.Id ?? 0;
+            if (localCharacterId > 0 && _animationDisplayerLocalQuestDeliveryItemId > 0)
+            {
+                _animationEffects.RemoveUserState(localCharacterId, currTickCount);
+            }
+
+            _animationDisplayerLocalQuestDeliveryItemId = 0;
+        }
+
+        private void HandleAnimationDisplayerOverlayClose(NpcInteractionOverlayCloseKind closeKind)
+        {
+            if (closeKind != NpcInteractionOverlayCloseKind.None)
+            {
+                ClearAnimationDisplayerLocalQuestDeliveryOwner();
+            }
         }
 
         private bool TryResolveAnimationDisplayerOwner(

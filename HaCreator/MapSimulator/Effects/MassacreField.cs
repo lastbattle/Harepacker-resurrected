@@ -49,6 +49,11 @@ namespace HaCreator.MapSimulator.Effects
     /// </summary>
     public class MassacreField
     {
+        private readonly record struct StringPoolEntryEvidence(
+            int StringPoolId,
+            string SourcePath,
+            string ClientOwner);
+
         public const int PacketTypeIncGauge = 173;
         public const int PacketTypeResult = 174;
         private static readonly string[] UiImageNames = { "UIWindow2.img", "UIWindow.img" };
@@ -66,6 +71,13 @@ namespace HaCreator.MapSimulator.Effects
         private const int GaugeDangerTextStringPoolId = 0x151B;
         private const int ResultBoardStringPoolId = 0x151C;
         private const int ResultOverlayStringPoolId = 0x151D;
+        private const int ResultRateDigitStringPoolId = 0x151E;
+        private const int ResultScoreDigitStringPoolId = 0x151F;
+        private const int ResultRankAStringPoolId = 0x1520;
+        private const int ResultRankBStringPoolId = 0x1521;
+        private const int ResultRankCStringPoolId = 0x1522;
+        private const int ResultRankDStringPoolId = 0x1523;
+        private const int ResultRankSStringPoolId = 0x1524;
         private const int ComboTimeoutMs = 3000;
         private const int TimerboardWidth = 258;
         private const int TimerboardHeight = 61;
@@ -122,6 +134,54 @@ namespace HaCreator.MapSimulator.Effects
         private const int ResultMissPercentY = 111;
         private const int ResultScoreX = 258;
         private const int ResultScoreY = 168;
+        private const string TimerboardSourcePath = "UI/UIWindow(.2).img/*[258x61 timerboard canvas]";
+        private const string TimerDigitSourcePath = "UI/UIWindow2.img/MonsterKilling/Count/number";
+        private const string CountDigitSourcePath = "UI/UIWindow2.img/MonsterKilling/Count/number2";
+        private const string CountBoardPath = "UI/UIWindow2.img/MonsterKilling/Count/backgrd0";
+        private const string CountBoardSkillPath = "UI/UIWindow2.img/MonsterKilling/Count/backgrd1";
+        private const string GaugeRootPath = "UI/UIWindow2.img/MonsterKilling/Gauge";
+        private const string ResultBoardPath = "UI/UIWindow2.img/MonsterKilling/Result/backgrd";
+        private const string ResultOverlayPath = "UI/UIWindow2.img/MonsterKilling/Result/backgrd2";
+        private const string ResultRateDigitPath = "UI/UIWindow2.img/MonsterKilling/Result/number";
+        private const string ResultScoreDigitPath = "UI/UIWindow2.img/MonsterKilling/Result/number2";
+        private const string ResultRankPath = "UI/UIWindow2.img/MonsterKilling/Result/Rank";
+        private const string ResultEffectRootPath = "Map/Effect.img/killing/yeti{0..4}";
+        private static readonly StringPoolEntryEvidence TimerboardSourceEvidence = new(
+            TimerboardSourceStringPoolId,
+            TimerboardSourcePath,
+            "CTimerboard_Massacre::OnCreate");
+        private static readonly StringPoolEntryEvidence ClearScreenEffectEvidence = new(
+            ClearScreenEffectStringPoolId,
+            "Map/Effect.img/killing/clear",
+            "CField_Massacre::Update");
+        private static readonly StringPoolEntryEvidence CountDigitEvidence = new(
+            CountBoardDigitStringPoolId,
+            CountDigitSourcePath,
+            "CField_Massacre::Init");
+        private static readonly StringPoolEntryEvidence ResultBoardEvidence = new(
+            ResultBoardStringPoolId,
+            ResultBoardPath,
+            "CField_MassacreResult::OnMassacreResult");
+        private static readonly StringPoolEntryEvidence ResultOverlayEvidence = new(
+            ResultOverlayStringPoolId,
+            ResultOverlayPath,
+            "CField_MassacreResult::OnMassacreResult");
+        private static readonly StringPoolEntryEvidence ResultRateDigitEvidence = new(
+            ResultRateDigitStringPoolId,
+            ResultRateDigitPath,
+            "CField_MassacreResult::Init");
+        private static readonly StringPoolEntryEvidence ResultScoreDigitEvidence = new(
+            ResultScoreDigitStringPoolId,
+            ResultScoreDigitPath,
+            "CField_MassacreResult::Init");
+        private static readonly IReadOnlyDictionary<char, StringPoolEntryEvidence> ResultRankEvidence = new Dictionary<char, StringPoolEntryEvidence>
+        {
+            ['S'] = new StringPoolEntryEvidence(ResultRankSStringPoolId, $"{ResultRankPath}/s", "CField_MassacreResult::OnMassacreResult"),
+            ['A'] = new StringPoolEntryEvidence(ResultRankAStringPoolId, $"{ResultRankPath}/a", "CField_MassacreResult::OnMassacreResult"),
+            ['B'] = new StringPoolEntryEvidence(ResultRankBStringPoolId, $"{ResultRankPath}/b", "CField_MassacreResult::OnMassacreResult"),
+            ['C'] = new StringPoolEntryEvidence(ResultRankCStringPoolId, $"{ResultRankPath}/c", "CField_MassacreResult::OnMassacreResult"),
+            ['D'] = new StringPoolEntryEvidence(ResultRankDStringPoolId, $"{ResultRankPath}/d", "CField_MassacreResult::OnMassacreResult")
+        };
         private bool _isActive;
         private int _mapId;
         private int _incGauge;
@@ -544,7 +604,24 @@ namespace HaCreator.MapSimulator.Effects
             string resultText = HasResultPresentation
                 ? $", result={_resultPresentation}:{_resultRank}:{_resultScore}:{_resultKillRate}/{_resultCoolRate}/{_resultMissRate}"
                 : string.Empty;
-            return $"Massacre map {_mapId}, timer={timerText}, gauge={_currentGauge}/{_maxGauge}, inc={_incGauge}, hitAdd={_defaultGaugeIncrease}, decay={_gaugeDec}/s, kills={_killCount}, combo={_comboCount}{countBoardText}{disableSkillText}{nextCountEffect}{countEffectText}{bonusText}{resultText}, ids=0x{TimerboardSourceStringPoolId:X}/0x{CountBoardDigitStringPoolId:X}/0x{ClearScreenEffectStringPoolId:X}/0x{ResultBoardStringPoolId:X}/0x{ResultOverlayStringPoolId:X}";
+            string evidenceText = string.Join(
+                "; ",
+                new[]
+                {
+                    FormatStringPoolEntry(TimerboardSourceEvidence),
+                    $"{TimerDigitSourcePath} (CTimerboard_Massacre::Draw)",
+                    $"{CountBoardPath}|{CountBoardSkillPath}",
+                    FormatStringPoolEntry(CountDigitEvidence),
+                    $"{GaugeRootPath} (CField_Massacre::Init)",
+                    FormatStringPoolEntry(ClearScreenEffectEvidence),
+                    FormatStringPoolEntry(ResultBoardEvidence),
+                    FormatStringPoolEntry(ResultOverlayEvidence),
+                    FormatStringPoolEntry(ResultRateDigitEvidence),
+                    FormatStringPoolEntry(ResultScoreDigitEvidence),
+                    $"{ResultEffectRootPath} (rank fx)",
+                    FormatResultRankEvidence()
+                });
+            return $"Massacre map {_mapId}, timer={timerText}, gauge={_currentGauge}/{_maxGauge}, inc={_incGauge}, hitAdd={_defaultGaugeIncrease}, decay={_gaugeDec}/s, kills={_killCount}, combo={_comboCount}{countBoardText}{disableSkillText}{nextCountEffect}{countEffectText}{bonusText}{resultText}, evidence=[{evidenceText}]";
         }
         public void Reset()
         {
@@ -990,8 +1067,12 @@ namespace HaCreator.MapSimulator.Effects
             _keyCloseFrames = LoadAnimationFrames(count?["keyBackgrd"]?["close"]);
             _resultBoardTexture = LoadCanvasTexture(result?["backgrd"] as WzCanvasProperty);
             _resultBoardPulseFrames = LoadAnimationFrames(result?["backgrd2"]);
+            // CField_MassacreResult::Init constructs the small and big CBitmapNumber helpers from
+            // StringPool ids 0x151E and 0x151F, which resolve onto Result/number and Result/number2.
             LoadDigitTextures(result?["number"], _resultRateDigits);
             LoadDigitTextures(result?["number2"], _resultDigits, out _resultPlusTexture);
+            // CField_MassacreResult::OnMassacreResult resolves rank-specific layer ids 0x1520-0x1524
+            // onto Result/Rank/{a,b,c,d,s} before drawing the repeated result board overlay.
             LoadRankTextures(result?["Rank"]);
             WzImageProperty killing = effectImage?["killing"];
             _countEffectFirstStartFrames = LoadAnimationFrames(killing?["first"]?["start"]);
@@ -1476,6 +1557,19 @@ namespace HaCreator.MapSimulator.Effects
                 'C' => 'C',
                 _ => 'D'
             };
+        }
+        private static string FormatStringPoolEntry(StringPoolEntryEvidence evidence)
+        {
+            return $"0x{evidence.StringPoolId:X}->{evidence.SourcePath} ({evidence.ClientOwner})";
+        }
+        private static string FormatResultRankEvidence()
+        {
+            return string.Join(
+                ", ",
+                new[] { 'S', 'A', 'B', 'C', 'D' }
+                    .Select(rank => ResultRankEvidence.TryGetValue(rank, out StringPoolEntryEvidence evidence)
+                        ? $"{rank}:{FormatStringPoolEntry(evidence)}"
+                        : $"{rank}:unresolved"));
         }
         private readonly record struct MassacreCanvasFrame(Texture2D Texture, Point Origin, int Delay);
         private readonly record struct MassacreCountEffect(int Threshold, int? BuffItemId, bool RequiresSkillUse);

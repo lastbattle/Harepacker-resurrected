@@ -8,6 +8,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 {
     internal static class PreparedSkillHudRules
     {
+        private const int DefaultKeyDownGaugeDurationMs = 2000;
         private const int MonkeyWaveSkillId = 5311002;
         private const int WildHunterSwallowSkillId = 33101005;
         private const int WildHunterSwallowAttackSkillId = 33101007;
@@ -41,6 +42,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const int SG88SkillId = 35121003;
         private const int MonkeyWaveFallbackGaugeDurationMs = 1080;
         private static int? _monkeyWaveGaugeDurationMs;
+        private static readonly object SkillNameCacheLock = new();
+        private static readonly Dictionary<int, string> SkillNameCache = new();
 
         public static PreparedSkillHudProfile ResolveProfile(int skillId)
         {
@@ -57,8 +60,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 3121004 => new PreparedSkillHudProfile(true, "KeyDownBar", 2000),
                 3221001 => new PreparedSkillHudProfile(true, "KeyDownBar", 900),
                 4341003 => new PreparedSkillHudProfile(true, "KeyDownBar", 1200),
-                // `Skill/531.img/skill/5311002/prepare/time` owns the authored
-                // Monkey Wave charge window, so the runtime should fall back to loaded WZ time.
+                // Release-owned branches such as Monkey Wave should use the caller's
+                // authored charge window when available, so the profile itself stays open.
                 MonkeyWaveSkillId => new PreparedSkillHudProfile(true, "KeyDownBar", 0),
                 5201002 => new PreparedSkillHudProfile(true, "KeyDownBar", 1000),
                 13111002 => new PreparedSkillHudProfile(true, "KeyDownBar", 1000),
@@ -68,7 +71,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                 33121009 => new PreparedSkillHudProfile(true, "KeyDownBar", 2000),
                 35001001 => new PreparedSkillHudProfile(true, "KeyDownBar", 2000),
                 35101009 => new PreparedSkillHudProfile(true, "KeyDownBar", 2000),
-                _ => new PreparedSkillHudProfile(true, "KeyDownBar", 0)
+                // The client `get_max_gauge_time` helper falls back to a 2s bar for
+                // keydown skills that do not have one of the explicit branch overrides.
+                _ => new PreparedSkillHudProfile(true, "KeyDownBar", DefaultKeyDownGaugeDurationMs)
             };
         }
 
@@ -113,11 +118,75 @@ namespace HaCreator.MapSimulator.Character.Skills
                 : 0;
         }
 
+        public static int ResolvePreparedGaugeDuration(int skillId, int explicitGaugeDurationMs = 0, int preparedDurationMs = 0)
+        {
+            if (explicitGaugeDurationMs > 0)
+            {
+                return explicitGaugeDurationMs;
+            }
+
+            PreparedSkillHudProfile profile = ResolveProfile(skillId);
+            if (profile.GaugeDurationMs > 0)
+            {
+                return profile.GaugeDurationMs;
+            }
+
+            if (UsesReleaseTriggeredExecution(skillId) && preparedDurationMs > 0)
+            {
+                return preparedDurationMs;
+            }
+
+            return ResolveGaugeDuration(skillId);
+        }
+
         public static bool UsesChargeDamageScaling(int skillId) => skillId is 22121000 or 22151001 or MonkeyWaveSkillId;
 
         public static bool ArmsAtFullStrengthOnCriticalHit(int skillId) => skillId == MonkeyWaveSkillId;
 
         public static bool IsDragonOverlaySkill(int skillId) => skillId is 22121000 or 22151001;
+
+        public static string ResolveDisplayName(int skillId, string explicitName = null)
+        {
+            if (!string.IsNullOrWhiteSpace(explicitName))
+            {
+                return explicitName.Trim();
+            }
+
+            if (skillId <= 0)
+            {
+                return "Skill";
+            }
+
+            lock (SkillNameCacheLock)
+            {
+                if (SkillNameCache.TryGetValue(skillId, out string cachedName))
+                {
+                    return cachedName;
+                }
+            }
+
+            string resolvedName = $"Skill {skillId}";
+            try
+            {
+                WzImage stringImage = global::HaCreator.Program.FindImage("String", "Skill.img");
+                if (stringImage?[skillId.ToString()]?["name"] is WzStringProperty nameProperty
+                    && !string.IsNullOrWhiteSpace(nameProperty.Value))
+                {
+                    resolvedName = nameProperty.Value.Trim();
+                }
+            }
+            catch (Exception)
+            {
+                resolvedName = $"Skill {skillId}";
+            }
+
+            lock (SkillNameCacheLock)
+            {
+                SkillNameCache[skillId] = resolvedName;
+            }
+
+            return resolvedName;
+        }
 
         private static int ResolveMonkeyWaveGaugeDuration()
         {

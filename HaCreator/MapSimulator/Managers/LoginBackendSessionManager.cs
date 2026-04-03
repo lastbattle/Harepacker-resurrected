@@ -14,6 +14,7 @@ namespace HaCreator.MapSimulator.Managers
         private readonly List<LoginSelectWorldCharacterEntry> _viewAllEntries = new();
         private readonly Dictionary<int, LoginSelectWorldResultProfile> _selectWorldProfilesByWorld = new();
         private readonly Dictionary<int, LoginSelectWorldResultProfile> _viewAllProfilesByWorld = new();
+        private LoginExtraCharInfoResultProfile _lastExtraCharInfoResultProfile;
 
         public int? AuthenticatedAccountId { get; private set; }
         public int ActiveWorldId { get; private set; }
@@ -25,6 +26,7 @@ namespace HaCreator.MapSimulator.Managers
 
         public void Reset()
         {
+            _lastExtraCharInfoResultProfile = null;
             AuthenticatedAccountId = null;
             ClearRosterProfiles();
         }
@@ -56,17 +58,19 @@ namespace HaCreator.MapSimulator.Managers
 
             bool changed = AuthenticatedAccountId != accountId.Value;
             AuthenticatedAccountId = accountId.Value;
-            return changed;
+            return ReevaluateExtraCharacterEntitlement() || changed;
         }
 
         public bool ApplyExtraCharInfoResult(LoginExtraCharInfoResultProfile profile)
         {
-            bool canHaveExtraCharacter =
-                profile != null &&
-                AuthenticatedAccountId.HasValue &&
-                AuthenticatedAccountId.Value == profile.AccountId &&
-                profile.CanHaveExtraCharacter;
-            return SetExtraCharacterEntitlement(canHaveExtraCharacter);
+            _lastExtraCharInfoResultProfile = CloneExtraCharInfoProfile(profile);
+            return ReevaluateExtraCharacterEntitlement();
+        }
+
+        public bool ConsumeExtraCharacterEntitlement()
+        {
+            _lastExtraCharInfoResultProfile = null;
+            return SetExtraCharacterEntitlement(false);
         }
 
         public bool SetExtraCharacterEntitlement(bool canHaveExtraCharacter)
@@ -115,7 +119,7 @@ namespace HaCreator.MapSimulator.Managers
         public void ApplySelectWorldResult(LoginSelectWorldResultProfile profile, int worldId)
         {
             ActiveWorldId = Math.Max(0, worldId);
-            SelectWorldRosterProfile = CloneProfile(profile);
+            SelectWorldRosterProfile = NormalizeRosterEntitlement(profile);
 
             if (SelectWorldRosterProfile != null &&
                 LoginSelectWorldResultCodec.IsSuccessCode(SelectWorldRosterProfile.ResultCode))
@@ -194,7 +198,12 @@ namespace HaCreator.MapSimulator.Managers
             bool viewAllLoginOpt)
         {
             ActiveWorldId = Math.Max(0, worldId);
-            LoginSelectWorldResultProfile resolvedProfile = CreateRosterProfile(entries, slotCount, buyCharacterCount, selectWorldLoginOpt);
+            int normalizedBuyCharacterCount = NormalizeBuyCharacterCount(buyCharacterCount);
+            LoginSelectWorldResultProfile resolvedProfile = CreateRosterProfile(
+                entries,
+                slotCount,
+                normalizedBuyCharacterCount,
+                selectWorldLoginOpt);
 
             if (includeSelectWorldRoster || HasSelectWorldRoster)
             {
@@ -210,7 +219,11 @@ namespace HaCreator.MapSimulator.Managers
                     _viewAllEntries.AddRange(entries.Where(entry => entry != null));
                 }
 
-                ViewAllCharRosterProfile = CreateRosterProfile(_viewAllEntries, slotCount, buyCharacterCount, viewAllLoginOpt);
+                ViewAllCharRosterProfile = CreateRosterProfile(
+                    _viewAllEntries,
+                    slotCount,
+                    normalizedBuyCharacterCount,
+                    viewAllLoginOpt);
                 ViewAllExpectedCharacterCount = _viewAllEntries.Count;
                 ViewAllRemainingServerCount = 0;
                 CacheViewAllWorldProfiles(ViewAllCharRosterProfile);
@@ -247,7 +260,7 @@ namespace HaCreator.MapSimulator.Managers
 
             if (preferViewAllRoster &&
                 hasViewAllPacket &&
-                ViewAllCharRosterProfile?.Entries?.Count > 0)
+                ViewAllCharRosterProfile != null)
             {
                 rosterProfile = ViewAllCharRosterProfile;
                 packetSource = "ViewAllCharResult";
@@ -256,15 +269,14 @@ namespace HaCreator.MapSimulator.Managers
 
             if (hasSelectWorldPacket &&
                 SelectWorldRosterProfile != null &&
-                LoginSelectWorldResultCodec.IsSuccessCode(SelectWorldRosterProfile.ResultCode) &&
-                SelectWorldRosterProfile.Entries.Count > 0)
+                LoginSelectWorldResultCodec.IsSuccessCode(SelectWorldRosterProfile.ResultCode))
             {
                 rosterProfile = SelectWorldRosterProfile;
                 packetSource = "SelectWorldResult";
                 return true;
             }
 
-            if (ViewAllCharRosterProfile?.Entries?.Count > 0)
+            if (ViewAllCharRosterProfile != null)
             {
                 rosterProfile = ViewAllCharRosterProfile;
                 packetSource = "ViewAllCharResult";
@@ -325,7 +337,7 @@ namespace HaCreator.MapSimulator.Managers
                 rostersByWorld[ActiveWorldId] = CloneProfile(SelectWorldRosterProfile);
             }
 
-            if (ViewAllCharRosterProfile?.Entries?.Count > 0 &&
+            if (ViewAllCharRosterProfile != null &&
                 (preferViewAllRoster || !rostersByWorld.ContainsKey(ActiveWorldId)))
             {
                 rostersByWorld[ActiveWorldId] = CloneProfile(ViewAllCharRosterProfile);
@@ -334,11 +346,116 @@ namespace HaCreator.MapSimulator.Managers
             return rostersByWorld;
         }
 
+        public IReadOnlyList<LoginSelectWorldCharacterEntry> SnapshotAggregatedViewAllEntries()
+        {
+            return _viewAllEntries
+                .Where(entry => entry != null)
+                .Select(CloneEntry)
+                .ToArray();
+        }
+
+        public bool TryRemoveCharacter(
+            int characterId,
+            out LoginSelectWorldCharacterEntry removedEntry,
+            out int removedWorldId)
+        {
+            removedEntry = null;
+            removedWorldId = 0;
+            if (characterId <= 0)
+            {
+                return false;
+            }
+
+            bool removed = false;
+
+            if (TryRemoveCharacterFromEntries(_viewAllEntries, characterId, out LoginSelectWorldCharacterEntry removedViewAllEntry))
+            {
+                removed = true;
+                removedEntry ??= removedViewAllEntry;
+                removedWorldId = Math.Max(0, removedViewAllEntry?.WorldId ?? 0);
+                ViewAllExpectedCharacterCount = Math.Max(0, _viewAllEntries.Count);
+                ViewAllRemainingServerCount = 0;
+
+                int slotCount = ResolveRosterSlotCount(ViewAllCharRosterProfile, SelectWorldRosterProfile);
+                int buyCharacterCount = ResolveRosterBuyCharacterCount(ViewAllCharRosterProfile, SelectWorldRosterProfile);
+                bool loginOpt = ViewAllCharRosterProfile?.LoginOpt ?? false;
+                LoginSelectWorldResultProfile aggregatedProfile = CreateRosterProfile(
+                    _viewAllEntries,
+                    slotCount,
+                    buyCharacterCount,
+                    loginOpt);
+                CacheViewAllWorldProfiles(aggregatedProfile);
+            }
+
+            if (TryRemoveCharacterFromProfileMap(_selectWorldProfilesByWorld, characterId, out LoginSelectWorldCharacterEntry removedSelectWorldEntry))
+            {
+                removed = true;
+                removedEntry ??= removedSelectWorldEntry;
+                if (removedWorldId <= 0)
+                {
+                    removedWorldId = Math.Max(0, removedSelectWorldEntry?.WorldId ?? 0);
+                }
+            }
+
+            if (SelectWorldRosterProfile != null)
+            {
+                SelectWorldRosterProfile = RemoveCharacterFromProfile(SelectWorldRosterProfile, characterId, out _);
+            }
+
+            if (ViewAllCharRosterProfile != null && !_viewAllEntries.Any(entry => entry?.CharacterId == characterId))
+            {
+                ViewAllCharRosterProfile = RemoveCharacterFromProfile(ViewAllCharRosterProfile, characterId, out _);
+            }
+
+            if (!removed)
+            {
+                return false;
+            }
+
+            if (removedWorldId > 0 && ActiveWorldId == 0)
+            {
+                ActiveWorldId = removedWorldId;
+            }
+
+            SetActiveWorld(ActiveWorldId);
+            return true;
+        }
+
         private bool HasSelectWorldRoster =>
             SelectWorldRosterProfile != null &&
             LoginSelectWorldResultCodec.IsSuccessCode(SelectWorldRosterProfile.ResultCode);
 
-        private bool HasViewAllRoster => ViewAllCharRosterProfile?.Entries?.Count > 0;
+        private bool HasViewAllRoster => ViewAllCharRosterProfile != null;
+
+        private bool ReevaluateExtraCharacterEntitlement()
+        {
+            bool canHaveExtraCharacter =
+                _lastExtraCharInfoResultProfile != null &&
+                AuthenticatedAccountId.HasValue &&
+                AuthenticatedAccountId.Value == _lastExtraCharInfoResultProfile.AccountId &&
+                _lastExtraCharInfoResultProfile.CanHaveExtraCharacter;
+            return SetExtraCharacterEntitlement(canHaveExtraCharacter);
+        }
+
+        private int NormalizeBuyCharacterCount(int buyCharacterCount)
+        {
+            if (!CanHaveExtraCharacter)
+            {
+                return 0;
+            }
+
+            return Math.Clamp(Math.Max(0, buyCharacterCount), 0, 1);
+        }
+
+        private LoginSelectWorldResultProfile NormalizeRosterEntitlement(LoginSelectWorldResultProfile profile)
+        {
+            if (profile == null)
+            {
+                return null;
+            }
+
+            return WithBuyCharacterCount(profile, NormalizeBuyCharacterCount(profile.BuyCharacterCount));
+        }
 
         private static bool TryGetWorldRoster(
             IReadOnlyDictionary<int, LoginSelectWorldResultProfile> profilesByWorld,
@@ -348,7 +465,7 @@ namespace HaCreator.MapSimulator.Managers
             rosterProfile = null;
             if (profilesByWorld == null ||
                 !profilesByWorld.TryGetValue(Math.Max(0, worldId), out LoginSelectWorldResultProfile storedProfile) ||
-                storedProfile?.Entries?.Count <= 0)
+                storedProfile == null)
             {
                 return false;
             }
@@ -370,7 +487,7 @@ namespace HaCreator.MapSimulator.Managers
 
             foreach ((int worldId, LoginSelectWorldResultProfile profile) in source)
             {
-                if (profile?.Entries?.Count <= 0)
+                if (profile == null)
                 {
                     continue;
                 }
@@ -389,12 +506,73 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
+        private static bool TryRemoveCharacterFromEntries(
+            ICollection<LoginSelectWorldCharacterEntry> entries,
+            int characterId,
+            out LoginSelectWorldCharacterEntry removedEntry)
+        {
+            removedEntry = null;
+            if (entries == null || characterId <= 0)
+            {
+                return false;
+            }
+
+            LoginSelectWorldCharacterEntry entry = entries.FirstOrDefault(candidate => candidate?.CharacterId == characterId);
+            if (entry == null)
+            {
+                return false;
+            }
+
+            removedEntry = CloneEntry(entry);
+            entries.Remove(entry);
+            return true;
+        }
+
+        private static bool TryRemoveCharacterFromProfileMap(
+            IDictionary<int, LoginSelectWorldResultProfile> profilesByWorld,
+            int characterId,
+            out LoginSelectWorldCharacterEntry removedEntry)
+        {
+            removedEntry = null;
+            if (profilesByWorld == null || profilesByWorld.Count == 0 || characterId <= 0)
+            {
+                return false;
+            }
+
+            bool removed = false;
+            foreach (int worldId in profilesByWorld.Keys.ToArray())
+            {
+                LoginSelectWorldResultProfile updatedProfile = RemoveCharacterFromProfile(
+                    profilesByWorld[worldId],
+                    characterId,
+                    out LoginSelectWorldCharacterEntry removedProfileEntry);
+                if (removedProfileEntry == null)
+                {
+                    continue;
+                }
+
+                profilesByWorld[worldId] = updatedProfile;
+                removedEntry ??= removedProfileEntry;
+                removed = true;
+            }
+
+            return removed;
+        }
+
         private void CacheViewAllWorldProfiles(LoginSelectWorldResultProfile profile)
         {
             _viewAllProfilesByWorld.Clear();
-            if (profile?.Entries == null || profile.Entries.Count == 0)
+            if (profile == null)
             {
                 ViewAllCharRosterProfile = null;
+                return;
+            }
+
+            if (profile.Entries == null || profile.Entries.Count == 0)
+            {
+                LoginSelectWorldResultProfile emptyProfile = CloneProfile(profile);
+                _viewAllProfilesByWorld[ActiveWorldId] = emptyProfile;
+                ViewAllCharRosterProfile = CloneProfile(emptyProfile);
                 return;
             }
 
@@ -434,15 +612,48 @@ namespace HaCreator.MapSimulator.Managers
                 .Where(entry => entry != null && Math.Max(0, entry.WorldId ?? 0) == normalizedWorldId)
                 .Select(CloneEntry)
                 .ToArray();
-            if (worldEntries.Length == 0)
+            return new LoginSelectWorldResultProfile
             {
-                return null;
+                ResultCode = profile.ResultCode,
+                Entries = worldEntries,
+                LoginOpt = profile.LoginOpt,
+                SlotCount = Math.Max(0, profile.SlotCount),
+                BuyCharacterCount = Math.Max(0, profile.BuyCharacterCount)
+            };
+        }
+
+        private static LoginSelectWorldResultProfile RemoveCharacterFromProfile(
+            LoginSelectWorldResultProfile profile,
+            int characterId,
+            out LoginSelectWorldCharacterEntry removedEntry)
+        {
+            removedEntry = null;
+            if (profile?.Entries == null || characterId <= 0)
+            {
+                return profile;
+            }
+
+            List<LoginSelectWorldCharacterEntry> remainingEntries = new(profile.Entries.Count);
+            foreach (LoginSelectWorldCharacterEntry entry in profile.Entries.Where(entry => entry != null))
+            {
+                if (removedEntry == null && entry.CharacterId == characterId)
+                {
+                    removedEntry = CloneEntry(entry);
+                    continue;
+                }
+
+                remainingEntries.Add(CloneEntry(entry));
+            }
+
+            if (removedEntry == null)
+            {
+                return profile;
             }
 
             return new LoginSelectWorldResultProfile
             {
                 ResultCode = profile.ResultCode,
-                Entries = worldEntries,
+                Entries = remainingEntries,
                 LoginOpt = profile.LoginOpt,
                 SlotCount = Math.Max(0, profile.SlotCount),
                 BuyCharacterCount = Math.Max(0, profile.BuyCharacterCount)
@@ -530,6 +741,28 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
+        private static int ResolveRosterSlotCount(
+            LoginSelectWorldResultProfile primaryProfile,
+            LoginSelectWorldResultProfile fallbackProfile)
+        {
+            return Math.Max(
+                0,
+                primaryProfile?.SlotCount
+                ?? fallbackProfile?.SlotCount
+                ?? 0);
+        }
+
+        private static int ResolveRosterBuyCharacterCount(
+            LoginSelectWorldResultProfile primaryProfile,
+            LoginSelectWorldResultProfile fallbackProfile)
+        {
+            return Math.Max(
+                0,
+                primaryProfile?.BuyCharacterCount
+                ?? fallbackProfile?.BuyCharacterCount
+                ?? 0);
+        }
+
         private static LoginSelectWorldCharacterEntry CloneEntry(LoginSelectWorldCharacterEntry entry)
         {
             return new LoginSelectWorldCharacterEntry
@@ -567,6 +800,21 @@ namespace HaCreator.MapSimulator.Managers
                 AvatarLookPacket = entry.AvatarLookPacket != null
                     ? (byte[])entry.AvatarLookPacket.Clone()
                     : Array.Empty<byte>()
+            };
+        }
+
+        private static LoginExtraCharInfoResultProfile CloneExtraCharInfoProfile(LoginExtraCharInfoResultProfile profile)
+        {
+            if (profile == null)
+            {
+                return null;
+            }
+
+            return new LoginExtraCharInfoResultProfile
+            {
+                AccountId = profile.AccountId,
+                ResultFlag = profile.ResultFlag,
+                CanHaveExtraCharacter = profile.CanHaveExtraCharacter
             };
         }
     }

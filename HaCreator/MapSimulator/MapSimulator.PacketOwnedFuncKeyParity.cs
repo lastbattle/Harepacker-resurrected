@@ -17,13 +17,17 @@ namespace HaCreator.MapSimulator
         private const byte PacketOwnedFuncKeyFunctionType = 4;
         private const int PacketOwnedPetConsumeMpAttemptThrottleMs = 200;
 
+        // Client menu ids follow the v95 MENU_* enum used by CDraggableMenu/CFuncKeyMappedMan.
         private static readonly (int ClientFunctionId, InputAction Action)[] PacketOwnedKnownFunctionBindings =
         {
-            (0, InputAction.ToggleInventory),
-            (1, InputAction.ToggleEquip),
+            (0, InputAction.ToggleEquip),
+            (1, InputAction.ToggleInventory),
             (2, InputAction.ToggleStats),
             (3, InputAction.ToggleSkills),
-            (8, InputAction.ToggleKeyConfig),
+            (7, InputAction.ToggleMinimap),
+            (8, InputAction.ToggleQuest),
+            (9, InputAction.ToggleKeyConfig),
+            (15, InputAction.ToggleQuickSlot),
         };
 
         private readonly PacketOwnedFuncKeyConfigStore _packetOwnedFuncKeyConfigStore = new();
@@ -286,7 +290,7 @@ namespace HaCreator.MapSimulator
                 resolvedType = NormalizePacketOwnedPetConsumeInventoryType(InventoryItemMetadataResolver.ResolveInventoryType(itemId));
             }
 
-            if (resolvedType == InventoryType.USE || resolvedType == InventoryType.CASH)
+            if (resolvedType == InventoryType.USE)
             {
                 if (inventoryWindow == null || inventoryWindow.GetItemCount(resolvedType, itemId) > 0)
                 {
@@ -294,21 +298,13 @@ namespace HaCreator.MapSimulator
                 }
             }
 
-            if (inventoryWindow != null)
+            if (inventoryWindow?.GetItemCount(InventoryType.USE, itemId) > 0)
             {
-                if (inventoryWindow.GetItemCount(InventoryType.USE, itemId) > 0)
-                {
-                    return InventoryType.USE;
-                }
-
-                if (inventoryWindow.GetItemCount(InventoryType.CASH, itemId) > 0)
-                {
-                    return InventoryType.CASH;
-                }
+                return InventoryType.USE;
             }
 
-            return resolvedType == InventoryType.USE || resolvedType == InventoryType.CASH
-                ? resolvedType
+            return resolvedType == InventoryType.USE
+                ? InventoryType.USE
                 : InventoryType.NONE;
         }
 
@@ -321,7 +317,7 @@ namespace HaCreator.MapSimulator
 
         private static InventoryType NormalizePacketOwnedPetConsumeInventoryType(InventoryType inventoryType)
         {
-            return inventoryType == InventoryType.USE || inventoryType == InventoryType.CASH
+            return inventoryType == InventoryType.USE
                 ? inventoryType
                 : InventoryType.NONE;
         }
@@ -370,6 +366,9 @@ namespace HaCreator.MapSimulator
                 || _packetOwnedPetConsumeMpItemId <= 0
                 || _gameState?.PendingMapChange == true
                 || _playerManager?.Player is not PlayerCharacter player
+                || _playerManager?.Pets == null
+                || _playerManager.Pets.IsFieldUsageBlocked
+                || _playerManager.Pets.ActivePets.Count <= 0
                 || player.Build == null
                 || !player.IsAlive
                 || player.MaxMP <= 0

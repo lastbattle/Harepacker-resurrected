@@ -254,13 +254,39 @@ namespace HaCreator.MapSimulator.Pools
                                 && !state.Summon.IsPendingRemoval
                                 && state.OwnerCharacterId != localPlayerId
                                 && state.Summon.AssistType == SummonAssistType.Support
-                                && RemoteAffectedAreaSupportResolver.CanAffectLocalPlayer(
-                                    state.Summon.SkillData,
+                                && CanRemoteSupportSummonAffectLocalPlayer(
+                                    state.Summon,
                                     localPlayerId,
                                     state.OwnerCharacterId,
                                     ownerIsPartyMemberEvaluator?.Invoke(state.OwnerCharacterId) == true))
                 .Select(state => state.Summon)
                 .ToArray();
+        }
+
+        private static bool CanRemoteSupportSummonAffectLocalPlayer(
+            ActiveSummon summon,
+            int localPlayerId,
+            int ownerCharacterId,
+            bool ownerIsPartyMember)
+        {
+            if (summon?.SkillData == null || localPlayerId <= 0 || ownerCharacterId <= 0)
+            {
+                return false;
+            }
+
+            // Client sitdown-heal scanning walks nearby summons from broader remote-user ownership
+            // state instead of restricting Healing Robot discovery to party-owned summons first.
+            if (SummonRuntimeRules.IsSitdownHealingSupportSummon(summon.SkillData))
+            {
+                return true;
+            }
+
+            return RemoteAffectedAreaSupportResolver.CanAffectLocalPlayer(
+                summon.SkillData,
+                localPlayerId,
+                ownerCharacterId,
+                ownerIsPartyMember,
+                summon.LevelData);
         }
 
         public bool TryConsumeSummonByObjectId(int objectId)
@@ -433,8 +459,8 @@ namespace HaCreator.MapSimulator.Pools
                 Duration = durationMs,
                 LastAttackTime = currentTime,
                 MoveAbility = packet.MoveAbility,
-                MovementStyle = skill?.SummonMovementStyle ?? SummonMovementStyle.Stationary,
-                SpawnDistanceX = skill?.SummonSpawnDistanceX ?? 0f,
+                MovementStyle = skill?.SummonMovementStyle ?? SummonMovementResolver.ResolveStyle(packet.MoveAbility),
+                SpawnDistanceX = skill?.SummonSpawnDistanceX ?? SummonMovementResolver.ResolveSpawnDistanceX(packet.SkillId),
                 AnchorX = packet.Position.X,
                 AnchorY = packet.Position.Y,
                 PreviousPositionX = packet.Position.X,
@@ -585,6 +611,7 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
+            ClearPacketOwnedOneTimeAction(state);
             state.Summon.LastAttackAnimationStartTime = currentTime;
             state.Summon.CurrentAnimationBranchName = ResolvePacketOwnedSkillBranch(state);
             ArmPacketOwnedSupportSuspend(state, currentTime);
@@ -637,6 +664,7 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
+            ClearPacketOwnedOneTimeAction(state);
             state.Summon.CurrentAnimationBranchName = null;
             int prepareDuration = GetSkillAnimationDuration(state.Summon.SkillData?.SummonAttackPrepareAnimation) ?? 0;
             if (state.Summon.LastAttackAnimationStartTime == int.MinValue
@@ -648,6 +676,22 @@ namespace HaCreator.MapSimulator.Pools
 
             state.Summon.ActorState = SummonActorState.Attack;
             state.Summon.LastStateChangeTime = currentTime;
+        }
+
+        private static void ClearPacketOwnedOneTimeAction(PacketOwnedSummonState state)
+        {
+            if (state?.Summon == null)
+            {
+                return;
+            }
+
+            state.OneTimeAction = 0;
+            state.OneTimeActionEndTime = int.MinValue;
+            state.OneTimeActionClip = null;
+            state.Summon.OneTimeActionFallbackAnimation = null;
+            state.Summon.OneTimeActionFallbackStartTime = int.MinValue;
+            state.Summon.OneTimeActionFallbackAnimationTime = int.MinValue;
+            state.Summon.OneTimeActionFallbackEndTime = int.MinValue;
         }
 
         private void SpawnPacketAttackVisuals(PacketOwnedSummonState state, int currentTime)
@@ -1164,8 +1208,7 @@ namespace HaCreator.MapSimulator.Pools
                 ? resolvedOwnerPosition
                 : null;
             if (!ownerPosition.HasValue
-                && summon.MovementStyle != SummonMovementStyle.HoverAroundAnchor
-                && summon.MovementStyle != SummonMovementStyle.Stationary)
+                && !PacketOwnedSummonUpdateRules.ShouldUseAnchorBoundPassiveFallback(summon))
             {
                 return false;
             }
@@ -1191,15 +1234,15 @@ namespace HaCreator.MapSimulator.Pools
             summon.PositionX = nextPosition.X;
             summon.PositionY = nextPosition.Y;
 
-            if (summon.MovementStyle == SummonMovementStyle.GroundFollow
-                || summon.MovementStyle == SummonMovementStyle.HoverFollow
-                || summon.MovementStyle == SummonMovementStyle.DriftAroundOwner)
+            SummonMovementStyle effectiveMovementStyle = PacketOwnedSummonUpdateRules.ResolveEffectiveMovementStyle(summon);
+            if (effectiveMovementStyle == SummonMovementStyle.GroundFollow
+                || effectiveMovementStyle == SummonMovementStyle.HoverFollow
+                || effectiveMovementStyle == SummonMovementStyle.DriftAroundOwner)
             {
                 summon.FacingRight = ownerFacingRight;
             }
 
-            if ((summon.MovementStyle == SummonMovementStyle.Stationary
-                 || summon.MovementStyle == SummonMovementStyle.HoverAroundAnchor)
+            if (PacketOwnedSummonUpdateRules.ShouldEmitPassiveEffectFromMotion(summon)
                 && currentTime - summon.LastPassiveEffectTime >= PacketOwnedSummonPassiveEffectCooldownMs)
             {
                 float movedDistanceSq = Vector2.DistanceSquared(
@@ -1399,6 +1442,7 @@ namespace HaCreator.MapSimulator.Pools
             CancelSummonExpiryTimer(state.Summon.ObjectId);
             state.RemovalReason = reason;
             state.Summon.ExpiryActionTriggered = true;
+            ClearPacketOwnedOneTimeAction(state);
             state.Summon.RemovalAnimationStartTime = currentTime;
             state.Summon.ActorState = SummonActorState.Die;
             state.Summon.LastStateChangeTime = currentTime;
@@ -1444,11 +1488,10 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
-            SummonActorState idleState = state.Summon.SkillId == TeslaCoilSkillId
-                                         && state.Summon.SkillData?.SummonAttackPrepareAnimation?.Frames.Count > 0
-                                         && (state.Summon.TeslaCoilState == 1 || state.Summon.TeslaCoilState == 2)
-                ? SummonActorState.Prepare
-                : SummonActorState.Idle;
+            SummonActorState idleState = PacketOwnedSummonUpdateRules.ResolveIdleActorState(
+                state.Summon,
+                currentTime,
+                TeslaCoilSkillId);
             if (state.Summon.ActorState != idleState)
             {
                 state.Summon.ActorState = idleState;
@@ -1461,7 +1504,10 @@ namespace HaCreator.MapSimulator.Pools
                 {
                     state.Summon.SupportSuspendUntilTime = int.MinValue;
                 }
+            }
 
+            if (idleState != SummonActorState.Prepare)
+            {
                 state.Summon.CurrentAnimationBranchName = null;
             }
         }
@@ -1707,8 +1753,10 @@ namespace HaCreator.MapSimulator.Pools
 
             StartSummonHitReaction(state.Summon, damage, currentTime, useHitAnimationState);
             state.Summon.MaxHealth = Math.Max(1, state.Summon.MaxHealth);
-            int startingHealth = state.Summon.CurrentHealth > 0 ? state.Summon.CurrentHealth : state.Summon.MaxHealth;
-            state.Summon.CurrentHealth = Math.Max(0, startingHealth - Math.Max(1, damage));
+            state.Summon.CurrentHealth = SummonDamageRuntimeRules.ResolveRemainingHealth(
+                state.Summon.CurrentHealth,
+                state.Summon.MaxHealth,
+                damage);
             if (state.Summon.CurrentHealth <= 0)
             {
                 if (TryBeginSelfDestructRemoval(state, currentTime, requiresNaturalExpiry: false))
@@ -2443,6 +2491,7 @@ namespace HaCreator.MapSimulator.Pools
 
             state.RemovalReason = 0;
             state.Summon.ExpiryActionTriggered = true;
+            ClearPacketOwnedOneTimeAction(state);
             state.Summon.LastAttackAnimationStartTime = currentTime;
             state.Summon.CurrentAnimationBranchName = actionBranchName;
             bool hasPrepareAnimation = string.IsNullOrWhiteSpace(actionBranchName)

@@ -1,6 +1,7 @@
 using HaCreator.MapSimulator.UI;
 using MapleLib.WzLib.WzStructure.Data;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
+using MapleLib.WzLib.WzStructure;
 using System;
 using System.Collections.Generic;
 
@@ -8,6 +9,8 @@ namespace HaCreator.MapSimulator.Fields
 {
     public static class FieldInteractionRestrictionEvaluator
     {
+        private const string GenericMapTransferRegistrationRestrictionMessage = "This destination cannot be saved in a teleport slot.";
+        private const string RegularFieldMapTransferRegistrationRestrictionMessage = "Only regular field maps can be saved in a teleport slot.";
         private const int PortalScrollItemGroup = 203;
         private const int SummonSackItemGroup = 210;
         private const int AntiMacroItemGroup = 219;
@@ -315,25 +318,50 @@ namespace HaCreator.MapSimulator.Fields
 
         public static bool CanRegisterMapTransferDestination(int mapId)
         {
-            return GetMapTransferRegistrationRestrictionMessage(mapId) == null;
+            return CanRegisterMapTransferDestination(mapId, null);
+        }
+
+        public static bool CanRegisterMapTransferDestination(int mapId, MapInfo mapInfo)
+        {
+            return GetMapTransferRegistrationRestrictionMessage(mapId, mapInfo) == null;
         }
 
         public static string GetMapTransferRegistrationRestrictionMessage(int mapId)
         {
+            return GetMapTransferRegistrationRestrictionMessage(mapId, null);
+        }
+
+        public static string GetMapTransferRegistrationRestrictionMessage(int mapId, MapInfo mapInfo)
+        {
             if (mapId <= 0 || mapId == MapConstants.MaxMap)
             {
-                return "This destination cannot be saved in a teleport slot.";
+                return GenericMapTransferRegistrationRestrictionMessage;
             }
 
             if (mapId < 100_000_000)
             {
-                return "Only regular field maps can be saved in a teleport slot.";
+                return RegularFieldMapTransferRegistrationRestrictionMessage;
             }
 
             int millionGroup = (mapId / 1_000_000) % 100;
-            return millionGroup == 9
-                ? "This destination cannot be saved in a teleport slot."
-                : null;
+            if (millionGroup == 9)
+            {
+                return GenericMapTransferRegistrationRestrictionMessage;
+            }
+
+            if (mapInfo == null)
+            {
+                return null;
+            }
+
+            if (mapInfo.noMapCmd == true ||
+                (mapInfo.moveLimit.HasValue && mapInfo.moveLimit.Value > 0) ||
+                (mapInfo.fieldType.HasValue && mapInfo.fieldType.Value != FieldType.FIELDTYPE_DEFAULT))
+            {
+                return GenericMapTransferRegistrationRestrictionMessage;
+            }
+
+            return null;
         }
 
         public static string GetJumpRestrictionMessage(long fieldLimit)

@@ -436,9 +436,10 @@ namespace HaCreator.MapSimulator
             }
 
             skinKey ??= hudProfile.SkinKey;
-            int resolvedGaugeDurationMs = hasGaugeOverride
-                ? Math.Max(0, gaugeDurationMs)
-                : PreparedSkillHudRules.ResolveGaugeDuration(skillId);
+            int resolvedGaugeDurationMs = PreparedSkillHudRules.ResolvePreparedGaugeDuration(
+                skillId,
+                hasGaugeOverride ? Math.Max(0, gaugeDurationMs) : 0,
+                durationMs);
             string skillName = skillNameParts != null && skillNameParts.Count > 0
                 ? string.Join(" ", skillNameParts)
                 : null;
@@ -673,6 +674,49 @@ namespace HaCreator.MapSimulator
             result = null;
             switch ((RemoteUserPacketType)packetType)
             {
+                case RemoteUserPacketType.UserCoupleRecordAdd:
+                case RemoteUserPacketType.UserFriendRecordAdd:
+                case RemoteUserPacketType.UserMarriageRecordAdd:
+                case RemoteUserPacketType.UserNewYearCardRecordAdd:
+                    if (!RemoteUserPacketCodec.TryParseRelationshipRecordAdd(
+                            packetType,
+                            payload,
+                            out RemoteUserRelationshipRecordPacket relationshipRecordAddPacket,
+                            out string relationshipRecordAddError))
+                    {
+                        result = relationshipRecordAddError;
+                        return false;
+                    }
+
+                    bool relationshipRecordAdded = _remoteUserPool.TryApplyRelationshipRecordAdd(
+                        relationshipRecordAddPacket,
+                        currentTime,
+                        out string relationshipRecordAddMessage);
+                    result = relationshipRecordAdded
+                        ? relationshipRecordAddMessage
+                        : relationshipRecordAddMessage;
+                    return relationshipRecordAdded;
+
+                case RemoteUserPacketType.UserCoupleRecordRemove:
+                case RemoteUserPacketType.UserFriendRecordRemove:
+                case RemoteUserPacketType.UserMarriageRecordRemove:
+                case RemoteUserPacketType.UserNewYearCardRecordRemove:
+                    if (!RemoteUserPacketCodec.TryParseRelationshipRecordRemove(
+                            packetType,
+                            payload,
+                            out RemoteUserRelationshipRecordRemovePacket relationshipRecordRemovePacket,
+                            out string relationshipRecordRemoveError))
+                    {
+                        result = relationshipRecordRemoveError;
+                        return false;
+                    }
+
+                    bool relationshipRecordRemoved = _remoteUserPool.TryApplyRelationshipRecordRemove(
+                        relationshipRecordRemovePacket,
+                        out string relationshipRecordRemoveMessage);
+                    result = relationshipRecordRemoveMessage;
+                    return relationshipRecordRemoved;
+
                 case RemoteUserPacketType.UserEnterField:
                     if (!RemoteUserPacketCodec.TryParseEnterField(payload, out RemoteUserEnterFieldPacket enterPacket, out string enterError))
                     {
@@ -895,7 +939,10 @@ namespace HaCreator.MapSimulator
                         string.IsNullOrWhiteSpace(preparePacket.SkinKey) ? hudProfile.SkinKey : preparePacket.SkinKey,
                         preparePacket.IsKeydownSkill,
                         preparePacket.IsHolding,
-                        PreparedSkillHudRules.ResolveGaugeDuration(preparePacket.SkillId, preparePacket.GaugeDurationMs),
+                        PreparedSkillHudRules.ResolvePreparedGaugeDuration(
+                            preparePacket.SkillId,
+                            preparePacket.GaugeDurationMs,
+                            preparePacket.DurationMs),
                         preparePacket.MaxHoldDurationMs,
                         PreparedSkillHudRules.ResolveTextVariant(preparePacket.SkillId),
                         preparePacket.ShowText && hudProfile.ShowText,
@@ -1229,6 +1276,14 @@ namespace HaCreator.MapSimulator
 
             packetType = text?.Trim().ToLowerInvariant() switch
             {
+                "coupleadd" => (int)RemoteUserPacketType.UserCoupleRecordAdd,
+                "coupleremove" => (int)RemoteUserPacketType.UserCoupleRecordRemove,
+                "friendadd" => (int)RemoteUserPacketType.UserFriendRecordAdd,
+                "friendremove" => (int)RemoteUserPacketType.UserFriendRecordRemove,
+                "marriageadd" => (int)RemoteUserPacketType.UserMarriageRecordAdd,
+                "marriageremove" => (int)RemoteUserPacketType.UserMarriageRecordRemove,
+                "newyearadd" => (int)RemoteUserPacketType.UserNewYearCardRecordAdd,
+                "newyearremove" => (int)RemoteUserPacketType.UserNewYearCardRecordRemove,
                 "enter" => (int)RemoteUserPacketType.UserEnterField,
                 "leave" => (int)RemoteUserPacketType.UserLeaveField,
                 "move" => (int)RemoteUserPacketType.UserMove,
@@ -1236,6 +1291,14 @@ namespace HaCreator.MapSimulator
                 "helper" => (int)RemoteUserPacketType.UserHelper,
                 "team" => (int)RemoteUserPacketType.UserBattlefieldTeam,
                 "follow" => (int)RemoteUserPacketType.UserFollowCharacter,
+                "couplerecordadd" or "coupleadd" => (int)RemoteUserPacketType.UserCoupleRecordAdd,
+                "couplerecordremove" or "coupleremove" => (int)RemoteUserPacketType.UserCoupleRecordRemove,
+                "friendrecordadd" or "friendadd" => (int)RemoteUserPacketType.UserFriendRecordAdd,
+                "friendrecordremove" or "friendremove" => (int)RemoteUserPacketType.UserFriendRecordRemove,
+                "marriagerecordadd" or "marriageadd" => (int)RemoteUserPacketType.UserMarriageRecordAdd,
+                "marriagerecordremove" or "marriageremove" => (int)RemoteUserPacketType.UserMarriageRecordRemove,
+                "newyearcardrecordadd" or "newyearadd" => (int)RemoteUserPacketType.UserNewYearCardRecordAdd,
+                "newyearcardrecordremove" or "newyearremove" => (int)RemoteUserPacketType.UserNewYearCardRecordRemove,
                 "chair" => (int)RemoteUserPacketType.UserPortableChair,
                 "mount" => (int)RemoteUserPacketType.UserMount,
                 "prepare" => (int)RemoteUserPacketType.UserPreparedSkill,
@@ -1256,6 +1319,14 @@ namespace HaCreator.MapSimulator
         {
             return packetType switch
             {
+                (int)RemoteUserPacketType.UserCoupleRecordAdd => "remote user couple-record add packet",
+                (int)RemoteUserPacketType.UserCoupleRecordRemove => "remote user couple-record remove packet",
+                (int)RemoteUserPacketType.UserFriendRecordAdd => "remote user friendship-record add packet",
+                (int)RemoteUserPacketType.UserFriendRecordRemove => "remote user friendship-record remove packet",
+                (int)RemoteUserPacketType.UserMarriageRecordAdd => "remote user marriage-record add packet",
+                (int)RemoteUserPacketType.UserMarriageRecordRemove => "remote user marriage-record remove packet",
+                (int)RemoteUserPacketType.UserNewYearCardRecordAdd => "remote user New Year card-record add packet",
+                (int)RemoteUserPacketType.UserNewYearCardRecordRemove => "remote user New Year card-record remove packet",
                 (int)RemoteUserPacketType.UserEnterField => "remote user enter packet",
                 (int)RemoteUserPacketType.UserLeaveField => "remote user leave packet",
                 (int)RemoteUserPacketType.UserMove => "remote user common move packet",

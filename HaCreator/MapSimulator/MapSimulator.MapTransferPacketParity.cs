@@ -136,7 +136,108 @@ namespace HaCreator.MapSimulator
                 : build?.Name ?? "session character";
             int regularCount = _mapTransferRuntime.GetDestinations(build, MapTransferDestinationBook.Regular).Count;
             int continentCount = _mapTransferRuntime.GetDestinations(build, MapTransferDestinationBook.Continent).Count;
-            return $"{_mapTransferOfficialSessionBridge.DescribeStatus()} Pending requests={_pendingOfficialMapTransferRequests.Count}; owner={buildLabel}; saved regular={regularCount}/{MapTransferRuntimeManager.RegularCapacity}; continent={continentCount}/{MapTransferRuntimeManager.ContinentCapacity}.";
+            string enabledText = _mapTransferOfficialSessionBridgeEnabled ? "enabled" : "disabled";
+            string modeText = _mapTransferOfficialSessionBridgeUseDiscovery ? "auto-discovery" : "direct proxy";
+            string configuredTarget = _mapTransferOfficialSessionBridgeUseDiscovery
+                ? _mapTransferOfficialSessionBridgeConfiguredLocalPort.HasValue
+                    ? $"discover remote port {_mapTransferOfficialSessionBridgeConfiguredRemotePort} with local port {_mapTransferOfficialSessionBridgeConfiguredLocalPort.Value}"
+                    : $"discover remote port {_mapTransferOfficialSessionBridgeConfiguredRemotePort}"
+                : $"{_mapTransferOfficialSessionBridgeConfiguredRemoteHost}:{_mapTransferOfficialSessionBridgeConfiguredRemotePort}";
+            string processText = string.IsNullOrWhiteSpace(_mapTransferOfficialSessionBridgeConfiguredProcessSelector)
+                ? string.Empty
+                : $" for {_mapTransferOfficialSessionBridgeConfiguredProcessSelector}";
+            return $"Map transfer session bridge {enabledText}, {modeText}, target {configuredTarget}{processText}. {_mapTransferOfficialSessionBridge.DescribeStatus()} Pending requests={_pendingOfficialMapTransferRequests.Count}; owner={buildLabel}; saved regular={regularCount}/{MapTransferRuntimeManager.RegularCapacity}; continent={continentCount}/{MapTransferRuntimeManager.ContinentCapacity}.";
+        }
+
+        private void EnsureMapTransferOfficialSessionBridgeState(bool shouldRun)
+        {
+            if (!shouldRun || !_mapTransferOfficialSessionBridgeEnabled)
+            {
+                if (_mapTransferOfficialSessionBridge.IsRunning)
+                {
+                    _mapTransferOfficialSessionBridge.Stop();
+                    _pendingOfficialMapTransferRequests.Clear();
+                }
+
+                return;
+            }
+
+            if (_mapTransferOfficialSessionBridgeConfiguredListenPort <= 0 ||
+                _mapTransferOfficialSessionBridgeConfiguredListenPort > ushort.MaxValue)
+            {
+                if (_mapTransferOfficialSessionBridge.IsRunning)
+                {
+                    _mapTransferOfficialSessionBridge.Stop();
+                }
+
+                _mapTransferOfficialSessionBridgeEnabled = false;
+                _mapTransferOfficialSessionBridgeConfiguredListenPort = MapTransferOfficialSessionBridgeManager.DefaultListenPort;
+                _pendingOfficialMapTransferRequests.Clear();
+                return;
+            }
+
+            if (_mapTransferOfficialSessionBridgeUseDiscovery)
+            {
+                if (_mapTransferOfficialSessionBridgeConfiguredRemotePort <= 0 ||
+                    _mapTransferOfficialSessionBridgeConfiguredRemotePort > ushort.MaxValue)
+                {
+                    if (_mapTransferOfficialSessionBridge.IsRunning)
+                    {
+                        _mapTransferOfficialSessionBridge.Stop();
+                    }
+
+                    _pendingOfficialMapTransferRequests.Clear();
+                    return;
+                }
+
+                _mapTransferOfficialSessionBridge.TryStartFromDiscovery(
+                    _mapTransferOfficialSessionBridgeConfiguredListenPort,
+                    _mapTransferOfficialSessionBridgeConfiguredRemotePort,
+                    _mapTransferOfficialSessionBridgeConfiguredProcessSelector,
+                    _mapTransferOfficialSessionBridgeConfiguredLocalPort,
+                    out _);
+                return;
+            }
+
+            if (_mapTransferOfficialSessionBridgeConfiguredRemotePort <= 0 ||
+                _mapTransferOfficialSessionBridgeConfiguredRemotePort > ushort.MaxValue ||
+                string.IsNullOrWhiteSpace(_mapTransferOfficialSessionBridgeConfiguredRemoteHost))
+            {
+                if (_mapTransferOfficialSessionBridge.IsRunning)
+                {
+                    _mapTransferOfficialSessionBridge.Stop();
+                }
+
+                _pendingOfficialMapTransferRequests.Clear();
+                return;
+            }
+
+            _mapTransferOfficialSessionBridge.TryStart(
+                _mapTransferOfficialSessionBridgeConfiguredListenPort,
+                _mapTransferOfficialSessionBridgeConfiguredRemoteHost,
+                _mapTransferOfficialSessionBridgeConfiguredRemotePort,
+                out _);
+        }
+
+        private void RefreshMapTransferOfficialSessionBridgeDiscovery(int currentTickCount)
+        {
+            if (!_mapTransferOfficialSessionBridgeEnabled ||
+                !_mapTransferOfficialSessionBridgeUseDiscovery ||
+                _mapTransferOfficialSessionBridgeConfiguredRemotePort <= 0 ||
+                _mapTransferOfficialSessionBridgeConfiguredRemotePort > ushort.MaxValue ||
+                _mapTransferOfficialSessionBridge.HasConnectedSession ||
+                currentTickCount < _nextMapTransferOfficialSessionBridgeDiscoveryRefreshAt)
+            {
+                return;
+            }
+
+            _nextMapTransferOfficialSessionBridgeDiscoveryRefreshAt = currentTickCount + MapTransferOfficialSessionBridgeDiscoveryRefreshIntervalMs;
+            _mapTransferOfficialSessionBridge.TryStartFromDiscovery(
+                _mapTransferOfficialSessionBridgeConfiguredListenPort,
+                _mapTransferOfficialSessionBridgeConfiguredRemotePort,
+                _mapTransferOfficialSessionBridgeConfiguredProcessSelector,
+                _mapTransferOfficialSessionBridgeConfiguredLocalPort,
+                out _);
         }
 
         private ChatCommandHandler.CommandResult HandleMapTransferCommand(string[] args)
@@ -200,8 +301,16 @@ namespace HaCreator.MapSimulator
                     return ChatCommandHandler.CommandResult.Error("Usage: /maptransfer session start <listenPort> <serverHost> <serverPort>");
                 }
 
+                _mapTransferOfficialSessionBridgeEnabled = true;
+                _mapTransferOfficialSessionBridgeUseDiscovery = false;
+                _mapTransferOfficialSessionBridgeConfiguredListenPort = listenPort;
+                _mapTransferOfficialSessionBridgeConfiguredRemoteHost = args[2];
+                _mapTransferOfficialSessionBridgeConfiguredRemotePort = remotePort;
+                _mapTransferOfficialSessionBridgeConfiguredProcessSelector = null;
+                _mapTransferOfficialSessionBridgeConfiguredLocalPort = null;
+
                 return _mapTransferOfficialSessionBridge.TryStart(listenPort, args[2], remotePort, out string status)
-                    ? ChatCommandHandler.CommandResult.Ok(status)
+                    ? ChatCommandHandler.CommandResult.Ok($"{status} {DescribeMapTransferOfficialSessionBridgeStatus()}")
                     : ChatCommandHandler.CommandResult.Error(status);
             }
 
@@ -228,16 +337,29 @@ namespace HaCreator.MapSimulator
                     localPort = parsedLocalPort;
                 }
 
+                _mapTransferOfficialSessionBridgeEnabled = true;
+                _mapTransferOfficialSessionBridgeUseDiscovery = true;
+                _mapTransferOfficialSessionBridgeConfiguredListenPort = listenPort;
+                _mapTransferOfficialSessionBridgeConfiguredRemotePort = remotePort;
+                _mapTransferOfficialSessionBridgeConfiguredProcessSelector = processSelector;
+                _mapTransferOfficialSessionBridgeConfiguredLocalPort = localPort;
+                _mapTransferOfficialSessionBridgeConfiguredRemoteHost = "127.0.0.1";
+                _nextMapTransferOfficialSessionBridgeDiscoveryRefreshAt = 0;
+
                 return _mapTransferOfficialSessionBridge.TryStartFromDiscovery(listenPort, remotePort, processSelector, localPort, out string status)
-                    ? ChatCommandHandler.CommandResult.Ok(status)
+                    ? ChatCommandHandler.CommandResult.Ok($"{status} {DescribeMapTransferOfficialSessionBridgeStatus()}")
                     : ChatCommandHandler.CommandResult.Error(status);
             }
 
             if (string.Equals(args[0], "stop", StringComparison.OrdinalIgnoreCase))
             {
+                _mapTransferOfficialSessionBridgeEnabled = false;
+                _mapTransferOfficialSessionBridgeUseDiscovery = false;
+                _mapTransferOfficialSessionBridgeConfiguredProcessSelector = null;
+                _mapTransferOfficialSessionBridgeConfiguredLocalPort = null;
                 _mapTransferOfficialSessionBridge.Stop();
                 _pendingOfficialMapTransferRequests.Clear();
-                return ChatCommandHandler.CommandResult.Ok(_mapTransferOfficialSessionBridge.LastStatus);
+                return ChatCommandHandler.CommandResult.Ok(DescribeMapTransferOfficialSessionBridgeStatus());
             }
 
             return ChatCommandHandler.CommandResult.Error("Usage: /maptransfer session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]");

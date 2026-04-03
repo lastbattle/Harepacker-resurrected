@@ -184,6 +184,107 @@ namespace HaCreator.MapSimulator.Interaction
             int attachmentMeso = 0,
             bool isAttachmentClaimed = false)
         {
+            DeliverMemo(
+                memoId: null,
+                sender,
+                subject,
+                body,
+                deliveredAt,
+                isRead,
+                isKept,
+                attachmentItemId,
+                attachmentQuantity,
+                attachmentMeso,
+                isAttachmentClaimed);
+        }
+
+        internal void ReplacePacketOwnedParcelSession(
+            IReadOnlyList<PacketOwnedParcelDecodedEntry> entries,
+            ParcelDialogTab activeTab,
+            out string message)
+        {
+            _memos.Clear();
+            _nextMemoId = 1;
+
+            if (entries != null)
+            {
+                DateTimeOffset displayTime = DateTimeOffset.Now;
+                foreach (PacketOwnedParcelDecodedEntry entry in entries)
+                {
+                    if (entry == null)
+                    {
+                        continue;
+                    }
+
+                    DeliverMemo(
+                        entry.ParcelSerial > 0 ? entry.ParcelSerial : null,
+                        entry.Sender,
+                        ResolvePacketOwnedParcelSubject(entry),
+                        ResolvePacketOwnedParcelBody(entry),
+                        displayTime,
+                        isRead: false,
+                        isKept: false,
+                        attachmentItemId: entry.AttachmentItemId,
+                        attachmentQuantity: entry.AttachmentQuantity,
+                        attachmentMeso: ResolvePacketOwnedAttachmentMeso(entry),
+                        isAttachmentClaimed: false);
+                    displayTime = displayTime.AddSeconds(-1);
+                }
+            }
+
+            ApplyActiveTab(activeTab, activeTab == ParcelDialogTab.QuickSend
+                ? "Packet-owned quick-delivery owner opened."
+                : "Packet-owned parcel receive owner opened.");
+
+            message = entries == null || entries.Count == 0
+                ? "Applied packet-owned parcel session with no receive rows."
+                : $"Applied packet-owned parcel session with {entries.Count} receive row(s).";
+            _lastActionSummary = message;
+        }
+
+        internal bool TryDeliverDecodedPacketOwnedParcel(PacketOwnedParcelDecodedEntry entry, out string message)
+        {
+            if (entry == null)
+            {
+                message = "Packet-owned parcel entry is missing.";
+                return false;
+            }
+
+            bool delivered = TryDeliverPacketOwnedParcel(
+                entry.Sender,
+                ResolvePacketOwnedParcelSubject(entry),
+                ResolvePacketOwnedParcelBody(entry),
+                isRead: false,
+                isKept: false,
+                isClaimed: false,
+                attachmentItemId: entry.AttachmentItemId,
+                attachmentQuantity: entry.AttachmentQuantity,
+                attachmentMeso: ResolvePacketOwnedAttachmentMeso(entry),
+                memoId: entry.ParcelSerial > 0 ? entry.ParcelSerial : null,
+                deliveredAt: DateTimeOffset.Now,
+                out message);
+            if (delivered && entry.IsQuickDelivery)
+            {
+                _lastActionSummary = $"{message} (quick delivery)";
+                message = _lastActionSummary;
+            }
+
+            return delivered;
+        }
+
+        private void DeliverMemo(
+            int? memoId,
+            string sender,
+            string subject,
+            string body,
+            DateTimeOffset? deliveredAt,
+            bool isRead,
+            bool isKept,
+            int attachmentItemId,
+            int attachmentQuantity,
+            int attachmentMeso,
+            bool isAttachmentClaimed)
+        {
             if (string.IsNullOrWhiteSpace(subject) || string.IsNullOrWhiteSpace(body))
             {
                 return;
@@ -197,7 +298,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             _memos.Add(new MemoState
             {
-                MemoId = _nextMemoId++,
+                MemoId = ResolveMemoId(memoId),
                 Sender = string.IsNullOrWhiteSpace(sender) ? "Maple Delivery Service" : sender.Trim(),
                 Subject = subject.Trim(),
                 Body = body.Trim(),
@@ -300,6 +401,35 @@ namespace HaCreator.MapSimulator.Interaction
             int attachmentMeso,
             out string message)
         {
+            return TryDeliverPacketOwnedParcel(
+                sender,
+                subject,
+                body,
+                isRead,
+                isKept,
+                isClaimed,
+                attachmentItemId,
+                attachmentQuantity,
+                attachmentMeso,
+                memoId: null,
+                deliveredAt: DateTimeOffset.Now,
+                out message);
+        }
+
+        internal bool TryDeliverPacketOwnedParcel(
+            string sender,
+            string subject,
+            string body,
+            bool isRead,
+            bool isKept,
+            bool isClaimed,
+            int attachmentItemId,
+            int attachmentQuantity,
+            int attachmentMeso,
+            int? memoId,
+            DateTimeOffset deliveredAt,
+            out string message)
+        {
             if (string.IsNullOrWhiteSpace(sender) || string.IsNullOrWhiteSpace(body))
             {
                 message = "Packet-owned parcel entries require sender and body text.";
@@ -311,10 +441,11 @@ namespace HaCreator.MapSimulator.Interaction
                 : subject.Trim();
 
             DeliverMemo(
+                memoId,
                 sender.Trim(),
                 resolvedSubject,
                 body.Trim(),
-                DateTimeOffset.Now,
+                deliveredAt,
                 isRead,
                 isKept,
                 attachmentItemId,
@@ -673,6 +804,67 @@ namespace HaCreator.MapSimulator.Interaction
                 MemoAttachmentKind.Meso => $"{attachment.Meso:N0} meso",
                 _ => "No attachment"
             };
+        }
+
+        private static string ResolvePacketOwnedParcelSubject(PacketOwnedParcelDecodedEntry entry)
+        {
+            if (entry == null)
+            {
+                return "Parcel delivery";
+            }
+
+            if (entry.IsQuickDelivery)
+            {
+                return "Quick delivery";
+            }
+
+            return BuildFallbackParcelLabel(entry.MemoText);
+        }
+
+        private static string ResolvePacketOwnedParcelBody(PacketOwnedParcelDecodedEntry entry)
+        {
+            if (entry == null)
+            {
+                return string.Empty;
+            }
+
+            string memoText = string.IsNullOrWhiteSpace(entry.MemoText)
+                ? "Packet-owned parcel payload did not include memo text."
+                : entry.MemoText.Trim();
+            if (entry.HasUndecodedItemAttachment)
+            {
+                memoText += "\n\nAttachment: item payload present but the exact GW_ItemSlotBase body was not fully decoded here.";
+            }
+
+            if (entry.AttachmentItemId > 0 && entry.AttachmentMeso > 0)
+            {
+                memoText += $"\n\nAttachment summary: {ResolveItemName(entry.AttachmentItemId)} x{Math.Max(1, entry.AttachmentQuantity)}, {entry.AttachmentMeso:N0} meso.";
+            }
+
+            return memoText;
+        }
+
+        private static int ResolvePacketOwnedAttachmentMeso(PacketOwnedParcelDecodedEntry entry)
+        {
+            if (entry == null)
+            {
+                return 0;
+            }
+
+            return entry.AttachmentItemId > 0 && entry.AttachmentMeso > 0
+                ? 0
+                : Math.Max(0, entry.AttachmentMeso);
+        }
+
+        private int ResolveMemoId(int? requestedMemoId)
+        {
+            if (!requestedMemoId.HasValue || requestedMemoId.Value <= 0 || _memos.Any(memo => memo.MemoId == requestedMemoId.Value))
+            {
+                return _nextMemoId++;
+            }
+
+            _nextMemoId = Math.Max(_nextMemoId, requestedMemoId.Value + 1);
+            return requestedMemoId.Value;
         }
 
         private static string BuildAttachmentDescription(MemoAttachmentState attachment)

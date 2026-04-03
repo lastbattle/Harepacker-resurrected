@@ -49,6 +49,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D _emoticonSelectTexture;
         private readonly Texture2D[] _basicEmoticonTextures;
         private readonly Texture2D[] _cashEmoticonTextures;
+        private readonly VerticalScrollbarSkin _scrollbarSkin;
         private readonly List<RowLayout> _rowLayouts = new();
 
         private SpriteFont _font;
@@ -62,6 +63,8 @@ namespace HaCreator.MapSimulator.UI
         private int _cursorPosition;
         private int _cursorBlinkTimer;
         private int _composeBodyScrollLine;
+        private bool _isDraggingComposeScrollBar;
+        private int _composeScrollDragOffsetY;
         private bool _isDraggingCommentScrollBar;
         private int _commentScrollDragOffsetY;
 
@@ -141,6 +144,7 @@ namespace HaCreator.MapSimulator.UI
             Texture2D emoticonSelectTexture,
             Texture2D[] basicEmoticonTextures,
             Texture2D[] cashEmoticonTextures,
+            VerticalScrollbarSkin scrollbarSkin,
             GraphicsDevice device)
             : base(frame)
         {
@@ -151,8 +155,33 @@ namespace HaCreator.MapSimulator.UI
             _emoticonSelectTexture = emoticonSelectTexture;
             _basicEmoticonTextures = basicEmoticonTextures ?? Array.Empty<Texture2D>();
             _cashEmoticonTextures = cashEmoticonTextures ?? Array.Empty<Texture2D>();
+            _scrollbarSkin = scrollbarSkin;
             _pixel = new Texture2D(device ?? throw new ArgumentNullException(nameof(device)), 1, 1);
             _pixel.SetData(new[] { Color.White });
+        }
+
+        public GuildBbsWindow(
+            IDXObject frame,
+            IDXObject overlay,
+            Point overlayOffset,
+            IDXObject contentOverlay,
+            Point contentOverlayOffset,
+            Texture2D emoticonSelectTexture,
+            Texture2D[] basicEmoticonTextures,
+            Texture2D[] cashEmoticonTextures,
+            GraphicsDevice device)
+            : this(
+                frame,
+                overlay,
+                overlayOffset,
+                contentOverlay,
+                contentOverlayOffset,
+                emoticonSelectTexture,
+                basicEmoticonTextures,
+                cashEmoticonTextures,
+                null,
+                device)
+        {
         }
 
         public override string WindowName => MapSimulatorWindowNames.GuildBbs;
@@ -268,14 +297,16 @@ namespace HaCreator.MapSimulator.UI
 
             MouseState mouseState = Mouse.GetState();
             HandleScroll(snapshot, mouseState);
+            HandleComposeScrollDrag(snapshot, mouseState);
             HandleCommentScrollDrag(snapshot, mouseState);
 
             bool leftReleased = mouseState.LeftButton == ButtonState.Released
                 && _previousMouseState.LeftButton == ButtonState.Pressed;
+            bool releasedComposeDrag = _isDraggingComposeScrollBar && leftReleased;
             bool releasedCommentDrag = _isDraggingCommentScrollBar && leftReleased;
             if (leftReleased && ContainsPoint(mouseState.X, mouseState.Y))
             {
-                if (!releasedCommentDrag)
+                if (!releasedComposeDrag && !releasedCommentDrag)
                 {
                     HandleMouseClick(snapshot, mouseState.Position);
                 }
@@ -283,6 +314,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (leftReleased)
             {
+                _isDraggingComposeScrollBar = false;
                 _isDraggingCommentScrollBar = false;
             }
 
@@ -304,14 +336,21 @@ namespace HaCreator.MapSimulator.UI
             int TickCount)
         {
             DrawLayer(sprite, _overlay, _overlayOffset, drawReflectionInfo, skeletonMeshRenderer, gameTime);
-            DrawLayer(sprite, _contentOverlay, _contentOverlayOffset, drawReflectionInfo, skeletonMeshRenderer, gameTime);
+            GuildBbsSnapshot snapshot = _currentSnapshot ?? RefreshSnapshot();
+            if (snapshot.IsWriteMode)
+            {
+                DrawLayer(sprite, _contentOverlay, _contentOverlayOffset, drawReflectionInfo, skeletonMeshRenderer, gameTime);
+            }
+            else
+            {
+                DrawLayer(sprite, _overlay, _overlayOffset, drawReflectionInfo, skeletonMeshRenderer, gameTime);
+            }
 
             if (_font == null)
             {
                 return;
             }
 
-            GuildBbsSnapshot snapshot = _currentSnapshot ?? RefreshSnapshot();
             sprite.DrawString(_font, "Guild BBS", new Vector2(Position.X + 54, Position.Y + 7), Color.White, 0f, Vector2.Zero, 0.52f, SpriteEffects.None, 0f);
             sprite.DrawString(_font, snapshot.GuildName, new Vector2(Position.X + 58, Position.Y + 22), new Color(59, 58, 54), 0f, Vector2.Zero, 0.45f, SpriteEffects.None, 0f);
             DrawString(
@@ -1035,8 +1074,6 @@ namespace HaCreator.MapSimulator.UI
             DrawString(sprite, compose.ModeText, detailBounds.X, detailBounds.Y - 22, new Color(83, 86, 92), 0.42f);
             DrawString(sprite, compose.IsNotice ? "[Notice]" : "[Thread]", detailBounds.X + 219, detailBounds.Y - 22, compose.IsNotice ? new Color(212, 143, 61) : new Color(85, 94, 110), 0.42f);
 
-            DrawTextInputBox(sprite, titleBounds, _activeInputTarget == InputTarget.ComposeTitle);
-            DrawTextInputBox(sprite, bodyBounds, _activeInputTarget == InputTarget.ComposeBody);
             DrawEditableText(sprite, compose.Title, titleBounds, 0.46f, new Color(58, 49, 39), InputTarget.ComposeTitle, tickCount);
             DrawEditableMultilineText(sprite, compose.Body, bodyBounds, 0.37f, new Color(78, 82, 91), InputTarget.ComposeBody, tickCount, ComposeBodyVisibleLineCount);
             DrawComposeScrollBar(sprite, compose.Body, bodyBounds);
@@ -1093,7 +1130,6 @@ namespace HaCreator.MapSimulator.UI
             DrawCommentScrollBar(sprite, thread);
 
             Rectangle replyBounds = GetReplyInputBounds();
-            DrawTextInputBox(sprite, replyBounds, _activeInputTarget == InputTarget.ReplyBody);
             DrawEditableText(sprite, snapshot.ReplyDraft.Body, replyBounds, 0.39f, new Color(78, 82, 91), InputTarget.ReplyBody, tickCount);
             DrawString(sprite, "Reply draft", replyBounds.X, replyBounds.Y - 15, new Color(101, 106, 115), 0.34f);
             DrawEmoticonStrip(sprite, snapshot.ReplyDraft.SelectedEmoticon, snapshot.ReplyDraft.CashEmoticonPageIndex, snapshot.ReplyDraft.CashEmoticonPageCount, snapshot.ReplyDraft.CashEmoticonOwnership);
@@ -1111,8 +1147,15 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            sprite.Draw(_pixel, metrics.TrackBounds, new Color(41, 46, 56, 45));
-            sprite.Draw(_pixel, metrics.ThumbBounds, new Color(101, 112, 131, 155));
+            DrawScrollbar(
+                sprite,
+                GetComposeScrollBarPrevBounds(),
+                GetComposeScrollBarNextBounds(),
+                metrics.TrackBounds,
+                metrics.ThumbBounds,
+                canMovePrev: _composeBodyScrollLine > 0,
+                canMoveNext: _composeBodyScrollLine < metrics.MaxScrollLine,
+                draggingThumb: _isDraggingComposeScrollBar);
         }
 
         private void DrawCommentScrollBar(SpriteBatch sprite, GuildBbsThreadSnapshot thread)
@@ -1123,8 +1166,43 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            sprite.Draw(_pixel, metrics.TrackBounds, new Color(41, 46, 56, 45));
-            sprite.Draw(_pixel, metrics.ThumbBounds, new Color(101, 112, 131, 155));
+            DrawScrollbar(
+                sprite,
+                GetCommentScrollBarPrevBounds(),
+                GetCommentScrollBarNextBounds(),
+                metrics.TrackBounds,
+                metrics.ThumbBounds,
+                canMovePrev: (thread?.CommentPageIndex ?? 0) > 0,
+                canMoveNext: thread != null && thread.CommentPageIndex < Math.Max(0, thread.CommentPageCount - 1),
+                draggingThumb: _isDraggingCommentScrollBar);
+        }
+
+        private void DrawScrollbar(
+            SpriteBatch sprite,
+            Rectangle prevBounds,
+            Rectangle nextBounds,
+            Rectangle trackBounds,
+            Rectangle thumbBounds,
+            bool canMovePrev,
+            bool canMoveNext,
+            bool draggingThumb)
+        {
+            if (_scrollbarSkin?.IsReady != true)
+            {
+                sprite.Draw(_pixel, trackBounds, new Color(41, 46, 56, 45));
+                sprite.Draw(_pixel, thumbBounds, new Color(101, 112, 131, 155));
+                return;
+            }
+
+            DrawScrollbarTrack(sprite, trackBounds);
+            DrawScrollbarArrow(sprite, prevBounds, _scrollbarSkin.PrevStates, _scrollbarSkin.PrevDisabled, canMovePrev);
+            DrawScrollbarArrow(sprite, nextBounds, _scrollbarSkin.NextStates, _scrollbarSkin.NextDisabled, canMoveNext);
+
+            Texture2D thumbTexture = ResolveScrollbarStateTexture(_scrollbarSkin.ThumbStates, true, thumbBounds.Contains(Mouse.GetState().Position), draggingThumb);
+            if (thumbTexture != null)
+            {
+                sprite.Draw(thumbTexture, new Vector2(thumbBounds.X, thumbBounds.Y), Color.White);
+            }
         }
 
         private void DrawEmoticonStrip(SpriteBatch sprite, GuildBbsEmoticonSnapshot selectedEmoticon, int cashPageIndex, int cashPageCount, IReadOnlyList<bool> cashOwnership)
@@ -1174,15 +1252,6 @@ namespace HaCreator.MapSimulator.UI
             {
                 sprite.Draw(_emoticonSelectTexture, new Rectangle(bounds.X - 2, bounds.Y - 2, EmoticonSelectionSize, EmoticonSelectionSize), Color.White);
             }
-        }
-
-        private void DrawTextInputBox(SpriteBatch sprite, Rectangle bounds, bool active)
-        {
-            sprite.Draw(_pixel, bounds, active ? new Color(255, 255, 255, 170) : new Color(245, 247, 250, 150));
-            sprite.Draw(_pixel, new Rectangle(bounds.X, bounds.Y, bounds.Width, 1), new Color(154, 162, 174));
-            sprite.Draw(_pixel, new Rectangle(bounds.X, bounds.Bottom - 1, bounds.Width, 1), new Color(154, 162, 174));
-            sprite.Draw(_pixel, new Rectangle(bounds.X, bounds.Y, 1, bounds.Height), new Color(154, 162, 174));
-            sprite.Draw(_pixel, new Rectangle(bounds.Right - 1, bounds.Y, 1, bounds.Height), new Color(154, 162, 174));
         }
 
         private void DrawEditableText(SpriteBatch sprite, string text, Rectangle bounds, float scale, Color color, InputTarget target, int tickCount)
@@ -1299,13 +1368,17 @@ namespace HaCreator.MapSimulator.UI
         private Rectangle GetDetailBounds() => new(Position.X + DetailLeft, Position.Y + DetailTop, DetailWidth, DetailHeight);
         private Rectangle GetComposeTitleBounds() => new(Position.X + 449, Position.Y + 30, 256, TitleInputHeight);
         private Rectangle GetComposeBodyBounds() => new(Position.X + 449, Position.Y + 56, 250, 180);
-        private Rectangle GetComposeScrollBarBounds() => new(Position.X + 706, Position.Y + 53, ComposeScrollBarWidth, 187);
+        private Rectangle GetComposeScrollBarBounds() => new(Position.X + 706, Position.Y + 53, _scrollbarSkin?.Width ?? ComposeScrollBarWidth, 187);
         private Rectangle GetCommentPaneBounds() => new(GetDetailBounds().X, GetDetailBounds().Y + 186, DetailWidth - 4, 148);
-        private Rectangle GetCommentScrollBarBounds() => new(Position.X + 710, Position.Y + 326, CommentScrollBarWidth, 125);
+        private Rectangle GetCommentScrollBarBounds() => new(Position.X + 710, Position.Y + 326, _scrollbarSkin?.Width ?? CommentScrollBarWidth, 125);
         private Rectangle GetReplyInputBounds() => new(GetDetailBounds().X, GetDetailBounds().Bottom - 74, DetailWidth - 6, ReplyInputHeight);
         private Rectangle GetBasicEmoticonBounds(int index) => new(Position.X + 426 + (index * BasicEmoticonSpacing), Position.Y + 246, BasicEmoticonSize, BasicEmoticonSize);
         private Rectangle GetCashEmoticonBounds(int index) => new(Position.X + 495 + (index * CashEmoticonSpacing), Position.Y + 246, CashEmoticonSize, CashEmoticonSize);
         private Rectangle GetCashEmoticonRowBounds() => new(Position.X + 495, Position.Y + 246, (VisibleCashEmoticonCount * CashEmoticonSpacing), CashEmoticonSize);
+        private Rectangle GetComposeScrollBarPrevBounds() => BuildScrollBarPrevBounds(GetComposeScrollBarBounds());
+        private Rectangle GetComposeScrollBarNextBounds() => BuildScrollBarNextBounds(GetComposeScrollBarBounds());
+        private Rectangle GetCommentScrollBarPrevBounds() => BuildScrollBarPrevBounds(GetCommentScrollBarBounds());
+        private Rectangle GetCommentScrollBarNextBounds() => BuildScrollBarNextBounds(GetCommentScrollBarBounds());
 
         private void DrawString(SpriteBatch sprite, string text, float x, float y, Color color, float scale)
         {
@@ -1498,6 +1571,25 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
+            if (GetComposeScrollBarPrevBounds().Contains(mousePosition))
+            {
+                ScrollComposeBody(-1);
+                return true;
+            }
+
+            if (GetComposeScrollBarNextBounds().Contains(mousePosition))
+            {
+                ScrollComposeBody(1);
+                return true;
+            }
+
+            if (metrics.ThumbBounds.Contains(mousePosition))
+            {
+                _isDraggingComposeScrollBar = true;
+                _composeScrollDragOffsetY = mousePosition.Y - metrics.ThumbBounds.Y;
+                return true;
+            }
+
             if (mousePosition.Y < metrics.ThumbBounds.Top)
             {
                 ScrollComposeBody(-ComposeBodyVisibleLineCount);
@@ -1534,6 +1626,18 @@ namespace HaCreator.MapSimulator.UI
                 return true;
             }
 
+            if (GetCommentScrollBarPrevBounds().Contains(mousePosition))
+            {
+                ShowFeedback(_moveCommentPageHandler?.Invoke(-1));
+                return true;
+            }
+
+            if (GetCommentScrollBarNextBounds().Contains(mousePosition))
+            {
+                ShowFeedback(_moveCommentPageHandler?.Invoke(1));
+                return true;
+            }
+
             if (metrics.ThumbBounds.Contains(mousePosition))
             {
                 _isDraggingCommentScrollBar = true;
@@ -1560,6 +1664,39 @@ namespace HaCreator.MapSimulator.UI
         {
             ScrollMetrics metrics = BuildComposeScrollMetrics(_inputBuffer.ToString(), GetComposeBodyBounds());
             _composeBodyScrollLine = Math.Clamp(_composeBodyScrollLine + deltaLines, 0, metrics.MaxScrollLine);
+        }
+
+        private void HandleComposeScrollDrag(GuildBbsSnapshot snapshot, MouseState mouseState)
+        {
+            if (!snapshot.IsWriteMode || snapshot.Compose == null)
+            {
+                _isDraggingComposeScrollBar = false;
+                return;
+            }
+
+            if (mouseState.LeftButton == ButtonState.Pressed && _previousMouseState.LeftButton == ButtonState.Released)
+            {
+                TryHandleComposeScrollClick(snapshot, mouseState.Position);
+            }
+
+            if (!_isDraggingComposeScrollBar || mouseState.LeftButton != ButtonState.Pressed)
+            {
+                return;
+            }
+
+            ScrollMetrics metrics = BuildComposeScrollMetrics(snapshot.Compose.Body, GetComposeBodyBounds());
+            if (metrics.MaxScrollLine <= 0)
+            {
+                _isDraggingComposeScrollBar = false;
+                return;
+            }
+
+            Rectangle trackBounds = metrics.TrackBounds;
+            int thumbHeight = metrics.ThumbBounds.Height;
+            int travel = Math.Max(1, trackBounds.Height - thumbHeight);
+            int thumbTop = Math.Clamp(mouseState.Y - _composeScrollDragOffsetY, trackBounds.Y, trackBounds.Bottom - thumbHeight);
+            float relative = (thumbTop - trackBounds.Y) / (float)travel;
+            _composeBodyScrollLine = Math.Clamp((int)Math.Round(relative * metrics.MaxScrollLine), 0, metrics.MaxScrollLine);
         }
 
         private void HandleCommentScrollDrag(GuildBbsSnapshot snapshot, MouseState mouseState)
@@ -1630,7 +1767,7 @@ namespace HaCreator.MapSimulator.UI
             int totalLines = Math.Max(1, lines.Count);
             int visibleLines = Math.Min(ComposeBodyVisibleLineCount, totalLines);
             int maxScrollLine = Math.Max(0, totalLines - visibleLines);
-            Rectangle trackBounds = GetComposeScrollBarBounds();
+            Rectangle trackBounds = BuildScrollBarTrackBounds(GetComposeScrollBarBounds());
             if (maxScrollLine <= 0)
             {
                 return new ScrollMetrics
@@ -1659,7 +1796,7 @@ namespace HaCreator.MapSimulator.UI
         private ScrollMetrics BuildCommentScrollMetrics(GuildBbsThreadSnapshot thread)
         {
             int totalPages = Math.Max(1, thread?.CommentPageCount ?? 1);
-            Rectangle trackBounds = GetCommentScrollBarBounds();
+            Rectangle trackBounds = BuildScrollBarTrackBounds(GetCommentScrollBarBounds());
             if (totalPages <= 1)
             {
                 return new ScrollMetrics
@@ -1694,6 +1831,76 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return (Math.Max(0, cashPageIndex) * VisibleCashEmoticonCount) + displayIndex;
+        }
+
+        private Rectangle BuildScrollBarPrevBounds(Rectangle scrollBounds)
+        {
+            int height = _scrollbarSkin?.PrevHeight ?? 12;
+            return new Rectangle(scrollBounds.X, scrollBounds.Y, scrollBounds.Width, Math.Min(scrollBounds.Height, height));
+        }
+
+        private Rectangle BuildScrollBarNextBounds(Rectangle scrollBounds)
+        {
+            int height = _scrollbarSkin?.NextHeight ?? 12;
+            return new Rectangle(scrollBounds.X, scrollBounds.Bottom - Math.Min(scrollBounds.Height, height), scrollBounds.Width, Math.Min(scrollBounds.Height, height));
+        }
+
+        private Rectangle BuildScrollBarTrackBounds(Rectangle scrollBounds)
+        {
+            Rectangle prevBounds = BuildScrollBarPrevBounds(scrollBounds);
+            Rectangle nextBounds = BuildScrollBarNextBounds(scrollBounds);
+            return new Rectangle(scrollBounds.X, prevBounds.Bottom, scrollBounds.Width, Math.Max(0, nextBounds.Y - prevBounds.Bottom));
+        }
+
+        private void DrawScrollbarTrack(SpriteBatch sprite, Rectangle trackBounds)
+        {
+            if (_scrollbarSkin?.Base == null)
+            {
+                return;
+            }
+
+            int tileY = trackBounds.Y;
+            while (tileY < trackBounds.Bottom)
+            {
+                int tileHeight = Math.Min(_scrollbarSkin.Base.Height, trackBounds.Bottom - tileY);
+                Rectangle destination = new Rectangle(trackBounds.X, tileY, _scrollbarSkin.Base.Width, tileHeight);
+                Rectangle? source = tileHeight == _scrollbarSkin.Base.Height
+                    ? null
+                    : new Rectangle(0, 0, _scrollbarSkin.Base.Width, tileHeight);
+                sprite.Draw(_scrollbarSkin.Base, destination, source, Color.White);
+                tileY += tileHeight;
+            }
+        }
+
+        private void DrawScrollbarArrow(SpriteBatch sprite, Rectangle bounds, Texture2D[] states, Texture2D disabledTexture, bool enabled)
+        {
+            Texture2D texture = enabled
+                ? ResolveScrollbarStateTexture(states, true, bounds.Contains(Mouse.GetState().Position), false)
+                : disabledTexture ?? states?.FirstOrDefault();
+            if (texture != null)
+            {
+                sprite.Draw(texture, new Vector2(bounds.X, bounds.Y), Color.White);
+            }
+        }
+
+        private static Texture2D ResolveScrollbarStateTexture(Texture2D[] states, bool enabled, bool hovered, bool pressed)
+        {
+            if (!enabled || states == null || states.Length == 0)
+            {
+                return states?.FirstOrDefault();
+            }
+
+            if (pressed && states.Length > 2 && states[2] != null)
+            {
+                return states[2];
+            }
+
+            if (hovered && states.Length > 1 && states[1] != null)
+            {
+                return states[1];
+            }
+
+            return states[0];
         }
 
         private void SetCursorFromPoint(InputTarget target, GuildBbsSnapshot snapshot, Point mousePosition)

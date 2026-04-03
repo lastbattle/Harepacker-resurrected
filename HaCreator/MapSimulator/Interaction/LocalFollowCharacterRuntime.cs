@@ -46,6 +46,7 @@ namespace HaCreator.MapSimulator.Interaction
     {
         public const int FollowRequestThrottleMs = 1000;
         public const int FollowRequestOpcode = 134;
+        public const int FollowWithdrawOpcode = 135;
 
         private int _pendingOutgoingDriverId;
         private bool _pendingOutgoingAutoRequest;
@@ -55,6 +56,7 @@ namespace HaCreator.MapSimulator.Interaction
         private bool _lastOutgoingRequestOpcodeAutoRequest;
         private bool _lastOutgoingRequestOpcodeKeyInput;
         private int _lastOutgoingRequestOpcodeTick = int.MinValue;
+        private int _lastOutgoingWithdrawOpcodeTick = int.MinValue;
 
         private int _attachedDriverId;
         private int _attachedPassengerId;
@@ -107,6 +109,7 @@ namespace HaCreator.MapSimulator.Interaction
             _lastOutgoingRequestOpcodeAutoRequest = false;
             _lastOutgoingRequestOpcodeKeyInput = false;
             _lastOutgoingRequestOpcodeTick = int.MinValue;
+            _lastOutgoingWithdrawOpcodeTick = int.MinValue;
             _attachedDriverId = 0;
             _attachedPassengerId = 0;
             _incomingRequesterId = 0;
@@ -169,6 +172,25 @@ namespace HaCreator.MapSimulator.Interaction
             _incomingRequesterId = 0;
             _lastStatusMessage = $"Declined follow request from {displayName}.";
             return _lastStatusMessage;
+        }
+
+        public bool TryWithdrawOutgoingRequest(int currentTime, Func<int, string> nameResolver, out string message)
+        {
+            if (_pendingOutgoingDriverId <= 0)
+            {
+                message = "No local follow request is pending.";
+                return false;
+            }
+
+            string displayName = DescribeActor(_pendingOutgoingDriverId, nameResolver);
+            _pendingOutgoingDriverId = 0;
+            _pendingOutgoingAutoRequest = false;
+            _pendingOutgoingKeyInput = false;
+            _lastOutgoingWithdrawOpcodeTick = currentTime;
+            _lastStatusMessage =
+                $"Withdrew the pending local follow request to {displayName}; simulated outpacket {FollowWithdrawOpcode}.";
+            message = _lastStatusMessage;
+            return true;
         }
 
         public string ClearAttachedPassenger(LocalFollowUserSnapshot requester, bool transferField, Vector2? transferPosition)
@@ -310,8 +332,11 @@ namespace HaCreator.MapSimulator.Interaction
             string lastRequest = _lastOutgoingRequestOpcodeTick == int.MinValue
                 ? "none"
                 : $"{FollowRequestOpcode}({_lastOutgoingRequestOpcodeDriverId},{(_lastOutgoingRequestOpcodeAutoRequest ? 1 : 0)},{(_lastOutgoingRequestOpcodeKeyInput ? 1 : 0)})@{_lastOutgoingRequestOpcodeTick}";
+            string lastWithdraw = _lastOutgoingWithdrawOpcodeTick == int.MinValue
+                ? "none"
+                : $"{FollowWithdrawOpcode}@{_lastOutgoingWithdrawOpcodeTick}";
             string attachAck = _lastAttachAckTick == int.MinValue ? "none" : _lastAttachAckTick.ToString();
-            return $"Local follow: pending={pendingDriver}, attachedDriver={attachedDriver}, passenger={attachedPassenger}, incoming={incomingRequester}, lastRequest={lastRequest}, attachAck={attachAck}. {_lastStatusMessage}";
+            return $"Local follow: pending={pendingDriver}, attachedDriver={attachedDriver}, passenger={attachedPassenger}, incoming={incomingRequester}, lastRequest={lastRequest}, lastWithdraw={lastWithdraw}, attachAck={attachAck}. {_lastStatusMessage}";
         }
 
         private bool CanSendOutgoingRequest(

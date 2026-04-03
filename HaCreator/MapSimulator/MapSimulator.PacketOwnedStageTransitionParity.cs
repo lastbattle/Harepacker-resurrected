@@ -109,7 +109,7 @@ namespace HaCreator.MapSimulator
             int durationMs = Math.Max(0, _packetStageTransitionBackEffectDurationMs);
             if (durationMs == 0)
             {
-                ApplyPacketOwnedBackAlpha(_packetStageTransitionBackEffectTargetAlpha);
+                ApplyPacketOwnedBackAlpha(_packetStageTransitionBackEffectTargetAlpha, _packetStageTransitionBackEffectPageId);
                 _packetStageTransitionBackEffectStartTick = int.MinValue;
                 return;
             }
@@ -120,7 +120,7 @@ namespace HaCreator.MapSimulator
                     + ((_packetStageTransitionBackEffectTargetAlpha - _packetStageTransitionBackEffectStartAlpha) * progress)),
                 byte.MinValue,
                 byte.MaxValue);
-            ApplyPacketOwnedBackAlpha(alpha);
+            ApplyPacketOwnedBackAlpha(alpha, _packetStageTransitionBackEffectPageId);
             if (progress >= 1f)
             {
                 _packetStageTransitionBackEffectStartTick = int.MinValue;
@@ -152,6 +152,13 @@ namespace HaCreator.MapSimulator
                 return "CMapLoadable::OnSetBackEffect routed, but the current map has no back backgrounds to fade.";
             }
 
+            IReadOnlyList<BackgroundItem> targets = PacketStageTransitionBackEffectPageResolver.SelectTargets(backgrounds_back, packet.PageId);
+            if (targets.Count == 0)
+            {
+                RestorePacketOwnedBackEffect();
+                return $"CMapLoadable::OnSetBackEffect targeted page {packet.PageId.ToString(CultureInfo.InvariantCulture)}, but the current map has no authored back backgrounds on that page.";
+            }
+
             byte targetAlpha = packet.Effect switch
             {
                 0 => byte.MaxValue,
@@ -169,16 +176,16 @@ namespace HaCreator.MapSimulator
             _packetStageTransitionBackEffectPageId = packet.PageId;
             _packetStageTransitionBackEffectStartTick = currentTick;
             _packetStageTransitionBackEffectDurationMs = Math.Max(0, packet.DurationMs);
-            _packetStageTransitionBackEffectStartAlpha = ResolvePacketOwnedCurrentBackAlpha();
+            _packetStageTransitionBackEffectStartAlpha = ResolvePacketOwnedCurrentBackAlpha(targets);
             _packetStageTransitionBackEffectTargetAlpha = targetAlpha;
             if (_packetStageTransitionBackEffectDurationMs == 0)
             {
-                ApplyPacketOwnedBackAlpha(targetAlpha);
+                ApplyPacketOwnedBackAlpha(targetAlpha, _packetStageTransitionBackEffectPageId);
                 _packetStageTransitionBackEffectStartTick = int.MinValue;
             }
 
             string direction = packet.Effect == 0 ? "fade-in" : "fade-out";
-            return $"CMapLoadable::OnSetBackEffect applied {direction} to back backgrounds for map {_packetStageTransitionBackEffectMapId.ToString(CultureInfo.InvariantCulture)} page {packet.PageId.ToString(CultureInfo.InvariantCulture)} over {Math.Max(0, packet.DurationMs).ToString(CultureInfo.InvariantCulture)} ms. Page-scoped alpha is approximated across all back layers.";
+            return $"CMapLoadable::OnSetBackEffect applied {direction} to {targets.Count.ToString(CultureInfo.InvariantCulture)} back background(s) for map {_packetStageTransitionBackEffectMapId.ToString(CultureInfo.InvariantCulture)} page {packet.PageId.ToString(CultureInfo.InvariantCulture)} over {Math.Max(0, packet.DurationMs).ToString(CultureInfo.InvariantCulture)} ms.";
         }
 
         private string ClearPacketOwnedBackEffect()
@@ -234,18 +241,17 @@ namespace HaCreator.MapSimulator
             }
         }
 
-        private void ApplyPacketOwnedBackAlpha(byte alpha)
+        private void ApplyPacketOwnedBackAlpha(byte alpha, int pageId)
         {
-            foreach (BackgroundItem background in backgrounds_back)
+            foreach (BackgroundItem background in PacketStageTransitionBackEffectPageResolver.SelectTargets(backgrounds_back, pageId))
             {
                 background?.SetAlpha(alpha);
             }
         }
 
-        private byte ResolvePacketOwnedCurrentBackAlpha()
+        private byte ResolvePacketOwnedCurrentBackAlpha(IReadOnlyList<BackgroundItem> targets)
         {
-            BackgroundItem firstBackground = backgrounds_back.FirstOrDefault();
-            return firstBackground?.Color.A ?? byte.MaxValue;
+            return PacketStageTransitionBackEffectPageResolver.ResolveCurrentAlpha(targets);
         }
 
         private string DescribePacketOwnedStageTransitionStatus()

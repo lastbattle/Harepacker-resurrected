@@ -37,6 +37,7 @@ namespace HaCreator.MapSimulator.UI
         private SpriteFont _font;
         private Func<AdminShopAvatarPreviewSelection> _selectionProvider;
         private Func<string> _shopRequestHandler;
+        private CharacterBuild _initialAvatarBuild;
         private CharacterBuild _previewBuild;
         private CharacterAssembler _previewAssembler;
         private CharacterBuild _previewSourceBuild;
@@ -219,7 +220,8 @@ namespace HaCreator.MapSimulator.UI
 
             ResetPreviewBuild();
             _lastPreviewedSlot = null;
-            _statusMessage = "CCSWnd_Char::OnDefaultAvatar restored the live character appearance.";
+            _buyAvatarButton?.SetEnabled(true);
+            _statusMessage = "CCSWnd_Char::OnDefaultAvatar restored the initial avatar snapshot and re-armed the buy button.";
         }
 
         private void HandleTakeoffAvatar()
@@ -361,6 +363,7 @@ namespace HaCreator.MapSimulator.UI
             _previewBuild.PlaceEquipment(loadedPart, loadedPart.Slot);
             _previewAssembler = new CharacterAssembler(_previewBuild);
             _lastPreviewedSlot = loadedPart.Slot;
+            _buyAvatarButton?.SetEnabled(true);
             _statusMessage = $"CCSWnd_Char::OnWear previewed {selection.Title} on {loadedPart.Slot}.";
         }
 
@@ -376,6 +379,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (forceReset || !ReferenceEquals(_previewSourceBuild, CharacterBuild) || _previewBuild == null)
             {
+                _initialAvatarBuild = CharacterBuild?.Clone();
                 ResetPreviewBuild();
             }
         }
@@ -383,7 +387,7 @@ namespace HaCreator.MapSimulator.UI
         private void ResetPreviewBuild()
         {
             _previewSourceBuild = CharacterBuild;
-            _previewBuild = CharacterBuild?.Clone();
+            _previewBuild = (_initialAvatarBuild ?? CharacterBuild)?.Clone();
             _previewAssembler = _previewBuild == null ? null : new CharacterAssembler(_previewBuild);
         }
 

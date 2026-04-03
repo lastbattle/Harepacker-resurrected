@@ -17,9 +17,23 @@ namespace HaCreator.MapSimulator.Managers
         public int? PremiumArgument { get; init; }
 
         public bool IsSuccess =>
-            ResultCode == 0 ||
-            ResultCode == 23 ||
-            (ResultCode == 12 && (ResponseCode == 11 || ResponseCode == 13));
+            LoginSelectCharacterResultCodec.IsSuccess(ResultCode, ResponseCode);
+
+        public bool HasCompleteConnectPayload =>
+            ServerAddress != null &&
+            Port.HasValue &&
+            CharacterId.HasValue &&
+            AuthenCode.HasValue &&
+            PremiumArgument.HasValue;
+
+        public bool RequiresWebsiteHandoff =>
+            LoginSelectCharacterResultCodec.RequiresWebsiteHandoff(ResultCode);
+
+        public bool ReturnsToTitle =>
+            LoginSelectCharacterResultCodec.ShouldReturnToTitle(ResultCode, ResponseCode);
+
+        public int? NoticeTextIndex =>
+            LoginSelectCharacterResultCodec.ResolveFailureNoticeTextIndex(ResultCode, ResponseCode);
 
         public string EndpointText =>
             ServerAddress != null && Port.HasValue
@@ -131,6 +145,63 @@ namespace HaCreator.MapSimulator.Managers
             return resultCode == 0 ||
                    resultCode == 23 ||
                    (resultCode == 12 && (responseCode == 11 || responseCode == 13));
+        }
+
+        public static bool RequiresWebsiteHandoff(byte resultCode)
+        {
+            return resultCode is 14 or 15;
+        }
+
+        public static bool ShouldReturnToTitle(byte resultCode, byte responseCode)
+        {
+            if (IsSuccess(resultCode, responseCode) || RequiresWebsiteHandoff(resultCode))
+            {
+                return false;
+            }
+
+            return resultCode == 7 ||
+                   (resultCode == 12 && responseCode is 1 or 2 or 3 or 19 or 25 or 27 or 28);
+        }
+
+        public static int? ResolveFailureNoticeTextIndex(byte resultCode, byte responseCode)
+        {
+            if (IsSuccess(resultCode, responseCode))
+            {
+                return null;
+            }
+
+            if (resultCode == 12)
+            {
+                return responseCode switch
+                {
+                    1 => 28,
+                    2 => 29,
+                    3 => 30,
+                    19 => 25,
+                    25 => 31,
+                    27 => 56,
+                    28 => 62,
+                    _ => 15,
+                };
+            }
+
+            return resultCode switch
+            {
+                255 or 6 or 8 or 9 => 15,
+                2 or 3 => 16,
+                4 => 3,
+                5 => 20,
+                7 => 17,
+                10 => 19,
+                11 => 14,
+                13 => 21,
+                14 => 27,
+                15 => 26,
+                16 or 21 => 33,
+                17 => 27,
+                25 => 40,
+                _ => 15,
+            };
         }
     }
 }

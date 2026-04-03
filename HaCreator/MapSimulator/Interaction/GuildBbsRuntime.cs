@@ -47,7 +47,7 @@ namespace HaCreator.MapSimulator.Interaction
             | GuildBbsPermissionMask.Moderate;
         private const int MaxTitleLength = 25;
         private const int MaxThreadBodyLength = 600;
-        private const int MaxReplyBodyLength = 120;
+        private const int MaxReplyBodyLength = 25;
 
         private sealed class GuildBbsCommentState
         {
@@ -564,7 +564,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         public string SetComposeTitle(string title)
         {
-            _compose.Title = SanitizeText(title, MaxTitleLength);
+            _compose.Title = SanitizeSingleLineText(title, MaxTitleLength);
             return $"Compose title updated ({_compose.Title.Length}/{MaxTitleLength}).";
         }
 
@@ -576,7 +576,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         public string SetReplyDraft(string body)
         {
-            _replyDraft.Body = SanitizeText(body, MaxReplyBodyLength);
+            _replyDraft.Body = SanitizeSingleLineText(body, MaxReplyBodyLength);
             return $"Reply draft updated ({_replyDraft.Body.Length}/{MaxReplyBodyLength}).";
         }
 
@@ -817,6 +817,20 @@ namespace HaCreator.MapSimulator.Interaction
 
             string trimmed = value.Replace("\r", string.Empty).TrimStart();
             return trimmed.Length <= maxLength ? trimmed : trimmed[..maxLength];
+        }
+
+        private static string SanitizeSingleLineText(string value, int maxLength)
+        {
+            if (string.IsNullOrEmpty(value))
+            {
+                return string.Empty;
+            }
+
+            string singleLine = value
+                .Replace("\r", string.Empty)
+                .Replace("\n", " ")
+                .TrimStart();
+            return singleLine.Length <= maxLength ? singleLine : singleLine[..maxLength];
         }
 
         private bool TryResolveEmoticonSelection(

@@ -1239,10 +1239,47 @@ namespace HaCreator.MapSimulator.Loaders
             UIObject allLevelButton = LoadButton(listProperty, "BtAllLevel", btClickSound, btOverSound, device);
 
             quest.InitializeLevelFilterButtons(myLevelButton, allLevelButton);
+            UIObject maximizeCategoryButton = LoadButton(questProperty, "BtMax", btClickSound, btOverSound, device);
+            UIObject minimizeCategoryButton = LoadButton(questProperty, "BtMin", btClickSound, btOverSound, device);
+            UIObject categoryLegendButton = LoadButton(listProperty, "BtIconInfo", btClickSound, btOverSound, device);
+            if (categoryLegendButton != null)
+            {
+                int toggleX = categoryLegendButton.X + Math.Max(categoryLegendButton.CanvasSnapshotWidth, 13) + 2;
+                int toggleY = categoryLegendButton.Y;
+
+                if (maximizeCategoryButton != null && maximizeCategoryButton.X == 0 && maximizeCategoryButton.Y == 0)
+                {
+                    maximizeCategoryButton.X = toggleX;
+                    maximizeCategoryButton.Y = toggleY;
+                }
+
+                if (minimizeCategoryButton != null && minimizeCategoryButton.X == 0 && minimizeCategoryButton.Y == 0)
+                {
+                    minimizeCategoryButton.X = toggleX;
+                    minimizeCategoryButton.Y = toggleY;
+                }
+            }
+
             quest.InitializeCategoryFilterButtons(
-                LoadButton(questProperty, "BtMax", btClickSound, btOverSound, device),
-                LoadButton(questProperty, "BtMin", btClickSound, btOverSound, device),
-                LoadButton(listProperty, "BtIconInfo", btClickSound, btOverSound, device));
+                maximizeCategoryButton,
+                minimizeCategoryButton,
+                categoryLegendButton);
+            quest.SetCategoryPanelDockToBottom(true);
+            quest.SetCategoryButtonTextures(
+                new[]
+                {
+                    LoadButtonStateTexture(questProperty?["BtMax"] as WzSubProperty, "normal", device),
+                    LoadButtonStateTexture(questProperty?["BtMax"] as WzSubProperty, "pressed", device),
+                    LoadButtonStateTexture(questProperty?["BtMax"] as WzSubProperty, "disabled", device),
+                    LoadButtonStateTexture(questProperty?["BtMax"] as WzSubProperty, "mouseOver", device)
+                },
+                new[]
+                {
+                    LoadButtonStateTexture(questProperty?["BtMin"] as WzSubProperty, "normal", device),
+                    LoadButtonStateTexture(questProperty?["BtMin"] as WzSubProperty, "pressed", device),
+                    LoadButtonStateTexture(questProperty?["BtMin"] as WzSubProperty, "disabled", device),
+                    LoadButtonStateTexture(questProperty?["BtMin"] as WzSubProperty, "mouseOver", device)
+                });
 
             WzSubProperty iconInfoProperty = questProperty?["icon_info"] as WzSubProperty;
             WzSubProperty iconInfoSheetsProperty = iconInfoProperty?["Sheet"] as WzSubProperty;
@@ -2713,6 +2750,38 @@ namespace HaCreator.MapSimulator.Loaders
                 LoadButton(userInfoProperty, "BtItem", clickSound, overSound, device),
                 LoadButton(userInfoProperty, "BtWish", clickSound, overSound, device),
                 LoadButton(userInfoProperty, "BtFamily", clickSound, overSound, device));
+            RegisterLegacyUserInfoFrame(window, "Pet", userInfoProperty, "backgrnd2", device);
+            RegisterLegacyUserInfoFrame(window, "Ride", userInfoProperty, "backgrnd5", device);
+            RegisterLegacyUserInfoFrame(window, "Collection", userInfoProperty, "backgrnd7", device);
+            window.InitializeLegacyButtons(
+                LoadButton(userInfoProperty, "BtPetShow", clickSound, overSound, device),
+                LoadButton(userInfoProperty, "BtPetHide", clickSound, overSound, device),
+                LoadButton(userInfoProperty, "BtTamingShow", clickSound, overSound, device),
+                LoadButton(userInfoProperty, "BtTamingHide", clickSound, overSound, device),
+                LoadButton(userInfoProperty, "BtBookShow", clickSound, overSound, device),
+                LoadButton(userInfoProperty, "BtBookHide", clickSound, overSound, device),
+                LoadButton(userInfoProperty, "BtCollectionShow", clickSound, overSound, device),
+                LoadButton(userInfoProperty, "BtCollectionHide", clickSound, overSound, device),
+                LoadButton(userInfoProperty, "BtExceptionShow", clickSound, overSound, device),
+                LoadButton(userInfoProperty, "BtExceptionHide", clickSound, overSound, device),
+                LoadButton(userInfoProperty, "BtPresent", clickSound, overSound, device));
+            window.InitializeLegacyPetButtons(new[]
+            {
+                LoadButton(userInfoProperty, "BtPet1", clickSound, overSound, device),
+                LoadButton(userInfoProperty, "BtPet2", clickSound, overSound, device),
+                LoadButton(userInfoProperty, "BtPet3", clickSound, overSound, device)
+            });
+            Texture2D legacyExceptionFrameTexture = LoadCanvasTexture(userInfoProperty, "backgrnd6", device);
+            if (legacyExceptionFrameTexture != null)
+            {
+                window.InitializeExceptionPopup(
+                    new DXObject(0, 0, legacyExceptionFrameTexture, 0),
+                    null,
+                    LoadButton(userInfoProperty, "BtRegister", clickSound, overSound, device),
+                    LoadButton(userInfoProperty, "BtDelete", clickSound, overSound, device),
+                    LoadButton(userInfoProperty, "BtMeso", clickSound, overSound, device));
+            }
+
             return window;
         }
 
@@ -2836,6 +2905,22 @@ namespace HaCreator.MapSimulator.Loaders
 
             }
 
+        }
+
+        private static void RegisterLegacyUserInfoFrame(UserInfoUI window, string panelName, WzSubProperty userInfoProperty, string canvasName, GraphicsDevice device)
+        {
+            if (window == null || userInfoProperty == null || string.IsNullOrWhiteSpace(panelName) || string.IsNullOrWhiteSpace(canvasName))
+            {
+                return;
+            }
+
+            Texture2D frameTexture = LoadCanvasTexture(userInfoProperty, canvasName, device);
+            if (frameTexture == null)
+            {
+                return;
+            }
+
+            window.RegisterLegacyFrame(panelName, new DXObject(0, 0, frameTexture, 0));
         }
 
 

@@ -43,6 +43,7 @@ namespace HaCreator.MapSimulator.UI
             public EquipmentChangeRequestKind Kind { get; init; }
             public int RequestId { get; init; }
             public int RequestedAtTick { get; init; }
+            public EquipmentChangeOwnerKind OwnerKind { get; init; }
             public int OwnerSessionId { get; init; }
         }
 
@@ -282,7 +283,8 @@ namespace HaCreator.MapSimulator.UI
             EquipmentChangeResult result = EquipmentChangeResultRequested.Invoke(new EquipmentChangeResolutionQuery
             {
                 RequestId = _pendingEquipmentChange.RequestId,
-                OwnerSessionId = _equipmentRequestSessionId,
+                OwnerKind = _pendingEquipmentChange.OwnerKind,
+                OwnerSessionId = _pendingEquipmentChange.OwnerSessionId,
                 RequestedAtTick = _pendingEquipmentChange.RequestedAtTick
             });
             if (result == null || result.IsPending)
@@ -957,6 +959,7 @@ namespace HaCreator.MapSimulator.UI
 
             EquipmentChangeRequest request = new EquipmentChangeRequest
             {
+                OwnerKind = EquipmentChangeOwnerKind.LegacyWindow,
                 OwnerSessionId = _equipmentRequestSessionId,
                 ExpectedCharacterId = _characterBuild?.Id ?? 0,
                 ExpectedBuildStateToken = _characterBuild?.ComputeEquipmentStateToken() ?? 0,
@@ -981,6 +984,7 @@ namespace HaCreator.MapSimulator.UI
 
             EquipmentChangeRequest request = new EquipmentChangeRequest
             {
+                OwnerKind = EquipmentChangeOwnerKind.LegacyWindow,
                 OwnerSessionId = _equipmentRequestSessionId,
                 ExpectedCharacterId = _characterBuild?.Id ?? 0,
                 ExpectedBuildStateToken = _characterBuild?.ComputeEquipmentStateToken() ?? 0,
@@ -1032,6 +1036,7 @@ namespace HaCreator.MapSimulator.UI
                     Kind = kind,
                     RequestId = submission.RequestId,
                     RequestedAtTick = submission.RequestedAtTick,
+                    OwnerKind = request.OwnerKind,
                     OwnerSessionId = request.OwnerSessionId
                 };
 

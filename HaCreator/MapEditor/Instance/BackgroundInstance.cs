@@ -21,12 +21,13 @@ namespace HaCreator.MapEditor.Instance
         private int _rx;
         private int _ry;
         private bool _front;
+        private int _page;
         private int _screenMode;
         private string _spineAni;
         private bool _spineRandomStart;
         private BackgroundType _type;
 
-        public BackgroundInstance(BackgroundInfo baseInfo, Board board, int x, int y, int z, int rx, int ry, int cx, int cy, BackgroundType type, int a, bool front, bool flip, int _screenMode, 
+        public BackgroundInstance(BackgroundInfo baseInfo, Board board, int x, int y, int z, int rx, int ry, int cx, int cy, BackgroundType type, int a, bool front, bool flip, int page, int _screenMode, 
             string _spineAni, bool _spineRandomStart)
             : base(board, x, y, z)
         {
@@ -39,6 +40,7 @@ namespace HaCreator.MapEditor.Instance
             this._a = a;
             this._type = type;
             this._front = front;
+            this._page = page;
             this._screenMode = _screenMode;
             this._spineAni = _spineAni;
             this._spineRandomStart = _spineRandomStart;
@@ -175,6 +177,12 @@ namespace HaCreator.MapEditor.Instance
             set { _front = value; }
         }
 
+        public int Page
+        {
+            get { return _page; }
+            set { _page = value; }
+        }
+
         /// <summary>
         /// The screen resolution to display this background object. (0 = all res)
         /// </summary>
@@ -293,6 +301,7 @@ namespace HaCreator.MapEditor.Instance
             public bool flip;
             public int a, cx, cy, rx, ry;
             public bool front;
+            public int page;
             public int screenMode;
             public BackgroundType type;
             public string bs;
@@ -319,6 +328,7 @@ namespace HaCreator.MapEditor.Instance
             result.rx = _rx;
             result.ry = _ry;
             result.front = _front;
+            result.page = _page;
             result.screenMode = _screenMode;
             result.spineAni = _spineAni;
             result.spineRandomStart = _spineRandomStart;
@@ -338,6 +348,7 @@ namespace HaCreator.MapEditor.Instance
             _rx = json.rx;
             _ry = json.ry;
             _front = json.front;
+            _page = json.page;
             _type = json.type;
             _screenMode = json.screenMode;
             _spineAni = json.spineAni;

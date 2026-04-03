@@ -33,6 +33,8 @@ namespace HaCreator.MapSimulator.Interaction
         public string ValueText { get; init; } = string.Empty;
         public bool IsComplete { get; init; }
         public int? ItemId { get; init; }
+        public long? CurrentValue { get; init; }
+        public long? RequiredValue { get; init; }
     }
 
     internal sealed class QuestLogEntrySnapshot
@@ -62,6 +64,7 @@ namespace HaCreator.MapSimulator.Interaction
     internal sealed class QuestRuntimeManager
     {
         private const int DragonNpcId = 1013000;
+        private const int MateNameHeaderQuestId = 4451;
         private const int DragonQuestIdSkipMin = 1200;
         private const int DragonQuestIdSkipMax = 1399;
 
@@ -241,10 +244,16 @@ namespace HaCreator.MapSimulator.Interaction
             public int? EndNpcId { get; init; }
             public int? MinLevel { get; init; }
             public int? MaxLevel { get; init; }
+            public DateTime? StartAvailableFrom { get; init; }
+            public DateTime? StartAvailableUntil { get; init; }
+            public DateTime? EndAvailableFrom { get; init; }
+            public DateTime? EndAvailableUntil { get; init; }
             public int? StartFameRequirement { get; init; }
             public int StartSubJobFlagsRequirement { get; init; }
             public int EndMesoRequirement { get; init; }
             public IReadOnlyList<int> AllowedJobs { get; init; } = Array.Empty<int>();
+            public IReadOnlyList<DayOfWeek> StartAllowedDays { get; init; } = Array.Empty<DayOfWeek>();
+            public IReadOnlyList<DayOfWeek> EndAllowedDays { get; init; } = Array.Empty<DayOfWeek>();
             public IReadOnlyList<QuestStateRequirement> StartQuestRequirements { get; init; } = Array.Empty<QuestStateRequirement>();
             public IReadOnlyList<QuestTraitRequirement> StartTraitRequirements { get; init; } = Array.Empty<QuestTraitRequirement>();
             public IReadOnlyList<QuestItemRequirement> StartItemRequirements { get; init; } = Array.Empty<QuestItemRequirement>();
@@ -284,6 +293,7 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly Dictionary<int, QuestProgress> _progress = new();
         private readonly Dictionary<int, int> _trackedItems = new();
         private readonly Dictionary<int, long> _questAlarmUpdateTicks = new();
+        private readonly Dictionary<int, string> _questMateNames = new();
         private int _recentlyViewedQuestId;
         private Func<long> _mesoCountProvider;
         private Func<long, bool> _consumeMeso;
@@ -537,6 +547,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             string rewardText = BuildRewardText(definition);
             string hintText = BuildHintText(definition, state, startIssues, completionIssues);
+            string headerNoteText = BuildQuestMateNameHeaderText(definition.QuestId);
             int remainingTimeSeconds = state == QuestStateType.Started && definition.TimeLimitSeconds > 0
                 ? GetRemainingTimeSeconds(definition, progress)
                 : 0;
@@ -557,6 +568,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 QuestId = definition.QuestId,
                 Title = definition.Name,
+                HeaderNoteText = headerNoteText,
                 State = state,
                 SummaryText = NpcDialogueTextFormatter.Format(summaryText, CreateDialogueFormattingContext()),
                 RequirementText = requirementText,
@@ -598,6 +610,37 @@ namespace HaCreator.MapSimulator.Interaction
             };
         }
 
+        public void SetPacketOwnedQuestMateName(int questId, string mateName)
+        {
+            if (questId <= 0)
+            {
+                return;
+            }
+
+            string normalizedMateName = mateName?.Trim() ?? string.Empty;
+            if (normalizedMateName.Length == 0)
+            {
+                _questMateNames.Remove(questId);
+                return;
+            }
+
+            _questMateNames[questId] = normalizedMateName;
+        }
+
+        public bool TryGetPacketOwnedQuestMateName(int questId, out string mateName)
+        {
+            if (questId > 0 &&
+                _questMateNames.TryGetValue(questId, out string storedMateName) &&
+                !string.IsNullOrWhiteSpace(storedMateName))
+            {
+                mateName = storedMateName;
+                return true;
+            }
+
+            mateName = string.Empty;
+            return false;
+        }
+
         public IReadOnlyList<QuestDeliveryEntrySnapshot> BuildQuestDeliverySnapshot(
             int preferredQuestId,
             int itemId,
@@ -611,10 +654,11 @@ namespace HaCreator.MapSimulator.Interaction
             var appendedQuestIds = new HashSet<int>();
             var previousQuestByQuestId = BuildDeliveryPreviousQuestMap();
             var seriesQuestIds = new HashSet<int>(previousQuestByQuestId.Keys.Concat(previousQuestByQuestId.Values));
+            var packetWorthyQuestIds = BuildPacketWorthyQuestDeliveryQuestIds(preferredQuestId, build);
 
             foreach (QuestDefinition definition in _definitions.Values.OrderBy(definition => definition.QuestId))
             {
-                if (seriesQuestIds.Contains(definition.QuestId))
+                if (seriesQuestIds.Contains(definition.QuestId) || !packetWorthyQuestIds.Contains(definition.QuestId))
                 {
                     continue;
                 }
@@ -634,6 +678,11 @@ namespace HaCreator.MapSimulator.Interaction
 
             foreach (List<int> series in BuildQuestDeliverySeries(previousQuestByQuestId))
             {
+                if (!series.Any(packetWorthyQuestIds.Contains))
+                {
+                    continue;
+                }
+
                 QuestDeliveryEntrySnapshot acceptEntry = null;
                 int lastCompletedQuestId = 0;
 
@@ -706,6 +755,35 @@ namespace HaCreator.MapSimulator.Interaction
                 .ThenBy(entry => entry.DisplayQuestId)
                 .ThenBy(entry => entry.QuestId)
                 .ToArray();
+        }
+
+        private HashSet<int> BuildPacketWorthyQuestDeliveryQuestIds(int preferredQuestId, CharacterBuild build)
+        {
+            var packetWorthyQuestIds = new HashSet<int>();
+            AppendQuestIds(packetWorthyQuestIds, BuildQuestLogSnapshot(QuestLogTabType.Available, build, showAllLevels: true));
+            AppendQuestIds(packetWorthyQuestIds, BuildQuestLogSnapshot(QuestLogTabType.InProgress, build, showAllLevels: true));
+            if (preferredQuestId > 0)
+            {
+                packetWorthyQuestIds.Add(preferredQuestId);
+            }
+
+            return packetWorthyQuestIds;
+        }
+
+        private static void AppendQuestIds(HashSet<int> questIds, QuestLogSnapshot snapshot)
+        {
+            if (questIds == null || snapshot?.Entries == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < snapshot.Entries.Count; i++)
+            {
+                if (snapshot.Entries[i]?.QuestId > 0)
+                {
+                    questIds.Add(snapshot.Entries[i].QuestId);
+                }
+            }
         }
 
         public int? GetPreferredQuestLogSelection(QuestLogTabType tab, CharacterBuild build, bool showAllLevels)
@@ -1230,7 +1308,8 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 StateChanged = true,
                 QuestId = questId,
-                Messages = messages
+                Messages = messages,
+                PublishedScriptNames = definition.EndScriptNames
             };
         }
 
@@ -1567,7 +1646,11 @@ namespace HaCreator.MapSimulator.Interaction
             return issues;
         }
 
-        public NpcInteractionState BuildInteractionState(NpcItem npc, CharacterBuild build, int? preferredQuestId = null)
+        public NpcInteractionState BuildInteractionState(
+            NpcItem npc,
+            CharacterBuild build,
+            int? preferredQuestId = null,
+            bool includeQuestEntries = true)
         {
             string npcName = npc?.NpcInstance?.NpcInfo?.StringName;
             int npcId = GetNpcId(npc?.NpcInstance);
@@ -1599,14 +1682,17 @@ namespace HaCreator.MapSimulator.Interaction
                 entries.Add(CreateItemUpgradeEntry(npc));
             }
 
-            EnsureDefinitionsLoaded();
-
-            foreach (QuestDefinition definition in _definitions.Values.OrderBy(q => q.QuestId))
+            if (includeQuestEntries)
             {
-                NpcInteractionEntry entry = CreateNpcQuestEntry(definition, npcId, build);
-                if (entry != null)
+                EnsureDefinitionsLoaded();
+
+                foreach (QuestDefinition definition in _definitions.Values.OrderBy(q => q.QuestId))
                 {
-                    entries.Add(entry);
+                    NpcInteractionEntry entry = CreateNpcQuestEntry(definition, npcId, build);
+                    if (entry != null)
+                    {
+                        entries.Add(entry);
+                    }
                 }
             }
 
@@ -2484,11 +2570,31 @@ namespace HaCreator.MapSimulator.Interaction
                     : $"Fame: {currentFame}/{definition.StartFameRequirement.Value}");
             }
 
+            AppendAvailabilitySummary(definition.StartAvailableFrom, definition.StartAvailableUntil, definition.StartAllowedDays, details);
             AppendTraitRequirements(definition.StartTraitRequirements, details, build);
             AppendItemRequirements(definition.StartItemRequirements, details);
             AppendActionConsumeItemRequirements(definition.StartActions.RewardItems, details);
             AppendSkillRequirements(definition.StartSkillRequirements, details);
             AppendMesoRequirement(definition.StartActions.MesoReward, details);
+        }
+
+        private static void AppendAvailabilitySummary(
+            DateTime? availableFrom,
+            DateTime? availableUntil,
+            IReadOnlyList<DayOfWeek> allowedDays,
+            ICollection<string> details)
+        {
+            string windowText = BuildAvailabilityWindowText(availableFrom, availableUntil);
+            if (!string.IsNullOrWhiteSpace(windowText))
+            {
+                details.Add(windowText);
+            }
+
+            string dayText = BuildAllowedDaysText(allowedDays);
+            if (!string.IsNullOrWhiteSpace(dayText))
+            {
+                details.Add(dayText);
+            }
         }
 
         private void AppendMobProgress(QuestDefinition definition, ICollection<string> details)
@@ -2610,6 +2716,11 @@ namespace HaCreator.MapSimulator.Interaction
                 });
             }
 
+            AppendAvailabilityRequirementLines(
+                definition.StartAvailableFrom,
+                definition.StartAvailableUntil,
+                definition.StartAllowedDays,
+                lines);
             AppendTraitRequirementLines(definition.StartTraitRequirements, build, lines);
 
             for (int i = 0; i < definition.StartItemRequirements.Count; i++)
@@ -2622,7 +2733,9 @@ namespace HaCreator.MapSimulator.Interaction
                     Text = GetItemName(requirement.ItemId),
                     ValueText = $"{currentCount}/{requirement.RequiredCount}",
                     IsComplete = currentCount >= requirement.RequiredCount,
-                    ItemId = requirement.ItemId
+                    ItemId = requirement.ItemId,
+                    CurrentValue = currentCount,
+                    RequiredValue = requirement.RequiredCount
                 });
             }
 
@@ -2658,6 +2771,12 @@ namespace HaCreator.MapSimulator.Interaction
         {
             QuestProgress progress = GetOrCreateProgress(definition.QuestId);
 
+            AppendAvailabilityRequirementLines(
+                definition.EndAvailableFrom,
+                definition.EndAvailableUntil,
+                definition.EndAllowedDays,
+                lines);
+
             for (int i = 0; i < definition.EndQuestRequirements.Count; i++)
             {
                 QuestStateRequirement requirement = definition.EndQuestRequirements[i];
@@ -2685,7 +2804,9 @@ namespace HaCreator.MapSimulator.Interaction
                     Label = "Mob",
                     Text = GetMobName(requirement.MobId),
                     ValueText = $"{visibleCount}/{requirement.RequiredCount}",
-                    IsComplete = visibleCount >= requirement.RequiredCount
+                    IsComplete = visibleCount >= requirement.RequiredCount,
+                    CurrentValue = visibleCount,
+                    RequiredValue = requirement.RequiredCount
                 });
             }
 
@@ -2699,7 +2820,9 @@ namespace HaCreator.MapSimulator.Interaction
                     Text = GetItemName(requirement.ItemId),
                     ValueText = $"{currentCount}/{requirement.RequiredCount}",
                     IsComplete = currentCount >= requirement.RequiredCount,
-                    ItemId = requirement.ItemId
+                    ItemId = requirement.ItemId,
+                    CurrentValue = currentCount,
+                    RequiredValue = requirement.RequiredCount
                 });
             }
 
@@ -2711,6 +2834,38 @@ namespace HaCreator.MapSimulator.Interaction
                     definition.EndPetTamenessMaximum),
                 lines);
             AppendActionConsumeItemRequirementLines(definition.EndActions.RewardItems, lines);
+        }
+
+        private void AppendAvailabilityRequirementLines(
+            DateTime? availableFrom,
+            DateTime? availableUntil,
+            IReadOnlyList<DayOfWeek> allowedDays,
+            ICollection<QuestLogLineSnapshot> lines)
+        {
+            DateTime now = DateTime.Now;
+            string windowText = BuildAvailabilityWindowText(availableFrom, availableUntil);
+            if (!string.IsNullOrWhiteSpace(windowText))
+            {
+                bool isComplete = (!availableFrom.HasValue || now >= availableFrom.Value)
+                    && (!availableUntil.HasValue || now <= availableUntil.Value);
+                lines.Add(new QuestLogLineSnapshot
+                {
+                    Label = "Time",
+                    Text = windowText,
+                    IsComplete = isComplete
+                });
+            }
+
+            string dayText = BuildAllowedDaysText(allowedDays);
+            if (!string.IsNullOrWhiteSpace(dayText))
+            {
+                lines.Add(new QuestLogLineSnapshot
+                {
+                    Label = "Day",
+                    Text = dayText,
+                    IsComplete = allowedDays.Contains(now.DayOfWeek)
+                });
+            }
         }
 
         private void AppendActionConsumeItemRequirementLines(
@@ -2953,19 +3108,25 @@ namespace HaCreator.MapSimulator.Interaction
                 issues.Add($"Reach fame {definition.StartFameRequirement.Value}.");
             }
 
-              AppendTraitIssues(definition.StartTraitRequirements, build, issues);
-              AppendQuestStateIssues(definition.StartQuestRequirements, issues);
-              AppendItemIssues(definition.StartItemRequirements, issues);
-              AppendActionConsumeItemIssues(definition.StartActions.RewardItems, issues, "accept");
-              AppendPetIssues(
-                  CreatePetRequirementContext(
-                      definition.StartPetRequirements,
-                      definition.StartPetRecallLimit,
-                      definition.StartPetTamenessMinimum,
-                      definition.StartPetTamenessMaximum),
-                  issues);
-              AppendSkillIssues(definition.StartSkillRequirements, issues);
-              AppendMesoIssues(definition.StartActions.MesoReward, issues, "start");
+            AppendAvailabilityIssues(
+                definition.StartAvailableFrom,
+                definition.StartAvailableUntil,
+                definition.StartAllowedDays,
+                issues,
+                "start");
+            AppendTraitIssues(definition.StartTraitRequirements, build, issues);
+            AppendQuestStateIssues(definition.StartQuestRequirements, issues);
+            AppendItemIssues(definition.StartItemRequirements, issues);
+            AppendActionConsumeItemIssues(definition.StartActions.RewardItems, issues, "accept");
+            AppendPetIssues(
+                CreatePetRequirementContext(
+                    definition.StartPetRequirements,
+                    definition.StartPetRecallLimit,
+                    definition.StartPetTamenessMinimum,
+                    definition.StartPetTamenessMaximum),
+                issues);
+            AppendSkillIssues(definition.StartSkillRequirements, issues);
+            AppendMesoIssues(definition.StartActions.MesoReward, issues, "start");
             issues.AddRange(EvaluateRewardInventoryIssues(ResolveGrantedRewardItems(definition.StartActions.RewardItems, build, messages: null)));
             return issues;
         }
@@ -2997,15 +3158,21 @@ namespace HaCreator.MapSimulator.Interaction
                   }
               }
 
-              AppendActionConsumeItemIssues(definition.EndActions.RewardItems, issues, "complete");
-              AppendPetIssues(
-                  CreatePetRequirementContext(
-                      definition.EndPetRequirements,
-                      definition.EndPetRecallLimit,
-                      definition.EndPetTamenessMinimum,
-                      definition.EndPetTamenessMaximum),
-                  issues);
-              AppendMesoIssues(-definition.EndMesoRequirement, issues, "complete");
+            AppendActionConsumeItemIssues(definition.EndActions.RewardItems, issues, "complete");
+            AppendPetIssues(
+                CreatePetRequirementContext(
+                    definition.EndPetRequirements,
+                    definition.EndPetRecallLimit,
+                    definition.EndPetTamenessMinimum,
+                    definition.EndPetTamenessMaximum),
+                issues);
+            AppendAvailabilityIssues(
+                definition.EndAvailableFrom,
+                definition.EndAvailableUntil,
+                definition.EndAllowedDays,
+                issues,
+                "complete");
+            AppendMesoIssues(-definition.EndMesoRequirement, issues, "complete");
             issues.AddRange(EvaluateRewardInventoryIssues(ResolveGrantedRewardItems(definition.EndActions.RewardItems, build, messages: null)));
 
             if (build != null && definition.MaxLevel.HasValue && build.Level > definition.MaxLevel.Value)
@@ -3014,6 +3181,30 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return issues;
+        }
+
+        private static void AppendAvailabilityIssues(
+            DateTime? availableFrom,
+            DateTime? availableUntil,
+            IReadOnlyList<DayOfWeek> allowedDays,
+            ICollection<string> issues,
+            string actionLabel)
+        {
+            DateTime now = DateTime.Now;
+            if (availableFrom.HasValue && now < availableFrom.Value)
+            {
+                issues.Add($"This quest can only be {actionLabel}ed after {FormatQuestDateTime(availableFrom.Value)}.");
+            }
+
+            if (availableUntil.HasValue && now > availableUntil.Value)
+            {
+                issues.Add($"This quest could only be {actionLabel}ed until {FormatQuestDateTime(availableUntil.Value)}.");
+            }
+
+            if (allowedDays != null && allowedDays.Count > 0 && !allowedDays.Contains(now.DayOfWeek))
+            {
+                issues.Add($"This quest can only be {actionLabel}ed on {FormatAllowedDays(allowedDays)}.");
+            }
         }
 
         private QuestRewardResolution ResolveQuestRewardItems(
@@ -4239,6 +4430,14 @@ namespace HaCreator.MapSimulator.Interaction
                 : QuestStateType.Not_Started;
         }
 
+        private string BuildQuestMateNameHeaderText(int questId)
+        {
+            return questId == MateNameHeaderQuestId &&
+                   TryGetPacketOwnedQuestMateName(questId, out string mateName)
+                ? mateName
+                : string.Empty;
+        }
+
         private void AdjustTrackedItemCount(int itemId, int delta)
         {
             if (itemId <= 0 || delta == 0)
@@ -4452,10 +4651,15 @@ namespace HaCreator.MapSimulator.Interaction
                 EndNpcId = ParseNpcId(endCheck?["npc"]),
                 MinLevel = ParseInt(startCheck?["lvmin"]),
                 MaxLevel = ParseInt(startCheck?["lvmax"]) ?? ParseInt(endCheck?["lvmax"]),
+                StartAvailableFrom = ParseQuestDateTime(startCheck?["start"]),
+                StartAvailableUntil = ParseQuestDateTime(startCheck?["end"]),
+                EndAvailableFrom = ParseQuestDateTime(endCheck?["start"]),
+                EndAvailableUntil = ParseQuestDateTime(endCheck?["end"]),
                 StartFameRequirement = ParsePositiveInt(startCheck?["pop"]),
                 StartSubJobFlagsRequirement = ParsePositiveInt(startCheck?["subJobFlags"]).GetValueOrDefault(),
                 EndMesoRequirement = ParsePositiveInt(endCheck?["endmeso"]).GetValueOrDefault(),
                 AllowedJobs = ParseJobIds(startCheck?["job"]),
+                StartAllowedDays = ParseAllowedDays(startCheck?["dayOfWeek"]),
                 StartQuestRequirements = ParseQuestRequirements(startCheck?["quest"]),
                 StartTraitRequirements = ParseTraitRequirements(startCheck),
                 StartItemRequirements = ParseItemRequirements(startCheck?["item"]),
@@ -4467,6 +4671,7 @@ namespace HaCreator.MapSimulator.Interaction
                 EndQuestRequirements = ParseQuestRequirements(endCheck?["quest"]),
                 EndMobRequirements = ParseMobRequirements(endCheck?["mob"]),
                 EndItemRequirements = ParseItemRequirements(endCheck?["item"]),
+                EndAllowedDays = ParseAllowedDays(endCheck?["dayOfWeek"]),
                 EndPetRequirements = ParsePetRequirements(endCheck?["pet"]),
                 EndPetRecallLimit = ParsePetActiveLimit(endCheck),
                 EndPetTamenessMinimum = ParsePositiveInt(endCheck?["pettamenessmin"]),
@@ -4562,6 +4767,47 @@ namespace HaCreator.MapSimulator.Interaction
             // consumed through the same simulator seam.
             return ParsePositiveInt(subProperty["petRecallLimit"])
                 ?? ParsePositiveInt(subProperty["petAutoSpeakingLimit"]);
+        }
+
+        private static DateTime? ParseQuestDateTime(WzImageProperty property)
+        {
+            return (property as WzStringProperty)?.GetDateTime();
+        }
+
+        private static IReadOnlyList<DayOfWeek> ParseAllowedDays(WzImageProperty property)
+        {
+            if (property?.WzProperties == null || property.WzProperties.Count == 0)
+            {
+                return Array.Empty<DayOfWeek>();
+            }
+
+            var days = new List<DayOfWeek>();
+            for (int i = 0; i < property.WzProperties.Count; i++)
+            {
+                string rawValue = (property.WzProperties[i] as WzStringProperty)?.Value;
+                if (!TryParseAllowedDay(rawValue, out DayOfWeek day))
+                {
+                    continue;
+                }
+
+                if (!days.Contains(day))
+                {
+                    days.Add(day);
+                }
+            }
+
+            return days;
+        }
+
+        private static bool TryParseAllowedDay(string rawValue, out DayOfWeek day)
+        {
+            if (string.Equals(rawValue, "1", StringComparison.Ordinal))
+            {
+                day = DayOfWeek.Sunday;
+                return true;
+            }
+
+            return Enum.TryParse(rawValue, ignoreCase: true, out day);
         }
 
         private void IndexShowLayerTags(QuestDefinition definition)
@@ -5547,6 +5793,15 @@ namespace HaCreator.MapSimulator.Interaction
                 return Array.Empty<NpcInteractionPage>();
             }
 
+            if (HasConversationPageChildren(branchProperty))
+            {
+                IReadOnlyList<NpcInteractionPage> branchPages = ParseBranchPages(branchProperty);
+                if (branchPages.Count > 0)
+                {
+                    return branchPages;
+                }
+            }
+
             IReadOnlyList<NpcInteractionPage> nestedSelectionPages = ParseSelectionSpecificPages(
                 branchProperty,
                 selectionId,
@@ -5608,14 +5863,32 @@ namespace HaCreator.MapSimulator.Interaction
 
             foreach (string candidatePageName in EnumerateStopSelectionCandidateNames(selectionId, selectionIndex, allowPositionFallback))
             {
-                NpcInteractionPage page = CreateConversationPage(branchProperty[candidatePageName]);
-                if (page != null)
+                IReadOnlyList<NpcInteractionPage> pages = ParseBranchPages(branchProperty[candidatePageName]);
+                if (pages.Count > 0)
                 {
-                    return new[] { page };
+                    return pages;
                 }
             }
 
             return Array.Empty<NpcInteractionPage>();
+        }
+
+        private static bool HasConversationPageChildren(WzImageProperty property)
+        {
+            if (property?.WzProperties == null)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < property.WzProperties.Count; i++)
+            {
+                if (IsConversationTextNodeName(property.WzProperties[i]?.Name))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static IEnumerable<string> EnumerateStopSelectionCandidateNames(
@@ -6321,6 +6594,40 @@ namespace HaCreator.MapSimulator.Interaction
             };
         }
 
+        private static string BuildAvailabilityWindowText(DateTime? availableFrom, DateTime? availableUntil)
+        {
+            if (availableFrom.HasValue && availableUntil.HasValue)
+            {
+                return $"Available {FormatQuestDateTime(availableFrom.Value)} - {FormatQuestDateTime(availableUntil.Value)}";
+            }
+
+            if (availableFrom.HasValue)
+            {
+                return $"Available from {FormatQuestDateTime(availableFrom.Value)}";
+            }
+
+            return availableUntil.HasValue
+                ? $"Available until {FormatQuestDateTime(availableUntil.Value)}"
+                : string.Empty;
+        }
+
+        private static string BuildAllowedDaysText(IReadOnlyList<DayOfWeek> allowedDays)
+        {
+            return allowedDays != null && allowedDays.Count > 0
+                ? $"Days: {FormatAllowedDays(allowedDays)}"
+                : string.Empty;
+        }
+
+        private static string FormatAllowedDays(IReadOnlyList<DayOfWeek> allowedDays)
+        {
+            return string.Join(", ", allowedDays.Select(static day => day.ToString()));
+        }
+
+        private static string FormatQuestDateTime(DateTime value)
+        {
+            return value.ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture);
+        }
+
         private static string FormatRewardDuration(int periodMinutes)
         {
             if (periodMinutes <= 0)
@@ -6674,7 +6981,9 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 Label = "Meso",
                 ValueText = $"{current.ToString("N0", CultureInfo.InvariantCulture)}/{required.ToString("N0", CultureInfo.InvariantCulture)}",
-                IsComplete = current >= required
+                IsComplete = current >= required,
+                CurrentValue = current,
+                RequiredValue = required
             });
         }
 

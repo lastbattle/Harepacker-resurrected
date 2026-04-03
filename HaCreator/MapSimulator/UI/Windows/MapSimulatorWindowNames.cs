@@ -1,3 +1,5 @@
+using System;
+
 namespace HaCreator.MapSimulator.UI
 {
     /// <summary>
@@ -28,6 +30,14 @@ namespace HaCreator.MapSimulator.UI
         public const string CashShopOneADay = "CashShopOneADay";
         public const string Mts = "MTS";
         public const string MtsStatus = "MtsStatus";
+        public const string ItcCharacter = "ItcCharacter";
+        public const string ItcSale = "ItcSale";
+        public const string ItcPurchase = "ItcPurchase";
+        public const string ItcInventory = "ItcInventory";
+        public const string ItcTab = "ItcTab";
+        public const string ItcSubTab = "ItcSubTab";
+        public const string ItcList = "ItcList";
+        public const string ItcStatus = "ItcStatus";
         public const string Menu = "Menu";
         public const string System = "System";
         public const string WorldSelect = "WorldSelect";
@@ -97,5 +107,26 @@ namespace HaCreator.MapSimulator.UI
         public const string EntrustedShop = "EntrustedShop";
         public const string TradingRoom = "TradingRoom";
         public const string CashTradingRoom = "CashTradingRoom";
+
+        public static string GetQuestTimerWindowName(int questId)
+        {
+            return $"{QuestTimer}:{Math.Max(0, questId)}";
+        }
+
+        public static string GetQuestTimerActionWindowName(int questId)
+        {
+            return $"{QuestTimerAction}:{Math.Max(0, questId)}";
+        }
+
+        public static bool IsQuestTimerRuntimeWindowName(string windowName)
+        {
+            if (string.IsNullOrWhiteSpace(windowName))
+            {
+                return false;
+            }
+
+            return windowName.StartsWith($"{QuestTimer}:", StringComparison.Ordinal)
+                || windowName.StartsWith($"{QuestTimerAction}:", StringComparison.Ordinal);
+        }
     }
 }

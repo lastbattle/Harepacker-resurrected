@@ -5,6 +5,15 @@ using System.Net;
 
 namespace HaCreator.MapSimulator.Managers
 {
+    public enum LoginSelectCharacterByVacSuccessBranch
+    {
+        None = 0,
+        DirectResult0 = 1,
+        AlternateAuthenticatedResult12Secondary11 = 2,
+        AlternateAuthenticatedResult12Secondary13 = 3,
+        AlternateResult23 = 4,
+    }
+
     public sealed class LoginSelectCharacterByVacResultProfile
     {
         public byte ResultCode { get; init; }
@@ -15,13 +24,24 @@ namespace HaCreator.MapSimulator.Managers
         public int? CharacterId { get; init; }
         public byte? AuthenCode { get; init; }
         public int? PremiumArgument { get; init; }
+        public bool HasCompleteConnectPayload =>
+            ServerAddress != null &&
+            Port.HasValue &&
+            CharacterId.HasValue &&
+            AuthenCode.HasValue &&
+            PremiumArgument.HasValue;
 
         public bool IsConnectSuccess =>
             LoginSelectCharacterByVacResultCodec.IsConnectSuccess(ResultCode, SecondaryCode);
 
-        public bool UsesDirectSuccessBranch => ResultCode == 0;
-        public bool UsesAlternateAuthenticatedBranch => ResultCode == 12 && (SecondaryCode == 11 || SecondaryCode == 13);
-        public bool UsesAlternateSuccessBranch => ResultCode == 23;
+        public LoginSelectCharacterByVacSuccessBranch SuccessBranch =>
+            LoginSelectCharacterByVacResultCodec.ResolveSuccessBranch(ResultCode, SecondaryCode);
+
+        public bool UsesDirectSuccessBranch => SuccessBranch == LoginSelectCharacterByVacSuccessBranch.DirectResult0;
+        public bool UsesAlternateAuthenticatedBranch =>
+            SuccessBranch is LoginSelectCharacterByVacSuccessBranch.AlternateAuthenticatedResult12Secondary11 or
+                             LoginSelectCharacterByVacSuccessBranch.AlternateAuthenticatedResult12Secondary13;
+        public bool UsesAlternateSuccessBranch => SuccessBranch == LoginSelectCharacterByVacSuccessBranch.AlternateResult23;
         public bool RequiresWebsiteHandoff => LoginSelectCharacterByVacResultCodec.RequiresWebsiteHandoff(ResultCode);
         public bool ReturnsToTitle => LoginSelectCharacterByVacResultCodec.ShouldReturnToTitle(ResultCode, SecondaryCode);
         public int? NoticeTextIndex => LoginSelectCharacterByVacResultCodec.ResolveFailureNoticeTextIndex(ResultCode, SecondaryCode);
@@ -138,6 +158,31 @@ namespace HaCreator.MapSimulator.Managers
                    (resultCode == 12 && (secondaryCode == 11 || secondaryCode == 13));
         }
 
+        public static LoginSelectCharacterByVacSuccessBranch ResolveSuccessBranch(byte resultCode, byte secondaryCode)
+        {
+            if (resultCode == 0)
+            {
+                return LoginSelectCharacterByVacSuccessBranch.DirectResult0;
+            }
+
+            if (resultCode == 23)
+            {
+                return LoginSelectCharacterByVacSuccessBranch.AlternateResult23;
+            }
+
+            if (resultCode == 12)
+            {
+                return secondaryCode switch
+                {
+                    11 => LoginSelectCharacterByVacSuccessBranch.AlternateAuthenticatedResult12Secondary11,
+                    13 => LoginSelectCharacterByVacSuccessBranch.AlternateAuthenticatedResult12Secondary13,
+                    _ => LoginSelectCharacterByVacSuccessBranch.None,
+                };
+            }
+
+            return LoginSelectCharacterByVacSuccessBranch.None;
+        }
+
         public static bool RequiresWebsiteHandoff(byte resultCode)
         {
             return resultCode is 14 or 15;
@@ -150,6 +195,8 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
+            // Client evidence: CLogin::OnSelectCharacterByVACResult (0x5de670) only calls
+            // GotoTitle for result 7 and result 12 secondaries 1, 2, 3, 19, 25, 27, and 28.
             return resultCode == 7 ||
                    (resultCode == 12 && secondaryCode is 1 or 2 or 3 or 19 or 25 or 27 or 28);
         }
@@ -163,6 +210,9 @@ namespace HaCreator.MapSimulator.Managers
 
             if (resultCode == 12)
             {
+                // Client evidence: CLogin::OnSelectCharacterByVACResult (0x5de670)
+                // routes the alternate authenticated failure family through the
+                // Login.img/Notice/text indices below.
                 return secondaryCode switch
                 {
                     1 => 28,

@@ -15,16 +15,8 @@ namespace HaCreator.MapSimulator.Character
             193
         };
 
-        private static readonly HashSet<string> RotateSensitiveActionNames = new(StringComparer.OrdinalIgnoreCase)
-        {
-            "doubleJump",
-            "backspin",
-            "rollingSpin",
-            "darkSpin",
-            "screw",
-            "somersault",
-            "finalCut"
-        };
+        private static readonly HashSet<string> RotateSensitiveActionNames =
+            BuildRotateSensitiveActionNames();
 
         public static bool ShouldHideDuringPlayerAction(params string[] actionNames)
         {
@@ -59,6 +51,31 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return false;
+        }
+
+        private static HashSet<string> BuildRotateSensitiveActionNames()
+        {
+            var actionNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+            {
+                "doubleJump",
+                "backspin",
+                "rollingSpin",
+                "darkSpin",
+                "screw",
+                "somersault",
+                "finalCut"
+            };
+
+            foreach (int rawActionCode in RotateSensitiveRawActionCodes)
+            {
+                if (CharacterPart.TryGetActionStringFromCode(rawActionCode, out string actionName)
+                    && !string.IsNullOrWhiteSpace(actionName))
+                {
+                    actionNames.Add(actionName);
+                }
+            }
+
+            return actionNames;
         }
     }
 }

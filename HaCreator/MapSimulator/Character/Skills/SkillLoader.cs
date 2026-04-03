@@ -3157,7 +3157,9 @@ namespace HaCreator.MapSimulator.Character.Skills
             levelData.CriticalDamageMax = GetInt(node, "criticaldamageMax", 0, level);
             levelData.DamageReductionRate = GetInt(node, "damR", 0, level);
             levelData.BossDamageRate = GetInt(node, "bdR", 0, level);
-            levelData.IgnoreDefenseRate = GetInt(node, "ignoreMobpdpR", 0, level);
+            levelData.IgnoreDefenseRate = PreferPrimaryStat(
+                GetInt(node, "ignoreMobpdpR", 0, level),
+                GetInt(node, "ignoreMobDamR", 0, level));
             levelData.DefensePercent = GetInt(node, "pddR", 0, level);
             levelData.MagicDefensePercent = GetInt(node, "mddR", 0, level);
             levelData.AccuracyPercent = GetInt(node, "accR", 0, level);
@@ -3247,7 +3249,9 @@ namespace HaCreator.MapSimulator.Character.Skills
             levelData.DropRate = GetInt(node, "dropR", 0, level);
             levelData.MesoRate = GetInt(node, "mesoR", 0, level);
             levelData.BossDamageRate = GetInt(node, "bdR", levelData.BossDamageRate, level);
-            levelData.IgnoreDefenseRate = GetInt(node, "ignoreMobpdpR", levelData.IgnoreDefenseRate, level);
+            levelData.IgnoreDefenseRate = PreferPrimaryStat(
+                GetInt(node, "ignoreMobpdpR", levelData.IgnoreDefenseRate, level),
+                GetInt(node, "ignoreMobDamR", 0, level));
         }
 
         private static int PreferPrimaryStat(int currentValue, int aliasValue)

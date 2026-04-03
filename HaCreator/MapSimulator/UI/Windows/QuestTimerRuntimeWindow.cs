@@ -13,18 +13,25 @@ namespace HaCreator.MapSimulator.UI
     internal abstract class QuestTimerRuntimeWindowBase : UIWindowBase
     {
         protected PacketFieldStateRuntime _runtime;
+        private readonly int _questId;
+        private readonly string _windowName;
+        private readonly bool _drawActionLayer;
         private MouseState _previousMouseState;
         private Func<int> _renderWidthProvider;
         private Func<int> _renderHeightProvider;
         private Func<int> _tickProvider;
 
-        protected QuestTimerRuntimeWindowBase(IDXObject frame)
+        protected QuestTimerRuntimeWindowBase(IDXObject frame, string windowName, int questId, bool drawActionLayer)
             : base(frame, Point.Zero)
         {
+            _windowName = windowName;
+            _questId = questId;
+            _drawActionLayer = drawActionLayer;
             SupportsDragging = false;
             IsVisible = true;
         }
 
+        public override string WindowName => _windowName;
         public override bool ExcludeFromWindowManagerHide => true;
 
         public void BindRuntime(
@@ -53,8 +60,10 @@ namespace HaCreator.MapSimulator.UI
             }
 
             bool handled = _runtime.HandleQuestTimerMouse(
+                _questId,
                 mouseState,
                 _previousMouseState,
+                _drawActionLayer,
                 ResolveRenderWidth(renderWidth),
                 ResolveRenderHeight(renderHeight),
                 ResolveTick());
@@ -89,12 +98,21 @@ namespace HaCreator.MapSimulator.UI
             int renderHeight = ResolveRenderHeight(renderParameters.RenderHeight);
             int tick = ResolveTick(TickCount);
 
-            DrawTimerLayer(sprite, renderWidth, renderHeight, tick);
+            if (_drawActionLayer)
+            {
+                _runtime?.DrawQuestTimerActionLayer(sprite, WindowFont, _questId, renderWidth, renderHeight, tick);
+            }
+            else
+            {
+                _runtime?.DrawQuestTimerOwnerLayer(sprite, _questId, renderWidth, renderHeight, tick);
+            }
         }
 
         protected override IEnumerable<Rectangle> GetAdditionalInteractiveBounds()
         {
             return _runtime?.GetQuestTimerInteractiveBounds(
+                       _questId,
+                       _drawActionLayer,
                        ResolveRenderWidth(0),
                        ResolveRenderHeight(0),
                        ResolveTick())
@@ -117,37 +135,21 @@ namespace HaCreator.MapSimulator.UI
         {
             return _tickProvider?.Invoke() ?? fallbackTick;
         }
-
-        protected abstract void DrawTimerLayer(SpriteBatch sprite, int renderWidth, int renderHeight, int tick);
     }
 
     internal sealed class QuestTimerWindow : QuestTimerRuntimeWindowBase
     {
-        public QuestTimerWindow(IDXObject frame)
-            : base(frame)
+        public QuestTimerWindow(IDXObject frame, string windowName, int questId)
+            : base(frame, windowName, questId, drawActionLayer: false)
         {
-        }
-
-        public override string WindowName => MapSimulatorWindowNames.QuestTimer;
-
-        protected override void DrawTimerLayer(SpriteBatch sprite, int renderWidth, int renderHeight, int tick)
-        {
-            _runtime?.DrawQuestTimerOwnerLayer(sprite, renderWidth, renderHeight, tick);
         }
     }
 
     internal sealed class QuestTimerActionWindow : QuestTimerRuntimeWindowBase
     {
-        public QuestTimerActionWindow(IDXObject frame)
-            : base(frame)
+        public QuestTimerActionWindow(IDXObject frame, string windowName, int questId)
+            : base(frame, windowName, questId, drawActionLayer: true)
         {
-        }
-
-        public override string WindowName => MapSimulatorWindowNames.QuestTimerAction;
-
-        protected override void DrawTimerLayer(SpriteBatch sprite, int renderWidth, int renderHeight, int tick)
-        {
-            _runtime?.DrawQuestTimerActionLayer(sprite, WindowFont, renderWidth, renderHeight, tick);
         }
     }
 }

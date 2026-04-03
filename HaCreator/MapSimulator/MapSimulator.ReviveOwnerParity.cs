@@ -15,7 +15,11 @@ namespace HaCreator.MapSimulator
         {
             if (_playerManager?.Player != null)
             {
-                _playerManager.Player.OnDeath = HandlePlayerDeathOpenReviveOwner;
+                Action<PlayerCharacter> deathHandler = _playerManager.Player.OnDeath;
+                if (deathHandler == null || Array.IndexOf(deathHandler.GetInvocationList(), (Action<PlayerCharacter>)HandlePlayerDeathOpenReviveOwner) < 0)
+                {
+                    _playerManager.Player.OnDeath = deathHandler + HandlePlayerDeathOpenReviveOwner;
+                }
             }
 
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.Revive) is not ReviveConfirmationWindow reviveWindow)
@@ -53,6 +57,7 @@ namespace HaCreator.MapSimulator
                 hasPremiumChoice,
                 normalDetail,
                 premiumDetail,
+                hasPremiumChoice ? ReviveOwnerVariant.PremiumChoice : ReviveOwnerVariant.DefaultOnly,
                 currentTick);
 
             ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.Revive);

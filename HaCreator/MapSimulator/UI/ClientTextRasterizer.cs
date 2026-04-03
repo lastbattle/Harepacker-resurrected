@@ -15,7 +15,7 @@ using SWF = System.Windows.Forms;
 
 namespace HaCreator.MapSimulator.UI
 {
-    internal sealed class ClientTextRasterizer
+    internal sealed class ClientTextRasterizer : IDisposable
     {
         private const int RasterPadding = 2;
         private const byte KoreanGdiCharset = 129;
@@ -67,6 +67,11 @@ namespace HaCreator.MapSimulator.UI
             ".ttf",
             ".ttc",
             ".otf"
+        };
+        private static readonly string[] PrivateFontContainerExtensions =
+        {
+            ".exe",
+            ".dll"
         };
         private static readonly string[] PreferredFontFileNameFragments =
         {
@@ -161,6 +166,9 @@ namespace HaCreator.MapSimulator.UI
             SWF.TextFormatFlags.PreserveGraphicsClipping |
             SWF.TextFormatFlags.PreserveGraphicsTranslateTransform |
             SWF.TextFormatFlags.SingleLine;
+        private const uint LoadLibraryAsDataFile = 0x00000002;
+        private static readonly IntPtr RtFont = new IntPtr(8);
+        private static readonly IntPtr RtRcData = new IntPtr(10);
 
         private readonly GraphicsDevice _graphicsDevice;
         private readonly string _fontFamily;
@@ -184,14 +192,32 @@ namespace HaCreator.MapSimulator.UI
             _measureGraphics.PageUnit = SD.GraphicsUnit.Pixel;
         }
 
-        internal static string ResolvePreferredFontFamily(string requestedFamily = null)
+        internal static string ResolvePreferredFontFamily(
+            string requestedFamily = null,
+            string fontPathEnvironmentVariable = null,
+            string fontFaceEnvironmentVariable = null,
+            IEnumerable<string> preferredPrivateFontFamilyCandidates = null)
         {
-            return ResolveFontFamily(requestedFamily);
+            return ResolveFontFamily(
+                requestedFamily,
+                fontPathEnvironmentVariable,
+                fontFaceEnvironmentVariable,
+                preferredPrivateFontFamilyCandidates);
         }
 
-        internal static SD.Font CreateClientFont(float pixelSize, SD.FontStyle style = SD.FontStyle.Regular, string requestedFamily = null)
+        internal static SD.Font CreateClientFont(
+            float pixelSize,
+            SD.FontStyle style = SD.FontStyle.Regular,
+            string requestedFamily = null,
+            string fontPathEnvironmentVariable = null,
+            string fontFaceEnvironmentVariable = null,
+            IEnumerable<string> preferredPrivateFontFamilyCandidates = null)
         {
-            string resolvedFamily = ResolvePreferredFontFamily(requestedFamily);
+            string resolvedFamily = ResolvePreferredFontFamily(
+                requestedFamily,
+                fontPathEnvironmentVariable,
+                fontFaceEnvironmentVariable,
+                preferredPrivateFontFamilyCandidates);
             float normalizedSize = pixelSize <= 0f ? 12f : pixelSize;
 
             try
@@ -258,6 +284,34 @@ namespace HaCreator.MapSimulator.UI
             }
 
             spriteBatch.Draw(rasterText.Texture, drawPosition, Color.White);
+        }
+
+        public void Dispose()
+        {
+            DisposeCachedResources();
+            _measureGraphics?.Dispose();
+            _measureBitmap?.Dispose();
+        }
+
+        public void DisposeCachedResources()
+        {
+            foreach (RasterTextTexture texture in _textureCache.Values)
+            {
+                if (texture.Texture != null && !texture.Texture.IsDisposed)
+                {
+                    texture.Texture.Dispose();
+                }
+            }
+
+            _textureCache.Clear();
+            _measureCache.Clear();
+
+            foreach (SD.Font font in _fontCache.Values)
+            {
+                font?.Dispose();
+            }
+
+            _fontCache.Clear();
         }
 
         private RasterTextTexture GetOrCreateRasterText(string text, float scale, Color color)
@@ -395,9 +449,22 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
-        private static string ResolveFontFamily(string requestedFamily)
+        private static string ResolveFontFamily(
+            string requestedFamily,
+            string fontPathEnvironmentVariable,
+            string fontFaceEnvironmentVariable,
+            IEnumerable<string> preferredPrivateFontFamilyCandidates)
         {
-            if (TryResolveConfiguredFontFamily(out string configuredFamily))
+            if (TryResolveConfiguredFontFamily(
+                    fontPathEnvironmentVariable,
+                    fontFaceEnvironmentVariable,
+                    preferredPrivateFontFamilyCandidates,
+                    out string configuredFamily))
+            {
+                return configuredFamily;
+            }
+
+            if (TryResolveConfiguredFontFamily(out configuredFamily))
             {
                 return configuredFamily;
             }
@@ -421,9 +488,27 @@ namespace HaCreator.MapSimulator.UI
 
         private static bool TryResolveConfiguredFontFamily(out string fontFamilyName)
         {
+            return TryResolveConfiguredFontFamily(
+                ClientTextFontPathEnvironmentVariable,
+                ClientTextFontFaceEnvironmentVariable,
+                DefaultPrivateFontFamilyCandidates,
+                out fontFamilyName);
+        }
+
+        private static bool TryResolveConfiguredFontFamily(
+            string fontPathEnvironmentVariable,
+            string fontFaceEnvironmentVariable,
+            IEnumerable<string> preferredFamilyCandidates,
+            out string fontFamilyName)
+        {
             fontFamilyName = null;
 
-            string configuredFontPath = Environment.GetEnvironmentVariable(ClientTextFontPathEnvironmentVariable);
+            if (string.IsNullOrWhiteSpace(fontPathEnvironmentVariable))
+            {
+                return false;
+            }
+
+            string configuredFontPath = Environment.GetEnvironmentVariable(fontPathEnvironmentVariable);
             if (string.IsNullOrWhiteSpace(configuredFontPath))
             {
                 return false;
@@ -444,13 +529,55 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            string configuredFontFace = Environment.GetEnvironmentVariable(ClientTextFontFaceEnvironmentVariable);
+            string configuredFontFace = string.IsNullOrWhiteSpace(fontFaceEnvironmentVariable)
+                ? null
+                : Environment.GetEnvironmentVariable(fontFaceEnvironmentVariable);
+            IEnumerable<string> preferredFamilies = BuildPreferredFamilyCandidates(
+                configuredFontFace,
+                preferredFamilyCandidates,
+                DefaultPrivateFontFamilyCandidates);
+            return TryRegisterPrivateFontSource(resolvedFontPath, preferredFamilies, out fontFamilyName);
+        }
+
+        private static IEnumerable<string> BuildPreferredFamilyCandidates(
+            string configuredFontFace,
+            IEnumerable<string> preferredFamilyCandidates,
+            IEnumerable<string> fallbackFamilyCandidates)
+        {
+            HashSet<string> seenFamilies = new(StringComparer.OrdinalIgnoreCase);
+
             if (!string.IsNullOrWhiteSpace(configuredFontFace))
             {
-                return PrivateFontRegistry.TryRegister(resolvedFontPath, configuredFontFace, out fontFamilyName);
+                string trimmedFace = configuredFontFace.Trim();
+                if (seenFamilies.Add(trimmedFace))
+                {
+                    yield return trimmedFace;
+                }
             }
 
-            return PrivateFontRegistry.TryRegister(resolvedFontPath, DefaultPrivateFontFamilyCandidates, out fontFamilyName);
+            if (preferredFamilyCandidates != null)
+            {
+                foreach (string preferredFamilyCandidate in preferredFamilyCandidates)
+                {
+                    if (!string.IsNullOrWhiteSpace(preferredFamilyCandidate) &&
+                        seenFamilies.Add(preferredFamilyCandidate))
+                    {
+                        yield return preferredFamilyCandidate;
+                    }
+                }
+            }
+
+            if (fallbackFamilyCandidates != null)
+            {
+                foreach (string fallbackFamilyCandidate in fallbackFamilyCandidates)
+                {
+                    if (!string.IsNullOrWhiteSpace(fallbackFamilyCandidate) &&
+                        seenFamilies.Add(fallbackFamilyCandidate))
+                    {
+                        yield return fallbackFamilyCandidate;
+                    }
+                }
+            }
         }
 
         private static string ResolveInstalledFontFamilyName(params string[] candidates)
@@ -481,7 +608,15 @@ namespace HaCreator.MapSimulator.UI
 
             foreach (string candidatePath in EnumerateDefaultPrivateFontCandidatePaths())
             {
-                if (PrivateFontRegistry.TryRegister(candidatePath, DefaultPrivateFontFamilyCandidates, out fontFamilyName))
+                if (TryRegisterPrivateFontSource(candidatePath, DefaultPrivateFontFamilyCandidates, out fontFamilyName))
+                {
+                    return !string.IsNullOrWhiteSpace(fontFamilyName);
+                }
+            }
+
+            foreach (string candidatePath in EnumerateMapleEmbeddedFontContainerPaths())
+            {
+                if (TryRegisterPrivateFontSource(candidatePath, DefaultPrivateFontFamilyCandidates, out fontFamilyName))
                 {
                     return !string.IsNullOrWhiteSpace(fontFamilyName);
                 }
@@ -513,7 +648,49 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
 
+            foreach (string discoveredContainerPath in EnumerateCandidateFontContainerPaths(candidatePath))
+            {
+                if (File.Exists(discoveredContainerPath))
+                {
+                    resolvedFontPath = discoveredContainerPath;
+                    return true;
+                }
+            }
+
             resolvedFontPath = null;
+            return false;
+        }
+
+        private static bool TryRegisterPrivateFontSource(
+            string sourcePath,
+            IEnumerable<string> preferredFamilyNames,
+            out string fontFamilyName)
+        {
+            fontFamilyName = null;
+            if (string.IsNullOrWhiteSpace(sourcePath))
+            {
+                return false;
+            }
+
+            string extension = Path.GetExtension(sourcePath);
+            if (IsFontFileExtension(extension))
+            {
+                return PrivateFontRegistry.TryRegister(sourcePath, preferredFamilyNames, out fontFamilyName);
+            }
+
+            if (!IsFontContainerExtension(extension))
+            {
+                return false;
+            }
+
+            foreach ((string sourceKey, byte[] fontBytes) in EnumerateEmbeddedFontPayloads(sourcePath))
+            {
+                if (PrivateFontRegistry.TryRegister(sourceKey, fontBytes, preferredFamilyNames, out fontFamilyName))
+                {
+                    return !string.IsNullOrWhiteSpace(fontFamilyName);
+                }
+            }
+
             return false;
         }
 
@@ -607,6 +784,16 @@ namespace HaCreator.MapSimulator.UI
             return EnumerateCandidateFontPaths(rootDirectory).ToArray();
         }
 
+        internal static IReadOnlyList<string> EnumerateCandidateFontContainerPathsForTests(string rootDirectory)
+        {
+            return EnumerateCandidateFontContainerPaths(rootDirectory).ToArray();
+        }
+
+        internal static bool LooksLikeEmbeddedFontPayloadForTests(byte[] fontBytes)
+        {
+            return LooksLikeEmbeddedFontPayload(fontBytes);
+        }
+
         private static IEnumerable<string> EnumerateDefaultPrivateFontSearchRoots()
         {
             HashSet<string> seenPaths = new(StringComparer.OrdinalIgnoreCase);
@@ -697,6 +884,22 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private static IEnumerable<string> EnumerateMapleEmbeddedFontContainerPaths()
+        {
+            HashSet<string> seenPaths = new(StringComparer.OrdinalIgnoreCase);
+
+            foreach (string installDirectory in EnumerateMapleInstallDirectories())
+            {
+                foreach (string candidatePath in EnumerateCandidateFontContainerPaths(installDirectory))
+                {
+                    if (seenPaths.Add(candidatePath))
+                    {
+                        yield return candidatePath;
+                    }
+                }
+            }
+        }
+
         private static IEnumerable<string> EnumerateSearchRootAncestors(string baseDirectory)
         {
             string fullPath;
@@ -753,6 +956,46 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private static IEnumerable<string> EnumerateCandidateFontContainerPaths(string rootDirectory)
+        {
+            if (string.IsNullOrWhiteSpace(rootDirectory) || !Directory.Exists(rootDirectory))
+            {
+                yield break;
+            }
+
+            HashSet<string> yieldedPaths = new(StringComparer.OrdinalIgnoreCase);
+
+            foreach (string preferredFileName in new[] { "MapleStory.exe", "MapleStory.dll" })
+            {
+                string directCandidatePath = Path.Combine(rootDirectory, preferredFileName);
+                if (File.Exists(directCandidatePath) && yieldedPaths.Add(directCandidatePath))
+                {
+                    yield return directCandidatePath;
+                }
+            }
+
+            IEnumerable<string> files;
+            try
+            {
+                files = Directory.EnumerateFiles(rootDirectory, "*", SearchOption.TopDirectoryOnly);
+            }
+            catch
+            {
+                yield break;
+            }
+
+            foreach (string candidatePath in files
+                .Where(static path => IsFontContainerExtension(Path.GetExtension(path)))
+                .OrderByDescending(static path => ScoreDiscoveredFontContainerPath(path))
+                .ThenBy(static path => path, StringComparer.OrdinalIgnoreCase))
+            {
+                if (yieldedPaths.Add(candidatePath))
+                {
+                    yield return candidatePath;
+                }
+            }
+        }
+
         private static int ScoreDiscoveredFontPath(string candidatePath)
         {
             if (string.IsNullOrWhiteSpace(candidatePath))
@@ -792,6 +1035,39 @@ namespace HaCreator.MapSimulator.UI
             if (string.Equals(extension, ".ttf", StringComparison.OrdinalIgnoreCase))
             {
                 score += 15;
+            }
+
+            return score;
+        }
+
+        private static int ScoreDiscoveredFontContainerPath(string candidatePath)
+        {
+            if (string.IsNullOrWhiteSpace(candidatePath))
+            {
+                return -1;
+            }
+
+            string extension = Path.GetExtension(candidatePath);
+            if (!IsFontContainerExtension(extension))
+            {
+                return -1;
+            }
+
+            int score = 0;
+            string fileName = Path.GetFileName(candidatePath);
+
+            if (string.Equals(fileName, "MapleStory.exe", StringComparison.OrdinalIgnoreCase))
+            {
+                score += 1000;
+            }
+            else if (fileName.IndexOf("Maple", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                score += 250;
+            }
+
+            if (PreferredFontPathFragments.Any(fragment => candidatePath.IndexOf(fragment, StringComparison.OrdinalIgnoreCase) >= 0))
+            {
+                score += 50;
             }
 
             return score;
@@ -1007,6 +1283,76 @@ namespace HaCreator.MapSimulator.UI
             return false;
         }
 
+        private static bool IsFontFileExtension(string extension)
+        {
+            return !string.IsNullOrWhiteSpace(extension)
+                && DefaultFontFileExtensions.Any(candidate => string.Equals(candidate, extension, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static bool IsFontContainerExtension(string extension)
+        {
+            return !string.IsNullOrWhiteSpace(extension)
+                && PrivateFontContainerExtensions.Any(candidate => string.Equals(candidate, extension, StringComparison.OrdinalIgnoreCase));
+        }
+
+        private static IEnumerable<(string SourceKey, byte[] FontBytes)> EnumerateEmbeddedFontPayloads(string containerPath)
+        {
+            if (string.IsNullOrWhiteSpace(containerPath) || !File.Exists(containerPath))
+            {
+                yield break;
+            }
+
+            IntPtr module = NativeResourceReader.LoadLibraryEx(containerPath, IntPtr.Zero, LoadLibraryAsDataFile);
+            if (module == IntPtr.Zero)
+            {
+                yield break;
+            }
+
+            try
+            {
+                foreach (IntPtr resourceType in new[] { RtFont, RtRcData })
+                {
+                    foreach (string resourceName in NativeResourceReader.EnumerateResourceNames(module, resourceType))
+                    {
+                        if (!NativeResourceReader.TryLoadResource(module, resourceType, resourceName, out byte[] resourceBytes) ||
+                            !LooksLikeEmbeddedFontPayload(resourceBytes))
+                        {
+                            continue;
+                        }
+
+                        yield return ($"{containerPath}|{resourceType.ToInt64()}|{resourceName}", resourceBytes);
+                    }
+                }
+            }
+            finally
+            {
+                NativeResourceReader.FreeLibrary(module);
+            }
+        }
+
+        private static bool LooksLikeEmbeddedFontPayload(byte[] fontBytes)
+        {
+            if (fontBytes == null || fontBytes.Length < 4)
+            {
+                return false;
+            }
+
+            if (fontBytes[0] == 0x00 && fontBytes[1] == 0x01 && fontBytes[2] == 0x00 && fontBytes[3] == 0x00)
+            {
+                return true;
+            }
+
+            if (fontBytes[0] == (byte)'t' && fontBytes[1] == (byte)'t' && fontBytes[2] == (byte)'c' && fontBytes[3] == (byte)'f')
+            {
+                return true;
+            }
+
+            return fontBytes[0] == (byte)'O'
+                && fontBytes[1] == (byte)'T'
+                && fontBytes[2] == (byte)'T'
+                && fontBytes[3] == (byte)'O';
+        }
+
         private static string BuildCacheKey(string text, float scale)
         {
             return QuantizeScale(scale).ToString(CultureInfo.InvariantCulture) + "|" + text;
@@ -1064,12 +1410,38 @@ namespace HaCreator.MapSimulator.UI
                     try
                     {
                         byte[] fontBytes = File.ReadAllBytes(fontPath);
-                        if (fontBytes.Length == 0)
-                        {
-                            resolvedFamilyName = null;
-                            return false;
-                        }
+                        return TryRegister(fontPath, fontBytes, preferredFamilyNames, out resolvedFamilyName);
+                    }
+                    catch
+                    {
+                        resolvedFamilyName = null;
+                        return false;
+                    }
+                }
+            }
 
+            public static bool TryRegister(
+                string sourceKey,
+                byte[] fontBytes,
+                IEnumerable<string> preferredFamilyNames,
+                out string resolvedFamilyName)
+            {
+                lock (Sync)
+                {
+                    if (RegisteredFonts.TryGetValue(sourceKey, out RegisteredPrivateFont cachedFont))
+                    {
+                        resolvedFamilyName = cachedFont.ResolveFamilyName(preferredFamilyNames);
+                        return !string.IsNullOrWhiteSpace(resolvedFamilyName);
+                    }
+
+                    if (fontBytes == null || fontBytes.Length == 0)
+                    {
+                        resolvedFamilyName = null;
+                        return false;
+                    }
+
+                    try
+                    {
                         IntPtr fontData = Marshal.AllocCoTaskMem(fontBytes.Length);
                         Marshal.Copy(fontBytes, 0, fontData, fontBytes.Length);
 
@@ -1079,7 +1451,7 @@ namespace HaCreator.MapSimulator.UI
                         uint fontsAdded = 0;
                         IntPtr gdiHandle = AddFontMemResourceEx(fontData, (uint)fontBytes.Length, IntPtr.Zero, ref fontsAdded);
                         RegisteredPrivateFont registeredFont = new RegisteredPrivateFont(fontData, privateFonts, gdiHandle);
-                        RegisteredFonts[fontPath] = registeredFont;
+                        RegisteredFonts[sourceKey] = registeredFont;
 
                         resolvedFamilyName = registeredFont.ResolveFamilyName(preferredFamilyNames);
                         return !string.IsNullOrWhiteSpace(resolvedFamilyName);
@@ -1137,6 +1509,102 @@ namespace HaCreator.MapSimulator.UI
 
                 return families[0].Name;
             }
+        }
+
+        private static class NativeResourceReader
+        {
+            internal delegate bool EnumResNameProc(IntPtr hModule, IntPtr lpszType, IntPtr lpszName, IntPtr lParam);
+
+            internal static IEnumerable<string> EnumerateResourceNames(IntPtr module, IntPtr resourceType)
+            {
+                var names = new List<string>();
+                EnumResNameProc callback = (hModule, lpszType, lpszName, lParam) =>
+                {
+                    names.Add(ToResourceName(lpszName));
+                    return true;
+                };
+
+                EnumResourceNames(module, resourceType, callback, IntPtr.Zero);
+                return names;
+            }
+
+            internal static bool TryLoadResource(IntPtr module, IntPtr resourceType, string resourceName, out byte[] resourceBytes)
+            {
+                resourceBytes = null;
+                IntPtr resourceNamePtr = TryParseResourceName(resourceName, out ushort resourceId)
+                    ? new IntPtr(resourceId)
+                    : Marshal.StringToHGlobalUni(resourceName);
+
+                try
+                {
+                    IntPtr resourceInfo = FindResource(module, resourceNamePtr, resourceType);
+                    if (resourceInfo == IntPtr.Zero)
+                    {
+                        return false;
+                    }
+
+                    uint resourceSize = SizeofResource(module, resourceInfo);
+                    if (resourceSize == 0)
+                    {
+                        return false;
+                    }
+
+                    IntPtr resourceHandle = LoadResource(module, resourceInfo);
+                    IntPtr resourceData = LockResource(resourceHandle);
+                    if (resourceData == IntPtr.Zero)
+                    {
+                        return false;
+                    }
+
+                    resourceBytes = new byte[(int)resourceSize];
+                    Marshal.Copy(resourceData, resourceBytes, 0, (int)resourceSize);
+                    return true;
+                }
+                finally
+                {
+                    if (!TryParseResourceName(resourceName, out _))
+                    {
+                        Marshal.FreeHGlobal(resourceNamePtr);
+                    }
+                }
+            }
+
+            private static string ToResourceName(IntPtr namePointer)
+            {
+                return namePointer.ToInt64() <= ushort.MaxValue
+                    ? "#" + namePointer.ToInt64().ToString(CultureInfo.InvariantCulture)
+                    : Marshal.PtrToStringUni(namePointer);
+            }
+
+            private static bool TryParseResourceName(string resourceName, out ushort resourceId)
+            {
+                resourceId = 0;
+                return !string.IsNullOrWhiteSpace(resourceName)
+                    && resourceName.Length > 1
+                    && resourceName[0] == '#'
+                    && ushort.TryParse(resourceName.Substring(1), NumberStyles.Integer, CultureInfo.InvariantCulture, out resourceId);
+            }
+
+            [DllImport("kernel32.dll", CharSet = CharSet.Unicode, SetLastError = true)]
+            internal static extern IntPtr LoadLibraryEx(string lpFileName, IntPtr hFile, uint dwFlags);
+
+            [DllImport("kernel32.dll", SetLastError = true)]
+            internal static extern bool FreeLibrary(IntPtr hModule);
+
+            [DllImport("kernel32.dll", SetLastError = true)]
+            private static extern bool EnumResourceNames(IntPtr hModule, IntPtr lpszType, EnumResNameProc lpEnumFunc, IntPtr lParam);
+
+            [DllImport("kernel32.dll", SetLastError = true)]
+            private static extern IntPtr FindResource(IntPtr hModule, IntPtr lpName, IntPtr lpType);
+
+            [DllImport("kernel32.dll", SetLastError = true)]
+            private static extern uint SizeofResource(IntPtr hModule, IntPtr hResInfo);
+
+            [DllImport("kernel32.dll", SetLastError = true)]
+            private static extern IntPtr LoadResource(IntPtr hModule, IntPtr hResInfo);
+
+            [DllImport("kernel32.dll", SetLastError = true)]
+            private static extern IntPtr LockResource(IntPtr hResData);
         }
     }
 }

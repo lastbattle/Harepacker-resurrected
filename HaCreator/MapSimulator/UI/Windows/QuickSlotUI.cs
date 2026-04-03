@@ -84,7 +84,7 @@ namespace HaCreator.MapSimulator.UI
             // Ctrl bar (Ctrl+1-8)
             new[] { "^1", "^2", "^3", "^4", "^5", "^6", "^7", "^8" }
         };
-        private string[] _primaryBarKeyLabelOverride;
+        private readonly Dictionary<int, string[]> _barKeyLabelOverrides = new();
 
         private enum DragBindingType
         {
@@ -1144,14 +1144,24 @@ namespace HaCreator.MapSimulator.UI
 
         public void SetPrimaryBarKeyLabels(IReadOnlyList<string> labels)
         {
+            SetBarKeyLabels(BAR_PRIMARY, labels, SkillManager.PRIMARY_SLOT_COUNT);
+        }
+
+        public void SetFunctionBarKeyLabels(IReadOnlyList<string> labels)
+        {
+            SetBarKeyLabels(BAR_FUNCTION, labels, SkillManager.FUNCTION_SLOT_COUNT);
+        }
+
+        private void SetBarKeyLabels(int bar, IReadOnlyList<string> labels, int maxCount)
+        {
             if (labels == null)
             {
-                _primaryBarKeyLabelOverride = null;
+                _barKeyLabelOverrides.Remove(bar);
                 return;
             }
 
-            _primaryBarKeyLabelOverride = labels
-                .Take(SkillManager.PRIMARY_SLOT_COUNT)
+            _barKeyLabelOverrides[bar] = labels
+                .Take(maxCount)
                 .Select(label => string.IsNullOrWhiteSpace(label) ? string.Empty : label.Trim())
                 .ToArray();
         }
@@ -1168,11 +1178,11 @@ namespace HaCreator.MapSimulator.UI
 
         private string[] GetActiveBarKeyLabels()
         {
-            if (_currentBar == BAR_PRIMARY
-                && _primaryBarKeyLabelOverride != null
-                && _primaryBarKeyLabelOverride.Length > 0)
+            if (_barKeyLabelOverrides.TryGetValue(_currentBar, out string[] labels)
+                && labels != null
+                && labels.Length > 0)
             {
-                return _primaryBarKeyLabelOverride;
+                return labels;
             }
 
             return BarKeyLabels[_currentBar];

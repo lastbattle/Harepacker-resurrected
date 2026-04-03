@@ -12,6 +12,7 @@ namespace HaCreator.MapSimulator
         private int? _pendingPacketOwnedQuestResultFollowUpQuestId;
         private int _pendingPacketOwnedQuestResultFollowUpSpeakerNpcId;
         private string _pendingPacketOwnedQuestResultFollowUpQuestName = string.Empty;
+        private bool _pendingPacketOwnedQuestResultFollowUpReady;
 
         private bool TryApplyPacketOwnedQuestResultPayload(byte[] payload, out string message)
         {
@@ -258,7 +259,6 @@ namespace HaCreator.MapSimulator
             {
                 NpcName = npcName,
                 SelectedEntryId = presentation.QuestId,
-                PresentationStyle = NpcInteractionPresentationStyle.PacketScriptUtilDialog,
                 Entries = new[]
                 {
                     new NpcInteractionEntry
@@ -270,7 +270,8 @@ namespace HaCreator.MapSimulator
                         Subtitle = "Quest Result",
                         Pages = presentation.ModalPages
                     }
-                }
+                },
+                PresentationStyle = NpcInteractionPresentationStyle.PacketQuestResultUtilDialog
             });
         }
 
@@ -300,12 +301,33 @@ namespace HaCreator.MapSimulator
             _pendingPacketOwnedQuestResultFollowUpQuestId = followUpQuestId;
             _pendingPacketOwnedQuestResultFollowUpSpeakerNpcId = speakerNpcId;
             _pendingPacketOwnedQuestResultFollowUpQuestName = followUpQuestName ?? string.Empty;
+            _pendingPacketOwnedQuestResultFollowUpReady = false;
+        }
+
+        private void HandlePacketOwnedQuestResultOverlayClose(NpcInteractionOverlayCloseKind closeKind)
+        {
+            if (!_pendingPacketOwnedQuestResultFollowUpQuestId.HasValue ||
+                _pendingPacketOwnedQuestResultFollowUpQuestId.Value <= 0 ||
+                closeKind == NpcInteractionOverlayCloseKind.None)
+            {
+                return;
+            }
+
+            // Client CUserLocal::OnQuestResult still consumes the trailing StartQuest
+            // after the util dialog returns, even when the dialog does not end through
+            // the simulator's "Completed" close kind.
+            if (PacketQuestResultCloseBehavior.ShouldStartFollowUpQuest(closeKind))
+            {
+                _pendingPacketOwnedQuestResultFollowUpReady = true;
+                return;
+            }
         }
 
         private void UpdatePendingPacketOwnedQuestResultFollowUp()
         {
             if (!_pendingPacketOwnedQuestResultFollowUpQuestId.HasValue ||
                 _pendingPacketOwnedQuestResultFollowUpQuestId.Value <= 0 ||
+                !_pendingPacketOwnedQuestResultFollowUpReady ||
                 _npcInteractionOverlay?.IsVisible == true)
             {
                 return;
@@ -318,6 +340,7 @@ namespace HaCreator.MapSimulator
             _pendingPacketOwnedQuestResultFollowUpQuestId = null;
             _pendingPacketOwnedQuestResultFollowUpSpeakerNpcId = 0;
             _pendingPacketOwnedQuestResultFollowUpQuestName = string.Empty;
+            _pendingPacketOwnedQuestResultFollowUpReady = false;
 
             string followUpStatus = ApplyPacketOwnedQuestResultFollowUpQuest(followUpQuestId, speakerNpcId, followUpQuestName);
             if (!string.IsNullOrWhiteSpace(followUpStatus))

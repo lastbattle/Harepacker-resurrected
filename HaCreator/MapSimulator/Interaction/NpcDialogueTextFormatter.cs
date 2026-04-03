@@ -72,6 +72,28 @@ namespace HaCreator.MapSimulator.Interaction
             return NormalizeWhitespace(formatted);
         }
 
+        public static string FormatPreservingItemIcons(string text, NpcDialogueFormattingContext context = null)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return string.Empty;
+            }
+
+            string preservedIcons = ItemIconRegex.Replace(
+                text,
+                match => int.TryParse(match.Value.TrimStart('#', 'i', 'I', 'v', 'V').TrimEnd('#', ':'), out int itemId) && itemId > 0
+                    ? BuildItemIconMarker(itemId)
+                    : string.Empty);
+            return Format(preservedIcons, context);
+        }
+
+        public static string BuildItemIconMarker(int itemId)
+        {
+            return itemId > 0
+                ? $"{{{{ITEMICON:{itemId}}}}}"
+                : string.Empty;
+        }
+
         public static IReadOnlyList<NpcInteractionPage> FormatPages(IReadOnlyList<NpcInteractionPage> pages, NpcDialogueFormattingContext context)
         {
             if (pages == null || pages.Count == 0)

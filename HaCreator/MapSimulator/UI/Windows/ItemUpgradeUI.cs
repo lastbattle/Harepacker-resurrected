@@ -95,6 +95,12 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Regex VegaModifierRegex = new Regex(@"enables\s+a\s+(\d+)\s*%\s+success\s+rate\s+on\s+a\s+(\d+)\s*%\s+scroll", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex ScrollTargetRegex = new Regex(@"Scroll\s+for\s+(.+?)\s+for\s", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex PercentChanceRegex = new Regex(@"(\d+)\s*%\s+chance", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex WeaponAttackBonusRegex = new Regex(@"(?:Weapon\s+Attack|(?<![A-Za-z.])ATT(?![A-Za-z]))\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex MagicAttackBonusRegex = new Regex(@"(?:Magic\s+Attack|M\.?\s*ATT)\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex WeaponDefenseBonusRegex = new Regex(@"(?:Weapon\s+Defense|(?<![A-Za-z.])DEF(?![A-Za-z]))\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex MagicDefenseBonusRegex = new Regex(@"(?:Magic\s+Defense|M\.?\s*DEF)\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex SpeedBonusRegex = new Regex(@"Speed\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex JumpBonusRegex = new Regex(@"Jump\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly IReadOnlyDictionary<int, EnhancementConsumableDefinition> ConsumableDefinitions =
             new Dictionary<int, EnhancementConsumableDefinition>
             {
@@ -753,13 +759,20 @@ namespace HaCreator.MapSimulator.UI
             return new ItemUpgradeAttemptResult(success, _statusMessage, consumable.ItemId, modifier?.ItemId ?? 0);
         }
 
-        private void ApplyUpgradeBonus(EquipSlot slot, CharacterPart selectedPart, UpgradeState state, int successCountGain)
+        private void ApplyUpgradeBonus(EquipSlot slot, CharacterPart selectedPart, UpgradeState state, EnhancementConsumable consumable)
         {
-            if (_characterBuild == null || successCountGain <= 0)
+            if (_characterBuild == null || consumable == null || consumable.SuccessCountGain <= 0)
             {
                 return;
             }
 
+            if (!consumable.Definition.StatDeltaProfile.IsEmpty)
+            {
+                ApplyAuthoredUpgradeBonus(selectedPart, state, consumable.Definition.StatDeltaProfile, consumable.SuccessCountGain);
+                return;
+            }
+
+            int successCountGain = consumable.SuccessCountGain;
             switch (slot)
             {
                 case EquipSlot.Weapon:
@@ -789,6 +802,111 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private void ApplyAuthoredUpgradeBonus(CharacterPart selectedPart, UpgradeState state, AuthoredStatDeltaProfile statDeltaProfile, int multiplier)
+        {
+            if (_characterBuild == null || state == null || multiplier <= 0 || statDeltaProfile.IsEmpty)
+            {
+                return;
+            }
+
+            ApplyWeaponAttackBonus(selectedPart, state, statDeltaProfile.WeaponAttack * multiplier);
+            ApplyMagicAttackBonus(selectedPart, state, statDeltaProfile.MagicAttack * multiplier);
+            ApplyWeaponDefenseBonus(selectedPart, state, statDeltaProfile.WeaponDefense * multiplier);
+            ApplyMagicDefenseBonus(selectedPart, state, statDeltaProfile.MagicDefense * multiplier);
+            ApplySpeedBonus(selectedPart, state, statDeltaProfile.Speed * multiplier);
+            ApplyJumpBonus(selectedPart, state, statDeltaProfile.Jump * multiplier);
+        }
+
+        private void ApplyWeaponAttackBonus(CharacterPart selectedPart, UpgradeState state, int amount)
+        {
+            if (_characterBuild == null || state == null || amount == 0)
+            {
+                return;
+            }
+
+            state.AttackBonus += amount;
+            _characterBuild.Attack += amount;
+            if (selectedPart != null)
+            {
+                selectedPart.BonusWeaponAttack += amount;
+            }
+        }
+
+        private void ApplyMagicAttackBonus(CharacterPart selectedPart, UpgradeState state, int amount)
+        {
+            if (_characterBuild == null || state == null || amount == 0)
+            {
+                return;
+            }
+
+            state.MagicAttackBonus += amount;
+            _characterBuild.MagicAttack += amount;
+            if (selectedPart != null)
+            {
+                selectedPart.BonusMagicAttack += amount;
+            }
+        }
+
+        private void ApplyWeaponDefenseBonus(CharacterPart selectedPart, UpgradeState state, int amount)
+        {
+            if (_characterBuild == null || state == null || amount == 0)
+            {
+                return;
+            }
+
+            state.DefenseBonus += amount;
+            _characterBuild.Defense += amount;
+            if (selectedPart != null)
+            {
+                selectedPart.BonusWeaponDefense += amount;
+            }
+        }
+
+        private void ApplyMagicDefenseBonus(CharacterPart selectedPart, UpgradeState state, int amount)
+        {
+            if (_characterBuild == null || state == null || amount == 0)
+            {
+                return;
+            }
+
+            state.MagicDefenseBonus += amount;
+            _characterBuild.MagicDefense += amount;
+            if (selectedPart != null)
+            {
+                selectedPart.BonusMagicDefense += amount;
+            }
+        }
+
+        private void ApplySpeedBonus(CharacterPart selectedPart, UpgradeState state, int amount)
+        {
+            if (_characterBuild == null || state == null || amount == 0)
+            {
+                return;
+            }
+
+            state.SpeedBonus += amount;
+            _characterBuild.Speed += amount;
+            if (selectedPart != null)
+            {
+                selectedPart.BonusSpeed += amount;
+            }
+        }
+
+        private void ApplyJumpBonus(CharacterPart selectedPart, UpgradeState state, int amount)
+        {
+            if (_characterBuild == null || state == null || amount == 0)
+            {
+                return;
+            }
+
+            state.JumpBonus += amount;
+            _characterBuild.JumpPower += amount;
+            if (selectedPart != null)
+            {
+                selectedPart.BonusJump += amount;
+            }
+        }
+
         private void ApplyEnhancementScroll(EquipSlot slot, CharacterPart selectedPart, UpgradeState state, EnhancementConsumable consumable, EnhancementConsumable modifier, bool success)
         {
             string modifierSuffix = modifier != null ? $" with {modifier.Name}" : string.Empty;
@@ -796,10 +914,11 @@ namespace HaCreator.MapSimulator.UI
             {
                 state.RemainingSlots = Math.Max(0, state.RemainingSlots - consumable.SuccessCountGain);
                 state.SuccessCount += consumable.SuccessCountGain;
-                ApplyUpgradeBonus(slot, selectedPart, state, consumable.SuccessCountGain);
+                ApplyUpgradeBonus(slot, selectedPart, state, consumable);
+                string statSummary = BuildAuthoredStatSummary(consumable.Definition.StatDeltaProfile, consumable.SuccessCountGain);
                 _statusMessage = $"{ResolveItemName(selectedPart)} gained {consumable.SuccessCountGain} enhancement" +
                                  (consumable.SuccessCountGain == 1 ? string.Empty : "s") +
-                                 $" with {consumable.Name}{modifierSuffix}.";
+                                 $" with {consumable.Name}{modifierSuffix}{statSummary}.";
                 return;
             }
 
@@ -1742,14 +1861,37 @@ namespace HaCreator.MapSimulator.UI
         private void DestroySelectedItem(EquipSlot slot, CharacterPart selectedPart, UpgradeState state, string consumableName)
         {
             _characterBuild?.Equipment.Remove(slot);
+            RemoveAppliedEnhancementBonuses(selectedPart, state);
+            _upgradeStates.Remove(slot);
+            _statusMessage = $"{ResolveItemName(selectedPart)} was destroyed by {consumableName}.";
+        }
+
+        private void RemoveAppliedEnhancementBonuses(CharacterPart selectedPart, UpgradeState state)
+        {
+            if (state == null)
+            {
+                return;
+            }
+
             if (_characterBuild != null)
             {
                 _characterBuild.Attack = Math.Max(0, _characterBuild.Attack - state.AttackBonus);
                 _characterBuild.Defense = Math.Max(0, _characterBuild.Defense - state.DefenseBonus);
+                _characterBuild.MagicAttack = Math.Max(0, _characterBuild.MagicAttack - state.MagicAttackBonus);
+                _characterBuild.MagicDefense = Math.Max(0, _characterBuild.MagicDefense - state.MagicDefenseBonus);
+                _characterBuild.Speed = Math.Max(0f, _characterBuild.Speed - state.SpeedBonus);
+                _characterBuild.JumpPower = Math.Max(0f, _characterBuild.JumpPower - state.JumpBonus);
             }
 
-            _upgradeStates.Remove(slot);
-            _statusMessage = $"{ResolveItemName(selectedPart)} was destroyed by {consumableName}.";
+            if (selectedPart != null)
+            {
+                selectedPart.BonusWeaponAttack = Math.Max(0, selectedPart.BonusWeaponAttack - state.AttackBonus);
+                selectedPart.BonusWeaponDefense = Math.Max(0, selectedPart.BonusWeaponDefense - state.DefenseBonus);
+                selectedPart.BonusMagicAttack = Math.Max(0, selectedPart.BonusMagicAttack - state.MagicAttackBonus);
+                selectedPart.BonusMagicDefense = Math.Max(0, selectedPart.BonusMagicDefense - state.MagicDefenseBonus);
+                selectedPart.BonusSpeed = Math.Max(0, selectedPart.BonusSpeed - state.SpeedBonus);
+                selectedPart.BonusJump = Math.Max(0, selectedPart.BonusJump - state.JumpBonus);
+            }
         }
 
         private UpgradeState GetOrCreateState(EquipSlot slot, CharacterPart part)
@@ -2346,20 +2488,13 @@ namespace HaCreator.MapSimulator.UI
 
         private void ResetAppliedEnhancementState(EquipSlot slot, CharacterPart selectedPart, UpgradeState state)
         {
-            if (_characterBuild != null)
-            {
-                _characterBuild.Attack = Math.Max(0, _characterBuild.Attack - state.AttackBonus);
-                _characterBuild.Defense = Math.Max(0, _characterBuild.Defense - state.DefenseBonus);
-            }
-
-            if (selectedPart != null)
-            {
-                selectedPart.BonusWeaponAttack = Math.Max(0, selectedPart.BonusWeaponAttack - state.AttackBonus);
-                selectedPart.BonusWeaponDefense = Math.Max(0, selectedPart.BonusWeaponDefense - state.DefenseBonus);
-            }
-
+            RemoveAppliedEnhancementBonuses(selectedPart, state);
             state.AttackBonus = 0;
             state.DefenseBonus = 0;
+            state.MagicAttackBonus = 0;
+            state.MagicDefenseBonus = 0;
+            state.SpeedBonus = 0;
+            state.JumpBonus = 0;
             state.SuccessCount = state.OriginalSuccessfulUpgradeCount;
             state.FailCount = 0;
             state.RemainingSlots = state.TotalSlots;
@@ -2422,7 +2557,13 @@ namespace HaCreator.MapSimulator.UI
                 InventoryType.USE,
                 ConsumableEffectType.Enhancement,
                 PotentialTier.Rare,
-                0f);
+                0f,
+                CubeBehavior.Miracle,
+                ModifierBehavior.None,
+                0f,
+                0,
+                HammerBehavior.None,
+                ResolveAuthoredStatDeltaProfile(ResolveCachedItemDescription(itemId)));
             return true;
         }
 
@@ -2540,6 +2681,10 @@ namespace HaCreator.MapSimulator.UI
             public int ViciousHammerCount { get; set; }
             public int AttackBonus { get; set; }
             public int DefenseBonus { get; set; }
+            public int MagicAttackBonus { get; set; }
+            public int MagicDefenseBonus { get; set; }
+            public int SpeedBonus { get; set; }
+            public int JumpBonus { get; set; }
             public bool HasPotential { get; set; }
             public PotentialTier PotentialTier { get; set; }
             public int PotentialLineCount { get; set; }
@@ -2607,7 +2752,8 @@ namespace HaCreator.MapSimulator.UI
                 ModifierBehavior modifierBehavior = ModifierBehavior.None,
                 float modifiedSuccessRate = 0f,
                 int rewardItemId = 0,
-                HammerBehavior hammerBehavior = HammerBehavior.None)
+                HammerBehavior hammerBehavior = HammerBehavior.None,
+                AuthoredStatDeltaProfile statDeltaProfile = default)
             {
                 ItemId = itemId;
                 Name = name;
@@ -2624,6 +2770,7 @@ namespace HaCreator.MapSimulator.UI
                 ModifiedSuccessRate = modifiedSuccessRate;
                 RewardItemId = rewardItemId;
                 HammerBehavior = hammerBehavior;
+                StatDeltaProfile = statDeltaProfile;
             }
 
             public int ItemId { get; }
@@ -2641,6 +2788,7 @@ namespace HaCreator.MapSimulator.UI
             public float ModifiedSuccessRate { get; }
             public int RewardItemId { get; }
             public HammerBehavior HammerBehavior { get; }
+            public AuthoredStatDeltaProfile StatDeltaProfile { get; }
         }
 
         private sealed class EnhancementConsumable
@@ -2658,6 +2806,85 @@ namespace HaCreator.MapSimulator.UI
             public ConsumableEffectType EffectType => Definition.EffectType;
             public PotentialTier PotentialTierOnSuccess => Definition.PotentialTierOnSuccess;
             public CubeBehavior CubeBehavior => Definition.CubeBehavior;
+        }
+
+        private readonly struct AuthoredStatDeltaProfile
+        {
+            public AuthoredStatDeltaProfile(int weaponAttack, int magicAttack, int weaponDefense, int magicDefense, int speed, int jump)
+            {
+                WeaponAttack = weaponAttack;
+                MagicAttack = magicAttack;
+                WeaponDefense = weaponDefense;
+                MagicDefense = magicDefense;
+                Speed = speed;
+                Jump = jump;
+            }
+
+            public int WeaponAttack { get; }
+            public int MagicAttack { get; }
+            public int WeaponDefense { get; }
+            public int MagicDefense { get; }
+            public int Speed { get; }
+            public int Jump { get; }
+            public bool IsEmpty => WeaponAttack == 0 &&
+                                   MagicAttack == 0 &&
+                                   WeaponDefense == 0 &&
+                                   MagicDefense == 0 &&
+                                   Speed == 0 &&
+                                   Jump == 0;
+        }
+
+        private static AuthoredStatDeltaProfile ResolveAuthoredStatDeltaProfile(string description)
+        {
+            return new AuthoredStatDeltaProfile(
+                ResolveDescriptionBonus(description, WeaponAttackBonusRegex),
+                ResolveDescriptionBonus(description, MagicAttackBonusRegex),
+                ResolveDescriptionBonus(description, WeaponDefenseBonusRegex),
+                ResolveDescriptionBonus(description, MagicDefenseBonusRegex),
+                ResolveDescriptionBonus(description, SpeedBonusRegex),
+                ResolveDescriptionBonus(description, JumpBonusRegex));
+        }
+
+        private static int ResolveDescriptionBonus(string description, Regex regex)
+        {
+            if (regex == null || string.IsNullOrWhiteSpace(description))
+            {
+                return 0;
+            }
+
+            Match match = regex.Match(description);
+            return match.Success && int.TryParse(match.Groups[1].Value, out int value)
+                ? Math.Max(0, value)
+                : 0;
+        }
+
+        private static string BuildAuthoredStatSummary(AuthoredStatDeltaProfile statDeltaProfile, int multiplier)
+        {
+            if (statDeltaProfile.IsEmpty || multiplier <= 0)
+            {
+                return string.Empty;
+            }
+
+            var segments = new List<string>();
+            AppendAuthoredStatSegment(segments, "Weapon ATT", statDeltaProfile.WeaponAttack * multiplier);
+            AppendAuthoredStatSegment(segments, "Magic ATT", statDeltaProfile.MagicAttack * multiplier);
+            AppendAuthoredStatSegment(segments, "Weapon DEF", statDeltaProfile.WeaponDefense * multiplier);
+            AppendAuthoredStatSegment(segments, "Magic DEF", statDeltaProfile.MagicDefense * multiplier);
+            AppendAuthoredStatSegment(segments, "Speed", statDeltaProfile.Speed * multiplier);
+            AppendAuthoredStatSegment(segments, "Jump", statDeltaProfile.Jump * multiplier);
+            return segments.Count > 0
+                ? $" ({string.Join(", ", segments)})"
+                : string.Empty;
+        }
+
+        private static void AppendAuthoredStatSegment(ICollection<string> segments, string label, int value)
+        {
+            if (segments == null || value == 0)
+            {
+                return;
+            }
+
+            segments.Add($"{label} +{value}");
         }
 
         private static string[] CopyPotentialLines(UpgradeState state)
@@ -2771,6 +2998,37 @@ namespace HaCreator.MapSimulator.UI
             public float ModifiedSuccessRate { get; }
         }
 
+        internal static bool TryResolveVegaModifierRatePreview(int itemId, out int requiredBasePercent, out int modifiedPercent)
+        {
+            requiredBasePercent = 0;
+            modifiedPercent = 0;
+
+            if (!TryParseVegaModifierRateText(ResolveCachedItemDescription(itemId), out requiredBasePercent, out modifiedPercent))
+            {
+                return false;
+            }
+
+            requiredBasePercent = Math.Clamp(requiredBasePercent, 0, 100);
+            modifiedPercent = Math.Clamp(modifiedPercent, 0, 100);
+            return requiredBasePercent > 0 && modifiedPercent > 0;
+        }
+
+        internal static bool TryParseVegaModifierRateText(string description, out int requiredBasePercent, out int modifiedPercent)
+        {
+            requiredBasePercent = 0;
+            modifiedPercent = 0;
+
+            Match match = VegaModifierRegex.Match(description ?? string.Empty);
+            if (!match.Success ||
+                !int.TryParse(match.Groups[1].Value, out modifiedPercent) ||
+                !int.TryParse(match.Groups[2].Value, out requiredBasePercent))
+            {
+                return false;
+            }
+
+            return requiredBasePercent > 0 && modifiedPercent > 0;
+        }
+
         private static bool TryResolveVegaModifierProfile(int itemId, out VegaModifierProfile profile)
         {
             if (VegaModifierProfileCache.TryGetValue(itemId, out profile))
@@ -2779,10 +3037,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             profile = default;
-            Match match = VegaModifierRegex.Match(ResolveCachedItemDescription(itemId) ?? string.Empty);
-            if (match.Success &&
-                int.TryParse(match.Groups[1].Value, out int modifiedPercent) &&
-                int.TryParse(match.Groups[2].Value, out int requiredPercent))
+            if (TryResolveVegaModifierRatePreview(itemId, out int requiredPercent, out int modifiedPercent))
             {
                 profile = new VegaModifierProfile(requiredPercent / 100f, modifiedPercent / 100f);
             }
@@ -2821,15 +3076,9 @@ namespace HaCreator.MapSimulator.UI
                 return slots.Count > 0;
             }
 
-            HashSet<EquipSlot> resolvedSlots = ResolveTargetSlotsFromText(ResolveCachedItemDescription(itemId));
-            string name = ResolveCachedItemNameOrFallback(itemId);
-            if (resolvedSlots.Count == 0)
-            {
-                Match nameMatch = ScrollTargetRegex.Match(name ?? string.Empty);
-                resolvedSlots = nameMatch.Success
-                    ? ResolveTargetSlotsFromText(nameMatch.Groups[1].Value)
-                    : ResolveTargetSlotsFromText(name);
-            }
+            HashSet<EquipSlot> resolvedSlots = ResolveTargetSlotsFromItemMetadata(
+                ResolveCachedItemNameOrFallback(itemId),
+                ResolveCachedItemDescription(itemId));
 
             slots = resolvedSlots.Count > 0
                 ? resolvedSlots.ToArray()
@@ -2838,7 +3087,22 @@ namespace HaCreator.MapSimulator.UI
             return slots.Count > 0;
         }
 
-        // Some WZ item names are misleading; the description text is the more reliable target hint.
+        private static HashSet<EquipSlot> ResolveTargetSlotsFromItemMetadata(string itemName, string description)
+        {
+            string normalizedName = itemName ?? string.Empty;
+            Match nameMatch = ScrollTargetRegex.Match(normalizedName);
+            HashSet<EquipSlot> nameSlots = nameMatch.Success
+                ? ResolveTargetSlotsFromText(nameMatch.Groups[1].Value)
+                : ResolveTargetSlotsFromText(normalizedName);
+            if (nameSlots.Count > 0)
+            {
+                return nameSlots;
+            }
+
+            return ResolveTargetSlotsFromText(description);
+        }
+
+        // For Vega-marked scrolls, the authored item name is the stronger target-family signal when it disagrees with the description text.
         private static HashSet<EquipSlot> ResolveTargetSlotsFromText(string text)
         {
             var targetSlots = new HashSet<EquipSlot>();

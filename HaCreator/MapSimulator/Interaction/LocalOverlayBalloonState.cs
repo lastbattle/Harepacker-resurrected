@@ -313,6 +313,8 @@ namespace HaCreator.MapSimulator.Interaction
     {
         public Texture2D Texture { get; init; }
         public Point Origin { get; init; }
+        public Point TopMountPoint { get; init; }
+        public Point BottomMountPoint { get; init; }
 
         public bool IsLoaded => Texture != null;
     }

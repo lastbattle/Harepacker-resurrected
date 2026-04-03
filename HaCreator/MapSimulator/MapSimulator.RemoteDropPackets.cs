@@ -18,7 +18,12 @@ namespace HaCreator.MapSimulator
                     packetType,
                     payload,
                     packet => _dropPool.ApplyPacketEnter(packet, currTickCount),
-                    packet => _dropPool.ApplyPacketLeave(packet, currTickCount, _playerManager?.Player?.Build?.Id ?? 0, ResolveRemoteDropPacketActorName),
+                    packet => _dropPool.ApplyPacketLeave(
+                        packet,
+                        currTickCount,
+                        _playerManager?.Player?.Build?.Id ?? 0,
+                        ResolveRemoteDropPacketActorName,
+                        ResolveRemoteDropPacketTargetPosition),
                     out string result))
             {
                 return ChatCommandHandler.CommandResult.Error(result ?? $"Failed to apply remote drop packet {packetType}.");
@@ -68,6 +73,26 @@ namespace HaCreator.MapSimulator
             }
 
             return IsTrackedDropPartyActor(ownerId) && IsTrackedDropPartyActor(actorId);
+        }
+
+        internal static bool ShouldSurfacePickupNotice(
+            DropOwnershipType ownershipType,
+            int ownerId,
+            int localCharacterId,
+            Func<int, int, bool> partyMembershipEvaluator)
+        {
+            if (ownerId <= 0 || localCharacterId <= 0)
+            {
+                return true;
+            }
+
+            return ownershipType switch
+            {
+                DropOwnershipType.Character => ownerId == localCharacterId,
+                DropOwnershipType.Party => ownerId == localCharacterId
+                    || partyMembershipEvaluator?.Invoke(ownerId, localCharacterId) == true,
+                _ => true
+            };
         }
 
         private bool IsTrackedDropPartyActor(int actorId)
@@ -129,6 +154,67 @@ namespace HaCreator.MapSimulator
                     packet.ActorId),
                 _ => null
             };
+        }
+
+        private Vector2? ResolveRemoteDropPacketTargetPosition(PacketDropLeaveReason reason, RemoteDropLeavePacket packet)
+        {
+            return reason switch
+            {
+                PacketDropLeaveReason.PlayerPickup => ResolveDropPickupActorPosition(DropPickupActorKind.Player, packet.ActorId, 0),
+                PacketDropLeaveReason.MobPickup => ResolveDropPickupActorPosition(DropPickupActorKind.Mob, packet.ActorId, 0),
+                PacketDropLeaveReason.PetPickup => ResolveDropPickupActorPosition(
+                    DropPickupActorKind.Pet,
+                    packet.SecondaryActorId != 0 ? packet.SecondaryActorId : packet.ActorId,
+                    packet.ActorId),
+                _ => null
+            };
+        }
+
+        private Vector2? ResolveDropPickupActorPosition(DropPickupActorKind actorKind, int actorId, int fallbackOwnerId)
+        {
+            switch (actorKind)
+            {
+                case DropPickupActorKind.Player:
+                    if (actorId > 0 && actorId == (_playerManager?.Player?.Build?.Id ?? 0) && _playerManager?.Player != null)
+                    {
+                        return _playerManager.Player.Position;
+                    }
+
+                    if (actorId > 0 && _remoteUserPool.TryGetActor(actorId, out RemoteUserActor remoteActor))
+                    {
+                        return remoteActor.Position;
+                    }
+
+                    break;
+
+                case DropPickupActorKind.Pet:
+                    if (_playerManager?.Pets?.ActivePets != null)
+                    {
+                        foreach (var pet in _playerManager.Pets.ActivePets)
+                        {
+                            if (pet?.RuntimeId == actorId)
+                            {
+                                return new Vector2(pet.X, pet.Y);
+                            }
+                        }
+                    }
+
+                    if (fallbackOwnerId > 0)
+                    {
+                        Vector2? ownerPosition = ResolveDropPickupActorPosition(DropPickupActorKind.Player, fallbackOwnerId, 0);
+                        if (ownerPosition.HasValue)
+                        {
+                            return ownerPosition;
+                        }
+                    }
+
+                    break;
+
+                case DropPickupActorKind.Mob:
+                    return ResolveDropPacketSourcePosition(actorId);
+            }
+
+            return null;
         }
     }
 }

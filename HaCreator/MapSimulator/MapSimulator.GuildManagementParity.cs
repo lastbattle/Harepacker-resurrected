@@ -36,6 +36,7 @@ namespace HaCreator.MapSimulator
                 dialogContext,
                 uiWindowManager,
                 _fontChat,
+                _socialListRuntime.ApplyGuildCreateAgreementAcceptance,
                 ShowUtilityFeedbackMessage,
                 () => ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.GuildCreateAgreement));
         }
@@ -65,6 +66,7 @@ namespace HaCreator.MapSimulator
             _guildCreateAgreementController.WireWindow(
                 uiWindowManager,
                 _fontChat,
+                _socialListRuntime.ApplyGuildCreateAgreementAcceptance,
                 ShowUtilityFeedbackMessage);
         }
     }

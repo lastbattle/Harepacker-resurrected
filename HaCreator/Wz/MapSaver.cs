@@ -523,6 +523,8 @@ namespace HaCreator.Wz
                 bgProp["a"] = InfoTool.SetInt(bgInst.a);
                 bgProp["type"] = InfoTool.SetInt((int)bgInst.type);
                 bgProp["front"] = InfoTool.SetOptionalBool(bgInst.front);
+                if (bgInst.Page != 0)
+                    bgProp["page"] = InfoTool.SetInt(bgInst.Page);
                 if (bgInst.screenMode != (int)RenderResolution.Res_All) // 0
                     bgProp["screenMode"] = InfoTool.SetInt(bgInst.screenMode);
 

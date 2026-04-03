@@ -35,7 +35,11 @@ namespace HaCreator.MapSimulator.Pools
             "defense",
             "haste",
             "speed",
-            "aura"
+            "aura",
+            "avoidability",
+            "dodge chance",
+            "movement speed",
+            "attack speed"
         };
 
         private static readonly string[] HostileAreaTokens =
@@ -156,6 +160,20 @@ namespace HaCreator.MapSimulator.Pools
             return CreateProjectedSupportBuffLevelData(levelData == null ? Array.Empty<SkillLevelData>() : new[] { levelData });
         }
 
+        public static SkillLevelData CreateProjectedSupportBuffLevelData(
+            SkillData skill,
+            SkillLevelData levelData,
+            params SkillData[] supportSkills)
+        {
+            SkillLevelData projected = CreateProjectedSupportBuffLevelData(levelData);
+            if (projected == null)
+            {
+                return null;
+            }
+
+            return ApplyDerivedSupportBuffMappings(projected, skill, levelData, supportSkills);
+        }
+
         public static SkillLevelData CreateProjectedSupportBuffLevelData(params SkillLevelData[] levelDataEntries)
         {
             if (levelDataEntries == null || levelDataEntries.Length == 0)
@@ -179,9 +197,38 @@ namespace HaCreator.MapSimulator.Pools
             return projected;
         }
 
+        public static int ResolveDerivedProjectedDamageReductionRate(SkillData skill, SkillLevelData levelData)
+        {
+            if (skill == null || levelData == null)
+            {
+                return 0;
+            }
+
+            // Blue Aura-style affected areas author their protection as linked
+            // damage-sharing metadata instead of a direct damR field.
+            bool usesPartyDamageSharing =
+                ContainsToken(skill.AffectedSkillEffect, "partyDamageSharing")
+                || (ContainsToken(skill.Description, "damage taken by party members", "damage taken by team members")
+                    && ContainsToken(skill.Description, "absorbs"));
+            if (!usesPartyDamageSharing)
+            {
+                return 0;
+            }
+
+            return Math.Clamp(levelData.X, 0, 100);
+        }
+
         public static RemotePlayerAffectedAreaDisposition ResolveDisposition(SkillData skill, SkillLevelData levelData = null)
         {
-            if (IsFriendlyPlayerAreaSkill(skill, levelData))
+            return ResolveDisposition(skill, supportSkills: null, levelData);
+        }
+
+        public static RemotePlayerAffectedAreaDisposition ResolveDisposition(
+            SkillData skill,
+            IEnumerable<SkillData> supportSkills,
+            SkillLevelData levelData = null)
+        {
+            if (IsFriendlyPlayerAreaSkill(skill, supportSkills, levelData))
             {
                 return RemotePlayerAffectedAreaDisposition.FriendlySupport;
             }
@@ -193,24 +240,38 @@ namespace HaCreator.MapSimulator.Pools
 
         public static bool IsFriendlyPlayerAreaSkill(SkillData skill, SkillLevelData levelData = null)
         {
-            if (skill == null)
+            return IsFriendlyPlayerAreaSkill(skill, supportSkills: null, levelData);
+        }
+
+        public static bool IsFriendlyPlayerAreaSkill(
+            SkillData skill,
+            IEnumerable<SkillData> supportSkills,
+            SkillLevelData levelData = null)
+        {
+            if (IsFriendlyPlayerAreaSkillCore(skill, levelData))
+            {
+                return true;
+            }
+
+            if (supportSkills == null)
             {
                 return false;
             }
 
-            if (IsSupportZone(skill, levelData)
-                || skill.Type == SkillType.PartyBuff
-                || skill.HasInvincibleMetadata)
+            foreach (SkillData supportSkill in supportSkills)
             {
-                return true;
+                if (supportSkill == null || ReferenceEquals(supportSkill, skill))
+                {
+                    continue;
+                }
+
+                if (IsFriendlyPlayerAreaSkillCore(supportSkill, levelData: null))
+                {
+                    return true;
+                }
             }
 
-            if (IsFriendlySupportSummonArea(skill))
-            {
-                return true;
-            }
-
-            return HasPositiveSupportMetadata(levelData) && !IsHostilePlayerAreaSkill(skill, levelData);
+            return false;
         }
 
         public static bool IsInvincibleZone(SkillData skill)
@@ -232,7 +293,7 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            if (!IsFriendlyPlayerAreaSkill(skill, levelData))
+            if (!IsFriendlyPlayerAreaSkill(skill, supportSkills, levelData))
             {
                 return false;
             }
@@ -268,6 +329,26 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
+            if (!HasHostileMobGameplay(skill, levelData))
+            {
+                return false;
+            }
+
+            if (levelData == null)
+            {
+                return !HasFriendlySupportMetadata(skill, null);
+            }
+
+            return !HasPositiveSupportMetadata(levelData);
+        }
+
+        public static bool HasHostileMobGameplay(SkillData skill, SkillLevelData levelData = null)
+        {
+            if (skill == null)
+            {
+                return false;
+            }
+
             if (!string.IsNullOrWhiteSpace(skill.DebuffMessageToken))
             {
                 return true;
@@ -295,7 +376,19 @@ namespace HaCreator.MapSimulator.Pools
                 || levelData.AttackCount > 1
                 || skill.Type == SkillType.Attack
                 || skill.Type == SkillType.Magic;
-            return hasHostileDamageMetadata && !HasPositiveSupportMetadata(levelData);
+            return hasHostileDamageMetadata
+                   || levelData.Speed < 0
+                   || levelData.Jump < 0
+                   || levelData.PAD < 0
+                   || levelData.MAD < 0
+                   || levelData.PDD < 0
+                   || levelData.MDD < 0
+                   || levelData.ACC < 0
+                   || levelData.EVA < 0
+                   || levelData.STR < 0
+                   || levelData.DEX < 0
+                   || levelData.INT < 0
+                   || levelData.LUK < 0;
         }
 
         private static bool IsFriendlySupportSummonArea(SkillData skill)
@@ -346,6 +439,55 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return false;
+        }
+
+        private static bool IsFriendlyPlayerAreaSkillCore(SkillData skill, SkillLevelData levelData)
+        {
+            if (skill == null)
+            {
+                return false;
+            }
+
+            if (IsSupportZone(skill, levelData)
+                || skill.Type == SkillType.PartyBuff
+                || skill.HasInvincibleMetadata)
+            {
+                return true;
+            }
+
+            if (IsFriendlySupportSummonArea(skill))
+            {
+                return true;
+            }
+
+            return HasFriendlySupportMetadata(skill, levelData);
+        }
+
+        private static bool HasFriendlySupportMetadata(SkillData skill, SkillLevelData levelData)
+        {
+            if (skill == null)
+            {
+                return false;
+            }
+
+            if (SupportsPartyMembers(skill)
+                && (ContainsToken(skill.Name, FriendlyAreaSupportTokens)
+                    || ContainsToken(skill.Description, FriendlyAreaSupportTokens)))
+            {
+                return true;
+            }
+
+            if (HasPositiveSupportMetadata(levelData))
+            {
+                return !HasHostileMobGameplay(skill, levelData) || SupportsPartyMembers(skill);
+            }
+
+            bool hasDerivedSupportAliasMetadata =
+                levelData != null
+                && ((levelData.X > 0 && ContainsToken(skill.Description, "movement speed", "speed", "attack", "damage"))
+                    || (levelData.Y != 0 && ContainsToken(skill.Description, "attack speed", "weapon speed"))
+                    || (levelData.Z > 0 && ContainsToken(skill.Description, "dodge chance", "avoidability")));
+            return hasDerivedSupportAliasMetadata && SupportsPartyMembers(skill);
         }
 
         private static bool HasPositiveSupportMetadata(SkillLevelData levelData)
@@ -448,6 +590,98 @@ namespace HaCreator.MapSimulator.Pools
             target.X = Math.Max(target.X, source.X);
             target.Y = Math.Max(target.Y, source.Y);
             target.Z = Math.Max(target.Z, source.Z);
+        }
+
+        private static SkillLevelData ApplyDerivedSupportBuffMappings(
+            SkillLevelData projected,
+            SkillData skill,
+            SkillLevelData authoredLevelData,
+            IEnumerable<SkillData> supportSkills)
+        {
+            if (projected == null)
+            {
+                return null;
+            }
+
+            string combinedText = BuildCombinedSupportText(skill, supportSkills);
+            if (string.IsNullOrWhiteSpace(combinedText))
+            {
+                return projected;
+            }
+
+            bool derivedMovementSpeedFromAliasX =
+                projected.Speed <= 0
+                && authoredLevelData?.X > 0
+                && ContainsToken(combinedText, "movement speed", "speed");
+            if (derivedMovementSpeedFromAliasX)
+            {
+                projected.Speed = Math.Max(projected.Speed, authoredLevelData.X);
+            }
+
+            if (ContainsToken(combinedText, "attack speed", "weapon speed"))
+            {
+                int boosterValue = 0;
+                if (authoredLevelData != null)
+                {
+                    boosterValue = authoredLevelData.Y < 0
+                        ? Math.Abs(authoredLevelData.Y)
+                        : Math.Max(authoredLevelData.Y, 0);
+                }
+
+                if (boosterValue > 0
+                    && (projected.X <= 0 || derivedMovementSpeedFromAliasX))
+                {
+                    projected.X = boosterValue;
+                }
+            }
+
+            if (projected.AvoidabilityPercent <= 0
+                && authoredLevelData?.Z > 0
+                && ContainsToken(combinedText, "dodge chance", "avoidability"))
+            {
+                projected.AvoidabilityPercent = Math.Max(projected.AvoidabilityPercent, authoredLevelData.Z);
+            }
+
+            return projected;
+        }
+
+        private static string BuildCombinedSupportText(SkillData skill, IEnumerable<SkillData> supportSkills)
+        {
+            var values = new List<string>(6);
+            AddSupportText(values, skill);
+
+            if (supportSkills != null)
+            {
+                foreach (SkillData supportSkill in supportSkills)
+                {
+                    if (supportSkill == null || ReferenceEquals(supportSkill, skill))
+                    {
+                        continue;
+                    }
+
+                    AddSupportText(values, supportSkill);
+                }
+            }
+
+            return string.Join(" ", values);
+        }
+
+        private static void AddSupportText(ICollection<string> values, SkillData skill)
+        {
+            if (skill == null || values == null)
+            {
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(skill.Name))
+            {
+                values.Add(skill.Name);
+            }
+
+            if (!string.IsNullOrWhiteSpace(skill.Description))
+            {
+                values.Add(skill.Description);
+            }
         }
 
         private static bool ContainsToken(string value, params string[] tokens)

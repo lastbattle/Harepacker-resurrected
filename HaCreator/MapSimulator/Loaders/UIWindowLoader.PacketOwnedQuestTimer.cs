@@ -11,29 +11,22 @@ namespace HaCreator.MapSimulator.Loaders
             UIWindowManager manager,
             GraphicsDevice device)
         {
-            if (manager == null || device == null)
-            {
-                return;
-            }
-
-            if (manager.GetWindow(MapSimulatorWindowNames.QuestTimer) == null)
-            {
-                manager.RegisterCustomWindow(CreateQuestTimerRuntimeWindow(device, MapSimulatorWindowNames.QuestTimer, drawActionLayer: false));
-            }
-
-            if (manager.GetWindow(MapSimulatorWindowNames.QuestTimerAction) == null)
-            {
-                manager.RegisterCustomWindow(CreateQuestTimerRuntimeWindow(device, MapSimulatorWindowNames.QuestTimerAction, drawActionLayer: true));
-            }
+            // Active packet-authored quest timers allocate their modeless owner pair on demand.
         }
 
-        private static UIWindowBase CreateQuestTimerRuntimeWindow(GraphicsDevice device, string windowName, bool drawActionLayer)
+        internal static UIWindowBase CreateQuestTimerRuntimeWindow(GraphicsDevice device, int questId, bool drawActionLayer)
         {
             Texture2D transparentTexture = new(device, 1, 1);
             transparentTexture.SetData(new[] { Color.Transparent });
             return drawActionLayer
-                ? new QuestTimerActionWindow(new DXObject(0, 0, transparentTexture, 0))
-                : new QuestTimerWindow(new DXObject(0, 0, transparentTexture, 0));
+                ? new QuestTimerActionWindow(
+                    new DXObject(0, 0, transparentTexture, 0),
+                    MapSimulatorWindowNames.GetQuestTimerActionWindowName(questId),
+                    questId)
+                : new QuestTimerWindow(
+                    new DXObject(0, 0, transparentTexture, 0),
+                    MapSimulatorWindowNames.GetQuestTimerWindowName(questId),
+                    questId);
         }
     }
 }

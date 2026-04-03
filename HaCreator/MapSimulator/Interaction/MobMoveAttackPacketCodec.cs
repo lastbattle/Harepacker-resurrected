@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using HaCreator.MapSimulator.AI;
 using MapleLib.PacketLib;
 using Microsoft.Xna.Framework;
 
@@ -18,6 +19,7 @@ namespace HaCreator.MapSimulator.Interaction
             public int PacketType { get; init; }
             public int MobId { get; init; }
             public int TargetInfoRaw { get; init; }
+            public DecodedLockedTargetInfo? LockedTargetInfo { get; init; }
             public bool NotForceLandingWhenDiscard { get; init; }
             public bool NotChangeAction { get; init; }
             public bool NextAttackPossible { get; init; }
@@ -26,6 +28,28 @@ namespace HaCreator.MapSimulator.Interaction
             public int AttackId { get; init; }
             public List<Point> MultiTargetForBall { get; init; }
             public List<int> RandTimeForAreaAttack { get; init; }
+        }
+
+        internal readonly record struct DecodedLockedTargetInfo(
+            int RawValue,
+            int EncodedEntityId,
+            MobTargetType TargetType,
+            int TargetSlotIndex);
+
+        internal static MobTargetInfo CreateLockedTargetOverride(DecodedLockedTargetInfo? lockedTargetInfo)
+        {
+            if (lockedTargetInfo is not DecodedLockedTargetInfo decoded)
+            {
+                return null;
+            }
+
+            return new MobTargetInfo
+            {
+                TargetId = decoded.EncodedEntityId,
+                TargetSlotIndex = decoded.TargetSlotIndex,
+                TargetType = decoded.TargetType,
+                IsValid = true
+            };
         }
 
         public static bool TryDecode(
@@ -77,6 +101,9 @@ namespace HaCreator.MapSimulator.Interaction
                     PacketType = packetType,
                     MobId = mobId,
                     TargetInfoRaw = targetInfoRaw,
+                    LockedTargetInfo = TryDecodeLockedTargetInfoRaw(targetInfoRaw, out DecodedLockedTargetInfo lockedTargetInfo)
+                        ? lockedTargetInfo
+                        : null,
                     NotForceLandingWhenDiscard = notForceLandingWhenDiscard,
                     NotChangeAction = notChangeAction,
                     NextAttackPossible = nextAttackPossible,
@@ -105,6 +132,53 @@ namespace HaCreator.MapSimulator.Interaction
 
             attackId = 0;
             return false;
+        }
+
+        internal static bool TryDecodeLockedTargetInfoRaw(int targetInfoRaw, out DecodedLockedTargetInfo lockedTargetInfo)
+        {
+            lockedTargetInfo = default;
+            if (targetInfoRaw <= 0)
+            {
+                return false;
+            }
+
+            int encodedType = targetInfoRaw & 0x3;
+            int encodedEntityId = targetInfoRaw >> 2;
+            if (encodedEntityId <= 0)
+            {
+                return false;
+            }
+
+            switch (encodedType)
+            {
+                case 0:
+                    lockedTargetInfo = new DecodedLockedTargetInfo(
+                        targetInfoRaw,
+                        encodedEntityId,
+                        MobTargetType.Player,
+                        -1);
+                    return true;
+
+                case 1:
+                case 2:
+                    lockedTargetInfo = new DecodedLockedTargetInfo(
+                        targetInfoRaw,
+                        encodedEntityId,
+                        MobTargetType.Summoned,
+                        encodedType - 1);
+                    return true;
+
+                case 3:
+                    lockedTargetInfo = new DecodedLockedTargetInfo(
+                        targetInfoRaw,
+                        encodedEntityId,
+                        MobTargetType.Mob,
+                        -1);
+                    return true;
+
+                default:
+                    return false;
+            }
         }
 
         private static List<Point> ReadPointList(PacketReader reader, out string error)

@@ -224,6 +224,7 @@ namespace HaCreator.MapSimulator.Fields
         internal int MessageDurationMs => _messageDurationMs;
         internal int FinalScoreMessageDurationMs => _finalScoreMessageDurationMs;
         internal string EventName => _eventName;
+        internal bool HasClientClock => _finishTick != 0;
         #endregion
         #region Initialization
         public void Initialize(GraphicsDevice graphicsDevice, SoundManager soundManager = null)
@@ -447,6 +448,7 @@ namespace HaCreator.MapSimulator.Fields
             _lastUpdateTime = Environment.TickCount;
             _awaitingFinalScore = false;
             _lastScorePacketTick = null;
+            _hitQueue.Clear();
             _pendingAttackPacketRequests.Clear();
             ClearRoundResult();
             ShowMessage(_eventName, _messageDurationMs, _lastUpdateTime);
@@ -982,10 +984,7 @@ namespace HaCreator.MapSimulator.Fields
                     new Color(0, 100, 0, 50));
             }
             DrawUI(spriteBatch, skeletonMeshRenderer, gameTime, pixelTexture, font);
-            if (font != null)
-            {
-                DrawRoundResult(spriteBatch, skeletonMeshRenderer, gameTime, font, tickCount);
-            }
+            DrawRoundResult(spriteBatch, skeletonMeshRenderer, gameTime, font, tickCount);
         }
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         private Color GetCoconutTint(Coconut coconut)
@@ -1035,14 +1034,17 @@ namespace HaCreator.MapSimulator.Fields
             {
                 spriteBatch.DrawString(font, team1Text, new Vector2(boardX + Team1ScoreX, boardY + ScoreY), new Color(255, 140, 140));
             }
-            int minutes = _timeRemaining / 60;
-            int seconds = _timeRemaining % 60;
-            string timerText = $"{minutes}:{seconds:D2}";
-            if (!DrawBitmapText(spriteBatch, skeletonMeshRenderer, gameTime, _timeFont, timerText, boardX + TimerX, boardY + TimerY, TimerDigitSpacing)
-                && font != null)
+            if (HasClientClock)
             {
-                Color timerColor = _timeRemaining <= 10 ? Color.Red : Color.Yellow;
-                spriteBatch.DrawString(font, timerText, new Vector2(boardX + TimerX, boardY + TimerY), timerColor);
+                int minutes = _timeRemaining / 60;
+                int seconds = _timeRemaining % 60;
+                string timerText = $"{minutes}:{seconds:D2}";
+                if (!DrawBitmapText(spriteBatch, skeletonMeshRenderer, gameTime, _timeFont, timerText, boardX + TimerX, boardY + TimerY, TimerDigitSpacing)
+                    && font != null)
+                {
+                    Color timerColor = _timeRemaining <= 10 ? Color.Red : Color.Yellow;
+                    spriteBatch.DrawString(font, timerText, new Vector2(boardX + TimerX, boardY + TimerY), timerColor);
+                }
             }
             if (_currentMessage != null && font != null)
             {
@@ -1100,6 +1102,10 @@ namespace HaCreator.MapSimulator.Fields
                 _ => null
             };
             if (resultText == null)
+            {
+                return;
+            }
+            if (font == null)
             {
                 return;
             }

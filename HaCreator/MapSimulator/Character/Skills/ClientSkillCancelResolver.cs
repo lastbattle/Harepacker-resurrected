@@ -6,7 +6,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 {
     internal static class ClientSkillCancelResolver
     {
-        private static readonly int[] SupportedAffectedSkillCancelTypes = { 1, 16, 33, 50, 51 };
+        private static readonly int[] SupportedAffectedSkillCancelTypes = { 1, 10, 16, 33, 50, 51 };
 
         public static bool DoesClientCancelMatchSkillId(
             int activeSkillId,

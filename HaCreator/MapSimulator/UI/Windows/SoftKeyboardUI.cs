@@ -34,6 +34,7 @@ namespace HaCreator.MapSimulator.UI
         int SoftKeyboardMaxLength { get; }
         bool CanSubmitSoftKeyboard { get; }
         bool TryInsertSoftKeyboardCharacter(char character, out string errorMessage);
+        bool TryReplaceLastSoftKeyboardCharacter(char character, out string errorMessage);
         bool TryBackspaceSoftKeyboard(out string errorMessage);
         bool TrySubmitSoftKeyboard(out string errorMessage);
         void OnSoftKeyboardClosed();
@@ -61,13 +62,25 @@ namespace HaCreator.MapSimulator.UI
 
         private enum SoftKeyboardTabMode
         {
-            Mixed = 0,
-            Letters = 1,
-            Digits = 2,
+            Numeric = 0,
+            Lowercase = 1,
+            Uppercase = 2,
         }
 
         private static readonly char[] LowercaseKeyCharacters = "1234567890qwertyuiopasdfghjklzxcvbnm-".ToCharArray();
         private static readonly char[] UppercaseKeyCharacters = "1234567890QWERTYUIOPASDFGHJKLZXCVBNM_".ToCharArray();
+        private static readonly string[] T9AlphabeticGroups =
+        {
+            "abc",
+            "def",
+            "ghi",
+            "jkl",
+            "mno",
+            "pqr",
+            "stu",
+            "vwx",
+            "yz",
+        };
         private static readonly int[] RowStarts = { 0, 10, 20, 29 };
         private static readonly int[] RowLengths = { 10, 10, 9, 8 };
         private static readonly Random DigitRandom = new();
@@ -77,6 +90,8 @@ namespace HaCreator.MapSimulator.UI
             new(77, 11, 68, 19),
             new(146, 11, 68, 19),
         };
+        private const int ExpandedAlphabeticGroupCount = 9;
+        private const int ExpandedAlphabeticCommitKeyIndex = 9;
 
         private const int KeyOriginXRow0 = 24;
         private const int KeyOriginXRow1 = 47;
@@ -128,8 +143,10 @@ namespace HaCreator.MapSimulator.UI
         private bool _pressedCloseButton;
         private bool _pressedMinButton;
         private bool _pressedMaxButton;
-        private SoftKeyboardTabMode _tabMode = SoftKeyboardTabMode.Mixed;
+        private SoftKeyboardTabMode _tabMode = SoftKeyboardTabMode.Numeric;
         private readonly int[] _digitOrder = new int[10];
+        private int _switchingKeyIndex = -1;
+        private int _switchingCharacterOffset = -1;
         private string _statusMessage = string.Empty;
 
         public SoftKeyboardUI(
@@ -191,6 +208,7 @@ namespace HaCreator.MapSimulator.UI
                 _capsLockEnabled = false;
                 _shiftEnabled = false;
                 _tabMode = ResolveDefaultTabMode(host);
+                ClearSwitchingCharacter();
                 ResetDigitOrder();
                 _isExpandedLayout = false;
             }
@@ -200,6 +218,8 @@ namespace HaCreator.MapSimulator.UI
             {
                 return;
             }
+
+            EnsureValidTabMode();
 
             Rectangle anchor = host.GetSoftKeyboardAnchorBounds();
             int desiredX = anchor.X;
@@ -234,7 +254,8 @@ namespace HaCreator.MapSimulator.UI
             _isExpandedLayout = false;
             _capsLockEnabled = false;
             _shiftEnabled = false;
-            _tabMode = SoftKeyboardTabMode.Mixed;
+            _tabMode = SoftKeyboardTabMode.Numeric;
+            ClearSwitchingCharacter();
             ResetDigitOrder();
             ResetVisualState();
         }
@@ -367,14 +388,25 @@ namespace HaCreator.MapSimulator.UI
 
                 if (_pressedTabIndex >= 0 && _pressedTabIndex == _hoveredTabIndex)
                 {
-                    _tabMode = (SoftKeyboardTabMode)_pressedTabIndex;
+                    SoftKeyboardTabMode selectedTab = (SoftKeyboardTabMode)_pressedTabIndex;
+                    if (!IsTabSupported(selectedTab))
+                    {
+                        _statusMessage = "That recovered soft-keyboard tab is disabled for the current owner state.";
+                        ResetPressedState();
+                        return true;
+                    }
+
+                    _tabMode = selectedTab;
+                    _capsLockEnabled = false;
+                    _shiftEnabled = false;
+                    ClearSwitchingCharacter();
                     _statusMessage = _tabMode switch
                     {
-                        SoftKeyboardTabMode.Letters => "Letter tab enabled for the current owner.",
-                        SoftKeyboardTabMode.Digits => "Digit tab enabled with a fresh randomized keypad.",
-                        _ => "Mixed tab enabled for the current owner.",
+                        SoftKeyboardTabMode.Numeric => "Numeric tab enabled with a fresh randomized keypad.",
+                        SoftKeyboardTabMode.Uppercase => "Uppercase switching-character tab enabled for the current owner.",
+                        _ => "Lowercase switching-character tab enabled for the current owner.",
                     };
-                    if (_tabMode == SoftKeyboardTabMode.Digits)
+                    if (_tabMode == SoftKeyboardTabMode.Numeric)
                     {
                         ResetDigitOrder();
                     }
@@ -391,11 +423,10 @@ namespace HaCreator.MapSimulator.UI
 
                 if (_pressedKeyIndex >= 0 && _pressedKeyIndex == _hoveredKeyIndex && IsKeyEnabled(_pressedKeyIndex))
                 {
-                    char value = GetCharacterForKey(_pressedKeyIndex);
-                    if (_host.TryInsertSoftKeyboardCharacter(value, out string errorMessage))
+                    if (HandleKeyRelease(_pressedKeyIndex, out string errorMessage))
                     {
                         _statusMessage = string.Empty;
-                        if (_shiftEnabled)
+                        if (!_isExpandedLayout && _shiftEnabled)
                         {
                             _shiftEnabled = false;
                         }
@@ -414,14 +445,18 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawTabs(SpriteBatch sprite)
         {
-            string[] labels = { "Mix", "ABC", "123" };
+            string[] labels = { "123", "abc", "ABC" };
             for (int i = 0; i < TabBounds.Length; i++)
             {
                 Rectangle bounds = TranslateBounds(TabBounds[i]);
-                bool active = _tabMode == (SoftKeyboardTabMode)i;
+                SoftKeyboardTabMode tab = (SoftKeyboardTabMode)i;
+                bool enabled = IsTabSupported(tab);
+                bool active = enabled && _tabMode == tab;
                 bool hovered = _hoveredTabIndex == i;
                 bool pressed = _pressedTabIndex == i;
-                Color fill = active
+                Color fill = !enabled
+                    ? new Color(76, 76, 76, 160)
+                    : active
                     ? new Color(248, 224, 153, 215)
                     : pressed
                         ? new Color(163, 132, 78, 210)
@@ -438,7 +473,11 @@ namespace HaCreator.MapSimulator.UI
                         _font,
                         labels[i],
                         new Vector2(bounds.Center.X - (size.X / 2f), bounds.Center.Y - (size.Y / 2f)),
-                        active ? new Color(58, 36, 12) : Color.White,
+                        !enabled
+                            ? new Color(144, 144, 144)
+                            : active
+                                ? new Color(58, 36, 12)
+                                : Color.White,
                         0f,
                         Vector2.Zero,
                         0.5f,
@@ -479,6 +518,11 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawKey(SpriteBatch sprite, int keyIndex)
         {
+            if (_isExpandedLayout && keyIndex >= 10)
+            {
+                return;
+            }
+
             Rectangle bounds = GetKeyBounds(keyIndex);
             SoftKeyboardVisualState state = GetKeyVisualState(keyIndex);
             Texture2D texture = _keyTexturesByIndex[keyIndex][(int)state];
@@ -492,7 +536,12 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            string label = GetCharacterForKey(keyIndex).ToString();
+            string label = GetKeyLabel(keyIndex);
+            if (string.IsNullOrEmpty(label))
+            {
+                return;
+            }
+
             Vector2 size = _font.MeasureString(label) * 0.55f;
             Color textColor = state == SoftKeyboardVisualState.Disabled
                 ? new Color(110, 110, 110)
@@ -621,18 +670,23 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
+            if (_isExpandedLayout)
+            {
+                if (keyIndex >= 10)
+                {
+                    return false;
+                }
+
+                return _tabMode switch
+                {
+                    SoftKeyboardTabMode.Numeric => IsNumericFamilyEnabled(keyMode),
+                    SoftKeyboardTabMode.Lowercase or SoftKeyboardTabMode.Uppercase => keyIndex <= ExpandedAlphabeticCommitKeyIndex && IsAlphabeticFamilyEnabled(keyMode),
+                    _ => false,
+                };
+            }
+
             bool isNumeric = IsNumericKey(keyIndex);
             bool isAlphabetic = !isNumeric;
-            if (_tabMode == SoftKeyboardTabMode.Digits && isAlphabetic)
-            {
-                return false;
-            }
-
-            if (_tabMode == SoftKeyboardTabMode.Letters && isNumeric)
-            {
-                return false;
-            }
-
             return isNumeric
                 ? IsNumericFamilyEnabled(keyMode)
                 : IsAlphabeticFamilyEnabled(keyMode);
@@ -657,6 +711,11 @@ namespace HaCreator.MapSimulator.UI
 
         private void HandleFunctionKeyRelease(SoftKeyboardFunctionKey key)
         {
+            if (key is SoftKeyboardFunctionKey.CapsLock or SoftKeyboardFunctionKey.LeftShift or SoftKeyboardFunctionKey.RightShift)
+            {
+                ClearSwitchingCharacter();
+            }
+
             switch (key)
             {
                 case SoftKeyboardFunctionKey.CapsLock:
@@ -673,6 +732,7 @@ namespace HaCreator.MapSimulator.UI
                     }
                     break;
                 case SoftKeyboardFunctionKey.Enter:
+                    ClearSwitchingCharacter();
                     if (_host.TrySubmitSoftKeyboard(out string submitMessage))
                     {
                         _statusMessage = string.Empty;
@@ -683,6 +743,7 @@ namespace HaCreator.MapSimulator.UI
                     }
                     break;
                 case SoftKeyboardFunctionKey.Backspace:
+                    ClearSwitchingCharacter();
                     if (_host.TryBackspaceSoftKeyboard(out string backspaceMessage))
                     {
                         _statusMessage = string.Empty;
@@ -700,9 +761,9 @@ namespace HaCreator.MapSimulator.UI
             SoftKeyboardKeyMode mode = ResolveKeyMode();
             return key switch
             {
-                SoftKeyboardFunctionKey.CapsLock => IsAlphabeticFamilyEnabled(mode),
-                SoftKeyboardFunctionKey.LeftShift => IsAlphabeticFamilyEnabled(mode),
-                SoftKeyboardFunctionKey.RightShift => IsAlphabeticFamilyEnabled(mode),
+                SoftKeyboardFunctionKey.CapsLock => !_isExpandedLayout && IsAlphabeticFamilyEnabled(mode),
+                SoftKeyboardFunctionKey.LeftShift => !_isExpandedLayout && IsAlphabeticFamilyEnabled(mode),
+                SoftKeyboardFunctionKey.RightShift => !_isExpandedLayout && IsAlphabeticFamilyEnabled(mode),
                 SoftKeyboardFunctionKey.Enter => CanSubmit(),
                 SoftKeyboardFunctionKey.Backspace => _host?.SoftKeyboardTextLength > 0,
                 _ => false,
@@ -751,6 +812,40 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return -1;
+        }
+
+        private bool IsTabSupported(SoftKeyboardTabMode mode)
+        {
+            SoftKeyboardKeyMode keyMode = ResolveKeyMode();
+            return mode switch
+            {
+                SoftKeyboardTabMode.Numeric => IsNumericFamilyEnabled(keyMode),
+                SoftKeyboardTabMode.Lowercase or SoftKeyboardTabMode.Uppercase => IsAlphabeticFamilyEnabled(keyMode),
+                _ => false,
+            };
+        }
+
+        private void EnsureValidTabMode()
+        {
+            if (!_isExpandedLayout || _host == null)
+            {
+                return;
+            }
+
+            if (IsTabSupported(_tabMode))
+            {
+                return;
+            }
+
+            SoftKeyboardTabMode fallbackMode = IsTabSupported(SoftKeyboardTabMode.Numeric)
+                ? SoftKeyboardTabMode.Numeric
+                : SoftKeyboardTabMode.Lowercase;
+            _tabMode = fallbackMode;
+            ClearSwitchingCharacter();
+            if (_tabMode == SoftKeyboardTabMode.Numeric)
+            {
+                ResetDigitOrder();
+            }
         }
 
         private SoftKeyboardFunctionKey ResolveFunctionKey(Point mousePoint)
@@ -1023,10 +1118,127 @@ namespace HaCreator.MapSimulator.UI
         {
             return host?.SoftKeyboardKeyboardType switch
             {
-                SoftKeyboardKeyboardType.NumericOnly => SoftKeyboardTabMode.Digits,
-                SoftKeyboardKeyboardType.NumericOnlyAlt => SoftKeyboardTabMode.Digits,
-                _ => SoftKeyboardTabMode.Mixed,
+                SoftKeyboardKeyboardType.NumericOnly => SoftKeyboardTabMode.Numeric,
+                SoftKeyboardKeyboardType.NumericOnlyAlt => SoftKeyboardTabMode.Numeric,
+                _ => SoftKeyboardTabMode.Lowercase,
             };
+        }
+
+        internal static string GetT9GroupLabel(bool uppercase, int keyIndex)
+        {
+            if (keyIndex < 0 || keyIndex >= T9AlphabeticGroups.Length)
+            {
+                return string.Empty;
+            }
+
+            return uppercase
+                ? T9AlphabeticGroups[keyIndex].ToUpperInvariant()
+                : T9AlphabeticGroups[keyIndex];
+        }
+
+        internal static char GetNextT9Character(bool uppercase, int keyIndex, int cycleOffset)
+        {
+            if (keyIndex < 0 || keyIndex >= T9AlphabeticGroups.Length)
+            {
+                return '\0';
+            }
+
+            string group = GetT9GroupLabel(uppercase, keyIndex);
+            if (string.IsNullOrEmpty(group))
+            {
+                return '\0';
+            }
+
+            int offset = cycleOffset % group.Length;
+            if (offset < 0)
+            {
+                offset += group.Length;
+            }
+
+            return group[offset];
+        }
+
+        internal static int GetDefaultDialogTabIndex(SoftKeyboardKeyboardType keyboardType)
+        {
+            return (int)(keyboardType switch
+            {
+                SoftKeyboardKeyboardType.NumericOnly => SoftKeyboardTabMode.Numeric,
+                SoftKeyboardKeyboardType.NumericOnlyAlt => SoftKeyboardTabMode.Numeric,
+                _ => SoftKeyboardTabMode.Lowercase,
+            });
+        }
+
+        private string GetKeyLabel(int keyIndex)
+        {
+            if (_isExpandedLayout)
+            {
+                return _tabMode switch
+                {
+                    SoftKeyboardTabMode.Numeric => keyIndex < 10 ? ((char)('0' + _digitOrder[keyIndex])).ToString() : string.Empty,
+                    SoftKeyboardTabMode.Uppercase when keyIndex == ExpandedAlphabeticCommitKeyIndex => "END",
+                    SoftKeyboardTabMode.Lowercase when keyIndex == ExpandedAlphabeticCommitKeyIndex => "END",
+                    SoftKeyboardTabMode.Uppercase => GetT9GroupLabel(uppercase: true, keyIndex),
+                    _ => GetT9GroupLabel(uppercase: false, keyIndex),
+                };
+            }
+
+            return GetCharacterForKey(keyIndex).ToString();
+        }
+
+        private bool HandleKeyRelease(int keyIndex, out string errorMessage)
+        {
+            errorMessage = string.Empty;
+            if (!_isExpandedLayout)
+            {
+                ClearSwitchingCharacter();
+                char value = GetCharacterForKey(keyIndex);
+                return _host.TryInsertSoftKeyboardCharacter(value, out errorMessage);
+            }
+
+            if (_tabMode == SoftKeyboardTabMode.Numeric)
+            {
+                ClearSwitchingCharacter();
+                char digit = (char)('0' + _digitOrder[keyIndex]);
+                return _host.TryInsertSoftKeyboardCharacter(digit, out errorMessage);
+            }
+
+            if (keyIndex == ExpandedAlphabeticCommitKeyIndex)
+            {
+                ClearSwitchingCharacter();
+                return true;
+            }
+
+            if (keyIndex < 0 || keyIndex >= ExpandedAlphabeticGroupCount)
+            {
+                errorMessage = "This recovered owner tab only exposes nine alphabetic switching groups.";
+                return false;
+            }
+
+            bool uppercase = _tabMode == SoftKeyboardTabMode.Uppercase;
+            bool canCycleExistingCharacter = _switchingKeyIndex == keyIndex && _host.SoftKeyboardTextLength > 0;
+            int nextOffset = canCycleExistingCharacter
+                ? (_switchingCharacterOffset + 1) % T9AlphabeticGroups[keyIndex].Length
+                : 0;
+
+            char nextCharacter = GetNextT9Character(uppercase, keyIndex, nextOffset);
+            bool applied = canCycleExistingCharacter
+                ? _host.TryReplaceLastSoftKeyboardCharacter(nextCharacter, out errorMessage)
+                : _host.TryInsertSoftKeyboardCharacter(nextCharacter, out errorMessage);
+            if (!applied)
+            {
+                ClearSwitchingCharacter();
+                return false;
+            }
+
+            _switchingKeyIndex = keyIndex;
+            _switchingCharacterOffset = nextOffset;
+            return true;
+        }
+
+        private void ClearSwitchingCharacter()
+        {
+            _switchingKeyIndex = -1;
+            _switchingCharacterOffset = -1;
         }
 
         private void ResetDigitOrder()

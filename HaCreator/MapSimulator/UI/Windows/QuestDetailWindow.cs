@@ -24,6 +24,8 @@ namespace HaCreator.MapSimulator.UI
         private const int ClientScrLogLenWithoutSummary = 238;
         private const float ClientTitleX = 35f;
         private const float ClientTitleY = 42f;
+        private const float ClientHeaderNoteX = 35f;
+        private const float ClientHeaderNoteY = 56f;
         private const float ClientNpcX = 23f;
         private const float ClientNpcY = 75f;
         private const float ClientLogY = 128f;
@@ -458,6 +460,11 @@ namespace HaCreator.MapSimulator.UI
             }
 
             sprite.DrawString(_font, _state.Title, new Vector2(Position.X + ClientTitleX, Position.Y + ClientTitleY), Color.White);
+
+            if (!string.IsNullOrWhiteSpace(_state.HeaderNoteText))
+            {
+                sprite.DrawString(_font, _state.HeaderNoteText, new Vector2(Position.X + ClientHeaderNoteX, Position.Y + ClientHeaderNoteY), new Color(244, 232, 192));
+            }
 
             if (!string.IsNullOrWhiteSpace(_state.NpcText))
             {

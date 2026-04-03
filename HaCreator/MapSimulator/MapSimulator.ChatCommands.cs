@@ -1128,6 +1128,8 @@ namespace HaCreator.MapSimulator
             bool inputMasked = false;
             int inputMaxLength = 0;
             SoftKeyboardKeyboardType softKeyboardType = SoftKeyboardKeyboardType.AlphaNumeric;
+            LoginUtilityDialogVisualStyle visualStyle = LoginUtilityDialogVisualStyle.Default;
+            Rectangle? inputBoundsOverride = null;
             int durationMs = 2400;
 
 
@@ -1135,7 +1137,7 @@ namespace HaCreator.MapSimulator
             {
                 if (!TrySplitLoginPacketPromptArgument(args[i], out string key, out string initialValue))
                 {
-                    error = "Usage: /loginpacket <packet> [payloadhex=<hex>|payloadb64=<base64>|clearpayload] [mode=utility|notice] [title=<text>] [body=<text>] [notice=<index>] [variant=notice|noticecog|loading|loadingsinglegauge] [buttons=ok|yesno|accept|nowlater|restartexit|nexon] [primary=<label>] [secondary=<label>] [inputlabel=<text>] [placeholder=<text>] [masked=true|false] [maxlength=<count>] [keyboardtype=alphanumeric|alphaedges|numeric|numericalt] [duration=<ms>]";
+                    error = "Usage: /loginpacket <packet> [payloadhex=<hex>|payloadb64=<base64>|clearpayload] [mode=utility|notice] [title=<text>] [body=<text>] [notice=<index>] [variant=notice|noticecog|loading|loadingsinglegauge] [buttons=ok|yesno|accept|nowlater|restartexit|nexon] [visualstyle=default|securityyesno|secondarypasswordchoice] [primary=<label>] [secondary=<label>] [inputlabel=<text>] [placeholder=<text>] [masked=true|false] [maxlength=<count>] [keyboardtype=alphanumeric|alphaedges|numeric|numericalt] [inputbounds=<x,y,w,h>] [duration=<ms>]";
                     return false;
 
                 }
@@ -1224,6 +1226,17 @@ namespace HaCreator.MapSimulator
 
                         break;
 
+                    case "visualstyle":
+                    case "style":
+                        if (!TryParseLoginUtilityDialogVisualStyle(value, out LoginUtilityDialogVisualStyle parsedVisualStyle))
+                        {
+                            error = "visualstyle must be default, securityyesno, or secondarypasswordchoice.";
+                            return false;
+                        }
+
+                        visualStyle = parsedVisualStyle;
+                        break;
+
 
 
                     case "primary":
@@ -1281,6 +1294,17 @@ namespace HaCreator.MapSimulator
                         }
                         break;
 
+                    case "inputbounds":
+                    case "bounds":
+                        if (!TryParseLoginPacketPromptRectangle(value, out Rectangle parsedBounds))
+                        {
+                            error = "inputbounds must be x,y,width,height.";
+                            return false;
+                        }
+
+                        inputBoundsOverride = parsedBounds;
+                        break;
+
 
                     case "duration":
                         if (!int.TryParse(value, out durationMs) || durationMs < 0)
@@ -1306,6 +1330,7 @@ namespace HaCreator.MapSimulator
                 NoticeTextIndex = noticeTextIndex,
                 NoticeVariant = noticeVariant,
                 ButtonLayout = buttonLayout,
+                VisualStyle = visualStyle,
                 PrimaryLabel = primaryLabel,
                 SecondaryLabel = secondaryLabel,
                 InputLabel = inputLabel,
@@ -1313,8 +1338,47 @@ namespace HaCreator.MapSimulator
                 InputMasked = inputMasked,
                 InputMaxLength = inputMaxLength,
                 SoftKeyboardType = softKeyboardType,
+                InputBoundsOverride = inputBoundsOverride,
                 DurationMs = durationMs,
             };
+            return true;
+        }
+
+        private static bool TryParseLoginUtilityDialogVisualStyle(string value, out LoginUtilityDialogVisualStyle visualStyle)
+        {
+            visualStyle = LoginUtilityDialogVisualStyle.Default;
+            string normalized = (value ?? string.Empty).Trim().Replace("-", string.Empty).Replace("_", string.Empty);
+            return normalized.ToLowerInvariant() switch
+            {
+                "default" => Assign(LoginUtilityDialogVisualStyle.Default, out visualStyle),
+                "securityyesno" => Assign(LoginUtilityDialogVisualStyle.SecurityYesNo, out visualStyle),
+                "secondarypasswordchoice" or "secondarypassword" or "spwchoice" => Assign(LoginUtilityDialogVisualStyle.SecondaryPasswordChoice, out visualStyle),
+                _ => Enum.TryParse(value, true, out visualStyle),
+            };
+        }
+
+        private static bool Assign<T>(T value, out T result)
+        {
+            result = value;
+            return true;
+        }
+
+        private static bool TryParseLoginPacketPromptRectangle(string value, out Rectangle rectangle)
+        {
+            rectangle = Rectangle.Empty;
+            string[] parts = (value ?? string.Empty).Split(',');
+            if (parts.Length != 4 ||
+                !int.TryParse(parts[0], out int x) ||
+                !int.TryParse(parts[1], out int y) ||
+                !int.TryParse(parts[2], out int width) ||
+                !int.TryParse(parts[3], out int height) ||
+                width <= 0 ||
+                height <= 0)
+            {
+                return false;
+            }
+
+            rectangle = new Rectangle(x, y, width, height);
             return true;
         }
         private static bool TryParseSoftKeyboardKeyboardType(string value, out SoftKeyboardKeyboardType keyboardType)
@@ -2104,7 +2168,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "engage",
                 "Inspect or drive the dedicated engagement proposal dialog seam",
-                "/engage [open <partnerName> [ringItemId] [message...]|open <proposerName> <partnerName> [ringItemId] [message...]|incoming <proposerName> [ringItemId] [sealItemId] [message...]|accept|dismiss|invitation [neat|sweet|premium]|wishlist [receive|give|input] [groom|bride]|clear|status]",
+                "/engage [open <partnerName> [ringItemId] [message...]|open <proposerName> <partnerName> [ringItemId] [message...]|incoming <proposerName> [ringItemId] [sealItemId] [message...]|incomingrequest <proposerName> [sealItemId] [message...]|inbox [status|start [port]|stop]|accept|dismiss|invitation [neat|sweet|premium]|wishlist [receive|give|input] [groom|bride]|clear|status]",
                 args =>
                 {
                     _engagementProposalController.UpdateLocalContext(_playerManager?.Player?.Build);
@@ -2134,7 +2198,7 @@ namespace HaCreator.MapSimulator
                                     outgoingPartnerName,
                                     TryParseOptionalPositiveInt(args, ringItemArgumentIndex, out int openRingItemId) ? openRingItemId : EngagementProposalRuntime.DefaultRingItemId,
                                     args.Length > messageArgumentIndex ? string.Join(" ", args, messageArgumentIndex, args.Length - messageArgumentIndex) : null,
-                                    true,
+                                    !string.Equals(outgoingProposerName, localProposalOwner, StringComparison.OrdinalIgnoreCase),
                                     uiWindowManager?.InventoryWindow as IInventoryRuntime,
                                     uiWindowManager,
                                     _playerManager?.Player?.Build,
@@ -2155,12 +2219,39 @@ namespace HaCreator.MapSimulator
                                     _playerManager?.Player?.Build?.Name,
                                     TryParseOptionalPositiveInt(args, 2, out int incomingRingItemId) ? incomingRingItemId : EngagementProposalRuntime.DefaultRingItemId,
                                     TryParseOptionalPositiveInt(args, 3, out int incomingSealItemId) ? incomingSealItemId : EngagementProposalRuntime.DefaultSealItemId,
+                                    null,
                                     args.Length > 4 ? string.Join(" ", args, 4, args.Length - 4) : null,
                                     uiWindowManager,
                                     _playerManager?.Player?.Build,
                                     _fontChat,
                                     ShowUtilityFeedbackMessage,
                                     () => ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.EngagementProposal)));
+
+                        case "incomingrequest":
+                            if (args.Length < 2)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /engage incomingrequest <proposerName> [sealItemId] [message...]");
+                            }
+
+                            if (!_engagementProposalController.TryOpenIncomingProposalFromLastRequestPayload(
+                                    args[1],
+                                    _playerManager?.Player?.Build?.Name,
+                                    TryParseOptionalPositiveInt(args, 2, out int payloadSealItemId) ? payloadSealItemId : EngagementProposalRuntime.DefaultSealItemId,
+                                    args.Length > 3 ? string.Join(" ", args, 3, args.Length - 3) : null,
+                                    uiWindowManager,
+                                    _playerManager?.Player?.Build,
+                                    _fontChat,
+                                    ShowUtilityFeedbackMessage,
+                                    () => ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.EngagementProposal),
+                                    out string incomingPayloadMessage))
+                            {
+                                return ChatCommandHandler.CommandResult.Error(incomingPayloadMessage);
+                            }
+
+                            return ChatCommandHandler.CommandResult.Ok(incomingPayloadMessage);
+
+                        case "inbox":
+                            return HandleEngagementProposalInboxCommand(args.Skip(1).ToArray());
 
                         case "accept":
                             string acceptMessage = _engagementProposalController.Accept(uiWindowManager);
@@ -2248,7 +2339,7 @@ namespace HaCreator.MapSimulator
                             return ChatCommandHandler.CommandResult.Ok(_engagementProposalController.Clear(uiWindowManager));
 
                         default:
-                            return ChatCommandHandler.CommandResult.Error("Usage: /engage [open <partnerName> [ringItemId] [message...]|open <proposerName> <partnerName> [ringItemId] [message...]|incoming <proposerName> [ringItemId] [sealItemId] [message...]|accept|dismiss|invitation [neat|sweet|premium]|wishlist [receive|give|input] [groom|bride]|clear|status]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /engage [open <partnerName> [ringItemId] [message...]|open <proposerName> <partnerName> [ringItemId] [message...]|incoming <proposerName> [ringItemId] [sealItemId] [message...]|incomingrequest <proposerName> [sealItemId] [message...]|inbox [status|start [port]|stop]|accept|dismiss|invitation [neat|sweet|premium]|wishlist [receive|give|input] [groom|bride]|clear|status]");
                     }
                 });
 
@@ -7463,7 +7554,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "localutility",
                 "Inspect or drive packet-authored local utility and event dispatch handlers",
-                "/localutility [status|inbox [status|start [port]|stop|packet <sitresult|questresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|follow|followfail|directionmode|standalone|damagemeter|hpdec|skillcooltime|193|231|242|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|1012|1013|1014|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]|packetclientraw <hex>]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|directionmode <on|off|1|0> [delayMs]|standalone <on|off|1|0>|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv]|classcompetition|skillguide|antimacro [status|launch <normal|admin> [first|retry]|notice <noticeType> [antiMacroType]|result <mode> [antiMacroType] [userName]|clear]|apsp [status|seed [characterId]|receive <token>|send <token>|context <receiveToken> [sendToken]|<contextToken> <11|12|13>|text]|follow <status|request <driverId|name> [auto|manual] [keyinput]|ask <requesterId|name>|accept|decline|attach <driverId|name>|detach [transferX transferY]|passengerdetach [requesterId|name] [transferX transferY]>|followfail [reasonCode [driverId]|text]|packet <sitresult|questresult|openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|skillguide|antimacro|apspevent|directionmode|standalone|follow|followfail|193|231|242|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|1012|1013|1014> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]",
+                "/localutility [status|inbox [status|start [port]|stop|packet <sitresult|questresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|follow|followfail|directionmode|standalone|damagemeter|hpdec|skillcooltime|193|231|242|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|1012|1013|1014|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]|packetclientraw <hex>]|outbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|directionmode <on|off|1|0> [delayMs]|standalone <on|off|1|0>|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv]|classcompetition|skillguide|antimacro [status|launch <normal|admin> [first|retry]|notice <noticeType> [antiMacroType]|result <mode> [antiMacroType] [userName]|clear]|apsp [status|seed [characterId]|receive <token>|send <token>|context <receiveToken> [sendToken]|<contextToken> <11|12|13>|text]|follow <status|request <driverId|name> [auto|manual] [keyinput]|ask <requesterId|name>|accept|decline|attach <driverId|name>|detach [transferX transferY]|passengerdetach [requesterId|name] [transferX transferY]>|followfail [reasonCode [driverId]|text]|packet <sitresult|questresult|openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|skillguide|antimacro|apspevent|directionmode|standalone|follow|followfail|193|231|242|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|1012|1013|1014> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]",
                 HandlePacketOwnedUtilityCommand);
             _chat.CommandHandler.RegisterCommand(
                 "expedition",

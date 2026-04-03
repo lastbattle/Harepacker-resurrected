@@ -13,6 +13,8 @@ using HaCreator.MapSimulator.Effects;
 using MapleLib.MapleCryptoLib;
 using MapleLib.PacketLib;
 
+using System.Buffers.Binary;
+
 namespace HaCreator.MapSimulator.Managers
 {
     /// <summary>
@@ -364,13 +366,16 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             int opcode = BitConverter.ToUInt16(rawPacket, 0);
+            byte[] payload = rawPacket.Skip(sizeof(short)).ToArray();
+            string mappingReason = "configured";
             if (!_opcodeMappings.TryGetValue(opcode, out int packetType))
             {
-                RecordRecentPacket(opcode, rawPacket, mappedPacketType: null);
-                return false;
+                if (!TryInferInboundPacketType(opcode, payload, out packetType, out mappingReason))
+                {
+                    return false;
+                }
             }
 
-            byte[] payload = rawPacket.Skip(sizeof(short)).ToArray();
             message = new DojoPacketInboxMessage(
                 DojoPacketMessageKind.RawPacket,
                 value: 0,
@@ -379,7 +384,7 @@ namespace HaCreator.MapSimulator.Managers
                 rawText: $"packetraw {Convert.ToHexString(rawPacket)}",
                 packetType: packetType,
                 payload: payload);
-            RecordRecentPacket(opcode, rawPacket, packetType);
+            RecordRecentPacket(opcode, rawPacket, packetType, mappingReason);
             return true;
         }
 
@@ -594,11 +599,45 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
-        private void RecordRecentPacket(int opcode, byte[] rawPacket, int? mappedPacketType)
+        private bool TryInferInboundPacketType(int opcode, byte[] payload, out int packetType, out string mappingReason)
+        {
+            packetType = -1;
+            mappingReason = string.Empty;
+
+            if (DojoField.TryInferPacketType(payload, out packetType, out string reason))
+            {
+                _opcodeMappings[opcode] = packetType;
+                mappingReason = $"auto:{reason}";
+                LastStatus = $"Auto-mapped Dojo opcode {opcode} to {DescribePacketType(packetType)} from payload inference ({reason}).";
+                return true;
+            }
+
+            string candidateSummary = DojoField.DescribePacketPayloadCandidates(payload);
+            mappingReason = candidateSummary;
+            RecordRecentPacket(opcode, BuildRawPacket(opcode, payload), mappedPacketType: null, $"unmapped:{candidateSummary}");
+            LastStatus = candidateSummary == "unknown"
+                ? $"Ignored unmapped Dojo opcode {opcode}; payload did not match any known Dojo packet shape."
+                : $"Ignored unmapped Dojo opcode {opcode}; payload matched multiple Dojo packet candidates ({candidateSummary}).";
+            return false;
+        }
+
+        private static byte[] BuildRawPacket(int opcode, byte[] payload)
+        {
+            byte[] rawPacket = new byte[sizeof(short) + (payload?.Length ?? 0)];
+            BinaryPrimitives.WriteUInt16LittleEndian(rawPacket.AsSpan(0, sizeof(short)), (ushort)opcode);
+            if (payload != null && payload.Length > 0)
+            {
+                payload.CopyTo(rawPacket, sizeof(short));
+            }
+
+            return rawPacket;
+        }
+
+        private void RecordRecentPacket(int opcode, byte[] rawPacket, int? mappedPacketType, string detail = null)
         {
             string summary = mappedPacketType.HasValue
-                ? $"{opcode}->{DescribePacketType(mappedPacketType.Value)}:{Convert.ToHexString(rawPacket)}"
-                : $"{opcode}:unmapped:{Convert.ToHexString(rawPacket)}";
+                ? $"{opcode}->{DescribePacketType(mappedPacketType.Value)}[{detail ?? "configured"}]:{Convert.ToHexString(rawPacket)}"
+                : $"{opcode}:{detail ?? "unmapped"}:{Convert.ToHexString(rawPacket)}";
 
             lock (_sync)
             {

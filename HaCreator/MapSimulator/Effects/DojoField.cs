@@ -146,6 +146,32 @@ namespace HaCreator.MapSimulator.Effects
         public string LastDecodedPacketTrailingPayloadHex => _lastDecodedPacketTrailingPayloadHex;
         public bool IsClearResultActive => _resultEffect == DojoResultEffect.Clear;
         public bool IsTimeOverResultActive => _resultEffect == DojoResultEffect.TimeOver;
+        public static bool TryInferPacketType(byte[] payload, out int packetType, out string reason)
+        {
+            List<(int PacketType, string Summary)> candidates = CollectPacketPayloadCandidates(payload);
+            if (candidates.Count == 1)
+            {
+                packetType = candidates[0].PacketType;
+                reason = candidates[0].Summary;
+                return true;
+            }
+
+            packetType = -1;
+            reason = candidates.Count == 0
+                ? "unknown"
+                : string.Join(" | ", candidates.Select(static candidate => candidate.Summary));
+            return false;
+        }
+        public static string DescribePacketPayloadCandidates(byte[] payload)
+        {
+            List<(int PacketType, string Summary)> candidates = CollectPacketPayloadCandidates(payload);
+            if (candidates.Count == 0)
+            {
+                return "unknown";
+            }
+
+            return string.Join(" | ", candidates.Select(static candidate => candidate.Summary));
+        }
         public int RemainingSeconds
         {
             get
@@ -642,7 +668,8 @@ namespace HaCreator.MapSimulator.Effects
             out int durationSec,
             out int decodedPayloadLength,
             out string trailingPayloadHex,
-            out string errorMessage)
+            out string errorMessage,
+            bool strictInference = false)
         {
             clockType = 0;
             durationSec = 0;
@@ -656,6 +683,23 @@ namespace HaCreator.MapSimulator.Effects
             }
 
             clockType = payload[0];
+            if (strictInference)
+            {
+                if (clockType == 2)
+                {
+                    if (payload.Length != 5)
+                    {
+                        errorMessage = "Dojo type-2 clock packet inference requires exactly 5 bytes.";
+                        return false;
+                    }
+                }
+                else if (payload.Length != 1)
+                {
+                    errorMessage = $"Dojo type-{clockType} clock packet inference requires exactly 1 byte.";
+                    return false;
+                }
+            }
+
             decodedPayloadLength = payload.Length;
             if (payload.Length >= 5)
             {
@@ -673,12 +717,73 @@ namespace HaCreator.MapSimulator.Effects
 
             return true;
         }
+        private static List<(int PacketType, string Summary)> CollectPacketPayloadCandidates(byte[] payload)
+        {
+            payload ??= Array.Empty<byte>();
+
+            List<(int PacketType, string Summary)> candidates = new();
+            if (TryParseClockPacketPayload(payload, out int clockType, out int durationSec, out int clockPayloadLength, out string clockTrailingPayloadHex, out _, strictInference: true))
+            {
+                string clockMode = clockType switch
+                {
+                    1 => "type-1 no-op",
+                    2 => "type-2 timerboard",
+                    _ => $"type-{clockType}"
+                };
+                string trailingClockText = string.IsNullOrWhiteSpace(clockTrailingPayloadHex)
+                    ? string.Empty
+                    : $", tail={clockTrailingPayloadHex}";
+                candidates.Add((
+                    PacketTypeClock,
+                    $"clock({clockMode}, duration={Math.Max(0, durationSec)}s, decoded={clockPayloadLength}b{trailingClockText})"));
+            }
+
+            if (TryParseStagePacketPayload(payload, out int stage, out int stagePayloadLength, out string stageTrailingPayloadHex, out _, strictInference: true))
+            {
+                string trailingStageText = string.IsNullOrWhiteSpace(stageTrailingPayloadHex)
+                    ? string.Empty
+                    : $", tail={stageTrailingPayloadHex}";
+                candidates.Add((
+                    PacketTypeStage,
+                    $"stage(floor={stage}, decoded={stagePayloadLength}b{trailingStageText})"));
+            }
+
+            if (TryParseTransferPacketPayload(payload, allowPortalName: true, out int transferMapId, out string portalName, out int transferPayloadLength, out string transferTrailingPayloadHex, out _, strictInference: true))
+            {
+                string trailingTransferText = string.IsNullOrWhiteSpace(transferTrailingPayloadHex)
+                    ? string.Empty
+                    : $", tail={transferTrailingPayloadHex}";
+                if (!string.IsNullOrWhiteSpace(portalName))
+                {
+                    candidates.Add((
+                        PacketTypeClear,
+                        $"clear(target={transferMapId}, portal={portalName}, decoded={transferPayloadLength}b{trailingTransferText})"));
+                }
+                else if (transferMapId > 0)
+                {
+                    candidates.Add((
+                        PacketTypeClear,
+                        $"clear(target={transferMapId}, decoded={transferPayloadLength}b{trailingTransferText})"));
+                    candidates.Add((
+                        PacketTypeTimeOver,
+                        $"timeover(target={transferMapId}, decoded={transferPayloadLength}b{trailingTransferText})"));
+                }
+                else if (payload.Length == 0)
+                {
+                    candidates.Add((PacketTypeClear, "clear(empty payload)"));
+                    candidates.Add((PacketTypeTimeOver, "timeover(empty payload)"));
+                }
+            }
+
+            return candidates;
+        }
         private static bool TryParseStagePacketPayload(
             byte[] payload,
             out int stage,
             out int decodedPayloadLength,
             out string trailingPayloadHex,
-            out string errorMessage)
+            out string errorMessage,
+            bool strictInference = false)
         {
             stage = 0;
             decodedPayloadLength = 0;
@@ -695,6 +800,12 @@ namespace HaCreator.MapSimulator.Effects
                 int intStage = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(0, sizeof(int)));
                 if (intStage >= 0 && intStage <= 32)
                 {
+                    if (strictInference && payload.Length != sizeof(int))
+                    {
+                        errorMessage = "Dojo stage packet inference requires either 1 byte or exactly 4 bytes.";
+                        return false;
+                    }
+
                     stage = intStage;
                     decodedPayloadLength = sizeof(int);
                 }
@@ -702,6 +813,12 @@ namespace HaCreator.MapSimulator.Effects
 
             if (decodedPayloadLength == 0)
             {
+                if (strictInference && payload.Length != 1)
+                {
+                    errorMessage = "Dojo stage packet inference requires either 1 byte or exactly 4 bytes.";
+                    return false;
+                }
+
                 stage = payload[0];
                 if (stage < 0 || stage > 32)
                 {
@@ -726,7 +843,8 @@ namespace HaCreator.MapSimulator.Effects
             out string portalName,
             out int decodedPayloadLength,
             out string trailingPayloadHex,
-            out string errorMessage)
+            out string errorMessage,
+            bool strictInference = false)
         {
             mapId = -1;
             portalName = string.Empty;
@@ -744,7 +862,14 @@ namespace HaCreator.MapSimulator.Effects
                 return false;
             }
 
-            mapId = NormalizeTransferMapId(BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(0, sizeof(int))));
+            int rawMapId = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(0, sizeof(int)));
+            if (strictInference && !IsLikelyPacketTransferMapId(rawMapId))
+            {
+                errorMessage = $"Dojo transfer packet inference rejected implausible map id {rawMapId}.";
+                return false;
+            }
+
+            mapId = NormalizeTransferMapId(rawMapId);
             decodedPayloadLength = sizeof(int);
             if (payload.Length == decodedPayloadLength)
             {
@@ -758,13 +883,41 @@ namespace HaCreator.MapSimulator.Effects
                 decodedPayloadLength += portalBytesConsumed;
                 trailingSpan = payload.AsSpan(decodedPayloadLength);
             }
+            else if (strictInference)
+            {
+                errorMessage = allowPortalName
+                    ? "Dojo transfer packet inference requires a fully decodable portal-name suffix when extra bytes are present."
+                    : "Dojo transfer packet inference requires exactly 4 bytes for time-over targets.";
+                return false;
+            }
 
             if (!trailingSpan.IsEmpty)
             {
+                if (strictInference)
+                {
+                    errorMessage = "Dojo transfer packet inference does not allow undecoded trailing bytes.";
+                    return false;
+                }
+
                 trailingPayloadHex = FormatPayloadHex(trailingSpan);
             }
 
             return true;
+        }
+        private static bool IsLikelyPacketTransferMapId(int mapId)
+        {
+            if (mapId <= 0 || mapId == MapConstants.MaxMap)
+            {
+                return false;
+            }
+
+            // Maple field ids are real world-map identifiers, not low test integers such as stage numbers.
+            if (mapId < 100000000 || mapId > 999999999)
+            {
+                return false;
+            }
+
+            return global::HaCreator.Program.WzManager == null || HasMapImage(mapId);
         }
         private static bool TryDecodePortalName(ReadOnlySpan<byte> payload, out string portalName, out int bytesConsumed)
         {

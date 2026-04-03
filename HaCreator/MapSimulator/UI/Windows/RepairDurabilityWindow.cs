@@ -11,6 +11,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using WeaponPart = HaCreator.MapSimulator.Character.WeaponPart;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -46,6 +47,22 @@ namespace HaCreator.MapSimulator.UI
             public Point Offset { get; }
         }
 
+        private readonly struct TooltipInfoRow
+        {
+            public TooltipInfoRow(Texture2D labelTexture, string labelText, string valueText, Color valueColor)
+            {
+                LabelTexture = labelTexture;
+                LabelText = labelText ?? string.Empty;
+                ValueText = valueText ?? string.Empty;
+                ValueColor = valueColor;
+            }
+
+            public Texture2D LabelTexture { get; }
+            public string LabelText { get; }
+            public string ValueText { get; }
+            public Color ValueColor { get; }
+        }
+
         private const int RowLeft = 11;
         private const int RowTop = 109;
         private const int RowWidth = 199;
@@ -64,7 +81,7 @@ namespace HaCreator.MapSimulator.UI
         private const int RepairFeeValueY = 83;
         private const int NpcNameX = 72;
         private const int NpcNameY = 53;
-        private const int NpcPreviewX = 57;
+        private const int NpcPreviewX = 39;
         private const int NpcPreviewY = 92;
         private const int StatusTextX = 14;
         private const int StatusTextY = 303;
@@ -79,7 +96,7 @@ namespace HaCreator.MapSimulator.UI
         private const int TooltipPadding = 10;
         private const int TooltipIconSize = 32;
         private const int TooltipIconGap = 8;
-        private const int TooltipOffsetX = 18;
+        private const int TooltipOffsetX = 0;
         private const int TooltipOffsetY = 14;
         private const int TooltipSectionGap = 6;
         private const int TooltipFallbackWidth = 214;
@@ -107,6 +124,7 @@ namespace HaCreator.MapSimulator.UI
         private string _statusMessage = "Select an item to preview repair cost.";
         private bool _awaitingRepairResponse;
         private Texture2D _cashLabelTexture;
+        private EquipUIBigBang.EquipTooltipAssets _equipTooltipAssets;
 
         internal event Action<RepairEntry> RepairRequested;
         internal event Action<IReadOnlyList<RepairEntry>> RepairAllRequested;
@@ -159,6 +177,12 @@ namespace HaCreator.MapSimulator.UI
         public void SetCashTooltipTexture(Texture2D cashLabelTexture)
         {
             _cashLabelTexture = cashLabelTexture;
+        }
+
+        public void SetEquipTooltipAssets(EquipUIBigBang.EquipTooltipAssets assets)
+        {
+            _equipTooltipAssets = assets;
+            _cashLabelTexture ??= assets?.CashLabel;
         }
 
         public void AddLayer(IDXObject layer, Point offset)
@@ -508,6 +532,13 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            CharacterPart tooltipPart = entry.Part ?? entry.InventorySlot?.TooltipPart;
+            if (tooltipPart != null)
+            {
+                DrawHoveredEquipTooltip(sprite, entry, tooltipPart, itemId);
+                return;
+            }
+
             InventoryItemTooltipMetadata metadata = InventoryItemMetadataResolver.ResolveTooltipMetadata(itemId, InventoryType.EQUIP);
             string title = ResolveDisplayText(entry.ItemName, metadata.ItemName, $"Equip {itemId}");
             string typeLine = ResolveDisplayText(metadata.TypeName, "Equip");
@@ -612,6 +643,494 @@ namespace HaCreator.MapSimulator.UI
             }
 
             DrawWrappedSections(sprite, textX, sectionY, wrappedSections);
+        }
+
+        private void DrawHoveredEquipTooltip(SpriteBatch sprite, RepairEntry entry, CharacterPart part, int itemId)
+        {
+            InventoryItemTooltipMetadata metadata = InventoryItemMetadataResolver.ResolveTooltipMetadata(itemId, InventoryType.EQUIP);
+            string title = ResolveDisplayText(entry.ItemName, ResolveDisplayText(part.Name, metadata.ItemName), $"Equip {itemId}");
+            string description = ResolveDisplayText(part.Description, metadata.Description);
+            Texture2D categoryTexture = ResolveCategoryTexture(part);
+            string categoryText = categoryTexture == null
+                ? ResolveDisplayText(ResolveCategoryFallbackText(part), metadata.TypeName)
+                : string.Empty;
+            string[] wrappedTitle = WrapTooltipText(title, ResolveTooltipWidth() - (TooltipPadding * 2));
+
+            string[] wrappedCategory = Array.Empty<string>();
+            if (categoryTexture == null && !string.IsNullOrWhiteSpace(categoryText))
+            {
+                wrappedCategory = WrapTooltipText(categoryText, ResolveTooltipWidth() - (TooltipPadding * 2) - TooltipIconSize - TooltipIconGap);
+            }
+
+            string[] wrappedDescription = Array.Empty<string>();
+            if (!string.IsNullOrWhiteSpace(description))
+            {
+                wrappedDescription = WrapTooltipText(description, ResolveTooltipWidth() - (TooltipPadding * 2) - TooltipIconSize - TooltipIconGap);
+            }
+
+            float titleHeight = MeasureLinesHeight(wrappedTitle);
+            float categoryHeight = categoryTexture?.Height ?? MeasureLinesHeight(wrappedCategory);
+            float cashLabelHeight = part.IsCash ? _cashLabelTexture?.Height ?? 0f : 0f;
+            float descriptionHeight = MeasureLinesHeight(wrappedDescription);
+            float topTextHeight = categoryHeight;
+            if (cashLabelHeight > 0f)
+            {
+                topTextHeight += (topTextHeight > 0f ? 2f : 0f) + cashLabelHeight;
+            }
+
+            if (descriptionHeight > 0f)
+            {
+                topTextHeight += (topTextHeight > 0f ? TooltipSectionGap : 0f) + descriptionHeight;
+            }
+
+            float topBlockHeight = Math.Max(TooltipIconSize, topTextHeight);
+
+            List<TooltipInfoRow> statRows = BuildEquipTooltipStatRows(part);
+            List<TooltipInfoRow> requirementRows = BuildEquipTooltipRequirementRows(part);
+            float statRowsHeight = MeasureTooltipInfoRowsHeight(statRows);
+            float requirementRowsHeight = MeasureTooltipInfoRowsHeight(requirementRows);
+
+            List<string> footerLines = BuildEquipTooltipFooterLines(entry, part, metadata);
+            List<string[]> wrappedFooterSections = WrapTooltipSections(
+                footerLines,
+                ResolveTooltipWidth() - (TooltipPadding * 2));
+            float footerHeight = MeasureWrappedSectionHeight(wrappedFooterSections);
+
+            float contentHeight = topBlockHeight;
+            if (statRowsHeight > 0f)
+            {
+                contentHeight += TooltipSectionGap + statRowsHeight;
+            }
+
+            if (requirementRowsHeight > 0f)
+            {
+                contentHeight += TooltipSectionGap + requirementRowsHeight;
+            }
+
+            if (footerHeight > 0f)
+            {
+                contentHeight += TooltipSectionGap + footerHeight;
+            }
+
+            int tooltipWidth = ResolveTooltipWidth();
+            int tooltipHeight = (int)Math.Ceiling((TooltipPadding * 2) + titleHeight + TooltipSectionGap + contentHeight);
+            int viewportWidth = sprite.GraphicsDevice.Viewport.Width;
+            int viewportHeight = sprite.GraphicsDevice.Viewport.Height;
+            int tooltipX = _lastMousePosition.X + TooltipOffsetX;
+            int tooltipY = _lastMousePosition.Y + 20;
+            int tooltipFrameIndex = 1;
+
+            if (tooltipX + tooltipWidth > viewportWidth - TooltipPadding)
+            {
+                tooltipX = _lastMousePosition.X - tooltipWidth - TooltipOffsetX;
+                tooltipFrameIndex = 0;
+            }
+
+            if (tooltipX < TooltipPadding)
+            {
+                tooltipX = TooltipPadding;
+            }
+
+            if (tooltipY + tooltipHeight > viewportHeight - TooltipPadding)
+            {
+                tooltipY = Math.Max(TooltipPadding, _lastMousePosition.Y - tooltipHeight + TooltipOffsetY);
+                tooltipFrameIndex = 2;
+            }
+
+            Rectangle backgroundRect = new(tooltipX, tooltipY, tooltipWidth, tooltipHeight);
+            DrawTooltipBackground(sprite, backgroundRect, tooltipFrameIndex);
+
+            int titleX = tooltipX + TooltipPadding;
+            int titleY = tooltipY + TooltipPadding;
+            DrawTooltipLines(sprite, wrappedTitle, titleX, titleY, new Color(255, 220, 120));
+
+            int contentY = tooltipY + TooltipPadding + (int)Math.Ceiling(titleHeight) + TooltipSectionGap;
+            if (entry.Icon != null)
+            {
+                entry.Icon.DrawBackground(sprite, null, null, tooltipX + TooltipPadding, contentY, Color.White, false, null);
+            }
+
+            int textX = tooltipX + TooltipPadding + TooltipIconSize + TooltipIconGap;
+            float topY = contentY;
+            if (categoryTexture != null)
+            {
+                sprite.Draw(categoryTexture, new Vector2(textX, topY), Color.White);
+                topY += categoryTexture.Height;
+            }
+            else if (wrappedCategory.Length > 0)
+            {
+                DrawTooltipLines(sprite, wrappedCategory, textX, topY, new Color(181, 224, 255));
+                topY += categoryHeight;
+            }
+
+            if (cashLabelHeight > 0f && _cashLabelTexture != null)
+            {
+                if (topY > contentY)
+                {
+                    topY += 2f;
+                }
+
+                sprite.Draw(_cashLabelTexture, new Vector2(textX, topY), Color.White);
+                topY += cashLabelHeight;
+            }
+
+            if (wrappedDescription.Length > 0)
+            {
+                if (topY > contentY)
+                {
+                    topY += TooltipSectionGap;
+                }
+
+                DrawTooltipLines(sprite, wrappedDescription, textX, topY, new Color(216, 216, 216));
+            }
+
+            float sectionY = contentY + topBlockHeight;
+            if (statRowsHeight > 0f)
+            {
+                sectionY += TooltipSectionGap;
+                sectionY = DrawTooltipInfoRows(sprite, tooltipX + TooltipPadding, sectionY, tooltipWidth - (TooltipPadding * 2), statRows);
+            }
+
+            if (requirementRowsHeight > 0f)
+            {
+                sectionY += TooltipSectionGap;
+                sectionY = DrawTooltipInfoRows(sprite, tooltipX + TooltipPadding, sectionY, tooltipWidth - (TooltipPadding * 2), requirementRows);
+            }
+
+            if (footerHeight > 0f)
+            {
+                sectionY += TooltipSectionGap;
+                DrawWrappedSections(sprite, tooltipX + TooltipPadding, sectionY, wrappedFooterSections);
+            }
+        }
+
+        private List<TooltipInfoRow> BuildEquipTooltipStatRows(CharacterPart part)
+        {
+            List<TooltipInfoRow> rows = new();
+            AppendTooltipInfoRow(rows, "STR:", null, part.BonusSTR, new Color(176, 255, 176), prefixPlus: true);
+            AppendTooltipInfoRow(rows, "DEX:", null, part.BonusDEX, new Color(176, 255, 176), prefixPlus: true);
+            AppendTooltipInfoRow(rows, "INT:", null, part.BonusINT, new Color(176, 255, 176), prefixPlus: true);
+            AppendTooltipInfoRow(rows, "LUK:", null, part.BonusLUK, new Color(176, 255, 176), prefixPlus: true);
+            AppendTooltipInfoRow(rows, "HP:", null, part.BonusHP, new Color(176, 255, 176), prefixPlus: true);
+            AppendTooltipInfoRow(rows, "MP:", null, part.BonusMP, new Color(176, 255, 176), prefixPlus: true);
+            AppendTooltipInfoRow(rows, "Weapon ATT:", ResolvePropertyLabel("6"), part.BonusWeaponAttack, new Color(176, 255, 176), prefixPlus: true);
+            AppendTooltipInfoRow(rows, "Magic ATT:", ResolvePropertyLabel("7"), part.BonusMagicAttack, new Color(176, 255, 176), prefixPlus: true);
+            AppendTooltipInfoRow(rows, "Weapon DEF:", ResolvePropertyLabel("8"), part.BonusWeaponDefense, new Color(176, 255, 176), prefixPlus: true);
+            AppendTooltipInfoRow(rows, "Magic DEF:", ResolvePropertyLabel("9"), part.BonusMagicDefense, new Color(176, 255, 176), prefixPlus: true);
+            AppendTooltipInfoRow(rows, "Accuracy:", ResolvePropertyLabel("10"), part.BonusAccuracy, new Color(176, 255, 176), prefixPlus: true);
+            AppendTooltipInfoRow(rows, "Avoidability:", ResolvePropertyLabel("11"), part.BonusAvoidability, new Color(176, 255, 176), prefixPlus: true);
+            AppendTooltipInfoRow(rows, "Hands:", ResolvePropertyLabel("12"), part.BonusHands, new Color(176, 255, 176), prefixPlus: true);
+            AppendTooltipInfoRow(rows, "Speed:", ResolvePropertyLabel("13"), part.BonusSpeed, new Color(176, 255, 176), prefixPlus: true);
+            AppendTooltipInfoRow(rows, "Jump:", ResolvePropertyLabel("14"), part.BonusJump, new Color(176, 255, 176), prefixPlus: true);
+
+            if (part.EnhancementStarCount > 0)
+            {
+                rows.Add(new TooltipInfoRow(_equipTooltipAssets?.StarLabel, "Stars:", part.EnhancementStarCount.ToString(CultureInfo.InvariantCulture), new Color(255, 232, 176)));
+            }
+
+            int upgradeSlots = ResolveTooltipUpgradeSlotCount(part);
+            if (upgradeSlots > 0)
+            {
+                string upgradeValue = part.TotalUpgradeSlotCount.HasValue && part.TotalUpgradeSlotCount.Value > 0
+                    ? $"{upgradeSlots}/{part.TotalUpgradeSlotCount.Value}"
+                    : upgradeSlots.ToString(CultureInfo.InvariantCulture);
+                rows.Add(new TooltipInfoRow(ResolvePropertyLabel("16"), "Upgrades Available:", upgradeValue, new Color(255, 232, 176)));
+            }
+
+            if (part.SellPrice > 0)
+            {
+                rows.Add(new TooltipInfoRow(_equipTooltipAssets?.MesosLabel, "Mesos:", part.SellPrice.ToString("N0", CultureInfo.InvariantCulture), new Color(255, 244, 186)));
+            }
+
+            if (part is WeaponPart weapon && weapon.AttackSpeed >= 0)
+            {
+                Texture2D speedTexture = ResolveSpeedTexture(weapon.AttackSpeed);
+                rows.Add(new TooltipInfoRow(speedTexture ?? ResolvePropertyLabel("4"), "Attack Speed:", ResolveAttackSpeedText(weapon.AttackSpeed), new Color(181, 224, 255)));
+            }
+
+            return rows;
+        }
+
+        private List<TooltipInfoRow> BuildEquipTooltipRequirementRows(CharacterPart part)
+        {
+            List<TooltipInfoRow> rows = new();
+            AppendRequirementRow(rows, "reqLEV", "Required Level:", part.RequiredLevel, CharacterBuild?.Level ?? int.MaxValue);
+            AppendRequirementRow(rows, "reqSTR", "Required STR:", part.RequiredSTR, CharacterBuild?.TotalSTR ?? int.MaxValue);
+            AppendRequirementRow(rows, "reqDEX", "Required DEX:", part.RequiredDEX, CharacterBuild?.TotalDEX ?? int.MaxValue);
+            AppendRequirementRow(rows, "reqINT", "Required INT:", part.RequiredINT, CharacterBuild?.TotalINT ?? int.MaxValue);
+            AppendRequirementRow(rows, "reqLUK", "Required LUK:", part.RequiredLUK, CharacterBuild?.TotalLUK ?? int.MaxValue);
+            AppendRequirementRow(rows, "reqPOP", "Required Fame:", part.RequiredFame, CharacterBuild?.Fame ?? int.MaxValue);
+
+            if (part.Durability.HasValue)
+            {
+                bool canUse = !part.MaxDurability.HasValue || part.Durability.Value > 0;
+                string value = part.MaxDurability.HasValue && part.MaxDurability.Value > 0
+                    ? $"{Math.Max(0, part.Durability.Value)}/{part.MaxDurability.Value}"
+                    : Math.Max(0, part.Durability.Value).ToString(CultureInfo.InvariantCulture);
+                rows.Add(new TooltipInfoRow(
+                    ResolveRequirementLabel(canUse, "durability"),
+                    "Durability:",
+                    value,
+                    canUse ? new Color(181, 224, 255) : new Color(255, 186, 186)));
+            }
+
+            return rows;
+        }
+
+        private List<string> BuildEquipTooltipFooterLines(RepairEntry entry, CharacterPart part, InventoryItemTooltipMetadata metadata)
+        {
+            List<string> lines = new();
+            if (!string.IsNullOrWhiteSpace(entry.SlotLabel))
+            {
+                lines.Add($"Slot: {entry.SlotLabel}");
+            }
+
+            lines.Add($"Repair Fee: {entry.RepairCost.ToString("N0", CultureInfo.InvariantCulture)} mesos");
+
+            if (!string.IsNullOrWhiteSpace(entry.AvailabilityText))
+            {
+                lines.Add(entry.AvailabilityText);
+            }
+
+            if (part.IsTradeBlocked || metadata.IsTradeBlocked)
+            {
+                lines.Add("Untradeable");
+            }
+
+            if (part.IsOneOfAKind || metadata.IsOneOfAKind)
+            {
+                lines.Add("One of a kind");
+            }
+
+            if (part.IsNotForSale || metadata.IsNotForSale)
+            {
+                lines.Add("Not for sale");
+            }
+
+            if (part.ExpirationDateUtc.HasValue)
+            {
+                lines.Add($"Expires {part.ExpirationDateUtc.Value.ToLocalTime():yyyy-MM-dd HH:mm}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(part.PotentialTierText))
+            {
+                lines.Add(part.PotentialTierText);
+            }
+
+            if (part.PotentialLines != null)
+            {
+                for (int i = 0; i < part.PotentialLines.Count; i++)
+                {
+                    if (!string.IsNullOrWhiteSpace(part.PotentialLines[i]))
+                    {
+                        lines.Add(part.PotentialLines[i]);
+                    }
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(part.Description))
+            {
+                lines.Add(part.Description);
+            }
+
+            return lines;
+        }
+
+        private void AppendTooltipInfoRow(List<TooltipInfoRow> rows, string fallbackLabel, Texture2D labelTexture, int value, Color valueColor, bool prefixPlus)
+        {
+            if (value <= 0)
+            {
+                return;
+            }
+
+            string valueText = prefixPlus ? $"+{value}" : value.ToString(CultureInfo.InvariantCulture);
+            rows.Add(new TooltipInfoRow(labelTexture, fallbackLabel, valueText, valueColor));
+        }
+
+        private void AppendRequirementRow(List<TooltipInfoRow> rows, string labelKey, string fallbackLabel, int requiredValue, int actualValue)
+        {
+            if (requiredValue <= 0)
+            {
+                return;
+            }
+
+            bool canUse = actualValue >= requiredValue;
+            rows.Add(new TooltipInfoRow(
+                ResolveRequirementLabel(canUse, labelKey),
+                fallbackLabel,
+                requiredValue.ToString(CultureInfo.InvariantCulture),
+                canUse ? new Color(181, 224, 255) : new Color(255, 186, 186)));
+        }
+
+        private static int ResolveTooltipUpgradeSlotCount(CharacterPart part)
+        {
+            if (part?.RemainingUpgradeSlotCount.HasValue == true)
+            {
+                return Math.Max(0, part.RemainingUpgradeSlotCount.Value);
+            }
+
+            return Math.Max(0, part?.UpgradeSlots ?? 0);
+        }
+
+        private float MeasureTooltipInfoRowsHeight(IReadOnlyList<TooltipInfoRow> rows)
+        {
+            if (rows == null || rows.Count == 0)
+            {
+                return 0f;
+            }
+
+            float height = 0f;
+            for (int i = 0; i < rows.Count; i++)
+            {
+                height += MeasureTooltipInfoRowHeight(rows[i]);
+                if (i < rows.Count - 1)
+                {
+                    height += 2f;
+                }
+            }
+
+            return height;
+        }
+
+        private float MeasureTooltipInfoRowHeight(TooltipInfoRow row)
+        {
+            float height = ClientTextDrawing.Measure((GraphicsDevice)null, row.ValueText ?? string.Empty, SecondaryTextScale, _font).Y;
+            if (row.LabelTexture != null)
+            {
+                height = Math.Max(height, row.LabelTexture.Height);
+            }
+            else if (!string.IsNullOrWhiteSpace(row.LabelText))
+            {
+                height = Math.Max(height, ClientTextDrawing.Measure((GraphicsDevice)null, row.LabelText, SecondaryTextScale, _font).Y);
+            }
+
+            return Math.Max(height, 12f);
+        }
+
+        private float DrawTooltipInfoRows(SpriteBatch sprite, int x, float y, int width, IReadOnlyList<TooltipInfoRow> rows)
+        {
+            if (rows == null)
+            {
+                return y;
+            }
+
+            float drawY = y;
+            for (int i = 0; i < rows.Count; i++)
+            {
+                TooltipInfoRow row = rows[i];
+                float rowHeight = MeasureTooltipInfoRowHeight(row);
+                float labelWidth = 0f;
+                if (row.LabelTexture != null)
+                {
+                    sprite.Draw(row.LabelTexture, new Vector2(x, drawY), Color.White);
+                    labelWidth = row.LabelTexture.Width;
+                }
+                else if (!string.IsNullOrWhiteSpace(row.LabelText))
+                {
+                    DrawOutlinedText(sprite, row.LabelText, new Vector2(x, drawY), new Color(214, 222, 238), SecondaryTextScale);
+                    labelWidth = ClientTextDrawing.Measure((GraphicsDevice)null, row.LabelText, SecondaryTextScale, _font).X;
+                }
+
+                Vector2 valueSize = ClientTextDrawing.Measure((GraphicsDevice)null, row.ValueText ?? string.Empty, SecondaryTextScale, _font);
+                float minValueX = x + labelWidth + 10f;
+                float preferredValueX = x + width - valueSize.X;
+                float valueX = Math.Max(minValueX, preferredValueX);
+                DrawOutlinedText(sprite, row.ValueText, new Vector2(valueX, drawY), row.ValueColor, SecondaryTextScale);
+                drawY += rowHeight + 2f;
+            }
+
+            return drawY;
+        }
+
+        private Texture2D ResolvePropertyLabel(string key)
+        {
+            return TryResolveTooltipAsset(_equipTooltipAssets?.PropertyLabels, key);
+        }
+
+        private Texture2D ResolveRequirementLabel(bool canUse, string key)
+        {
+            return TryResolveTooltipAsset(canUse ? _equipTooltipAssets?.CanLabels : _equipTooltipAssets?.CannotLabels, key);
+        }
+
+        private Texture2D ResolveSpeedTexture(int attackSpeed)
+        {
+            return TryResolveTooltipAsset(_equipTooltipAssets?.SpeedLabels, Math.Clamp(attackSpeed, 0, 6).ToString(CultureInfo.InvariantCulture));
+        }
+
+        private Texture2D ResolveCategoryTexture(CharacterPart part)
+        {
+            if (_equipTooltipAssets == null || part == null || part.ItemId <= 0)
+            {
+                return null;
+            }
+
+            int itemCategory = part.ItemId / 10000;
+            if (part is WeaponPart)
+            {
+                Texture2D weaponTexture = TryResolveTooltipAsset(
+                    _equipTooltipAssets.WeaponCategoryLabels,
+                    (itemCategory - 100).ToString(CultureInfo.InvariantCulture));
+                if (weaponTexture != null)
+                {
+                    return weaponTexture;
+                }
+            }
+
+            string categoryKey = itemCategory switch
+            {
+                100 => "1",
+                101 => "2",
+                102 => "3",
+                103 => "4",
+                104 => "5",
+                105 => "21",
+                106 => "6",
+                107 => "7",
+                108 => "8",
+                109 => "10",
+                110 => "9",
+                111 => "12",
+                _ => null
+            };
+
+            return categoryKey == null
+                ? null
+                : TryResolveTooltipAsset(_equipTooltipAssets.ItemCategoryLabels, categoryKey);
+        }
+
+        private static Texture2D TryResolveTooltipAsset(IReadOnlyDictionary<string, Texture2D> assets, string key)
+        {
+            if (assets == null || string.IsNullOrWhiteSpace(key))
+            {
+                return null;
+            }
+
+            return assets.TryGetValue(key, out Texture2D texture) ? texture : null;
+        }
+
+        private static string ResolveCategoryFallbackText(CharacterPart part)
+        {
+            if (part is WeaponPart weapon && !string.IsNullOrWhiteSpace(weapon.WeaponType))
+            {
+                return weapon.WeaponType;
+            }
+
+            return part?.ItemCategory ?? string.Empty;
+        }
+
+        private static string ResolveAttackSpeedText(int attackSpeed)
+        {
+            return Math.Clamp(attackSpeed, 0, 6) switch
+            {
+                0 => "Fastest",
+                1 => "Faster",
+                2 => "Fast",
+                3 => "Normal",
+                4 => "Slow",
+                5 => "Slower",
+                6 => "Slowest",
+                _ => string.Empty
+            };
         }
 
         private void UpdateButtonStates()

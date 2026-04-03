@@ -8,6 +8,7 @@ using HaCreator.MapSimulator.Loaders;
 using HaCreator.MapSimulator.Pools;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
+using HaSharedLibrary.Util;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure;
@@ -26,6 +27,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const string MerchantNpcId = "9071001";
         private const string StoreBankerNpcId = "9030000";
         private const int SignVerticalOffset = 34;
+        private const int MiniRoomBalloonVerticalOffset = 10;
         private const float HeadlineScale = 0.48f;
         private const float DetailScale = 0.42f;
 
@@ -38,6 +40,7 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly Dictionary<string, EmployeeTemplateProfile> _cashProfileCache = new(StringComparer.Ordinal);
         private readonly ConcurrentBag<WzObject> _usedProps = new();
         private readonly Random _random = new();
+        private MiniRoomBalloonAssets _miniRoomBalloonAssets;
 
         private NpcItem _activeActor;
         private SocialRoomFieldActorSnapshot _activeSnapshot;
@@ -88,6 +91,7 @@ namespace HaCreator.MapSimulator.Interaction
             EmployeeTemplateProfile profile = ResolveProfile(snapshot);
             int elapsedMs = (int)Math.Max(0d, gameTime.ElapsedGameTime.TotalMilliseconds);
 
+            EnsureMiniRoomBalloonAssets(device);
             AdvanceActionState(actor, snapshot, profile, elapsedMs);
             SyncActorPosition(player, actor, snapshot);
 
@@ -126,6 +130,11 @@ namespace HaCreator.MapSimulator.Interaction
                 tickCount);
 
             if (font == null)
+            {
+                return;
+            }
+
+            if (_activeSnapshot.HasMiniRoomBalloon && DrawMiniRoomBalloon(spriteBatch, font, mapShiftX, mapShiftY, mapCenterX, mapCenterY))
             {
                 return;
             }
@@ -494,6 +503,239 @@ namespace HaCreator.MapSimulator.Interaction
             return itemImage?[templateId.ToString("D8")]?["employee"];
         }
 
+        private void EnsureMiniRoomBalloonAssets(GraphicsDevice device)
+        {
+            if (_miniRoomBalloonAssets?.IsLoaded == true || device == null || device.IsDisposed)
+            {
+                return;
+            }
+
+            WzImage chatBalloonImage = global::HaCreator.Program.FindImage("UI", "ChatBalloon.img");
+            if (chatBalloonImage == null)
+            {
+                return;
+            }
+
+            chatBalloonImage.ParseImage();
+            WzSubProperty miniRoomSource = chatBalloonImage["miniroom"] as WzSubProperty;
+            if (miniRoomSource == null)
+            {
+                return;
+            }
+
+            WzSubProperty currentCountSource = miniRoomSource["cNum"] as WzSubProperty;
+            WzSubProperty maxCountSource = miniRoomSource["mNum"] as WzSubProperty;
+            WzSubProperty shopSkinSource = miniRoomSource["PSSkin"] as WzSubProperty;
+
+            _miniRoomBalloonAssets = new MiniRoomBalloonAssets
+            {
+                PointedBackground = LoadUiCanvasTexture(miniRoomSource["backgrnd2"] as WzCanvasProperty, device),
+                Background = LoadUiCanvasTexture(miniRoomSource["backgrnd"] as WzCanvasProperty, device),
+                PersonalShopIcon = LoadUiCanvasTexture(miniRoomSource["PersonalShop"] as WzCanvasProperty, device),
+                Able = LoadUiCanvasTexture(miniRoomSource["Able"] as WzCanvasProperty, device),
+                Disable = LoadUiCanvasTexture(miniRoomSource["Disable"] as WzCanvasProperty, device),
+                Progress = LoadUiCanvasTexture(miniRoomSource["Progress"] as WzCanvasProperty, device),
+                ShopBoards = LoadIndexedTextures(shopSkinSource, device, 7),
+                CurrentCountDigits = LoadDigitTextures(currentCountSource, device),
+                MaxCountDigits = LoadDigitTextures(maxCountSource, device)
+            };
+        }
+
+        private static Texture2D LoadUiCanvasTexture(WzCanvasProperty canvasProperty, GraphicsDevice device)
+        {
+            return canvasProperty?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device);
+        }
+
+        private static Texture2D[] LoadIndexedTextures(WzSubProperty source, GraphicsDevice device, int count)
+        {
+            Texture2D[] textures = new Texture2D[count];
+            for (int i = 0; i < count; i++)
+            {
+                textures[i] = LoadUiCanvasTexture(source?[i.ToString()] as WzCanvasProperty, device);
+            }
+
+            return textures;
+        }
+
+        private static Texture2D[] LoadDigitTextures(WzSubProperty source, GraphicsDevice device)
+        {
+            Texture2D[] digits = new Texture2D[5];
+            for (int i = 1; i <= 4; i++)
+            {
+                digits[i] = LoadUiCanvasTexture(source?[i.ToString()] as WzCanvasProperty, device);
+            }
+
+            return digits;
+        }
+
+        private bool DrawMiniRoomBalloon(
+            SpriteBatch spriteBatch,
+            SpriteFont font,
+            int mapShiftX,
+            int mapShiftY,
+            int mapCenterX,
+            int mapCenterY)
+        {
+            MiniRoomBalloonAssets assets = _miniRoomBalloonAssets;
+            if (_activeActor == null || _activeSnapshot == null || assets?.IsLoaded != true)
+            {
+                return false;
+            }
+
+            Texture2D boardTexture = ResolveMiniRoomBalloonBoardTexture(_activeSnapshot, assets);
+            if (boardTexture == null)
+            {
+                return false;
+            }
+
+            int actorScreenX = _activeActor.CurrentX - mapShiftX + mapCenterX;
+            int actorScreenY = _activeActor.CurrentY - mapShiftY + mapCenterY;
+            int boardX = actorScreenX - (boardTexture.Width / 2);
+            int boardY = actorScreenY - _activeActor.NpcInstance.Height - boardTexture.Height - MiniRoomBalloonVerticalOffset;
+            Vector2 boardPosition = new(boardX, boardY);
+
+            spriteBatch.Draw(boardTexture, boardPosition, Color.White);
+
+            if (assets.PersonalShopIcon != null)
+            {
+                spriteBatch.Draw(assets.PersonalShopIcon, new Vector2(boardX + 12, boardY + 83), Color.White);
+            }
+
+            DrawMiniRoomBalloonCount(spriteBatch, assets.CurrentCountDigits, _activeSnapshot.MiniRoomBalloonByte0, boardX + 29, boardY + 85);
+            DrawMiniRoomBalloonCount(spriteBatch, assets.MaxCountDigits, _activeSnapshot.MiniRoomBalloonByte1, boardX + 46, boardY + 85);
+
+            Texture2D statusTexture = ResolveMiniRoomStatusTexture(_activeSnapshot, assets);
+            if (statusTexture != null)
+            {
+                spriteBatch.Draw(statusTexture, new Vector2(boardX + 97, boardY + 84), Color.White);
+            }
+
+            DrawMiniRoomBalloonText(spriteBatch, font, boardX, boardY);
+            return true;
+        }
+
+        private static Texture2D ResolveMiniRoomBalloonBoardTexture(SocialRoomFieldActorSnapshot snapshot, MiniRoomBalloonAssets assets)
+        {
+            if (snapshot == null || assets == null)
+            {
+                return null;
+            }
+
+            if (snapshot.MiniRoomType is 3 or 4 or 5)
+            {
+                return assets.ShopBoards.Length > 1 && assets.ShopBoards[1] != null
+                    ? assets.ShopBoards[1]
+                    : assets.Background;
+            }
+
+            return assets.PointedBackground ?? assets.Background;
+        }
+
+        private static Texture2D ResolveMiniRoomStatusTexture(SocialRoomFieldActorSnapshot snapshot, MiniRoomBalloonAssets assets)
+        {
+            if (snapshot == null || assets == null)
+            {
+                return null;
+            }
+
+            string stateKey = snapshot.StateKey ?? string.Empty;
+            if (stateKey.IndexOf("expired", StringComparison.OrdinalIgnoreCase) >= 0
+                || stateKey.IndexOf("closed", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return assets.Disable;
+            }
+
+            if (stateKey.IndexOf("progress", StringComparison.OrdinalIgnoreCase) >= 0
+                || stateKey.IndexOf("restock", StringComparison.OrdinalIgnoreCase) >= 0
+                || stateKey.IndexOf("updating", StringComparison.OrdinalIgnoreCase) >= 0
+                || stateKey.IndexOf("claim", StringComparison.OrdinalIgnoreCase) >= 0
+                || stateKey.IndexOf("sold", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                return assets.Progress;
+            }
+
+            return assets.Able;
+        }
+
+        private static void DrawMiniRoomBalloonCount(SpriteBatch spriteBatch, IReadOnlyList<Texture2D> digits, byte value, int x, int y)
+        {
+            if (spriteBatch == null || digits == null)
+            {
+                return;
+            }
+
+            int normalizedValue = Math.Clamp((int)value, 0, 4);
+            if (normalizedValue <= 0 || normalizedValue >= digits.Count)
+            {
+                return;
+            }
+
+            Texture2D digitTexture = digits[normalizedValue];
+            if (digitTexture != null)
+            {
+                spriteBatch.Draw(digitTexture, new Vector2(x, y), Color.White);
+            }
+        }
+
+        private void DrawMiniRoomBalloonText(SpriteBatch spriteBatch, SpriteFont font, int boardX, int boardY)
+        {
+            string headline = string.IsNullOrWhiteSpace(_activeSnapshot.MiniRoomBalloonTitle)
+                ? _activeSnapshot.Headline
+                : _activeSnapshot.MiniRoomBalloonTitle;
+            string ownerName = ExtractOwnerName(_activeSnapshot.Detail);
+            if (string.IsNullOrWhiteSpace(headline) && string.IsNullOrWhiteSpace(ownerName))
+            {
+                return;
+            }
+
+            const int titleCenterX = 78;
+            const int headlineY = 42;
+            const int ownerY = 61;
+
+            if (!string.IsNullOrWhiteSpace(headline))
+            {
+                Vector2 headlineSize = font.MeasureString(headline) * HeadlineScale;
+                spriteBatch.DrawString(
+                    font,
+                    headline,
+                    new Vector2(boardX + titleCenterX - (headlineSize.X / 2f), boardY + headlineY),
+                    Color.Black,
+                    0f,
+                    Vector2.Zero,
+                    HeadlineScale,
+                    SpriteEffects.None,
+                    0f);
+            }
+
+            if (!string.IsNullOrWhiteSpace(ownerName))
+            {
+                Vector2 ownerSize = font.MeasureString(ownerName) * DetailScale;
+                spriteBatch.DrawString(
+                    font,
+                    ownerName,
+                    new Vector2(boardX + titleCenterX - (ownerSize.X / 2f), boardY + ownerY),
+                    new Color(72, 72, 72),
+                    0f,
+                    Vector2.Zero,
+                    DetailScale,
+                    SpriteEffects.None,
+                    0f);
+            }
+        }
+
+        private static string ExtractOwnerName(string detail)
+        {
+            if (string.IsNullOrWhiteSpace(detail))
+            {
+                return string.Empty;
+            }
+
+            int separatorIndex = detail.IndexOf('|');
+            return separatorIndex >= 0
+                ? detail[..separatorIndex].Trim()
+                : detail.Trim();
+        }
+
         private sealed class EmployeeTemplateProfile
         {
             private EmployeeTemplateProfile(
@@ -702,6 +944,28 @@ namespace HaCreator.MapSimulator.Interaction
             public string[] RestockActions { get; }
             public string[] LedgerActions { get; }
             public string[] ExpiredActions { get; }
+        }
+
+        private sealed class MiniRoomBalloonAssets
+        {
+            public Texture2D Background { get; init; }
+            public Texture2D PointedBackground { get; init; }
+            public Texture2D PersonalShopIcon { get; init; }
+            public Texture2D Able { get; init; }
+            public Texture2D Disable { get; init; }
+            public Texture2D Progress { get; init; }
+            public Texture2D[] ShopBoards { get; init; } = Array.Empty<Texture2D>();
+            public Texture2D[] CurrentCountDigits { get; init; } = Array.Empty<Texture2D>();
+            public Texture2D[] MaxCountDigits { get; init; } = Array.Empty<Texture2D>();
+
+            public bool IsLoaded =>
+                (PointedBackground != null || Background != null || ShopBoards.Any(texture => texture != null))
+                && PersonalShopIcon != null
+                && Able != null
+                && Disable != null
+                && Progress != null
+                && CurrentCountDigits.Length >= 5
+                && MaxCountDigits.Length >= 5;
         }
 
         private void DrawSign(

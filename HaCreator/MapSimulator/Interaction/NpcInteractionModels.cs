@@ -26,7 +26,8 @@ namespace HaCreator.MapSimulator.Interaction
     internal enum NpcInteractionPresentationStyle
     {
         Default,
-        PacketScriptUtilDialog
+        PacketScriptUtilDialog,
+        PacketQuestResultUtilDialog
     }
 
     internal enum NpcInteractionInputKind
@@ -88,18 +89,31 @@ namespace HaCreator.MapSimulator.Interaction
         public NpcInteractionPresentationStyle PresentationStyle { get; init; }
     }
 
+    internal enum NpcInteractionOverlayCloseKind
+    {
+        None,
+        Dismissed,
+        Completed
+    }
+
     internal readonly struct NpcInteractionOverlayResult
     {
-        public NpcInteractionOverlayResult(bool consumed, NpcInteractionEntry primaryActionEntry, NpcInteractionInputSubmission inputSubmission = null)
+        public NpcInteractionOverlayResult(
+            bool consumed,
+            NpcInteractionEntry primaryActionEntry,
+            NpcInteractionInputSubmission inputSubmission = null,
+            NpcInteractionOverlayCloseKind closeKind = NpcInteractionOverlayCloseKind.None)
         {
             Consumed = consumed;
             PrimaryActionEntry = primaryActionEntry;
             InputSubmission = inputSubmission;
+            CloseKind = closeKind;
         }
 
         public bool Consumed { get; }
         public NpcInteractionEntry PrimaryActionEntry { get; }
         public NpcInteractionInputSubmission InputSubmission { get; }
+        public NpcInteractionOverlayCloseKind CloseKind { get; }
     }
 
     internal sealed class NpcInteractionInputRequest

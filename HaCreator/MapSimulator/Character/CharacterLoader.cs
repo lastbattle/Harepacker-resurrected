@@ -292,6 +292,11 @@ namespace HaCreator.MapSimulator.Character
                 };
 
                 LoadPartAnimations(candidatePart, candidateImage, includeAttackActions: false);
+                if (candidatePart.IsSuperManMorph)
+                {
+                    morphPart.IsSuperManMorph = true;
+                }
+
                 MergeMissingAnimations(morphPart, candidatePart);
             }
         }
@@ -477,6 +482,7 @@ namespace HaCreator.MapSimulator.Character
             };
 
             LoadPortableChairLayers(itemProperty, chair.Layers);
+            LoadPortableChairExpressionLayers(itemProperty, chair);
             LoadPortableChairItemEffectLayers(itemId, chair);
 
             if (chair.Layers.Count == 0
@@ -678,6 +684,52 @@ namespace HaCreator.MapSimulator.Character
             }
         }
 
+        private void LoadPortableChairExpressionLayers(WzSubProperty chairProperty, PortableChair chair)
+        {
+            if (chairProperty == null || chair == null)
+            {
+                return;
+            }
+
+            if (chairProperty["info"] is not WzSubProperty infoProperty
+                || infoProperty["randEffect"] is not WzSubProperty randomEffectProperty)
+            {
+                return;
+            }
+
+            foreach (WzImageProperty child in randomEffectProperty.WzProperties)
+            {
+                if (!int.TryParse(child.Name, out int effectIndex)
+                    || child is not WzSubProperty expressionProperty)
+                {
+                    continue;
+                }
+
+                string expressionName = InfoTool.GetString(expressionProperty["face"]);
+                if (string.IsNullOrWhiteSpace(expressionName))
+                {
+                    continue;
+                }
+
+                if (!TryResolvePortableChairExpressionLayerSource(
+                        chairProperty,
+                        effectIndex,
+                        out WzSubProperty expressionLayerSource))
+                {
+                    continue;
+                }
+
+                List<PortableChairLayer> expressionLayers = new();
+                LoadPortableChairLayers(expressionLayerSource, expressionLayers);
+                if (expressionLayers.Count == 0)
+                {
+                    continue;
+                }
+
+                chair.ExpressionLayers[expressionName.Trim()] = expressionLayers;
+            }
+        }
+
         private void LoadPortableChairItemEffectLayers(int itemId, PortableChair chair)
         {
             if (chair == null)
@@ -730,6 +782,60 @@ namespace HaCreator.MapSimulator.Character
         private static bool IsPortableChairCoupleMidpointLayer(string layerName)
         {
             return string.Equals(layerName, "0", StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool TryResolvePortableChairExpressionLayerSource(
+            WzSubProperty chairProperty,
+            int effectIndex,
+            out WzSubProperty expressionLayerSource)
+        {
+            expressionLayerSource = null;
+            if (chairProperty == null || effectIndex < 0)
+            {
+                return false;
+            }
+
+            if (effectIndex == 0)
+            {
+                expressionLayerSource = BuildPortableChairExpressionLayerSource(chairProperty);
+                return expressionLayerSource != null;
+            }
+
+            if (chairProperty[$"randEffect{effectIndex}"] is not WzSubProperty randomEffectBranch)
+            {
+                return false;
+            }
+
+            expressionLayerSource = BuildPortableChairExpressionLayerSource(randomEffectBranch);
+            return expressionLayerSource != null;
+        }
+
+        private static WzSubProperty BuildPortableChairExpressionLayerSource(WzSubProperty sourceProperty)
+        {
+            if (sourceProperty == null)
+            {
+                return null;
+            }
+
+            WzSubProperty effectProperty = sourceProperty["effect"] as WzSubProperty;
+            WzSubProperty effect2Property = sourceProperty["effect2"] as WzSubProperty;
+            if (effectProperty == null && effect2Property == null)
+            {
+                return null;
+            }
+
+            var expressionLayerSource = new WzSubProperty("expression");
+            if (effectProperty != null)
+            {
+                expressionLayerSource.WzProperties.Add(effectProperty);
+            }
+
+            if (effect2Property != null)
+            {
+                expressionLayerSource.WzProperties.Add(effect2Property);
+            }
+
+            return expressionLayerSource;
         }
 
         private static bool IsPortableChairCoupleSharedLayer(string layerName)

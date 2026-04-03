@@ -409,7 +409,7 @@ namespace HaCreator.MapSimulator.UI
             if (currTickCount - _lastMinimapToggleTime > MINIMAP_TOGGLE_COOLDOWN_MS)
             {
                 _lastMinimapToggleTime = currTickCount;
-                AdvanceToggleCycle();
+                ToggleMinimapState();
             }
         }
 
@@ -418,6 +418,14 @@ namespace HaCreator.MapSimulator.UI
         public void EnsureExpanded()
         {
             if (_bIsCollapsedState)
+            {
+                ObjUIBtMax_ButtonClickReleased(null);
+            }
+        }
+
+        public void EnsureCollapsed()
+        {
+            if (!_bIsCollapsedState)
             {
                 ObjUIBtMax_ButtonClickReleased(null);
             }
@@ -757,6 +765,30 @@ namespace HaCreator.MapSimulator.UI
             CollapseMinimapToRememberedOption();
         }
 
+        private void ToggleMinimapState()
+        {
+            ClientStateTransition transition = ResolveToggleMiniMapStateTransitionForTesting(
+                _currentOption,
+                _previousExpandedOption,
+                _btnSmall != null && _expandedFrame != null);
+
+            ApplyClientStateTransition(transition);
+        }
+
+        private void ApplyClientStateTransition(ClientStateTransition transition)
+        {
+            BaseDXDrawableItem previousFrame = GetVisibleFrame();
+
+            _currentOption = transition.CurrentOption;
+            _previousExpandedOption = transition.PreviousExpandedOption;
+            _bIsCollapsedState = transition.IsCollapsed;
+
+            SyncFramePositionsFrom(previousFrame);
+            _btnMin.SetButtonState(_bIsCollapsedState ? UIObjectState.Disabled : UIObjectState.Normal);
+            _btnMax.SetButtonState(_bIsCollapsedState ? UIObjectState.Normal : UIObjectState.Disabled);
+            UpdateButtonLayout();
+        }
+
         internal static ClientStateTransition ResolveClientStateTransitionForTesting(
             int buttonId,
             int currentOption,
@@ -797,6 +829,50 @@ namespace HaCreator.MapSimulator.UI
                     normalizedPreviousExpandedOption,
                     normalizedCurrentOption <= ClientOptionCollapsed)
             };
+        }
+
+        internal static ClientStateTransition ResolveToggleMiniMapStateTransitionForTesting(
+            int currentOption,
+            int previousExpandedOption,
+            bool supportsExpandedOption)
+        {
+            static int NormalizeExpandedOptionForState(int option, bool supportsExpanded)
+            {
+                if (!supportsExpanded)
+                {
+                    return ClientOptionCompact;
+                }
+
+                return option >= ClientOptionExpanded ? ClientOptionExpanded : ClientOptionCompact;
+            }
+
+            int normalizedCurrentOption = currentOption <= ClientOptionCollapsed
+                ? ClientOptionCollapsed
+                : NormalizeExpandedOptionForState(currentOption, supportsExpandedOption);
+            int normalizedPreviousExpandedOption = previousExpandedOption > ClientOptionCollapsed
+                ? NormalizeExpandedOptionForState(previousExpandedOption, supportsExpandedOption)
+                : ClientOptionCompact;
+
+            if (normalizedCurrentOption <= ClientOptionCollapsed)
+            {
+                return new ClientStateTransition(
+                    supportsExpandedOption ? ClientOptionExpanded : ClientOptionCompact,
+                    ClientOptionCompact,
+                    false);
+            }
+
+            if (normalizedCurrentOption == ClientOptionCompact)
+            {
+                return new ClientStateTransition(
+                    ClientOptionCollapsed,
+                    normalizedCurrentOption,
+                    true);
+            }
+
+            return new ClientStateTransition(
+                ClientOptionCompact,
+                normalizedCurrentOption,
+                false);
         }
 
         private void DrawNpcMarkers(

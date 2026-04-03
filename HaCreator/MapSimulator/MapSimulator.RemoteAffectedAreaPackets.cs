@@ -166,12 +166,16 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            if (TryApplyRemotePlayerSupportAffectedAreaGameplay(area, skill, supportSkills, supportLevelData ?? levelData, currentTime, activeProjectedSupportAreaIds))
-            {
-                return;
-            }
+            SkillLevelData effectiveLevelData = supportLevelData ?? levelData;
+            TryApplyRemotePlayerSupportAffectedAreaGameplay(
+                area,
+                skill,
+                supportSkills,
+                effectiveLevelData,
+                currentTime,
+                activeProjectedSupportAreaIds);
 
-            if (RemoteAffectedAreaSupportResolver.ResolveDisposition(skill, supportLevelData ?? levelData) != RemotePlayerAffectedAreaDisposition.Hostile)
+            if (!RemoteAffectedAreaSupportResolver.HasHostileMobGameplay(skill, effectiveLevelData))
             {
                 return;
             }
@@ -192,7 +196,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            int fallbackDamage = ResolveRemoteAffectedAreaFallbackDamage(skill, levelData);
+            int fallbackDamage = ResolveRemoteAffectedAreaFallbackDamage(skill, effectiveLevelData);
             foreach (MobItem mob in _mobPool.ActiveMobs)
             {
                 if (mob?.AI == null || mob.AI.IsDead || !area.Contains(mob.CurrentX, mob.CurrentY))
@@ -200,7 +204,7 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                skillManager.ApplyInferredMobStatusesFromSkill(skill, levelData, mob.AI, currentTime, fallbackDamage);
+                skillManager.ApplyInferredMobStatusesFromSkill(skill, effectiveLevelData, mob.AI, currentTime, fallbackDamage);
             }
         }
 
@@ -212,7 +216,7 @@ namespace HaCreator.MapSimulator
             int currentTime,
             System.Collections.Generic.ISet<int> activeProjectedSupportAreaIds)
         {
-            if (RemoteAffectedAreaSupportResolver.ResolveDisposition(skill, levelData) != RemotePlayerAffectedAreaDisposition.FriendlySupport)
+            if (RemoteAffectedAreaSupportResolver.ResolveDisposition(skill, supportSkills, levelData) != RemotePlayerAffectedAreaDisposition.FriendlySupport)
             {
                 return false;
             }
@@ -350,7 +354,36 @@ namespace HaCreator.MapSimulator
                 }
             }
 
-            return RemoteAffectedAreaSupportResolver.CreateProjectedSupportBuffLevelData(levelDataEntries.ToArray()) ?? primaryLevelData;
+            SkillLevelData projectedLevelData =
+                RemoteAffectedAreaSupportResolver.CreateProjectedSupportBuffLevelData(levelDataEntries.ToArray()) ?? primaryLevelData;
+            if (projectedLevelData == null)
+            {
+                return null;
+            }
+
+            int derivedDamageReductionRate = projectedLevelData.DamageReductionRate;
+            for (int i = 0; i < supportSkills.Length; i++)
+            {
+                SkillData supportSkill = supportSkills[i];
+                if (supportSkill == null)
+                {
+                    continue;
+                }
+
+                SkillLevelData supportLevelData = ResolveRemoteAffectedAreaSkillLevel(supportSkill, primaryLevelData?.Level ?? 1);
+                derivedDamageReductionRate = Math.Max(
+                    derivedDamageReductionRate,
+                    RemoteAffectedAreaSupportResolver.ResolveDerivedProjectedDamageReductionRate(supportSkill, supportLevelData));
+            }
+
+            if (derivedDamageReductionRate <= projectedLevelData.DamageReductionRate)
+            {
+                return projectedLevelData;
+            }
+
+            SkillLevelData derivedProjection = projectedLevelData.ShallowClone();
+            derivedProjection.DamageReductionRate = derivedDamageReductionRate;
+            return derivedProjection;
         }
 
         private static SkillLevelData ResolveRemoteAffectedAreaSkillLevel(SkillData skill, int level)

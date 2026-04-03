@@ -6,7 +6,8 @@ namespace HaCreator.MapSimulator.Interaction
         internal const int SaveNoticeStringPoolId = 0x0D01;
 
         private const string SaveButtonTooltipFallback = "Save the selected macro.";
-        private const string SaveNoticeFallback = "The selected macro has been saved.";
+        private const string SaveNoticeResolved = "It is saved.";
+        private const string SaveNoticeFallback = SaveNoticeResolved;
 
         public static string GetSaveButtonTooltip(bool appendFallbackSuffix = true)
         {
@@ -22,6 +23,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             text = stringPoolId switch
             {
+                SaveNoticeStringPoolId => SaveNoticeResolved,
                 _ => null,
             };
 

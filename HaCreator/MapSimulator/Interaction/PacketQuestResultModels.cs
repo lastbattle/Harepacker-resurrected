@@ -21,4 +21,12 @@ namespace HaCreator.MapSimulator.Interaction
         public string NoticeText { get; init; } = string.Empty;
         public IReadOnlyList<NpcInteractionPage> ModalPages { get; init; } = Array.Empty<NpcInteractionPage>();
     }
+
+    internal static class PacketQuestResultCloseBehavior
+    {
+        internal static bool ShouldStartFollowUpQuest(NpcInteractionOverlayCloseKind closeKind)
+        {
+            return closeKind != NpcInteractionOverlayCloseKind.None;
+        }
+    }
 }

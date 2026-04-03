@@ -117,24 +117,42 @@ namespace HaCreator.MapSimulator.Pools
         bool HasShadowPartner,
         bool HasDarkSight,
         bool HasSoulArrow,
+        int? ChargeSkillId,
         int? MorphId,
         int? GhostId,
         bool HasBarrier,
         bool HasWindWalk,
-        int? MechanicMode)
+        int? MechanicMode,
+        bool HasDarkAura,
+        bool HasBlueAura,
+        bool HasYellowAura)
     {
+        public const int DarkAuraSkillId = 32001003;
+        public const int BlueAuraSkillId = 32101002;
+        public const int YellowAuraSkillId = 32101003;
+
         public bool HasAnyKnownState =>
             Speed.HasValue
             || HasShadowPartner
             || HasDarkSight
             || HasSoulArrow
+            || ChargeSkillId.HasValue
             || MorphId.HasValue
             || GhostId.HasValue
             || HasBarrier
             || HasWindWalk
-            || MechanicMode.HasValue;
+            || MechanicMode.HasValue
+            || HasDarkAura
+            || HasBlueAura
+            || HasYellowAura;
 
-        public bool IsHiddenLikeClient => HasDarkSight || HasWindWalk;
+        public bool IsHiddenLikeClient => HasDarkSight || HasWindWalk || GhostId.HasValue;
+
+        public int? ActiveAuraSkillId =>
+            HasYellowAura ? YellowAuraSkillId
+            : HasBlueAura ? BlueAuraSkillId
+            : HasDarkAura ? DarkAuraSkillId
+            : null;
     }
 
     public readonly record struct RemoteUserLeaveFieldPacket(int CharacterId);
@@ -176,6 +194,10 @@ namespace HaCreator.MapSimulator.Pools
         int SkillId,
         int MasteryPercent,
         int ChargeSkillId,
+        int? HitCount,
+        int? DamagePerMob,
+        int? ActionSpeed,
+        bool IsSerialAttack,
         bool? FacingRight,
         string ActionName,
         int? ActionCode);
@@ -1168,7 +1190,18 @@ namespace HaCreator.MapSimulator.Pools
                     }
                 }
 
-                packet = new RemoteUserMeleeAttackPacket(characterId, skillId, masteryPercent, chargeSkillId, facingRight, actionName, actionCode);
+                packet = new RemoteUserMeleeAttackPacket(
+                    characterId,
+                    skillId,
+                    masteryPercent,
+                    chargeSkillId,
+                    null,
+                    null,
+                    null,
+                    false,
+                    facingRight,
+                    actionName,
+                    actionCode);
                 return true;
             }
             catch (InvalidOperationException ex)
@@ -1214,7 +1247,8 @@ namespace HaCreator.MapSimulator.Pools
                     }
                 }
 
-                reader.ReadByte(); // serial / reserved flags
+                byte serialAttackFlags = reader.ReadByte();
+                bool isSerialAttack = (serialAttackFlags & 0x20) != 0;
 
                 int actionField = (ushort)reader.ReadInt16();
                 bool facingRight = ((actionField >> 15) & 1) == 0;
@@ -1225,7 +1259,7 @@ namespace HaCreator.MapSimulator.Pools
                     return false;
                 }
 
-                reader.ReadByte(); // action speed
+                int actionSpeed = reader.ReadByte();
                 int masteryPercent = reader.ReadByte();
                 reader.ReadInt32(); // bullet item id; melee packets still carry this field
 
@@ -1233,7 +1267,18 @@ namespace HaCreator.MapSimulator.Pools
                 SkipOfficialPostAttackPayload(ref reader, skillId);
 
                 string actionName = ResolveActionNameFromActionCode(actionCode);
-                packet = new RemoteUserMeleeAttackPacket(characterId, skillId, masteryPercent, 0, facingRight, actionName, actionCode);
+                packet = new RemoteUserMeleeAttackPacket(
+                    characterId,
+                    skillId,
+                    masteryPercent,
+                    0,
+                    hitCount,
+                    damagePerMob,
+                    actionSpeed,
+                    isSerialAttack,
+                    facingRight,
+                    actionName,
+                    actionCode);
                 return true;
             }
             catch (InvalidOperationException ex)
@@ -1469,11 +1514,16 @@ namespace HaCreator.MapSimulator.Pools
             bool hasShadowPartner = false;
             bool hasDarkSight = false;
             bool hasSoulArrow = false;
+            int? chargeSkillId = null;
             int? morphId = null;
             int? ghostId = null;
             bool hasBarrier = false;
             bool hasWindWalk = false;
             int? mechanicMode = null;
+            bool hasDarkAura = false;
+            bool hasBlueAura = false;
+            bool hasYellowAura = false;
+            int weaponChargeMetadataOffset = -1;
 
             try
             {
@@ -1489,7 +1539,12 @@ namespace HaCreator.MapSimulator.Pools
 
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.WeaponCharge))
                 {
-                    reader.ReadInt32();
+                    int weaponChargeValue = reader.ReadInt32();
+                    weaponChargeMetadataOffset = reader.Offset;
+                    if (AfterImageChargeSkillResolver.IsKnownChargeSkillId(weaponChargeValue))
+                    {
+                        chargeSkillId = weaponChargeValue;
+                    }
                 }
 
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.Stun))
@@ -1557,6 +1612,7 @@ namespace HaCreator.MapSimulator.Pools
 
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.SpiritJavelin))
                 {
+                    hasSoulArrow = true;
                     reader.ReadInt32();
                 }
 
@@ -1658,17 +1714,31 @@ namespace HaCreator.MapSimulator.Pools
 
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.DarkAura))
                 {
+                    hasDarkAura = true;
                     reader.ReadInt32();
                 }
 
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.BlueAura))
                 {
+                    hasBlueAura = true;
                     reader.ReadInt32();
                 }
 
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.YellowAura))
                 {
+                    hasYellowAura = true;
                     reader.ReadInt32();
+                }
+
+                if (!chargeSkillId.HasValue
+                    && weaponChargeMetadataOffset >= 0
+                    && weaponChargeMetadataOffset <= rawPayload.Length - sizeof(int)
+                    && AfterImageChargeSkillResolver.TryResolveChargeSkillIdFromTemporaryStatPayload(
+                        rawPayload,
+                        weaponChargeMetadataOffset,
+                        out int scopedChargeSkillId))
+                {
+                    chargeSkillId = scopedChargeSkillId;
                 }
 
                 if (reader.RemainingLength > 0)
@@ -1692,11 +1762,15 @@ namespace HaCreator.MapSimulator.Pools
                 hasShadowPartner,
                 hasDarkSight,
                 hasSoulArrow,
+                chargeSkillId,
                 morphId,
                 ghostId,
                 hasBarrier,
                 hasWindWalk,
-                mechanicMode);
+                mechanicMode,
+                hasDarkAura,
+                hasBlueAura,
+                hasYellowAura);
         }
 
         private static bool IsTemporaryStatActive(int[] maskWords, RemoteTemporaryStatMaskBit bit)
@@ -1736,11 +1810,15 @@ namespace HaCreator.MapSimulator.Pools
                 knownState.HasShadowPartner && IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.ShadowPartner),
                 knownState.HasDarkSight && IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.DarkSight),
                 knownState.HasSoulArrow && IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.SoulArrow),
+                IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.WeaponCharge) ? knownState.ChargeSkillId : null,
                 IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.Morph) ? knownState.MorphId : null,
                 IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.Ghost) ? knownState.GhostId : null,
                 knownState.HasBarrier && IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.Barrier),
                 knownState.HasWindWalk && IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.WindWalk),
-                IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.Mechanic) ? knownState.MechanicMode : null);
+                IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.Mechanic) ? knownState.MechanicMode : null,
+                knownState.HasDarkAura && IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.DarkAura),
+                knownState.HasBlueAura && IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.BlueAura),
+                knownState.HasYellowAura && IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.YellowAura));
 
             return snapshot with
             {

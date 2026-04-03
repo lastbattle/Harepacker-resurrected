@@ -1207,6 +1207,26 @@ namespace HaCreator.MapSimulator.UI
             return true;
         }
 
+        bool ISoftKeyboardHost.TryReplaceLastSoftKeyboardCharacter(char character, out string errorMessage)
+        {
+            errorMessage = string.Empty;
+            if (!char.IsDigit(character))
+            {
+                errorMessage = "Only numeric map ids are supported.";
+                return false;
+            }
+
+            if (string.IsNullOrEmpty(_manualTargetText))
+            {
+                errorMessage = "Nothing to replace.";
+                return false;
+            }
+
+            _manualTargetText = _manualTargetText[..^1] + character;
+            UpdateButtonStates();
+            return true;
+        }
+
         bool ISoftKeyboardHost.TryBackspaceSoftKeyboard(out string errorMessage)
         {
             errorMessage = string.Empty;

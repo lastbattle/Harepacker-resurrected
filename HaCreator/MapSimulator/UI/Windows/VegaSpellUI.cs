@@ -582,6 +582,13 @@ namespace HaCreator.MapSimulator.UI
 
         private string ResolveModifierName()
         {
+            if (_modifierItemId.HasValue &&
+                InventoryItemMetadataResolver.TryResolveItemName(_modifierItemId.Value, out string itemName) &&
+                !string.IsNullOrWhiteSpace(itemName))
+            {
+                return itemName;
+            }
+
             return _modifierItemId.HasValue
                 ? (_modifierItemId.Value == 5610001 ? "Vega's Spell(60%)" : "Vega's Spell(10%)")
                 : "Vega's Spell";
@@ -596,6 +603,12 @@ namespace HaCreator.MapSimulator.UI
                 _itemUpgradeBackend.TryGetModifierPreview(candidates[_selectedIndex].Key, _modifierItemId.Value, out ItemUpgradeUI.ModifierPreview preview))
             {
                 return ((int)Math.Round(preview.BaseSuccessRate * 100f), (int)Math.Round(preview.ModifiedSuccessRate * 100f));
+            }
+
+            if (_modifierItemId.HasValue &&
+                ItemUpgradeUI.TryResolveVegaModifierRatePreview(_modifierItemId.Value, out int requiredBasePercent, out int modifiedPercent))
+            {
+                return (requiredBasePercent, modifiedPercent);
             }
 
             return _modifierItemId == 5610001 ? (60, 90) : (10, 30);

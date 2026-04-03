@@ -19,11 +19,12 @@ namespace HaCreator.MapSimulator.Interaction
             GuildDialogContext dialogContext,
             UIWindowManager windowManager,
             SpriteFont font,
+            Func<GuildCreateAgreementAcceptance, string> acceptanceHandler,
             Action<string> feedbackHandler,
             Action showWindow)
         {
             string message = _runtime.Open(masterName, guildName, dialogContext);
-            WireWindow(windowManager, font, feedbackHandler);
+            WireWindow(windowManager, font, acceptanceHandler, feedbackHandler);
             showWindow?.Invoke();
             return message;
         }
@@ -31,6 +32,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal void WireWindow(
             UIWindowManager windowManager,
             SpriteFont font,
+            Func<GuildCreateAgreementAcceptance, string> acceptanceHandler,
             Action<string> feedbackHandler)
         {
             if (windowManager?.GetWindow(MapSimulatorWindowNames.GuildCreateAgreement) is not GuildCreateAgreementWindow window)
@@ -51,8 +53,18 @@ namespace HaCreator.MapSimulator.Interaction
                 },
                 () =>
                 {
-                    string message = _runtime.Accept(out _);
-                    feedbackHandler?.Invoke(message);
+                    string message = _runtime.Accept(out GuildCreateAgreementAcceptance acceptance);
+                    if (!string.IsNullOrWhiteSpace(message))
+                    {
+                        feedbackHandler?.Invoke(message);
+                    }
+
+                    string acceptanceMessage = acceptanceHandler?.Invoke(acceptance);
+                    if (!string.IsNullOrWhiteSpace(acceptanceMessage))
+                    {
+                        feedbackHandler?.Invoke(acceptanceMessage);
+                    }
+
                     windowManager?.HideWindow(MapSimulatorWindowNames.GuildCreateAgreement);
                 },
                 () => feedbackHandler?.Invoke(Close(windowManager, _runtime.Decline)));

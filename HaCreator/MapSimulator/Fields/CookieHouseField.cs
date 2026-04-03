@@ -80,6 +80,13 @@ namespace HaCreator.MapSimulator.Fields
         private static readonly string[] BitmapNumberSignMinusNames = { "minus", "signMinus", "Minus", "SignMinus" };
         private static readonly string[] PreferredUiWindowImages = { "UIWindow.img", "UIWindow2.img" };
         private static readonly string[] PreferredBitmapRootCandidatePaths = { "raise/30", "raise/31" };
+        private static readonly string[] PreferredCompatibleDigitContainerCandidatePaths =
+        {
+            "MonsterKilling/Result/number2",
+            "MonsterKilling/Count/number2",
+            "PartyRace/Stage/number2",
+            "PartyRace/Result/number2"
+        };
         private const string ClientPreferredBitmapRootHint = "raise";
 
         // Recovered from MapleStory.exe v95:
@@ -144,6 +151,7 @@ namespace HaCreator.MapSimulator.Fields
         public int Point => _point;
         public int GradeIndex => _gradeIndex;
         internal static IReadOnlyList<string> BitmapRootCandidatePaths => PreferredBitmapRootCandidatePaths;
+        internal static IReadOnlyList<string> CompatibleDigitContainerCandidatePaths => PreferredCompatibleDigitContainerCandidatePaths;
 
         public void Enable(int mapId, Func<int> pointProvider = null)
         {
@@ -240,6 +248,18 @@ namespace HaCreator.MapSimulator.Fields
                 normalizedPath.EndsWith(candidate, StringComparison.OrdinalIgnoreCase));
         }
 
+        internal static bool MatchesCompatibleDigitContainerCandidatePath(string path)
+        {
+            if (string.IsNullOrWhiteSpace(path))
+            {
+                return false;
+            }
+
+            string normalizedPath = path.Replace('\\', '/');
+            return PreferredCompatibleDigitContainerCandidatePaths.Any(candidate =>
+                normalizedPath.EndsWith(candidate, StringComparison.OrdinalIgnoreCase));
+        }
+
         private void EnsureAssetsLoaded(GraphicsDevice graphicsDevice)
         {
             if (_assetsLoaded || graphicsDevice == null)
@@ -296,6 +316,11 @@ namespace HaCreator.MapSimulator.Fields
             _usesFallbackBitmapSource = false;
             _bitmapRootResolutionKind = CookieBitmapRootResolutionKind.Unresolved;
             if (TryLoadPreferredBitmapNumberRoots())
+            {
+                return;
+            }
+
+            if (TryLoadPreferredCompatibleDigitContainers())
             {
                 return;
             }
@@ -358,6 +383,34 @@ namespace HaCreator.MapSimulator.Fields
                     _bitmapNumberSourcePath = $"{imagePath}/{candidatePath}";
                     _usesFallbackBitmapSource = !IsPreferredUiWindowImage(image.Name);
                     _bitmapRootResolutionKind = CookieBitmapRootResolutionKind.WzCandidate;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private bool TryLoadPreferredCompatibleDigitContainers()
+        {
+            foreach (WzImage image in EnumerateUiImages())
+            {
+                if (image == null)
+                {
+                    continue;
+                }
+
+                string imagePath = $"UI/{image.Name}";
+                foreach (string candidatePath in PreferredCompatibleDigitContainerCandidatePaths)
+                {
+                    WzImageProperty digitContainer = ResolvePropertyPath(image, candidatePath);
+                    if (digitContainer == null || !TryLoadCompatibleBitmapNumberStyles(digitContainer))
+                    {
+                        continue;
+                    }
+
+                    _bitmapNumberSourcePath = $"{imagePath}/{candidatePath}";
+                    _usesFallbackBitmapSource = !IsPreferredUiWindowImage(image.Name);
+                    _bitmapRootResolutionKind = CookieBitmapRootResolutionKind.CompatibleDigitContainer;
                     return true;
                 }
             }
@@ -454,14 +507,16 @@ namespace HaCreator.MapSimulator.Fields
                     return false;
                 }
 
-                WzCanvasProperty plusCanvas = ResolveNamedCanvas(styleRoot, BitmapNumberSignPlusNames);
+                WzCanvasProperty plusCanvas = ResolveNamedCanvas(styleRoot, BitmapNumberSignPlusNames)
+                    ?? ResolveNamedCanvas(digitContainer, BitmapNumberSignPlusNames);
                 if (plusCanvas != null)
                 {
                     _bitmapNumberStyles[i].SignPlus = LoadCanvasTexture(plusCanvas);
                     _bitmapNumberStyles[i].SignPlusOrigin = ResolveCanvasOrigin(plusCanvas);
                 }
 
-                WzCanvasProperty minusCanvas = ResolveNamedCanvas(styleRoot, BitmapNumberSignMinusNames);
+                WzCanvasProperty minusCanvas = ResolveNamedCanvas(styleRoot, BitmapNumberSignMinusNames)
+                    ?? ResolveNamedCanvas(digitContainer, BitmapNumberSignMinusNames);
                 if (minusCanvas != null)
                 {
                     _bitmapNumberStyles[i].SignMinus = LoadCanvasTexture(minusCanvas);
@@ -470,7 +525,10 @@ namespace HaCreator.MapSimulator.Fields
 
                 if (_bitmapNumberStyles[i].SignPlus == null || _bitmapNumberStyles[i].SignMinus == null)
                 {
-                    var unnamedCanvases = GetNonDigitCanvases(styleRoot).ToList();
+                    var unnamedCanvases = GetNonDigitCanvases(styleRoot)
+                        .Concat(GetNonDigitCanvases(digitContainer))
+                        .Distinct()
+                        .ToList();
                     if (_bitmapNumberStyles[i].SignPlus == null && unnamedCanvases.Count >= 1)
                     {
                         _bitmapNumberStyles[i].SignPlus = LoadCanvasTexture(unnamedCanvases[0]);
@@ -482,6 +540,12 @@ namespace HaCreator.MapSimulator.Fields
                         _bitmapNumberStyles[i].SignMinus = LoadCanvasTexture(unnamedCanvases[1]);
                         _bitmapNumberStyles[i].SignMinusOrigin = ResolveCanvasOrigin(unnamedCanvases[1]);
                     }
+                }
+
+                if (_bitmapNumberStyles[i].SignMinus == null)
+                {
+                    _bitmapNumberStyles[i].SignMinus = _bitmapNumberStyles[i].SignPlus;
+                    _bitmapNumberStyles[i].SignMinusOrigin = _bitmapNumberStyles[i].SignPlusOrigin;
                 }
             }
 

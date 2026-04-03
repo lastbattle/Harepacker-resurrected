@@ -1,8 +1,11 @@
 using HaCreator.MapEditor.Instance;
+using HaCreator.MapEditor;
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Entities;
 using HaCreator.MapSimulator.Interaction;
+using HaCreator.MapSimulator.Pools;
 using HaSharedLibrary.Render.DX;
+using MapleLib.WzLib.WzStructure.Data;
 using Microsoft.Xna.Framework;
 using System;
 using System.Collections.Generic;
@@ -121,6 +124,16 @@ namespace HaCreator.MapSimulator
 
             if (target.HasFallbackCoordinates)
             {
+                if (TryResolvePacketOwnedTeleportPortalByPosition(
+                    target.FallbackX.Value,
+                    target.FallbackY.Value,
+                    out int resolvedPortalIndex,
+                    out _))
+                {
+                    _packetOwnedTeleportRequestActive = true;
+                    return TryApplyPacketOwnedTeleportResult(succeeded: true, resolvedPortalIndex, out message);
+                }
+
                 _packetOwnedTeleportRequestActive = true;
                 return TryApplyPacketOwnedTeleportResult(target.FallbackX.Value, target.FallbackY.Value, out message);
             }
@@ -147,6 +160,7 @@ namespace HaCreator.MapSimulator
         {
             if (sourcePortal == null)
             {
+                ResetPacketOwnedTeleportOutboundRequest("Teleport request metadata could not be recorded because the source portal was missing.");
                 return;
             }
 
@@ -162,6 +176,22 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            ResetPacketOwnedTeleportOutboundRequest(summary, sourcePortal.pn, sourcePortal.tn, stampTick: false);
+        }
+
+        private void ResetPacketOwnedTeleportOutboundRequest(
+            string summary,
+            string sourcePortalName = null,
+            string targetPortalName = null,
+            bool stampTick = true)
+        {
+            if (stampTick)
+            {
+                _lastPacketOwnedTeleportPortalRequestTick = Environment.TickCount;
+            }
+
+            _lastPacketOwnedTeleportSourcePortalName = sourcePortalName;
+            _lastPacketOwnedTeleportTargetPortalName = targetPortalName;
             _lastPacketOwnedTeleportOutboundOpcode = -1;
             _lastPacketOwnedTeleportOutboundPayload = Array.Empty<byte>();
             _lastPacketOwnedTeleportOutboundSummary = summary;
@@ -251,16 +281,26 @@ namespace HaCreator.MapSimulator
 
         private bool TryResolvePacketOwnedTeleportPortalByPosition(float targetX, float targetY, out int portalIndex, out PortalInstance portalInstance)
         {
+            return TryResolvePacketOwnedTeleportPortalByPosition(_portalPool, targetX, targetY, out portalIndex, out portalInstance);
+        }
+
+        private static bool TryResolvePacketOwnedTeleportPortalByPosition(
+            PortalPool portalPool,
+            float targetX,
+            float targetY,
+            out int portalIndex,
+            out PortalInstance portalInstance)
+        {
             portalIndex = -1;
             portalInstance = null;
-            if (_portalPool == null)
+            if (portalPool == null)
             {
                 return false;
             }
 
-            for (int i = 0; i < _portalPool.PortalCount; i++)
+            for (int i = 0; i < portalPool.PortalCount; i++)
             {
-                PortalItem portal = _portalPool.GetPortal(i);
+                PortalItem portal = portalPool.GetPortal(i);
                 PortalInstance instance = portal?.PortalInstance;
                 if (instance == null)
                 {
@@ -274,6 +314,58 @@ namespace HaCreator.MapSimulator
 
                 portalIndex = i;
                 portalInstance = instance;
+                return true;
+            }
+
+            return false;
+        }
+
+        private bool TryResolvePacketOwnedTargetPortalNameByPosition(int targetMapId, float targetX, float targetY, out string targetPortalName)
+        {
+            targetPortalName = null;
+            if (targetMapId <= 0
+                || targetMapId == MapConstants.MaxMap
+                || _loadMapCallback == null)
+            {
+                return false;
+            }
+
+            Tuple<Board, string> targetMap = _loadMapCallback(targetMapId);
+            IEnumerable<PortalInstance> targetPortals = targetMap?.Item1?.BoardItems?.Portals;
+            if (!TryResolvePacketOwnedTeleportPortalByPosition(targetPortals, targetX, targetY, out PortalInstance portalInstance))
+            {
+                return false;
+            }
+
+            targetPortalName = portalInstance.pn;
+            return !string.IsNullOrWhiteSpace(targetPortalName);
+        }
+
+        private static bool TryResolvePacketOwnedTeleportPortalByPosition(
+            IEnumerable<PortalInstance> portals,
+            float targetX,
+            float targetY,
+            out PortalInstance portalInstance)
+        {
+            portalInstance = null;
+            if (portals == null)
+            {
+                return false;
+            }
+
+            foreach (PortalInstance portal in portals)
+            {
+                if (portal == null)
+                {
+                    continue;
+                }
+
+                if (Math.Abs(portal.X - targetX) > 0.5f || Math.Abs(portal.Y - targetY) > 0.5f)
+                {
+                    continue;
+                }
+
+                portalInstance = portal;
                 return true;
             }
 
@@ -333,15 +425,16 @@ namespace HaCreator.MapSimulator
         private bool TryBuildPacketOwnedTeleportPortalRequest(PortalInstance sourcePortal, out byte[] payload, out string summary)
         {
             payload = Array.Empty<byte>();
-            summary = "The current portal list could not resolve a same-map destination portal for opcode 113.";
+            summary = "The simulator could not resolve destination portal coordinates for opcode 113.";
             if (sourcePortal == null
                 || string.IsNullOrWhiteSpace(sourcePortal.pn)
                 || string.IsNullOrWhiteSpace(sourcePortal.tn))
             {
+                summary = "Opcode 113 requires source and target portal names, but the request did not provide both values.";
                 return false;
             }
 
-            if (!TryResolvePacketOwnedPortalRequestTarget(sourcePortal.tn, out PortalInstance targetPortal))
+            if (!TryResolvePacketOwnedPortalRequestTarget(sourcePortal, out PacketOwnedTeleportPortalRequestTarget targetPortal, out string resolutionSummary))
             {
                 return false;
             }
@@ -357,31 +450,69 @@ namespace HaCreator.MapSimulator
             writer.Flush();
 
             payload = stream.ToArray();
-            summary = $"Recorded synthetic opcode {PacketOwnedTeleportPortalRequestOpcode} portal request for {sourcePortal.pn}->{sourcePortal.tn} with field key {PacketOwnedTeleportSyntheticFieldKey}.";
+            summary = $"Recorded synthetic opcode {PacketOwnedTeleportPortalRequestOpcode} portal request for {sourcePortal.pn}->{sourcePortal.tn} with field key {PacketOwnedTeleportSyntheticFieldKey} using {resolutionSummary}.";
             return true;
         }
 
-        private bool TryResolvePacketOwnedPortalRequestTarget(string targetPortalName, out PortalInstance portalInstance)
+        private bool TryResolvePacketOwnedPortalRequestTarget(
+            PortalInstance sourcePortal,
+            out PacketOwnedTeleportPortalRequestTarget target,
+            out string summary)
         {
-            portalInstance = null;
-            if (string.IsNullOrWhiteSpace(targetPortalName))
+            target = default;
+            summary = "no destination portal coordinates";
+            if (sourcePortal == null || string.IsNullOrWhiteSpace(sourcePortal.tn))
             {
+                summary = "a missing target portal name";
                 return false;
             }
 
-            int targetPortalIndex = _portalPool?.GetPortalIndexByName(targetPortalName) ?? -1;
-            portalInstance = _portalPool?.GetPortal(targetPortalIndex)?.PortalInstance;
-            if (portalInstance != null)
+            if (TryResolvePacketOwnedPortalRequestTargetFromBoardPortals(
+                _mapBoard?.BoardItems?.Portals,
+                sourcePortal.tn,
+                out PortalInstance currentFieldPortal))
             {
+                target = new PacketOwnedTeleportPortalRequestTarget(currentFieldPortal.X, currentFieldPortal.Y);
+                summary = $"current-field portal '{sourcePortal.tn}'";
                 return true;
             }
 
-            if (_mapBoard?.BoardItems?.Portals == null)
+            if (sourcePortal.tm <= 0
+                || sourcePortal.tm == MapConstants.MaxMap
+                || sourcePortal.tm == (_mapBoard?.MapInfo?.id ?? -1)
+                || _loadMapCallback == null)
+            {
+                summary = $"destination portal '{sourcePortal.tn}' in the current or target field";
+                return false;
+            }
+
+            Tuple<Board, string> targetMap = _loadMapCallback(sourcePortal.tm);
+            if (TryResolvePacketOwnedPortalRequestTargetFromBoardPortals(
+                targetMap?.Item1?.BoardItems?.Portals,
+                sourcePortal.tn,
+                out PortalInstance crossMapPortal))
+            {
+                target = new PacketOwnedTeleportPortalRequestTarget(crossMapPortal.X, crossMapPortal.Y);
+                summary = $"target-map portal '{sourcePortal.tn}' in map {sourcePortal.tm}";
+                return true;
+            }
+
+            summary = $"destination portal '{sourcePortal.tn}' in map {sourcePortal.tm}";
+            return false;
+        }
+
+        private static bool TryResolvePacketOwnedPortalRequestTargetFromBoardPortals(
+            IEnumerable<PortalInstance> portals,
+            string targetPortalName,
+            out PortalInstance portalInstance)
+        {
+            portalInstance = null;
+            if (portals == null || string.IsNullOrWhiteSpace(targetPortalName))
             {
                 return false;
             }
 
-            foreach (PortalInstance portal in _mapBoard.BoardItems.Portals)
+            foreach (PortalInstance portal in portals)
             {
                 if (portal != null
                     && string.Equals(portal.pn, targetPortalName, StringComparison.OrdinalIgnoreCase))
@@ -392,6 +523,19 @@ namespace HaCreator.MapSimulator
             }
 
             return false;
+        }
+
+        private readonly struct PacketOwnedTeleportPortalRequestTarget
+        {
+            public PacketOwnedTeleportPortalRequestTarget(float x, float y)
+            {
+                X = x;
+                Y = y;
+            }
+
+            public float X { get; }
+
+            public float Y { get; }
         }
     }
 }

@@ -167,12 +167,36 @@ namespace HaCreator.MapSimulator.Managers
         {
             lock (_sync)
             {
+                int resolvedListenPort = listenPort <= 0 ? DefaultListenPort : listenPort;
+                string resolvedRemoteHost = NormalizeRemoteHost(remoteHost);
+                if (HasConnectedSession)
+                {
+                    if (MatchesTargetConfiguration(ListenPort, RemoteHost, RemotePort, resolvedListenPort, resolvedRemoteHost, remotePort))
+                    {
+                        status = $"Tournament official-session bridge is already attached to {RemoteHost}:{RemotePort}; keeping the current live Maple session.";
+                        LastStatus = status;
+                        return true;
+                    }
+
+                    status = $"Tournament official-session bridge is already attached to {RemoteHost}:{RemotePort}; stop it before starting a different proxy target.";
+                    LastStatus = status;
+                    return false;
+                }
+
+                if (IsRunning
+                    && MatchesTargetConfiguration(ListenPort, RemoteHost, RemotePort, resolvedListenPort, resolvedRemoteHost, remotePort))
+                {
+                    status = $"Tournament official-session bridge already listening on 127.0.0.1:{ListenPort} and proxying to {RemoteHost}:{RemotePort}.";
+                    LastStatus = status;
+                    return true;
+                }
+
                 StopInternal(clearPending: true);
 
                 try
                 {
-                    ListenPort = listenPort <= 0 ? DefaultListenPort : listenPort;
-                    RemoteHost = string.IsNullOrWhiteSpace(remoteHost) ? IPAddress.Loopback.ToString() : remoteHost.Trim();
+                    ListenPort = resolvedListenPort;
+                    RemoteHost = resolvedRemoteHost;
                     RemotePort = remotePort;
                     _listenerCancellation = new CancellationTokenSource();
                     _listener = new TcpListener(IPAddress.Loopback, ListenPort);
@@ -213,6 +237,29 @@ namespace HaCreator.MapSimulator.Managers
             {
                 LastStatus = status;
                 return false;
+            }
+
+            int resolvedListenPort = listenPort <= 0 ? DefaultListenPort : listenPort;
+            if (HasConnectedSession)
+            {
+                if (MatchesDiscoveredTargetConfiguration(ListenPort, RemoteHost, RemotePort, resolvedListenPort, candidate.RemoteEndpoint))
+                {
+                    status = $"Tournament official-session bridge is already attached to {RemoteHost}:{RemotePort}; keeping the current live Maple session.";
+                    LastStatus = status;
+                    return true;
+                }
+
+                status = $"Tournament official-session bridge is already attached to {RemoteHost}:{RemotePort}; stop it before starting a different proxy target.";
+                LastStatus = status;
+                return false;
+            }
+
+            if (IsRunning
+                && MatchesDiscoveredTargetConfiguration(ListenPort, RemoteHost, RemotePort, resolvedListenPort, candidate.RemoteEndpoint))
+            {
+                status = $"Tournament official-session bridge remains armed for {candidate.ProcessName} ({candidate.ProcessId}) at {candidate.RemoteEndpoint.Address}:{candidate.RemoteEndpoint.Port} from local {candidate.LocalEndpoint.Address}:{candidate.LocalEndpoint.Port}.";
+                LastStatus = status;
+                return true;
             }
 
             if (!TryStart(listenPort, candidate.RemoteEndpoint.Address.ToString(), candidate.RemoteEndpoint.Port, out string startStatus))
@@ -451,6 +498,47 @@ namespace HaCreator.MapSimulator.Managers
         private static MapleCrypto CreateCrypto(byte[] iv, short version)
         {
             return new MapleCrypto((byte[])iv.Clone(), version);
+        }
+
+        private static string NormalizeRemoteHost(string remoteHost)
+        {
+            return string.IsNullOrWhiteSpace(remoteHost)
+                ? IPAddress.Loopback.ToString()
+                : remoteHost.Trim();
+        }
+
+        private static bool MatchesTargetConfiguration(
+            int currentListenPort,
+            string currentRemoteHost,
+            int currentRemotePort,
+            int resolvedListenPort,
+            string resolvedRemoteHost,
+            int resolvedRemotePort)
+        {
+            return currentListenPort == resolvedListenPort
+                && currentRemotePort == resolvedRemotePort
+                && string.Equals(NormalizeRemoteHost(currentRemoteHost), resolvedRemoteHost, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static bool MatchesDiscoveredTargetConfiguration(
+            int currentListenPort,
+            string currentRemoteHost,
+            int currentRemotePort,
+            int resolvedListenPort,
+            IPEndPoint remoteEndpoint)
+        {
+            if (remoteEndpoint == null)
+            {
+                return false;
+            }
+
+            return MatchesTargetConfiguration(
+                currentListenPort,
+                currentRemoteHost,
+                currentRemotePort,
+                resolvedListenPort,
+                remoteEndpoint.Address.ToString(),
+                remoteEndpoint.Port);
         }
 
         internal static bool TryDecodeInboundTournamentPacket(byte[] rawPacket, string source, out TournamentPacketInboxMessage message)

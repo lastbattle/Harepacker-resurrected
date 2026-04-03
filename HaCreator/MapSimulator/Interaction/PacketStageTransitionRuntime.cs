@@ -102,6 +102,159 @@ namespace HaCreator.MapSimulator.Interaction
             return stream.ToArray();
         }
 
+        internal static byte[] BuildCharacterDataSetFieldPayload(
+            int mapId,
+            byte portalIndex = 0,
+            int hp = 0,
+            int channelId = 0,
+            int oldDriverId = 0,
+            byte fieldKey = 0,
+            int characterId = 0,
+            string characterName = "",
+            byte gender = 0,
+            byte skin = 0,
+            int faceId = 20000,
+            int hairId = 30000,
+            byte level = 1,
+            short jobId = 0,
+            short strength = 12,
+            short dexterity = 5,
+            short intelligence = 4,
+            short luck = 4,
+            int maxHp = 50,
+            int mp = 5,
+            int maxMp = 5,
+            short abilityPoints = 0,
+            short skillPoints = 0,
+            int experience = 0,
+            short fame = 0,
+            int tempExperience = 0,
+            int playTime = 0,
+            short subJob = 0,
+            byte adminEffect = 0,
+            string linkedCharacterName = "",
+            int damageSeed1 = 0,
+            int damageSeed2 = 0,
+            int damageSeed3 = 0,
+            byte[] characterDataTail = null,
+            byte[] logoutGiftConfigPayload = null,
+            long serverFileTime = 0)
+        {
+            using MemoryStream stream = new();
+            using BinaryWriter writer = new(stream, Encoding.Default, leaveOpen: true);
+            writer.Write((short)0);
+            writer.Write(channelId);
+            writer.Write(oldDriverId);
+            writer.Write(fieldKey);
+            writer.Write((byte)1);
+            writer.Write((short)0);
+            writer.Write(damageSeed1);
+            writer.Write(damageSeed2);
+            writer.Write(damageSeed3);
+            WriteCharacterStatPayload(
+                writer,
+                characterId,
+                characterName,
+                gender,
+                skin,
+                faceId,
+                hairId,
+                level,
+                jobId,
+                strength,
+                dexterity,
+                intelligence,
+                luck,
+                hp,
+                maxHp,
+                mp,
+                maxMp,
+                abilityPoints,
+                skillPoints,
+                experience,
+                fame,
+                tempExperience,
+                mapId,
+                portalIndex,
+                playTime,
+                subJob);
+            writer.Write(adminEffect);
+            writer.Write(!string.IsNullOrWhiteSpace(linkedCharacterName) ? (byte)1 : (byte)0);
+            if (!string.IsNullOrWhiteSpace(linkedCharacterName))
+            {
+                WriteMapleString(writer, linkedCharacterName);
+            }
+
+            if (characterDataTail?.Length > 0)
+            {
+                writer.Write(characterDataTail);
+            }
+
+            if (logoutGiftConfigPayload?.Length > 0)
+            {
+                writer.Write(logoutGiftConfigPayload);
+            }
+
+            writer.Write(serverFileTime);
+            writer.Flush();
+            return stream.ToArray();
+        }
+
+        private static void WriteCharacterStatPayload(
+            BinaryWriter writer,
+            int characterId,
+            string characterName,
+            byte gender,
+            byte skin,
+            int faceId,
+            int hairId,
+            byte level,
+            short jobId,
+            short strength,
+            short dexterity,
+            short intelligence,
+            short luck,
+            int hp,
+            int maxHp,
+            int mp,
+            int maxMp,
+            short abilityPoints,
+            short skillPoints,
+            int experience,
+            short fame,
+            int tempExperience,
+            int mapId,
+            byte portalIndex,
+            int playTime,
+            short subJob)
+        {
+            writer.Write(characterId);
+            WriteMapleString(writer, characterName ?? string.Empty);
+            writer.Write(gender);
+            writer.Write(skin);
+            writer.Write(faceId);
+            writer.Write(hairId);
+            writer.Write(level);
+            writer.Write(jobId);
+            writer.Write(strength);
+            writer.Write(dexterity);
+            writer.Write(intelligence);
+            writer.Write(luck);
+            writer.Write(hp);
+            writer.Write(maxHp);
+            writer.Write(mp);
+            writer.Write(maxMp);
+            writer.Write(abilityPoints);
+            writer.Write(skillPoints);
+            writer.Write(experience);
+            writer.Write(fame);
+            writer.Write(tempExperience);
+            writer.Write(mapId);
+            writer.Write(portalIndex);
+            writer.Write(playTime);
+            writer.Write(subJob);
+        }
+
         internal static byte[] BuildSyntheticSetFieldPayload(int mapId, string portalName)
         {
             using MemoryStream stream = new();

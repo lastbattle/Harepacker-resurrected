@@ -152,12 +152,13 @@ namespace HaCreator.MapSimulator.Fields
         public IReadOnlyList<MonsterCarnivalEntry> MobEntries { get; init; } = Array.Empty<MonsterCarnivalEntry>();
         public IReadOnlyList<MonsterCarnivalEntry> SkillEntries { get; init; } = Array.Empty<MonsterCarnivalEntry>();
         public IReadOnlyList<MonsterCarnivalEntry> GuardianEntries { get; init; } = Array.Empty<MonsterCarnivalEntry>();
-        public bool IsReviveMode => FieldType == FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE;
-        public bool IsWaitingRoom => FieldType == FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM;
-        public bool IsSeason2Mode => FieldType == FieldType.FIELDTYPE_MONSTERCARNIVAL_S2;
-        public bool IsDeprecatedMode => FieldType == FieldType.FIELDTYPE_MONSTERCARNIVAL_NOT_USE;
+        public FieldType ResolvedFieldType => ResolveClientOwnedVariant(FieldType, MapType);
+        public bool IsReviveMode => ResolvedFieldType == FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE;
+        public bool IsWaitingRoom => ResolvedFieldType == FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM;
+        public bool IsSeason2Mode => ResolvedFieldType == FieldType.FIELDTYPE_MONSTERCARNIVAL_S2;
+        public bool IsDeprecatedMode => ResolvedFieldType == FieldType.FIELDTYPE_MONSTERCARNIVAL_NOT_USE;
 
-        public string VariantLabel => FieldType switch
+        public string VariantLabel => ResolvedFieldType switch
         {
             FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM => "Waiting Room",
             FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => "Season 2",
@@ -166,13 +167,28 @@ namespace HaCreator.MapSimulator.Fields
             _ => "Standard"
         };
 
-        public string ClientOwnerLabel => FieldType switch
+        public string ClientOwnerLabel => ResolvedFieldType switch
         {
             FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM => "CField_MonsterCarnivalWaitingRoom",
             FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => "CField_MonsterCarnivalS2_Game",
             FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => "CField_MonsterCarnivalRevive",
             _ => "CField_MonsterCarnival"
         };
+
+        public static FieldType ResolveClientOwnedVariant(FieldType fieldType, int mapType)
+        {
+            if (fieldType != FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM)
+            {
+                return fieldType;
+            }
+
+            return mapType switch
+            {
+                1 => FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE,
+                2 => FieldType.FIELDTYPE_MONSTERCARNIVAL_S2,
+                _ => FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM
+            };
+        }
 
         public IReadOnlyList<MonsterCarnivalEntry> GetEntries(MonsterCarnivalTab tab)
         {
@@ -575,6 +591,7 @@ namespace HaCreator.MapSimulator.Fields
         private readonly Dictionary<int, int> _guardianCounts = new();
         private readonly List<MonsterCarnivalSummonedMobState> _summonedMobs = new();
         private readonly Dictionary<int, MonsterCarnivalGuardianPlacement> _guardianPlacements = new();
+        private readonly Dictionary<string, MonsterCarnivalTeam> _knownCharacterTeams = new(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<int> _occupiedGuardianSlots = new();
         private readonly MonsterCarnivalTeamState _team0 = new();
         private readonly MonsterCarnivalTeamState _team1 = new();
@@ -592,6 +609,8 @@ namespace HaCreator.MapSimulator.Fields
         private bool _isVisible;
         private bool _enteredField;
         private string _localCharacterName;
+        private string _lastClientOwnerAction;
+        private int[] _lastClientOwnerStringPoolIds = Array.Empty<int>();
 
         public bool IsVisible => _isVisible;
         public bool IsEntered => _enteredField;
@@ -601,11 +620,13 @@ namespace HaCreator.MapSimulator.Fields
         public int PersonalCp => _personalCp;
         public int PersonalTotalCp => _personalTotalCp;
         public string CurrentStatusMessage => _statusMessage;
+        public string LastClientOwnerAction => _lastClientOwnerAction;
         public MonsterCarnivalTeamState Team0 => _team0;
         public MonsterCarnivalTeamState Team1 => _team1;
         public IReadOnlyDictionary<int, int> MobSpellCounts => _mobSpellCounts;
         public IReadOnlyList<MonsterCarnivalSummonedMobState> SummonedMobs => _summonedMobs;
         public IReadOnlyDictionary<int, MonsterCarnivalGuardianPlacement> GuardianPlacements => _guardianPlacements;
+        public IReadOnlyList<int> LastClientOwnerStringPoolIds => _lastClientOwnerStringPoolIds;
 
         public void Configure(MapInfo mapInfo)
         {
@@ -618,6 +639,8 @@ namespace HaCreator.MapSimulator.Fields
             _definition = definition;
             _isVisible = _definition != null;
             _activeTab = MonsterCarnivalTab.Mob;
+            _lastClientOwnerAction = BuildInitialClientOwnerAction(_definition);
+            _lastClientOwnerStringPoolIds = Array.Empty<int>();
         }
 
         public void SetLocalPlayerName(string characterName)
@@ -625,6 +648,7 @@ namespace HaCreator.MapSimulator.Fields
             _localCharacterName = string.IsNullOrWhiteSpace(characterName)
                 ? null
                 : characterName.Trim();
+            RegisterKnownCharacterTeam(_localCharacterName, _localTeam);
         }
 
         public void OnEnter(
@@ -646,6 +670,7 @@ namespace HaCreator.MapSimulator.Fields
             _localTeam = localTeam;
             _personalCp = Math.Max(0, personalCp);
             _personalTotalCp = Math.Max(_personalCp, personalTotalCp);
+            RegisterKnownCharacterTeam(_localCharacterName, _localTeam);
 
             MonsterCarnivalTeamState myTeam = GetTeamState(localTeam);
             MonsterCarnivalTeamState enemyTeam = GetTeamState(GetOpposingTeam(localTeam));
@@ -794,7 +819,8 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             bool spendLocalCp = IsLocalRequestOwner(characterName);
-            ApplySuccessfulRequest(entry, spendLocalCp);
+            bool ownerTeamKnown = TryResolveKnownCharacterTeam(characterName, out MonsterCarnivalTeam ownerTeam);
+            ApplySuccessfulRequest(entry, ownerTeamKnown ? ownerTeam : _localTeam, spendLocalCp, ownerTeamKnown);
             string successMessage = BuildRequestSuccessMessage(entry, characterName);
             ShowStatus(successMessage, tickCount);
         }
@@ -817,6 +843,7 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             int deathCp = Math.Max(0, _definition?.DeathCp ?? 0);
+            RegisterKnownCharacterTeam(characterName, team);
             MonsterCarnivalTeamState teamState = GetTeamState(team);
             teamState.CurrentCp = Math.Max(0, teamState.CurrentCp - deathCp);
             string deathMessage = BuildProcessForDeathMessage(team, characterName, remainingRevives);
@@ -913,6 +940,7 @@ namespace HaCreator.MapSimulator.Fields
                 return;
             }
 
+            RegisterKnownCharacterTeam(characterName, team);
             ShowStatus(BuildMemberOutMessage(messageType, team, characterName), tickCount);
         }
 
@@ -1158,6 +1186,8 @@ namespace HaCreator.MapSimulator.Fields
             _personalTotalCp = 0;
             _isVisible = false;
             _enteredField = false;
+            _lastClientOwnerAction = null;
+            _lastClientOwnerStringPoolIds = Array.Empty<int>();
         }
 
         private void ClearRoundState()
@@ -1167,6 +1197,7 @@ namespace HaCreator.MapSimulator.Fields
             _guardianCounts.Clear();
             _summonedMobs.Clear();
             _guardianPlacements.Clear();
+            _knownCharacterTeams.Clear();
             _occupiedGuardianSlots.Clear();
             _nextMobSpawnPointIndex = 0;
             _selectedEntryIndex = 0;
@@ -1337,7 +1368,7 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             string mapLabel = FormatMapIdentity(_definition);
-            return _definition.FieldType switch
+            return _definition.ResolvedFieldType switch
             {
                 FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM => $"{mapLabel} | Init reads monsterCarnival/mapType={_definition.MapType}",
                 FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => $"{mapLabel} | Season 2 Init reads monsterCarnival/mapType={_definition.MapType}",
@@ -1353,11 +1384,11 @@ namespace HaCreator.MapSimulator.Fields
                 return "none";
             }
 
-            return _definition.FieldType switch
+            return _definition.ResolvedFieldType switch
             {
-                FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM => $"{_definition.ClientOwnerLabel} Init->monsterCarnival/mapType={_definition.MapType} on {FormatMapIdentity(_definition)}",
-                FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => $"{_definition.ClientOwnerLabel} Init->monsterCarnival/mapType={_definition.MapType} on {FormatMapIdentity(_definition)}",
-                FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => $"{_definition.ClientOwnerLabel} packets=346/353 | result StringPool=0x1020/0x1021/0x1022/0x1023 | map={FormatMapIdentity(_definition)}",
+                FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM => $"{_definition.ClientOwnerLabel} Init->monsterCarnival/mapType={_definition.MapType} | last={BuildClientOwnerActionSummary()} | map={FormatMapIdentity(_definition)}",
+                FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => $"{_definition.ClientOwnerLabel} Init->monsterCarnival/mapType={_definition.MapType} | last={BuildClientOwnerActionSummary()} | map={FormatMapIdentity(_definition)}",
+                FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => $"{_definition.ClientOwnerLabel} packets=346/353 | result StringPool=0x1020/0x1021/0x1022/0x1023 | last={BuildClientOwnerActionSummary()} | map={FormatMapIdentity(_definition)}",
                 _ => $"{_definition.ClientOwnerLabel} packets=346-353 | map={FormatMapIdentity(_definition)}"
             };
         }
@@ -1475,7 +1506,7 @@ namespace HaCreator.MapSimulator.Fields
                 && string.Equals(characterName.Trim(), _localCharacterName, StringComparison.OrdinalIgnoreCase);
         }
 
-        private void ApplySuccessfulRequest(MonsterCarnivalEntry entry, bool spendLocalCp)
+        private void ApplySuccessfulRequest(MonsterCarnivalEntry entry, MonsterCarnivalTeam ownerTeam, bool spendLocalCp, bool ownerTeamKnown)
         {
             _activeTab = entry.Tab;
             _selectedEntryIndex = entry.Index;
@@ -1486,6 +1517,11 @@ namespace HaCreator.MapSimulator.Fields
             {
                 _personalCp = Math.Max(0, _personalCp - entry.Cost);
                 MonsterCarnivalTeamState teamState = GetTeamState(_localTeam);
+                teamState.CurrentCp = Math.Max(0, teamState.CurrentCp - entry.Cost);
+            }
+            else if (ownerTeamKnown)
+            {
+                MonsterCarnivalTeamState teamState = GetTeamState(ownerTeam);
                 teamState.CurrentCp = Math.Max(0, teamState.CurrentCp - entry.Cost);
             }
 
@@ -1502,8 +1538,8 @@ namespace HaCreator.MapSimulator.Fields
                 _guardianPlacements[entry.Index] = new MonsterCarnivalGuardianPlacement(
                     entry,
                     ResolveGuardianSpawnPoint(entry.Index),
-                    ResolveGuardianReactorId(),
-                    _localTeam);
+                    ResolveGuardianReactorId(ownerTeam),
+                    ownerTeam);
             }
         }
 
@@ -1539,11 +1575,48 @@ namespace HaCreator.MapSimulator.Fields
             return positions[Math.Clamp(slotIndex, 0, positions.Count - 1)];
         }
 
-        private int ResolveGuardianReactorId()
+        private int ResolveGuardianReactorId(MonsterCarnivalTeam team)
         {
-            return _localTeam == MonsterCarnivalTeam.Team0
+            return team == MonsterCarnivalTeam.Team0
                 ? Math.Max(0, _definition?.ReactorRed ?? 0)
                 : Math.Max(0, _definition?.ReactorBlue ?? 0);
+        }
+
+        private void RegisterKnownCharacterTeam(string characterName, MonsterCarnivalTeam team)
+        {
+            string normalizedName = NormalizeCharacterName(characterName);
+            if (string.IsNullOrWhiteSpace(normalizedName))
+            {
+                return;
+            }
+
+            _knownCharacterTeams[normalizedName] = team;
+        }
+
+        private bool TryResolveKnownCharacterTeam(string characterName, out MonsterCarnivalTeam team)
+        {
+            string normalizedName = NormalizeCharacterName(characterName);
+            if (string.IsNullOrWhiteSpace(normalizedName))
+            {
+                team = _localTeam;
+                return true;
+            }
+
+            if (!string.IsNullOrWhiteSpace(_localCharacterName)
+                && string.Equals(normalizedName, _localCharacterName, StringComparison.OrdinalIgnoreCase))
+            {
+                team = _localTeam;
+                return true;
+            }
+
+            return _knownCharacterTeams.TryGetValue(normalizedName, out team);
+        }
+
+        private static string NormalizeCharacterName(string characterName)
+        {
+            return string.IsNullOrWhiteSpace(characterName)
+                ? null
+                : characterName.Trim();
         }
 
         private int GetEntryUsageCount(MonsterCarnivalEntry entry)
@@ -1719,10 +1792,67 @@ namespace HaCreator.MapSimulator.Fields
             MonsterCarnivalStringPoolMessage? definition = GetGameResultMessage(resultCode);
             if (!definition.HasValue)
             {
+                if (_definition?.IsReviveMode == true)
+                {
+                    RecordClientOwnerAction(
+                        $"{_definition.ClientOwnerLabel}::OnShowGameResult ignored code {resultCode}.",
+                        Array.Empty<int>());
+                    return $"{_definition.ClientOwnerLabel}::OnShowGameResult ignored result code {resultCode}.";
+                }
+
                 return $"Monster Carnival result packet {resultCode} received.";
             }
 
-            return FormatStringPoolMessage(definition.Value);
+            string message = FormatStringPoolMessage(definition.Value);
+            if (_definition?.IsReviveMode == true)
+            {
+                RecordClientOwnerAction(
+                    $"{_definition.ClientOwnerLabel}::OnShowGameResult -> CUIStatusBar::ChatLogAdd code={resultCode}",
+                    new[] { definition.Value.StringPoolId });
+                return $"{message} via {_definition.ClientOwnerLabel}::OnShowGameResult -> CUIStatusBar::ChatLogAdd";
+            }
+
+            return message;
+        }
+
+        private string BuildInitialClientOwnerAction(MonsterCarnivalFieldDefinition definition)
+        {
+            if (definition == null)
+            {
+                return null;
+            }
+
+            return definition.ResolvedFieldType switch
+            {
+                FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM => $"{definition.ClientOwnerLabel}::Init read monsterCarnival/mapType={definition.MapType}.",
+                FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => $"{definition.ClientOwnerLabel}::Init read monsterCarnival/mapType={definition.MapType}.",
+                FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => $"{definition.ClientOwnerLabel} is waiting for OnShowGameResult codes 8-11.",
+                _ => $"{definition.ClientOwnerLabel} owns the shared Monster Carnival packet family."
+            };
+        }
+
+        private void RecordClientOwnerAction(string action, IReadOnlyList<int> stringPoolIds)
+        {
+            _lastClientOwnerAction = string.IsNullOrWhiteSpace(action) ? null : action.Trim();
+            _lastClientOwnerStringPoolIds = stringPoolIds?
+                .Where(id => id > 0)
+                .Distinct()
+                .ToArray() ?? Array.Empty<int>();
+        }
+
+        private string BuildClientOwnerActionSummary()
+        {
+            if (string.IsNullOrWhiteSpace(_lastClientOwnerAction))
+            {
+                return "none";
+            }
+
+            if (_lastClientOwnerStringPoolIds.Length == 0)
+            {
+                return _lastClientOwnerAction;
+            }
+
+            return $"{_lastClientOwnerAction} {BuildStringPoolSuffix(_lastClientOwnerStringPoolIds[0], _lastClientOwnerStringPoolIds.Skip(1).ToArray())}";
         }
 
         private static string ReadPacketString(BinaryReader reader)
@@ -1897,7 +2027,7 @@ namespace HaCreator.MapSimulator.Fields
 
             KeyValuePair<int, MonsterCarnivalGuardianPlacement> latestPlacement = _guardianPlacements.OrderBy(pair => pair.Key).Last();
             MonsterCarnivalGuardianPlacement placement = latestPlacement.Value;
-            return $"Guardian slot {latestPlacement.Key + 1}: {placement.Entry.Name} at ({placement.SpawnPoint.X}, {placement.SpawnPoint.Y}) reactor {placement.ReactorId} hits {placement.ReactorHitCount}.";
+            return $"Guardian slot {latestPlacement.Key + 1}: {placement.Entry.Name} at ({placement.SpawnPoint.X}, {placement.SpawnPoint.Y}) reactor {placement.ReactorId} for {FormatTeam(placement.Team)} hits {placement.ReactorHitCount}.";
         }
 
         private void ShowStatus(string message, int tickCount)

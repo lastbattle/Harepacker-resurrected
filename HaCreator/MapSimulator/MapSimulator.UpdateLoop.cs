@@ -138,12 +138,15 @@ namespace HaCreator.MapSimulator
             if (IsLoginRuntimeSceneActive)
 
             {
-
+                EnsureMapTransferOfficialSessionBridgeState(shouldRun: false);
                 EnsureComboCounterPacketInboxState(shouldRun: false);
                 EnsureLocalOverlayPacketInboxState(shouldRun: false);
                 EnsureLocalUtilityPacketInboxState(shouldRun: false);
+                EnsureLocalUtilityOfficialSessionBridgeState(shouldRun: false);
+                EnsureEngagementProposalInboxState(shouldRun: false);
                 EnsureStageTransitionPacketInboxState(shouldRun: false);
                 EnsureSummonedPacketInboxState(shouldRun: false);
+                EnsureMobAttackPacketInboxState(shouldRun: false);
                 UpdateLoginRuntimeFrame(gameTime, newKeyboardState, newMouseState, isWindowActive);
                 return;
             }
@@ -181,6 +184,8 @@ namespace HaCreator.MapSimulator
             DrainTournamentPacketInbox(currTickCount);
 
             DrainCookieHousePointInbox();
+            EnsureEngagementProposalInboxState(shouldRun: true);
+            DrainEngagementProposalInbox();
 
             _specialFieldRuntime.Update(gameTime, currTickCount);
             SyncWeddingRemoteActorsToSharedPool(_specialFieldRuntime.SpecialEffects.Wedding);
@@ -194,6 +199,8 @@ namespace HaCreator.MapSimulator
             _remoteUserPool.SyncPortableChairPairState(_playerManager?.Player);
             EnsureSummonedPacketInboxState(shouldRun: true);
             DrainSummonedPacketInbox();
+            EnsureMobAttackPacketInboxState(shouldRun: true);
+            DrainMobAttackPacketInbox();
             _summonedPool.Update(currTickCount);
             while (_specialFieldRuntime.Minigames.SnowBall.TryConsumeChatMessage(out string snowBallChatMessage))
             {
@@ -221,8 +228,12 @@ namespace HaCreator.MapSimulator
             DrainLocalOverlayPacketInbox();
             SyncPacketOwnedApspContextLifecycle();
             EnsureLocalUtilityPacketInboxState(shouldRun: true);
+            EnsureLocalUtilityOfficialSessionBridgeState(shouldRun: true);
+            RefreshLocalUtilityOfficialSessionBridgeDiscovery(currTickCount);
             DrainLocalUtilityPacketInbox();
             DrainLocalUtilityOfficialSessionBridge();
+            EnsureMapTransferOfficialSessionBridgeState(shouldRun: _mapBoard?.MapInfo != null);
+            RefreshMapTransferOfficialSessionBridgeDiscovery(currTickCount);
             DrainMapTransferOfficialSessionBridge();
             SyncUtilityChannelSelectorAvailability();
             UpdatePacketOwnedTutorRuntime(currTickCount);
@@ -234,10 +245,8 @@ namespace HaCreator.MapSimulator
                 NpcInteractionOverlayResult npcOverlayResult = _npcInteractionOverlay != null
                     ? _npcInteractionOverlay.HandleMouse(newMouseState, _oldMouseState, _renderParams.RenderWidth, _renderParams.RenderHeight)
                     : default;
-                if (_pendingQuestRewardChoice != null && _npcInteractionOverlay?.IsVisible != true)
-                {
-                    _pendingQuestRewardChoice = null;
-                }
+                HandlePacketOwnedQuestResultOverlayClose(npcOverlayResult.CloseKind);
+                HandleAnimationDisplayerOverlayClose(npcOverlayResult.CloseKind);
 
                 bool memoryGameMouseConsumed = false;
                 bool tournamentMatchTableMouseConsumed = false;
@@ -303,6 +312,7 @@ namespace HaCreator.MapSimulator
             _fieldMessageBoxRuntime.Update(currTickCount);
             _packetFieldStateRuntime.Initialize(GraphicsDevice, _mapBoard?.MapInfo);
             _packetFieldStateRuntime.Update(currTickCount);
+            SyncPacketOwnedQuestTimerOwnerWindows(currTickCount);
             UpdatePacketOwnedStageTransitionState(currTickCount);
             UpdatePendingPacketOwnedQuestResultFollowUp();
             UpdatePacketOwnedFieldFeedbackState(currTickCount);
@@ -350,11 +360,8 @@ namespace HaCreator.MapSimulator
             NpcInteractionOverlayResult npcKeyboardResult = isWindowActive && _npcInteractionOverlay != null
                 ? _npcInteractionOverlay.HandleKeyboard(newKeyboardState, _oldKeyboardState)
                 : default;
-
-            if (_pendingQuestRewardChoice != null && _npcInteractionOverlay?.IsVisible != true)
-            {
-                _pendingQuestRewardChoice = null;
-            }
+            HandlePacketOwnedQuestResultOverlayClose(npcKeyboardResult.CloseKind);
+            HandleAnimationDisplayerOverlayClose(npcKeyboardResult.CloseKind);
 
             if (npcKeyboardResult.InputSubmission != null)
             {
@@ -454,9 +461,16 @@ namespace HaCreator.MapSimulator
                 // Respawn player with R key at original spawn point (portal position)
                 if (newKeyboardState.IsKeyUp(Keys.R) && _oldKeyboardState.IsKeyDown(Keys.R))
                 {
-                    _playerManager?.Respawn();
-                    var pos = _playerManager?.GetPlayerPosition();
-                    Debug.WriteLine($"Player respawned at spawn point ({pos?.X}, {pos?.Y})");
+                    if (TryHandleReviveShortcut(newKeyboardState))
+                    {
+                        Debug.WriteLine("Player revive request routed through revive owner.");
+                    }
+                    else
+                    {
+                        _playerManager?.Respawn();
+                        var pos = _playerManager?.GetPlayerPosition();
+                        Debug.WriteLine($"Player respawned at spawn point ({pos?.X}, {pos?.Y})");
+                    }
                 }
 
 
@@ -609,33 +623,40 @@ namespace HaCreator.MapSimulator
                 {
                     EnsureLimitedViewFieldInitialized();
 
-
-                    if (!_limitedViewField.Enabled)
+                    if (_limitedViewField.UsesClientOwnedUpdateParity)
                     {
-                        // Start with circle mode
-                        _limitedViewField.EnableCircle(250f);
-                        System.Diagnostics.Debug.WriteLine("[LimitedView] Enabled: Circle mode, radius 250");
+                        System.Diagnostics.Debug.WriteLine("[LimitedView] Client-owned limited-view wrapper active; keeping parity mode.");
                     }
                     else
                     {
-                        // Cycle through modes: Circle -> Rectangle -> Spotlight -> Disable
-                        switch (_limitedViewField.Mode)
+
+                        if (!_limitedViewField.Enabled)
                         {
-                            case LimitedViewField.ViewMode.Circle:
-                                _limitedViewField.EnableRectangle(400f, 300f);
-                                System.Diagnostics.Debug.WriteLine("[LimitedView] Switched to: Rectangle mode 400x300");
-                                break;
-                            case LimitedViewField.ViewMode.Rectangle:
-                                _limitedViewField.EnableSpotlight(300f, true);
-                                System.Diagnostics.Debug.WriteLine("[LimitedView] Switched to: Spotlight mode with pulse");
-                                break;
-                            case LimitedViewField.ViewMode.Spotlight:
-                                _limitedViewField.Disable();
-                                System.Diagnostics.Debug.WriteLine("[LimitedView] Disabled");
-                                break;
-                            default:
-                                _limitedViewField.DisableImmediate();
-                                break;
+                            // Start with circle mode
+                            _limitedViewField.EnableCircle(250f);
+                            System.Diagnostics.Debug.WriteLine("[LimitedView] Enabled: Circle mode, radius 250");
+                        }
+                        else
+                        {
+                            // Cycle through modes: Circle -> Rectangle -> Spotlight -> Disable
+                            switch (_limitedViewField.Mode)
+                            {
+                                case LimitedViewField.ViewMode.Circle:
+                                    _limitedViewField.EnableRectangle(400f, 300f);
+                                    System.Diagnostics.Debug.WriteLine("[LimitedView] Switched to: Rectangle mode 400x300");
+                                    break;
+                                case LimitedViewField.ViewMode.Rectangle:
+                                    _limitedViewField.EnableSpotlight(300f, true);
+                                    System.Diagnostics.Debug.WriteLine("[LimitedView] Switched to: Spotlight mode with pulse");
+                                    break;
+                                case LimitedViewField.ViewMode.Spotlight:
+                                    _limitedViewField.Disable();
+                                    System.Diagnostics.Debug.WriteLine("[LimitedView] Disabled");
+                                    break;
+                                default:
+                                    _limitedViewField.DisableImmediate();
+                                    break;
+                            }
                         }
                     }
                 }
@@ -805,6 +826,7 @@ namespace HaCreator.MapSimulator
             {
                 _playerManager.IsPlayerControlEnabled = _gameState.IsPlayerInputEnabled;
                 _playerManager.Update(currTickCount, deltaSeconds, _chat.IsActive || uiCapturesKeyboard, isWindowActive);
+                UpdateReviveOwnerState(currTickCount);
                 UpdatePacketOwnedPetConsumeMpRuntime(currTickCount);
                 SyncPacketOwnedLocalFollowCharacter();
 

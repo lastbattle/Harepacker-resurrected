@@ -213,13 +213,6 @@ namespace HaCreator.MapSimulator.UI
         private void DrawPreceptPanel(SpriteBatch sprite, FamilyChartSnapshot snapshot)
         {
             DrawWrappedText(sprite, snapshot.Precept, 13, 220, 177, new Color(170, 64, 64), 0.31f, 12);
-
-            int detailY = 268;
-            foreach (string line in snapshot.DetailLines)
-            {
-                DrawText(sprite, line, 24, detailY, new Color(188, 188, 188), 0.30f);
-                detailY += 10;
-            }
         }
 
         private void ConfigureButton(UIObject button, Action action)

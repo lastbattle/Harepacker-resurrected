@@ -20,6 +20,7 @@ namespace HaCreator.MapSimulator.Entities
         private readonly int _a;
         private Color _color;
         private readonly bool front;
+        private readonly int _pageId;
         private readonly int screenMode;
 
         private double bgMoveShiftX = 0;
@@ -49,7 +50,7 @@ namespace HaCreator.MapSimulator.Entities
         /// <param name="frames"></param>
         /// <param name="flip"></param>
         /// <param name="screenMode">The screen resolution to display this background object. (0 = all res)</param>
-        public BackgroundItem(int _cx, int _cy, int _rx, int _ry, BackgroundType _type, int a, bool front, List<IDXObject> frames, bool flip, int screenMode)
+        public BackgroundItem(int _cx, int _cy, int _rx, int _ry, BackgroundType _type, int a, bool front, int pageId, List<IDXObject> frames, bool flip, int screenMode)
             : base(frames, flip)
         {
             int CurTickCount = Environment.TickCount;
@@ -63,6 +64,7 @@ namespace HaCreator.MapSimulator.Entities
             this._type = _type;
             this._a = a;
             this.front = front;
+            this._pageId = pageId;
             this.screenMode = screenMode;
 
             _color = new Color(0xFF, 0xFF, 0xFF, a);
@@ -84,7 +86,7 @@ namespace HaCreator.MapSimulator.Entities
         /// <param name="front"></param>
         /// <param name="frame0"></param>
         /// <param name="screenMode">The screen resolution to display this background object. (0 = all res)</param>
-        public BackgroundItem(int _cx, int _cy, int _rx, int _ry, BackgroundType _type, int a, bool front, IDXObject frame0, bool flip, int screenMode)
+        public BackgroundItem(int _cx, int _cy, int _rx, int _ry, BackgroundType _type, int a, bool front, int pageId, IDXObject frame0, bool flip, int screenMode)
             : base(frame0, flip)
         {
             int CurTickCount = Environment.TickCount;
@@ -98,6 +100,7 @@ namespace HaCreator.MapSimulator.Entities
             this._type = _type;
             this._a = a;
             this.front = front; 
+            this._pageId = pageId;
             this.screenMode = screenMode;
 
             _color = new Color(0xFF, 0xFF, 0xFF, a);
@@ -356,6 +359,8 @@ namespace HaCreator.MapSimulator.Entities
         }
 
         public bool Front { get { return front; } }
+
+        public int PageId { get { return _pageId; } }
 
         public bool DisabledBackground { get { return disabledBackground; } }
     }

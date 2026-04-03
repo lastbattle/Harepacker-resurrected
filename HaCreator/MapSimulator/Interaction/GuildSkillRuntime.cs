@@ -24,6 +24,7 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal sealed class GuildSkillRuntime
     {
+        private const int DefaultGuildFundMeso = 25000000;
         private static readonly HashSet<string> PlaceholderGuildNames = new(StringComparer.OrdinalIgnoreCase)
         {
             "-",
@@ -41,7 +42,9 @@ namespace HaCreator.MapSimulator.Interaction
         private int _selectedIndex;
         private int _recommendedSkillId;
         private int _availablePoints = 2;
+        private int _guildFundMeso = DefaultGuildFundMeso;
         private int _savedAvailablePoints = 2;
+        private int _savedGuildFundMeso = DefaultGuildFundMeso;
         private int _savedGuildLevel = 12;
         private int _guildLevel = 12;
         private string _guildName = "Maple GM";
@@ -120,6 +123,7 @@ namespace HaCreator.MapSimulator.Interaction
                 _selectedIndex = Math.Clamp(_selectedIndex, 0, _skills.Count - 1);
                 SeedInitialLevels();
                 _availablePoints = 2;
+                _guildFundMeso = Math.Max(0, _savedGuildFundMeso);
                 SaveCurrentGuildState();
                 if (!_isInGuild)
                 {
@@ -150,6 +154,7 @@ namespace HaCreator.MapSimulator.Interaction
                 GuildRoleLabel = _guildRoleLabel,
                 CanManageSkills = CanManageSkills(),
                 AvailablePoints = _availablePoints,
+                GuildFundMeso = _guildFundMeso,
                 SelectedIndex = _selectedIndex,
                 RecommendedSkillId = _recommendedSkillId,
                 CanRenew = CanRenew(selectedSkill),
@@ -173,10 +178,20 @@ namespace HaCreator.MapSimulator.Interaction
                     IconTexture = skill.IconTexture,
                     DisabledIconTexture = skill.IconDisabledTexture,
                     IsRecommended = _isInGuild && skill.SkillId == _recommendedSkillId,
+                    CanManageSkills = CanManageSkills(),
                     CanLevelUp = CanLevelUp(skill),
                     CanRenew = CanRenew(skill)
                 }).ToArray()
             };
+        }
+
+        internal void SetLocalGuildFundMeso(int guildFundMeso)
+        {
+            _guildFundMeso = Math.Max(0, guildFundMeso);
+            if (_isInGuild)
+            {
+                SaveCurrentGuildState();
+            }
         }
 
         internal void SelectEntry(int index)
@@ -219,6 +234,11 @@ namespace HaCreator.MapSimulator.Interaction
                 return $"{selectedSkill.SkillName} does not expose a renewable timed effect in the loaded data.";
             }
 
+            if (!HasEnoughGuildFund(renewalCost))
+            {
+                return BuildInsufficientGuildFundMessage("renew", selectedSkill.SkillName, renewalCost);
+            }
+
             DateTimeOffset now = DateTimeOffset.UtcNow;
             DateTimeOffset baseTime = now;
             if (_activeGuildSkillExpirations.TryGetValue(selectedSkill.SkillId, out DateTimeOffset expiration) &&
@@ -229,10 +249,11 @@ namespace HaCreator.MapSimulator.Interaction
 
             DateTimeOffset renewedExpiration = baseTime.AddMinutes(durationMinutes);
             _activeGuildSkillExpirations[selectedSkill.SkillId] = renewedExpiration;
+            _guildFundMeso = Math.Max(0, _guildFundMeso - renewalCost);
             SaveCurrentGuildState();
 
             int remainingMinutes = Math.Max(1, (int)Math.Ceiling((renewedExpiration - now).TotalMinutes));
-            return $"{selectedSkill.SkillName} renewed for {FormatDuration(durationMinutes)} (cost {FormatMeso(renewalCost)}). Remaining: {FormatDuration(remainingMinutes)}.";
+            return $"{selectedSkill.SkillName} renewed for {FormatDuration(durationMinutes)} (cost {FormatMeso(renewalCost)}). Remaining: {FormatDuration(remainingMinutes)}. Guild fund: {FormatMeso(_guildFundMeso)}.";
         }
 
         internal string TryLevelSelectedSkill()
@@ -266,18 +287,26 @@ namespace HaCreator.MapSimulator.Interaction
                     return $"Guild Lv. {requiredGuildLevel} is required for {selectedSkill.SkillName}.";
                 }
 
+                int requiredCost = ResolveLevelUpCost(selectedSkill);
+                if (requiredCost > 0 && !HasEnoughGuildFund(requiredCost))
+                {
+                    return BuildInsufficientGuildFundMessage("learn", selectedSkill.SkillName, requiredCost);
+                }
+
                 return $"{selectedSkill.SkillName} is already at its current cap.";
             }
 
+            int levelUpCost = ResolveLevelUpCost(selectedSkill);
             selectedSkill.CurrentLevel++;
             if (selectedSkill.CurrentLevel == 1)
             {
                 _activeGuildSkillExpirations.Remove(selectedSkill.SkillId);
             }
             _availablePoints = Math.Max(0, _availablePoints - 1);
+            _guildFundMeso = Math.Max(0, _guildFundMeso - levelUpCost);
             SaveCurrentGuildState();
             EnsureRecommendation();
-            return $"{selectedSkill.SkillName} advanced to Lv. {selectedSkill.CurrentLevel}.";
+            return $"{selectedSkill.SkillName} advanced to Lv. {selectedSkill.CurrentLevel}. Guild fund: {FormatMeso(_guildFundMeso)}.";
         }
 
         private void SeedInitialLevels()
@@ -303,7 +332,8 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            return _guildLevel >= GetRequiredGuildLevel(skill, skill.CurrentLevel + 1);
+            return _guildLevel >= GetRequiredGuildLevel(skill, skill.CurrentLevel + 1) &&
+                   HasEnoughGuildFund(ResolveLevelUpCost(skill));
         }
 
         private bool CanRenew(SkillDisplayData skill)
@@ -314,7 +344,8 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return skill.GetGuildDurationMinutes(skill.CurrentLevel) > 0 &&
-                   skill.GetGuildRenewalCost(skill.CurrentLevel) > 0;
+                   skill.GetGuildRenewalCost(skill.CurrentLevel) > 0 &&
+                   HasEnoughGuildFund(ResolveRenewalCost(skill));
         }
 
         private bool CanManageSkills()
@@ -360,7 +391,7 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     _isInGuild ? $"Guild: {_guildName}" : "Current: Join a guild to use guild skills.",
                     _isInGuild ? $"Role: {_guildRoleLabel}  |  Guild Lv. {_guildLevel}" : "Next: Guild skills unlock with real guild membership.",
-                    _isInGuild ? $"SP: {_availablePoints}" : "State: No guild"
+                    _isInGuild ? $"SP: {_availablePoints}  |  Fund: {FormatCompactMeso(_guildFundMeso)}" : "State: No guild"
                 };
             }
 
@@ -402,16 +433,16 @@ namespace HaCreator.MapSimulator.Interaction
             if (selectedSkill == null)
                 return string.Empty;
 
-            if (!_isInGuild)
-                return "Current: Join a guild.";
-
-            if (selectedSkill.CurrentLevel <= 0)
-                return "Current: Not learned.";
-
             string effectText = GetCurrentEffectDescription(selectedSkill);
-            return string.IsNullOrWhiteSpace(effectText)
-                ? $"Current: Lv. {selectedSkill.CurrentLevel}/{selectedSkill.MaxLevel}"
-                : $"Current: {effectText}";
+            if (!string.IsNullOrWhiteSpace(effectText))
+                return $"Current: {effectText}";
+
+            if (selectedSkill.CurrentLevel > 0)
+                return $"Current: Lv. {selectedSkill.CurrentLevel}/{selectedSkill.MaxLevel}";
+
+            return _isInGuild
+                ? "Current: Not learned."
+                : "Current: Join a guild.";
         }
 
         private string BuildNextEffectSummary(SkillDisplayData selectedSkill, int selectedRequiredGuildLevel)
@@ -419,15 +450,15 @@ namespace HaCreator.MapSimulator.Interaction
             if (selectedSkill == null)
                 return string.Empty;
 
-            if (!_isInGuild)
-                return "Next: Requires guild membership.";
-
             if (selectedSkill.CurrentLevel >= selectedSkill.MaxLevel)
                 return "Next: Max level reached.";
 
             string nextEffect = GetNextEffectDescription(selectedSkill);
             if (!string.IsNullOrWhiteSpace(nextEffect))
                 return $"Next: {nextEffect}";
+
+            if (!_isInGuild)
+                return "Next: Requires guild membership.";
 
             if (selectedRequiredGuildLevel > _guildLevel)
                 return $"Next: Requires Guild Lv. {selectedRequiredGuildLevel}.";
@@ -442,23 +473,23 @@ namespace HaCreator.MapSimulator.Interaction
 
             List<string> parts = new();
 
-            if (_isInGuild && selectedRequiredGuildLevel > 0 && selectedSkill.CurrentLevel < selectedSkill.MaxLevel)
+            if (selectedRequiredGuildLevel > 0 && selectedSkill.CurrentLevel < selectedSkill.MaxLevel)
             {
                 parts.Add($"Req Lv. {selectedRequiredGuildLevel}");
             }
 
             int previewLevel = Math.Max(1, Math.Min(selectedSkill.MaxLevel, selectedSkill.CurrentLevel + 1));
-            int activationCost = selectedSkill.GetGuildActivationCost(previewLevel);
+            int activationCost = ResolveLevelUpCost(selectedSkill);
             if (activationCost > 0)
             {
-                parts.Add($"Learn {activationCost.ToString("N0", CultureInfo.InvariantCulture)}");
+                parts.Add($"Learn {FormatCompactMeso(activationCost)}");
             }
 
             int renewalReferenceLevel = Math.Max(1, selectedSkill.CurrentLevel);
-            int renewalCost = selectedSkill.GetGuildRenewalCost(renewalReferenceLevel);
+            int renewalCost = ResolveRenewalCost(selectedSkill);
             if (selectedSkill.CurrentLevel > 0 && renewalCost > 0)
             {
-                parts.Add($"Renew {renewalCost.ToString("N0", CultureInfo.InvariantCulture)}");
+                parts.Add($"Renew {FormatCompactMeso(renewalCost)}");
             }
 
             int durationMinutes = selectedSkill.GetGuildDurationMinutes(renewalReferenceLevel);
@@ -473,8 +504,10 @@ namespace HaCreator.MapSimulator.Interaction
             }
             else if (selectedSkill.CurrentLevel > 0 && durationMinutes > 0)
             {
-                parts.Add(CanRenew(selectedSkill) ? "Inactive" : "View only");
+                parts.Add(CanManageSkills() ? "Inactive" : "View only");
             }
+
+            parts.Add($"Fund {FormatCompactMeso(_guildFundMeso)}");
 
             if (_isInGuild)
             {
@@ -527,9 +560,47 @@ namespace HaCreator.MapSimulator.Interaction
             return $"{Math.Max(0, amount).ToString("N0", CultureInfo.InvariantCulture)} meso";
         }
 
+        private static string FormatCompactMeso(int amount)
+        {
+            return Math.Max(0, amount).ToString("N0", CultureInfo.InvariantCulture);
+        }
+
+        private bool HasEnoughGuildFund(int cost)
+        {
+            return cost <= 0 || _guildFundMeso >= cost;
+        }
+
+        private string BuildInsufficientGuildFundMessage(string actionLabel, string skillName, int requiredCost)
+        {
+            int missingAmount = Math.Max(0, requiredCost - _guildFundMeso);
+            return $"{skillName} cannot {actionLabel} because the guild fund is short by {FormatMeso(missingAmount)}.";
+        }
+
+        private static int ResolveLevelUpCost(SkillDisplayData skill)
+        {
+            if (skill == null || skill.CurrentLevel >= skill.MaxLevel)
+            {
+                return 0;
+            }
+
+            int nextLevel = Math.Max(1, Math.Min(skill.MaxLevel, skill.CurrentLevel + 1));
+            return skill.GetGuildActivationCost(nextLevel);
+        }
+
+        private static int ResolveRenewalCost(SkillDisplayData skill)
+        {
+            if (skill == null || skill.CurrentLevel <= 0)
+            {
+                return 0;
+            }
+
+            return skill.GetGuildRenewalCost(skill.CurrentLevel);
+        }
+
         private void ApplyNoGuildState()
         {
             _availablePoints = 0;
+            _guildFundMeso = 0;
             _activeGuildSkillExpirations.Clear();
             foreach (SkillDisplayData skill in _skills)
             {
@@ -552,6 +623,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _availablePoints = Math.Max(0, _savedAvailablePoints);
+            _guildFundMeso = Math.Max(0, _savedGuildFundMeso);
             _activeGuildSkillExpirations.Clear();
             foreach (KeyValuePair<int, DateTimeOffset> entry in _savedActiveGuildSkillExpirations)
             {
@@ -572,6 +644,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _savedAvailablePoints = Math.Max(0, _availablePoints);
+            _savedGuildFundMeso = Math.Max(0, _guildFundMeso);
             _savedActiveGuildSkillExpirations.Clear();
             DateTimeOffset now = DateTimeOffset.UtcNow;
             foreach (KeyValuePair<int, DateTimeOffset> entry in _activeGuildSkillExpirations)
@@ -647,6 +720,7 @@ namespace HaCreator.MapSimulator.Interaction
         public string GuildRoleLabel { get; init; } = string.Empty;
         public bool CanManageSkills { get; init; }
         public int AvailablePoints { get; init; }
+        public int GuildFundMeso { get; init; }
         public int SelectedIndex { get; init; } = -1;
         public int RecommendedSkillId { get; init; }
         public bool CanRenew { get; init; }
@@ -673,6 +747,7 @@ namespace HaCreator.MapSimulator.Interaction
         public Microsoft.Xna.Framework.Graphics.Texture2D IconTexture { get; init; }
         public Microsoft.Xna.Framework.Graphics.Texture2D DisabledIconTexture { get; init; }
         public bool IsRecommended { get; init; }
+        public bool CanManageSkills { get; init; }
         public bool CanLevelUp { get; init; }
         public bool CanRenew { get; init; }
     }

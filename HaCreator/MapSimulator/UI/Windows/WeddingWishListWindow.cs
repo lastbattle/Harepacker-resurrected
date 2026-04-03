@@ -35,6 +35,7 @@ namespace HaCreator.MapSimulator.UI
         private Func<WeddingWishListSelectionPane, string> _focusPaneHandler;
         private Func<int, string> _setTabHandler;
         private Func<WeddingWishListSelectionPane, int, string> _selectEntryHandler;
+        private Func<WeddingWishListSelectionPane, int, string> _scrollPaneHandler;
         private Func<string> _getSelectedHandler;
         private Func<string> _putSelectedHandler;
         private Func<string> _enterSelectedHandler;
@@ -103,6 +104,7 @@ namespace HaCreator.MapSimulator.UI
             Func<WeddingWishListSelectionPane, string> focusPaneHandler,
             Func<int, string> setTabHandler,
             Func<WeddingWishListSelectionPane, int, string> selectEntryHandler,
+            Func<WeddingWishListSelectionPane, int, string> scrollPaneHandler,
             Func<string> getSelectedHandler,
             Func<string> putSelectedHandler,
             Func<string> enterSelectedHandler,
@@ -114,6 +116,7 @@ namespace HaCreator.MapSimulator.UI
             _focusPaneHandler = focusPaneHandler;
             _setTabHandler = setTabHandler;
             _selectEntryHandler = selectEntryHandler;
+            _scrollPaneHandler = scrollPaneHandler;
             _getSelectedHandler = getSelectedHandler;
             _putSelectedHandler = putSelectedHandler;
             _enterSelectedHandler = enterSelectedHandler;
@@ -262,6 +265,26 @@ namespace HaCreator.MapSimulator.UI
                 MoveSelection(1);
             }
 
+            if (Pressed(keyboardState, Keys.PageUp))
+            {
+                PageSelection(-1);
+            }
+
+            if (Pressed(keyboardState, Keys.PageDown))
+            {
+                PageSelection(1);
+            }
+
+            if (Pressed(keyboardState, Keys.Home))
+            {
+                JumpSelectionToBoundary(0);
+            }
+
+            if (Pressed(keyboardState, Keys.End))
+            {
+                JumpSelectionToBoundary(-1);
+            }
+
             if (Pressed(keyboardState, Keys.Enter))
             {
                 switch (_snapshot.Mode)
@@ -300,6 +323,14 @@ namespace HaCreator.MapSimulator.UI
 
         private void HandleMouse(MouseState mouseState)
         {
+            int scrollDelta = mouseState.ScrollWheelValue - _previousMouseState.ScrollWheelValue;
+            if (scrollDelta != 0)
+            {
+                WeddingWishListSelectionPane pane = ResolveScrollTargetPane(mouseState.Position);
+                int direction = scrollDelta > 0 ? -1 : 1;
+                ShowFeedback(_scrollPaneHandler?.Invoke(pane, direction));
+            }
+
             bool leftPressed = mouseState.LeftButton == ButtonState.Pressed && _previousMouseState.LeftButton == ButtonState.Released;
             if (!leftPressed)
             {
@@ -392,6 +423,31 @@ namespace HaCreator.MapSimulator.UI
             ShowFeedback(_selectEntryHandler?.Invoke(_snapshot.ActivePane, GetSelectedIndex(_snapshot.ActivePane) + delta));
         }
 
+        private void PageSelection(int direction)
+        {
+            WeddingWishListSelectionPane pane = _snapshot.ActivePane;
+            int visibleRows = GetVisibleRowCount(pane);
+            if (visibleRows <= 0)
+            {
+                return;
+            }
+
+            ShowFeedback(_scrollPaneHandler?.Invoke(pane, direction * visibleRows));
+        }
+
+        private void JumpSelectionToBoundary(int targetIndex)
+        {
+            WeddingWishListSelectionPane pane = _snapshot.ActivePane;
+            IReadOnlyList<InventorySlotData> entries = GetEntries(pane);
+            if (entries.Count == 0)
+            {
+                return;
+            }
+
+            int resolvedTarget = targetIndex < 0 ? entries.Count - 1 : targetIndex;
+            ShowFeedback(_selectEntryHandler?.Invoke(pane, resolvedTarget));
+        }
+
         private void DrawTabs(SpriteBatch sprite)
         {
             if (_snapshot.Mode == WeddingWishListDialogMode.Input)
@@ -462,7 +518,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             int selectedIndex = GetSelectedIndex(pane);
-            int startIndex = ResolveFirstVisibleIndex(entries.Count, selectedIndex, visibleRowCount);
+            int startIndex = Math.Clamp(GetFirstVisibleIndex(pane), 0, Math.Max(0, entries.Count - visibleRowCount));
             int rowHeight = Math.Max(1, area.Height / visibleRowCount);
             Texture2D selectionTexture = GetModeAssets()?.Selection;
 
@@ -696,8 +752,7 @@ namespace HaCreator.MapSimulator.UI
             int visibleRowCount,
             Rectangle area)
         {
-            int selectedIndex = GetSelectedIndex(pane);
-            int startIndex = ResolveFirstVisibleIndex(entries.Count, selectedIndex, visibleRowCount);
+            int startIndex = Math.Clamp(GetFirstVisibleIndex(pane), 0, Math.Max(0, entries.Count - visibleRowCount));
             int rowHeight = Math.Max(1, area.Height / Math.Max(1, visibleRowCount));
             int rowCount = Math.Min(entries.Count, visibleRowCount);
 
@@ -705,18 +760,6 @@ namespace HaCreator.MapSimulator.UI
             {
                 yield return (pane, startIndex + row, new Rectangle(area.X, area.Y + (row * rowHeight), area.Width, rowHeight));
             }
-        }
-
-        private int ResolveFirstVisibleIndex(int count, int selectedIndex, int visibleCount)
-        {
-            if (count <= visibleCount)
-            {
-                return 0;
-            }
-
-            int maxStart = Math.Max(0, count - visibleCount);
-            int desired = Math.Max(0, selectedIndex - (visibleCount / 2));
-            return Math.Min(maxStart, desired);
         }
 
         private Rectangle GetReceiveGiftArea() => new(Position.X + 10, Position.Y + 60, 190, 168);
@@ -749,12 +792,58 @@ namespace HaCreator.MapSimulator.UI
             };
         }
 
+        private int GetFirstVisibleIndex(WeddingWishListSelectionPane pane)
+        {
+            return pane switch
+            {
+                WeddingWishListSelectionPane.GiftList => _snapshot.FirstVisibleGiftIndex,
+                WeddingWishListSelectionPane.Inventory => _snapshot.FirstVisibleInventoryIndex,
+                WeddingWishListSelectionPane.WishList => _snapshot.FirstVisibleWishIndex,
+                WeddingWishListSelectionPane.Candidate => _snapshot.FirstVisibleCandidateIndex,
+                _ => 0
+            };
+        }
+
+        private int GetVisibleRowCount(WeddingWishListSelectionPane pane)
+        {
+            return (_snapshot.Mode, pane) switch
+            {
+                (WeddingWishListDialogMode.Receive, WeddingWishListSelectionPane.GiftList) => 5,
+                (WeddingWishListDialogMode.Receive, WeddingWishListSelectionPane.Inventory) => 5,
+                (WeddingWishListDialogMode.Give, WeddingWishListSelectionPane.WishList) => 3,
+                (WeddingWishListDialogMode.Give, WeddingWishListSelectionPane.GiftList) => 2,
+                (WeddingWishListDialogMode.Give, WeddingWishListSelectionPane.Inventory) => 3,
+                (WeddingWishListDialogMode.Input, WeddingWishListSelectionPane.WishList) => 8,
+                (WeddingWishListDialogMode.Input, WeddingWishListSelectionPane.Candidate) => 1,
+                _ => 0
+            };
+        }
+
         private InventorySlotData GetHoveredItem() => _hoveredPane.HasValue ? GetItem(_hoveredPane.Value, _hoveredIndex) : null;
         private InventorySlotData GetSelectedItem(WeddingWishListSelectionPane pane) => GetItem(pane, GetSelectedIndex(pane));
 
+        private WeddingWishListSelectionPane ResolveScrollTargetPane(Point mousePosition)
+        {
+            foreach ((WeddingWishListSelectionPane pane, _, Rectangle bounds) in EnumerateRowTargets())
+            {
+                if (bounds.Contains(mousePosition))
+                {
+                    return pane;
+                }
+            }
+
+            return _snapshot.ActivePane;
+        }
+
         private InventorySlotData GetItem(WeddingWishListSelectionPane pane, int index)
         {
-            IReadOnlyList<InventorySlotData> entries = pane switch
+            IReadOnlyList<InventorySlotData> entries = GetEntries(pane);
+            return index >= 0 && index < entries.Count ? entries[index] : null;
+        }
+
+        private IReadOnlyList<InventorySlotData> GetEntries(WeddingWishListSelectionPane pane)
+        {
+            return pane switch
             {
                 WeddingWishListSelectionPane.GiftList => _snapshot.GiftEntries,
                 WeddingWishListSelectionPane.Inventory => _snapshot.InventoryEntries,
@@ -762,8 +851,6 @@ namespace HaCreator.MapSimulator.UI
                 WeddingWishListSelectionPane.Candidate => _snapshot.CandidateEntries,
                 _ => Array.Empty<InventorySlotData>()
             };
-
-            return index >= 0 && index < entries.Count ? entries[index] : null;
         }
 
         private WeddingWishListSnapshot RefreshSnapshot()

@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Companions;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using System;
 using System.Collections.Generic;
@@ -9,13 +10,32 @@ namespace HaCreator.MapSimulator.UI
     {
         InventoryToCharacter,
         CharacterToCharacter,
-        CharacterToInventory
+        CharacterToInventory,
+        InventoryToCompanion,
+        CompanionToInventory
+    }
+
+    public enum EquipmentChangeCompanionKind
+    {
+        None,
+        Pet,
+        Dragon,
+        Mechanic,
+        Android
+    }
+
+    public enum EquipmentChangeOwnerKind
+    {
+        None,
+        LegacyWindow,
+        BigBangWindow
     }
 
     public sealed class EquipmentChangeRequest
     {
         public int RequestId { get; set; }
         public int RequestedAtTick { get; set; }
+        public EquipmentChangeOwnerKind OwnerKind { get; init; }
         public int OwnerSessionId { get; init; }
         public int ExpectedCharacterId { get; init; }
         public int ExpectedBuildStateToken { get; init; }
@@ -24,6 +44,16 @@ namespace HaCreator.MapSimulator.UI
         public int SourceInventoryIndex { get; init; } = -1;
         public HaCreator.MapSimulator.Character.EquipSlot? SourceEquipSlot { get; init; }
         public HaCreator.MapSimulator.Character.EquipSlot? TargetEquipSlot { get; init; }
+        public EquipmentChangeCompanionKind TargetCompanionKind { get; init; }
+        public EquipmentChangeCompanionKind SourceCompanionKind { get; init; }
+        public int TargetPetRuntimeId { get; init; }
+        public int SourcePetRuntimeId { get; init; }
+        public DragonEquipSlot? TargetDragonSlot { get; init; }
+        public DragonEquipSlot? SourceDragonSlot { get; init; }
+        public MechanicEquipSlot? TargetMechanicSlot { get; init; }
+        public MechanicEquipSlot? SourceMechanicSlot { get; init; }
+        public AndroidEquipSlot? TargetAndroidSlot { get; init; }
+        public AndroidEquipSlot? SourceAndroidSlot { get; init; }
         public int ItemId { get; init; }
         public string ItemName { get; init; } = string.Empty;
         public string Summary { get; init; } = string.Empty;
@@ -62,13 +92,15 @@ namespace HaCreator.MapSimulator.UI
     {
         public static EquipmentChangeResult Accept(
             IReadOnlyList<CharacterPart> displacedParts = null,
-            CharacterPart returnedPart = null)
+            CharacterPart returnedPart = null,
+            IReadOnlyList<InventorySlotData> displacedInventorySlots = null)
         {
             return new EquipmentChangeResult
             {
                 Accepted = true,
                 DisplacedParts = displacedParts ?? Array.Empty<CharacterPart>(),
-                ReturnedPart = returnedPart
+                ReturnedPart = returnedPart,
+                DisplacedInventorySlots = displacedInventorySlots ?? Array.Empty<InventorySlotData>()
             };
         }
 
@@ -96,6 +128,7 @@ namespace HaCreator.MapSimulator.UI
         public bool IsPending { get; init; }
         public string RejectReason { get; init; } = string.Empty;
         public IReadOnlyList<CharacterPart> DisplacedParts { get; init; } = Array.Empty<CharacterPart>();
+        public IReadOnlyList<InventorySlotData> DisplacedInventorySlots { get; init; } = Array.Empty<InventorySlotData>();
         public CharacterPart ReturnedPart { get; init; }
         public int RequestId { get; init; }
         public int RequestedAtTick { get; init; }
@@ -110,6 +143,7 @@ namespace HaCreator.MapSimulator.UI
                 IsPending = IsPending,
                 RejectReason = RejectReason,
                 DisplacedParts = DisplacedParts,
+                DisplacedInventorySlots = DisplacedInventorySlots,
                 ReturnedPart = ReturnedPart,
                 RequestId = requestId,
                 RequestedAtTick = requestedAtTick,
@@ -122,6 +156,7 @@ namespace HaCreator.MapSimulator.UI
     public sealed class EquipmentChangeResolutionQuery
     {
         public int RequestId { get; init; }
+        public EquipmentChangeOwnerKind OwnerKind { get; init; }
         public int OwnerSessionId { get; init; }
         public int RequestedAtTick { get; init; }
     }
@@ -157,6 +192,41 @@ namespace HaCreator.MapSimulator.UI
 
     internal static class EquipmentChangeRequestValidator
     {
+        internal static bool TryGetResolutionRejectReason(
+            EquipmentChangeRequest request,
+            EquipmentChangeResolutionQuery resolutionQuery,
+            out string rejectReason)
+        {
+            if (request == null || resolutionQuery == null)
+            {
+                rejectReason = "The equipment request session is no longer active.";
+                return true;
+            }
+
+            if (request.OwnerKind == EquipmentChangeOwnerKind.None
+                || resolutionQuery.OwnerKind == EquipmentChangeOwnerKind.None)
+            {
+                rejectReason = "The equipment request window is no longer active.";
+                return true;
+            }
+
+            if (resolutionQuery.OwnerKind != request.OwnerKind)
+            {
+                rejectReason = "The equipment request window changed before the request completed.";
+                return true;
+            }
+
+            if (resolutionQuery.OwnerSessionId != request.OwnerSessionId
+                || resolutionQuery.RequestedAtTick != request.RequestedAtTick)
+            {
+                rejectReason = "The equipment request session is no longer active.";
+                return true;
+            }
+
+            rejectReason = string.Empty;
+            return false;
+        }
+
         internal static bool TryGetRequestStateRejectReason(
             EquipmentChangeRequest request,
             CharacterBuild build,

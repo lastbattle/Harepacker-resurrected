@@ -61,6 +61,7 @@ namespace HaCreator.MapSimulator.Interaction
         public bool EmployeeHasPacketData { get; set; }
         public bool EmployeePacketActorHidden { get; set; }
         public int EmployeePacketEmployerId { get; set; }
+        public int EmployeePreferredEmployerId { get; set; }
         public int EmployeePacketFootholdId { get; set; }
         public string EmployeePacketNameTag { get; set; }
         public byte EmployeePacketMiniRoomType { get; set; }
@@ -69,6 +70,7 @@ namespace HaCreator.MapSimulator.Interaction
         public byte EmployeePacketBalloonByte0 { get; set; }
         public byte EmployeePacketBalloonByte1 { get; set; }
         public byte EmployeePacketBalloonByte2 { get; set; }
+        public List<SocialRoomEmployeePoolEntrySnapshot> EmployeePoolEntries { get; set; } = new();
         public List<SocialRoomOccupantSnapshot> Occupants { get; set; } = new();
         public List<SocialRoomItemSnapshot> Items { get; set; } = new();
         public List<SocialRoomSoldItemSnapshot> SoldItems { get; set; } = new();
@@ -96,6 +98,17 @@ namespace HaCreator.MapSimulator.Interaction
         public string PrimaryText { get; set; }
         public string SecondaryText { get; set; }
         public bool IsSelected { get; set; }
+    }
+
+    public sealed class EntrustedShopBlacklistPromptRequest
+    {
+        public string OwnerName { get; set; }
+        public string Title { get; set; }
+        public string PromptText { get; set; }
+        public string DefaultText { get; set; }
+        public int StringPoolId { get; set; } = -1;
+        public int MinimumLength { get; set; }
+        public int MaximumLength { get; set; }
     }
 
     public sealed class EntrustedShopChildDialogSnapshot
@@ -175,5 +188,22 @@ namespace HaCreator.MapSimulator.Interaction
         public int ItemId { get; set; }
         public string ItemName { get; set; }
         public int Quantity { get; set; }
+    }
+
+    public sealed class SocialRoomEmployeePoolEntrySnapshot
+    {
+        public int EmployerId { get; set; }
+        public byte Flags { get; set; }
+        public int TemplateId { get; set; }
+        public short WorldX { get; set; }
+        public short WorldY { get; set; }
+        public short FootholdId { get; set; }
+        public string NameTag { get; set; }
+        public byte MiniRoomType { get; set; }
+        public int MiniRoomSerial { get; set; }
+        public string BalloonTitle { get; set; }
+        public byte BalloonByte0 { get; set; }
+        public byte BalloonByte1 { get; set; }
+        public byte BalloonByte2 { get; set; }
     }
 }

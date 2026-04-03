@@ -118,14 +118,19 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
+            int currentPageIndex = PageIndex;
             int normalizedPageIndex = ((pageIndex % PageCount) + PageCount) % PageCount;
             int pageStartIndex = normalizedPageIndex * EntriesPerPage;
             int pageEntryCount = Math.Clamp(_entries.Count - pageStartIndex, 0, EntriesPerPage);
+            bool isPreviousPageRequest = normalizedPageIndex == ((currentPageIndex - 1 + PageCount) % PageCount);
+            bool preferLastCharacter = PageCount > 1 && isPreviousPageRequest;
 
             PageIndex = normalizedPageIndex;
             if (pageEntryCount > 0)
             {
-                SelectedIndex = pageStartIndex;
+                SelectedIndex = preferLastCharacter
+                    ? pageStartIndex + pageEntryCount - 1
+                    : pageStartIndex;
             }
             else
             {

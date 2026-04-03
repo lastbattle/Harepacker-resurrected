@@ -62,8 +62,6 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedBalloonLongArrowThreshold = 18;
         private const int PacketOwnedBalloonMaxOverlapPasses = 8;
         private const int PacketOwnedBalloonBodyExtraWidth = PacketOwnedBalloonHorizontalPadding * 2;
-        private const int PacketOwnedBalloonClientArrowYOffset = 9;
-        private const float PacketOwnedBalloonClientArrowAnchorRatio = 0.7f;
         private const float PacketOwnedBalloonEmphasisOffsetX = 1f;
         private static readonly Color PacketOwnedBalloonMarkupRed = new(255, 0, 0);
         private static readonly Color PacketOwnedBalloonMarkupGreen = new(0, 255, 0);
@@ -141,11 +139,79 @@ namespace HaCreator.MapSimulator
                 origin = new Point((int)Math.Round(sourceOrigin.X), (int)Math.Round(sourceOrigin.Y));
             }
 
+            ResolvePacketOwnedBalloonArrowMountPoints(texture, origin, out Point topMountPoint, out Point bottomMountPoint);
+
             return new LocalOverlayBalloonArrowSprite
             {
                 Texture = texture,
-                Origin = origin
+                Origin = origin,
+                TopMountPoint = topMountPoint,
+                BottomMountPoint = bottomMountPoint
             };
+        }
+
+        private static void ResolvePacketOwnedBalloonArrowMountPoints(Texture2D texture, Point origin, out Point topMountPoint, out Point bottomMountPoint)
+        {
+            topMountPoint = origin;
+            bottomMountPoint = origin;
+            if (texture == null || texture.IsDisposed || texture.Width <= 0 || texture.Height <= 0)
+            {
+                return;
+            }
+
+            var pixels = new Color[texture.Width * texture.Height];
+            texture.GetData(pixels);
+
+            bool foundOpaquePixel = false;
+            int topY = int.MaxValue;
+            int bottomY = int.MinValue;
+            int topMinX = int.MaxValue;
+            int topMaxX = int.MinValue;
+            int bottomMinX = int.MaxValue;
+            int bottomMaxX = int.MinValue;
+            for (int y = 0; y < texture.Height; y++)
+            {
+                for (int x = 0; x < texture.Width; x++)
+                {
+                    if (pixels[(y * texture.Width) + x].A <= 0)
+                    {
+                        continue;
+                    }
+
+                    foundOpaquePixel = true;
+                    if (y < topY)
+                    {
+                        topY = y;
+                        topMinX = x;
+                        topMaxX = x;
+                    }
+                    else if (y == topY)
+                    {
+                        topMinX = Math.Min(topMinX, x);
+                        topMaxX = Math.Max(topMaxX, x);
+                    }
+
+                    if (y > bottomY)
+                    {
+                        bottomY = y;
+                        bottomMinX = x;
+                        bottomMaxX = x;
+                    }
+                    else if (y == bottomY)
+                    {
+                        bottomMinX = Math.Min(bottomMinX, x);
+                        bottomMaxX = Math.Max(bottomMaxX, x);
+                    }
+                }
+            }
+
+            if (!foundOpaquePixel)
+            {
+                return;
+            }
+
+            topMountPoint = new Point((topMinX + topMaxX) / 2, topY);
+            bottomMountPoint = new Point((bottomMinX + bottomMaxX) / 2, bottomY);
         }
 
         private static Color ResolvePacketOwnedBalloonTextColor(WzImageProperty property)
@@ -313,13 +379,15 @@ namespace HaCreator.MapSimulator
             LocalOverlayBalloonArrowSprite arrow,
             bool topMounted)
         {
-            int anchorOffsetX = (int)Math.Floor((bodyBounds.Width * PacketOwnedBalloonClientArrowAnchorRatio) - arrowTexture.Width);
-            float drawX = bodyBounds.X + Math.Clamp(anchorOffsetX, 0, Math.Max(0, bodyBounds.Width - arrowTexture.Width));
-            float drawY = topMounted
-                ? bodyBounds.Y - (arrowTexture.Height - PacketOwnedBalloonClientArrowYOffset)
-                : bodyBounds.Bottom - PacketOwnedBalloonClientArrowYOffset;
+            float bodyCenterX = bodyBounds.X + (bodyBounds.Width / 2f);
+            if (arrow == null || arrowTexture == null)
+            {
+                return new Vector2(bodyCenterX, topMounted ? bodyBounds.Y : bodyBounds.Bottom - 1);
+            }
 
-            return new Vector2(drawX - arrow.Origin.X, drawY - arrow.Origin.Y);
+            Point mountPoint = topMounted ? arrow.BottomMountPoint : arrow.TopMountPoint;
+            float mountY = topMounted ? bodyBounds.Y : bodyBounds.Bottom - 1;
+            return new Vector2(bodyCenterX - mountPoint.X, mountY - mountPoint.Y);
         }
 
         private Rectangle ResolvePacketOwnedBalloonArrowBounds(
@@ -339,6 +407,20 @@ namespace HaCreator.MapSimulator
                 (int)Math.Floor(arrowPosition.Y),
                 arrowTexture.Width,
                 arrowTexture.Height);
+        }
+
+        private int ResolvePacketOwnedBalloonArrowAboveBodyExtent(int bodyWidth, int bodyHeight, PacketOwnedBalloonArrowKind arrowKind, LocalOverlayBalloonArrowSprite arrowSprite)
+        {
+            Rectangle bodyBounds = new(0, 0, bodyWidth, bodyHeight);
+            Rectangle arrowBounds = ResolvePacketOwnedBalloonArrowBounds(bodyBounds, arrowKind, arrowSprite);
+            return Math.Max(0, bodyBounds.Y - arrowBounds.Y);
+        }
+
+        private int ResolvePacketOwnedBalloonArrowBelowBodyExtent(int bodyWidth, int bodyHeight, PacketOwnedBalloonArrowKind arrowKind, LocalOverlayBalloonArrowSprite arrowSprite)
+        {
+            Rectangle bodyBounds = new(0, 0, bodyWidth, bodyHeight);
+            Rectangle arrowBounds = ResolvePacketOwnedBalloonArrowBounds(bodyBounds, arrowKind, arrowSprite);
+            return Math.Max(0, arrowBounds.Bottom - bodyBounds.Bottom);
         }
 
         private static Rectangle UnionPacketOwnedBalloonBounds(Rectangle bodyBounds, Rectangle arrowBounds)
@@ -1027,11 +1109,13 @@ namespace HaCreator.MapSimulator
             int bodyHeight = Math.Max(26, (lines.Length * lineHeight) + (PacketOwnedBalloonVerticalPadding * 2));
             bool placeAbove = anchor.Y >= bodyHeight + PacketOwnedBalloonScreenMargin + 16;
             int canvasX = Math.Clamp(
-                anchor.X - (contentWidth / 2),
+                anchor.X - (bodyWidth / 2),
                 PacketOwnedBalloonScreenMargin,
                 Math.Max(PacketOwnedBalloonScreenMargin, Width - bodyWidth - PacketOwnedBalloonScreenMargin));
             PacketOwnedBalloonArrowKind arrowKind = SelectPacketOwnedBalloonArrowKind(anchor, canvasX, bodyWidth, placeAbove);
             LocalOverlayBalloonArrowSprite arrowSprite = ResolvePacketOwnedBalloonArrowSprite(arrowKind);
+            int arrowAboveBodyExtent = ResolvePacketOwnedBalloonArrowAboveBodyExtent(bodyWidth, bodyHeight, arrowKind, arrowSprite);
+            int arrowBelowBodyExtent = ResolvePacketOwnedBalloonArrowBelowBodyExtent(bodyWidth, bodyHeight, arrowKind, arrowSprite);
             Texture2D visualTexture = GetOrCreatePacketOwnedBalloonVisualTexture(
                 message,
                 lines,
@@ -1041,12 +1125,12 @@ namespace HaCreator.MapSimulator
                 arrowKind,
                 arrowSprite);
             int desiredCanvasY = placeAbove
-                ? anchor.Y - (bodyHeight + Math.Max(0, (arrowSprite?.Texture?.Height ?? 14) - PacketOwnedBalloonClientArrowYOffset))
+                ? anchor.Y - (bodyHeight + arrowBelowBodyExtent)
                 : anchor.Y;
             Rectangle bodyBounds = new(canvasX, desiredCanvasY, bodyWidth, bodyHeight);
             if (!placeAbove)
             {
-                bodyBounds.Y = desiredCanvasY + Math.Max(0, (arrowSprite?.Texture?.Height ?? 14) - PacketOwnedBalloonClientArrowYOffset);
+                bodyBounds.Y = desiredCanvasY + arrowAboveBodyExtent;
             }
 
             Rectangle arrowBounds = ResolvePacketOwnedBalloonArrowBounds(bodyBounds, arrowKind, arrowSprite);

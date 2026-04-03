@@ -123,29 +123,30 @@ namespace HaCreator.MapSimulator.Interaction
         internal FamilyChartSnapshot BuildChartSnapshot()
         {
             FamilyMemberState selectedMember = GetSelectedMember();
+            FamilyMemberState localPlayer = GetMember(LocalPlayerId) ?? selectedMember;
             FamilyPrivilegeState activePrivilege = GetActivePrivilege(Environment.TickCount);
             int entitlementPage = Math.Clamp((int)_entitlementType, 0, FamilyEntitlementCount - 1) + 1;
 
             return new FamilyChartSnapshot
             {
                 TitleText = BuildCompactTitle(),
-                SelectedMemberId = selectedMember?.Id ?? LocalPlayerId,
-                SelectedMemberName = selectedMember?.Name ?? "Player",
-                SelectedRank = GetRankLabel(selectedMember),
-                LocationSummary = selectedMember?.LocationSummary ?? _locationSummary,
+                SelectedMemberId = localPlayer?.Id ?? LocalPlayerId,
+                SelectedMemberName = localPlayer?.Name ?? "Player",
+                SelectedRank = GetRankLabel(localPlayer),
+                LocationSummary = localPlayer?.LocationSummary ?? _locationSummary,
                 TotalMembers = _members.Count,
-                JuniorCount = GetStatisticValue(selectedMember),
-                CurrentReputation = selectedMember?.CurrentReputation ?? 0,
-                TodayReputation = selectedMember?.TodayReputation ?? 0,
-                SpecialReputationCost = GetSpecialReputationCost(selectedMember),
+                JuniorCount = Math.Max(0, localPlayer?.Children.Count ?? 0),
+                CurrentReputation = localPlayer?.CurrentReputation ?? 0,
+                TodayReputation = localPlayer?.TodayReputation ?? 0,
+                SpecialReputationCost = GetSpecialReputationCost(localPlayer),
                 SpecialUsesLeft = _entitlementUsesLeft,
                 Precept = _precepts[_preceptIndex],
                 EntitlementLabel = GetEntitlementLabel(_entitlementType),
                 EntitlementIndex = (int)_entitlementType,
-                DetailLines = BuildDetailLines(selectedMember, activePrivilege),
+                DetailLines = BuildDetailLines(localPlayer, activePrivilege),
                 CanPageBackward = FamilyEntitlementCount > 1,
                 CanPageForward = FamilyEntitlementCount > 1,
-                CanAddJunior = CanAddJunior(selectedMember),
+                CanAddJunior = CanAddJunior(localPlayer),
                 CanUseSpecial = CanExecuteEntitlement(selectedMember),
                 Page = entitlementPage,
                 TotalPages = FamilyEntitlementCount
@@ -725,7 +726,10 @@ namespace HaCreator.MapSimulator.Interaction
                         ? GetClientPlaceholderText(slotIndex)
                         : slotIndex == 3
                             ? string.Empty
-                            : GetClientPlaceholderText(slotIndex)
+                            : GetClientPlaceholderText(slotIndex),
+                    StatisticText = slotIndex >= GrandchildSlotStart
+                        ? _textResources.FormatGrandchildCount(0)
+                        : string.Empty
                 };
             }
 
