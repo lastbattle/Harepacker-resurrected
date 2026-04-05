@@ -243,7 +243,7 @@ The same `CField::OnPacket` decompile exposes another client-owned surface that 
 - `CMapLoadable::OnClearBackEffect` at `0x620150`
 
 Notes:
-The same `CField::OnPacket` decompile also hands packet families `141` to `146` to two owners that the backlog never names anywhere else. `CStage::OnPacket` owns the stage-switch family for field, ITC, and Cash Shop transitions instead of leaving those jumps implied by login or UI code, while `CMapLoadable::OnPacket` owns packet-authored map back-effects, object-visibility toggles, and back-effect clears instead of treating them as generic field-effect fallout. That is a separate packet surface above the more specific field-feedback, field-state, and cash-stage rows.
+The same `CField::OnPacket` decompile also hands packet families `141` to `146` to two owners that must stay explicit across backlog boundaries. `CStage::OnPacket` owns the stage-switch family for field, ITC, and Cash Shop transitions instead of leaving those jumps implied by login or UI code, while `CMapLoadable::OnPacket` owns packet-authored map back-effects, object-visibility toggles, and back-effect clears instead of treating them as generic field-effect fallout. That is a separate packet surface above the more specific field-feedback, field-state, and cash-stage rows; backlog 11 now links this same handoff from `CLogin::OnPacket` and keeps detailed implementation ownership merged here.
 
 ## Current State Summary
 
