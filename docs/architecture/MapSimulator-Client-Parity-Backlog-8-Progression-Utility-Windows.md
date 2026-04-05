@@ -138,8 +138,11 @@ It does three things that the old notes did not do well:
 - `CUIAdminAntiMacro::Draw` at `0x78cf40`
 - `CUIAdminAntiMacro::Update` at `0x77f250`
 - `CWvsContext::OnAntiMacroResult` at `0x9ff580`
+- `CWvsContext::OnLogoutGift` at `0x9cccb0`
 - `CWvsContext::SaveAntiMacroScreenShot` at `0x9fa330`
 - `CWvsContext::ShowAntiMacroNotice` at `0x9f3c30`
+- `CUILogoutGift::OnCreate` at `0x7dec80`
+- `CUILogoutGift::Draw` at `0x7de9b0`
 - `CRadioManager::Play` at `0x6cb940`
 - `CRadioManager::Stop` at `0x6cbd20`
 - `CRadioManager::Update` at `0x6cbf20`
@@ -151,6 +154,7 @@ Direct IDA seam capture is now confirmed for inventory, cash-service, item-maker
 
 The list below maps this backlog area to the concrete client seams that are already named in code or prior reverse-engineering notes.
 These are the first functions or classes to inspect before changing simulator behavior.
+Packet/controller rows and window/dialog-owner rows are intentionally kept separate when the client splits those responsibilities across different seams, and the index keeps follow-up scan additions close to their first discovery notes.
 
 ### 1. Progression and utility window parity
 
@@ -219,20 +223,16 @@ Notes:
 Notes:
 `CUserLocal::OnPacket` is a distinct client seam rather than a random collection of callbacks. It dispatches packet-owned local utility behavior including `OnOpenUI`, `OnOpenUIWithOption`, `OnGoToCommoditySN`, field fade in/out, balloon messages, damage-meter timing, chat/notice surfaces, quest-guide and delivery-quest results, buff-zone effects, field HP-dec notices, tutor flows, and several event-sound/minigame-sound owners. The narrower decompiles already show concrete responsibilities that are not represented well by the existing window rows: `OnOpenUI` forwards a raw UI id into `CWvsContext::UI_Open`, `OnOpenUIWithOption` adds option-driven branches such as party-search requests and the repair-durability owner, `OnGoToCommoditySN` stores a commodity serial number before calling `SendMigrateToShopRequest`, `OnFieldFadeInOut` registers a fade animation relative to the avatar layer Z, `OnBalloonMsg` can bind a balloon to the avatar origin or an explicit world position, and `OnDamageMeter` resets a dedicated timer surface. That means the client has a packet-driven utility/event layer that sits between local gameplay and the specific window owners already tracked above.
 
-### 17. Additional packet-owned local production, reward, and helper-result parity discovered by direct `CUserLocal::OnPacket` scan
+### 6. Cash-service wishlist parity discovered by targeted IDA scan
 
-- `CUserLocal::OnMakerResult` at `0x9102f0`
-- `CUserLocal::OnMesoGive_Succeeded` at `0x90f950`
-- `CUserLocal::OnMesoGive_Failed` at `0x90d530`
-- `CUserLocal::OnRandomMesobag_Succeeded` at `0x90fa30`
-- `CUserLocal::OnRandomMesobag_Failed` at `0x90d560`
-- `CUserLocal::OnResignQuestReturn` at `0x905720`
-- `CUserLocal::OnPassMateName` at `0x918260`
+- `CUIAdminShopWishList::HitTest` at `0x76cf50`
+- `CUIAdminShopWishList::OnCreate` at `0x772640`
+- `CUIAdminShopWishList::OnButtonClicked` at `0x772670`
 
 Notes:
-The direct `CUserLocal::OnPacket` re-check exposed one more local-owner family that is still missing from this backlog. These handlers do not fit the existing UI-launch, overlay, tutor, or radio rows: `OnMakerResult` is a dedicated packet-owned production-result path adjacent to `CUIItemMaker`, `OnMesoGive_*` and `OnRandomMesobag_*` are separate money/reward result owners rather than generic pickup notices, and `OnResignQuestReturn` plus `OnPassMateName` are packet-authored helper responses that sit beside quest/social utility flow instead of ordinary field feedback. A repo search across `HaCreator/MapSimulator` still does not surface corresponding runtime or packet-bridge seams for any of these handlers, so this family remains genuinely untracked rather than merely under-described.
+The cash-service stage and child-window rows still need this owner called out explicitly: `CUIAdminShopWishList` is its own modeless wishlist/search controller, not just a button branch inside `CAdminShopDlg` or `CCSWnd_List`.
 
-### 6. Packet-authored radio-schedule parity discovered by targeted IDA scan
+### 7. Packet-authored radio-schedule parity discovered by targeted IDA scan
 
 - `CUserLocal::OnRadioSchedule` at `0x918120`
 - `CRadioManager::Play` at `0x6cb940`
@@ -241,15 +241,6 @@ The direct `CUserLocal::OnPacket` re-check exposed one more local-owner family t
 
 Notes:
 The broader local-utility row already mentioned tutor/radio handlers as a residual gap, but targeted IDA lookup shows radio scheduling is its own client-owned lifecycle rather than one more generic sound callback. `CUserLocal::OnRadioSchedule` decodes a track name plus time value and forwards that payload into a singleton `CRadioManager` owner when no radio session is already active. `CRadioManager::Play` then resolves a WZ/UOL-backed track through `StringPool`, starts multimedia playback, stores the active track name, mutes field BGM through the sound manager, shows a dedicated radio UI, and pushes a chat-log notice for the start event; `CRadioManager::Stop` reverses that ownership by stopping playback, hiding the UI, restoring BGM state, and pushing the completion notice; and `CRadioManager::Update` confirms a timer-driven runtime instead of a fire-and-forget sound effect. None of that owner-specific audio/UI/chat lifecycle is tracked anywhere else in the backlog today.
-
-### 7. Anti-macro owner parity discovered by targeted IDA scan
-
-- `CUIAntiMacro::OnCreate` at `0x78b980`
-- `CUIAntiMacro::Draw` at `0x78bb30`
-- `CUIAntiMacro::Update` at `0x77f1f0`
-
-Notes:
-The current backlog only captures anti-macro behavior indirectly through field-limit item bans, but targeted IDA lookup shows the client also owns a dedicated challenge dialog. `CUIAntiMacro::OnCreate` initializes a standalone layout, creates a focused `CCtrlEdit` child with a 12-character horizontal cap, and adds the owner button chrome instead of routing lie-detector checks through a generic notice or inventory-use prompt. `CUIAntiMacro::Update` confirms this is a timed runtime that recomputes the remaining seconds against `m_tTimeOver` and invalidates the owner as the countdown changes, while `CUIAntiMacro::Draw` renders countdown digits from the dedicated WZ canvas family and formats the remaining-attempt message from `StringPool` instead of relying on generic tooltip or chat presentation. That is a separate utility-owner family, not just another field restriction.
 
 ### 8. Explicit key-config, game-option, and soft-keyboard owner parity discovered by targeted IDA scan
 
@@ -284,6 +275,52 @@ The broader local-utility row currently mentions tutor flows only as residual di
 
 Notes:
 The minimap row already tracks a large amount of behavior, but the owner itself was still unnamed in the seam index. Targeted IDA decompiles now confirm a dedicated `CUIMiniMap` owner rather than a loose collection of helper draws. `CUIMiniMap::OnButtonClicked` cycles the minimap option state, remembers the previous option, and opens `CWorldMapDlg` directly from minimap button ids `1000` to `1003`, including the fallback notice path when the world-map dialog cannot be created. `CUIMiniMap::OnMouseMove` is equally important because it shows the client-owned tooltip and helper-marker surface that sits behind the existing backlog row: the owner computes tooltip hit rectangles for off-map remote direction markers, live NPC markers, employee markers from `CEmployeePool`, and portal markers from `CPortalList`, then resolves tooltip strings from `CNpcTemplate`, `CEmployee::GetNameTag`, portal script-property text, and map-string fallbacks before routing them through `CUIToolTip`. That is concrete client evidence for minimap-specific owner logic rather than only simulator-side UI structure.
+
+### 11. Explicit skill-macro owner parity discovered by follow-up IDA lookup
+
+- `CUIMacroSysEx::OnCreate` at `0x85c420`
+
+Notes:
+The broader progression/utility owner list already confirmed the macro dialog family, but the explicit follow-up row should stay visible in the seam index too. `CUIMacroSysEx::OnCreate` confirms that skill macros are owned by a dedicated dialog with its own control layout and embedded text-entry surface rather than only by generic text input or utility-button launches.
+
+### 12. Packet-owned keymap and pet auto-consume parity discovered by targeted IDA scan
+
+- `CFuncKeyMappedMan::OnInit` at `0x568c30`
+- `CFuncKeyMappedMan::OnPetConsumeItemInit` at `0x5688c0`
+- `CFuncKeyMappedMan::OnPetConsumeMPItemInit` at `0x5688f0`
+
+Notes:
+This packet-owned bootstrap seam is distinct from both the `CQuickslotKeyMappedMan` owner tracked in backlog 7 and the explicit key-config window owners tracked above. The targeted IDA pass already pinned `CFuncKeyMappedMan::OnInit` plus the pet-consume init pair as their own owner family, so keymap hydration and pet auto-consume defaults should stay indexed separately from the later UI-owner rows.
+
+### 13. Packet-owned anti-macro result parity discovered by targeted IDA scan
+
+- `CWvsContext::OnAntiMacroResult` at `0x9ff580`
+- `CWvsContext::SaveAntiMacroScreenShot` at `0x9fa330`
+- `CWvsContext::ShowAntiMacroNotice` at `0x9f3c30`
+
+Notes:
+The anti-macro dialog owner is only one half of the client surface. These `CWvsContext` handlers confirm a separate packet/result controller that owns launch, screenshot, notice, and result-routing behavior before the later `CUIAntiMacro` or `CUIAdminAntiMacro` owner finishes the challenge flow.
+
+### 14. Anti-macro owner parity discovered by targeted IDA scan
+
+- `CUIAntiMacro::OnCreate` at `0x78b980`
+- `CUIAntiMacro::Draw` at `0x78bb30`
+- `CUIAntiMacro::Update` at `0x77f1f0`
+
+Notes:
+This owner row remains intentionally separate from row 13. `CUIAntiMacro::{OnCreate,Draw,Update}` confirm a timed text-entry dialog owner with its own layout, countdown, and edit-control lifecycle instead of only a packet/result bridge or generic notice path.
+
+### 15. Additional quest-timer UI, quest-reward, and revive owners discovered by follow-up IDA scan
+
+- `CUIQuestTimer::OnCreate`
+- `CUIRaiseWndBase::OnButtonClicked` at `0x8391d0`
+- `CUIRevive::OnCreate` at `0x83cea0`
+- `CUIRevive::OnButtonClicked` at `0x83ce40`
+- `CUIRevive::Update` at `0x83ce70`
+- `CUIRevive::Revive` at `0x83cde0`
+
+Notes:
+The latest IDA pass exposed another utility-owner family that should stay visible in the seam index: dedicated quest-timer UI, quest reward/raise windows, and revive confirmation are all separate modeless owners rather than generic extensions of the quest log, field-state packet handling, or raw respawn state.
 
 ### 3. Packet-authored local overlays and guidance parity
 
@@ -338,6 +375,29 @@ The stage-owner row above is still too coarse on its own. IDA shows that Cash Sh
 
 Notes:
 The latest `CField::OnPacket` decompile exposed another utility-owner family that is still unnamed in this backlog. Packet types `364`/`365` dispatch directly into `CShopDlg::OnPacket`, `369`/`370` dispatch into `CStoreBankDlg::OnPacket`, and `420` through `423` dispatch into `CBattleRecordMan::OnPacket` instead of flowing through the broader `CUserLocal::OnPacket` utility row or the existing social/storage packet rows. Those owners do not appear anywhere else in the current backlog set, so NPC shop parity, store-bank parity, and battle-record parity are currently easy to overstate once adjacent window shells or NPC interactions exist locally.
+
+### 17. Additional packet-owned local production, reward, and helper-result parity discovered by direct `CUserLocal::OnPacket` scan
+
+- `CUserLocal::OnMakerResult` at `0x9102f0`
+- `CUserLocal::OnMesoGive_Succeeded` at `0x90f950`
+- `CUserLocal::OnMesoGive_Failed` at `0x90d530`
+- `CUserLocal::OnRandomMesobag_Succeeded` at `0x90fa30`
+- `CUserLocal::OnRandomMesobag_Failed` at `0x90d560`
+- `CUserLocal::OnResignQuestReturn` at `0x905720`
+- `CUserLocal::OnPassMateName` at `0x918260`
+
+Notes:
+The direct `CUserLocal::OnPacket` re-check exposed one more local-owner family that is still missing from this backlog. These handlers do not fit the existing UI-launch, overlay, tutor, or radio rows: `OnMakerResult` is a dedicated packet-owned production-result path adjacent to `CUIItemMaker`, `OnMesoGive_*` and `OnRandomMesobag_*` are separate money/reward result owners rather than generic pickup notices, and `OnResignQuestReturn` plus `OnPassMateName` are packet-authored helper responses that sit beside quest/social utility flow instead of ordinary field feedback. A repo search across `HaCreator/MapSimulator` still does not surface corresponding runtime or packet-bridge seams for any of these handlers, so this family remains genuinely untracked rather than merely under-described.
+
+### 18. Additional packet-owned logout-gift owner parity discovered by direct `CField::OnPacket` decompile
+
+- `CField::OnPacket` at `0x546d50`
+- `CWvsContext::OnLogoutGift` at `0x9cccb0`
+- `CUILogoutGift::OnCreate` at `0x7dec80`
+- `CUILogoutGift::Draw` at `0x7de9b0`
+
+Notes:
+Direct `CField::OnPacket` decompile now confirms packet `432` is a dedicated logout-gift branch that calls `CWvsContext::OnLogoutGift` instead of flowing through generic local utility handlers. `CWvsContext::OnLogoutGift` is thin, but it explicitly updates a `CUILogoutGift` singleton owner when present, and the client has dedicated owner surfaces (`CUILogoutGift::OnCreate`, `CUILogoutGift::Draw`) for that lifecycle. A source pass in `HaCreator/MapSimulator` only shows `logoutGiftConfigPayload` serialization in the stage-transition packet helper and no matching logout-gift owner/runtime, so this packet-owned utility owner is still untracked as a first-class parity target.
 
 ## Current State Summary
 
@@ -512,6 +572,14 @@ The latest `CUserLocal::OnPacket` re-check exposed another local-owner family th
 | Missing | Packet-owned mesos-give and random-mesobag result parity | `CUserLocal::OnMesoGive_Succeeded` (`0x90f950`), `CUserLocal::OnMesoGive_Failed` (`0x90d530`), `CUserLocal::OnRandomMesobag_Succeeded` (`0x90fa30`), and `CUserLocal::OnRandomMesobag_Failed` (`0x90d560`) are dedicated reward/result handlers under the local packet router, but the simulator still does not show a corresponding packet bridge, runtime, or backlog row for those outcomes. They should not be treated as generic pickup text because the client gave them their own owner-level entry points. | These handlers sit on the visible reward-feedback path between local gameplay and the utility/HUD owners already documented here. If they stay unnamed, future parity work can overstate money/reward coverage by counting only pickup notices, inventory updates, or admin-shop flows while this separate result family remains absent. | packet-owned local reward-result layer (`CUserLocal::OnPacket`, `CUserLocal::OnMesoGive_Succeeded`, `CUserLocal::OnMesoGive_Failed`, `CUserLocal::OnRandomMesobag_Succeeded`, `CUserLocal::OnRandomMesobag_Failed`) |
 | Missing | Packet-owned quest-resign and mate-name helper parity | `CUserLocal::OnResignQuestReturn` (`0x905720`) and `CUserLocal::OnPassMateName` (`0x918260`) also sit on the local packet router, but a repo search still does not show simulator-owned handlers or a backlog row for them. They are adjacent to the existing quest-guide, delivery-quest, tutor, and social-helper families, yet they remain completely untracked. | Tracking these helper-result owners prevents the utility backlog from silently dropping smaller packet-fed client flows that sit between quest/social UI and ordinary field feedback. Keeping them explicit also avoids misfiling them under generic chat/notice rows later. | packet-owned local helper-response layer (`CUserLocal::OnPacket`, `CUserLocal::OnResignQuestReturn`, `CUserLocal::OnPassMateName`) |
 
+### 18. Additional packet-owned logout-gift owner parity discovered by direct `CField::OnPacket` decompile
+
+The latest direct `CField::OnPacket` decompile surfaced one more utility owner that is still untracked in this backlog: packet type `432` routes to `CWvsContext::OnLogoutGift`, and that context handler updates a dedicated `CUILogoutGift` owner when present.
+
+| Status | Area | Gap | Why it matters | Primary seam |
+|--------|------|-----|----------------|--------------|
+| Missing | Packet-owned logout-gift owner parity | Packet `432` in `CField::OnPacket` at `0x546d50` does not route through `CUserLocal::OnPacket` or generic notice rows; it dispatches directly to `CWvsContext::OnLogoutGift` at `0x9cccb0`. A targeted decompile shows that handler is a lifecycle bridge for the dedicated `CUILogoutGift` owner (`CUILogoutGift::OnCreate` at `0x7dec80`, `CUILogoutGift::Draw` at `0x7de9b0`) by checking/updating the singleton when present. A source scan across `HaCreator/MapSimulator` still does not show a matching logout-gift owner/runtime or packet dispatcher branch, only stage-transition packet serialization support for `logoutGiftConfigPayload`. | Without an explicit row, utility parity can look complete once the broad `CUserLocal` dispatcher and nearby reward windows are covered even though the client still has a separate packet-owned logout-gift owner path. Capturing this seam keeps future work anchored to the actual client dispatch path and avoids burying logout-gift behavior in unrelated reward/notice rows. | packet-owned logout-gift utility owner (`CField::OnPacket`, `CWvsContext::OnLogoutGift`, `CUILogoutGift::OnCreate`, `CUILogoutGift::Draw`) |
+
 ## Priority Order
 
 If the goal is visible parity first, the next work in this area should be sequenced like this:
@@ -550,7 +618,9 @@ If the goal is visible parity first, the next work in this area should be sequen
    Complete pickup notices, soft-keyboard or constrained text-entry behavior, macro behavior, cursor states, and status-bar utility-button behavior.
 17. Packet-owned NPC utility pass:
    Add `CShopDlg`, `CStoreBankDlg`, and `CBattleRecordMan` packet bridges before treating NPC shop/storage-adjacent utility parity as covered by nearby trunk, NPC, or generic utility rows.
-18. Owner-consolidation pass:
+18. Logout-gift owner pass:
+   Add packet `432` routing through `CWvsContext::OnLogoutGift` and a dedicated `CUILogoutGift`-style owner/runtime instead of leaving logout-gift handling as hidden stage-payload bytes.
+19. Owner-consolidation pass:
    Refresh older umbrella rows so minimap, macro, inventory, equip, and quest utility work stays anchored to the explicit client owners already captured here instead of drifting back into stale generic-window buckets.
 
 ## Working Rule For Future Updates

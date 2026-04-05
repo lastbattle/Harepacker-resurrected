@@ -147,6 +147,27 @@ Notes:
 IDA shows that these field modes are not generic map-rule variants. The client owns separate state machines, packet handlers, timer or scoreboard widgets, and even dedicated minigame dialog owners such as `CMemoryGameDlg` for Guild Boss, Coconut, Wedding, Witchtower, Massacre, SnowBall, Ariant Arena, Battlefield, Dojang, Cookie House, Monster Carnival, Party Raid, SpaceGAGA, and MiniRoom card games, so parity work should be tracked separately from the broader field, combat, or UI backlog areas.
 The live `list_functions` scan also surfaced additional field-owner classes with no hits anywhere else in the parity backlog set, which means there is still real untracked special-field work outside the rows already listed below.
 
+### 2. Additional packet-owned microgame dialog discovered by follow-up IDA scan
+
+- `CRPSGameDlg::OnPacket` at `0x6d9e00`
+- `CRPSGameDlg::ProcessPacket` at `0x6d72d0`
+- `CUtilDlgEx` notice path (`StringPool` `0xE83`) via `CRPSGameDlg::OnPacket`
+
+Notes:
+`CRPSGameDlg` is not a generic field-utility callback; it is a dedicated packet-owned dialog owner with create/destroy and round-state branches. Keep this indexed separately from the broader special-field owner list.
+
+### 3. Additional client-owned field wrappers discovered by IDA function scan
+
+- `CField::FieldFactory`
+- `CField_DynamicFoothold::GetFieldType`
+- `CField_DynamicFoothold::Init` at `0x551050`
+- `CField_ContiMove::OnContiState` at `0x54d5a0`
+- `CField_Tutorial::DecodeFieldSpecificData` at `0x563830`
+- `CField_LimitedView::Init` at `0x5554a0`
+
+Notes:
+These wrapper owners are intentionally indexed as a separate scan-discovery surface because they represent field-class ownership seams (transport/tutorial/presentation/dynamic-foothold wrappers) rather than minigame-specific rules.
+
 ## Current State Summary
 
 MapSimulator already has a partial special-field baseline instead of a blank area.
@@ -164,7 +185,7 @@ The gap is whether those maps reproduce the client's dedicated rules, scoreboard
 
 ### 1. Special field and minigame parity
 
-This area is currently unowned by backlog documents even though the client and simulator both have dedicated field-specific seams.
+This area is now tracked in its own backlog document because both the client and simulator already expose dedicated field-specific seams.
 
 | Status | Area | Gap | Why it matters | Primary seam |
 |--------|------|-----|----------------|--------------|
