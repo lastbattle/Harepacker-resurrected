@@ -334,6 +334,12 @@ namespace HaCreator.MapSimulator.Interaction
             _preferredEmployerId = Math.Max(0, employerId);
         }
 
+        internal bool HasEmployer(int employerId)
+        {
+            int normalizedEmployerId = Math.Max(0, employerId);
+            return normalizedEmployerId > 0 && _entries.ContainsKey(normalizedEmployerId);
+        }
+
         internal bool TryGetPrimaryEntry(out SocialRoomEmployeePoolEntryState state)
         {
             state = null;

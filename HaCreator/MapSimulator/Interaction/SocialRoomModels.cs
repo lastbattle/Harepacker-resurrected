@@ -1339,7 +1339,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return Kind switch
                 {
                     SocialRoomKind.MiniRoom => TryDispatchMiniRoomPacket(reader, packetType, tickCount, out message),
-                    SocialRoomKind.PersonalShop or SocialRoomKind.EntrustedShop => _shopDialogPacketOwner?.TryDispatch(reader, packetType, tickCount, out message) == true,
+                    SocialRoomKind.PersonalShop or SocialRoomKind.EntrustedShop => _shopDialogPacketOwner?.TryDispatch(payload, reader, packetType, tickCount, out message) == true,
                     SocialRoomKind.TradingRoom => TryDispatchTradingRoomPacket(payload, reader, packetType, out message),
                     _ => FailPacket(packetType, out message)
                 };
@@ -2089,7 +2089,7 @@ namespace HaCreator.MapSimulator.Interaction
                 case MiniRoomBaseEnterResultPacketSubType:
                     return TryApplyMiniRoomBaseEnterResultPacket(reader, out message);
                 case MiniRoomBaseUpdatePacketSubType:
-                    return ApplyMiniRoomBaseStaticMessage("Mini-room base update packet reached the shared dialog seam. Type-specific room payload is still handled only partially.", out message);
+                    return TryDispatchMiniRoomBaseTypeSpecificPacket(reader, out message);
                 case MiniRoomBaseAvatarPacketSubType:
                     return TryApplyMiniRoomBaseAvatarPacket(reader, out message);
                 case MiniRoomBaseLeavePacketSubType:
@@ -2235,6 +2235,56 @@ namespace HaCreator.MapSimulator.Interaction
             PersistState();
             message = StatusMessage;
             return true;
+        }
+
+        private bool TryDispatchMiniRoomBaseTypeSpecificPacket(PacketReader reader, out string message)
+        {
+            message = null;
+            if (reader == null)
+            {
+                message = "Mini-room base update packet did not include a readable payload.";
+                return false;
+            }
+
+            byte nestedPacketType;
+            try
+            {
+                nestedPacketType = reader.ReadByte();
+            }
+            catch (EndOfStreamException)
+            {
+                message = "Mini-room base update packet did not include a nested room packet type.";
+                return false;
+            }
+            if (nestedPacketType == PersonalShopBasePacketType)
+            {
+                message = "Mini-room base update packet attempted to nest another base packet type 25, which is not modeled.";
+                return false;
+            }
+
+            bool handled = Kind switch
+            {
+                SocialRoomKind.PersonalShop => TryDispatchPersonalShopPacket(reader, nestedPacketType, out message),
+                SocialRoomKind.EntrustedShop => TryDispatchEntrustedShopPacket(reader, nestedPacketType, out message),
+                SocialRoomKind.TradingRoom => TryDispatchTradingRoomPacket(Array.Empty<byte>(), reader, nestedPacketType, out message),
+                SocialRoomKind.MiniRoom => TryDispatchMiniRoomPacket(reader, nestedPacketType, tickCount: 0, out message),
+                _ => false
+            };
+
+            string ownerName = Kind switch
+            {
+                SocialRoomKind.PersonalShop => "CPersonalShopDlg::OnPacket",
+                SocialRoomKind.EntrustedShop => "CEntrustedShopDlg::OnPacket",
+                SocialRoomKind.TradingRoom => "CTradingRoomDlg::OnPacket",
+                SocialRoomKind.MiniRoom => "CMiniRoomBaseDlg-derived OnPacket",
+                _ => "room-specific owner"
+            };
+
+            string detail = handled
+                ? $"CMiniRoomBaseDlg::OnPacketBase subtype 6 forwarded nested packet {nestedPacketType} into {ownerName}. {message}"
+                : $"CMiniRoomBaseDlg::OnPacketBase subtype 6 forwarded nested packet {nestedPacketType} into {ownerName}, but it was not modeled. {message}";
+            message = detail;
+            return handled;
         }
 
         private bool TryApplyMiniRoomBaseEnterPacket(PacketReader reader, out string message)

@@ -72,7 +72,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly UIObject _enterButton;
         private readonly UIObject _newButton;
         private readonly UIObject _deleteButton;
-        private readonly IReadOnlyList<AnimationFrame> _statusScrollFrames;
+        private readonly IReadOnlyList<IReadOnlyList<AnimationFrame>> _statusScrollFrameSets;
         private readonly IReadOnlyList<AnimationFrame> _statusSparkleFrames;
         private readonly IReadOnlyList<AnimationFrame> _statusBeamFrames;
         private readonly IReadOnlyList<AnimationFrame> _statusAccentFrames;
@@ -81,6 +81,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly IReadOnlyList<AnimationFrame> _deleteFocusFrames;
         private readonly BalloonStyle _instructionBalloonStyle;
         private readonly OwnerCanvasFrame _eventBanner;
+        private readonly OwnerCanvasFrame _statusCharacterFrame;
         private readonly Dictionary<TextRenderCacheKey, Texture2D> _textTextureCache = new();
         private readonly SD.Bitmap _measureBitmap;
         private readonly SD.Graphics _measureGraphics;
@@ -103,7 +104,7 @@ namespace HaCreator.MapSimulator.UI
             UIObject enterButton,
             UIObject newButton,
             UIObject deleteButton,
-            IReadOnlyList<AnimationFrame> statusScrollFrames,
+            IReadOnlyList<IReadOnlyList<AnimationFrame>> statusScrollFrameSets,
             IReadOnlyList<AnimationFrame> statusSparkleFrames,
             IReadOnlyList<AnimationFrame> statusBeamFrames,
             IReadOnlyList<AnimationFrame> statusAccentFrames,
@@ -111,13 +112,14 @@ namespace HaCreator.MapSimulator.UI
             IReadOnlyList<AnimationFrame> newFocusFrames,
             IReadOnlyList<AnimationFrame> deleteFocusFrames,
             BalloonStyle instructionBalloonStyle,
-            OwnerCanvasFrame eventBanner)
+            OwnerCanvasFrame eventBanner,
+            OwnerCanvasFrame statusCharacterFrame)
             : base(frame)
         {
             _enterButton = enterButton;
             _newButton = newButton;
             _deleteButton = deleteButton;
-            _statusScrollFrames = statusScrollFrames ?? Array.Empty<AnimationFrame>();
+            _statusScrollFrameSets = statusScrollFrameSets ?? Array.Empty<IReadOnlyList<AnimationFrame>>();
             _statusSparkleFrames = statusSparkleFrames ?? Array.Empty<AnimationFrame>();
             _statusBeamFrames = statusBeamFrames ?? Array.Empty<AnimationFrame>();
             _statusAccentFrames = statusAccentFrames ?? Array.Empty<AnimationFrame>();
@@ -126,6 +128,7 @@ namespace HaCreator.MapSimulator.UI
             _deleteFocusFrames = deleteFocusFrames ?? Array.Empty<AnimationFrame>();
             _instructionBalloonStyle = instructionBalloonStyle;
             _eventBanner = eventBanner;
+            _statusCharacterFrame = statusCharacterFrame;
             _graphicsDevice = frame?.Texture?.GraphicsDevice
                 ?? _instructionBalloonStyle.Center?.GraphicsDevice
                 ?? _eventBanner.Texture?.GraphicsDevice;
@@ -299,10 +302,58 @@ namespace HaCreator.MapSimulator.UI
         {
             DrawAnimation(sprite, _statusBeamFrames, tickCount, true, ClientStatusBeamAnchor, false);
             DrawAnimation(sprite, _statusSparkleFrames, tickCount, true, ClientStatusSparkleAnchor, false);
-            DrawAnimation(sprite, _statusScrollFrames, tickCount, false, ClientStatusScrollPosition, true);
+            DrawAnimation(sprite, ResolveStatusScrollFrames(), tickCount, false, ClientStatusScrollPosition, true);
+            DrawOwnerCanvasFrame(sprite, _statusCharacterFrame, ClientStatusAccentPosition);
             DrawAnimation(sprite, _statusAccentFrames, tickCount, true, ClientStatusAccentPosition, false);
 
             DrawFocusedButtonAnimation(sprite, tickCount);
+        }
+
+        private IReadOnlyList<AnimationFrame> ResolveStatusScrollFrames()
+        {
+            if (_statusScrollFrameSets == null || _statusScrollFrameSets.Count == 0)
+            {
+                return Array.Empty<AnimationFrame>();
+            }
+
+            int frameSetCount = _statusScrollFrameSets.Count;
+            if (frameSetCount == 1)
+            {
+                return _statusScrollFrameSets[0] ?? Array.Empty<AnimationFrame>();
+            }
+
+            int requestedIndex = Math.Abs(_pageIndex) % frameSetCount;
+            IReadOnlyList<AnimationFrame> selectedFrames = _statusScrollFrameSets[requestedIndex];
+            if (selectedFrames != null && selectedFrames.Count > 0)
+            {
+                return selectedFrames;
+            }
+
+            for (int i = 0; i < frameSetCount; i++)
+            {
+                IReadOnlyList<AnimationFrame> fallback = _statusScrollFrameSets[i];
+                if (fallback != null && fallback.Count > 0)
+                {
+                    return fallback;
+                }
+            }
+
+            return Array.Empty<AnimationFrame>();
+        }
+
+        private void DrawOwnerCanvasFrame(SpriteBatch sprite, OwnerCanvasFrame frame, Point anchor)
+        {
+            if (frame.Texture == null)
+            {
+                return;
+            }
+
+            sprite.Draw(
+                frame.Texture,
+                new Vector2(
+                    Position.X + anchor.X - frame.Origin.X,
+                    Position.Y + anchor.Y - frame.Origin.Y),
+                Color.White);
         }
 
         private void DrawStatusText(SpriteBatch sprite)
@@ -763,9 +814,26 @@ namespace HaCreator.MapSimulator.UI
 
         private static SD.Font CreateBasicBlackFont(out string fontFamilyName)
         {
+            if (TryCreateConfiguredBasicBlackFont(out SD.Font configuredFont, out string configuredFamilyName))
+            {
+                fontFamilyName = configuredFamilyName;
+                return configuredFont;
+            }
+
             string requestedFamily = ResolveInstalledFontFamilyName(BasicBlackFontFamilyCandidates);
-            SD.Font font = ClientTextRasterizer.CreateClientFont(BasicBlackFontHeight, SD.FontStyle.Regular, requestedFamily);
-            fontFamilyName = font.FontFamily?.Name ?? requestedFamily;
+            string resolvedFamily = ClientTextRasterizer.ResolvePreferredFontFamily(
+                requestedFamily,
+                BasicBlackFontPathEnvironmentVariable,
+                BasicBlackFontFaceEnvironmentVariable,
+                BasicBlackFontFamilyCandidates);
+            SD.Font font = ClientTextRasterizer.CreateClientFont(
+                BasicBlackFontHeight,
+                SD.FontStyle.Regular,
+                resolvedFamily,
+                BasicBlackFontPathEnvironmentVariable,
+                BasicBlackFontFaceEnvironmentVariable,
+                BasicBlackFontFamilyCandidates);
+            fontFamilyName = font.FontFamily?.Name ?? resolvedFamily;
             return font;
         }
 

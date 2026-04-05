@@ -793,6 +793,9 @@ namespace HaCreator.MapSimulator.Character
         public bool IsAccountSharable { get; set; }
         public bool HasAccountShareTag { get; set; }
         public bool IsNoMoveToLocker { get; set; }
+        public int? OwnerAccountId { get; set; }
+        public int? OwnerCharacterId { get; set; }
+        public bool IsCashOwnershipLocked { get; set; }
         public bool IsTimeLimited { get; set; }
         public string PotentialTierText { get; set; }
         public List<string> PotentialLines { get; set; } = new();
@@ -862,6 +865,9 @@ namespace HaCreator.MapSimulator.Character
                 IsAccountSharable = IsAccountSharable,
                 HasAccountShareTag = HasAccountShareTag,
                 IsNoMoveToLocker = IsNoMoveToLocker,
+                OwnerAccountId = OwnerAccountId,
+                OwnerCharacterId = OwnerCharacterId,
+                IsCashOwnershipLocked = IsCashOwnershipLocked,
                 IsTimeLimited = IsTimeLimited,
                 PotentialTierText = PotentialTierText,
                 PotentialLines = PotentialLines != null ? new List<string>(PotentialLines) : new List<string>(),
@@ -1185,6 +1191,10 @@ namespace HaCreator.MapSimulator.Character
                 IsNotForSale = IsNotForSale,
                 IsAccountSharable = IsAccountSharable,
                 HasAccountShareTag = HasAccountShareTag,
+                IsNoMoveToLocker = IsNoMoveToLocker,
+                OwnerAccountId = OwnerAccountId,
+                OwnerCharacterId = OwnerCharacterId,
+                IsCashOwnershipLocked = IsCashOwnershipLocked,
                 IsTimeLimited = IsTimeLimited,
                 PotentialTierText = PotentialTierText,
                 PotentialLines = PotentialLines != null ? new List<string>(PotentialLines) : new List<string>(),
@@ -1921,6 +1931,17 @@ namespace HaCreator.MapSimulator.Character
 
         private AutoAssignStrategy ResolvePirateAutoAssignStrategy(int absoluteJobId)
         {
+            int equippedWeaponCode = GetWeaponCode(GetWeapon()?.ItemId ?? 0);
+            if (equippedWeaponCode is 48 or 53)
+            {
+                return AutoAssignStrategy.PirateBrawlerLike;
+            }
+
+            if (IsDexDrivenPirateWeaponCode(equippedWeaponCode))
+            {
+                return AutoAssignStrategy.PirateGunslingerLike;
+            }
+
             if (IsMechanicAutoAssignJob(absoluteJobId) || IsPirateGunslingerAutoAssignJob(absoluteJobId))
             {
                 return AutoAssignStrategy.PirateGunslingerLike;
@@ -1954,7 +1975,8 @@ namespace HaCreator.MapSimulator.Character
         private static bool IsPirateGunslingerAutoAssignJob(int absoluteJobId)
         {
             int jobBranch = absoluteJobId / 10;
-            return jobBranch is 52 or 57;
+            int jobFamily = absoluteJobId / 100;
+            return jobBranch is 52 or 57 || jobFamily == 65;
         }
 
         private AutoAssignStrategy InferBeginnerPirateAutoAssignStrategy()
@@ -1962,7 +1984,7 @@ namespace HaCreator.MapSimulator.Character
             return GetWeaponCode(GetWeapon()?.ItemId ?? 0) switch
             {
                 48 or 53 => AutoAssignStrategy.PirateBrawlerLike,
-                49 => AutoAssignStrategy.PirateGunslingerLike,
+                49 or 58 => AutoAssignStrategy.PirateGunslingerLike,
                 _ => DEX > STR
                     ? AutoAssignStrategy.PirateGunslingerLike
                     : AutoAssignStrategy.PirateBrawlerLike
@@ -2301,6 +2323,11 @@ namespace HaCreator.MapSimulator.Character
             }
 
             int weaponCode = GetWeaponCode(weapon.ItemId);
+            return IsDexDrivenPirateWeaponCode(weaponCode);
+        }
+
+        private static bool IsDexDrivenPirateWeaponCode(int weaponCode)
+        {
             return weaponCode is 49 or 58;
         }
 

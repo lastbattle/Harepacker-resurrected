@@ -123,6 +123,49 @@ public static class ClientShootAmmoResolver
         return true;
     }
 
+    public static ShootAmmoSelection RefreshQueuedSelectionSlotMetadata(
+        ShootAmmoSelection queuedSelection,
+        IReadOnlyList<InventorySlotData> useSlots,
+        IReadOnlyList<InventorySlotData> cashSlots,
+        int weaponCode,
+        int weaponItemId)
+    {
+        if (queuedSelection == null)
+        {
+            return null;
+        }
+
+        int refreshedUseSlotIndex = queuedSelection.UseSlotIndex;
+        if (queuedSelection.UseItemId > 0
+            && IsCompatibleBulletItem(weaponCode, weaponItemId, queuedSelection.UseItemId))
+        {
+            int resolvedUseSlotIndex = FindSlotIndexByItemId(useSlots, queuedSelection.UseItemId);
+            if (resolvedUseSlotIndex >= 0)
+            {
+                refreshedUseSlotIndex = resolvedUseSlotIndex;
+            }
+        }
+
+        int refreshedCashSlotIndex = queuedSelection.CashSlotIndex;
+        if (queuedSelection.CashItemId > 0
+            && IsCompatibleCashBulletItem(weaponCode, weaponItemId, queuedSelection.CashItemId))
+        {
+            int resolvedCashSlotIndex = FindSlotIndexByItemId(cashSlots, queuedSelection.CashItemId);
+            if (resolvedCashSlotIndex >= 0)
+            {
+                refreshedCashSlotIndex = resolvedCashSlotIndex;
+            }
+        }
+
+        return new ShootAmmoSelection
+        {
+            UseSlotIndex = refreshedUseSlotIndex,
+            UseItemId = queuedSelection.UseItemId,
+            CashSlotIndex = refreshedCashSlotIndex,
+            CashItemId = queuedSelection.CashItemId
+        };
+    }
+
     private static int ResolveActiveBulletItemId(IReadOnlyList<InventorySlotData> useSlots)
     {
         if (useSlots == null)
@@ -140,6 +183,30 @@ public static class ClientShootAmmoResolver
         }
 
         return 0;
+    }
+
+    private static int FindSlotIndexByItemId(IReadOnlyList<InventorySlotData> slots, int itemId)
+    {
+        if (slots == null || itemId <= 0)
+        {
+            return -1;
+        }
+
+        for (int i = 0; i < slots.Count; i++)
+        {
+            InventorySlotData slot = slots[i];
+            if (slot == null
+                || slot.IsDisabled
+                || slot.ItemId != itemId
+                || slot.Quantity <= 0)
+            {
+                continue;
+            }
+
+            return i;
+        }
+
+        return -1;
     }
 
     private static bool TryResolveActiveBulletSelection(
@@ -266,6 +333,35 @@ public static class ClientShootAmmoResolver
             return;
         }
 
+        if (TryResolveActiveCashAmmoSelection(
+                cashSlots,
+                weaponCode,
+                weaponItemId,
+                out int activeSlotIndex,
+                out int activeCashItemId))
+        {
+            slotIndex = activeSlotIndex;
+            itemId = activeCashItemId;
+            return;
+        }
+
+        int fallbackActiveCashItemId = ResolveActiveBulletItemId(cashSlots);
+        if (fallbackActiveCashItemId > 0)
+        {
+            if (TryResolveCashAmmoSlotByItemId(
+                    cashSlots,
+                    weaponCode,
+                    weaponItemId,
+                    fallbackActiveCashItemId,
+                    out int fallbackSlotIndex))
+            {
+                slotIndex = fallbackSlotIndex;
+                itemId = fallbackActiveCashItemId;
+            }
+
+            return;
+        }
+
         for (int i = 0; i < cashSlots.Count; i++)
         {
             InventorySlotData slot = cashSlots[i];
@@ -282,6 +378,73 @@ public static class ClientShootAmmoResolver
             itemId = slot.ItemId;
             return;
         }
+    }
+
+    private static bool TryResolveActiveCashAmmoSelection(
+        IReadOnlyList<InventorySlotData> cashSlots,
+        int weaponCode,
+        int weaponItemId,
+        out int slotIndex,
+        out int itemId)
+    {
+        slotIndex = -1;
+        itemId = 0;
+        if (cashSlots == null)
+        {
+            return false;
+        }
+
+        for (int i = 0; i < cashSlots.Count; i++)
+        {
+            InventorySlotData slot = cashSlots[i];
+            if (slot?.IsActiveBullet != true
+                || slot.IsDisabled
+                || slot.ItemId <= 0
+                || slot.Quantity <= 0
+                || !IsCompatibleCashBulletItem(weaponCode, weaponItemId, slot.ItemId))
+            {
+                continue;
+            }
+
+            slotIndex = i;
+            itemId = slot.ItemId;
+            return true;
+        }
+
+        return false;
+    }
+
+    private static bool TryResolveCashAmmoSlotByItemId(
+        IReadOnlyList<InventorySlotData> cashSlots,
+        int weaponCode,
+        int weaponItemId,
+        int itemId,
+        out int slotIndex)
+    {
+        slotIndex = -1;
+        if (cashSlots == null
+            || itemId <= 0
+            || !IsCompatibleCashBulletItem(weaponCode, weaponItemId, itemId))
+        {
+            return false;
+        }
+
+        for (int i = 0; i < cashSlots.Count; i++)
+        {
+            InventorySlotData slot = cashSlots[i];
+            if (slot == null
+                || slot.IsDisabled
+                || slot.ItemId != itemId
+                || slot.Quantity <= 0)
+            {
+                continue;
+            }
+
+            slotIndex = i;
+            return true;
+        }
+
+        return false;
     }
 
     private static bool MatchesRequiredSkillAmmoItem(int requiredSkillAmmoItemId, int itemId)

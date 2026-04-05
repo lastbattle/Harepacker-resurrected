@@ -147,6 +147,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly int[] _digitOrder = new int[10];
         private int _switchingKeyIndex = -1;
         private int _switchingCharacterOffset = -1;
+        private char _switchingCharacter = '\0';
         private string _statusMessage = string.Empty;
 
         public SoftKeyboardUI(
@@ -266,6 +267,12 @@ namespace HaCreator.MapSimulator.UI
             if (!IsVisible)
             {
                 ResetVisualState();
+                return;
+            }
+
+            if (_host?.SoftKeyboardTextLength <= 0 && _switchingCharacter != '\0')
+            {
+                ClearSwitchingCharacter();
             }
         }
 
@@ -406,10 +413,6 @@ namespace HaCreator.MapSimulator.UI
                         SoftKeyboardTabMode.Uppercase => "Uppercase switching-character tab enabled for the current owner.",
                         _ => "Lowercase switching-character tab enabled for the current owner.",
                     };
-                    if (_tabMode == SoftKeyboardTabMode.Numeric)
-                    {
-                        ResetDigitOrder();
-                    }
                     ResetPressedState();
                     return true;
                 }
@@ -1215,15 +1218,32 @@ namespace HaCreator.MapSimulator.UI
             }
 
             bool uppercase = _tabMode == SoftKeyboardTabMode.Uppercase;
-            bool canCycleExistingCharacter = _switchingKeyIndex == keyIndex && _host.SoftKeyboardTextLength > 0;
-            int nextOffset = canCycleExistingCharacter
-                ? (_switchingCharacterOffset + 1) % T9AlphabeticGroups[keyIndex].Length
-                : 0;
+            bool canCycleExistingCharacter = TryGetSwitchingKeyGroup(uppercase, out int currentKeyGroup)
+                && currentKeyGroup == keyIndex
+                && _host.SoftKeyboardTextLength > 0;
 
-            char nextCharacter = GetNextT9Character(uppercase, keyIndex, nextOffset);
-            bool applied = canCycleExistingCharacter
-                ? _host.TryReplaceLastSoftKeyboardCharacter(nextCharacter, out errorMessage)
-                : _host.TryInsertSoftKeyboardCharacter(nextCharacter, out errorMessage);
+            char nextCharacter;
+            bool applied;
+            if (canCycleExistingCharacter)
+            {
+                int nextOffset = (_switchingCharacterOffset + 1) % T9AlphabeticGroups[keyIndex].Length;
+                nextCharacter = GetNextT9Character(uppercase, keyIndex, nextOffset);
+                applied = _host.TryReplaceLastSoftKeyboardCharacter(nextCharacter, out errorMessage);
+                if (applied)
+                {
+                    _switchingCharacterOffset = nextOffset;
+                }
+            }
+            else
+            {
+                nextCharacter = GetNextT9Character(uppercase, keyIndex, 0);
+                applied = _host.TryInsertSoftKeyboardCharacter(nextCharacter, out errorMessage);
+                if (applied)
+                {
+                    _switchingCharacterOffset = 0;
+                }
+            }
+
             if (!applied)
             {
                 ClearSwitchingCharacter();
@@ -1231,7 +1251,38 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _switchingKeyIndex = keyIndex;
-            _switchingCharacterOffset = nextOffset;
+            _switchingCharacter = nextCharacter;
+            return true;
+        }
+
+        private bool TryGetSwitchingKeyGroup(bool uppercase, out int keyGroup)
+        {
+            keyGroup = -1;
+            if (_switchingCharacter == '\0')
+            {
+                return false;
+            }
+
+            char normalized = uppercase
+                ? char.ToUpperInvariant(_switchingCharacter)
+                : char.ToLowerInvariant(_switchingCharacter);
+            if (!char.IsLetter(normalized))
+            {
+                return false;
+            }
+
+            int alphabetOffset = normalized - (uppercase ? 'A' : 'a');
+            if (alphabetOffset < 0 || alphabetOffset > 25)
+            {
+                return false;
+            }
+
+            keyGroup = alphabetOffset / 3;
+            if (keyGroup > 8)
+            {
+                keyGroup = 8;
+            }
+
             return true;
         }
 
@@ -1239,6 +1290,7 @@ namespace HaCreator.MapSimulator.UI
         {
             _switchingKeyIndex = -1;
             _switchingCharacterOffset = -1;
+            _switchingCharacter = '\0';
         }
 
         private void ResetDigitOrder()

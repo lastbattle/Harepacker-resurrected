@@ -236,10 +236,12 @@ namespace HaCreator.MapSimulator.UI
             // CUIRadio::CreateLayer anchors the widget to Origin_RT, then applies
             // x = -3 - width - (bLeft ? 40 : 0), y = +3. IDA also recovers
             // nMargin = (CWvsContext slot 3562 != 0) ? 40 : 0 in the ctor path.
-            int frameWidth = ResolveIndicatorTexture(Environment.TickCount)?.Width ?? _inactiveTexture.Width;
+            // The client positions from the Off-layer canvas width, not the
+            // current animated On frame width.
+            int frameWidth = _inactiveTexture.Width;
             int rightInset = ClientRightInset + ((_clientLeftInsetProvider?.Invoke() == true) ? ClientLeftModeExtraRightInset : 0);
             Position = new Point(
-                Math.Max(0, renderParameters.RenderWidth - frameWidth - rightInset),
+                renderParameters.RenderWidth - frameWidth - rightInset,
                 ClientTopInset);
         }
 

@@ -855,22 +855,52 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            if (EquipWindow is not EquipUIBigBang equipWindow
-                || !equipWindow.IsVisible
-                || !equipWindow.TryHandleInventoryDrop(
+            bool handled;
+            bool pending;
+            IReadOnlyList<InventorySlotData> displacedSlots;
+
+            if (EquipWindow is EquipUIBigBang equipWindowBigBang && equipWindowBigBang.IsVisible)
+            {
+                handled = equipWindowBigBang.TryHandleInventoryDrop(
                     mouseX,
                     mouseY,
                     inventoryWindow.DraggedInventoryType,
                     inventoryWindow.DraggedSlotIndex,
                     inventoryWindow.DraggedSlotData,
-                    out IReadOnlyList<InventorySlotData> displacedSlots))
+                    out displacedSlots);
+                pending = equipWindowBigBang.HasPendingEquipmentChange;
+                if (handled && pending)
+                {
+                    equipWindowBigBang.TryLockPendingInventorySource(inventoryWindow);
+                }
+            }
+            else if (EquipWindow is EquipUI equipWindow && equipWindow.IsVisible)
+            {
+                handled = equipWindow.TryHandleInventoryDrop(
+                    mouseX,
+                    mouseY,
+                    inventoryWindow.DraggedInventoryType,
+                    inventoryWindow.DraggedSlotIndex,
+                    inventoryWindow.DraggedSlotData,
+                    out displacedSlots);
+                pending = equipWindow.HasPendingEquipmentChange;
+                if (handled && pending)
+                {
+                    equipWindow.TryLockPendingInventorySource(inventoryWindow);
+                }
+            }
+            else
             {
                 return false;
             }
 
-            if (equipWindow.HasPendingEquipmentChange)
+            if (!handled)
             {
-                equipWindow.TryLockPendingInventorySource(inventoryWindow);
+                return false;
+            }
+
+            if (pending)
+            {
                 return true;
             }
 

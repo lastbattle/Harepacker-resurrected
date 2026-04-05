@@ -164,6 +164,8 @@ namespace HaCreator.MapSimulator.Interaction
             public int JobClassBitfield { get; init; }
             public int JobExBitfield { get; init; }
             public int PeriodMinutes { get; init; }
+            public string PotentialGradeText { get; init; } = string.Empty;
+            public DateTime? ExpireAt { get; init; }
             public bool RemoveOnGiveUp { get; init; }
             public CharacterGenderType Gender { get; init; } = CharacterGenderType.Both;
         }
@@ -294,6 +296,7 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly Dictionary<int, int> _trackedItems = new();
         private readonly Dictionary<int, long> _questAlarmUpdateTicks = new();
         private readonly Dictionary<int, string> _questMateNames = new();
+        private readonly HashSet<int> _packetOwnedAutoStartQuestRegistrations = new();
         private int _recentlyViewedQuestId;
         private Func<long> _mesoCountProvider;
         private Func<long, bool> _consumeMeso;
@@ -384,6 +387,28 @@ namespace HaCreator.MapSimulator.Interaction
             _applyQuestBuffItem = applyQuestBuffItem;
             _currentMapIdProvider = currentMapIdProvider;
             _mapNameProvider = mapNameProvider;
+        }
+
+        public void SetPacketOwnedAutoStartQuestRegistration(int questId, bool registered)
+        {
+            if (questId <= 0)
+            {
+                return;
+            }
+
+            if (registered)
+            {
+                _packetOwnedAutoStartQuestRegistrations.Add(questId);
+            }
+            else
+            {
+                _packetOwnedAutoStartQuestRegistrations.Remove(questId);
+            }
+        }
+
+        public bool IsPacketOwnedAutoStartQuestRegistered(int questId)
+        {
+            return questId > 0 && _packetOwnedAutoStartQuestRegistrations.Contains(questId);
         }
 
         public void RecordMobKill(MobInstance mobInstance)
@@ -1820,7 +1845,12 @@ namespace HaCreator.MapSimulator.Interaction
             };
         }
 
-        public NpcInteractionState BuildSingleQuestInteractionState(int npcId, string npcName, int questId, CharacterBuild build)
+        public NpcInteractionState BuildSingleQuestInteractionState(
+            int npcId,
+            string npcName,
+            int questId,
+            CharacterBuild build,
+            bool includeDeliveryFallback = true)
         {
             EnsureDefinitionsLoaded();
             if (!_definitions.TryGetValue(questId, out QuestDefinition definition))
@@ -1853,8 +1883,12 @@ namespace HaCreator.MapSimulator.Interaction
                 };
             }
 
-            NpcInteractionEntry entry = CreateNpcQuestEntry(definition, npcId, build)
-                ?? BuildQuestDeliveryInteractionState(questId, build, itemId: 0)?.Entries?.FirstOrDefault();
+            NpcInteractionEntry entry = CreateNpcQuestEntry(definition, npcId, build);
+            if (entry == null && includeDeliveryFallback)
+            {
+                entry = BuildQuestDeliveryInteractionState(questId, build, itemId: 0)?.Entries?.FirstOrDefault();
+            }
+
             if (entry == null)
             {
                 return null;
@@ -4755,6 +4789,16 @@ namespace HaCreator.MapSimulator.Interaction
             return value.GetValueOrDefault() > 0 ? value : null;
         }
 
+        private static string ParseString(WzImageProperty property)
+        {
+            return property switch
+            {
+                WzStringProperty str => str.Value ?? string.Empty,
+                WzIntProperty i => i.Value.ToString(CultureInfo.InvariantCulture),
+                _ => string.Empty
+            };
+        }
+
         private static int? ParsePetActiveLimit(WzImageProperty property)
         {
             if (property is not WzSubProperty subProperty)
@@ -5161,6 +5205,8 @@ namespace HaCreator.MapSimulator.Interaction
                                     JobClassBitfield = ParseInt(itemReward["job"]).GetValueOrDefault(),
                                     JobExBitfield = ParseInt(itemReward["jobEx"]).GetValueOrDefault(),
                                     PeriodMinutes = ParsePositiveInt(itemReward["period"]).GetValueOrDefault(),
+                                    PotentialGradeText = ParseString(itemReward["potentialGrade"]),
+                                    ExpireAt = ParseQuestDateTime(itemReward["dateExpire"]),
                                     RemoveOnGiveUp = ParsePositiveInt(itemReward["resignRemove"]).GetValueOrDefault() > 0,
                                     Gender = ParseRewardGender(itemReward["gender"])
                                 });
@@ -6545,6 +6591,16 @@ namespace HaCreator.MapSimulator.Interaction
             if (includeFilters && reward.JobExBitfield > 0)
             {
                 parts.Add($"[{FormatQuestSubJobFlagsText(reward.JobExBitfield)}]");
+            }
+
+            if (includeFilters && !string.IsNullOrWhiteSpace(reward.PotentialGradeText))
+            {
+                parts.Add($"[Potential {reward.PotentialGradeText}]");
+            }
+
+            if (includeFilters && reward.ExpireAt.HasValue)
+            {
+                parts.Add($"[Expires {reward.ExpireAt.Value:yyyy-MM-dd HH:mm}]");
             }
 
             if (includeSelectionTag)

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace HaCreator.MapSimulator.Character
 {
@@ -49,6 +50,27 @@ namespace HaCreator.MapSimulator.Character
             "shoot1",
             "shoot2",
             "shootF"
+        };
+
+        private static readonly string[] ClientPublishedRangedMorphFallbackAliases =
+        {
+            "arrowRain"
+        };
+
+        private static readonly IReadOnlyDictionary<string, string[]> ClientPublishedAuthoredMorphFallbackAliases =
+            new Dictionary<string, string[]>(StringComparer.OrdinalIgnoreCase)
+            {
+                // Client raw morph action names still include `rain`/`arrowEruption` while
+                // Morph/*.img publishes `arrowRain` as the authored archer branch.
+                ["rain"] = new[] { "arrowRain" },
+                ["arrowEruption"] = new[] { "arrowRain" }
+            };
+
+        private static readonly string[] ClientPublishedMorphStabFallbackAliases =
+        {
+            "stabO1",
+            "stabO2",
+            "stabTF"
         };
 
         public static IEnumerable<string> EnumerateClientActionAliases(CharacterPart morphPart, string actionName)
@@ -142,9 +164,7 @@ namespace HaCreator.MapSimulator.Character
                 yield return actionName;
             }
 
-            foreach (string authoredAlertAlias in EnumeratePresentAliases(
-                         morphPart,
-                         new[] { "alert", "alert2", "alert3", "alert4", "alert5" }))
+            foreach (string authoredAlertAlias in EnumeratePresentAlertAliases(morphPart, actionName))
             {
                 if (yielded.Add(authoredAlertAlias))
                 {
@@ -166,6 +186,14 @@ namespace HaCreator.MapSimulator.Character
             }
 
             var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (string clientPublishedAlias in EnumerateClientPublishedAuthoredAttackAliases(morphPart, actionName))
+            {
+                if (yielded.Add(clientPublishedAlias))
+                {
+                    yield return clientPublishedAlias;
+                }
+            }
 
             foreach (string genericMeleeAlias in EnumerateGenericMeleeAttackAliases(morphPart, actionName))
             {
@@ -240,15 +268,117 @@ namespace HaCreator.MapSimulator.Character
                 yield break;
             }
 
+            var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
             foreach (string candidate in CharacterPart.GetActionLookupStrings(actionName))
             {
                 if (!string.IsNullOrWhiteSpace(candidate)
                     && IsPublishedGenericMeleeAttackAlias(candidate)
                     && morphPart.Animations.ContainsKey(candidate))
                 {
+                    yielded.Add(candidate);
                     yield return candidate;
                 }
             }
+
+            foreach (string candidate in EnumeratePublishedGenericMeleeFallbackSurface(morphPart, actionName))
+            {
+                if (yielded.Add(candidate))
+                {
+                    yield return candidate;
+                }
+            }
+
+            foreach (string candidate in EnumeratePublishedCrossFamilyMeleeFallbackSurface(morphPart, actionName))
+            {
+                if (yielded.Add(candidate))
+                {
+                    yield return candidate;
+                }
+            }
+        }
+
+        private static IEnumerable<string> EnumeratePublishedGenericMeleeFallbackSurface(CharacterPart morphPart, string requestedActionName)
+        {
+            if (morphPart?.Animations == null || string.IsNullOrWhiteSpace(requestedActionName))
+            {
+                yield break;
+            }
+
+            foreach (string candidate in morphPart.Animations.Keys)
+            {
+                if (IsPublishedGenericMeleeAttackAlias(candidate)
+                    && IsMatchingGenericMeleeFamily(requestedActionName, candidate))
+                {
+                    yield return candidate;
+                }
+            }
+        }
+
+        private static bool IsMatchingGenericMeleeFamily(string requestedActionName, string candidateActionName)
+        {
+            if (string.IsNullOrWhiteSpace(requestedActionName) || string.IsNullOrWhiteSpace(candidateActionName))
+            {
+                return false;
+            }
+
+            if (string.Equals(requestedActionName, "proneStab", StringComparison.OrdinalIgnoreCase))
+            {
+                return string.Equals(candidateActionName, "proneStab", StringComparison.OrdinalIgnoreCase);
+            }
+
+            bool requestedIsSwing = requestedActionName.IndexOf("swing", StringComparison.OrdinalIgnoreCase) >= 0;
+            if (!requestedIsSwing && IsClientPublishedMeleeMorphFallbackAction(requestedActionName))
+            {
+                requestedIsSwing = true;
+            }
+
+            bool candidateIsSwing = candidateActionName.IndexOf("swing", StringComparison.OrdinalIgnoreCase) >= 0;
+            if (requestedIsSwing || candidateIsSwing)
+            {
+                return requestedIsSwing && candidateIsSwing;
+            }
+
+            bool requestedIsStab = requestedActionName.IndexOf("stab", StringComparison.OrdinalIgnoreCase) >= 0;
+            bool candidateIsStab = candidateActionName.IndexOf("stab", StringComparison.OrdinalIgnoreCase) >= 0;
+            return requestedIsStab && candidateIsStab;
+        }
+
+        private static IEnumerable<string> EnumeratePublishedCrossFamilyMeleeFallbackSurface(CharacterPart morphPart, string requestedActionName)
+        {
+            if (morphPart?.Animations == null
+                || !IsClientPublishedStabMorphFallbackAction(requestedActionName))
+            {
+                yield break;
+            }
+
+            // Client s_sMorphAction still requests stab-family raw names while common
+            // Morph/*.img variants such as 1003/1103 only publish generic swing branches.
+            foreach (string candidate in morphPart.Animations.Keys)
+            {
+                if (candidate.IndexOf("swing", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    yield return candidate;
+                }
+            }
+        }
+
+        private static bool IsClientPublishedStabMorphFallbackAction(string actionName)
+        {
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            foreach (string alias in ClientPublishedMorphStabFallbackAliases)
+            {
+                if (string.Equals(alias, actionName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static bool PrefersArcherAttackAliases(string actionName)
@@ -262,7 +392,8 @@ namespace HaCreator.MapSimulator.Character
                    || actionName.IndexOf("shot", StringComparison.OrdinalIgnoreCase) >= 0
                    || actionName.IndexOf("spear", StringComparison.OrdinalIgnoreCase) >= 0
                    || actionName.IndexOf("rain", StringComparison.OrdinalIgnoreCase) >= 0
-                   || actionName.IndexOf("break", StringComparison.OrdinalIgnoreCase) >= 0;
+                   || actionName.IndexOf("break", StringComparison.OrdinalIgnoreCase) >= 0
+                   || actionName.IndexOf("eruption", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private static IEnumerable<string> EnumerateGenericAttackAliases(CharacterPart morphPart, string actionName)
@@ -277,11 +408,36 @@ namespace HaCreator.MapSimulator.Character
                 yield break;
             }
 
+            bool prefersPublishedRangedMorphFallback =
+                string.Equals(actionName, "arrowEruption", StringComparison.OrdinalIgnoreCase);
+
+            if (prefersPublishedRangedMorphFallback)
+            {
+                foreach (string alias in ClientPublishedRangedMorphFallbackAliases)
+                {
+                    if (!string.IsNullOrWhiteSpace(alias) && morphPart.Animations.ContainsKey(alias))
+                    {
+                        yield return alias;
+                    }
+                }
+            }
+
             foreach (string alias in GenericMorphRangedAttackAliases)
             {
                 if (!string.IsNullOrWhiteSpace(alias) && morphPart.Animations.ContainsKey(alias))
                 {
                     yield return alias;
+                }
+            }
+
+            if (!prefersPublishedRangedMorphFallback)
+            {
+                foreach (string alias in ClientPublishedRangedMorphFallbackAliases)
+                {
+                    if (!string.IsNullOrWhiteSpace(alias) && morphPart.Animations.ContainsKey(alias))
+                    {
+                        yield return alias;
+                    }
                 }
             }
         }
@@ -302,9 +458,102 @@ namespace HaCreator.MapSimulator.Character
             }
         }
 
+        private static IEnumerable<string> EnumerateClientPublishedAuthoredAttackAliases(CharacterPart morphPart, string actionName)
+        {
+            if (morphPart?.Animations == null || string.IsNullOrWhiteSpace(actionName))
+            {
+                yield break;
+            }
+
+            if (!ClientPublishedAuthoredMorphFallbackAliases.TryGetValue(actionName, out string[] aliases)
+                || aliases == null)
+            {
+                yield break;
+            }
+
+            foreach (string alias in aliases)
+            {
+                if (!string.IsNullOrWhiteSpace(alias) && morphPart.Animations.ContainsKey(alias))
+                {
+                    yield return alias;
+                }
+            }
+        }
+
+        private static IEnumerable<string> EnumeratePresentAlertAliases(CharacterPart morphPart, string actionName)
+        {
+            if (morphPart?.Animations == null)
+            {
+                yield break;
+            }
+
+            string[] allAlertAliases = { "alert", "alert2", "alert3", "alert4", "alert5", "alert6", "alert7" };
+            if (!TryParseAlertActionIndex(actionName, out int requestedAlertIndex))
+            {
+                foreach (string alias in EnumeratePresentAliases(morphPart, allAlertAliases))
+                {
+                    yield return alias;
+                }
+
+                yield break;
+            }
+
+            // Keep the requested indexed alert family nearest-first when the concrete
+            // branch does not exist in Morph/*.img and the resolver falls back.
+            foreach (string alias in allAlertAliases
+                         .OrderBy(alias =>
+                         {
+                             if (!TryParseAlertActionIndex(alias, out int aliasIndex))
+                             {
+                                 return int.MaxValue;
+                             }
+
+                             return Math.Abs(aliasIndex - requestedAlertIndex);
+                         })
+                         .ThenByDescending(alias =>
+                             TryParseAlertActionIndex(alias, out int aliasIndex) ? aliasIndex : int.MinValue))
+            {
+                if (morphPart.Animations.ContainsKey(alias))
+                {
+                    yield return alias;
+                }
+            }
+        }
+
+        private static bool TryParseAlertActionIndex(string actionName, out int alertIndex)
+        {
+            alertIndex = 0;
+            if (string.IsNullOrWhiteSpace(actionName)
+                || !actionName.StartsWith("alert", StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            if (string.Equals(actionName, "alert", StringComparison.OrdinalIgnoreCase))
+            {
+                alertIndex = 1;
+                return true;
+            }
+
+            string suffix = actionName["alert".Length..];
+            if (!int.TryParse(suffix, out int parsedIndex) || parsedIndex < 1)
+            {
+                return false;
+            }
+
+            alertIndex = parsedIndex;
+            return true;
+        }
+
         private static bool ShouldEnumerateDoubleJumpAliases(string actionName)
         {
-            return IsJumpActionName(actionName);
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            // Keep jump-special promotion tied to explicit double-jump requests.
+            return actionName.IndexOf("doublejump", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private static IEnumerable<string> EnumerateDoubleJumpAliases(CharacterPart morphPart)
@@ -414,6 +663,7 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return actionName.IndexOf("attack", StringComparison.OrdinalIgnoreCase) >= 0
+                   || IsClientPublishedMeleeMorphFallbackAction(actionName)
                    || IsGenericMeleeAttackAction(actionName)
                    || IsGenericRangedAttackAction(actionName);
         }
@@ -427,7 +677,20 @@ namespace HaCreator.MapSimulator.Character
 
             return actionName.IndexOf("stab", StringComparison.OrdinalIgnoreCase) >= 0
                    || actionName.IndexOf("swing", StringComparison.OrdinalIgnoreCase) >= 0
-                   || string.Equals(actionName, "proneStab", StringComparison.OrdinalIgnoreCase);
+                   || string.Equals(actionName, "proneStab", StringComparison.OrdinalIgnoreCase)
+                   || IsClientPublishedMeleeMorphFallbackAction(actionName);
+        }
+
+        private static bool IsClientPublishedMeleeMorphFallbackAction(string actionName)
+        {
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            // CAvatar morph action requests still include legacy raw names
+            // like "savage" that Morph/*.img does not commonly publish.
+            return string.Equals(actionName, "savage", StringComparison.OrdinalIgnoreCase);
         }
 
         private static bool IsPublishedGenericMeleeAttackAlias(string actionName)
@@ -453,7 +716,9 @@ namespace HaCreator.MapSimulator.Character
                    || actionName.IndexOf("shot", StringComparison.OrdinalIgnoreCase) >= 0
                    || actionName.IndexOf("spear", StringComparison.OrdinalIgnoreCase) >= 0
                    || actionName.IndexOf("rain", StringComparison.OrdinalIgnoreCase) >= 0
-                   || actionName.IndexOf("break", StringComparison.OrdinalIgnoreCase) >= 0;
+                   || actionName.IndexOf("break", StringComparison.OrdinalIgnoreCase) >= 0
+                   || string.Equals(actionName, "shoot6", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "arrowEruption", StringComparison.OrdinalIgnoreCase);
         }
     }
 }

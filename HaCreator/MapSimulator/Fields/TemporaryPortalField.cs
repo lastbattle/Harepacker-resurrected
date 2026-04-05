@@ -458,7 +458,7 @@ namespace HaCreator.MapSimulator.Fields
                 if (target == null)
                     return false;
 
-                destination = new TemporaryPortalDestination(target.MapId, target.X, target.Y, portal.DelayMs);
+                destination = new TemporaryPortalDestination(target.MapId, target.X, target.Y, portal.DelayMs, portal.X, portal.Y);
                 return true;
             }
 
@@ -469,7 +469,9 @@ namespace HaCreator.MapSimulator.Fields
                 portal.DirectDestinationMapId.Value,
                 portal.DirectDestinationX ?? portal.X,
                 portal.DirectDestinationY ?? portal.Y,
-                portal.DelayMs);
+                portal.DelayMs,
+                portal.X,
+                portal.Y);
             return true;
         }
 
@@ -479,6 +481,9 @@ namespace HaCreator.MapSimulator.Fields
             int currentTime,
             RemoteTownPortalResolvedDestination? destination)
         {
+            RemoteTownPortalState? existingState = _remoteTownPortals.TryGetValue(packet.OwnerCharacterId, out RemoteTownPortalState existingStateValue)
+                ? existingStateValue
+                : null;
             if (destination.HasValue)
             {
                 RememberRemoteTownPortalFieldMetadata(packet.OwnerCharacterId, currentMapId, packet.X, packet.Y, destination.Value, currentTime);
@@ -488,7 +493,7 @@ namespace HaCreator.MapSimulator.Fields
                 packet.OwnerCharacterId,
                 currentMapId,
                 destination,
-                _remoteTownPortals.TryGetValue(packet.OwnerCharacterId, out RemoteTownPortalState existingState) ? existingState : null);
+                existingState);
             if (!destination.HasValue && resolvedDestination.HasValue)
             {
                 RememberRemoteTownPortalObservedFieldMetadata(
@@ -498,6 +503,10 @@ namespace HaCreator.MapSimulator.Fields
                     currentTime);
             }
 
+            RemoteTownPortalVisualPhase phase = ResolveRemoteTownPortalCreatePhase(packet.State, existingState);
+            int phaseStartedAt = existingState.HasValue && existingState.Value.Phase == phase
+                ? existingState.Value.PhaseStartedAt
+                : currentTime;
             _remoteTownPortals[packet.OwnerCharacterId] = new RemoteTownPortalState(
                 packet.OwnerCharacterId,
                 packet.State,
@@ -505,8 +514,8 @@ namespace HaCreator.MapSimulator.Fields
                 packet.X,
                 packet.Y,
                 resolvedDestination,
-                packet.State == 0 ? RemoteTownPortalVisualPhase.Opening : RemoteTownPortalVisualPhase.Stable,
-                currentTime,
+                phase,
+                phaseStartedAt,
                 null,
                 null);
             SyncRemoteTownPortalVisuals();
@@ -1259,6 +1268,21 @@ namespace HaCreator.MapSimulator.Fields
             return null;
         }
 
+        private static RemoteTownPortalVisualPhase ResolveRemoteTownPortalCreatePhase(
+            byte packetState,
+            RemoteTownPortalState? existingState)
+        {
+            if (existingState.HasValue && existingState.Value.Phase != RemoteTownPortalVisualPhase.Removing)
+            {
+                // Client OnTownPortalCreated keeps existing owners in the steady branch instead of replaying opening.
+                return RemoteTownPortalVisualPhase.Stable;
+            }
+
+            return packetState == 0
+                ? RemoteTownPortalVisualPhase.Opening
+                : RemoteTownPortalVisualPhase.Stable;
+        }
+
         private static bool AreEquivalentRemoteTownPortalDestinations(
             RemoteTownPortalResolvedDestination? left,
             RemoteTownPortalResolvedDestination? right)
@@ -1549,18 +1573,22 @@ namespace HaCreator.MapSimulator.Fields
 
         internal readonly struct TemporaryPortalDestination
         {
-            public TemporaryPortalDestination(int mapId, float x, float y, int delayMs)
+            public TemporaryPortalDestination(int mapId, float x, float y, int delayMs, float sourceX, float sourceY)
             {
                 MapId = mapId;
                 X = x;
                 Y = y;
                 DelayMs = delayMs;
+                SourceX = sourceX;
+                SourceY = sourceY;
             }
 
             public int MapId { get; }
             public float X { get; }
             public float Y { get; }
             public int DelayMs { get; }
+            public float SourceX { get; }
+            public float SourceY { get; }
         }
 
         internal enum TemporaryPortalKind
@@ -2081,6 +2109,27 @@ namespace HaCreator.MapSimulator.Fields
             int townMapId)
         {
             return ResolveRemoteTownPortalObservedFieldDestination(currentMapId, sourceMapId, sourceX, sourceY, townMapId);
+        }
+
+        internal static RemoteTownPortalVisualPhase ResolveRemoteTownPortalCreatePhaseForTesting(
+            byte packetState,
+            bool hasExistingState,
+            RemoteTownPortalVisualPhase existingPhase)
+        {
+            RemoteTownPortalState? existingState = hasExistingState
+                ? new RemoteTownPortalState(
+                    OwnerCharacterId: 1,
+                    State: 1,
+                    MapId: 100000000,
+                    X: 0,
+                    Y: 0,
+                    Destination: null,
+                    Phase: existingPhase,
+                    PhaseStartedAt: 0,
+                    RemovalState: null,
+                    RemovalSnapshot: null)
+                : null;
+            return ResolveRemoteTownPortalCreatePhase(packetState, existingState);
         }
 
         internal static RemoteTownPortalResolvedDestination? ChooseRemoteTownPortalResolvedDestinationForTesting(

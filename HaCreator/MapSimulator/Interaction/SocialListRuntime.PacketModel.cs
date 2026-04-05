@@ -9,6 +9,7 @@ namespace HaCreator.MapSimulator.Interaction
         private PacketGuildAuthorityState? _packetGuildAuthority;
         private PacketAllianceAuthorityState? _packetAllianceAuthority;
         private PacketGuildUiState? _packetGuildUiState;
+        private readonly List<GuildRankingSeedEntry> _packetGuildRankingEntries = [];
 
         internal string DescribeStatus()
         {
@@ -23,11 +24,14 @@ namespace HaCreator.MapSimulator.Interaction
             string guildUiContext = _packetGuildUiState.HasValue
                 ? $"Guild UI packet-owned (member={FormatOnOff(_packetGuildUiState.Value.HasGuildMembership)}, name={_packetGuildUiState.Value.GuildName}, level={_packetGuildUiState.Value.GuildLevel})"
                 : "Guild UI local-build";
+            string guildRankingContext = _packetGuildRankingEntries.Count > 0
+                ? $"Guild ranking packet-owned rivals={_packetGuildRankingEntries.Count}"
+                : "Guild ranking simulator-seeded rivals";
             string allianceAuthority = _packetAllianceAuthority.HasValue
                 ? $"Alliance authority packet-owned ({_packetAllianceAuthority.Value.RoleLabel}: rank={FormatOnOff(_packetAllianceAuthority.Value.CanEditRanks)}, notice={FormatOnOff(_packetAllianceAuthority.Value.CanEditNotice)})"
                 : $"Alliance authority local-role ({GetLocalAllianceRoleLabel()})";
 
-            return string.Join(Environment.NewLine, tabLines.Concat(new[] { guildAuthority, guildUiContext, allianceAuthority }));
+            return string.Join(Environment.NewLine, tabLines.Concat(new[] { guildAuthority, guildUiContext, guildRankingContext, allianceAuthority }));
         }
 
         private string DescribeTabStatusLine(SocialListTab tab)
@@ -267,11 +271,84 @@ namespace HaCreator.MapSimulator.Interaction
             return "Guild UI returned to the local build seam.";
         }
 
+        internal string ClearPacketGuildRankingEntries()
+        {
+            _packetGuildRankingEntries.Clear();
+            return "Guild ranking rivals returned to the simulator seed set.";
+        }
+
+        internal string UpsertPacketGuildRankingEntry(
+            string guildName,
+            string masterName,
+            string levelRange,
+            string memberSummary,
+            string notice,
+            int? markBackground,
+            int? markBackgroundColor,
+            int? mark,
+            int? markColor)
+        {
+            string normalizedGuildName = string.IsNullOrWhiteSpace(guildName) ? "Packet Guild" : guildName.Trim();
+            GuildRankingSeedEntry entry = new(
+                normalizedGuildName,
+                string.IsNullOrWhiteSpace(masterName) ? "Guild Master" : masterName.Trim(),
+                string.IsNullOrWhiteSpace(levelRange) ? "Lv. 1" : levelRange.Trim(),
+                string.IsNullOrWhiteSpace(memberSummary) ? "1/1 online" : memberSummary.Trim(),
+                notice?.Trim() ?? string.Empty,
+                markBackground,
+                markBackgroundColor,
+                mark,
+                markColor,
+                IsPacketOwned: true);
+
+            int existingIndex = _packetGuildRankingEntries.FindIndex(candidate =>
+                string.Equals(candidate.GuildName, normalizedGuildName, StringComparison.OrdinalIgnoreCase));
+            if (existingIndex >= 0)
+            {
+                _packetGuildRankingEntries[existingIndex] = entry;
+                return $"Guild ranking packet row for {normalizedGuildName} was updated.";
+            }
+
+            _packetGuildRankingEntries.Add(entry);
+            return $"Guild ranking packet row for {normalizedGuildName} was added.";
+        }
+
+        internal string RemovePacketGuildRankingEntry(string guildName)
+        {
+            if (string.IsNullOrWhiteSpace(guildName))
+            {
+                return "Provide a guild name to remove from packet-owned ranking rows.";
+            }
+
+            int removed = _packetGuildRankingEntries.RemoveAll(entry =>
+                string.Equals(entry.GuildName, guildName.Trim(), StringComparison.OrdinalIgnoreCase));
+            return removed > 0
+                ? $"{guildName.Trim()} was removed from packet-owned guild ranking rows."
+                : $"{guildName.Trim()} was not present in packet-owned guild ranking rows.";
+        }
+
         internal string SetPacketGuildAuthority(string roleLabel, bool canManageRanks, bool canToggleAdmission, bool canEditNotice)
         {
             string resolvedRole = string.IsNullOrWhiteSpace(roleLabel) ? GetLocalGuildRoleLabel() : roleLabel.Trim();
             _packetGuildAuthority = new PacketGuildAuthorityState(resolvedRole, canManageRanks, canToggleAdmission, canEditNotice);
             return $"Guild authority now follows packet-owned role {resolvedRole} (rank={FormatOnOff(canManageRanks)}, admission={FormatOnOff(canToggleAdmission)}, notice={FormatOnOff(canEditNotice)}).";
+        }
+
+        private IReadOnlyList<GuildRankingSeedEntry> GetPacketGuildRankingEntries(string localGuildName)
+        {
+            if (_packetGuildRankingEntries.Count == 0)
+            {
+                return Array.Empty<GuildRankingSeedEntry>();
+            }
+
+            if (string.IsNullOrWhiteSpace(localGuildName))
+            {
+                return _packetGuildRankingEntries.ToArray();
+            }
+
+            return _packetGuildRankingEntries
+                .Where(entry => !string.Equals(entry.GuildName, localGuildName.Trim(), StringComparison.OrdinalIgnoreCase))
+                .ToArray();
         }
 
         internal string ClearPacketAllianceAuthority()

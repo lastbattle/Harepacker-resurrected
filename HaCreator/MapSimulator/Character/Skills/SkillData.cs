@@ -1281,6 +1281,12 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool FacingRight { get; set; }
         public SummonAssistType AssistType { get; set; } = SummonAssistType.PeriodicAttack;
         public bool ManualAssistEnabled { get; set; } = true;
+        public bool PendingManualAttackRequest { get; set; }
+        public int PendingManualAttackRequestedAt { get; set; } = int.MinValue;
+        public int PendingManualAttackPrimaryTargetMobId { get; set; }
+        public int[] PendingManualAttackTargetMobIds { get; set; } = Array.Empty<int>();
+        public int PendingManualAttackFollowUpAt { get; set; } = int.MinValue;
+        public int LastManualAttackResolvedTime { get; set; } = int.MinValue;
         public int NextSupportTime { get; set; }
         public int SupportSuspendUntilTime { get; set; } = int.MinValue;
         public int NextHealTime { get; set; } = int.MinValue;

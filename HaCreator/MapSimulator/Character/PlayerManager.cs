@@ -1205,7 +1205,7 @@ namespace HaCreator.MapSimulator.Character
 
             int skillId = _pendingRepeatSkillModeEndSkillId;
             int returnSkillId = _pendingRepeatSkillModeEndReturnSkillId;
-            if (!Skills.HasPendingRepeatSkillModeEndRequest(skillId, returnSkillId))
+            if (!Skills.HasPendingRepeatSkillModeEndRequest(skillId, returnSkillId, _pendingRepeatSkillModeEndRequestTime))
             {
                 _pendingRepeatSkillModeEndSkillId = 0;
                 _pendingRepeatSkillModeEndReturnSkillId = 0;
@@ -1213,7 +1213,10 @@ namespace HaCreator.MapSimulator.Character
                 return;
             }
 
-            int fallbackDelayMs = Skills.GetPendingRepeatSkillModeEndFallbackDelayMs(skillId, returnSkillId);
+            int fallbackDelayMs = Skills.GetPendingRepeatSkillModeEndFallbackDelayMs(
+                skillId,
+                returnSkillId,
+                _pendingRepeatSkillModeEndRequestTime);
             if (fallbackDelayMs <= 0)
             {
                 fallbackDelayMs = TankSiegeModeEndFallbackDelayMs;
@@ -1224,8 +1227,14 @@ namespace HaCreator.MapSimulator.Character
                 return;
             }
 
-            if (Skills.TryAcknowledgeRepeatSkillModeEndRequest(skillId, currentTime)
-                || Skills.TryAcknowledgeRepeatSkillModeEndRequest(returnSkillId, currentTime))
+            if (Skills.TryAcknowledgeRepeatSkillModeEndRequest(
+                    skillId,
+                    currentTime,
+                    _pendingRepeatSkillModeEndRequestTime)
+                || Skills.TryAcknowledgeRepeatSkillModeEndRequest(
+                    returnSkillId,
+                    currentTime,
+                    _pendingRepeatSkillModeEndRequestTime))
             {
                 _pendingRepeatSkillModeEndSkillId = 0;
                 _pendingRepeatSkillModeEndReturnSkillId = 0;

@@ -159,6 +159,8 @@ namespace HaCreator.MapSimulator.Interaction
     {
         public int QuestId { get; init; }
         public IReadOnlyList<int> VisibleItemIds { get; init; } = Array.Empty<int>();
+        public IReadOnlyDictionary<int, IReadOnlyList<int>> VisibleItemMapIds { get; init; } =
+            new Dictionary<int, IReadOnlyList<int>>();
         public int HiddenItemCount { get; init; }
         public string FallbackNpcName { get; init; } = string.Empty;
     }

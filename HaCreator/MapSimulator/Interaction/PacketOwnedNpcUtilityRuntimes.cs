@@ -100,6 +100,179 @@ namespace HaCreator.MapSimulator.Interaction
             return StatusMessage;
         }
 
+        internal bool TryApplyLocalBuy(IInventoryRuntime inventory, int itemId, int quantity, out string message)
+        {
+            message = null;
+            if (!IsOpen)
+            {
+                message = "NPC shop buy request was ignored because the packet-owned CShopDlg owner is not open.";
+                return false;
+            }
+
+            if (inventory == null)
+            {
+                message = "NPC shop buy request requires a live inventory runtime.";
+                return false;
+            }
+
+            if (quantity <= 0)
+            {
+                message = "NPC shop buy quantity must be positive.";
+                return false;
+            }
+
+            ShopItemEntry entry = FindBuyEntry(itemId);
+            if (entry == null)
+            {
+                message = $"NPC shop buy request could not find item {itemId.ToString(CultureInfo.InvariantCulture)} in the decoded buy list.";
+                return false;
+            }
+
+            int deliveredQuantity = Math.Max(1, entry.Quantity) * quantity;
+            if (!inventory.CanAcceptItem(entry.InventoryType, entry.ItemId, deliveredQuantity, InventoryItemMetadataResolver.ResolveMaxStack(entry.InventoryType)))
+            {
+                message = $"NPC shop buy request for {entry.ItemName} x{deliveredQuantity.ToString(CultureInfo.InvariantCulture)} could not fit in {entry.InventoryType}.";
+                return false;
+            }
+
+            long mesosCost = Math.Max(0, entry.Price) * (long)quantity;
+            if (mesosCost > 0 && !inventory.TryConsumeMeso(mesosCost))
+            {
+                message = $"NPC shop buy request for {entry.ItemName} failed because mesos ({mesosCost.ToString(CultureInfo.InvariantCulture)}) were insufficient.";
+                return false;
+            }
+
+            if (entry.TokenItemId > 0 && entry.TokenPrice > 0)
+            {
+                int tokenQuantity = checked(entry.TokenPrice * quantity);
+                InventoryType tokenInventoryType = InventoryItemMetadataResolver.ResolveInventoryType(entry.TokenItemId);
+                if (tokenInventoryType == InventoryType.NONE || !inventory.TryConsumeItem(tokenInventoryType, entry.TokenItemId, tokenQuantity))
+                {
+                    if (mesosCost > 0)
+                    {
+                        inventory.AddMeso(mesosCost);
+                    }
+
+                    message = $"NPC shop buy request for {entry.ItemName} failed because token item {entry.TokenItemId.ToString(CultureInfo.InvariantCulture)} x{tokenQuantity.ToString(CultureInfo.InvariantCulture)} was unavailable.";
+                    return false;
+                }
+            }
+
+            for (int i = 0; i < deliveredQuantity; i++)
+            {
+                inventory.AddItem(entry.InventoryType, entry.ItemId, texture: null, quantity: 1);
+            }
+
+            _activePane = "Buy";
+            StatusMessage = $"Applied local NPC-shop buy mutation for {entry.ItemName} x{deliveredQuantity.ToString(CultureInfo.InvariantCulture)} (mesos {mesosCost.ToString(CultureInfo.InvariantCulture)}).";
+            AppendNote(StatusMessage);
+            message = StatusMessage;
+            return true;
+        }
+
+        internal bool TryApplyLocalSell(IInventoryRuntime inventory, int itemId, int quantity, out string message)
+        {
+            message = null;
+            if (!IsOpen)
+            {
+                message = "NPC shop sell request was ignored because the packet-owned CShopDlg owner is not open.";
+                return false;
+            }
+
+            if (inventory == null)
+            {
+                message = "NPC shop sell request requires a live inventory runtime.";
+                return false;
+            }
+
+            if (itemId <= 0 || quantity <= 0)
+            {
+                message = "NPC shop sell request requires a positive item id and quantity.";
+                return false;
+            }
+
+            InventoryType inventoryType = InventoryItemMetadataResolver.ResolveInventoryType(itemId);
+            if (inventoryType == InventoryType.NONE)
+            {
+                message = $"NPC shop sell request could not resolve inventory type for item {itemId.ToString(CultureInfo.InvariantCulture)}.";
+                return false;
+            }
+
+            if (!inventory.TryConsumeItem(inventoryType, itemId, quantity))
+            {
+                message = $"NPC shop sell request failed because item {itemId.ToString(CultureInfo.InvariantCulture)} x{quantity.ToString(CultureInfo.InvariantCulture)} was unavailable.";
+                return false;
+            }
+
+            int basePrice = ResolveSellPrice(itemId);
+            long mesosGain = Math.Max(1, basePrice) * (long)quantity;
+            inventory.AddMeso(mesosGain);
+
+            string itemName = InventoryItemMetadataResolver.TryResolveItemName(itemId, out string resolvedName)
+                ? resolvedName
+                : $"Item {itemId.ToString(CultureInfo.InvariantCulture)}";
+
+            _activePane = "Sell";
+            StatusMessage = $"Applied local NPC-shop sell mutation for {itemName} x{quantity.ToString(CultureInfo.InvariantCulture)} (+{mesosGain.ToString(CultureInfo.InvariantCulture)} mesos).";
+            AppendNote(StatusMessage);
+            message = StatusMessage;
+            return true;
+        }
+
+        internal bool TryApplyLocalRecharge(IInventoryRuntime inventory, int itemId, int targetQuantity, out string message)
+        {
+            message = null;
+            if (!IsOpen)
+            {
+                message = "NPC shop recharge request was ignored because the packet-owned CShopDlg owner is not open.";
+                return false;
+            }
+
+            if (inventory == null)
+            {
+                message = "NPC shop recharge request requires a live inventory runtime.";
+                return false;
+            }
+
+            ShopItemEntry entry = FindRechargeEntry(itemId);
+            if (entry == null)
+            {
+                message = $"NPC shop recharge request could not find item {itemId.ToString(CultureInfo.InvariantCulture)} in the decoded recharge list.";
+                return false;
+            }
+
+            int currentQuantity = inventory.GetItemCount(entry.InventoryType, entry.ItemId);
+            int resolvedTargetQuantity = targetQuantity > 0 ? targetQuantity : Math.Max(1, entry.MaxPerSlot);
+            if (resolvedTargetQuantity <= currentQuantity)
+            {
+                message = $"NPC shop recharge request for {entry.ItemName} did not change quantity ({currentQuantity.ToString(CultureInfo.InvariantCulture)} already available).";
+                return false;
+            }
+
+            int refillQuantity = resolvedTargetQuantity - currentQuantity;
+            if (!inventory.CanAcceptItem(entry.InventoryType, entry.ItemId, refillQuantity, InventoryItemMetadataResolver.ResolveMaxStack(entry.InventoryType)))
+            {
+                message = $"NPC shop recharge request for {entry.ItemName} could not fit {refillQuantity.ToString(CultureInfo.InvariantCulture)} item(s) into {entry.InventoryType}.";
+                return false;
+            }
+
+            double unitPrice = entry.UnitPrice ?? 0d;
+            long mesosCost = (long)Math.Ceiling(Math.Max(0d, unitPrice) * refillQuantity);
+            if (mesosCost > 0 && !inventory.TryConsumeMeso(mesosCost))
+            {
+                message = $"NPC shop recharge request for {entry.ItemName} failed because mesos ({mesosCost.ToString(CultureInfo.InvariantCulture)}) were insufficient.";
+                return false;
+            }
+
+            inventory.AddItem(entry.InventoryType, entry.ItemId, texture: null, quantity: refillQuantity);
+
+            _activePane = "Recharge";
+            StatusMessage = $"Applied local NPC-shop recharge mutation for {entry.ItemName}: {currentQuantity.ToString(CultureInfo.InvariantCulture)} -> {resolvedTargetQuantity.ToString(CultureInfo.InvariantCulture)} (mesos {mesosCost.ToString(CultureInfo.InvariantCulture)}).";
+            AppendNote(StatusMessage);
+            message = StatusMessage;
+            return true;
+        }
+
         private bool TryApplyOpenPacket(byte[] payload, out string message)
         {
             IsOpen = true;
@@ -402,6 +575,43 @@ namespace HaCreator.MapSimulator.Interaction
             _lastTemplateStringPoolId = stringPoolId;
             StatusMessage = statusMessage;
             _lastTemplateNote = $"The simulator tracked the client notice branch for StringPool 0x{stringPoolId.ToString("X", CultureInfo.InvariantCulture)}.";
+        }
+
+        private ShopItemEntry FindBuyEntry(int itemId)
+        {
+            for (int i = 0; i < _buyItems.Count; i++)
+            {
+                if (_buyItems[i].ItemId == itemId)
+                {
+                    return _buyItems[i];
+                }
+            }
+
+            return null;
+        }
+
+        private ShopItemEntry FindRechargeEntry(int itemId)
+        {
+            for (int i = 0; i < _rechargeItems.Count; i++)
+            {
+                if (_rechargeItems[i].ItemId == itemId)
+                {
+                    return _rechargeItems[i];
+                }
+            }
+
+            return null;
+        }
+
+        private static int ResolveSellPrice(int itemId)
+        {
+            InventoryItemTooltipMetadata metadata = InventoryItemMetadataResolver.ResolveTooltipMetadata(itemId);
+            if (metadata?.Price is int listedPrice && listedPrice > 0)
+            {
+                return Math.Max(1, listedPrice / 2);
+            }
+
+            return 1;
         }
 
         private string DescribePacket()

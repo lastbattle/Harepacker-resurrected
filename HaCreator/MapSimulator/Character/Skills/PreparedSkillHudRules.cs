@@ -139,6 +139,36 @@ namespace HaCreator.MapSimulator.Character.Skills
             return ResolveGaugeDuration(skillId);
         }
 
+        public static void ResolveRemotePreparedSkillPhases(
+            bool isKeydownSkill,
+            bool isHolding,
+            int durationMs,
+            int maxHoldDurationMs,
+            bool explicitAutoEnterHold,
+            out int activeDurationMs,
+            out int prepareDurationMs,
+            out bool autoEnterHold)
+        {
+            int normalizedDurationMs = Math.Max(0, durationMs);
+            int normalizedMaxHoldDurationMs = Math.Max(0, maxHoldDurationMs);
+
+            autoEnterHold = !isHolding
+                && isKeydownSkill
+                && normalizedDurationMs > 0
+                && normalizedMaxHoldDurationMs > 0
+                && (explicitAutoEnterHold || normalizedMaxHoldDurationMs != normalizedDurationMs);
+
+            if (autoEnterHold)
+            {
+                prepareDurationMs = normalizedDurationMs;
+                activeDurationMs = normalizedMaxHoldDurationMs;
+                return;
+            }
+
+            prepareDurationMs = 0;
+            activeDurationMs = normalizedDurationMs;
+        }
+
         public static bool UsesChargeDamageScaling(int skillId) => skillId is 22121000 or 22151001 or MonkeyWaveSkillId;
 
         public static bool ArmsAtFullStrengthOnCriticalHit(int skillId) => skillId == MonkeyWaveSkillId;

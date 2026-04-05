@@ -73,10 +73,19 @@ namespace HaCreator.MapSimulator.Effects
         private const int PacketTypeUserEnterField = 179;
         private const int PacketTypeUserLeaveField = 180;
         private const int PacketTypeUserMove = 210;
+        private const int PacketTypeItemEffect = 215;
         private const int PacketTypeSetActivePortableChair = 222;
         private const int PacketTypeAvatarModified = 223;
         private const int PacketTypeTemporaryStatSet = 225;
         private const int PacketTypeTemporaryStatReset = 226;
+        private const int PacketTypeCoupleRecordAdd = -1101;
+        private const int PacketTypeCoupleRecordRemove = -1102;
+        private const int PacketTypeFriendRecordAdd = -1103;
+        private const int PacketTypeFriendRecordRemove = -1104;
+        private const int PacketTypeMarriageRecordAdd = -1105;
+        private const int PacketTypeMarriageRecordRemove = -1106;
+        private const int PacketTypeNewYearCardRecordAdd = -1107;
+        private const int PacketTypeNewYearCardRecordRemove = -1108;
         private const int RemoteDelayedLoadWindowMs = 100;
         private const int RemoteDelayedLoadCooltimeMs = 1000;
 
@@ -288,6 +297,8 @@ namespace HaCreator.MapSimulator.Effects
                         return TryApplyRemoteLeavePacket(payload, out errorMessage);
                     case PacketTypeUserMove:
                         return TryApplyRemoteMovePacket(payload, currentTimeMs, out errorMessage);
+                    case PacketTypeItemEffect:
+                        return TryApplyRemoteItemEffectPacket(payload, out errorMessage);
                     case PacketTypeSetActivePortableChair:
                         return TryApplyRemoteChairPacket(payload, out errorMessage);
                     case PacketTypeAvatarModified:
@@ -296,6 +307,16 @@ namespace HaCreator.MapSimulator.Effects
                         return TryApplyRemoteTemporaryStatSetPacket(payload, out errorMessage);
                     case PacketTypeTemporaryStatReset:
                         return TryApplyRemoteTemporaryStatResetPacket(payload, out errorMessage);
+                    case PacketTypeCoupleRecordAdd:
+                    case PacketTypeFriendRecordAdd:
+                    case PacketTypeMarriageRecordAdd:
+                    case PacketTypeNewYearCardRecordAdd:
+                        return TryApplyRemoteRelationshipRecordAddPacket(packetType, payload, out errorMessage);
+                    case PacketTypeCoupleRecordRemove:
+                    case PacketTypeFriendRecordRemove:
+                    case PacketTypeMarriageRecordRemove:
+                    case PacketTypeNewYearCardRecordRemove:
+                        return TryApplyRemoteRelationshipRecordRemovePacket(packetType, payload, out errorMessage);
                     default:
                         errorMessage = $"Unsupported wedding packet type: {packetType}";
                         return false;
@@ -1147,6 +1168,191 @@ namespace HaCreator.MapSimulator.Effects
             return true;
         }
 
+        private bool TryApplyRemoteItemEffectPacket(byte[] payload, out string errorMessage)
+        {
+            errorMessage = null;
+            if (!RemoteUserPacketCodec.TryParseItemEffect(payload, out RemoteUserItemEffectPacket packet, out errorMessage))
+            {
+                return false;
+            }
+
+            if (!TryResolveParticipantForTemporaryStats(packet.CharacterId, out WeddingRemoteParticipant participant, out errorMessage))
+            {
+                return false;
+            }
+
+            RemoteUserAvatarModifiedPacket state = participant.AvatarModifiedState
+                ?? CreateDefaultAvatarModifiedState(packet.CharacterId);
+            if (packet.RelationshipType == RemoteRelationshipOverlayType.Generic)
+            {
+                state = state with
+                {
+                    CarryItemEffect = packet.ItemId
+                };
+            }
+            else
+            {
+                RemoteUserRelationshipRecord relationshipRecord = new(
+                    IsActive: packet.ItemId.HasValue && packet.ItemId.Value > 0,
+                    ItemId: packet.ItemId ?? 0,
+                    ItemSerial: null,
+                    PairItemSerial: null,
+                    CharacterId: packet.CharacterId,
+                    PairCharacterId: packet.PairCharacterId);
+                state = ApplyRelationshipRecordToAvatarModifiedState(state, packet.RelationshipType, relationshipRecord);
+            }
+
+            StoreAvatarModifiedState(participant, state);
+            ApplyAvatarModifiedStateToBuild(participant.Build, state);
+            return true;
+        }
+
+        private bool TryApplyRemoteRelationshipRecordAddPacket(int packetType, byte[] payload, out string errorMessage)
+        {
+            errorMessage = null;
+            if (!RemoteUserPacketCodec.TryParseRelationshipRecordAdd(packetType, payload, out RemoteUserRelationshipRecordPacket packet, out errorMessage))
+            {
+                return false;
+            }
+
+            int characterId = packet.RelationshipRecord.CharacterId ?? 0;
+            if (characterId <= 0)
+            {
+                errorMessage = $"{packet.RelationshipType} relationship add packet does not contain a valid owner character ID.";
+                return false;
+            }
+
+            if (!TryResolveParticipantForTemporaryStats(characterId, out WeddingRemoteParticipant participant, out errorMessage))
+            {
+                return false;
+            }
+
+            RemoteUserAvatarModifiedPacket state = participant.AvatarModifiedState
+                ?? CreateDefaultAvatarModifiedState(characterId);
+            state = ApplyRelationshipRecordToAvatarModifiedState(state, packet.RelationshipType, packet.RelationshipRecord);
+            StoreAvatarModifiedState(participant, state);
+            return true;
+        }
+
+        private bool TryApplyRemoteRelationshipRecordRemovePacket(int packetType, byte[] payload, out string errorMessage)
+        {
+            errorMessage = null;
+            if (!RemoteUserPacketCodec.TryParseRelationshipRecordRemove(packetType, payload, out RemoteUserRelationshipRecordRemovePacket packet, out errorMessage))
+            {
+                return false;
+            }
+
+            int affectedCount = 0;
+            foreach (WeddingRemoteParticipant participant in _participantActors.Values.Concat(_audienceActors.Values))
+            {
+                if (!participant.AvatarModifiedState.HasValue)
+                {
+                    continue;
+                }
+
+                if (!ShouldClearRelationshipRecord(packet, participant, out RemoteUserRelationshipRecord currentRecord))
+                {
+                    continue;
+                }
+
+                RemoteUserAvatarModifiedPacket updatedState = ApplyRelationshipRecordToAvatarModifiedState(
+                    participant.AvatarModifiedState.Value,
+                    packet.RelationshipType,
+                    currentRecord with { IsActive = false, ItemId = 0 });
+                StoreAvatarModifiedState(participant, updatedState);
+                affectedCount++;
+            }
+
+            if (affectedCount == 0)
+            {
+                errorMessage = packet.CharacterId.HasValue
+                    ? $"No wedding remote actor matched {packet.RelationshipType} remove character {packet.CharacterId.Value}."
+                    : packet.ItemSerial.HasValue
+                        ? $"No wedding remote actor matched {packet.RelationshipType} remove serial {packet.ItemSerial.Value}."
+                        : $"No wedding remote actor matched {packet.RelationshipType} remove request.";
+                return false;
+            }
+
+            return true;
+        }
+
+        private static bool ShouldClearRelationshipRecord(
+            RemoteUserRelationshipRecordRemovePacket removePacket,
+            WeddingRemoteParticipant participant,
+            out RemoteUserRelationshipRecord currentRecord)
+        {
+            currentRecord = GetRelationshipRecord(
+                participant.AvatarModifiedState.Value,
+                removePacket.RelationshipType);
+            if (!currentRecord.IsActive)
+            {
+                return false;
+            }
+
+            if (removePacket.CharacterId.HasValue && removePacket.CharacterId.Value > 0)
+            {
+                if (removePacket.CharacterId.Value == participant.CharacterId)
+                {
+                    return true;
+                }
+
+                return currentRecord.PairCharacterId.HasValue
+                    && currentRecord.PairCharacterId.Value == removePacket.CharacterId.Value;
+            }
+
+            if (removePacket.ItemSerial.HasValue)
+            {
+                long itemSerial = removePacket.ItemSerial.Value;
+                return (currentRecord.ItemSerial.HasValue && currentRecord.ItemSerial.Value == itemSerial)
+                    || (currentRecord.PairItemSerial.HasValue && currentRecord.PairItemSerial.Value == itemSerial);
+            }
+
+            return true;
+        }
+
+        private static RemoteUserAvatarModifiedPacket CreateDefaultAvatarModifiedState(int characterId)
+        {
+            return new RemoteUserAvatarModifiedPacket(
+                CharacterId: characterId,
+                AvatarLook: null,
+                Speed: null,
+                CarryItemEffect: null,
+                CoupleRecord: default,
+                FriendshipRecord: default,
+                MarriageRecord: default,
+                NewYearCardRecord: default,
+                CompletedSetItemId: 0);
+        }
+
+        private static RemoteUserAvatarModifiedPacket ApplyRelationshipRecordToAvatarModifiedState(
+            RemoteUserAvatarModifiedPacket state,
+            RemoteRelationshipOverlayType relationshipType,
+            RemoteUserRelationshipRecord relationshipRecord)
+        {
+            return relationshipType switch
+            {
+                RemoteRelationshipOverlayType.Couple => state with { CoupleRecord = relationshipRecord },
+                RemoteRelationshipOverlayType.Friendship => state with { FriendshipRecord = relationshipRecord },
+                RemoteRelationshipOverlayType.Marriage => state with { MarriageRecord = relationshipRecord },
+                RemoteRelationshipOverlayType.NewYearCard => state with { NewYearCardRecord = relationshipRecord },
+                _ => state
+            };
+        }
+
+        private static RemoteUserRelationshipRecord GetRelationshipRecord(
+            RemoteUserAvatarModifiedPacket state,
+            RemoteRelationshipOverlayType relationshipType)
+        {
+            return relationshipType switch
+            {
+                RemoteRelationshipOverlayType.Couple => state.CoupleRecord,
+                RemoteRelationshipOverlayType.Friendship => state.FriendshipRecord,
+                RemoteRelationshipOverlayType.Marriage => state.MarriageRecord,
+                RemoteRelationshipOverlayType.NewYearCard => state.NewYearCardRecord,
+                _ => default
+            };
+        }
+
         private static void ApplyParticipantTemporaryStatPresentation(WeddingRemoteParticipant participant)
         {
             if (participant == null)
@@ -1404,10 +1610,19 @@ namespace HaCreator.MapSimulator.Effects
                 PacketTypeUserEnterField => "userenter (179)",
                 PacketTypeUserLeaveField => "userleave (180)",
                 PacketTypeUserMove => "usermove (210)",
+                PacketTypeItemEffect => "itemeffect (215)",
                 PacketTypeSetActivePortableChair => "chair (222)",
                 PacketTypeAvatarModified => "avatarmodified (223)",
                 PacketTypeTemporaryStatSet => "tempset (225)",
                 PacketTypeTemporaryStatReset => "tempreset (226)",
+                PacketTypeCoupleRecordAdd => "couplerecordadd (-1101)",
+                PacketTypeCoupleRecordRemove => "couplerecordremove (-1102)",
+                PacketTypeFriendRecordAdd => "friendrecordadd (-1103)",
+                PacketTypeFriendRecordRemove => "friendrecordremove (-1104)",
+                PacketTypeMarriageRecordAdd => "marriagerecordadd (-1105)",
+                PacketTypeMarriageRecordRemove => "marriagerecordremove (-1106)",
+                PacketTypeNewYearCardRecordAdd => "newyearcardrecordadd (-1107)",
+                PacketTypeNewYearCardRecordRemove => "newyearcardrecordremove (-1108)",
                 _ => packetType.ToString(CultureInfo.InvariantCulture)
             };
         }

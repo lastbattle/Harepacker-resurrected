@@ -113,7 +113,11 @@ namespace HaCreator.MapSimulator.Pools
         };
         private static readonly int[] RemoteBarrierSkillIds =
         {
-            21120007
+            21120007,
+            23111005,
+            20011010,
+            20001010,
+            10001010
         };
         private static readonly Color RemoteShadowPartnerTint = new(255, 255, 255, 150);
         private static readonly EquipSlot[] BattlefieldAppearanceSlots =
@@ -163,6 +167,7 @@ namespace HaCreator.MapSimulator.Pools
         private readonly Dictionary<int, RemoteUserActor> _actorsById = new();
         private readonly Dictionary<string, int> _actorIdsByName = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<int, PortableChairPairRecord> _portableChairPairRecordsByCharacterId = new();
+        private readonly Dictionary<RemoteRelationshipOverlayType, Dictionary<int, RemoteUserRelationshipRecord>> _relationshipRecordsByOwnerCharacterId = new();
         private readonly List<RemoteUserActor> _visibleWorldActorsBuffer = new();
         private readonly List<StatusBarPreparedSkillRenderData> _preparedSkillWorldOverlayBuffer = new();
         private readonly List<MinimapUI.TrackedUserMarker> _helperMarkerBuffer = new();
@@ -183,6 +188,7 @@ namespace HaCreator.MapSimulator.Pools
         {
             _loader = loader;
             _skillLoader = skillLoader;
+            EnsureRelationshipRecordTablesInitialized();
         }
 
         public void Clear()
@@ -196,6 +202,7 @@ namespace HaCreator.MapSimulator.Pools
             _actorsById.Clear();
             _actorIdsByName.Clear();
             _portableChairPairRecordsByCharacterId.Clear();
+            ClearRelationshipRecordTables();
         }
 
         public void RemoveBySourceTag(string sourceTag)
@@ -319,6 +326,7 @@ namespace HaCreator.MapSimulator.Pools
                 SyncTemporaryStatPresentation(actor);
                 RegisterMeleeAfterImage(actor, 0, actor.ActionName, Environment.TickCount, 10, 0);
                 UpdateNameLookup(previousName, actor.Name, characterId);
+                SyncRelationshipOverlaysFromRecords(actor.CharacterId, Environment.TickCount);
                 return true;
             }
 
@@ -340,6 +348,7 @@ namespace HaCreator.MapSimulator.Pools
                 created.Build?.ActivePortableChair,
                 created.PreferredPortableChairPairCharacterId);
             SyncTemporaryStatPresentation(created);
+            SyncRelationshipOverlaysFromRecords(created.CharacterId, Environment.TickCount);
             return true;
         }
 
@@ -983,15 +992,29 @@ namespace HaCreator.MapSimulator.Pools
             int? pairCharacterId = packet.RelationshipType == RemoteRelationshipOverlayType.Marriage
                 ? ResolveMarriagePairCharacterId(ownerCharacterId.Value, packet.RelationshipRecord)
                 : packet.RelationshipRecord.PairCharacterId;
+
+            EnsureRelationshipRecordTablesInitialized();
+            RemoteUserRelationshipRecord normalizedRecord = packet.RelationshipRecord with
+            {
+                PairCharacterId = pairCharacterId
+            };
+            GetRelationshipRecordTable(packet.RelationshipType)[ownerCharacterId.Value] = normalizedRecord;
+
+            if (!_actorsById.ContainsKey(ownerCharacterId.Value))
+            {
+                message = $"Queued remote user {ownerCharacterId.Value} {packet.RelationshipType} relationship record for deferred actor sync.";
+                return true;
+            }
+
             bool applied = TrySetItemEffect(
                 ownerCharacterId.Value,
                 packet.RelationshipType,
-                packet.RelationshipRecord.ItemId,
+                normalizedRecord.ItemId,
                 pairCharacterId,
                 currentTime,
                 out message,
-                packet.RelationshipRecord.ItemSerial,
-                packet.RelationshipRecord.PairItemSerial);
+                normalizedRecord.ItemSerial,
+                normalizedRecord.PairItemSerial);
             if (applied)
             {
                 message = $"Remote user {ownerCharacterId.Value} {packet.RelationshipType} relationship record applied.";
@@ -1005,19 +1028,35 @@ namespace HaCreator.MapSimulator.Pools
             out string message)
         {
             message = null;
-            int removedCount = 0;
-            foreach (RemoteUserActor actor in _actorsById.Values)
+            EnsureRelationshipRecordTablesInitialized();
+            Dictionary<int, RemoteUserRelationshipRecord> recordTable = GetRelationshipRecordTable(packet.RelationshipType);
+            List<int> removedOwnerCharacterIds = new();
+            foreach (KeyValuePair<int, RemoteUserRelationshipRecord> entry in recordTable.ToArray())
             {
-                if (!actor.RelationshipOverlays.TryGetValue(packet.RelationshipType, out RemoteRelationshipOverlayState overlay)
-                    || !DoesRelationshipRecordRemovalMatch(packet, actor.CharacterId, overlay))
+                int ownerCharacterId = entry.Key;
+                RemoteUserRelationshipRecord record = entry.Value;
+                int? candidatePairCharacterId = packet.RelationshipType == RemoteRelationshipOverlayType.Marriage
+                    ? ResolveMarriagePairCharacterId(ownerCharacterId, record)
+                    : record.PairCharacterId;
+                if (!DoesRelationshipRecordRemovalMatch(
+                        packet,
+                        ownerCharacterId,
+                        record.ItemSerial,
+                        record.PairItemSerial,
+                        candidatePairCharacterId))
                 {
                     continue;
                 }
 
-                actor.RelationshipOverlays.Remove(packet.RelationshipType);
-                removedCount++;
+                recordTable.Remove(ownerCharacterId);
+                removedOwnerCharacterIds.Add(ownerCharacterId);
+                if (_actorsById.TryGetValue(ownerCharacterId, out RemoteUserActor ownerActor))
+                {
+                    ownerActor.RelationshipOverlays.Remove(packet.RelationshipType);
+                }
             }
 
+            int removedCount = removedOwnerCharacterIds.Count;
             if (removedCount == 0)
             {
                 string discriminator = packet.ItemSerial.HasValue
@@ -2517,10 +2556,10 @@ namespace HaCreator.MapSimulator.Pools
         {
             if (_actorsById.Count == 0)
             {
-                return "Remote user pool empty.";
+                return $"Remote user pool empty. {DescribeRelationshipRecordTableStatus()}";
             }
 
-            return $"Remote user pool active, count={_actorsById.Count}, users={string.Join("; ", _actorsById.Values.OrderBy(static value => value.CharacterId).Select(static value => value.Describe()))}";
+            return $"Remote user pool active, count={_actorsById.Count}, users={string.Join("; ", _actorsById.Values.OrderBy(static value => value.CharacterId).Select(static value => value.Describe()))}. {DescribeRelationshipRecordTableStatus()}";
         }
 
         private void AssignDriverPassengerLink(int driverId, int passengerId)
@@ -2586,11 +2625,33 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
+            EnsureRelationshipRecordTablesInitialized();
+            Dictionary<int, RemoteUserRelationshipRecord> recordTable = GetRelationshipRecordTable(relationshipType);
+            if (relationshipRecord.IsActive)
+            {
+                int? pairCharacterId = relationshipType == RemoteRelationshipOverlayType.Marriage
+                    ? ResolveMarriagePairCharacterId(actor.CharacterId, relationshipRecord)
+                    : relationshipRecord.PairCharacterId;
+                recordTable[actor.CharacterId] = relationshipRecord with
+                {
+                    CharacterId = actor.CharacterId,
+                    PairCharacterId = pairCharacterId
+                };
+            }
+            else
+            {
+                recordTable.Remove(actor.CharacterId);
+            }
+
             return TrySetItemEffect(
                 actor.CharacterId,
                 relationshipType,
                 relationshipRecord.IsActive ? relationshipRecord.ItemId : null,
-                relationshipRecord.IsActive ? relationshipRecord.PairCharacterId : null,
+                relationshipRecord.IsActive
+                    ? (relationshipType == RemoteRelationshipOverlayType.Marriage
+                        ? ResolveMarriagePairCharacterId(actor.CharacterId, relationshipRecord)
+                        : relationshipRecord.PairCharacterId)
+                    : null,
                 currentTime,
                 out message,
                 relationshipRecord.IsActive ? relationshipRecord.ItemSerial : null,
@@ -2621,12 +2682,100 @@ namespace HaCreator.MapSimulator.Pools
             return relationshipRecord.PairCharacterId;
         }
 
+        private void SyncRelationshipOverlaysFromRecords(int ownerCharacterId, int currentTime)
+        {
+            if (!_actorsById.TryGetValue(ownerCharacterId, out RemoteUserActor actor))
+            {
+                return;
+            }
+
+            SyncRelationshipOverlayFromRecord(actor, RemoteRelationshipOverlayType.Couple, currentTime);
+            SyncRelationshipOverlayFromRecord(actor, RemoteRelationshipOverlayType.Friendship, currentTime);
+            SyncRelationshipOverlayFromRecord(actor, RemoteRelationshipOverlayType.NewYearCard, currentTime);
+            SyncRelationshipOverlayFromRecord(actor, RemoteRelationshipOverlayType.Marriage, currentTime);
+        }
+
+        private void SyncRelationshipOverlayFromRecord(RemoteUserActor actor, RemoteRelationshipOverlayType relationshipType, int currentTime)
+        {
+            Dictionary<int, RemoteUserRelationshipRecord> recordTable = GetRelationshipRecordTable(relationshipType);
+            if (!recordTable.TryGetValue(actor.CharacterId, out RemoteUserRelationshipRecord record)
+                || !record.IsActive
+                || record.ItemId <= 0)
+            {
+                actor.RelationshipOverlays.Remove(relationshipType);
+                return;
+            }
+
+            int? pairCharacterId = relationshipType == RemoteRelationshipOverlayType.Marriage
+                ? ResolveMarriagePairCharacterId(actor.CharacterId, record)
+                : record.PairCharacterId;
+            TrySetItemEffect(
+                actor.CharacterId,
+                relationshipType,
+                record.ItemId,
+                pairCharacterId,
+                currentTime,
+                out _,
+                record.ItemSerial,
+                record.PairItemSerial);
+        }
+
+        private void EnsureRelationshipRecordTablesInitialized()
+        {
+            EnsureRelationshipRecordTable(RemoteRelationshipOverlayType.Couple);
+            EnsureRelationshipRecordTable(RemoteRelationshipOverlayType.Friendship);
+            EnsureRelationshipRecordTable(RemoteRelationshipOverlayType.NewYearCard);
+            EnsureRelationshipRecordTable(RemoteRelationshipOverlayType.Marriage);
+        }
+
+        private void EnsureRelationshipRecordTable(RemoteRelationshipOverlayType relationshipType)
+        {
+            if (!_relationshipRecordsByOwnerCharacterId.ContainsKey(relationshipType))
+            {
+                _relationshipRecordsByOwnerCharacterId[relationshipType] = new Dictionary<int, RemoteUserRelationshipRecord>();
+            }
+        }
+
+        private void ClearRelationshipRecordTables()
+        {
+            foreach (Dictionary<int, RemoteUserRelationshipRecord> table in _relationshipRecordsByOwnerCharacterId.Values)
+            {
+                table.Clear();
+            }
+        }
+
+        private Dictionary<int, RemoteUserRelationshipRecord> GetRelationshipRecordTable(RemoteRelationshipOverlayType relationshipType)
+        {
+            EnsureRelationshipRecordTable(relationshipType);
+            return _relationshipRecordsByOwnerCharacterId[relationshipType];
+        }
+
+        private string DescribeRelationshipRecordTableStatus()
+        {
+            EnsureRelationshipRecordTablesInitialized();
+            int coupleCount = GetRelationshipRecordTable(RemoteRelationshipOverlayType.Couple).Count;
+            int friendshipCount = GetRelationshipRecordTable(RemoteRelationshipOverlayType.Friendship).Count;
+            int newYearCount = GetRelationshipRecordTable(RemoteRelationshipOverlayType.NewYearCard).Count;
+            int marriageCount = GetRelationshipRecordTable(RemoteRelationshipOverlayType.Marriage).Count;
+            return $"Relationship record tables: couple={coupleCount}, friendship={friendshipCount}, newYear={newYearCount}, marriage={marriageCount}.";
+        }
+
         private static bool DoesRelationshipRecordRemovalMatch(
             RemoteUserRelationshipRecordRemovePacket packet,
             int ownerCharacterId,
-            RemoteRelationshipOverlayState overlay)
+            long? itemSerial,
+            long? pairItemSerial,
+            int? pairCharacterId)
         {
             if (packet.CharacterId.HasValue && packet.CharacterId.Value > 0 && packet.CharacterId.Value == ownerCharacterId)
+            {
+                return true;
+            }
+
+            if (packet.CharacterId.HasValue
+                && packet.CharacterId.Value > 0
+                && pairCharacterId.HasValue
+                && pairCharacterId.Value == packet.CharacterId.Value)
             {
                 return true;
             }
@@ -2636,8 +2785,8 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            long itemSerial = packet.ItemSerial.Value;
-            return overlay.ItemSerial == itemSerial || overlay.PairItemSerial == itemSerial;
+            long packetItemSerial = packet.ItemSerial.Value;
+            return itemSerial == packetItemSerial || pairItemSerial == packetItemSerial;
         }
 
         private static void DrawOutlinedText(SpriteBatch spriteBatch, SpriteFont font, string text, Vector2 position, Color shadowColor, Color textColor)
@@ -3481,6 +3630,12 @@ namespace HaCreator.MapSimulator.Pools
             int preferredSkillId = jobId switch
             {
                 >= 2110 and <= 2112 => 21120007,
+                >= 2310 and <= 2312 => 23111005,
+                >= 2200 and <= 2218 => 20011010,
+                >= 2100 and <= 2109 => 20001010,
+                >= 1000 and <= 1512 => 10001010,
+                2001 => 20011010,
+                2000 => 20001010,
                 _ => 0
             };
 

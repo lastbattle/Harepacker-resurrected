@@ -33,11 +33,11 @@ namespace HaCreator.MapSimulator.Interaction
             protected abstract string SupportedPacketSummary { get; }
             protected virtual string ForwardingSummary => "No additional owner forwarding.";
 
-            internal bool TryDispatch(PacketReader reader, byte packetType, int tickCount, out string message)
+            internal bool TryDispatch(byte[] payload, PacketReader reader, byte packetType, int tickCount, out string message)
             {
                 _dispatchCount++;
                 bool forwarded = false;
-                if (!TryDispatchCore(reader, packetType, out message, out forwarded))
+                if (!TryDispatchCore(payload, reader, packetType, out message, out forwarded))
                 {
                     _lastPacketType = packetType;
                     _lastDispatchDetail = message;
@@ -63,7 +63,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return $"{OwnerName} dispatches {SupportedPacketSummary} | forwarding={ForwardingSummary} | dispatches={_dispatchCount}, forwarded={_forwardCount}, lastPacket={lastPacket}, lastDetail={lastDetail} | last={lastSummary}";
             }
 
-            protected abstract bool TryDispatchCore(PacketReader reader, byte packetType, out string message, out bool forwarded);
+            protected abstract bool TryDispatchCore(byte[] payload, PacketReader reader, byte packetType, out string message, out bool forwarded);
         }
 
         private sealed class PersonalShopDialogPacketOwner : ShopDialogPacketOwner
@@ -76,7 +76,7 @@ namespace HaCreator.MapSimulator.Interaction
             internal override string OwnerName => "CPersonalShopDlg::OnPacket";
             protected override string SupportedPacketSummary => "24 buy-result, 25 base->CMiniRoomBaseDlg, 26 sold-item, 27 move-to-inventory";
 
-            protected override bool TryDispatchCore(PacketReader reader, byte packetType, out string message, out bool forwarded)
+            protected override bool TryDispatchCore(byte[] payload, PacketReader reader, byte packetType, out string message, out bool forwarded)
             {
                 forwarded = packetType == PersonalShopBasePacketType;
                 return Runtime.TryDispatchPersonalShopPacket(reader, packetType, out message);
@@ -96,7 +96,7 @@ namespace HaCreator.MapSimulator.Interaction
             protected override string SupportedPacketSummary => "40 arrange, 42 withdraw-all, 44 withdraw-money, 46 visit-list, 47 blacklist, then forwards shared shop packets to CPersonalShopDlg::OnPacket";
             protected override string ForwardingSummary => "CEntrustedShopDlg::OnPacket -> CPersonalShopDlg::OnPacket for shared shop packet types.";
 
-            protected override bool TryDispatchCore(PacketReader reader, byte packetType, out string message, out bool forwarded)
+            protected override bool TryDispatchCore(byte[] payload, PacketReader reader, byte packetType, out string message, out bool forwarded)
             {
                 bool handled;
                 string detail;
@@ -169,10 +169,10 @@ namespace HaCreator.MapSimulator.Interaction
             internal override string OwnerName => "CTradingRoomDlg::OnPacket";
             protected override string SupportedPacketSummary => "15 put-item, 16 put-money, 17 trade, 21 exceed-limit";
 
-            protected override bool TryDispatchCore(PacketReader reader, byte packetType, out string message, out bool forwarded)
+            protected override bool TryDispatchCore(byte[] payload, PacketReader reader, byte packetType, out string message, out bool forwarded)
             {
                 forwarded = false;
-                return Runtime.TryDispatchTradingRoomPacket(Array.Empty<byte>(), reader, packetType, out message);
+                return Runtime.TryDispatchTradingRoomPacket(payload, reader, packetType, out message);
             }
         }
     }

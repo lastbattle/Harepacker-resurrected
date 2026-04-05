@@ -26,6 +26,7 @@ namespace HaCreator.MapSimulator
         private const int AnimationDisplayerNewYearUpdateCount = 3;
         private const int AnimationDisplayerNewYearUpdateNextMs = 100;
         private const int AnimationDisplayerFireCrackerUpdateNextMs = 200;
+        private static readonly string[] AnimationDisplayerNewYearSoundImageCandidates = { "Field", "Game", "MiniGame", "UI" };
         private static readonly (int UpdateIntervalMs, int UpdateCount)[] AnimationDisplayerFireCrackerBurstSchedule =
         {
             (200, 1),
@@ -191,7 +192,8 @@ namespace HaCreator.MapSimulator
                 updateIntervalMs: AnimationDisplayerNewYearUpdateIntervalMs,
                 updateCount: AnimationDisplayerNewYearUpdateCount,
                 updateNextMs: AnimationDisplayerNewYearUpdateNextMs,
-                durationMs: AnimationDisplayerTransientLayerDurationMs) >= 0;
+                durationMs: AnimationDisplayerTransientLayerDurationMs,
+                onSpawn: () => TryPlayAnimationDisplayerNewYearTransientSound(weatherPath: null)) >= 0;
         }
 
         private bool TryRegisterAnimationDisplayerFireCrackerAnimation(Rectangle area)
@@ -220,7 +222,8 @@ namespace HaCreator.MapSimulator
             int updateIntervalMs,
             int updateCount,
             int updateNextMs,
-            int durationMs)
+            int durationMs,
+            Action onSpawn = null)
         {
             if (!TryGetAnimationDisplayerFrames(cacheKey, effectUol, out List<IDXObject> frames))
             {
@@ -234,7 +237,8 @@ namespace HaCreator.MapSimulator
                 updateCount,
                 updateNextMs,
                 durationMs,
-                currTickCount);
+                currTickCount,
+                onSpawn);
         }
 
         private bool TryRegisterAnimationDisplayerUserState(int ownerCharacterId, Func<Vector2> getPosition)
@@ -617,7 +621,8 @@ namespace HaCreator.MapSimulator
                         AnimationDisplayerNewYearUpdateIntervalMs,
                         AnimationDisplayerNewYearUpdateCount,
                         AnimationDisplayerNewYearUpdateNextMs,
-                        AnimationDisplayerTransientLayerDurationMs);
+                        AnimationDisplayerTransientLayerDurationMs,
+                        onSpawn: () => TryPlayAnimationDisplayerNewYearTransientSound(weatherPath));
                     if (newYearId >= 0)
                     {
                         _packetOwnedAnimationDisplayerAreaAnimationIds.Add(newYearId);
@@ -698,6 +703,107 @@ namespace HaCreator.MapSimulator
         internal static IReadOnlyList<(int UpdateIntervalMs, int UpdateCount)> GetAnimationDisplayerFireCrackerBurstSchedule()
         {
             return AnimationDisplayerFireCrackerBurstSchedule;
+        }
+
+        private void TryPlayAnimationDisplayerNewYearTransientSound(string weatherPath)
+        {
+            string[] candidates = BuildAnimationDisplayerNewYearSoundCandidates(weatherPath);
+            for (int i = 0; i < candidates.Length; i++)
+            {
+                if (TryPlayPacketOwnedWzSound(candidates[i], defaultImageName: "Field.img", out _, out _))
+                {
+                    return;
+                }
+            }
+        }
+
+        internal static string[] BuildAnimationDisplayerNewYearSoundCandidates(string weatherPath)
+        {
+            var candidates = new List<string>();
+            AddAnimationDisplayerNewYearSoundCandidate(candidates, "Field/newyear");
+            AddAnimationDisplayerNewYearSoundCandidate(candidates, "Field/weather/newyear");
+            AddAnimationDisplayerNewYearSoundCandidate(candidates, "Game/newyear");
+
+            string normalizedWeatherPath = NormalizeAnimationDisplayerPath(weatherPath);
+            if (string.IsNullOrWhiteSpace(normalizedWeatherPath))
+            {
+                return candidates.ToArray();
+            }
+
+            string[] segments = normalizedWeatherPath.Split('/');
+            string lastSegment = segments.Length > 0 ? segments[^1] : null;
+            string secondLastSegment = segments.Length > 1 ? segments[^2] : null;
+            string imageSegment = segments.Length > 1 ? NormalizeAnimationDisplayerImageNameSegment(segments[1]) : null;
+
+            if (!string.IsNullOrWhiteSpace(lastSegment))
+            {
+                AddAnimationDisplayerNewYearSoundCandidate(candidates, $"Field/{lastSegment}");
+                AddAnimationDisplayerNewYearSoundCandidate(candidates, $"Field/weather/{lastSegment}");
+                AddAnimationDisplayerNewYearSoundCandidate(candidates, $"Game/{lastSegment}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(secondLastSegment) && !string.IsNullOrWhiteSpace(lastSegment))
+            {
+                AddAnimationDisplayerNewYearSoundCandidate(candidates, $"Field/{secondLastSegment}/{lastSegment}");
+                AddAnimationDisplayerNewYearSoundCandidate(candidates, $"Game/{secondLastSegment}/{lastSegment}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(imageSegment) && !string.IsNullOrWhiteSpace(lastSegment))
+            {
+                AddAnimationDisplayerNewYearSoundCandidate(candidates, $"Field/{imageSegment}/{lastSegment}");
+                AddAnimationDisplayerNewYearSoundCandidate(candidates, $"Field/{imageSegment}/weather/{lastSegment}");
+                AddAnimationDisplayerNewYearSoundCandidate(candidates, $"Game/{imageSegment}/{lastSegment}");
+            }
+
+            for (int i = 0; i < AnimationDisplayerNewYearSoundImageCandidates.Length; i++)
+            {
+                string imageName = AnimationDisplayerNewYearSoundImageCandidates[i];
+                if (!string.IsNullOrWhiteSpace(lastSegment))
+                {
+                    AddAnimationDisplayerNewYearSoundCandidate(candidates, $"{imageName}/{lastSegment}");
+                    AddAnimationDisplayerNewYearSoundCandidate(candidates, $"{imageName}/weather/{lastSegment}");
+                }
+            }
+
+            return candidates.ToArray();
+        }
+
+        private static string NormalizeAnimationDisplayerPath(string value)
+        {
+            return string.IsNullOrWhiteSpace(value)
+                ? null
+                : value.Trim().Replace('\\', '/').Trim('/');
+        }
+
+        private static string NormalizeAnimationDisplayerImageNameSegment(string value)
+        {
+            string normalized = NormalizeAnimationDisplayerPath(value);
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                return null;
+            }
+
+            int dotIndex = normalized.IndexOf(".img", StringComparison.OrdinalIgnoreCase);
+            return dotIndex > 0 ? normalized[..dotIndex] : normalized;
+        }
+
+        private static void AddAnimationDisplayerNewYearSoundCandidate(List<string> candidates, string descriptor)
+        {
+            string normalized = NormalizeAnimationDisplayerPath(descriptor);
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                return;
+            }
+
+            for (int i = 0; i < candidates.Count; i++)
+            {
+                if (string.Equals(candidates[i], normalized, StringComparison.OrdinalIgnoreCase))
+                {
+                    return;
+                }
+            }
+
+            candidates.Add(normalized);
         }
 
         private void ClearAnimationDisplayerLocalQuestDeliveryOwner()

@@ -208,8 +208,73 @@ namespace HaCreator.MapSimulator.UI
                 message = $"Packet-owned maker result code {packetResult.ResultCode} subtype {packetResult.ResultType}.";
             }
 
-            RefreshStatusMessage(message);
+            ApplyPacketOwnedResult(message, packetResult.ResetItemSlot);
             return packetResult.ResultCode <= 1;
+        }
+
+        internal bool TryResolvePacketOwnedHiddenUnlockEntries(
+            PacketOwnedItemMakerHiddenRecipeUnlock packetUnlock,
+            out IReadOnlyCollection<ItemMakerRecipeProgressionEntry> unlockedEntries,
+            out string message)
+        {
+            unlockedEntries = Array.Empty<ItemMakerRecipeProgressionEntry>();
+            if (packetUnlock == null)
+            {
+                message = "Item Maker hidden-unlock payload is unavailable.";
+                return false;
+            }
+
+            int totalEntries = packetUnlock.Entries?.Count ?? 0;
+            if (totalEntries <= 0)
+            {
+                message = "Packet-owned maker hidden unlock payload does not include any entries.";
+                return true;
+            }
+
+            List<ItemMakerRecipeProgressionEntry> resolvedEntries = new();
+            HashSet<string> seenKeys = new(StringComparer.Ordinal);
+            HashSet<int> seenLegacyIds = new();
+            int ignoredEntries = 0;
+            for (int i = 0; i < totalEntries; i++)
+            {
+                PacketOwnedItemMakerHiddenRecipeUnlockEntry entry = packetUnlock.Entries[i];
+                ItemMakerRecipe recipe = ResolveHiddenRecipeForPacketUnlock(entry.BucketKey, entry.OutputItemId);
+                if (recipe == null)
+                {
+                    ignoredEntries++;
+                    continue;
+                }
+
+                if (!string.IsNullOrWhiteSpace(recipe.RecipeKey))
+                {
+                    if (!seenKeys.Add(recipe.RecipeKey))
+                    {
+                        continue;
+                    }
+                }
+                else if (recipe.OutputItemId > 0)
+                {
+                    if (!seenLegacyIds.Add(recipe.OutputItemId))
+                    {
+                        continue;
+                    }
+                }
+
+                resolvedEntries.Add(CreateProgressionEntry(recipe));
+            }
+
+            unlockedEntries = resolvedEntries;
+            int resolvedCount = resolvedEntries.Count;
+            if (resolvedCount <= 0)
+            {
+                message = "Packet-owned maker hidden unlock entries did not match any hidden ItemMake rows in this data set.";
+                return true;
+            }
+
+            message = ignoredEntries > 0
+                ? $"Packet-owned maker hidden unlock resolved {resolvedCount} hidden row(s); ignored {ignoredEntries} unmatched row(s)."
+                : $"Packet-owned maker hidden unlock resolved {resolvedCount} hidden row(s).";
+            return true;
         }
 
         public void SetInventory(IInventoryRuntime inventory)
@@ -2091,6 +2156,30 @@ namespace HaCreator.MapSimulator.UI
             return recipe.IsHidden
                    && ((!string.IsNullOrWhiteSpace(recipe.RecipeKey) && _unlockedHiddenRecipeKeys.Contains(recipe.RecipeKey))
                        || _unlockedHiddenRecipeIds.Contains(recipe.OutputItemId));
+        }
+
+        private ItemMakerRecipe ResolveHiddenRecipeForPacketUnlock(int bucketKey, int outputItemId)
+        {
+            if (outputItemId <= 0)
+            {
+                return null;
+            }
+
+            if (bucketKey >= 0)
+            {
+                ItemMakerRecipe keyedMatch = _allRecipes.FirstOrDefault(recipe =>
+                    recipe.IsHidden
+                    && recipe.BucketKey == bucketKey
+                    && recipe.OutputItemId == outputItemId);
+                if (keyedMatch != null)
+                {
+                    return keyedMatch;
+                }
+            }
+
+            return _allRecipes.FirstOrDefault(recipe =>
+                recipe.IsHidden
+                && recipe.OutputItemId == outputItemId);
         }
 
         private bool IsRecipeDiscovered(ItemMakerRecipe recipe)

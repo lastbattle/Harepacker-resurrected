@@ -1231,6 +1231,22 @@ namespace HaCreator.MapSimulator.Companions
             return TryPlanFoodItemUse(_activePets, supportedPetItemIds, fullnessIncrease, out plan, out _);
         }
 
+        internal bool TryPlanFoodItemUse(
+            IReadOnlyCollection<int> supportedPetItemIds,
+            int fullnessIncrease,
+            out PetFoodItemUsePlan plan,
+            out PetFoodItemUseFailureReason failureReason)
+        {
+            if (_fieldUsageBlocked)
+            {
+                plan = default;
+                failureReason = PetFoodItemUseFailureReason.None;
+                return false;
+            }
+
+            return TryPlanFoodItemUse(_activePets, supportedPetItemIds, fullnessIncrease, out plan, out failureReason);
+        }
+
         internal bool TryExecuteFoodItemUse(PetFoodItemUsePlan plan, int currentTime, out int fedSlotIndex)
         {
             if (_fieldUsageBlocked)

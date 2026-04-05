@@ -53,7 +53,15 @@ namespace HaCreator.MapSimulator.Fields
 
         public static bool CanUseSkill(MapInfo mapInfo, SkillData skill, int currentJobId, bool mobMassacreDisableSkill)
         {
-            return GetRestrictionMessage(mapInfo, skill, currentJobId, mobMassacreDisableSkill) == null;
+            string externalRestrictionMessage = mobMassacreDisableSkill
+                ? "Skills cannot be used while the Mu Lung Dojo massacre field disables skill usage."
+                : null;
+            return CanUseSkill(mapInfo, skill, currentJobId, externalRestrictionMessage);
+        }
+
+        public static bool CanUseSkill(MapInfo mapInfo, SkillData skill, int currentJobId, string externalRestrictionMessage)
+        {
+            return GetRestrictionMessage(mapInfo, skill, currentJobId, externalRestrictionMessage) == null;
         }
 
         public static string GetRestrictionMessage(MapInfo mapInfo, SkillData skill)
@@ -68,6 +76,14 @@ namespace HaCreator.MapSimulator.Fields
 
         public static string GetRestrictionMessage(MapInfo mapInfo, SkillData skill, int currentJobId, bool mobMassacreDisableSkill)
         {
+            string externalRestrictionMessage = mobMassacreDisableSkill
+                ? "Skills cannot be used while the Mu Lung Dojo massacre field disables skill usage."
+                : null;
+            return GetRestrictionMessage(mapInfo, skill, currentJobId, externalRestrictionMessage);
+        }
+
+        public static string GetRestrictionMessage(MapInfo mapInfo, SkillData skill, int currentJobId, string externalRestrictionMessage)
+        {
             if (skill == null)
                 return "Skill data is unavailable.";
 
@@ -77,9 +93,9 @@ namespace HaCreator.MapSimulator.Fields
                 return fieldLimitRestrictionMessage;
             }
 
-            if (mobMassacreDisableSkill)
+            if (!string.IsNullOrWhiteSpace(externalRestrictionMessage))
             {
-                return "Skills cannot be used while the Mu Lung Dojo massacre field disables skill usage.";
+                return externalRestrictionMessage;
             }
 
             return GetClientOwnedFieldRestrictionMessage(mapInfo, skill, currentJobId);

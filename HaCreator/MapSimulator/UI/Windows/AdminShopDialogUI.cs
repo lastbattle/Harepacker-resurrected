@@ -400,13 +400,7 @@ namespace HaCreator.MapSimulator.UI
             [AdminShopServiceMode.Mts] = new Dictionary<string, AdminShopEntrySessionState>(StringComparer.Ordinal)
         };
         private readonly Dictionary<string, AdminShopBrowseSurfaceState> _browseSurfaceStates = new(StringComparer.Ordinal);
-        private readonly IReadOnlyList<WishlistPriceRange> _wishlistPriceRanges = new[]
-        {
-            new WishlistPriceRange { Index = 0, MinimumPrice = 0, MaximumPrice = 1000, Label = "0 - 999 mesos" },
-            new WishlistPriceRange { Index = 1, MinimumPrice = 1000, MaximumPrice = 3000, Label = "1,000 - 2,999 mesos" },
-            new WishlistPriceRange { Index = 2, MinimumPrice = 3000, MaximumPrice = 5000, Label = "3,000 - 4,999 mesos" },
-            new WishlistPriceRange { Index = 3, MinimumPrice = 5000, MaximumPrice = 50000, Label = "5,000 - 50,000 mesos" }
-        };
+        private readonly IReadOnlyList<WishlistPriceRange> _wishlistPriceRanges = BuildWishlistPriceRanges();
 
         private IInventoryRuntime _inventory;
         private IStorageRuntime _storageRuntime;
@@ -774,6 +768,40 @@ namespace HaCreator.MapSimulator.UI
                     UpdateActionButtonStates();
                     return _footerMessage;
             }
+        }
+
+        public string MoveListOwnerSelection(int delta)
+        {
+            if (delta == 0)
+            {
+                return _footerMessage;
+            }
+
+            MoveSelection(delta);
+            return _footerMessage;
+        }
+
+        public string SelectListOwnerVisibleRow(int visibleRowIndex)
+        {
+            AdminShopPaneState paneState = _paneStates[_activePane];
+            if (paneState.Entries.Count == 0)
+            {
+                _footerMessage = "CCSWnd_List has no entries to select on the active pane.";
+                UpdateActionButtonStates();
+                return _footerMessage;
+            }
+
+            int clampedRow = Math.Clamp(visibleRowIndex, 0, MaxVisibleRows - 1);
+            int absoluteIndex = paneState.ScrollOffset + clampedRow;
+            if (absoluteIndex < 0 || absoluteIndex >= paneState.Entries.Count)
+            {
+                _footerMessage = $"CCSWnd_List row {visibleRowIndex.ToString(CultureInfo.InvariantCulture)} is outside the active list range.";
+                UpdateActionButtonStates();
+                return _footerMessage;
+            }
+
+            SelectAbsoluteIndex(absoluteIndex);
+            return _footerMessage;
         }
 
         public void SetStorageRuntime(IStorageRuntime storageRuntime)
@@ -4412,6 +4440,116 @@ namespace HaCreator.MapSimulator.UI
             };
 
             return definitions.Select(definition => CreateWishlistCategoryNode(definition, string.Empty)).ToArray();
+        }
+
+        private static IReadOnlyList<WishlistPriceRange> BuildWishlistPriceRanges()
+        {
+            static IReadOnlyList<WishlistPriceRange> BuildDefaultRanges()
+            {
+                return new[]
+                {
+                    new WishlistPriceRange { Index = 0, MinimumPrice = 0, MaximumPrice = 1000, Label = "0 - 999 mesos" },
+                    new WishlistPriceRange { Index = 1, MinimumPrice = 1000, MaximumPrice = 3000, Label = "1,000 - 2,999 mesos" },
+                    new WishlistPriceRange { Index = 2, MinimumPrice = 3000, MaximumPrice = 5000, Label = "3,000 - 4,999 mesos" },
+                    new WishlistPriceRange { Index = 3, MinimumPrice = 5000, MaximumPrice = 50000, Label = "5,000 - 50,000 mesos" }
+                };
+            }
+
+            static bool TryReadPriceBound(WzImageProperty rangeProperty, string boundName, out long value)
+            {
+                value = 0;
+                if (rangeProperty is not WzSubProperty rangeSubProperty)
+                {
+                    return false;
+                }
+
+                WzImageProperty boundProperty = rangeSubProperty[boundName];
+                if (boundProperty is WzIntProperty intProperty)
+                {
+                    value = intProperty.Value;
+                    return true;
+                }
+
+                if (boundProperty is WzShortProperty shortProperty)
+                {
+                    value = shortProperty.Value;
+                    return true;
+                }
+
+                if (boundProperty is WzLongProperty longProperty)
+                {
+                    value = longProperty.Value;
+                    return true;
+                }
+
+                return false;
+            }
+
+            WzImage cashShopImage = global::HaCreator.Program.FindImage("UI", "CashShop.img");
+            if (cashShopImage == null)
+            {
+                return BuildDefaultRanges();
+            }
+
+            cashShopImage.ParseImage();
+            WzSubProperty priceProperty = ((cashShopImage["CSItemSearch"] as WzSubProperty)?["Price"]) as WzSubProperty;
+            if (priceProperty == null)
+            {
+                return BuildDefaultRanges();
+            }
+
+            List<(int Index, long Minimum, long Maximum)> stagedRanges = priceProperty.WzProperties
+                .OfType<WzImageProperty>()
+                .Select(property =>
+                {
+                    bool hasIndex = int.TryParse(property.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedIndex);
+                    bool hasMin = TryReadPriceBound(property, "0", out long minimumPrice);
+                    bool hasMax = TryReadPriceBound(property, "1", out long maximumPrice);
+                    return new
+                    {
+                        hasIndex,
+                        parsedIndex,
+                        hasMin,
+                        minimumPrice,
+                        hasMax,
+                        maximumPrice
+                    };
+                })
+                .Where(entry => entry.hasIndex
+                                && entry.parsedIndex >= 0
+                                && entry.hasMin
+                                && entry.hasMax
+                                && entry.maximumPrice > entry.minimumPrice)
+                .OrderBy(entry => entry.parsedIndex)
+                .Select(entry => (entry.parsedIndex, entry.minimumPrice, entry.maximumPrice))
+                .ToList();
+
+            if (stagedRanges.Count == 0)
+            {
+                return BuildDefaultRanges();
+            }
+
+            List<WishlistPriceRange> resolvedRanges = new(stagedRanges.Count);
+            for (int i = 0; i < stagedRanges.Count; i++)
+            {
+                (int _, long minimumPrice, long maximumPrice) = stagedRanges[i];
+                bool isLast = i == stagedRanges.Count - 1;
+                long displayMaximum = isLast ? maximumPrice : maximumPrice - 1;
+                string label = string.Format(
+                    CultureInfo.InvariantCulture,
+                    "{0:N0} - {1:N0} mesos",
+                    minimumPrice,
+                    displayMaximum);
+                resolvedRanges.Add(new WishlistPriceRange
+                {
+                    Index = i,
+                    MinimumPrice = minimumPrice,
+                    MaximumPrice = maximumPrice,
+                    Label = label
+                });
+            }
+
+            return resolvedRanges;
         }
 
         private static WishlistCategoryNode CreateWishlistCategoryNode(WishlistCategoryClientDefinition definition, string parentKey)

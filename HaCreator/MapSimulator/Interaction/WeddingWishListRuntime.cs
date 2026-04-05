@@ -58,6 +58,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private IInventoryRuntime _inventory;
         private string _localCharacterName = "Player";
+        private string _candidateQuery = string.Empty;
         private WeddingWishListDialogMode _mode;
         private WeddingWishListRole _role = WeddingWishListRole.Groom;
         private WeddingWishListSelectionPane _activePane = WeddingWishListSelectionPane.GiftList;
@@ -154,6 +155,10 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _selectedTabIndex = tabIndex;
+            _selectedGiftIndex = 0;
+            _selectedInventoryIndex = 0;
+            _paneStartIndices[(WeddingWishListSelectionPane.GiftList, _selectedTabIndex)] = 0;
+            _paneStartIndices[(WeddingWishListSelectionPane.Inventory, _selectedTabIndex)] = 0;
             ClampSelections();
             NormalizeViewportState();
             _statusMessage = $"Selected {ResolveTabLabel(_selectedTabIndex)} tab for the wedding wish-list dialog.";
@@ -328,6 +333,46 @@ namespace HaCreator.MapSimulator.Interaction
             return _statusMessage;
         }
 
+        internal string AppendCandidateQuery(char value)
+        {
+            if (_mode != WeddingWishListDialogMode.Input || char.IsControl(value))
+            {
+                return string.Empty;
+            }
+
+            const int maxQueryLength = 24;
+            if (_candidateQuery.Length >= maxQueryLength)
+            {
+                return string.Empty;
+            }
+
+            _candidateQuery += value;
+            RefreshCandidateEntries();
+            _selectedCandidateIndex = 0;
+            ClampSelections();
+            EnsureSelectionVisible(WeddingWishListSelectionPane.Candidate);
+            _statusMessage = $"Filtered candidate items by \"{_candidateQuery}\".";
+            return _statusMessage;
+        }
+
+        internal string BackspaceCandidateQuery()
+        {
+            if (_mode != WeddingWishListDialogMode.Input || string.IsNullOrEmpty(_candidateQuery))
+            {
+                return string.Empty;
+            }
+
+            _candidateQuery = _candidateQuery[..^1];
+            RefreshCandidateEntries();
+            _selectedCandidateIndex = 0;
+            ClampSelections();
+            EnsureSelectionVisible(WeddingWishListSelectionPane.Candidate);
+            _statusMessage = string.IsNullOrEmpty(_candidateQuery)
+                ? "Cleared candidate item-name filter."
+                : $"Filtered candidate items by \"{_candidateQuery}\".";
+            return _statusMessage;
+        }
+
         internal string TryDeleteWish()
         {
             if (_mode != WeddingWishListDialogMode.Input)
@@ -378,6 +423,7 @@ namespace HaCreator.MapSimulator.Interaction
             _selectedInventoryIndex = 0;
             _selectedWishIndex = 0;
             _selectedCandidateIndex = 0;
+            _candidateQuery = string.Empty;
             _paneStartIndices.Clear();
             _statusMessage = "Cleared wedding wish-list dialog state.";
             return _statusMessage;
@@ -416,6 +462,7 @@ namespace HaCreator.MapSimulator.Interaction
                 FirstVisibleInventoryIndex = GetFirstVisibleIndex(WeddingWishListSelectionPane.Inventory),
                 FirstVisibleWishIndex = GetFirstVisibleIndex(WeddingWishListSelectionPane.WishList),
                 FirstVisibleCandidateIndex = GetFirstVisibleIndex(WeddingWishListSelectionPane.Candidate),
+                CandidateQuery = _candidateQuery,
                 StatusMessage = _statusMessage,
                 LocalCharacterName = _localCharacterName
             };
@@ -469,12 +516,24 @@ namespace HaCreator.MapSimulator.Interaction
         private void RefreshCandidateEntries()
         {
             _candidateEntries.Clear();
-            foreach (InventorySlotData slot in EnumerateInventorySlots())
+            IEnumerable<InventorySlotData> candidates = EnumerateInventorySlots();
+            if (!string.IsNullOrWhiteSpace(_candidateQuery))
+            {
+                string query = _candidateQuery.Trim();
+                candidates = candidates.Where(slot =>
+                {
+                    string label = ResolveItemLabel(slot);
+                    return label.IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0
+                        || slot.ItemId.ToString().IndexOf(query, StringComparison.OrdinalIgnoreCase) >= 0;
+                });
+            }
+
+            foreach (InventorySlotData slot in candidates)
             {
                 _candidateEntries.Add(CloneForDialog(slot, ResolveInventoryTypeForSlot(slot), 1));
             }
 
-            if (_candidateEntries.Count == 0)
+            if (_candidateEntries.Count == 0 && string.IsNullOrWhiteSpace(_candidateQuery))
             {
                 for (int i = 0; i < FallbackGiftItemIds.Length; i++)
                 {
@@ -819,6 +878,7 @@ namespace HaCreator.MapSimulator.Interaction
         public int FirstVisibleInventoryIndex { get; init; }
         public int FirstVisibleWishIndex { get; init; }
         public int FirstVisibleCandidateIndex { get; init; }
+        public string CandidateQuery { get; init; } = string.Empty;
         public string StatusMessage { get; init; } = string.Empty;
         public string LocalCharacterName { get; init; } = string.Empty;
     }

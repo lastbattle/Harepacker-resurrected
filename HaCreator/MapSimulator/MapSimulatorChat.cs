@@ -3,7 +3,6 @@ using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
 using System;
 using System.Collections.Generic;
-using System.Globalization;
 using System.Text;
 
 namespace HaCreator.MapSimulator
@@ -1628,9 +1627,7 @@ namespace HaCreator.MapSimulator
             }
 
             string trimmedName = characterName.Trim();
-            StringInfo info = new(trimmedName);
-            int textElementCount = info.LengthInTextElements;
-            if (textElementCount < 4 || textElementCount > 12)
+            if (trimmedName.Length < 4 || trimmedName.Length > 12)
             {
                 return false;
             }
@@ -1638,7 +1635,9 @@ namespace HaCreator.MapSimulator
             int ambiguousCharacterCount = 0;
             foreach (char c in trimmedName)
             {
-                if (!char.IsLetterOrDigit(c))
+                bool isAsciiLetter = (c >= 'a' && c <= 'z') || (c >= 'A' && c <= 'Z');
+                bool isAsciiDigit = c >= '0' && c <= '9';
+                if (!isAsciiLetter && !isAsciiDigit)
                 {
                     return false;
                 }

@@ -99,11 +99,25 @@ namespace HaCreator.MapSimulator.Interaction
             return applied;
         }
 
-        internal string ApplyMessengerPacket(MessengerPacketType packetType, byte[] payload)
+        internal bool TryApplyMessengerDispatchPacket(byte[] payload, out string message)
         {
-            string result = _messengerRuntime.ApplyPacketPayload(packetType, payload);
-            _lastDispatchSummary = $"CUIMessenger::OnPacket dispatched logical subtype {packetType}.";
-            return result;
+            message = string.Empty;
+            if (!MessengerPacketCodec.TryParseClientDispatch(payload ?? Array.Empty<byte>(), out byte packetSubtype, out _, out string dispatchError))
+            {
+                message = dispatchError ?? "Messenger OnPacket payload could not be decoded.";
+                return false;
+            }
+
+            if (packetSubtype > 8)
+            {
+                message = $"Messenger OnPacket subtype '{packetSubtype}' is not modeled.";
+                _lastDispatchSummary = $"CUIMessenger::OnPacket ignored unsupported subtype {packetSubtype}.";
+                return false;
+            }
+
+            message = _messengerRuntime.ApplyPacketDispatchPayload(payload);
+            _lastDispatchSummary = $"CUIMessenger::OnPacket dispatched subtype {packetSubtype}.";
+            return true;
         }
 
         internal string DescribeParcelStatus()
@@ -130,12 +144,6 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal sealed class PacketOwnedParcelDialogRuntime
     {
-        private const byte ParcelFlagRead = 1 << 0;
-        private const byte ParcelFlagKeep = 1 << 1;
-        private const byte ParcelFlagClaimed = 1 << 2;
-        private const byte ParcelFlagHasItem = 1 << 3;
-        private const byte ParcelFlagHasMeso = 1 << 4;
-
         private readonly MemoMailboxManager _memoMailbox;
         private int _openCount;
         private int _noticeCount;

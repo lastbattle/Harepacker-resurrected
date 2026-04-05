@@ -13,6 +13,7 @@ namespace HaCreator.MapSimulator
         private const string RankingServerHost = "gamerank.maplestory";
         private const int RankingStringPoolUrlTemplateId = 0xAA2;
         private const int RankingOwnerNavigateDelayMs = 250;
+        private const int EventAlarmOwnerMaxVisibleLines = 3;
         private int _lastRankingOpenTick = int.MinValue;
         private int _lastRankingNavigateTick = int.MinValue;
         private string _lastRankingLaunchSource = string.Empty;
@@ -434,62 +435,86 @@ namespace HaCreator.MapSimulator
 
         private IReadOnlyList<EventAlarmLineSnapshot> BuildEventAlarmOwnerLines(int currentTick)
         {
-            List<EventAlarmLineSnapshot> lines = new();
+            List<(string Text, int Tick, bool Highlight)> candidates = new();
 
             if (!string.IsNullOrWhiteSpace(_lastPacketOwnedNoticeMessage))
             {
-                lines.Add(CreateEventAlarmLine($"Notice: {TruncatePacketOwnedUtilityText(_lastPacketOwnedNoticeMessage, 64)}", lines.Count, highlight: true));
+                candidates.Add(($"Notice: {TruncatePacketOwnedUtilityText(_lastPacketOwnedNoticeMessage, 64)}", _lastPacketOwnedNoticeTick, true));
             }
 
             if (!string.IsNullOrWhiteSpace(_lastPacketOwnedBuffzoneMessage))
             {
-                lines.Add(CreateEventAlarmLine($"Buff zone: {TruncatePacketOwnedUtilityText(_lastPacketOwnedBuffzoneMessage, 60)}", lines.Count));
+                candidates.Add(($"Buff zone: {TruncatePacketOwnedUtilityText(_lastPacketOwnedBuffzoneMessage, 60)}", _lastPacketOwnedBuffzoneTick, false));
             }
 
             if (!string.IsNullOrWhiteSpace(_lastPacketOwnedAskApspMessage))
             {
                 string apspPrefix = _packetOwnedApspPromptActive ? "AP/SP prompt" : "AP/SP event";
-                lines.Add(CreateEventAlarmLine($"{apspPrefix}: {TruncatePacketOwnedUtilityText(_lastPacketOwnedAskApspMessage, 58)}", lines.Count));
+                candidates.Add(($"{apspPrefix}: {TruncatePacketOwnedUtilityText(_lastPacketOwnedAskApspMessage, 58)}", _lastPacketOwnedAskApspTick, false));
             }
 
             if (!string.IsNullOrWhiteSpace(_lastPacketOwnedSkillGuideMessage))
             {
-                lines.Add(CreateEventAlarmLine(
+                candidates.Add((
                     _lastPacketOwnedSkillGuideGrade > 0
                         ? $"Skill guide G{_lastPacketOwnedSkillGuideGrade}: {TruncatePacketOwnedUtilityText(_lastPacketOwnedSkillGuideMessage, 53)}"
                         : $"Skill guide: {TruncatePacketOwnedUtilityText(_lastPacketOwnedSkillGuideMessage, 60)}",
-                    lines.Count));
+                    _lastPacketOwnedSkillGuideTick,
+                    false));
             }
 
             if (_packetOwnedTutorRuntime.IsActive)
             {
-                lines.Add(CreateEventAlarmLine(TruncatePacketOwnedUtilityText(DescribePacketOwnedTutorStatus(currentTick), 70), lines.Count));
+                candidates.Add((TruncatePacketOwnedUtilityText(DescribePacketOwnedTutorStatus(currentTick), 70), _packetOwnedTutorRuntime.ActiveMessageStartedAt, false));
             }
 
             if (!string.IsNullOrWhiteSpace(_lastPacketOwnedRadioStatusMessage)
                 && (!string.Equals(_lastPacketOwnedRadioStatusMessage, "Packet-owned radio idle.", StringComparison.OrdinalIgnoreCase)
                     || IsPacketOwnedRadioPlaying()))
             {
-                lines.Add(CreateEventAlarmLine(
+                int radioTick = _lastPacketOwnedRadioLastPollTick != int.MinValue
+                    ? _lastPacketOwnedRadioLastPollTick
+                    : _lastPacketOwnedRadioStartTick;
+                candidates.Add((
                     IsPacketOwnedRadioPlaying()
                         ? $"Radio: {TruncatePacketOwnedUtilityText(_lastPacketOwnedRadioDisplayName ?? _lastPacketOwnedRadioTrackDescriptor, 60)}"
                         : $"Radio: {TruncatePacketOwnedUtilityText(_lastPacketOwnedRadioStatusMessage, 60)}",
-                    lines.Count));
+                    radioTick,
+                    false));
             }
 
             if (!string.IsNullOrWhiteSpace(_lastPacketOwnedFollowFailureMessage))
             {
-                lines.Add(CreateEventAlarmLine($"Follow: {TruncatePacketOwnedUtilityText(_lastPacketOwnedFollowFailureMessage, 62)}", lines.Count));
+                candidates.Add(($"Follow: {TruncatePacketOwnedUtilityText(_lastPacketOwnedFollowFailureMessage, 62)}", _lastPacketOwnedFollowFailureTick, false));
             }
 
-            if (lines.Count == 0)
+            if (candidates.Count == 0)
             {
-                lines.Add(CreateEventAlarmLine("No packet-authored event alarm text is active.", 0));
+                return new[]
+                {
+                    CreateEventAlarmLine("No packet-authored event alarm text is active.", 0)
+                };
             }
 
-            return lines
-                .Take(3)
-                .ToArray();
+            List<EventAlarmLineSnapshot> lines = candidates
+                .OrderBy(candidate => ResolveEventAlarmLineAge(candidate.Tick, currentTick))
+                .ThenByDescending(candidate => candidate.Highlight)
+                .Take(EventAlarmOwnerMaxVisibleLines)
+                .Select((candidate, index) => CreateEventAlarmLine(candidate.Text, index, candidate.Highlight))
+                .ToList();
+
+            return lines;
+        }
+
+        private static int ResolveEventAlarmLineAge(int sourceTick, int currentTick)
+        {
+            if (sourceTick == int.MinValue)
+            {
+                return int.MaxValue;
+            }
+
+            int age = unchecked(currentTick - sourceTick);
+            return age < 0 ? 0 : age;
         }
 
         private static EventAlarmLineSnapshot CreateEventAlarmLine(string text, int index, bool highlight = false)

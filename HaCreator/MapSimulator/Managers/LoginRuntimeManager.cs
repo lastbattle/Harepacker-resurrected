@@ -38,6 +38,12 @@ namespace HaCreator.MapSimulator.Managers
         RecommendWorldMessage = 25,
         ExtraCharInfoResult = 26,
         CheckSpwResult = 27,
+        SetField = 141,
+        SetITC = 142,
+        SetCashShop = 143,
+        SetBackEffect = 144,
+        SetMapObjectVisible = 145,
+        ClearBackEffect = 146,
     }
 
     /// <summary>
@@ -77,6 +83,12 @@ namespace HaCreator.MapSimulator.Managers
                 [LoginPacketType.LatestConnectedWorld] = HandleLatestConnectedWorld,
                 [LoginPacketType.ExtraCharInfoResult] = HandleExtraCharInfoResult,
                 [LoginPacketType.CheckSpwResult] = HandleCheckSpwResult,
+                [LoginPacketType.SetField] = HandleSetField,
+                [LoginPacketType.SetITC] = HandleSetItc,
+                [LoginPacketType.SetCashShop] = HandleSetCashShop,
+                [LoginPacketType.SetBackEffect] = HandleSetBackEffect,
+                [LoginPacketType.SetMapObjectVisible] = HandleSetMapObjectVisible,
+                [LoginPacketType.ClearBackEffect] = HandleClearBackEffect,
             };
         }
 
@@ -92,6 +104,8 @@ namespace HaCreator.MapSimulator.Managers
         public bool HasWorldInformation { get; private set; }
         public bool CharacterSelectReady { get; private set; }
         public bool FieldEntryRequested { get; private set; }
+        public int ForwardedStagePacketCount { get; private set; }
+        public int ForwardedMapLoadPacketCount { get; private set; }
 
         public bool BlocksFieldSimulation => !FieldEntryRequested;
 
@@ -119,6 +133,8 @@ namespace HaCreator.MapSimulator.Managers
             HasWorldInformation = false;
             CharacterSelectReady = false;
             FieldEntryRequested = false;
+            ForwardedStagePacketCount = 0;
+            ForwardedMapLoadPacketCount = 0;
             _packetCounts.Clear();
         }
 
@@ -259,6 +275,8 @@ namespace HaCreator.MapSimulator.Managers
             builder.Append("Last packet: ").Append(LastPacketType?.ToString() ?? "None");
             builder.Append(" | Worlds loaded: ").Append(HasWorldInformation ? "yes" : "no");
             builder.Append(" | Character select ready: ").Append(CharacterSelectReady ? "yes" : "no");
+            builder.Append(" | Stage handoff: ").Append(ForwardedStagePacketCount.ToString());
+            builder.Append(" | Map-load handoff: ").Append(ForwardedMapLoadPacketCount.ToString());
             builder.AppendLine();
             builder.Append("Last event: ").Append(LastEventSummary);
             return builder.ToString();
@@ -346,6 +364,18 @@ namespace HaCreator.MapSimulator.Managers
                 "onextracharinforesult" => Assign(LoginPacketType.ExtraCharInfoResult, out packetType),
                 "checkspw" => Assign(LoginPacketType.CheckSpwResult, out packetType),
                 "oncheckspwresult" => Assign(LoginPacketType.CheckSpwResult, out packetType),
+                "setfield" or "field" => Assign(LoginPacketType.SetField, out packetType),
+                "onsetfield" => Assign(LoginPacketType.SetField, out packetType),
+                "setitc" or "itc" => Assign(LoginPacketType.SetITC, out packetType),
+                "onsetitc" => Assign(LoginPacketType.SetITC, out packetType),
+                "setcashshop" or "cashshop" => Assign(LoginPacketType.SetCashShop, out packetType),
+                "onsetcashshop" => Assign(LoginPacketType.SetCashShop, out packetType),
+                "setbackeffect" or "backeffect" => Assign(LoginPacketType.SetBackEffect, out packetType),
+                "onsetbackeffect" => Assign(LoginPacketType.SetBackEffect, out packetType),
+                "setmapobjectvisible" or "mapobjectvisible" or "objectvisible" => Assign(LoginPacketType.SetMapObjectVisible, out packetType),
+                "onsetmapobjectvisible" => Assign(LoginPacketType.SetMapObjectVisible, out packetType),
+                "clearbackeffect" => Assign(LoginPacketType.ClearBackEffect, out packetType),
+                "onclearbackeffect" => Assign(LoginPacketType.ClearBackEffect, out packetType),
                 _ => Enum.TryParse(text, true, out packetType),
             };
         }
@@ -463,6 +493,42 @@ namespace HaCreator.MapSimulator.Managers
         private void HandleCheckSpwResult(int currentTickCount)
         {
             LastEventSummary = "Received CheckSpwResult and opened the secondary-password verification flow.";
+        }
+
+        private void HandleSetField(int currentTickCount)
+        {
+            ForwardedStagePacketCount++;
+            LastEventSummary = "Forwarded SetField(141) from CLogin::OnPacket to CStage::OnPacket.";
+        }
+
+        private void HandleSetItc(int currentTickCount)
+        {
+            ForwardedStagePacketCount++;
+            LastEventSummary = "Forwarded SetITC(142) from CLogin::OnPacket to CStage::OnPacket.";
+        }
+
+        private void HandleSetCashShop(int currentTickCount)
+        {
+            ForwardedStagePacketCount++;
+            LastEventSummary = "Forwarded SetCashShop(143) from CLogin::OnPacket to CStage::OnPacket.";
+        }
+
+        private void HandleSetBackEffect(int currentTickCount)
+        {
+            ForwardedMapLoadPacketCount++;
+            LastEventSummary = "Forwarded SetBackEffect(144) from CLogin::OnPacket to CMapLoadable::OnPacket.";
+        }
+
+        private void HandleSetMapObjectVisible(int currentTickCount)
+        {
+            ForwardedMapLoadPacketCount++;
+            LastEventSummary = "Forwarded SetMapObjectVisible(145) from CLogin::OnPacket to CMapLoadable::OnPacket.";
+        }
+
+        private void HandleClearBackEffect(int currentTickCount)
+        {
+            ForwardedMapLoadPacketCount++;
+            LastEventSummary = "Forwarded ClearBackEffect(146) from CLogin::OnPacket to CMapLoadable::OnPacket.";
         }
 
         private static bool Assign(LoginStep value, out LoginStep step)

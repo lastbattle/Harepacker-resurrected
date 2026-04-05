@@ -102,6 +102,7 @@ namespace HaCreator.MapSimulator.UI
         public const string NpcShop = "NpcShop";
         public const string StoreBank = "StoreBank";
         public const string BattleRecord = "BattleRecord";
+        public const string LogoutGift = "LogoutGift";
         public const string MiniRoom = "MiniRoom";
         public const string PersonalShop = "PersonalShop";
         public const string EntrustedShop = "EntrustedShop";

@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Character.Skills;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.UI;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
@@ -14,8 +15,15 @@ namespace HaCreator.MapSimulator
     {
         private const int PacketOwnedFuncKeyEntryCount = 89;
         private const int PacketOwnedFuncKeyPayloadSize = 1 + (PacketOwnedFuncKeyEntryCount * 5);
+        private const byte PacketOwnedFuncKeySkillType = 1;
+        private const byte PacketOwnedFuncKeyItemType = 2;
+        private const byte PacketOwnedFuncKeyItemTypeAlt = 3;
         private const byte PacketOwnedFuncKeyFunctionType = 4;
+        private const byte PacketOwnedFuncKeyItemTypeCash = 7;
+        private const byte PacketOwnedFuncKeyMacroType = 8;
         private const int PacketOwnedPetConsumeMpAttemptThrottleMs = 200;
+        private static readonly int[] PacketOwnedFuncKeyLegacyLookupScanCodes = { 112, 115, 121, 123, 125 };
+        private static readonly InputAction[] PacketOwnedHotkeyInputActions = BuildPacketOwnedHotkeyInputActions();
 
         // Client menu ids follow the v95 MENU_* enum used by CDraggableMenu/CFuncKeyMappedMan.
         private static readonly (int ClientFunctionId, InputAction Action)[] PacketOwnedKnownFunctionBindings =
@@ -50,6 +58,18 @@ namespace HaCreator.MapSimulator
 
             public byte Type { get; }
             public int Id { get; }
+        }
+
+        private readonly struct PacketOwnedKeyActionSlot
+        {
+            public PacketOwnedKeyActionSlot(InputAction action, int slotIndex)
+            {
+                Action = action;
+                SlotIndex = slotIndex;
+            }
+
+            public InputAction Action { get; }
+            public int SlotIndex { get; }
         }
 
         [DllImport("user32.dll", ExactSpelling = true)]
@@ -329,7 +349,7 @@ namespace HaCreator.MapSimulator
                 return 0;
             }
 
-            int appliedBindings = 0;
+            int appliedFunctionBindings = 0;
             for (int i = 0; i < PacketOwnedKnownFunctionBindings.Length; i++)
             {
                 (int clientFunctionId, InputAction action) = PacketOwnedKnownFunctionBindings[i];
@@ -348,11 +368,12 @@ namespace HaCreator.MapSimulator
                     mappedKey,
                     existingBinding?.SecondaryKey ?? Keys.None,
                     existingBinding?.GamepadButton ?? (Buttons)0);
-                appliedBindings++;
+                appliedFunctionBindings++;
             }
 
+            int appliedHotkeyBindings = ApplyPacketOwnedCastMappingsToLiveInput(input);
             SyncPacketOwnedUtilityWindowBindings(input);
-            return appliedBindings;
+            return appliedFunctionBindings + appliedHotkeyBindings;
         }
 
         private void SyncPacketOwnedUtilityWindowBindings(PlayerInput input = null)
@@ -416,7 +437,20 @@ namespace HaCreator.MapSimulator
 
             for (int scanCode = 0; scanCode < _packetOwnedFuncKeyMapped.Length; scanCode++)
             {
-                PacketOwnedFuncKeyMappedEntry entry = _packetOwnedFuncKeyMapped[scanCode];
+                PacketOwnedFuncKeyMappedEntry entry = ResolvePacketOwnedFuncKeyMappedEntry(scanCode);
+                if (entry.Type != PacketOwnedFuncKeyFunctionType || entry.Id != clientFunctionId)
+                {
+                    continue;
+                }
+
+                key = ResolvePacketOwnedScanCodeKey(scanCode);
+                return key != Keys.None;
+            }
+
+            for (int i = 0; i < PacketOwnedFuncKeyLegacyLookupScanCodes.Length; i++)
+            {
+                int scanCode = PacketOwnedFuncKeyLegacyLookupScanCodes[i];
+                PacketOwnedFuncKeyMappedEntry entry = ResolvePacketOwnedFuncKeyMappedEntry(scanCode);
                 if (entry.Type != PacketOwnedFuncKeyFunctionType || entry.Id != clientFunctionId)
                 {
                     continue;
@@ -427,6 +461,218 @@ namespace HaCreator.MapSimulator
             }
 
             return false;
+        }
+
+        private int ApplyPacketOwnedCastMappingsToLiveInput(PlayerInput input)
+        {
+            if (input == null || _playerManager?.Skills == null)
+            {
+                return 0;
+            }
+
+            var slots = BuildPacketOwnedActionSlots();
+            if (slots.Count == 0)
+            {
+                return 0;
+            }
+
+            var keyToSlot = new Dictionary<Keys, PacketOwnedKeyActionSlot>();
+            var assignedActions = new HashSet<InputAction>();
+            for (int i = 0; i < slots.Count; i++)
+            {
+                PacketOwnedKeyActionSlot slot = slots[i];
+                KeyBinding binding = input.GetBinding(slot.Action);
+                if (binding != null && binding.PrimaryKey != Keys.None)
+                {
+                    keyToSlot[binding.PrimaryKey] = slot;
+                }
+            }
+
+            int translated = 0;
+            foreach ((int scanCode, PacketOwnedFuncKeyMappedEntry entry) in EnumeratePacketOwnedMappedEntries())
+            {
+                if (!IsPacketOwnedCastEntryType(entry.Type) || entry.Id <= 0)
+                {
+                    continue;
+                }
+
+                Keys key = ResolvePacketOwnedScanCodeKey(scanCode);
+                if (key == Keys.None)
+                {
+                    continue;
+                }
+
+                PacketOwnedKeyActionSlot slot = ResolvePacketOwnedActionSlotForKey(
+                    key,
+                    keyToSlot,
+                    assignedActions,
+                    slots);
+                if (slot.Action == default)
+                {
+                    continue;
+                }
+
+                if (!TryApplyPacketOwnedCastMappingToSkillSlot(slot.SlotIndex, entry))
+                {
+                    continue;
+                }
+
+                KeyBinding existingBinding = input.GetBinding(slot.Action);
+                if (existingBinding == null || existingBinding.PrimaryKey != key)
+                {
+                    input.SetBinding(
+                        slot.Action,
+                        key,
+                        existingBinding?.SecondaryKey ?? Keys.None,
+                        existingBinding?.GamepadButton ?? (Buttons)0);
+                }
+
+                assignedActions.Add(slot.Action);
+                keyToSlot[key] = slot;
+                translated++;
+            }
+
+            return translated;
+        }
+
+        private IEnumerable<(int ScanCode, PacketOwnedFuncKeyMappedEntry Entry)> EnumeratePacketOwnedMappedEntries()
+        {
+            for (int scanCode = 0; scanCode < PacketOwnedFuncKeyEntryCount; scanCode++)
+            {
+                yield return (scanCode, ResolvePacketOwnedFuncKeyMappedEntry(scanCode));
+            }
+
+            for (int i = 0; i < PacketOwnedFuncKeyLegacyLookupScanCodes.Length; i++)
+            {
+                int scanCode = PacketOwnedFuncKeyLegacyLookupScanCodes[i];
+                yield return (scanCode, ResolvePacketOwnedFuncKeyMappedEntry(scanCode));
+            }
+        }
+
+        private PacketOwnedFuncKeyMappedEntry ResolvePacketOwnedFuncKeyMappedEntry(int scanCode)
+        {
+            return scanCode switch
+            {
+                54 => _packetOwnedFuncKeyMapped[42],
+                112 => _packetOwnedFuncKeyMappedOld[2],
+                115 => _packetOwnedFuncKeyMappedOld[4],
+                121 => _packetOwnedFuncKeyMappedOld[1],
+                123 => _packetOwnedFuncKeyMappedOld[0],
+                125 => _packetOwnedFuncKeyMappedOld[3],
+                _ => scanCode >= 0 && scanCode < _packetOwnedFuncKeyMapped.Length
+                    ? _packetOwnedFuncKeyMapped[scanCode]
+                    : default,
+            };
+        }
+
+        private static bool IsPacketOwnedCastEntryType(byte type)
+        {
+            return type == PacketOwnedFuncKeySkillType
+                || type == PacketOwnedFuncKeyItemType
+                || type == PacketOwnedFuncKeyItemTypeAlt
+                || type == PacketOwnedFuncKeyItemTypeCash
+                || type == PacketOwnedFuncKeyMacroType;
+        }
+
+        private PacketOwnedKeyActionSlot ResolvePacketOwnedActionSlotForKey(
+            Keys key,
+            IReadOnlyDictionary<Keys, PacketOwnedKeyActionSlot> keyToSlot,
+            ISet<InputAction> assignedActions,
+            IReadOnlyList<PacketOwnedKeyActionSlot> slots)
+        {
+            if (keyToSlot.TryGetValue(key, out PacketOwnedKeyActionSlot existingSlot)
+                && !assignedActions.Contains(existingSlot.Action))
+            {
+                return existingSlot;
+            }
+
+            for (int i = 0; i < slots.Count; i++)
+            {
+                PacketOwnedKeyActionSlot candidate = slots[i];
+                if (assignedActions.Contains(candidate.Action))
+                {
+                    continue;
+                }
+
+                return candidate;
+            }
+
+            return default;
+        }
+
+        private bool TryApplyPacketOwnedCastMappingToSkillSlot(int slotIndex, PacketOwnedFuncKeyMappedEntry entry)
+        {
+            if (slotIndex < 0 || _playerManager?.Skills == null)
+            {
+                return false;
+            }
+
+            return entry.Type switch
+            {
+                PacketOwnedFuncKeySkillType => _playerManager.Skills.TrySetHotkey(slotIndex, entry.Id),
+                PacketOwnedFuncKeyItemType or PacketOwnedFuncKeyItemTypeAlt or PacketOwnedFuncKeyItemTypeCash
+                    => _playerManager.Skills.TrySetItemHotkey(slotIndex, entry.Id, ResolvePacketOwnedHotkeyInventoryType(entry.Id)),
+                PacketOwnedFuncKeyMacroType => TryApplyPacketOwnedMacroHotkey(slotIndex, entry.Id),
+                _ => false,
+            };
+        }
+
+        private bool TryApplyPacketOwnedMacroHotkey(int slotIndex, int packetMacroId)
+        {
+            if (_playerManager?.Skills == null || packetMacroId <= 0)
+            {
+                return false;
+            }
+
+            if (_playerManager.Skills.TrySetMacroHotkey(slotIndex, packetMacroId))
+            {
+                return true;
+            }
+
+            int zeroBasedMacroIndex = packetMacroId - 1;
+            return zeroBasedMacroIndex >= 0
+                && _playerManager.Skills.TrySetMacroHotkey(slotIndex, zeroBasedMacroIndex);
+        }
+
+        private static InventoryType ResolvePacketOwnedHotkeyInventoryType(int itemId)
+        {
+            InventoryType inventoryType = InventoryItemMetadataResolver.ResolveInventoryType(itemId);
+            return inventoryType is InventoryType.USE or InventoryType.CASH
+                ? inventoryType
+                : InventoryType.NONE;
+        }
+
+        private static List<PacketOwnedKeyActionSlot> BuildPacketOwnedActionSlots()
+        {
+            var slots = new List<PacketOwnedKeyActionSlot>(PacketOwnedHotkeyInputActions.Length);
+            for (int i = 0; i < PacketOwnedHotkeyInputActions.Length; i++)
+            {
+                slots.Add(new PacketOwnedKeyActionSlot(PacketOwnedHotkeyInputActions[i], i));
+            }
+
+            return slots;
+        }
+
+        private static InputAction[] BuildPacketOwnedHotkeyInputActions()
+        {
+            var actions = new InputAction[SkillManager.TOTAL_SLOT_COUNT];
+            int index = 0;
+            for (int i = 0; i < SkillManager.PRIMARY_SLOT_COUNT; i++)
+            {
+                actions[index++] = InputAction.Skill1 + i;
+            }
+
+            for (int i = 0; i < SkillManager.FUNCTION_SLOT_COUNT; i++)
+            {
+                actions[index++] = InputAction.FunctionSlot1 + i;
+            }
+
+            for (int i = 0; i < SkillManager.CTRL_SLOT_COUNT; i++)
+            {
+                actions[index++] = InputAction.CtrlSlot1 + i;
+            }
+
+            return actions;
         }
 
         private static Keys ResolvePacketOwnedScanCodeKey(int scanCode)

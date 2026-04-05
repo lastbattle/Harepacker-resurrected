@@ -55,6 +55,7 @@ namespace HaCreator.MapSimulator.UI
         private Func<string> _dispatchRequested;
         private Action<bool> _taxInfoRequested;
         private Action<ParcelDialogTab> _mesoRequested;
+        private Action<ParcelDialogTab> _draftAttachmentRequested;
         private Action<string> _recipientChanged;
         private Action<string> _bodyChanged;
         private Action<int> _mesoChanged;
@@ -181,6 +182,7 @@ namespace HaCreator.MapSimulator.UI
             Func<string> dispatchRequested,
             Action<bool> taxInfoRequested,
             Action<ParcelDialogTab> mesoRequested,
+            Action<ParcelDialogTab> draftAttachmentRequested,
             Action<string> recipientChanged,
             Action<string> bodyChanged,
             Action<int> mesoChanged)
@@ -192,6 +194,7 @@ namespace HaCreator.MapSimulator.UI
             _dispatchRequested = dispatchRequested;
             _taxInfoRequested = taxInfoRequested;
             _mesoRequested = mesoRequested;
+            _draftAttachmentRequested = draftAttachmentRequested;
             _recipientChanged = recipientChanged;
             _bodyChanged = bodyChanged;
             _mesoChanged = mesoChanged;
@@ -628,7 +631,7 @@ namespace HaCreator.MapSimulator.UI
             string itemSummary = quickMode
                 ? "Quick Send does not allow item parcels."
                 : string.IsNullOrWhiteSpace(snapshot.ItemAttachmentSummary)
-                    ? "Use /memo draft item <id> <qty> to stage a parcel item."
+                    ? "Click the package lane to stage an inventory item."
                     : snapshot.ItemAttachmentSummary;
             sprite.DrawString(_font, Truncate(itemSummary, 24), new Vector2(itemTextBounds.X + 4, itemTextBounds.Y + 7), itemColor, 0f, Vector2.Zero, 0.34f, SpriteEffects.None, 0f);
 
@@ -728,6 +731,14 @@ namespace HaCreator.MapSimulator.UI
             {
                 ActivateInput(quickMode ? ComposeInputField.QuickMeso : ComposeInputField.SendMeso, draftSnapshot);
                 SetSingleLineCursorFromPoint(GetComposeMesoBounds(contentBounds, quickMode));
+                return;
+            }
+
+            if (GetComposeItemIconBounds(contentBounds, quickMode).Contains(mousePosition)
+                || GetComposeItemTextBounds(contentBounds, quickMode).Contains(mousePosition))
+            {
+                DeactivateInput();
+                _draftAttachmentRequested?.Invoke(snapshot.ActiveTab);
                 return;
             }
 

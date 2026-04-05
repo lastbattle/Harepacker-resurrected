@@ -68,31 +68,45 @@ namespace HaCreator.MapSimulator.Pools
                 return 0;
             }
 
-            Match match = DurationRegex.Match(itemDescription);
-            if (!match.Success
-                || !int.TryParse(match.Groups["value"].Value, NumberStyles.None, CultureInfo.InvariantCulture, out int value)
-                || value <= 0)
+            MatchCollection matches = DurationRegex.Matches(itemDescription);
+            if (matches.Count == 0)
             {
                 return 0;
             }
 
-            string unit = match.Groups["unit"].Value;
-            if (unit.StartsWith("day", StringComparison.OrdinalIgnoreCase))
+            int totalSeconds = 0;
+            foreach (Match match in matches)
             {
-                return checked(value * 86400);
+                if (!match.Success
+                    || !int.TryParse(match.Groups["value"].Value, NumberStyles.None, CultureInfo.InvariantCulture, out int value)
+                    || value <= 0)
+                {
+                    continue;
+                }
+
+                string unit = match.Groups["unit"].Value;
+                if (unit.StartsWith("day", StringComparison.OrdinalIgnoreCase))
+                {
+                    totalSeconds = checked(totalSeconds + (value * 86400));
+                    continue;
+                }
+
+                if (unit.StartsWith("hour", StringComparison.OrdinalIgnoreCase) || unit.StartsWith("hr", StringComparison.OrdinalIgnoreCase))
+                {
+                    totalSeconds = checked(totalSeconds + (value * 3600));
+                    continue;
+                }
+
+                if (unit.StartsWith("min", StringComparison.OrdinalIgnoreCase))
+                {
+                    totalSeconds = checked(totalSeconds + (value * 60));
+                    continue;
+                }
+
+                totalSeconds = checked(totalSeconds + value);
             }
 
-            if (unit.StartsWith("hour", StringComparison.OrdinalIgnoreCase) || unit.StartsWith("hr", StringComparison.OrdinalIgnoreCase))
-            {
-                return checked(value * 3600);
-            }
-
-            if (unit.StartsWith("min", StringComparison.OrdinalIgnoreCase))
-            {
-                return checked(value * 60);
-            }
-
-            return value;
+            return totalSeconds;
         }
 
         private static int ResolveDurationSeconds(WzSubProperty itemProperty)
@@ -103,11 +117,14 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             WzSubProperty infoProperty = itemProperty["info"] as WzSubProperty;
+            WzSubProperty infoSpecProperty = infoProperty?["spec"] as WzSubProperty;
+            WzSubProperty specProperty = itemProperty["spec"] as WzSubProperty;
             return Math.Max(
                 0,
                 GetInt(infoProperty, "time",
-                    GetInt(itemProperty["spec"] as WzSubProperty, "time",
-                        GetInt(itemProperty, "time"))));
+                    GetInt(infoSpecProperty, "time",
+                        GetInt(specProperty, "time",
+                            GetInt(itemProperty, "time")))));
         }
 
         private static int GetInt(WzImageProperty property, string childName, int defaultValue = 0)

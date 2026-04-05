@@ -13,6 +13,14 @@ namespace HaCreator.MapSimulator.Pools
                 return SummonMovementStyle.Stationary;
             }
 
+            // Prefer loaded WZ summon movement metadata when available so packet-owned passive
+            // updates stay aligned with the authored summon branch profile.
+            SummonMovementStyle wzProfileStyle = summon.SkillData?.SummonMovementStyle ?? SummonMovementStyle.Stationary;
+            if (wzProfileStyle != SummonMovementStyle.Stationary)
+            {
+                return wzProfileStyle;
+            }
+
             if (summon.MovementStyle != SummonMovementStyle.Stationary)
             {
                 return summon.MovementStyle;

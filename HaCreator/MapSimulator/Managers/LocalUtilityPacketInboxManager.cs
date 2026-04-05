@@ -51,6 +51,10 @@ namespace HaCreator.MapSimulator.Managers
         public const int SetStandAloneModePacketType = 1014;
         public const int FollowCharacterClientPacketType = 193;
         public const int SitResultPacketType = 231;
+        public const int MesoGiveSucceededPacketType = 236;
+        public const int MesoGiveFailedPacketType = 237;
+        public const int RandomMesobagSucceededPacketType = 238;
+        public const int RandomMesobagFailedPacketType = 239;
         public const int OpenSkillGuideClientPacketType = 262;
         public const int PlayEventSoundClientPacketType = 246;
         public const int PlayMinigameSoundClientPacketType = 247;
@@ -64,6 +68,7 @@ namespace HaCreator.MapSimulator.Managers
         public const int TutorMsgClientPacketType = 256;
         public const int ResignQuestReturnClientPacketType = 259;
         public const int PassMateNameClientPacketType = 260;
+        public const int EngagementRequestPacketType = 161;
         public const int QuestResultPacketType = 242;
         public const int NotifyHpDecByFieldPacketType = 243;
         public const int NoticeMsgClientPacketType = 263;
@@ -87,6 +92,7 @@ namespace HaCreator.MapSimulator.Managers
         public const int TrunkDialogPacketType = 1016;
         public const int MessengerDispatchPacketType = 1017;
         public const int MarriageResultPacketType = 1018;
+        public const int ItemMakerHiddenRecipeUnlockPacketType = PacketOwnedItemMakerHiddenRecipeUnlockRuntime.PacketType;
 
         private readonly ConcurrentQueue<LocalUtilityPacketInboxMessage> _pendingMessages = new();
         private readonly object _listenerLock = new();
@@ -385,6 +391,42 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
+            if (token.Equals("mesogivesucceeded", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("mesogiveok", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onmesogive_succeeded", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onmesogivesucceeded", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = MesoGiveSucceededPacketType;
+                return true;
+            }
+
+            if (token.Equals("mesogivefailed", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("mesogivefail", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onmesogive_failed", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onmesogivefailed", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = MesoGiveFailedPacketType;
+                return true;
+            }
+
+            if (token.Equals("randommesobagsucceeded", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("mesobagok", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onrandommesobag_succeeded", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onrandommesobagsucceeded", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = RandomMesobagSucceededPacketType;
+                return true;
+            }
+
+            if (token.Equals("randommesobagfailed", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("mesobagfail", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onrandommesobag_failed", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onrandommesobagfailed", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = RandomMesobagFailedPacketType;
+                return true;
+            }
+
             if (token.Equals("directionmode", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("setdirectionmode", StringComparison.OrdinalIgnoreCase))
             {
@@ -482,6 +524,14 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
+            if (token.Equals("makerhiddenunlock", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("itemmakerhiddenunlock", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onmakerhiddenunlock", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = ItemMakerHiddenRecipeUnlockPacketType;
+                return true;
+            }
+
             if (token.Equals("questresult", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("onquestresult", StringComparison.OrdinalIgnoreCase))
             {
@@ -502,6 +552,15 @@ namespace HaCreator.MapSimulator.Managers
                 || token.Equals("onpassmatename", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = PassMateNameClientPacketType;
+                return true;
+            }
+
+            if (token.Equals("engagementrequest", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("engagerequest", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onengagementrequest", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("marriagerequest", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = EngagementRequestPacketType;
                 return true;
             }
 
@@ -647,6 +706,10 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == SetStandAloneModeClientPacketType
                 || packetType == FollowCharacterClientPacketType
                 || packetType == SitResultPacketType
+                || packetType == MesoGiveSucceededPacketType
+                || packetType == MesoGiveFailedPacketType
+                || packetType == RandomMesobagSucceededPacketType
+                || packetType == RandomMesobagFailedPacketType
                 || packetType == RadioSchedulePacketType
                 || packetType == RadioScheduleClientPacketType
                 || packetType == AntiMacroResultPacketType
@@ -655,9 +718,11 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == QuestResultPacketType
                 || packetType == ResignQuestReturnClientPacketType
                 || packetType == PassMateNameClientPacketType
+                || packetType == EngagementRequestPacketType
                 || packetType == NotifyHpDecByFieldPacketType
                 || packetType == OpenClassCompetitionPagePacketType
                 || packetType == MakerResultClientPacketType
+                || packetType == ItemMakerHiddenRecipeUnlockPacketType
                 || packetType == DamageMeterPacketType
                 || packetType == TimeBombAttackPacketType
                 || packetType == VengeanceSkillApplyPacketType
@@ -803,6 +868,10 @@ namespace HaCreator.MapSimulator.Managers
                 SetDirectionModePacketType => "SetDirectionMode(1013)",
                 SetStandAloneModePacketType => "SetStandAloneMode(1014)",
                 FollowCharacterClientPacketType => "FollowCharacter(193)",
+                MesoGiveSucceededPacketType => "OnMesoGive_Succeeded(236)",
+                MesoGiveFailedPacketType => "OnMesoGive_Failed(237)",
+                RandomMesobagSucceededPacketType => "OnRandomMesobag_Succeeded(238)",
+                RandomMesobagFailedPacketType => "OnRandomMesobag_Failed(239)",
                 PlayEventSoundClientPacketType => "PlayEventSound(246)",
                 PlayMinigameSoundClientPacketType => "PlayMinigameSound(247)",
                 QuestResultPacketType => "OnQuestResult(242)",
@@ -817,6 +886,7 @@ namespace HaCreator.MapSimulator.Managers
                 TutorMsgClientPacketType => "TutorMsg(256)",
                 ResignQuestReturnClientPacketType => "OnResignQuestReturn(259)",
                 PassMateNameClientPacketType => "OnPassMateName(260)",
+                EngagementRequestPacketType => "SendEngagementRequest(161)",
                 NoticeMsgClientPacketType => "NoticeMsg(263)",
                 ChatMsgClientPacketType => "ChatMsg(264)",
                 BuffzoneEffectClientPacketType => "BuffzoneEffect(265)",
@@ -842,6 +912,7 @@ namespace HaCreator.MapSimulator.Managers
                 TrunkDialogPacketType => "TrunkDialog OnPacket(1016)",
                 MessengerDispatchPacketType => "Messenger OnPacket(1017)",
                 MarriageResultPacketType => "MarriageResult OnMarriageResult(1018)",
+                ItemMakerHiddenRecipeUnlockPacketType => "ItemMakerHiddenRecipeUnlock(1019)",
                 _ => $"packet {packetType}"
             };
         }

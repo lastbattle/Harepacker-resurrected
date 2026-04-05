@@ -110,13 +110,25 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            if (!decodedPacket.NextAttackPossible)
+            {
+                _mobAttackSystem.SetNextAttackPacketOverrides(decodedPacket.MobId, decodedPacket.AttackId, currentTime);
+                message = $"Cleared packet attack overrides for mob {decodedPacket.MobId} attack{decodedPacket.AttackId} from {MobAttackPacketInboxManager.DescribePacketType(packetType)} because NextAttackPossible=0.";
+                return true;
+            }
+
+            bool sourceFacesRight = !decodedPacket.FacingLeft;
             bool hasMultiTargetOverrides = decodedPacket.MultiTargetForBall?.Count > 0;
             bool hasAreaDelayOverrides = decodedPacket.RandTimeForAreaAttack?.Count > 0;
             MobTargetInfo lockedTargetOverride = MobMoveAttackPacketCodec.CreateLockedTargetOverride(decodedPacket.LockedTargetInfo);
             bool hasLockedTargetOverride = lockedTargetOverride?.IsValid == true;
             if (!hasMultiTargetOverrides && !hasAreaDelayOverrides && !hasLockedTargetOverride)
             {
-                _mobAttackSystem.SetNextAttackPacketOverrides(decodedPacket.MobId, decodedPacket.AttackId, currentTime);
+                _mobAttackSystem.SetNextAttackPacketOverrides(
+                    decodedPacket.MobId,
+                    decodedPacket.AttackId,
+                    currentTime,
+                    sourceFacesRight: sourceFacesRight);
                 message = $"Cleared packet attack overrides for mob {decodedPacket.MobId} attack{decodedPacket.AttackId} from {MobAttackPacketInboxManager.DescribePacketType(packetType)}.";
                 return true;
             }
@@ -127,7 +139,8 @@ namespace HaCreator.MapSimulator
                 currentTime,
                 lockedTargetOverride,
                 decodedPacket.MultiTargetForBall,
-                decodedPacket.RandTimeForAreaAttack);
+                decodedPacket.RandTimeForAreaAttack,
+                sourceFacesRight);
 
             string multiTargetSummary = hasMultiTargetOverrides
                 ? $"{decodedPacket.MultiTargetForBall.Count} multiball lane point(s)"
@@ -138,7 +151,8 @@ namespace HaCreator.MapSimulator
             string lockedTargetSummary = hasLockedTargetOverride
                 ? $"locked target {lockedTargetOverride.TargetType}:{lockedTargetOverride.TargetId}"
                 : "no locked target";
-            message = $"Queued packet attack overrides for mob {decodedPacket.MobId} attack{decodedPacket.AttackId} from {MobAttackPacketInboxManager.DescribePacketType(packetType)} with {lockedTargetSummary}, {multiTargetSummary}, and {randDelaySummary}.";
+            string facingSummary = sourceFacesRight ? "facing right" : "facing left";
+            message = $"Queued packet attack overrides for mob {decodedPacket.MobId} attack{decodedPacket.AttackId} from {MobAttackPacketInboxManager.DescribePacketType(packetType)} with {lockedTargetSummary}, {multiTargetSummary}, {randDelaySummary}, and {facingSummary}.";
             return true;
         }
 

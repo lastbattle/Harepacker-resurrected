@@ -2697,13 +2697,16 @@ namespace HaCreator.MapSimulator.UI
         private UserInfoActionContext BuildCurrentActionContext()
         {
             CharacterBuild build = _inspectionTarget?.Build ?? _characterBuild;
+            int channel = IsRemoteInspectionActive()
+                ? (_inspectionTarget?.Channel ?? 0)
+                : Math.Max(1, _inspectionTarget?.Channel ?? 1);
             return new UserInfoActionContext(
                 IsRemoteInspectionActive(),
                 _inspectionTarget?.CharacterId ?? build?.Id ?? 0,
                 _inspectionTarget?.Name ?? build?.Name ?? string.Empty,
                 build,
                 _inspectionTarget?.LocationSummary ?? string.Empty,
-                Math.Max(1, _inspectionTarget?.Channel ?? 1));
+                channel);
         }
 
         private string BuildInspectionBanner()
@@ -2716,7 +2719,10 @@ namespace HaCreator.MapSimulator.UI
             string location = string.IsNullOrWhiteSpace(_inspectionTarget.LocationSummary)
                 ? "Location unknown"
                 : _inspectionTarget.LocationSummary;
-            return $"{_inspectionTarget.Name}  CH {_inspectionTarget.Channel}  {location}";
+            string channelText = _inspectionTarget.Channel > 0
+                ? $"CH {_inspectionTarget.Channel}"
+                : "CH ?";
+            return $"{_inspectionTarget.Name}  {channelText}  {location}";
         }
 
         private static string FormatRankDelta(int currentRank, int? previousRank)

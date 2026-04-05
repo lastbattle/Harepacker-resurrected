@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Text;
 using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.UI;
 using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Util;
 using MapleLib.WzLib;
@@ -56,6 +57,9 @@ namespace HaCreator.MapSimulator.Companions
         public bool IsAccountSharable { get; init; }
         public bool HasAccountShareTag { get; init; }
         public bool IsNoMoveToLocker { get; init; }
+        public int? OwnerAccountId { get; set; }
+        public int? OwnerCharacterId { get; set; }
+        public bool IsCashOwnershipLocked { get; set; }
         public bool AutoPickupMeso { get; init; }
         public bool AutoPickupItems { get; init; }
         public bool AutoPickupOthers { get; init; }
@@ -94,6 +98,69 @@ namespace HaCreator.MapSimulator.Companions
         public IDXObject Icon { get; init; }
         public IDXObject IconRaw { get; init; }
         public CharacterPart CharacterPart { get; init; }
+
+        public CompanionEquipItem Clone()
+        {
+            return new CompanionEquipItem
+            {
+                ItemId = ItemId,
+                Name = Name,
+                Description = Description,
+                ItemCategory = ItemCategory,
+                ExcludedPetNames = ExcludedPetNames,
+                SupportedPetItemIds = SupportedPetItemIds,
+                IsCash = IsCash,
+                IsUniqueItem = IsUniqueItem,
+                IsUniqueEquipItem = IsUniqueEquipItem,
+                IsTradeBlocked = IsTradeBlocked,
+                IsEquipTradeBlocked = IsEquipTradeBlocked,
+                IsNotForSale = IsNotForSale,
+                IsAccountSharable = IsAccountSharable,
+                HasAccountShareTag = HasAccountShareTag,
+                IsNoMoveToLocker = IsNoMoveToLocker,
+                OwnerAccountId = OwnerAccountId,
+                OwnerCharacterId = OwnerCharacterId,
+                IsCashOwnershipLocked = IsCashOwnershipLocked,
+                AutoPickupMeso = AutoPickupMeso,
+                AutoPickupItems = AutoPickupItems,
+                AutoPickupOthers = AutoPickupOthers,
+                SweepForDrops = SweepForDrops,
+                HasLongRangePickup = HasLongRangePickup,
+                ConsumeOwnerHpOnPickup = ConsumeOwnerHpOnPickup,
+                RequiredLevel = RequiredLevel,
+                RequiredJobMask = RequiredJobMask,
+                RequiredFame = RequiredFame,
+                RequiredSTR = RequiredSTR,
+                RequiredDEX = RequiredDEX,
+                RequiredINT = RequiredINT,
+                RequiredLUK = RequiredLUK,
+                BonusSTR = BonusSTR,
+                BonusDEX = BonusDEX,
+                BonusINT = BonusINT,
+                BonusLUK = BonusLUK,
+                BonusHP = BonusHP,
+                BonusMP = BonusMP,
+                BonusWeaponAttack = BonusWeaponAttack,
+                BonusMagicAttack = BonusMagicAttack,
+                BonusWeaponDefense = BonusWeaponDefense,
+                BonusMagicDefense = BonusMagicDefense,
+                BonusAccuracy = BonusAccuracy,
+                BonusAvoidability = BonusAvoidability,
+                BonusHands = BonusHands,
+                BonusSpeed = BonusSpeed,
+                BonusJump = BonusJump,
+                UpgradeSlots = UpgradeSlots,
+                KnockbackRate = KnockbackRate,
+                TradeAvailable = TradeAvailable,
+                IsTimeLimited = IsTimeLimited,
+                Durability = Durability,
+                MaxDurability = MaxDurability,
+                ItemTexture = ItemTexture,
+                Icon = Icon,
+                IconRaw = IconRaw,
+                CharacterPart = CharacterPart?.Clone()
+            };
+        }
     }
 
     internal static class CompanionEquipmentTooltipPartFactory
@@ -150,6 +217,9 @@ namespace HaCreator.MapSimulator.Companions
                 IsAccountSharable = item.IsAccountSharable,
                 HasAccountShareTag = item.HasAccountShareTag,
                 IsNoMoveToLocker = item.IsNoMoveToLocker,
+                OwnerAccountId = item.OwnerAccountId,
+                OwnerCharacterId = item.OwnerCharacterId,
+                IsCashOwnershipLocked = item.IsCashOwnershipLocked,
                 IsTimeLimited = item.IsTimeLimited,
                 Durability = item.Durability,
                 MaxDurability = item.MaxDurability,
@@ -226,7 +296,10 @@ namespace HaCreator.MapSimulator.Companions
             DragonEquipSlot targetSlot,
             int itemId,
             out IReadOnlyList<CompanionEquipItem> displacedItems,
-            out string rejectReason)
+            out string rejectReason,
+            InventorySlotData sourceSlot = null,
+            int? ownerAccountId = null,
+            int ownerCharacterId = 0)
         {
             displacedItems = Array.Empty<CompanionEquipItem>();
             if (!TryValidateEquipItem(targetSlot, itemId, out CompanionEquipItem item, out rejectReason))
@@ -239,7 +312,12 @@ namespace HaCreator.MapSimulator.Companions
                 displacedItems = new ReadOnlyCollection<CompanionEquipItem>(new[] { displacedItem });
             }
 
-            _equippedItems[targetSlot] = item;
+            _equippedItems[targetSlot] = CompanionEquipmentController.CloneForEquippedState(
+                item,
+                sourceSlot,
+                _ownerBuild,
+                ownerAccountId,
+                ownerCharacterId);
             return true;
         }
 
@@ -313,7 +391,10 @@ namespace HaCreator.MapSimulator.Companions
             PetRuntime pet,
             int itemId,
             out IReadOnlyList<CompanionEquipItem> displacedItems,
-            out string rejectReason)
+            out string rejectReason,
+            InventorySlotData sourceSlot = null,
+            int? ownerAccountId = null,
+            int ownerCharacterId = 0)
         {
             displacedItems = Array.Empty<CompanionEquipItem>();
             if (!TryValidateEquipItem(pet, itemId, out CompanionEquipItem item, out rejectReason))
@@ -326,7 +407,12 @@ namespace HaCreator.MapSimulator.Companions
                 displacedItems = new ReadOnlyCollection<CompanionEquipItem>(new[] { displacedItem });
             }
 
-            _equippedItems[pet.RuntimeId] = item;
+            _equippedItems[pet.RuntimeId] = CompanionEquipmentController.CloneForEquippedState(
+                item,
+                sourceSlot,
+                _ownerBuild,
+                ownerAccountId,
+                ownerCharacterId);
             return true;
         }
 
@@ -515,7 +601,10 @@ namespace HaCreator.MapSimulator.Companions
             AndroidEquipSlot targetSlot,
             int itemId,
             out IReadOnlyList<CompanionEquipItem> displacedItems,
-            out string rejectReason)
+            out string rejectReason,
+            InventorySlotData sourceSlot = null,
+            int? ownerAccountId = null,
+            int ownerCharacterId = 0)
         {
             displacedItems = Array.Empty<CompanionEquipItem>();
             if (!TryValidateEquipItem(targetSlot, itemId, out CharacterPart part, out rejectReason))
@@ -535,7 +624,13 @@ namespace HaCreator.MapSimulator.Companions
                 _equippedItems.Remove(AndroidEquipSlot.Pants);
             }
 
-            _equippedItems[targetSlot] = CreateCompanionEquipItem(part);
+            CompanionEquipItem equippedItem = CompanionEquipmentController.CloneForEquippedState(
+                CreateCompanionEquipItem(part),
+                sourceSlot,
+                _ownerBuild,
+                ownerAccountId,
+                ownerCharacterId);
+            _equippedItems[targetSlot] = equippedItem;
             displacedItems = displaced.Count == 0
                 ? Array.Empty<CompanionEquipItem>()
                 : new ReadOnlyCollection<CompanionEquipItem>(displaced);
@@ -665,7 +760,10 @@ namespace HaCreator.MapSimulator.Companions
                 IsAccountSharable = part.IsAccountSharable,
                 HasAccountShareTag = part.HasAccountShareTag,
                 IsNoMoveToLocker = part.IsNoMoveToLocker,
-                CharacterPart = part
+                OwnerAccountId = part.OwnerAccountId,
+                OwnerCharacterId = part.OwnerCharacterId,
+                IsCashOwnershipLocked = part.IsCashOwnershipLocked,
+                CharacterPart = part?.Clone()
             };
         }
 
@@ -750,7 +848,10 @@ namespace HaCreator.MapSimulator.Companions
             MechanicEquipSlot targetSlot,
             int itemId,
             out IReadOnlyList<CompanionEquipItem> displacedItems,
-            out string rejectReason)
+            out string rejectReason,
+            InventorySlotData sourceSlot = null,
+            int? ownerAccountId = null,
+            int ownerCharacterId = 0)
         {
             displacedItems = Array.Empty<CompanionEquipItem>();
             if (!TryValidateEquipItem(targetSlot, itemId, out CompanionEquipItem item, out rejectReason))
@@ -763,7 +864,12 @@ namespace HaCreator.MapSimulator.Companions
                 displacedItems = new ReadOnlyCollection<CompanionEquipItem>(new[] { displacedItem });
             }
 
-            _equippedItems[targetSlot] = item;
+            _equippedItems[targetSlot] = CompanionEquipmentController.CloneForEquippedState(
+                item,
+                sourceSlot,
+                _ownerBuild,
+                ownerAccountId,
+                ownerCharacterId);
             return true;
         }
 
@@ -903,6 +1009,70 @@ namespace HaCreator.MapSimulator.Companions
                 ? $"{resolvedItemName} can only be equipped once."
                 : $"{resolvedItemName} is a unique item and is already equipped.";
             return false;
+        }
+
+        internal static CompanionEquipItem CloneForEquippedState(
+            CompanionEquipItem template,
+            InventorySlotData sourceSlot,
+            CharacterBuild ownerBuild,
+            int? ownerAccountId,
+            int ownerCharacterId)
+        {
+            if (template == null)
+            {
+                return null;
+            }
+
+            CompanionEquipItem equippedItem = template.Clone();
+            ApplyCompanionOwnership(equippedItem, sourceSlot, ownerBuild, ownerAccountId, ownerCharacterId);
+            return equippedItem;
+        }
+
+        private static void ApplyCompanionOwnership(
+            CompanionEquipItem item,
+            InventorySlotData sourceSlot,
+            CharacterBuild ownerBuild,
+            int? ownerAccountId,
+            int ownerCharacterId)
+        {
+            if (item == null || !item.IsCash)
+            {
+                return;
+            }
+
+            int? sourceAccountId = sourceSlot?.OwnerAccountId ?? sourceSlot?.TooltipPart?.OwnerAccountId;
+            int? sourceCharacterId = sourceSlot?.OwnerCharacterId ?? sourceSlot?.TooltipPart?.OwnerCharacterId;
+            bool ownershipLocked = (sourceSlot?.IsCashOwnershipLocked ?? false)
+                                   || (sourceSlot?.TooltipPart?.IsCashOwnershipLocked ?? false)
+                                   || item.IsCashOwnershipLocked;
+
+            int resolvedCharacterId = sourceCharacterId.GetValueOrDefault();
+            if (resolvedCharacterId <= 0)
+            {
+                int fallbackCharacterId = ownerCharacterId > 0 ? ownerCharacterId : ownerBuild?.Id ?? 0;
+                // Account-share-tagged cash equips can move across characters on the same account.
+                if (fallbackCharacterId > 0 && !(item.IsAccountSharable || item.HasAccountShareTag))
+                {
+                    resolvedCharacterId = fallbackCharacterId;
+                }
+            }
+
+            int resolvedAccountId = sourceAccountId.GetValueOrDefault();
+            if (resolvedAccountId <= 0 && ownerAccountId.HasValue && ownerAccountId.Value > 0)
+            {
+                resolvedAccountId = ownerAccountId.Value;
+            }
+
+            item.OwnerAccountId = resolvedAccountId > 0 ? resolvedAccountId : null;
+            item.OwnerCharacterId = resolvedCharacterId > 0 ? resolvedCharacterId : null;
+            item.IsCashOwnershipLocked = ownershipLocked || item.OwnerAccountId.HasValue || item.OwnerCharacterId.HasValue;
+
+            if (item.CharacterPart != null)
+            {
+                item.CharacterPart.OwnerAccountId = item.OwnerAccountId;
+                item.CharacterPart.OwnerCharacterId = item.OwnerCharacterId;
+                item.CharacterPart.IsCashOwnershipLocked = item.IsCashOwnershipLocked;
+            }
         }
 
         private static IReadOnlyList<AndroidHeartRequirement> ParseSupportedAndroidHeartRequirements(string description)

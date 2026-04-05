@@ -305,7 +305,10 @@ namespace HaCreator.MapSimulator.Interaction
                 if (!officialPacket.SupportsFieldTransfer)
                 {
                     string notifierSuffix = FormatNotifierSuffix(officialPacket.NotifierTitle, officialPacket.NotifierLines);
-                    _stageStatus = $"CStage::OnSetField decoded the official character-data branch for channel {officialPacket.ChannelId}, but CharacterData field entry is not modeled yet{notifierSuffix}.";
+                    string decodeSuffix = officialPacket.HasCharacterData
+                        ? $" (remaining opaque bytes {officialPacket.TrailingBytes.ToString(CultureInfo.InvariantCulture)})"
+                        : string.Empty;
+                    _stageStatus = $"CStage::OnSetField decoded the official {(officialPacket.HasCharacterData ? "character-data" : "non-character-data")} branch for channel {officialPacket.ChannelId}, but field transfer data could not be recovered{decodeSuffix}{notifierSuffix}.";
                     message = _stageStatus;
                     return false;
                 }
@@ -317,9 +320,15 @@ namespace HaCreator.MapSimulator.Interaction
                     "CStage::OnSetField");
                 bool queued = callbacks.QueueFieldTransfer?.Invoke(request) == true;
                 string notifierSummary = FormatNotifierSuffix(officialPacket.NotifierTitle, officialPacket.NotifierLines);
+                string branchLabel = officialPacket.HasCharacterData
+                    ? "official character-data branch"
+                    : "official payload";
+                string trailingSuffix = officialPacket.HasCharacterData
+                    ? $" (remaining opaque bytes {officialPacket.TrailingBytes.ToString(CultureInfo.InvariantCulture)})"
+                    : string.Empty;
                 _stageStatus = queued
-                    ? $"CStage::OnSetField queued map {officialPacket.FieldId}{FormatPortalIndexSuffix(officialPacket.PortalIndex)} from the official payload (channel {officialPacket.ChannelId}, fieldKey {officialPacket.FieldKey}){notifierSummary}."
-                    : $"CStage::OnSetField decoded map {officialPacket.FieldId}{FormatPortalIndexSuffix(officialPacket.PortalIndex)} from the official payload, but the simulator could not queue the transfer.";
+                    ? $"CStage::OnSetField queued map {officialPacket.FieldId}{FormatPortalIndexSuffix(officialPacket.PortalIndex)} from the {branchLabel} (channel {officialPacket.ChannelId}, fieldKey {officialPacket.FieldKey}){trailingSuffix}{notifierSummary}."
+                    : $"CStage::OnSetField decoded map {officialPacket.FieldId}{FormatPortalIndexSuffix(officialPacket.PortalIndex)} from the {branchLabel}, but the simulator could not queue the transfer.";
                 message = _stageStatus;
                 return queued;
             }
@@ -453,6 +462,22 @@ namespace HaCreator.MapSimulator.Interaction
 
                 if (hasCharacterData)
                 {
+                    if (!TryDecodeCharacterDataTransferHead(reader, out PacketCharacterDataTransferHead transferHead, out error))
+                    {
+                        return false;
+                    }
+
+                    int remainingBytes = checked((int)(stream.Length - stream.Position));
+                    long transferServerFileTime = 0;
+                    if (remainingBytes >= sizeof(long))
+                    {
+                        long restorePosition = stream.Position;
+                        stream.Position = stream.Length - sizeof(long);
+                        transferServerFileTime = reader.ReadInt64();
+                        stream.Position = restorePosition;
+                        remainingBytes -= sizeof(long);
+                    }
+
                     packet = new PacketSetFieldPacket(
                         clientOptions,
                         channelId,
@@ -461,15 +486,15 @@ namespace HaCreator.MapSimulator.Interaction
                         hasCharacterData,
                         notifierTitle,
                         notifierLines,
+                        transferHead.FieldId > 0,
+                        transferHead.FieldId,
+                        transferHead.PortalIndex,
+                        transferHead.Hp,
                         false,
                         0,
                         0,
-                        0,
-                        false,
-                        0,
-                        0,
-                        0,
-                        (int)(stream.Length - stream.Position));
+                        transferServerFileTime,
+                        remainingBytes);
                     return true;
                 }
 
@@ -522,6 +547,57 @@ namespace HaCreator.MapSimulator.Interaction
             catch (Exception ex) when (ex is IOException || ex is EndOfStreamException || ex is ArgumentException)
             {
                 error = $"Official CStage::OnSetField payload could not be decoded: {ex.Message}";
+                return false;
+            }
+        }
+
+        private static bool TryDecodeCharacterDataTransferHead(BinaryReader reader, out PacketCharacterDataTransferHead head, out string error)
+        {
+            head = default;
+            error = null;
+            try
+            {
+                _ = reader.ReadInt32(); // damage seed 1
+                _ = reader.ReadInt32(); // damage seed 2
+                _ = reader.ReadInt32(); // damage seed 3
+                _ = reader.ReadInt32(); // character id
+                _ = ReadMapleString(reader); // character name
+                _ = reader.ReadByte(); // gender
+                _ = reader.ReadByte(); // skin
+                _ = reader.ReadInt32(); // face
+                _ = reader.ReadInt32(); // hair
+                _ = reader.ReadByte(); // level
+                _ = reader.ReadInt16(); // job
+                _ = reader.ReadInt16(); // str
+                _ = reader.ReadInt16(); // dex
+                _ = reader.ReadInt16(); // int
+                _ = reader.ReadInt16(); // luk
+                int hp = reader.ReadInt32();
+                _ = reader.ReadInt32(); // max hp
+                _ = reader.ReadInt32(); // mp
+                _ = reader.ReadInt32(); // max mp
+                _ = reader.ReadInt16(); // ap
+                _ = reader.ReadInt16(); // sp
+                _ = reader.ReadInt32(); // exp
+                _ = reader.ReadInt16(); // fame
+                _ = reader.ReadInt32(); // temp exp
+                int fieldId = reader.ReadInt32(); // dwPosMap
+                byte portalIndex = reader.ReadByte(); // nPortal
+                _ = reader.ReadInt32(); // play time
+                _ = reader.ReadInt16(); // sub job
+                _ = reader.ReadByte(); // admin effect
+                bool hasLinkedCharacterName = reader.ReadByte() != 0;
+                if (hasLinkedCharacterName)
+                {
+                    _ = ReadMapleString(reader);
+                }
+
+                head = new PacketCharacterDataTransferHead(fieldId, portalIndex, hp);
+                return true;
+            }
+            catch (Exception ex) when (ex is IOException || ex is EndOfStreamException || ex is ArgumentException || ex is InvalidDataException)
+            {
+                error = $"Official CStage::OnSetField character-data branch could not be decoded far enough to recover transfer fields: {ex.Message}";
                 return false;
             }
         }
@@ -661,6 +737,8 @@ namespace HaCreator.MapSimulator.Interaction
     internal readonly record struct PacketMapObjectVisibilityEntry(string Name, bool Visible);
 
     internal readonly record struct PacketStageFieldTransferRequest(int MapId, string PortalName, int PortalIndex, string Source);
+
+    internal readonly record struct PacketCharacterDataTransferHead(int FieldId, byte PortalIndex, int Hp);
 
     internal readonly record struct PacketSetFieldPacket(
         IReadOnlyDictionary<uint, int> ClientOptions,

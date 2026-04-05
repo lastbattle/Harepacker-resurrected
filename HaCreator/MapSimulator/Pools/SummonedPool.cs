@@ -1328,11 +1328,23 @@ namespace HaCreator.MapSimulator.Pools
                 }
 
                 state.Summon.LastBodyContactTime = currentTime;
-                ApplySummonDamage(state, damage: 1, currentTime, useHitAnimationState: true);
+                int damage = ResolveSummonBodyContactDamage(mob);
+                ApplySummonDamage(state, damage, currentTime, useHitAnimationState: true);
+                PlayPacketIncDecHpFeedback(state.Summon, damage, currentTime);
                 return true;
             }
 
             return false;
+        }
+
+        private static int ResolveSummonBodyContactDamage(MobItem mob)
+        {
+            int baseDamage = SummonDamageRuntimeRules.ResolveBodyContactBaseDamage(
+                mob?.MobData?.PADamage ?? 0,
+                mob?.AI?.GetCurrentAttack()?.Damage ?? 0,
+                mob?.MobData?.MADamage ?? 0);
+            int resolvedDamage = mob?.AI?.CalculateOutgoingDamage(baseDamage, MobDamageType.Physical) ?? baseDamage;
+            return Math.Max(1, resolvedDamage);
         }
 
         private bool TryReadAvatarLook(ref PacketReader reader, out LoginAvatarLook avatarLook, out string message)
@@ -2416,6 +2428,13 @@ namespace HaCreator.MapSimulator.Pools
             if (cancelFamily.Count == 0)
             {
                 cancelFamily.Add(skillId);
+            }
+
+            foreach (int candidateSkillId in cancelFamily)
+            {
+                remainingDurationMs = Math.Max(
+                    remainingDurationMs,
+                    Math.Max(0, localCancelFamilyRemainingDurationAccessor?.Invoke(candidateSkillId, currentTime) ?? 0));
             }
 
             foreach (ActiveSummon summon in localPacketOwnedSummons)

@@ -145,6 +145,7 @@ namespace HaCreator.MapSimulator
                 EnsureLocalUtilityOfficialSessionBridgeState(shouldRun: false);
                 EnsureEngagementProposalInboxState(shouldRun: false);
                 EnsureStageTransitionPacketInboxState(shouldRun: false);
+                EnsureReactorPoolPacketInboxState(shouldRun: false);
                 EnsureSummonedPacketInboxState(shouldRun: false);
                 EnsureMobAttackPacketInboxState(shouldRun: false);
                 UpdateLoginRuntimeFrame(gameTime, newKeyboardState, newMouseState, isWindowActive);
@@ -221,6 +222,8 @@ namespace HaCreator.MapSimulator
             UpdateWorldChannelSelectorRequestState();
             EnsureStageTransitionPacketInboxState(shouldRun: _mapBoard?.MapInfo != null);
             DrainStageTransitionPacketInbox();
+            EnsureReactorPoolPacketInboxState(shouldRun: _mapBoard?.MapInfo != null);
+            DrainReactorPoolPacketInbox();
             EnsureComboCounterPacketInboxState(shouldRun: true);
             DrainComboCounterPacketInbox();
             UpdatePacketOwnedComboState(currTickCount);

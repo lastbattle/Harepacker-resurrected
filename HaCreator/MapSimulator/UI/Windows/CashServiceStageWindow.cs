@@ -95,6 +95,22 @@ namespace HaCreator.MapSimulator.UI
         private int _lastPacketType;
         private int _lastPacketTick = int.MinValue;
         private bool _hasPendingMigration;
+        private int _cashItemResultSubtype = -1;
+        private int _cashItemCommoditySerialNumber;
+        private int _cashItemProductId;
+        private int _cashItemPrice;
+        private int _cashItemMutationCount;
+        private string _cashItemLastSummary = "No cash-item result routed yet.";
+        private int _itcNormalItemSubtype = -1;
+        private int _itcNormalItemPage;
+        private int _itcNormalItemCategory;
+        private int _itcNormalItemSortType = 1;
+        private int _itcNormalItemSortColumn;
+        private int _itcNormalItemEntryCount;
+        private int _itcNormalItemSelectedListingId;
+        private int _itcNormalItemSelectedPrice;
+        private int _itcNormalItemMutationCount;
+        private string _itcNormalItemLastSummary = "No ITC normal-item packet routed yet.";
 
         public CashServiceStageWindow(IDXObject frame, string windowName, CashServiceStageKind stageKind, GraphicsDevice device)
             : base(frame)
@@ -120,6 +136,18 @@ namespace HaCreator.MapSimulator.UI
         public int ChargeParam => _chargeParam;
         public bool HasPendingCommodityMigration => _hasPendingMigration;
         public bool IsOneADayPending => _packetRoutes.ContainsKey(395);
+        public int CashItemMutationCount => _cashItemMutationCount;
+        public string CashItemLastSummary => _cashItemLastSummary;
+        public int ItcNormalItemMutationCount => _itcNormalItemMutationCount;
+        public int ItcNormalItemSubtype => _itcNormalItemSubtype;
+        public int ItcNormalItemPage => _itcNormalItemPage;
+        public int ItcNormalItemCategory => _itcNormalItemCategory;
+        public int ItcNormalItemSortType => _itcNormalItemSortType;
+        public int ItcNormalItemSortColumn => _itcNormalItemSortColumn;
+        public int ItcNormalItemEntryCount => _itcNormalItemEntryCount;
+        public int ItcNormalItemSelectedListingId => _itcNormalItemSelectedListingId;
+        public int ItcNormalItemSelectedPrice => _itcNormalItemSelectedPrice;
+        public string ItcNormalItemLastSummary => _itcNormalItemLastSummary;
 
         public override void SetFont(SpriteFont font)
         {
@@ -208,6 +236,22 @@ namespace HaCreator.MapSimulator.UI
             _lastPacketType = 0;
             _lastPacketTick = int.MinValue;
             _lastOpenTick = tickCount;
+            _cashItemResultSubtype = -1;
+            _cashItemCommoditySerialNumber = 0;
+            _cashItemProductId = 0;
+            _cashItemPrice = 0;
+            _cashItemMutationCount = 0;
+            _cashItemLastSummary = "No cash-item result routed yet.";
+            _itcNormalItemSubtype = -1;
+            _itcNormalItemPage = 0;
+            _itcNormalItemCategory = 0;
+            _itcNormalItemSortType = 1;
+            _itcNormalItemSortColumn = 0;
+            _itcNormalItemEntryCount = 0;
+            _itcNormalItemSelectedListingId = 0;
+            _itcNormalItemSelectedPrice = 0;
+            _itcNormalItemMutationCount = 0;
+            _itcNormalItemLastSummary = "No ITC normal-item packet routed yet.";
 
             if (_stageKind == CashServiceStageKind.CashShop)
             {
@@ -510,6 +554,14 @@ namespace HaCreator.MapSimulator.UI
                         : "No pending commodity migration.")
                     : "Normal-item result routing is staged here."
             };
+            if (_stageKind == CashServiceStageKind.CashShop)
+            {
+                lines.Add(_cashItemLastSummary);
+            }
+            else
+            {
+                lines.Add(_itcNormalItemLastSummary);
+            }
 
             if (_packetRouteOrder.Count == 0)
             {
@@ -565,6 +617,7 @@ namespace HaCreator.MapSimulator.UI
             return new[]
             {
                 "Sale owner is split from purchase owner.",
+                _itcNormalItemLastSummary,
                 _noticeState
             };
         }
@@ -574,6 +627,9 @@ namespace HaCreator.MapSimulator.UI
             return new[]
             {
                 "Purchase owner remains separate from the main list.",
+                _itcNormalItemMutationCount > 0
+                    ? $"Last listing {_itcNormalItemSelectedListingId.ToString(CultureInfo.InvariantCulture)} at {_itcNormalItemSelectedPrice.ToString("N0", CultureInfo.InvariantCulture)} mesos."
+                    : "No listing payload has reached the purchase owner yet.",
                 _statusMessage
             };
         }
@@ -594,11 +650,10 @@ namespace HaCreator.MapSimulator.UI
                     detail = $"Cash balances refreshed to NX {_nexonCash:N0}, MP {_maplePoint:N0}, Prepaid {_prepaidCash:N0}.";
                     break;
                 case 384:
+                    ApplyCashItemResultPacket(payload);
                     _hasPendingMigration = false;
                     _navigationState = "CCSWnd_List and CCSWnd_Best own the active commodity view.";
-                    detail = _pendingCommoditySerialNumber > 0
-                        ? $"Cash item result resumed around commodity SN {_pendingCommoditySerialNumber}."
-                        : "Cash item result reached the dedicated stage owner.";
+                    detail = _cashItemLastSummary;
                     break;
                 case 385:
                     detail = "Purchase-exp update routed through Cash Shop packet ownership.";
@@ -645,7 +700,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 410 => ApplyItcChargeParam(payload),
                 411 => BuildItcBalanceMessage(payload),
-                412 => "Normal-item result remained inside the ITC stage owner.",
+                412 => ApplyItcNormalItemResult(payload),
                 _ => $"Unsupported ITC packet {packetType}."
             };
 
@@ -666,6 +721,59 @@ namespace HaCreator.MapSimulator.UI
             return _chargeParam > 0
                 ? $"ITC charge parameter result reached CITC with charge param {_chargeParam.ToString(CultureInfo.InvariantCulture)}."
                 : "ITC charge parameter result reached the dedicated stage owner.";
+        }
+
+        private string ApplyCashItemResultPacket(byte[] payload)
+        {
+            byte[] packetPayload = payload ?? Array.Empty<byte>();
+            _cashItemResultSubtype = packetPayload.Length > 0 ? packetPayload[0] : -1;
+            _cashItemCommoditySerialNumber = TryReadInt32At(packetPayload, 1, out int commoditySerialNumber)
+                ? Math.Max(0, commoditySerialNumber)
+                : 0;
+            _cashItemProductId = TryReadInt32At(packetPayload, 5, out int productId)
+                ? Math.Max(0, productId)
+                : 0;
+            _cashItemPrice = TryReadInt32At(packetPayload, 9, out int price)
+                ? Math.Max(0, price)
+                : 0;
+            _cashItemMutationCount++;
+
+            string subtypeLabel = _cashItemResultSubtype >= 0
+                ? _cashItemResultSubtype.ToString(CultureInfo.InvariantCulture)
+                : "n/a";
+            string summary =
+                $"Cash item subtype {subtypeLabel} mutated CCSWnd_List/CCSWnd_Best with SN {_cashItemCommoditySerialNumber.ToString(CultureInfo.InvariantCulture)}, item {_cashItemProductId.ToString(CultureInfo.InvariantCulture)}, price {_cashItemPrice.ToString("N0", CultureInfo.InvariantCulture)}, payload {packetPayload.Length.ToString(CultureInfo.InvariantCulture)} byte(s).";
+            if (_pendingCommoditySerialNumber > 0)
+            {
+                summary += $" Pending commodity SN {_pendingCommoditySerialNumber.ToString(CultureInfo.InvariantCulture)} was resumed.";
+            }
+
+            _cashItemLastSummary = summary;
+            return summary;
+        }
+
+        private string ApplyItcNormalItemResult(byte[] payload)
+        {
+            byte[] packetPayload = payload ?? Array.Empty<byte>();
+            _itcNormalItemSubtype = packetPayload.Length > 0 ? packetPayload[0] : -1;
+            _itcNormalItemPage = TryReadInt32At(packetPayload, 1, out int page) ? Math.Max(0, page) : _itcNormalItemPage;
+            _itcNormalItemCategory = TryReadInt32At(packetPayload, 5, out int category) ? Math.Max(0, category) : _itcNormalItemCategory;
+            _itcNormalItemSortType = TryReadInt32At(packetPayload, 9, out int sortType) ? Math.Max(0, sortType) : _itcNormalItemSortType;
+            _itcNormalItemSortColumn = TryReadInt32At(packetPayload, 13, out int sortColumn) ? Math.Max(0, sortColumn) : _itcNormalItemSortColumn;
+            _itcNormalItemEntryCount = TryReadInt32At(packetPayload, 17, out int entryCount) ? Math.Max(0, entryCount) : _itcNormalItemEntryCount;
+            _itcNormalItemSelectedListingId = TryReadInt32At(packetPayload, 21, out int listingId) ? Math.Max(0, listingId) : _itcNormalItemSelectedListingId;
+            _itcNormalItemSelectedPrice = TryReadInt32At(packetPayload, 25, out int listingPrice) ? Math.Max(0, listingPrice) : _itcNormalItemSelectedPrice;
+            _itcNormalItemMutationCount++;
+
+            _navigationState =
+                $"CITC list category {_itcNormalItemCategory.ToString(CultureInfo.InvariantCulture)} / page {_itcNormalItemPage.ToString(CultureInfo.InvariantCulture)} / subtype {_itcNormalItemSubtype.ToString(CultureInfo.InvariantCulture)}.";
+            _searchState =
+                $"CITC sort column {_itcNormalItemSortColumn.ToString(CultureInfo.InvariantCulture)} type {_itcNormalItemSortType.ToString(CultureInfo.InvariantCulture)} with {_itcNormalItemEntryCount.ToString(CultureInfo.InvariantCulture)} entries.";
+            _noticeState =
+                $"Listing {_itcNormalItemSelectedListingId.ToString(CultureInfo.InvariantCulture)} at {_itcNormalItemSelectedPrice.ToString("N0", CultureInfo.InvariantCulture)} mesos is now staged.";
+            _itcNormalItemLastSummary =
+                $"Normal-item subtype {_itcNormalItemSubtype.ToString(CultureInfo.InvariantCulture)} updated CITC sale/purchase/list owners (category {_itcNormalItemCategory.ToString(CultureInfo.InvariantCulture)}, page {_itcNormalItemPage.ToString(CultureInfo.InvariantCulture)}, entries {_itcNormalItemEntryCount.ToString(CultureInfo.InvariantCulture)}, payload {packetPayload.Length.ToString(CultureInfo.InvariantCulture)} byte(s)).";
+            return _itcNormalItemLastSummary;
         }
 
         private void RecordPacketRoute(int packetType, string label, string detail, int tickCount)
@@ -785,6 +893,18 @@ namespace HaCreator.MapSimulator.UI
             }
 
             value = BitConverter.ToInt32(payload, 0);
+            return true;
+        }
+
+        private static bool TryReadInt32At(byte[] payload, int offset, out int value)
+        {
+            value = 0;
+            if (payload == null || offset < 0 || payload.Length < offset + sizeof(int))
+            {
+                return false;
+            }
+
+            value = BitConverter.ToInt32(payload, offset);
             return true;
         }
 

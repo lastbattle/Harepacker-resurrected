@@ -99,6 +99,14 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Regex MagicAttackBonusRegex = new Regex(@"(?:Magic\s+Attack|M\.?\s*ATT)\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex WeaponDefenseBonusRegex = new Regex(@"(?:Weapon\s+Defense|(?<![A-Za-z.])DEF(?![A-Za-z]))\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex MagicDefenseBonusRegex = new Regex(@"(?:Magic\s+Defense|M\.?\s*DEF)\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex StrengthBonusRegex = new Regex(@"(?<![A-Za-z])STR\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex DexterityBonusRegex = new Regex(@"(?<![A-Za-z])DEX\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex IntelligenceBonusRegex = new Regex(@"(?<![A-Za-z])INT\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex LuckBonusRegex = new Regex(@"(?<![A-Za-z])LUK\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex MaxHpBonusRegex = new Regex(@"(?:Max\s*HP|HP)\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex MaxMpBonusRegex = new Regex(@"(?:Max\s*MP|MP)\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex AccuracyBonusRegex = new Regex(@"(?:Accuracy|ACC)\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex AvoidabilityBonusRegex = new Regex(@"(?:Avoidability|Avoid)\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex SpeedBonusRegex = new Regex(@"Speed\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex JumpBonusRegex = new Regex(@"Jump\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly IReadOnlyDictionary<int, EnhancementConsumableDefinition> ConsumableDefinitions =
@@ -813,6 +821,14 @@ namespace HaCreator.MapSimulator.UI
             ApplyMagicAttackBonus(selectedPart, state, statDeltaProfile.MagicAttack * multiplier);
             ApplyWeaponDefenseBonus(selectedPart, state, statDeltaProfile.WeaponDefense * multiplier);
             ApplyMagicDefenseBonus(selectedPart, state, statDeltaProfile.MagicDefense * multiplier);
+            ApplyStrengthBonus(selectedPart, state, statDeltaProfile.Strength * multiplier);
+            ApplyDexterityBonus(selectedPart, state, statDeltaProfile.Dexterity * multiplier);
+            ApplyIntelligenceBonus(selectedPart, state, statDeltaProfile.Intelligence * multiplier);
+            ApplyLuckBonus(selectedPart, state, statDeltaProfile.Luck * multiplier);
+            ApplyMaxHpBonus(selectedPart, state, statDeltaProfile.MaxHp * multiplier);
+            ApplyMaxMpBonus(selectedPart, state, statDeltaProfile.MaxMp * multiplier);
+            ApplyAccuracyBonus(selectedPart, state, statDeltaProfile.Accuracy * multiplier);
+            ApplyAvoidabilityBonus(selectedPart, state, statDeltaProfile.Avoidability * multiplier);
             ApplySpeedBonus(selectedPart, state, statDeltaProfile.Speed * multiplier);
             ApplyJumpBonus(selectedPart, state, statDeltaProfile.Jump * multiplier);
         }
@@ -889,6 +905,126 @@ namespace HaCreator.MapSimulator.UI
             if (selectedPart != null)
             {
                 selectedPart.BonusSpeed += amount;
+            }
+        }
+
+        private void ApplyStrengthBonus(CharacterPart selectedPart, UpgradeState state, int amount)
+        {
+            if (_characterBuild == null || state == null || amount == 0)
+            {
+                return;
+            }
+
+            state.StrengthBonus += amount;
+            _characterBuild.STR += amount;
+            if (selectedPart != null)
+            {
+                selectedPart.BonusSTR += amount;
+            }
+        }
+
+        private void ApplyDexterityBonus(CharacterPart selectedPart, UpgradeState state, int amount)
+        {
+            if (_characterBuild == null || state == null || amount == 0)
+            {
+                return;
+            }
+
+            state.DexterityBonus += amount;
+            _characterBuild.DEX += amount;
+            if (selectedPart != null)
+            {
+                selectedPart.BonusDEX += amount;
+            }
+        }
+
+        private void ApplyIntelligenceBonus(CharacterPart selectedPart, UpgradeState state, int amount)
+        {
+            if (_characterBuild == null || state == null || amount == 0)
+            {
+                return;
+            }
+
+            state.IntelligenceBonus += amount;
+            _characterBuild.INT += amount;
+            if (selectedPart != null)
+            {
+                selectedPart.BonusINT += amount;
+            }
+        }
+
+        private void ApplyLuckBonus(CharacterPart selectedPart, UpgradeState state, int amount)
+        {
+            if (_characterBuild == null || state == null || amount == 0)
+            {
+                return;
+            }
+
+            state.LuckBonus += amount;
+            _characterBuild.LUK += amount;
+            if (selectedPart != null)
+            {
+                selectedPart.BonusLUK += amount;
+            }
+        }
+
+        private void ApplyMaxHpBonus(CharacterPart selectedPart, UpgradeState state, int amount)
+        {
+            if (_characterBuild == null || state == null || amount == 0)
+            {
+                return;
+            }
+
+            state.MaxHpBonus += amount;
+            _characterBuild.MaxHP = Math.Max(1, _characterBuild.MaxHP + amount);
+            if (selectedPart != null)
+            {
+                selectedPart.BonusHP += amount;
+            }
+        }
+
+        private void ApplyMaxMpBonus(CharacterPart selectedPart, UpgradeState state, int amount)
+        {
+            if (_characterBuild == null || state == null || amount == 0)
+            {
+                return;
+            }
+
+            state.MaxMpBonus += amount;
+            _characterBuild.MaxMP = Math.Max(0, _characterBuild.MaxMP + amount);
+            if (selectedPart != null)
+            {
+                selectedPart.BonusMP += amount;
+            }
+        }
+
+        private void ApplyAccuracyBonus(CharacterPart selectedPart, UpgradeState state, int amount)
+        {
+            if (_characterBuild == null || state == null || amount == 0)
+            {
+                return;
+            }
+
+            state.AccuracyBonus += amount;
+            _characterBuild.Accuracy += amount;
+            if (selectedPart != null)
+            {
+                selectedPart.BonusAccuracy += amount;
+            }
+        }
+
+        private void ApplyAvoidabilityBonus(CharacterPart selectedPart, UpgradeState state, int amount)
+        {
+            if (_characterBuild == null || state == null || amount == 0)
+            {
+                return;
+            }
+
+            state.AvoidabilityBonus += amount;
+            _characterBuild.Avoidability += amount;
+            if (selectedPart != null)
+            {
+                selectedPart.BonusAvoidability += amount;
             }
         }
 
@@ -1879,6 +2015,14 @@ namespace HaCreator.MapSimulator.UI
                 _characterBuild.Defense = Math.Max(0, _characterBuild.Defense - state.DefenseBonus);
                 _characterBuild.MagicAttack = Math.Max(0, _characterBuild.MagicAttack - state.MagicAttackBonus);
                 _characterBuild.MagicDefense = Math.Max(0, _characterBuild.MagicDefense - state.MagicDefenseBonus);
+                _characterBuild.STR = Math.Max(0, _characterBuild.STR - state.StrengthBonus);
+                _characterBuild.DEX = Math.Max(0, _characterBuild.DEX - state.DexterityBonus);
+                _characterBuild.INT = Math.Max(0, _characterBuild.INT - state.IntelligenceBonus);
+                _characterBuild.LUK = Math.Max(0, _characterBuild.LUK - state.LuckBonus);
+                _characterBuild.MaxHP = Math.Max(1, _characterBuild.MaxHP - state.MaxHpBonus);
+                _characterBuild.MaxMP = Math.Max(0, _characterBuild.MaxMP - state.MaxMpBonus);
+                _characterBuild.Accuracy = Math.Max(0, _characterBuild.Accuracy - state.AccuracyBonus);
+                _characterBuild.Avoidability = Math.Max(0, _characterBuild.Avoidability - state.AvoidabilityBonus);
                 _characterBuild.Speed = Math.Max(0f, _characterBuild.Speed - state.SpeedBonus);
                 _characterBuild.JumpPower = Math.Max(0f, _characterBuild.JumpPower - state.JumpBonus);
             }
@@ -1889,6 +2033,14 @@ namespace HaCreator.MapSimulator.UI
                 selectedPart.BonusWeaponDefense = Math.Max(0, selectedPart.BonusWeaponDefense - state.DefenseBonus);
                 selectedPart.BonusMagicAttack = Math.Max(0, selectedPart.BonusMagicAttack - state.MagicAttackBonus);
                 selectedPart.BonusMagicDefense = Math.Max(0, selectedPart.BonusMagicDefense - state.MagicDefenseBonus);
+                selectedPart.BonusSTR = Math.Max(0, selectedPart.BonusSTR - state.StrengthBonus);
+                selectedPart.BonusDEX = Math.Max(0, selectedPart.BonusDEX - state.DexterityBonus);
+                selectedPart.BonusINT = Math.Max(0, selectedPart.BonusINT - state.IntelligenceBonus);
+                selectedPart.BonusLUK = Math.Max(0, selectedPart.BonusLUK - state.LuckBonus);
+                selectedPart.BonusHP = Math.Max(0, selectedPart.BonusHP - state.MaxHpBonus);
+                selectedPart.BonusMP = Math.Max(0, selectedPart.BonusMP - state.MaxMpBonus);
+                selectedPart.BonusAccuracy = Math.Max(0, selectedPart.BonusAccuracy - state.AccuracyBonus);
+                selectedPart.BonusAvoidability = Math.Max(0, selectedPart.BonusAvoidability - state.AvoidabilityBonus);
                 selectedPart.BonusSpeed = Math.Max(0, selectedPart.BonusSpeed - state.SpeedBonus);
                 selectedPart.BonusJump = Math.Max(0, selectedPart.BonusJump - state.JumpBonus);
             }
@@ -2493,6 +2645,14 @@ namespace HaCreator.MapSimulator.UI
             state.DefenseBonus = 0;
             state.MagicAttackBonus = 0;
             state.MagicDefenseBonus = 0;
+            state.StrengthBonus = 0;
+            state.DexterityBonus = 0;
+            state.IntelligenceBonus = 0;
+            state.LuckBonus = 0;
+            state.MaxHpBonus = 0;
+            state.MaxMpBonus = 0;
+            state.AccuracyBonus = 0;
+            state.AvoidabilityBonus = 0;
             state.SpeedBonus = 0;
             state.JumpBonus = 0;
             state.SuccessCount = state.OriginalSuccessfulUpgradeCount;
@@ -2541,8 +2701,12 @@ namespace HaCreator.MapSimulator.UI
         private static bool TryCreateStringBackedEnhancementDefinition(int itemId, out EnhancementConsumableDefinition definition)
         {
             definition = default;
-            if (InventoryItemMetadataResolver.ResolveInventoryType(itemId) != InventoryType.USE ||
-                !TryResolveVegaCompatibleScrollProfile(itemId, out VegaCompatibleScrollProfile profile))
+            if (InventoryItemMetadataResolver.ResolveInventoryType(itemId) != InventoryType.USE)
+            {
+                return false;
+            }
+
+            if (!TryResolveEnhancementScrollProfile(itemId, out EnhancementScrollProfile profile))
             {
                 return false;
             }
@@ -2553,18 +2717,119 @@ namespace HaCreator.MapSimulator.UI
                 1,
                 false,
                 false,
-                profile.BaseSuccessRate,
+                profile.SuccessRate,
                 InventoryType.USE,
                 ConsumableEffectType.Enhancement,
                 PotentialTier.Rare,
-                0f,
+                profile.DestroyChance,
                 CubeBehavior.Miracle,
                 ModifierBehavior.None,
                 0f,
                 0,
                 HammerBehavior.None,
-                ResolveAuthoredStatDeltaProfile(ResolveCachedItemDescription(itemId)));
+                profile.StatDeltaProfile);
             return true;
+        }
+
+        private static bool TryResolveEnhancementScrollProfile(int itemId, out EnhancementScrollProfile profile)
+        {
+            profile = default;
+            string itemName = ResolveCachedItemNameOrFallback(itemId);
+            if (string.IsNullOrWhiteSpace(itemName) ||
+                itemName.IndexOf("scroll", StringComparison.OrdinalIgnoreCase) < 0)
+            {
+                return false;
+            }
+
+            string description = ResolveCachedItemDescription(itemId);
+            if (!TryResolveWzEnhancementScrollData(itemId, description, out float successRate, out float destroyChance, out AuthoredStatDeltaProfile statDeltaProfile))
+            {
+                return false;
+            }
+
+            profile = new EnhancementScrollProfile(successRate, destroyChance, statDeltaProfile);
+            return profile.IsValid;
+        }
+
+        private static bool TryResolveWzEnhancementScrollData(
+            int itemId,
+            string description,
+            out float successRate,
+            out float destroyChance,
+            out AuthoredStatDeltaProfile statDeltaProfile)
+        {
+            successRate = 0f;
+            destroyChance = 0f;
+            statDeltaProfile = default;
+
+            string imagePath = $"Consume/{(itemId / 10000):D4}.img";
+            WzImage image = HaCreator.Program.DataSource?.GetImage("Item", imagePath);
+            if (image == null)
+            {
+                return false;
+            }
+
+            image.ParseImage();
+            if (!(image.GetFromPath($"{itemId:D8}/info") is WzSubProperty info))
+            {
+                return false;
+            }
+
+            successRate = ResolveSuccessRateFromWzInfo(info, description);
+            if (successRate <= 0f || successRate > 1.0f)
+            {
+                return false;
+            }
+
+            destroyChance = ResolveDestroyChanceFromWzInfo(info);
+            statDeltaProfile = ResolveAuthoredStatDeltaProfile(info, description);
+            if (statDeltaProfile.IsEmpty &&
+                !TryGetScrollTargetSlots(itemId, out IReadOnlyCollection<EquipSlot> targetSlots))
+            {
+                return false;
+            }
+
+            return true;
+        }
+
+        private static float ResolveSuccessRateFromWzInfo(WzSubProperty info, string description)
+        {
+            int success = ResolveWzInfoIntValue(info, "success");
+            if (success <= 0)
+            {
+                Match match = PercentRateRegex.Match(description ?? string.Empty);
+                if (match.Success &&
+                    int.TryParse(match.Groups[1].Value, out int fallbackPercent))
+                {
+                    success = fallbackPercent;
+                }
+            }
+
+            return MathHelper.Clamp(success / 100f, 0f, 1.0f);
+        }
+
+        private static float ResolveDestroyChanceFromWzInfo(WzSubProperty info)
+        {
+            int cursed = ResolveWzInfoIntValue(info, "cursed");
+            return MathHelper.Clamp(cursed / 100f, 0f, 1.0f);
+        }
+
+        private static int ResolveWzInfoIntValue(WzSubProperty info, string propertyName)
+        {
+            if (info == null || string.IsNullOrWhiteSpace(propertyName))
+            {
+                return 0;
+            }
+
+            return info[propertyName] switch
+            {
+                WzIntProperty intProperty => intProperty.Value,
+                WzShortProperty shortProperty => shortProperty.Value,
+                WzLongProperty longProperty => (int)Math.Clamp(longProperty.Value, int.MinValue, int.MaxValue),
+                WzFloatProperty floatProperty => (int)Math.Round(floatProperty.Value),
+                WzDoubleProperty doubleProperty => (int)Math.Round(doubleProperty.Value),
+                _ => 0
+            };
         }
 
         private static bool TryCreateWzConsumeDefinition(int itemId, ConsumableEffectType effectType, out EnhancementConsumableDefinition definition)
@@ -2683,6 +2948,14 @@ namespace HaCreator.MapSimulator.UI
             public int DefenseBonus { get; set; }
             public int MagicAttackBonus { get; set; }
             public int MagicDefenseBonus { get; set; }
+            public int StrengthBonus { get; set; }
+            public int DexterityBonus { get; set; }
+            public int IntelligenceBonus { get; set; }
+            public int LuckBonus { get; set; }
+            public int MaxHpBonus { get; set; }
+            public int MaxMpBonus { get; set; }
+            public int AccuracyBonus { get; set; }
+            public int AvoidabilityBonus { get; set; }
             public int SpeedBonus { get; set; }
             public int JumpBonus { get; set; }
             public bool HasPotential { get; set; }
@@ -2810,12 +3083,34 @@ namespace HaCreator.MapSimulator.UI
 
         private readonly struct AuthoredStatDeltaProfile
         {
-            public AuthoredStatDeltaProfile(int weaponAttack, int magicAttack, int weaponDefense, int magicDefense, int speed, int jump)
+            public AuthoredStatDeltaProfile(
+                int weaponAttack,
+                int magicAttack,
+                int weaponDefense,
+                int magicDefense,
+                int strength,
+                int dexterity,
+                int intelligence,
+                int luck,
+                int maxHp,
+                int maxMp,
+                int accuracy,
+                int avoidability,
+                int speed,
+                int jump)
             {
                 WeaponAttack = weaponAttack;
                 MagicAttack = magicAttack;
                 WeaponDefense = weaponDefense;
                 MagicDefense = magicDefense;
+                Strength = strength;
+                Dexterity = dexterity;
+                Intelligence = intelligence;
+                Luck = luck;
+                MaxHp = maxHp;
+                MaxMp = maxMp;
+                Accuracy = accuracy;
+                Avoidability = avoidability;
                 Speed = speed;
                 Jump = jump;
             }
@@ -2824,25 +3119,80 @@ namespace HaCreator.MapSimulator.UI
             public int MagicAttack { get; }
             public int WeaponDefense { get; }
             public int MagicDefense { get; }
+            public int Strength { get; }
+            public int Dexterity { get; }
+            public int Intelligence { get; }
+            public int Luck { get; }
+            public int MaxHp { get; }
+            public int MaxMp { get; }
+            public int Accuracy { get; }
+            public int Avoidability { get; }
             public int Speed { get; }
             public int Jump { get; }
             public bool IsEmpty => WeaponAttack == 0 &&
                                    MagicAttack == 0 &&
                                    WeaponDefense == 0 &&
                                    MagicDefense == 0 &&
+                                   Strength == 0 &&
+                                   Dexterity == 0 &&
+                                   Intelligence == 0 &&
+                                   Luck == 0 &&
+                                   MaxHp == 0 &&
+                                   MaxMp == 0 &&
+                                   Accuracy == 0 &&
+                                   Avoidability == 0 &&
                                    Speed == 0 &&
                                    Jump == 0;
         }
 
+        private readonly struct EnhancementScrollProfile
+        {
+            public EnhancementScrollProfile(float successRate, float destroyChance, AuthoredStatDeltaProfile statDeltaProfile)
+            {
+                SuccessRate = successRate;
+                DestroyChance = destroyChance;
+                StatDeltaProfile = statDeltaProfile;
+            }
+
+            public float SuccessRate { get; }
+            public float DestroyChance { get; }
+            public AuthoredStatDeltaProfile StatDeltaProfile { get; }
+            public bool IsValid => SuccessRate > 0f && SuccessRate <= 1.0f;
+        }
+
         private static AuthoredStatDeltaProfile ResolveAuthoredStatDeltaProfile(string description)
         {
+            return ResolveAuthoredStatDeltaProfile(null, description);
+        }
+
+        private static AuthoredStatDeltaProfile ResolveAuthoredStatDeltaProfile(WzSubProperty info, string description)
+        {
             return new AuthoredStatDeltaProfile(
-                ResolveDescriptionBonus(description, WeaponAttackBonusRegex),
-                ResolveDescriptionBonus(description, MagicAttackBonusRegex),
-                ResolveDescriptionBonus(description, WeaponDefenseBonusRegex),
-                ResolveDescriptionBonus(description, MagicDefenseBonusRegex),
-                ResolveDescriptionBonus(description, SpeedBonusRegex),
-                ResolveDescriptionBonus(description, JumpBonusRegex));
+                ResolveStatBonus(info, "incPAD", description, WeaponAttackBonusRegex),
+                ResolveStatBonus(info, "incMAD", description, MagicAttackBonusRegex),
+                ResolveStatBonus(info, "incPDD", description, WeaponDefenseBonusRegex),
+                ResolveStatBonus(info, "incMDD", description, MagicDefenseBonusRegex),
+                ResolveStatBonus(info, "incSTR", description, StrengthBonusRegex),
+                ResolveStatBonus(info, "incDEX", description, DexterityBonusRegex),
+                ResolveStatBonus(info, "incINT", description, IntelligenceBonusRegex),
+                ResolveStatBonus(info, "incLUK", description, LuckBonusRegex),
+                ResolveStatBonus(info, "incMHP", description, MaxHpBonusRegex),
+                ResolveStatBonus(info, "incMMP", description, MaxMpBonusRegex),
+                ResolveStatBonus(info, "incACC", description, AccuracyBonusRegex),
+                ResolveStatBonus(info, "incEVA", description, AvoidabilityBonusRegex),
+                ResolveStatBonus(info, "incSpeed", description, SpeedBonusRegex),
+                ResolveStatBonus(info, "incJump", description, JumpBonusRegex));
+        }
+
+        private static int ResolveStatBonus(WzSubProperty info, string infoKey, string description, Regex descriptionRegex)
+        {
+            int wzValue = ResolveWzInfoIntValue(info, infoKey);
+            if (wzValue != 0)
+            {
+                return Math.Max(0, wzValue);
+            }
+
+            return ResolveDescriptionBonus(description, descriptionRegex);
         }
 
         private static int ResolveDescriptionBonus(string description, Regex regex)
@@ -2870,6 +3220,14 @@ namespace HaCreator.MapSimulator.UI
             AppendAuthoredStatSegment(segments, "Magic ATT", statDeltaProfile.MagicAttack * multiplier);
             AppendAuthoredStatSegment(segments, "Weapon DEF", statDeltaProfile.WeaponDefense * multiplier);
             AppendAuthoredStatSegment(segments, "Magic DEF", statDeltaProfile.MagicDefense * multiplier);
+            AppendAuthoredStatSegment(segments, "STR", statDeltaProfile.Strength * multiplier);
+            AppendAuthoredStatSegment(segments, "DEX", statDeltaProfile.Dexterity * multiplier);
+            AppendAuthoredStatSegment(segments, "INT", statDeltaProfile.Intelligence * multiplier);
+            AppendAuthoredStatSegment(segments, "LUK", statDeltaProfile.Luck * multiplier);
+            AppendAuthoredStatSegment(segments, "MaxHP", statDeltaProfile.MaxHp * multiplier);
+            AppendAuthoredStatSegment(segments, "MaxMP", statDeltaProfile.MaxMp * multiplier);
+            AppendAuthoredStatSegment(segments, "Accuracy", statDeltaProfile.Accuracy * multiplier);
+            AppendAuthoredStatSegment(segments, "Avoidability", statDeltaProfile.Avoidability * multiplier);
             AppendAuthoredStatSegment(segments, "Speed", statDeltaProfile.Speed * multiplier);
             AppendAuthoredStatSegment(segments, "Jump", statDeltaProfile.Jump * multiplier);
             return segments.Count > 0

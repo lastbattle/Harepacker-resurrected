@@ -30,10 +30,10 @@ namespace HaCreator.MapSimulator.UI
             };
         private static readonly Rectangle RaceListBounds = new(22, 28, 164, 174);
         private static readonly Rectangle JobListBounds = new(64, 102, 72, 110);
-        private static readonly Rectangle AvatarListBounds = new(12, 102, 200, 162);
+        private static readonly Rectangle AvatarListBounds = new(66, 103, 147, 162);
         private static readonly Rectangle AvatarDiceBounds = new(172, 286, 37, 56);
         private static readonly Rectangle NameDisplayBounds = new(44, 286, 132, 24);
-        private static readonly Rectangle NameInputBounds = new(31, 79, 138, 24);
+        private static readonly Rectangle NameInputBounds = new(36, 108, 120, 15);
         private static readonly Rectangle PreviewBounds = new(260, 82, 160, 190);
         private static readonly Rectangle StatusBounds = new(232, 282, 252, 68);
         private static readonly Point RaceConfirmDialogOffset = new(303, 204);
@@ -43,7 +43,7 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Rectangle[] AvatarArrowOffsets =
         {
             new(0, 0, 15, 16),
-            new(210, 0, 15, 16)
+            new(132, 0, 15, 16)
         };
         private static readonly Color SelectionFillColor = new(255, 236, 176, 96);
         private static readonly Color SelectionOutlineColor = new(255, 236, 176);
@@ -83,6 +83,7 @@ namespace HaCreator.MapSimulator.UI
         private int[] _avatarIndices = new int[8];
         private CharacterGender _gender = CharacterGender.Male;
         private bool _isRaceConfirmationOpen;
+        private bool _isRaceConfirmAcceptFocused = true;
         private KeyboardState _previousKeyboardState;
         private bool _softKeyboardActive;
         private string _compositionText = string.Empty;
@@ -200,6 +201,7 @@ namespace HaCreator.MapSimulator.UI
             _statusMessage = state?.StatusMessage ?? string.Empty;
             _gender = state?.SelectedGender ?? CharacterGender.Male;
             _isRaceConfirmationOpen = state?.IsRaceConfirmationOpen == true;
+            _isRaceConfirmAcceptFocused = true;
             _avatarIndices = new[]
             {
                 state?.SelectedFaceIndex ?? 0,
@@ -262,9 +264,36 @@ namespace HaCreator.MapSimulator.UI
         {
             if (_isRaceConfirmationOpen)
             {
+                if (Pressed(keyboardState, Keys.Tab) ||
+                    Pressed(keyboardState, Keys.Left) ||
+                    Pressed(keyboardState, Keys.Right) ||
+                    Pressed(keyboardState, Keys.Up) ||
+                    Pressed(keyboardState, Keys.Down))
+                {
+                    _isRaceConfirmAcceptFocused = !_isRaceConfirmAcceptFocused;
+                }
+
                 if (Pressed(keyboardState, Keys.Enter))
                 {
-                    ConfirmRequested?.Invoke();
+                    if (_isRaceConfirmAcceptFocused)
+                    {
+                        ConfirmRequested?.Invoke();
+                    }
+                    else
+                    {
+                        CancelRequested?.Invoke();
+                    }
+                }
+                else if (Pressed(keyboardState, Keys.Space))
+                {
+                    if (_isRaceConfirmAcceptFocused)
+                    {
+                        ConfirmRequested?.Invoke();
+                    }
+                    else
+                    {
+                        CancelRequested?.Invoke();
+                    }
                 }
                 else if (Pressed(keyboardState, Keys.Escape))
                 {
@@ -292,7 +321,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void HandleAvatarSelectKeyboardInput(KeyboardState keyboardState)
         {
-            if (Pressed(keyboardState, Keys.Enter) && !string.IsNullOrWhiteSpace(_checkedName))
+            if (Pressed(keyboardState, Keys.Enter))
             {
                 ConfirmRequested?.Invoke();
             }
@@ -621,6 +650,13 @@ namespace HaCreator.MapSimulator.UI
 
             DrawRaceConfirmButton(sprite, _raceConfirmOkTexture, OffsetRectangle(dialogBounds.Location, RaceConfirmOkBounds));
             DrawRaceConfirmButton(sprite, _raceConfirmCancelTexture, OffsetRectangle(dialogBounds.Location, RaceConfirmCancelBounds));
+            if (_pixelTexture != null)
+            {
+                Rectangle focusedBounds = OffsetRectangle(
+                    dialogBounds.Location,
+                    _isRaceConfirmAcceptFocused ? RaceConfirmOkBounds : RaceConfirmCancelBounds);
+                DrawSelection(sprite, focusedBounds);
+            }
         }
 
         private void DrawRaceOptions(SpriteBatch sprite)
@@ -873,13 +909,23 @@ namespace HaCreator.MapSimulator.UI
         {
             if (_confirmButton != null)
             {
-                bool showConfirmButton = _fixedStage != LoginCreateCharacterStage.NameSelect &&
-                    !(_fixedStage == LoginCreateCharacterStage.RaceSelect && _isRaceConfirmationOpen);
+                bool showConfirmButton = !(_fixedStage == LoginCreateCharacterStage.RaceSelect && _isRaceConfirmationOpen);
                 _confirmButton.SetVisible(showConfirmButton);
-                _confirmButton.SetEnabled(_fixedStage != LoginCreateCharacterStage.AvatarSelect || !string.IsNullOrWhiteSpace(_checkedName));
+                _confirmButton.SetEnabled(
+                    _fixedStage switch
+                    {
+                        LoginCreateCharacterStage.AvatarSelect => !string.IsNullOrWhiteSpace(_checkedName),
+                        LoginCreateCharacterStage.NameSelect => !string.IsNullOrWhiteSpace(_displayName),
+                        _ => true
+                    });
                 Point stageOrigin = GetStageOrigin();
-                _confirmButton.X = stageOrigin.X + (_fixedStage == LoginCreateCharacterStage.RaceSelect ? 26 : 18);
-                _confirmButton.Y = stageOrigin.Y + (_fixedStage == LoginCreateCharacterStage.RaceSelect ? 144 : 238);
+                (_confirmButton.X, _confirmButton.Y) = _fixedStage switch
+                {
+                    LoginCreateCharacterStage.RaceSelect => (stageOrigin.X + 26, stageOrigin.Y + 144),
+                    LoginCreateCharacterStage.AvatarSelect => (stageOrigin.X + 37, stageOrigin.Y + 330),
+                    LoginCreateCharacterStage.NameSelect => (stageOrigin.X + 27, stageOrigin.Y + 178),
+                    _ => (stageOrigin.X + 18, stageOrigin.Y + 238)
+                };
             }
 
             if (_cancelButton != null)
@@ -887,17 +933,19 @@ namespace HaCreator.MapSimulator.UI
                 _cancelButton.SetVisible(!(_fixedStage == LoginCreateCharacterStage.RaceSelect && _isRaceConfirmationOpen));
                 _cancelButton.SetEnabled(true);
                 Point stageOrigin = GetStageOrigin();
-                _cancelButton.X = stageOrigin.X + (_fixedStage == LoginCreateCharacterStage.RaceSelect ? 110 : 102);
-                _cancelButton.Y = stageOrigin.Y + (_fixedStage == LoginCreateCharacterStage.RaceSelect ? 144 : 238);
+                (_cancelButton.X, _cancelButton.Y) = _fixedStage switch
+                {
+                    LoginCreateCharacterStage.RaceSelect => (stageOrigin.X + 110, stageOrigin.Y + 144),
+                    LoginCreateCharacterStage.AvatarSelect => (stageOrigin.X + 111, stageOrigin.Y + 330),
+                    LoginCreateCharacterStage.NameSelect => (stageOrigin.X + 101, stageOrigin.Y + 178),
+                    _ => (stageOrigin.X + 102, stageOrigin.Y + 238)
+                };
             }
 
             if (_checkButton != null)
             {
-                _checkButton.SetVisible(_fixedStage == LoginCreateCharacterStage.NameSelect);
-                _checkButton.SetEnabled(_fixedStage == LoginCreateCharacterStage.NameSelect && !string.IsNullOrWhiteSpace(_displayName));
-                Point stageOrigin = GetStageOrigin();
-                _checkButton.X = stageOrigin.X + 20;
-                _checkButton.Y = stageOrigin.Y + 188;
+                _checkButton.SetVisible(false);
+                _checkButton.SetEnabled(false);
             }
         }
 
@@ -1320,6 +1368,7 @@ namespace HaCreator.MapSimulator.UI
             Rectangle cancelBounds = OffsetRectangle(dialogBounds.Location, RaceConfirmCancelBounds);
             if (okBounds.Contains(localPoint))
             {
+                _isRaceConfirmAcceptFocused = true;
                 ConfirmRequested?.Invoke();
                 mouseCursor?.SetMouseCursorMovedToClickableItem();
                 return true;
@@ -1327,6 +1376,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (cancelBounds.Contains(localPoint))
             {
+                _isRaceConfirmAcceptFocused = false;
                 CancelRequested?.Invoke();
                 mouseCursor?.SetMouseCursorMovedToClickableItem();
                 return true;

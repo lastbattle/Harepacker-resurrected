@@ -9234,7 +9234,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "droppacket",
                 "Drive packet-owned drop enter/leave flow",
-                "/droppacket <status|clear|packet <322|324> <payloadhex>|create <dropId> <enterType> <meso|item> <info> <ownerId> <ownerType> <x> <y> [sourceId] [startX startY delayMs] [petPickup]|leave <dropId> <remove|playerpickup|petpickup|mobpickup|explode> [actorId|delayMs] [secondaryActorId]>",
+                "/droppacket <status|clear|packet <322|324> <payloadhex>|create <dropId> <enterType> <meso|item> <info> <ownerId> <ownerType> <x> <y> [sourceId] [startX startY delayMs] [petPickup] [elevateLayer]|leave <dropId> <remove|playerpickup|petpickup|mobpickup|explode> [actorId|delayMs] [secondaryActorId]>",
                 args =>
                 {
                     if (_dropPool == null || _mapBoard?.MapInfo == null)
@@ -9244,7 +9244,7 @@ namespace HaCreator.MapSimulator
 
                     if (args.Length == 0)
                     {
-                        return ChatCommandHandler.CommandResult.Error("Usage: /droppacket <status|clear|packet <322|324> <payloadhex>|create <dropId> <enterType> <meso|item> <info> <ownerId> <ownerType> <x> <y> [sourceId] [startX startY delayMs] [petPickup]|leave <dropId> <remove|playerpickup|petpickup|mobpickup|explode> [actorId|delayMs] [secondaryActorId]>");
+                        return ChatCommandHandler.CommandResult.Error("Usage: /droppacket <status|clear|packet <322|324> <payloadhex>|create <dropId> <enterType> <meso|item> <info> <ownerId> <ownerType> <x> <y> [sourceId] [startX startY delayMs] [petPickup] [elevateLayer]|leave <dropId> <remove|playerpickup|petpickup|mobpickup|explode> [actorId|delayMs] [secondaryActorId]>");
                     }
 
                     string action = args[0];
@@ -9290,7 +9290,7 @@ namespace HaCreator.MapSimulator
                             || !short.TryParse(args[7], out short x)
                             || !short.TryParse(args[8], out short y))
                         {
-                            return ChatCommandHandler.CommandResult.Error("Usage: /droppacket create <dropId> <enterType> <meso|item> <info> <ownerId> <ownerType> <x> <y> [sourceId] [startX startY delayMs] [petPickup]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /droppacket create <dropId> <enterType> <meso|item> <info> <ownerId> <ownerType> <x> <y> [sourceId] [startX startY delayMs] [petPickup] [elevateLayer]");
                         }
 
                         bool isMoney = string.Equals(args[3], "meso", StringComparison.OrdinalIgnoreCase);
@@ -9327,6 +9327,12 @@ namespace HaCreator.MapSimulator
                             return ChatCommandHandler.CommandResult.Error("petPickup must be true or false");
                         }
 
+                        bool elevateLayer = false;
+                        if (args.Length >= 15 && !bool.TryParse(args[14], out elevateLayer))
+                        {
+                            return ChatCommandHandler.CommandResult.Error("elevateLayer must be true or false");
+                        }
+
                         byte[] payload = RemoteDropPacketCodec.BuildEnterPayload(
                             enterType,
                             dropId,
@@ -9341,7 +9347,8 @@ namespace HaCreator.MapSimulator
                             startY,
                             delayMs,
                             expireRaw: 0,
-                            allowPetPickup: petPickup);
+                            allowPetPickup: petPickup,
+                            elevateLayer: elevateLayer);
                         return ApplyRemoteDropPacketCommand((int)RemoteDropPacketType.Enter, payload);
                     }
 
@@ -9390,7 +9397,7 @@ namespace HaCreator.MapSimulator
                         return ApplyRemoteDropPacketCommand((int)RemoteDropPacketType.Leave, payload);
                     }
 
-                    return ChatCommandHandler.CommandResult.Error("Usage: /droppacket <status|clear|packet <322|324> <payloadhex>|create <dropId> <enterType> <meso|item> <info> <ownerId> <ownerType> <x> <y> [sourceId] [startX startY delayMs] [petPickup]|leave <dropId> <remove|playerpickup|petpickup|mobpickup|explode> [actorId|delayMs] [secondaryActorId]>");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /droppacket <status|clear|packet <322|324> <payloadhex>|create <dropId> <enterType> <meso|item> <info> <ownerId> <ownerType> <x> <y> [sourceId] [startX startY delayMs] [petPickup] [elevateLayer]|leave <dropId> <remove|playerpickup|petpickup|mobpickup|explode> [actorId|delayMs] [secondaryActorId]>");
                 });
 
 

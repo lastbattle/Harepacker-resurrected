@@ -1,5 +1,6 @@
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Companions;
+using HaCreator.MapSimulator.Fields;
 using HaCreator.MapSimulator.UI;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using System;
@@ -29,6 +30,11 @@ namespace HaCreator.MapSimulator
             if (request.OwnerKind == EquipmentChangeOwnerKind.None)
             {
                 return EquipmentChangeSubmission.Reject("The equipment request owner is missing.");
+            }
+
+            if (TryGetAndroidCompanionRestrictionRejectReason(request, out string androidRestrictionRejectReason))
+            {
+                return EquipmentChangeSubmission.Reject(androidRestrictionRejectReason);
             }
 
             if (_pendingEquipmentChangeRequests.Count > 0)
@@ -288,6 +294,11 @@ namespace HaCreator.MapSimulator
                 return EquipmentChangeResult.Reject("Companion equipment request is missing.");
             }
 
+            if (TryGetAndroidCompanionRestrictionRejectReason(request, out string androidRestrictionRejectReason))
+            {
+                return EquipmentChangeResult.Reject(androidRestrictionRejectReason);
+            }
+
             if (request.TargetCompanionKind == EquipmentChangeCompanionKind.None)
             {
                 return EquipmentChangeResult.Reject("No companion target was selected.");
@@ -316,6 +327,16 @@ namespace HaCreator.MapSimulator
                 return EquipmentChangeResult.Reject(sourceRejectReason);
             }
 
+            int? ownerAccountId = ResolveLoginRosterAccountId();
+            if (TryGetCompanionCashOwnershipRejectReason(
+                    liveSlot,
+                    build,
+                    ownerAccountId,
+                    out string ownershipRejectReason))
+            {
+                return EquipmentChangeResult.Reject(ownershipRejectReason);
+            }
+
             if (TryGetCompanionDisplacedCapacityRejectReason(request, inventoryWindow, build, out string capacityRejectReason))
             {
                 return EquipmentChangeResult.Reject(capacityRejectReason);
@@ -323,10 +344,10 @@ namespace HaCreator.MapSimulator
 
             EquipmentChangeResult result = request.TargetCompanionKind switch
             {
-                EquipmentChangeCompanionKind.Pet => HandleInventoryToPetCompanionChange(request, build),
-                EquipmentChangeCompanionKind.Dragon => HandleInventoryToDragonCompanionChange(request, build),
-                EquipmentChangeCompanionKind.Mechanic => HandleInventoryToMechanicCompanionChange(request, build),
-                EquipmentChangeCompanionKind.Android => HandleInventoryToAndroidCompanionChange(request, build),
+                EquipmentChangeCompanionKind.Pet => HandleInventoryToPetCompanionChange(request, build, liveSlot, ownerAccountId),
+                EquipmentChangeCompanionKind.Dragon => HandleInventoryToDragonCompanionChange(request, build, liveSlot, ownerAccountId),
+                EquipmentChangeCompanionKind.Mechanic => HandleInventoryToMechanicCompanionChange(request, build, liveSlot, ownerAccountId),
+                EquipmentChangeCompanionKind.Android => HandleInventoryToAndroidCompanionChange(request, build, liveSlot, ownerAccountId),
                 _ => EquipmentChangeResult.Reject("Unsupported companion equipment target.")
             };
 
@@ -340,6 +361,11 @@ namespace HaCreator.MapSimulator
                 return EquipmentChangeResult.Reject("Companion equipment request is missing.");
             }
 
+            if (TryGetAndroidCompanionRestrictionRejectReason(request, out string androidRestrictionRejectReason))
+            {
+                return EquipmentChangeResult.Reject(androidRestrictionRejectReason);
+            }
+
             if (uiWindowManager?.InventoryWindow is not InventoryUI inventoryWindow)
             {
                 return EquipmentChangeResult.Reject("Inventory runtime is unavailable.");
@@ -348,6 +374,15 @@ namespace HaCreator.MapSimulator
             if (!TryResolveLiveCompanionSourceItem(request, out CompanionEquipItem liveItem, out string rejectReason))
             {
                 return EquipmentChangeResult.Reject(rejectReason);
+            }
+
+            if (TryGetCompanionCashOwnershipRejectReason(
+                    liveItem,
+                    build,
+                    ResolveLoginRosterAccountId(),
+                    out string ownershipRejectReason))
+            {
+                return EquipmentChangeResult.Reject(ownershipRejectReason);
             }
 
             InventoryType inventoryType = liveItem.IsCash ? InventoryType.CASH : InventoryType.EQUIP;
@@ -369,7 +404,11 @@ namespace HaCreator.MapSimulator
                     : new[] { returnedSlot });
         }
 
-        private EquipmentChangeResult HandleInventoryToPetCompanionChange(EquipmentChangeRequest request, CharacterBuild build)
+        private EquipmentChangeResult HandleInventoryToPetCompanionChange(
+            EquipmentChangeRequest request,
+            CharacterBuild build,
+            InventorySlotData sourceSlot,
+            int? ownerAccountId)
         {
             PetRuntime targetPet = ResolvePetByRuntimeId(request.TargetPetRuntimeId);
             if (targetPet == null || _playerManager?.CompanionEquipment?.Pet == null)
@@ -382,7 +421,10 @@ namespace HaCreator.MapSimulator
                     targetPet,
                     request.ItemId,
                     out IReadOnlyList<CompanionEquipItem> displacedItems,
-                    out string rejectReason))
+                    out string rejectReason,
+                    sourceSlot,
+                    ownerAccountId,
+                    build?.Id ?? 0))
             {
                 return EquipmentChangeResult.Reject(rejectReason);
             }
@@ -390,7 +432,11 @@ namespace HaCreator.MapSimulator
             return EquipmentChangeResult.Accept(displacedInventorySlots: EquipUIBigBang.CreateInventorySlots(displacedItems));
         }
 
-        private EquipmentChangeResult HandleInventoryToDragonCompanionChange(EquipmentChangeRequest request, CharacterBuild build)
+        private EquipmentChangeResult HandleInventoryToDragonCompanionChange(
+            EquipmentChangeRequest request,
+            CharacterBuild build,
+            InventorySlotData sourceSlot,
+            int? ownerAccountId)
         {
             DragonEquipmentController controller = _playerManager?.CompanionEquipment?.Dragon;
             if (!request.TargetDragonSlot.HasValue || controller == null)
@@ -403,7 +449,10 @@ namespace HaCreator.MapSimulator
                     request.TargetDragonSlot.Value,
                     request.ItemId,
                     out IReadOnlyList<CompanionEquipItem> displacedItems,
-                    out string rejectReason))
+                    out string rejectReason,
+                    sourceSlot,
+                    ownerAccountId,
+                    build?.Id ?? 0))
             {
                 return EquipmentChangeResult.Reject(rejectReason);
             }
@@ -411,7 +460,11 @@ namespace HaCreator.MapSimulator
             return EquipmentChangeResult.Accept(displacedInventorySlots: EquipUIBigBang.CreateInventorySlots(displacedItems));
         }
 
-        private EquipmentChangeResult HandleInventoryToMechanicCompanionChange(EquipmentChangeRequest request, CharacterBuild build)
+        private EquipmentChangeResult HandleInventoryToMechanicCompanionChange(
+            EquipmentChangeRequest request,
+            CharacterBuild build,
+            InventorySlotData sourceSlot,
+            int? ownerAccountId)
         {
             MechanicEquipmentController controller = _playerManager?.CompanionEquipment?.Mechanic;
             if (!request.TargetMechanicSlot.HasValue || controller == null)
@@ -424,7 +477,10 @@ namespace HaCreator.MapSimulator
                     request.TargetMechanicSlot.Value,
                     request.ItemId,
                     out IReadOnlyList<CompanionEquipItem> displacedItems,
-                    out string rejectReason))
+                    out string rejectReason,
+                    sourceSlot,
+                    ownerAccountId,
+                    build?.Id ?? 0))
             {
                 return EquipmentChangeResult.Reject(rejectReason);
             }
@@ -432,7 +488,11 @@ namespace HaCreator.MapSimulator
             return EquipmentChangeResult.Accept(displacedInventorySlots: EquipUIBigBang.CreateInventorySlots(displacedItems));
         }
 
-        private EquipmentChangeResult HandleInventoryToAndroidCompanionChange(EquipmentChangeRequest request, CharacterBuild build)
+        private EquipmentChangeResult HandleInventoryToAndroidCompanionChange(
+            EquipmentChangeRequest request,
+            CharacterBuild build,
+            InventorySlotData sourceSlot,
+            int? ownerAccountId)
         {
             AndroidEquipmentController controller = _playerManager?.CompanionEquipment?.Android;
             if (!request.TargetAndroidSlot.HasValue || controller == null)
@@ -444,7 +504,10 @@ namespace HaCreator.MapSimulator
                     request.TargetAndroidSlot.Value,
                     request.ItemId,
                     out IReadOnlyList<CompanionEquipItem> displacedItems,
-                    out string rejectReason))
+                    out string rejectReason,
+                    sourceSlot,
+                    ownerAccountId,
+                    build?.Id ?? 0))
             {
                 return EquipmentChangeResult.Reject(rejectReason);
             }
@@ -563,6 +626,27 @@ namespace HaCreator.MapSimulator
             return counts;
         }
 
+        private bool TryGetAndroidCompanionRestrictionRejectReason(EquipmentChangeRequest request, out string rejectReason)
+        {
+            rejectReason = null;
+            if (request == null)
+            {
+                return false;
+            }
+
+            bool touchesAndroidCompanion =
+                request.TargetCompanionKind == EquipmentChangeCompanionKind.Android
+                || request.SourceCompanionKind == EquipmentChangeCompanionKind.Android;
+            if (!touchesAndroidCompanion)
+            {
+                return false;
+            }
+
+            long fieldLimit = _mapBoard?.MapInfo?.fieldLimit ?? 0;
+            rejectReason = FieldInteractionRestrictionEvaluator.GetAndroidRestrictionMessage(fieldLimit);
+            return !string.IsNullOrWhiteSpace(rejectReason);
+        }
+
         private static void AddDisplacedInventoryCount(Dictionary<InventoryType, int> counts, CompanionEquipItem item)
         {
             if (item == null)
@@ -574,6 +658,87 @@ namespace HaCreator.MapSimulator
             counts[inventoryType] = counts.TryGetValue(inventoryType, out int existing)
                 ? existing + 1
                 : 1;
+        }
+
+        private static bool TryGetCompanionCashOwnershipRejectReason(
+            InventorySlotData sourceSlot,
+            CharacterBuild build,
+            int? accountId,
+            out string rejectReason)
+        {
+            rejectReason = string.Empty;
+            if (sourceSlot == null)
+            {
+                return false;
+            }
+
+            CharacterPart tooltipPart = sourceSlot.TooltipPart;
+            bool isCashCompanion = sourceSlot.PreferredInventoryType == InventoryType.CASH
+                                   || sourceSlot.IsCashOwnershipLocked
+                                   || (tooltipPart?.IsCash ?? false);
+            if (!isCashCompanion)
+            {
+                return false;
+            }
+
+            bool isAccountSharable = tooltipPart?.IsAccountSharable ?? false;
+            bool hasAccountShareTag = tooltipPart?.HasAccountShareTag ?? false;
+            int ownerCharacterId = sourceSlot.OwnerCharacterId ?? tooltipPart?.OwnerCharacterId ?? 0;
+            int ownerAccountId = sourceSlot.OwnerAccountId ?? tooltipPart?.OwnerAccountId ?? 0;
+            int liveCharacterId = build?.Id ?? 0;
+            int liveAccountId = accountId ?? 0;
+
+            if (ownerAccountId > 0 && liveAccountId > 0 && ownerAccountId != liveAccountId)
+            {
+                rejectReason = "This companion cash item belongs to a different account.";
+                return true;
+            }
+
+            if (ownerCharacterId > 0
+                && liveCharacterId > 0
+                && ownerCharacterId != liveCharacterId
+                && !(isAccountSharable || hasAccountShareTag))
+            {
+                rejectReason = "This companion cash item belongs to a different character.";
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryGetCompanionCashOwnershipRejectReason(
+            CompanionEquipItem item,
+            CharacterBuild build,
+            int? accountId,
+            out string rejectReason)
+        {
+            rejectReason = string.Empty;
+            if (item == null || !item.IsCash || !item.IsCashOwnershipLocked)
+            {
+                return false;
+            }
+
+            int ownerAccountId = item.OwnerAccountId ?? 0;
+            int ownerCharacterId = item.OwnerCharacterId ?? 0;
+            int liveCharacterId = build?.Id ?? 0;
+            int liveAccountId = accountId ?? 0;
+
+            if (ownerAccountId > 0 && liveAccountId > 0 && ownerAccountId != liveAccountId)
+            {
+                rejectReason = "This companion cash item belongs to a different account.";
+                return true;
+            }
+
+            if (ownerCharacterId > 0
+                && liveCharacterId > 0
+                && ownerCharacterId != liveCharacterId
+                && !(item.IsAccountSharable || item.HasAccountShareTag))
+            {
+                rejectReason = "This companion cash item belongs to a different character.";
+                return true;
+            }
+
+            return false;
         }
 
         private PetRuntime ResolvePetByRuntimeId(int runtimeId)

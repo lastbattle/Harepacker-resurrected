@@ -16,6 +16,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const byte PacketSkillActionBeholderBuffMax = 12;
         private const byte PacketSkillActionHealingRobotHeal = 13;
         private const byte PacketSkillActionSubsummon = 14;
+        private const byte PacketSkillActionSkillBranchMin = 1;
+        private const byte PacketSkillActionSkillBranchMax = 6;
 
         public static int ResolveAuthoredDurationMs(SkillData skill, SkillLevelData levelData, int skillLevel)
         {
@@ -139,6 +141,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             byte normalizedAction = (byte)(packetAction & 0x7F);
+            string indexedBranch = ResolvePacketIndexedSkillBranch(skill, normalizedAction);
+            if (!string.IsNullOrWhiteSpace(indexedBranch))
+            {
+                return indexedBranch;
+            }
+
             if (normalizedAction == PacketSkillActionBeholderHeal)
             {
                 return ResolveNamedSummonBranch(skill, "skill1", "heal", "support");
@@ -172,18 +180,18 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             if (HasMinionAbilityToken(skill.MinionAbility, "heal"))
             {
-                return ResolveNamedSummonBranch(skill, "heal", "support");
+                return ResolveSupportOwnedBranch(skill, preferHealFirst: true);
             }
 
             if (HasMinionAbilityToken(skill.MinionAbility, "mes")
                 || HasMinionAbilityToken(skill.MinionAbility, "amplifyDamage"))
             {
-                return ResolveNamedSummonBranch(skill, "support", "heal");
+                return ResolveSupportOwnedBranch(skill, preferHealFirst: false);
             }
 
             if (HasMinionAbilityToken(skill.MinionAbility, "summon"))
             {
-                return ResolveNamedSummonBranch(skill, "subsummon");
+                return ResolveNamedSummonBranch(skill, "subsummon", "skill1", "skill2");
             }
 
             return null;
@@ -208,7 +216,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 SummonAssistType.Support
                     => ResolveSupportOwnedBranch(skill, preferHealFirst: false),
                 SummonAssistType.SummonAction
-                    => ResolveNamedSummonBranch(skill, "subsummon"),
+                    => ResolveNamedSummonBranch(skill, "subsummon", "skill1", "skill2"),
                 _ => null
             };
         }
@@ -232,7 +240,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 SummonAssistType.Support
                     => ResolveSupportOwnedBranch(skill, preferHealFirst: false),
                 SummonAssistType.SummonAction
-                    => ResolveNamedSummonBranch(skill, "subsummon"),
+                    => ResolveNamedSummonBranch(skill, "subsummon", "skill1", "skill2"),
                 _ => null
             };
         }
@@ -240,8 +248,19 @@ namespace HaCreator.MapSimulator.Character.Skills
         internal static string ResolveSupportOwnedBranch(SkillData skill, bool preferHealFirst)
         {
             return preferHealFirst
-                ? ResolveNamedSummonBranch(skill, "heal", "support", "stand")
-                : ResolveNamedSummonBranch(skill, "support", "heal", "stand");
+                ? ResolveNamedSummonBranch(skill, "skill1", "heal", "support", "skill2", "stand")
+                : ResolveNamedSummonBranch(skill, "skill2", "support", "heal", "skill1", "stand");
+        }
+
+        private static string ResolvePacketIndexedSkillBranch(SkillData skill, byte normalizedAction)
+        {
+            if (normalizedAction < PacketSkillActionSkillBranchMin
+                || normalizedAction > PacketSkillActionSkillBranchMax)
+            {
+                return null;
+            }
+
+            return ResolveNamedSummonBranch(skill, $"skill{normalizedAction}");
         }
 
         internal static int ResolveSupportSuspendDurationMs(

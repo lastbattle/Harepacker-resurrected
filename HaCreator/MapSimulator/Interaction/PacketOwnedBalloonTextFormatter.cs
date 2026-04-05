@@ -29,7 +29,7 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly Regex SelectedMobRegex = new(@"#M(\d+):?#", RegexOptions.Compiled);
         private static readonly Regex QuestAmountRegex = new(@"#a(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex QuestValueRegex = new(@"#x(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        private static readonly Regex ItemIconRegex = new(@"#(?:i|v)\d+:?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex ItemIconRegex = new(@"#(?:i|v)(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex RewardCategoryRegex = new(@"#W[^#\s]*#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex ClientPromptTagRegex = new(@"#(?:E|I)", RegexOptions.Compiled);
         private static readonly Regex InlineSelectionRegex = new(@"#L(?<id>-?\d+)#(?<text>.*?)#l", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
@@ -61,7 +61,7 @@ namespace HaCreator.MapSimulator.Interaction
             formatted = SelectedMobRegex.Replace(formatted, static match => ResolveSelectedMobText(match.Groups[1].Value));
             formatted = QuestAmountRegex.Replace(formatted, static match => ResolveQuestAmountText(match.Groups[1].Value));
             formatted = QuestValueRegex.Replace(formatted, static match => ResolveQuestValueText(match.Groups[1].Value));
-            formatted = ItemIconRegex.Replace(formatted, string.Empty);
+            formatted = ItemIconRegex.Replace(formatted, static match => ResolveItemIconMarkerText(match.Groups[1].Value));
             formatted = RewardCategoryRegex.Replace(formatted, string.Empty);
             formatted = ClientPromptTagRegex.Replace(formatted, string.Empty);
             formatted = PluralSuffixRegex.Replace(formatted, "s");
@@ -112,6 +112,12 @@ namespace HaCreator.MapSimulator.Interaction
                    !string.IsNullOrWhiteSpace(itemInfo?.Item2)
                 ? itemInfo.Item2
                 : $"Item #{itemIdText}";
+        }
+
+        private static string ResolveItemIconMarkerText(string itemIdText)
+        {
+            string itemName = ResolveItemName(itemIdText);
+            return $"[{itemName}]";
         }
 
         private static string ResolveQuestName(string questIdText)

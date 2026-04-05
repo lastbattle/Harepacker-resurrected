@@ -34,7 +34,10 @@ namespace HaCreator.MapSimulator.Character
         {
             "stab",
             "pierce",
-            "thrust"
+            "thrust",
+            "assassination",
+            "savage",
+            "showdown"
         };
 
         private static readonly string[] RangedHeuristicFragments =
@@ -54,7 +57,9 @@ namespace HaCreator.MapSimulator.Character
             "arrowrain",
             "eburster",
             "edrain",
-            "eorb"
+            "eorb",
+            "ninjastorm",
+            "vampire"
         };
 
         private static readonly IReadOnlyDictionary<string, string[]> SharedAliasMap =
@@ -96,6 +101,21 @@ namespace HaCreator.MapSimulator.Character
                 ["avenger"] = new[] { "shoot1", "shoot2", "shootF" },
                 ["assaulter"] = new[] { "stabO1", "stabO2", "stabOF" },
                 ["prone2"] = new[] { "prone", "proneStab", "stand1", "stand2" },
+                // Additional thief/night-walker helper raw action names recovered from WZ:
+                // `Skill/420.img/skill/4201005/action/0 = savage`,
+                // `Skill/412.img/skill/4121003/action/0 = showdown`,
+                // `Skill/422.img/skill/4221001/action/0 = assassination`,
+                // `Skill/422.img/skill/4221006/action/0 = smokeshell`,
+                // `Skill/412.img/skill/4121008/action/0 = ninjastorm`,
+                // and `Skill/1410.img/skill/14101006/action/0 = vampire`.
+                // Shadow Partner still only publishes generic `special/*` families, so keep these
+                // on client-owned helper rows before the plain raw-action fallback.
+                ["savage"] = new[] { "stabO1", "stabO2", "stabOF" },
+                ["assassination"] = new[] { "stabO1", "stabO2", "stabOF" },
+                ["assassinations"] = new[] { "stabO1", "stabO2", "stabOF" },
+                ["ninjastorm"] = new[] { "shoot1", "shoot2", "shootF" },
+                ["vampire"] = new[] { "shoot1", "shoot2", "shootF" },
+                ["smokeshell"] = new[] { "alert", "stand1", "stand2" },
                 // Client raw actions still include broader attack families such as the
                 // dual-blade, polearm, and crossbow-specific aliases below. Shadow
                 // Partner only authors the generic `special/*` families, so keep
@@ -438,6 +458,12 @@ namespace HaCreator.MapSimulator.Character
 
             if (string.Equals(actionName, "rope2", StringComparison.OrdinalIgnoreCase)
                 && string.Equals(resolvedActionName, "rope", StringComparison.OrdinalIgnoreCase))
+            {
+                return new[] { Math.Min(1, availableFrameCount - 1) };
+            }
+
+            if (string.Equals(actionName, "prone2", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(resolvedActionName, "prone", StringComparison.OrdinalIgnoreCase))
             {
                 return new[] { Math.Min(1, availableFrameCount - 1) };
             }

@@ -6365,6 +6365,15 @@ namespace HaCreator.MapSimulator.Character
                 return true;
             }
 
+            if (string.Equals(normalizedAction, "bluntSmash", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "bluntSmashEnd", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "soulEater_end", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "soulEater", StringComparison.OrdinalIgnoreCase))
+            {
+                transform = CreateSingleActionTransform(skillId, "bluntSmash", exitActionName: null);
+                return true;
+            }
+
             if (string.Equals(normalizedAction, "finalCutPrepare", StringComparison.OrdinalIgnoreCase))
             {
                 transform = CreateSingleActionTransform(skillId, "finalCutPrepare", "finalCut");

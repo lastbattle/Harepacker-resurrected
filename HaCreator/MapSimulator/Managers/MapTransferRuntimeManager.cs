@@ -270,6 +270,16 @@ namespace HaCreator.MapSimulator.Managers
             return true;
         }
 
+        public void ApplyAuthoritativeBootstrap(
+            CharacterBuild build,
+            IReadOnlyList<int> regularFields,
+            IReadOnlyList<int> continentFields)
+        {
+            CharacterRuntimeBooks runtimeBooks = GetOrCreateBooks(build);
+            ApplyBootstrapBook(build, MapTransferDestinationBook.Regular, runtimeBooks.RegularSlots, regularFields, RegularCapacity);
+            ApplyBootstrapBook(build, MapTransferDestinationBook.Continent, runtimeBooks.ContinentSlots, continentFields, ContinentCapacity);
+        }
+
         private MapTransferRuntimeResponse RegisterDestination(CharacterBuild build, MapTransferRuntimeRequest request, int[] slots)
         {
             if (request.MapId <= 0 || request.MapId == EmptyDestinationMapId)
@@ -528,6 +538,37 @@ namespace HaCreator.MapSimulator.Managers
             int[] slots = new int[Math.Max(0, capacity)];
             Array.Fill(slots, EmptyDestinationMapId);
             return slots;
+        }
+
+        private void ApplyBootstrapBook(
+            CharacterBuild build,
+            MapTransferDestinationBook book,
+            int[] slots,
+            IReadOnlyList<int> fields,
+            int expectedCapacity)
+        {
+            if (slots == null ||
+                fields == null ||
+                fields.Count < expectedCapacity)
+            {
+                return;
+            }
+
+            Array.Fill(slots, EmptyDestinationMapId);
+            for (int slotIndex = 0; slotIndex < expectedCapacity; slotIndex++)
+            {
+                int mapId = fields[slotIndex];
+                slots[slotIndex] = IsBootstrapMapId(mapId)
+                    ? mapId
+                    : EmptyDestinationMapId;
+            }
+
+            PersistSlots(build, book, slots);
+        }
+
+        private static bool IsBootstrapMapId(int mapId)
+        {
+            return mapId == EmptyDestinationMapId || mapId > 0;
         }
 
         private static string ResolveCharacterKey(CharacterBuild build)

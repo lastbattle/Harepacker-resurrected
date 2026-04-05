@@ -4,17 +4,17 @@ namespace HaCreator.MapSimulator.Fields
 {
     internal sealed class FieldObjectDirectionEventTriggerPoint
     {
-        public FieldObjectDirectionEventTriggerPoint(int x, int y, string[] scriptNames)
+        public FieldObjectDirectionEventTriggerPoint(int x, int y, FieldObjectScriptPublication[] scriptPublications)
         {
             X = x;
             Y = y;
-            ScriptNames = scriptNames ?? Array.Empty<string>();
+            ScriptPublications = scriptPublications ?? Array.Empty<FieldObjectScriptPublication>();
         }
 
         public int X { get; }
 
         public int Y { get; }
 
-        public string[] ScriptNames { get; }
+        public FieldObjectScriptPublication[] ScriptPublications { get; }
     }
 }

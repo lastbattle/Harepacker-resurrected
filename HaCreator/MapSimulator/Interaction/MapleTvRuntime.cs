@@ -433,6 +433,26 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
+        internal bool TryBuildOutboundPacketPayload(int packetType, out byte[] payload, out string error)
+        {
+            payload = Array.Empty<byte>();
+            error = string.Empty;
+
+            switch (packetType)
+            {
+                case PacketTypeSetMessage:
+                    return TryBuildSetMessagePayload(out payload, out error);
+
+                case PacketTypeClearMessage:
+                    payload = Array.Empty<byte>();
+                    return true;
+
+                default:
+                    error = $"MapleTV outbound packet payload generation is not supported for opcode {packetType}.";
+                    return false;
+            }
+        }
+
         internal string BuildMegassengerChatMirrorMessage()
         {
             if (!(_itemProfile?.MirrorsToChat ?? false))
@@ -582,6 +602,50 @@ namespace HaCreator.MapSimulator.Interaction
                 message = "MapleTV send-result packet could not be read.";
                 return false;
             }
+        }
+
+        private bool TryBuildSetMessagePayload(out byte[] payload, out string error)
+        {
+            payload = Array.Empty<byte>();
+            error = string.Empty;
+
+            CharacterBuild senderBuild = _senderBuild?.Clone();
+            if (senderBuild == null)
+            {
+                error = "MapleTV outbound set-message payload requires an active sender avatar build.";
+                return false;
+            }
+
+            bool includeReceiverAvatar = _useReceiver && _receiverBuild != null;
+            CharacterBuild receiverBuild = includeReceiverAvatar ? _receiverBuild.Clone() : null;
+            byte flag = includeReceiverAvatar ? (byte)2 : (byte)0;
+            byte messageType = (byte)Math.Clamp(_messageType > 0 ? _messageType : (_useReceiver ? 2 : 1), 0, byte.MaxValue);
+            string senderName = string.IsNullOrWhiteSpace(_senderName) ? "Player" : _senderName.Trim();
+            string receiverName = _useReceiver && !string.IsNullOrWhiteSpace(_receiverName) ? _receiverName.Trim() : string.Empty;
+            string[] lines = (_showMessage && _displayLines.Any(line => !string.IsNullOrWhiteSpace(line)))
+                ? _displayLines
+                : _draftLines;
+            int totalWaitTime = Math.Max(0, _showMessage ? _activeDurationMs : _draftDurationMs);
+
+            PacketWriter writer = new();
+            writer.WriteByte(flag);
+            writer.WriteByte(messageType);
+            writer.WriteBytes(LoginAvatarLookCodec.Encode(senderBuild));
+            writer.WriteMapleString(senderName);
+            writer.WriteMapleString(receiverName);
+            for (int i = 0; i < DisplayLineCount; i++)
+            {
+                writer.WriteMapleString(lines[i] ?? string.Empty);
+            }
+
+            writer.WriteInt(totalWaitTime);
+            if (includeReceiverAvatar)
+            {
+                writer.WriteBytes(LoginAvatarLookCodec.Encode(receiverBuild));
+            }
+
+            payload = writer.ToArray();
+            return true;
         }
 
         private CharacterBuild CreateReceiverBuild()

@@ -2867,6 +2867,9 @@ namespace HaCreator.MapSimulator.UI
         public string ItemTypeName { get; set; }
         public string Description { get; set; }
         public CharacterPart TooltipPart { get; set; }
+        public int? OwnerAccountId { get; set; }
+        public int? OwnerCharacterId { get; set; }
+        public bool IsCashOwnershipLocked { get; set; }
         public int PendingRequestId { get; set; }
 
         public InventorySlotData Clone()
@@ -2886,6 +2889,9 @@ namespace HaCreator.MapSimulator.UI
                 ItemTypeName = ItemTypeName,
                 Description = Description,
                 TooltipPart = TooltipPart?.Clone(),
+                OwnerAccountId = OwnerAccountId,
+                OwnerCharacterId = OwnerCharacterId,
+                IsCashOwnershipLocked = IsCashOwnershipLocked,
                 PendingRequestId = PendingRequestId
             };
         }

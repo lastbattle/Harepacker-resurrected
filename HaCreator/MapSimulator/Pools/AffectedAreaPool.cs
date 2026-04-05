@@ -523,12 +523,9 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             string[] segments = normalizedPath.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
-            if (segments.Length >= 3
-                && TryResolveLinkedItemNodeName(segments[^1], out string itemNodeName))
+            if (TryResolveLinkedItemNodeNameFromPath(segments, out string itemNodeName)
+                && TryResolveLinkedItemImagePath(segments, out string imagePath))
             {
-                string imagePath = segments[1].EndsWith(".img", StringComparison.OrdinalIgnoreCase)
-                    ? $"{segments[0]}/{segments[1]}"
-                    : $"{segments[0]}/{segments[1]}.img";
                 WzImage linkedImage = global::HaCreator.Program.FindImage("Item", imagePath);
                 if (linkedImage == null)
                 {
@@ -540,6 +537,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             if (!TryResolveLinkedItemNodeName(segments.Length > 0 ? segments[^1] : normalizedPath, out string fallbackNodeName)
+                && !TryResolveLinkedItemNodeNameFromPath(segments, out fallbackNodeName)
                 || !int.TryParse(fallbackNodeName, out int fallbackItemId))
             {
                 return null;
@@ -571,12 +569,61 @@ namespace HaCreator.MapSimulator.Pools
 
             string[] segments = normalizedPath.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
             string candidate = segments.Length > 0 ? segments[^1] : normalizedPath;
-            if (!TryResolveLinkedItemNodeName(candidate, out string itemNodeName))
+            if (!TryResolveLinkedItemNodeName(candidate, out string itemNodeName)
+                && !TryResolveLinkedItemNodeNameFromPath(segments, out itemNodeName))
             {
                 return false;
             }
 
             return int.TryParse(itemNodeName, out itemId) && itemId > 0;
+        }
+
+        private static bool TryResolveLinkedItemImagePath(string[] pathSegments, out string imagePath)
+        {
+            imagePath = null;
+            if (pathSegments == null || pathSegments.Length == 0)
+            {
+                return false;
+            }
+
+            for (int i = pathSegments.Length - 1; i >= 0; i--)
+            {
+                string segment = pathSegments[i];
+                if (string.IsNullOrWhiteSpace(segment)
+                    || !segment.EndsWith(".img", StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (i <= 0)
+                {
+                    return false;
+                }
+
+                imagePath = $"{pathSegments[i - 1]}/{segment}";
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryResolveLinkedItemNodeNameFromPath(string[] pathSegments, out string itemNodeName)
+        {
+            itemNodeName = null;
+            if (pathSegments == null || pathSegments.Length == 0)
+            {
+                return false;
+            }
+
+            for (int i = pathSegments.Length - 1; i >= 0; i--)
+            {
+                if (TryResolveLinkedItemNodeName(pathSegments[i], out itemNodeName))
+                {
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         private static bool TryResolveLinkedItemNodeName(string value, out string itemNodeName)

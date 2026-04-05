@@ -50,8 +50,8 @@ namespace HaCreator.MapSimulator.UI
         private const int SummaryStripY = 329;
         private const int SummaryStripStepY = 16;
         private const int SummaryTextPaddingX = 6;
-        private const int SummaryTextPaddingY = 4;
-        private const int SummaryTextMaxWidth = 202;
+        private const int SummaryTextPaddingY = 3;
+        private const float SummaryTextScale = 0.3f;
 
         public GuildSkillWindow(
             IDXObject frame,
@@ -296,14 +296,31 @@ namespace HaCreator.MapSimulator.UI
                     sprite.Draw(_pixel, stripBounds, new Color(5, 11, 18, 76));
                 }
 
-                string fittedLine = FitTextToWidth(snapshot.SummaryLines[i], SummaryTextMaxWidth, 0.3f);
-                DrawText(
-                    sprite,
-                    fittedLine,
-                    stripBounds.X + SummaryTextPaddingX,
-                    stripBounds.Y + SummaryTextPaddingY,
-                    palette[Math.Min(i, palette.Length - 1)],
-                    0.3f);
+                int maxTextWidth = Math.Max(16, stripBounds.Width - (SummaryTextPaddingX * 2));
+                IReadOnlyList<string> wrappedLines = WrapText(snapshot.SummaryLines[i], maxTextWidth, SummaryTextScale, sprite.GraphicsDevice).ToArray();
+                if (wrappedLines.Count == 0)
+                {
+                    continue;
+                }
+
+                int lineHeight = Math.Max(1, (int)Math.Ceiling(_font.LineSpacing * SummaryTextScale));
+                int maxVisibleLines = Math.Max(1, Math.Min(2, Math.Max(1, stripBounds.Height / lineHeight)));
+                int visibleLineCount = Math.Min(maxVisibleLines, wrappedLines.Count);
+                int totalTextHeight = visibleLineCount * lineHeight;
+                int textY = stripBounds.Y + Math.Max(0, (stripBounds.Height - totalTextHeight) / 2) + SummaryTextPaddingY;
+
+                for (int lineIndex = 0; lineIndex < visibleLineCount; lineIndex++)
+                {
+                    DrawText(
+                        sprite,
+                        wrappedLines[lineIndex],
+                        stripBounds.X + SummaryTextPaddingX,
+                        textY,
+                        palette[Math.Min(i, palette.Length - 1)],
+                        SummaryTextScale,
+                        maxTextWidth);
+                    textY += lineHeight;
+                }
             }
         }
 
@@ -562,7 +579,7 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private IEnumerable<string> WrapText(string text, int maxWidth, float scale)
+        private IEnumerable<string> WrapText(string text, int maxWidth, float scale, GraphicsDevice graphicsDevice = null)
         {
             if (string.IsNullOrWhiteSpace(text))
             {
@@ -579,7 +596,7 @@ namespace HaCreator.MapSimulator.UI
             for (int i = 1; i < words.Length; i++)
             {
                 string candidate = line + " " + words[i];
-                if (ClientTextDrawing.Measure((GraphicsDevice)null, candidate, scale, _font).X <= maxWidth)
+                if (ClientTextDrawing.Measure(graphicsDevice, candidate, scale, _font).X <= maxWidth)
                 {
                     line = candidate;
                     continue;
@@ -636,11 +653,11 @@ namespace HaCreator.MapSimulator.UI
             layer?.DrawBackground(sprite, skeletonMeshRenderer, gameTime, Position.X + offset.X, Position.Y + offset.Y, Color.White, false, drawReflectionInfo);
         }
 
-        private void DrawText(SpriteBatch sprite, string text, int x, int y, Color color, float scale)
+        private void DrawText(SpriteBatch sprite, string text, int x, int y, Color color, float scale, float? maxWidth = null)
         {
             if (!string.IsNullOrWhiteSpace(text))
             {
-                ClientTextDrawing.Draw(sprite, text, new Vector2(x, y), color, scale, _font);
+                ClientTextDrawing.Draw(sprite, text, new Vector2(x, y), color, scale, _font, maxWidth);
             }
         }
 
@@ -667,31 +684,5 @@ namespace HaCreator.MapSimulator.UI
                 height);
         }
 
-        private string FitTextToWidth(string text, int maxWidth, float scale)
-        {
-            if (string.IsNullOrWhiteSpace(text) || _font == null)
-            {
-                return string.Empty;
-            }
-
-            string candidate = text.Trim();
-            if (ClientTextDrawing.Measure((GraphicsDevice)null, candidate, scale, _font).X <= maxWidth)
-            {
-                return candidate;
-            }
-
-            const string ellipsis = "...";
-            while (candidate.Length > 1)
-            {
-                candidate = candidate[..^1].TrimEnd();
-                string truncated = candidate + ellipsis;
-                if (ClientTextDrawing.Measure((GraphicsDevice)null, truncated, scale, _font).X <= maxWidth)
-                {
-                    return truncated;
-                }
-            }
-
-            return ellipsis;
-        }
     }
 }

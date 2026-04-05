@@ -34,6 +34,7 @@ namespace HaCreator.MapSimulator.Fields
         private int _dynamicObjectCount;
         private int _dynamicEnabledObjectCount;
         private readonly List<string> _authoredDynamicObjectNames = new();
+        private readonly Dictionary<string, int> _authoredDynamicObjectPlatformByName = new(StringComparer.OrdinalIgnoreCase);
 
         public bool IsActive => _isActive;
         public int MapId => _mapId;
@@ -104,6 +105,7 @@ namespace HaCreator.MapSimulator.Fields
             _dynamicObjectCount = 0;
             _dynamicEnabledObjectCount = 0;
             _authoredDynamicObjectNames.Clear();
+            _authoredDynamicObjectPlatformByName.Clear();
         }
 
         public bool TryResolveAuthoredDynamicObjectName(int platformId, out string name)
@@ -116,6 +118,23 @@ namespace HaCreator.MapSimulator.Fields
 
             name = _authoredDynamicObjectNames[platformId];
             return !string.IsNullOrWhiteSpace(name);
+        }
+
+        public bool TryResolveAuthoredDynamicObjectPlatformId(string name, out int platformId)
+        {
+            platformId = -1;
+            if (string.IsNullOrWhiteSpace(name))
+            {
+                return false;
+            }
+
+            string normalized = NormalizeDynamicObjectKey(name);
+            if (normalized.Length == 0)
+            {
+                return false;
+            }
+
+            return _authoredDynamicObjectPlatformByName.TryGetValue(normalized, out platformId);
         }
 
         private void LoadMapContractSummary(MapInfo mapInfo, Func<int, WzImage> linkedMapResolver)
@@ -214,7 +233,10 @@ namespace HaCreator.MapSimulator.Fields
 
                     layerHasDynamicObject = true;
                     _dynamicObjectCount++;
-                    _authoredDynamicObjectNames.Add(ResolveDynamicObjectName(rootChild, mapObject, _authoredDynamicObjectNames.Count));
+                    int platformId = _authoredDynamicObjectNames.Count;
+                    string resolvedName = ResolveDynamicObjectName(rootChild, mapObject, platformId);
+                    _authoredDynamicObjectNames.Add(resolvedName);
+                    RegisterAuthoredDynamicObjectName(resolvedName, platformId);
 
                     if (TryReadDynamicFlag(dynamicProperty, out int dynamicFlag) && dynamicFlag != 0)
                     {
@@ -260,6 +282,29 @@ namespace HaCreator.MapSimulator.Fields
             return false;
         }
 
+        private void RegisterAuthoredDynamicObjectName(string name, int platformId)
+        {
+            if (platformId < 0 || string.IsNullOrWhiteSpace(name))
+            {
+                return;
+            }
+
+            string normalized = NormalizeDynamicObjectKey(name);
+            if (normalized.Length == 0 || _authoredDynamicObjectPlatformByName.ContainsKey(normalized))
+            {
+                return;
+            }
+
+            _authoredDynamicObjectPlatformByName[normalized] = platformId;
+        }
+
+        private static string NormalizeDynamicObjectKey(string name)
+        {
+            return string.IsNullOrWhiteSpace(name)
+                ? string.Empty
+                : name.Trim().Replace('\\', '/');
+        }
+
         private static string ResolveDynamicObjectName(WzImageProperty layer, WzImageProperty mapObject, int fallbackIndex)
         {
             if (TryReadStringProperty(mapObject, "name", out string name)
@@ -269,9 +314,29 @@ namespace HaCreator.MapSimulator.Fields
                 return name;
             }
 
+            if (TryResolveObjectKeyName(mapObject, out string objectKeyName))
+            {
+                return objectKeyName;
+            }
+
             string layerName = layer?.Name ?? "layer";
             string objectName = mapObject?.Name ?? fallbackIndex.ToString(CultureInfo.InvariantCulture);
             return $"dynamic-{layerName}-{objectName}";
+        }
+
+        private static bool TryResolveObjectKeyName(WzImageProperty mapObject, out string name)
+        {
+            name = null;
+            if (!TryReadTokenProperty(mapObject, "oS", out string objectSet)
+                || !TryReadTokenProperty(mapObject, "l0", out string layer0)
+                || !TryReadTokenProperty(mapObject, "l1", out string layer1)
+                || !TryReadTokenProperty(mapObject, "l2", out string layer2))
+            {
+                return false;
+            }
+
+            name = $"{objectSet}/{layer0}/{layer1}/{layer2}";
+            return true;
         }
 
         private static bool TryReadStringProperty(WzImageProperty parent, string propertyName, out string value)
@@ -284,6 +349,35 @@ namespace HaCreator.MapSimulator.Fields
 
             value = stringProperty.Value.Trim();
             return true;
+        }
+
+        private static bool TryReadTokenProperty(WzImageProperty parent, string propertyName, out string value)
+        {
+            value = null;
+            if (parent?[propertyName] is not WzImageProperty property)
+            {
+                return false;
+            }
+
+            switch (property)
+            {
+                case WzStringProperty stringProperty when !string.IsNullOrWhiteSpace(stringProperty.Value):
+                    value = stringProperty.Value.Trim();
+                    break;
+                case WzIntProperty intProperty:
+                    value = intProperty.Value.ToString(CultureInfo.InvariantCulture);
+                    break;
+                case WzShortProperty shortProperty:
+                    value = shortProperty.Value.ToString(CultureInfo.InvariantCulture);
+                    break;
+                case WzLongProperty longProperty:
+                    value = longProperty.Value.ToString(CultureInfo.InvariantCulture);
+                    break;
+                default:
+                    return false;
+            }
+
+            return value.Length > 0;
         }
     }
 }

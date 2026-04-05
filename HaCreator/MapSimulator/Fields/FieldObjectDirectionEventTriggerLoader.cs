@@ -2,7 +2,6 @@ using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using System;
 using System.Collections.Generic;
-using System.Linq;
 using HaCreator.MapSimulator.Interaction;
 
 namespace HaCreator.MapSimulator.Fields
@@ -36,33 +35,136 @@ namespace HaCreator.MapSimulator.Fields
 
                 int? x = TryReadInt(pointProperty["x"]);
                 int? y = TryReadInt(pointProperty["y"]);
-                string[] scriptNames = ReadEventQScriptNames(pointProperty["EventQ"]);
-                if (!x.HasValue || !y.HasValue || scriptNames.Length == 0)
+                FieldObjectScriptPublication[] scriptPublications = ReadEventQScriptPublications(pointProperty["EventQ"]);
+                if (!x.HasValue || !y.HasValue || scriptPublications.Length == 0)
                 {
                     continue;
                 }
 
-                points.Add(new FieldObjectDirectionEventTriggerPoint(x.Value, y.Value, scriptNames));
+                points.Add(new FieldObjectDirectionEventTriggerPoint(x.Value, y.Value, scriptPublications));
             }
 
             return points;
         }
 
-        private static string[] ReadEventQScriptNames(WzImageProperty eventQProperty)
+        private static FieldObjectScriptPublication[] ReadEventQScriptPublications(WzImageProperty eventQProperty)
         {
             if (eventQProperty == null)
             {
-                return Array.Empty<string>();
+                return Array.Empty<FieldObjectScriptPublication>();
             }
 
-            IReadOnlyList<string> scriptNames = QuestRuntimeManager.ParseScriptNames(eventQProperty);
-            return scriptNames.Count == 0
-                ? Array.Empty<string>()
-                : scriptNames
-                    .Where(value => !string.IsNullOrWhiteSpace(value))
-                    .Select(value => value.Trim())
-                    .Distinct(StringComparer.OrdinalIgnoreCase)
-                    .ToArray();
+            var resolvedDelaysByScript = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+            CollectScriptPublications(eventQProperty, 0, resolvedDelaysByScript);
+            if (resolvedDelaysByScript.Count == 0)
+            {
+                return Array.Empty<FieldObjectScriptPublication>();
+            }
+
+            var publications = new List<FieldObjectScriptPublication>(resolvedDelaysByScript.Count);
+            foreach ((string scriptName, int delayMs) in resolvedDelaysByScript)
+            {
+                publications.Add(new FieldObjectScriptPublication(scriptName, delayMs));
+            }
+
+            return publications.ToArray();
+        }
+
+        private static void CollectScriptPublications(
+            WzImageProperty property,
+            int inheritedDelayMs,
+            IDictionary<string, int> resolvedDelaysByScript)
+        {
+            if (property == null || resolvedDelaysByScript == null)
+            {
+                return;
+            }
+
+            if (property is WzStringProperty stringProperty)
+            {
+                IReadOnlyList<string> scriptNames = QuestRuntimeManager.ParseScriptNames(stringProperty);
+                for (int i = 0; i < scriptNames.Count; i++)
+                {
+                    string scriptName = scriptNames[i]?.Trim();
+                    if (string.IsNullOrWhiteSpace(scriptName))
+                    {
+                        continue;
+                    }
+
+                    if (!resolvedDelaysByScript.TryGetValue(scriptName, out int existingDelayMs)
+                        || inheritedDelayMs < existingDelayMs)
+                    {
+                        resolvedDelaysByScript[scriptName] = inheritedDelayMs;
+                    }
+                }
+
+                return;
+            }
+
+            IReadOnlyList<WzImageProperty> children = property.WzProperties;
+            if (children == null || children.Count == 0)
+            {
+                IReadOnlyList<string> scriptNames = QuestRuntimeManager.ParseScriptNames(property);
+                for (int i = 0; i < scriptNames.Count; i++)
+                {
+                    string scriptName = scriptNames[i]?.Trim();
+                    if (string.IsNullOrWhiteSpace(scriptName))
+                    {
+                        continue;
+                    }
+
+                    if (!resolvedDelaysByScript.TryGetValue(scriptName, out int existingDelayMs)
+                        || inheritedDelayMs < existingDelayMs)
+                    {
+                        resolvedDelaysByScript[scriptName] = inheritedDelayMs;
+                    }
+                }
+
+                return;
+            }
+
+            int effectiveDelayMs = inheritedDelayMs;
+            for (int i = 0; i < children.Count; i++)
+            {
+                WzImageProperty child = children[i];
+                if (!IsDelayPropertyName(child?.Name))
+                {
+                    continue;
+                }
+
+                int? delayMs = TryReadInt(child);
+                if (!delayMs.HasValue)
+                {
+                    continue;
+                }
+
+                int normalizedDelayMs = Math.Max(0, delayMs.Value);
+                effectiveDelayMs = normalizedDelayMs >= int.MaxValue - inheritedDelayMs
+                    ? int.MaxValue
+                    : inheritedDelayMs + normalizedDelayMs;
+                break;
+            }
+
+            for (int i = 0; i < children.Count; i++)
+            {
+                WzImageProperty child = children[i];
+                if (IsDelayPropertyName(child?.Name))
+                {
+                    continue;
+                }
+
+                CollectScriptPublications(child, effectiveDelayMs, resolvedDelaysByScript);
+            }
+        }
+
+        private static bool IsDelayPropertyName(string propertyName)
+        {
+            return propertyName != null
+                && (propertyName.Equals("delay", StringComparison.OrdinalIgnoreCase)
+                    || propertyName.Equals("wait", StringComparison.OrdinalIgnoreCase)
+                    || propertyName.Equals("time", StringComparison.OrdinalIgnoreCase)
+                    || propertyName.Equals("t", StringComparison.OrdinalIgnoreCase)
+                    || propertyName.Equals("startDelay", StringComparison.OrdinalIgnoreCase));
         }
 
         private static int? TryReadInt(WzImageProperty property)

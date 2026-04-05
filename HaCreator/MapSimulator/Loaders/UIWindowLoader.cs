@@ -585,7 +585,10 @@ namespace HaCreator.MapSimulator.Loaders
                 enterButton,
                 newButton,
                 deleteButton,
-                LoadCharacterSelectAnimationFrames(charSelectProperty?["scroll"]?["0"] as WzSubProperty, device),
+                new IReadOnlyList<CharacterSelectWindow.AnimationFrame>[]
+                {
+                    LoadCharacterSelectAnimationFrames(charSelectProperty?["scroll"]?["0"] as WzSubProperty, device)
+                },
                 LoadCharacterSelectAnimationFrames(charSelectProperty?["effect"]?["0"] as WzSubProperty, device),
                 LoadCharacterSelectAnimationFrames(charSelectProperty?["effect"]?["1"] as WzSubProperty, device),
                 LoadCharacterSelectAnimationFrames(charSelectProperty?["character"]?["0"] as WzSubProperty, device),
@@ -593,7 +596,8 @@ namespace HaCreator.MapSimulator.Loaders
                 LoadCharacterSelectAnimationFrames(charSelectProperty?["BtNew"]?["keyFocused"] as WzSubProperty, device),
                 LoadCharacterSelectAnimationFrames(charSelectProperty?["BtDelete"]?["keyFocused"] as WzSubProperty, device),
                 LoadLoginProcessBalloonStyle(loginImage?["WorldNotice"]?["BalloonForLoginProcess"] as WzSubProperty, device),
-                LoadOwnerCanvasFrame(ResolveNewestIndexedCanvas(charSelectProperty?["event"] as WzSubProperty), device))
+                LoadOwnerCanvasFrame(ResolveNewestIndexedCanvas(charSelectProperty?["event"] as WzSubProperty), device),
+                LoadOwnerCanvasFrame(ResolveNewestIndexedCanvas(charSelectProperty?["character"] as WzSubProperty), device))
             {
                 Position = new Point(Math.Max(24, (screenWidth / 2) - 309), Math.Max(24, (screenHeight / 2) - 160))
             };
@@ -1254,6 +1258,8 @@ namespace HaCreator.MapSimulator.Loaders
             LoginUtilityDialogWindow window = new LoginUtilityDialogWindow(
                 new DXObject(0, 0, frameTexture, 0),
                 okButton,
+                yesButton,
+                noButton,
                 yesButton,
                 noButton,
                 acceptButton,
@@ -2144,6 +2150,7 @@ namespace HaCreator.MapSimulator.Loaders
             Dictionary<int, Texture2D> worldBadges)
         {
             WzSubProperty loginChannelProperty = loginWorldSelectProperty?["channel"] as WzSubProperty;
+            int channelSlotCount = ResolveChannelSlotCount(loginChannelProperty, channelProperty?["ch"] as WzSubProperty);
             Texture2D frameTexture = LoadCanvasTexture(loginWorldSelectProperty, "chBackgrn", device)
                 ?? LoadCanvasTexture(channelProperty, "backgrnd", device);
             if (frameTexture == null)
@@ -2197,7 +2204,7 @@ namespace HaCreator.MapSimulator.Loaders
 
 
             List<(int channelIndex, UIObject button, Texture2D icon)> channelButtons = new List<(int, UIObject, Texture2D)>();
-            for (int channelIndex = 0; channelIndex < 20; channelIndex++)
+            for (int channelIndex = 0; channelIndex < channelSlotCount; channelIndex++)
             {
                 UIObject button;
                 Texture2D icon;
@@ -2254,6 +2261,7 @@ namespace HaCreator.MapSimulator.Loaders
             Dictionary<int, Texture2D> worldBadges)
         {
             WzSubProperty loginChannelProperty = loginWorldSelectProperty?["channel"] as WzSubProperty;
+            int channelSlotCount = ResolveChannelSlotCount(loginChannelProperty, channelProperty?["ch"] as WzSubProperty);
             Texture2D frameTexture = LoadCanvasTexture(loginWorldSelectProperty, "chBackgrn", device)
                 ?? LoadCanvasTexture(channelProperty, "backgrnd", device);
             if (frameTexture == null)
@@ -2264,7 +2272,7 @@ namespace HaCreator.MapSimulator.Loaders
 
             Dictionary<int, Texture2D> channelIcons = new Dictionary<int, Texture2D>();
             WzSubProperty channelIconProperty = channelProperty?["ch"] as WzSubProperty;
-            for (int channelIndex = 0; channelIndex < 20; channelIndex++)
+            for (int channelIndex = 0; channelIndex < channelSlotCount; channelIndex++)
             {
                 Texture2D channelTexture = loginChannelProperty?[channelIndex.ToString(CultureInfo.InvariantCulture)] is WzSubProperty loginChannelEntry
                     ? LoadCanvasTexture(loginChannelEntry, "normal", device)
@@ -2300,6 +2308,30 @@ namespace HaCreator.MapSimulator.Loaders
                 channelIcons,
                 selectionFrames,
                 150);
+        }
+
+        private static int ResolveChannelSlotCount(WzSubProperty loginChannelProperty, WzSubProperty fallbackChannelIconProperty)
+        {
+            int maxChannelIndex = -1;
+            foreach (WzImageProperty property in loginChannelProperty?.WzProperties ?? Enumerable.Empty<WzImageProperty>())
+            {
+                if (int.TryParse(property.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int channelIndex) && channelIndex >= 0)
+                {
+                    maxChannelIndex = Math.Max(maxChannelIndex, channelIndex);
+                }
+            }
+
+            foreach (WzImageProperty property in fallbackChannelIconProperty?.WzProperties ?? Enumerable.Empty<WzImageProperty>())
+            {
+                if (int.TryParse(property.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int channelIndex) && channelIndex >= 0)
+                {
+                    maxChannelIndex = Math.Max(maxChannelIndex, channelIndex);
+                }
+            }
+
+            return maxChannelIndex >= 0
+                ? Math.Clamp(maxChannelIndex + 1, 1, 60)
+                : 20;
         }
 
 
@@ -4320,11 +4352,26 @@ namespace HaCreator.MapSimulator.Loaders
             WzSubProperty skillMainProperty = uiWindow2Image?["Skill"]?["main"] as WzSubProperty;
             if (skillMainProperty != null)
             {
+                WzCanvasProperty tip0 = skillMainProperty["tip0"] as WzCanvasProperty;
+                WzCanvasProperty tip1 = skillMainProperty["tip1"] as WzCanvasProperty;
+                WzCanvasProperty tip2 = skillMainProperty["tip2"] as WzCanvasProperty;
                 window.SetTooltipTextures(new[]
                 {
-                    LoadCanvasTexture(skillMainProperty, "tip0", device),
-                    LoadCanvasTexture(skillMainProperty, "tip1", device),
-                    LoadCanvasTexture(skillMainProperty, "tip2", device)
+                    LoadCanvasTexture(tip0, device),
+                    LoadCanvasTexture(tip1, device),
+                    LoadCanvasTexture(tip2, device)
+                });
+                window.SetTooltipOrigins(new[]
+                {
+                    tip0?.GetCanvasOriginPosition() is System.Drawing.PointF tip0Origin
+                        ? new Point((int)tip0Origin.X, (int)tip0Origin.Y)
+                        : Point.Zero,
+                    tip1?.GetCanvasOriginPosition() is System.Drawing.PointF tip1Origin
+                        ? new Point((int)tip1Origin.X, (int)tip1Origin.Y)
+                        : Point.Zero,
+                    tip2?.GetCanvasOriginPosition() is System.Drawing.PointF tip2Origin
+                        ? new Point((int)tip2Origin.X, (int)tip2Origin.Y)
+                        : Point.Zero
                 });
             }
 
@@ -6930,12 +6977,13 @@ namespace HaCreator.MapSimulator.Loaders
             WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
             WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
             Texture2D checkTexture = LoadCanvasTexture(sourceProperty, "check", device) ?? CreateFilledTexture(device, 1, 1, Color.White, Color.White);
+            Texture2D[] scrollTextures = LoadIndexedCanvasArray(sourceProperty["scroll"] as WzSubProperty, 4, device);
             OptionMenuWindow window = new OptionMenuWindow(
                 new DXObject(0, 0, frameTexture, 0),
                 MapSimulatorWindowNames.OptionMenu,
                 checkTexture,
                 CreateFilledTexture(device, 1, 1, Color.White, Color.White),
-                Array.Empty<Texture2D>())
+                scrollTextures)
             {
                 Position = position
             };
@@ -6990,6 +7038,18 @@ namespace HaCreator.MapSimulator.Loaders
             {
                 Position = position
             };
+
+            // Client evidence: CUIRanking::OnCreate loads UIWindow.img/Ranking/Loading
+            // and positions the animated layer at x=128, y=161 before NavigateUrl.
+            WzImage uiWindowImage = Program.FindImage("UI", "UIWindow.img");
+            WzSubProperty rankingLegacyProperty = uiWindowImage?["Ranking"] as WzSubProperty;
+            Texture2D[] loadingFrames = LoadIndexedCanvasTextureList(rankingLegacyProperty?["Loading"] as WzSubProperty, device)
+                .Where(frame => frame != null)
+                .ToArray();
+            if (loadingFrames.Length > 0)
+            {
+                window.SetLoadingFrames(loadingFrames, new Point(128, 161));
+            }
 
             WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
             WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;

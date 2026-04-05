@@ -582,6 +582,7 @@ namespace HaCreator.MapSimulator.Loaders
             }
 
             WzImageProperty infoHitNode = WzInfoTools.GetRealProperty(infoNode["hit"]);
+            WzImageProperty[] infoHitMetadataNodes = EnumerateNestedInfoHitMetadataNodes(infoHitNode).ToArray();
             WzImageProperty[] frameHitMetadataNodes = EnumerateAttackFrameHitNodes(attackStateProperty).ToArray();
             int explicitInfoHitAttach = ReadOptionalInt(infoHitNode, int.MinValue, "attach", "bHitAttach", "hitAttach");
             int explicitInfoFacingAttach = ReadOptionalInt(
@@ -599,8 +600,16 @@ namespace HaCreator.MapSimulator.Loaders
                 "bFacingAttach",
                 "bFacingAttatch",
                 "facingAttach");
-            int nestedHitAttach = ReadOptionalInt(frameHitMetadataNodes, int.MinValue, "attach", "bHitAttach", "hitAttach");
-            int nestedFacingAttach = ReadOptionalInt(
+            int nestedInfoHitAttach = ReadOptionalInt(infoHitMetadataNodes, int.MinValue, "attach", "bHitAttach", "hitAttach");
+            int nestedInfoFacingAttach = ReadOptionalInt(
+                infoHitMetadataNodes,
+                int.MinValue,
+                "attachfacing",
+                "bFacingAttach",
+                "bFacingAttatch",
+                "facingAttach");
+            int nestedFrameHitAttach = ReadOptionalInt(frameHitMetadataNodes, int.MinValue, "attach", "bHitAttach", "hitAttach");
+            int nestedFrameFacingAttach = ReadOptionalInt(
                 frameHitMetadataNodes,
                 int.MinValue,
                 "attachfacing",
@@ -611,13 +620,17 @@ namespace HaCreator.MapSimulator.Loaders
                 ? explicitInfoFacingAttach
                 : infoAliasFacingAttach != int.MinValue
                     ? infoAliasFacingAttach
-                    : nestedFacingAttach;
+                    : nestedInfoFacingAttach != int.MinValue
+                        ? nestedInfoFacingAttach
+                        : nestedFrameFacingAttach;
             bool facingAttach = resolvedFacingAttach > 0;
             int resolvedHitAttach = explicitInfoHitAttach != int.MinValue
                 ? explicitInfoHitAttach
                 : infoAliasHitAttach != int.MinValue
                     ? infoAliasHitAttach
-                    : nestedHitAttach;
+                    : nestedInfoHitAttach != int.MinValue
+                        ? nestedInfoHitAttach
+                        : nestedFrameHitAttach;
             bool hitAttach = resolvedHitAttach != int.MinValue
                 ? resolvedHitAttach > 0
                 : facingAttach;
@@ -759,6 +772,29 @@ namespace HaCreator.MapSimulator.Loaders
                 {
                     yield return frameHitNode;
                 }
+            }
+        }
+
+        private static IEnumerable<WzImageProperty> EnumerateNestedInfoHitMetadataNodes(WzImageProperty infoHitNode)
+        {
+            WzImageProperty resolvedInfoHitNode = WzInfoTools.GetRealProperty(infoHitNode);
+            if (resolvedInfoHitNode == null)
+            {
+                yield break;
+            }
+
+            foreach (WzImageProperty frameProperty in resolvedInfoHitNode.WzProperties
+                         .Where(property => int.TryParse(property?.Name, out _))
+                         .OrderBy(property => int.Parse(property.Name)))
+            {
+                WzImageProperty resolvedFrameProperty = WzInfoTools.GetRealProperty(frameProperty);
+                if (resolvedFrameProperty == null)
+                {
+                    continue;
+                }
+
+                WzImageProperty nestedHitNode = WzInfoTools.GetRealProperty(resolvedFrameProperty["hit"]);
+                yield return nestedHitNode ?? resolvedFrameProperty;
             }
         }
 

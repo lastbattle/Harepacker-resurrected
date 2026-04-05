@@ -179,6 +179,39 @@ namespace HaCreator.MapSimulator
             ResetPacketOwnedTeleportOutboundRequest(summary, sourcePortal.pn, sourcePortal.tn, stampTick: false);
         }
 
+        private void RecordPacketOwnedTeleportPortalRequest(
+            string sourcePortalName,
+            float sourceX,
+            float sourceY,
+            float targetX,
+            float targetY,
+            string targetPortalName,
+            string targetResolutionSummary)
+        {
+            _lastPacketOwnedTeleportPortalRequestTick = Environment.TickCount;
+            _lastPacketOwnedTeleportSourcePortalName = sourcePortalName;
+            _lastPacketOwnedTeleportTargetPortalName = targetPortalName;
+
+            if (TryBuildPacketOwnedTeleportPortalRequest(
+                sourcePortalName,
+                sourceX,
+                sourceY,
+                targetX,
+                targetY,
+                targetPortalName,
+                targetResolutionSummary,
+                out byte[] payload,
+                out string summary))
+            {
+                _lastPacketOwnedTeleportOutboundOpcode = PacketOwnedTeleportPortalRequestOpcode;
+                _lastPacketOwnedTeleportOutboundPayload = payload;
+                _lastPacketOwnedTeleportOutboundSummary = summary;
+                return;
+            }
+
+            ResetPacketOwnedTeleportOutboundRequest(summary, sourcePortalName, targetPortalName, stampTick: false);
+        }
+
         private void ResetPacketOwnedTeleportOutboundRequest(
             string summary,
             string sourcePortalName = null,
@@ -424,34 +457,23 @@ namespace HaCreator.MapSimulator
 
         private bool TryBuildPacketOwnedTeleportPortalRequest(PortalInstance sourcePortal, out byte[] payload, out string summary)
         {
-            payload = Array.Empty<byte>();
-            summary = "The simulator could not resolve destination portal coordinates for opcode 113.";
-            if (sourcePortal == null
-                || string.IsNullOrWhiteSpace(sourcePortal.pn)
-                || string.IsNullOrWhiteSpace(sourcePortal.tn))
-            {
-                summary = "Opcode 113 requires source and target portal names, but the request did not provide both values.";
-                return false;
-            }
-
             if (!TryResolvePacketOwnedPortalRequestTarget(sourcePortal, out PacketOwnedTeleportPortalRequestTarget targetPortal, out string resolutionSummary))
             {
+                payload = Array.Empty<byte>();
+                summary = "The simulator could not resolve destination portal coordinates for opcode 113.";
                 return false;
             }
 
-            using var stream = new MemoryStream();
-            using var writer = new BinaryWriter(stream, Encoding.Default, leaveOpen: true);
-            writer.Write(PacketOwnedTeleportSyntheticFieldKey);
-            WritePacketOwnedMapleString(writer, sourcePortal.pn);
-            writer.Write((short)Math.Clamp((int)MathF.Round(sourcePortal.X), short.MinValue, short.MaxValue));
-            writer.Write((short)Math.Clamp((int)MathF.Round(sourcePortal.Y), short.MinValue, short.MaxValue));
-            writer.Write((short)Math.Clamp((int)MathF.Round(targetPortal.X), short.MinValue, short.MaxValue));
-            writer.Write((short)Math.Clamp((int)MathF.Round(targetPortal.Y), short.MinValue, short.MaxValue));
-            writer.Flush();
-
-            payload = stream.ToArray();
-            summary = $"Recorded synthetic opcode {PacketOwnedTeleportPortalRequestOpcode} portal request for {sourcePortal.pn}->{sourcePortal.tn} with field key {PacketOwnedTeleportSyntheticFieldKey} using {resolutionSummary}.";
-            return true;
+            return TryBuildPacketOwnedTeleportPortalRequest(
+                sourcePortal.pn,
+                sourcePortal.X,
+                sourcePortal.Y,
+                targetPortal.X,
+                targetPortal.Y,
+                sourcePortal.tn,
+                resolutionSummary,
+                out payload,
+                out summary);
         }
 
         private bool TryResolvePacketOwnedPortalRequestTarget(
@@ -461,44 +483,135 @@ namespace HaCreator.MapSimulator
         {
             target = default;
             summary = "no destination portal coordinates";
-            if (sourcePortal == null || string.IsNullOrWhiteSpace(sourcePortal.tn))
+            if (sourcePortal == null || string.IsNullOrWhiteSpace(sourcePortal.pn))
             {
-                summary = "a missing target portal name";
+                summary = "a missing source portal name";
                 return false;
             }
 
-            if (TryResolvePacketOwnedPortalRequestTargetFromBoardPortals(
-                _mapBoard?.BoardItems?.Portals,
-                sourcePortal.tn,
-                out PortalInstance currentFieldPortal))
+            if (!string.IsNullOrWhiteSpace(sourcePortal.tn)
+                && TryResolvePacketOwnedPortalRequestTargetFromBoardPortals(
+                    _mapBoard?.BoardItems?.Portals,
+                    sourcePortal.tn,
+                    out PortalInstance currentFieldPortal))
             {
                 target = new PacketOwnedTeleportPortalRequestTarget(currentFieldPortal.X, currentFieldPortal.Y);
                 summary = $"current-field portal '{sourcePortal.tn}'";
                 return true;
             }
 
+            int currentMapId = _mapBoard?.MapInfo?.id ?? -1;
             if (sourcePortal.tm <= 0
                 || sourcePortal.tm == MapConstants.MaxMap
-                || sourcePortal.tm == (_mapBoard?.MapInfo?.id ?? -1)
+                || sourcePortal.tm == currentMapId
                 || _loadMapCallback == null)
             {
-                summary = $"destination portal '{sourcePortal.tn}' in the current or target field";
+                summary = string.IsNullOrWhiteSpace(sourcePortal.tn)
+                    ? $"destination portal in target map {sourcePortal.tm}"
+                    : $"destination portal '{sourcePortal.tn}' in map {sourcePortal.tm}";
                 return false;
             }
 
             Tuple<Board, string> targetMap = _loadMapCallback(sourcePortal.tm);
-            if (TryResolvePacketOwnedPortalRequestTargetFromBoardPortals(
-                targetMap?.Item1?.BoardItems?.Portals,
-                sourcePortal.tn,
-                out PortalInstance crossMapPortal))
+            IEnumerable<PortalInstance> targetPortals = targetMap?.Item1?.BoardItems?.Portals;
+            if (!string.IsNullOrWhiteSpace(sourcePortal.tn)
+                && TryResolvePacketOwnedPortalRequestTargetFromBoardPortals(
+                    targetPortals,
+                    sourcePortal.tn,
+                    out PortalInstance crossMapPortal))
             {
                 target = new PacketOwnedTeleportPortalRequestTarget(crossMapPortal.X, crossMapPortal.Y);
                 summary = $"target-map portal '{sourcePortal.tn}' in map {sourcePortal.tm}";
                 return true;
             }
 
-            summary = $"destination portal '{sourcePortal.tn}' in map {sourcePortal.tm}";
+            if (TryResolvePacketOwnedPortalRequestTargetByReciprocalLink(
+                targetPortals,
+                currentMapId,
+                sourcePortal.pn,
+                out PortalInstance reciprocalPortal))
+            {
+                target = new PacketOwnedTeleportPortalRequestTarget(reciprocalPortal.X, reciprocalPortal.Y);
+                summary = $"reciprocal target-map portal '{reciprocalPortal.pn}' linked back to source portal '{sourcePortal.pn}'";
+                return true;
+            }
+
+            if (TryResolvePacketOwnedPortalRequestTargetByMapOnlyReturn(
+                targetPortals,
+                currentMapId,
+                out PortalInstance mapOnlyPortal))
+            {
+                target = new PacketOwnedTeleportPortalRequestTarget(mapOnlyPortal.X, mapOnlyPortal.Y);
+                summary = $"single target-map portal '{mapOnlyPortal.pn}' that returns to map {currentMapId}";
+                return true;
+            }
+
+            summary = string.IsNullOrWhiteSpace(sourcePortal.tn)
+                ? $"destination portal linked to source portal '{sourcePortal.pn}' in map {sourcePortal.tm}"
+                : $"destination portal '{sourcePortal.tn}' in map {sourcePortal.tm}";
             return false;
+        }
+
+        private static bool TryResolvePacketOwnedPortalRequestTargetByReciprocalLink(
+            IEnumerable<PortalInstance> portals,
+            int sourceMapId,
+            string sourcePortalName,
+            out PortalInstance portalInstance)
+        {
+            portalInstance = null;
+            if (portals == null
+                || sourceMapId <= 0
+                || string.IsNullOrWhiteSpace(sourcePortalName))
+            {
+                return false;
+            }
+
+            foreach (PortalInstance portal in portals)
+            {
+                if (portal == null
+                    || portal.tm != sourceMapId
+                    || !string.Equals(portal.tn, sourcePortalName, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                portalInstance = portal;
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryResolvePacketOwnedPortalRequestTargetByMapOnlyReturn(
+            IEnumerable<PortalInstance> portals,
+            int sourceMapId,
+            out PortalInstance portalInstance)
+        {
+            portalInstance = null;
+            if (portals == null || sourceMapId <= 0)
+            {
+                return false;
+            }
+
+            PortalInstance firstMatch = null;
+            int matchCount = 0;
+            foreach (PortalInstance portal in portals)
+            {
+                if (portal == null || portal.tm != sourceMapId)
+                {
+                    continue;
+                }
+
+                firstMatch ??= portal;
+                matchCount++;
+                if (matchCount > 1)
+                {
+                    return false;
+                }
+            }
+
+            portalInstance = firstMatch;
+            return portalInstance != null;
         }
 
         private static bool TryResolvePacketOwnedPortalRequestTargetFromBoardPortals(
@@ -523,6 +636,40 @@ namespace HaCreator.MapSimulator
             }
 
             return false;
+        }
+
+        private bool TryBuildPacketOwnedTeleportPortalRequest(
+            string sourcePortalName,
+            float sourceX,
+            float sourceY,
+            float targetX,
+            float targetY,
+            string targetPortalName,
+            string targetResolutionSummary,
+            out byte[] payload,
+            out string summary)
+        {
+            payload = Array.Empty<byte>();
+            if (string.IsNullOrWhiteSpace(sourcePortalName))
+            {
+                summary = "Opcode 113 requires a source portal name, but none was resolved.";
+                return false;
+            }
+
+            using var stream = new MemoryStream();
+            using var writer = new BinaryWriter(stream, Encoding.Default, leaveOpen: true);
+            writer.Write(PacketOwnedTeleportSyntheticFieldKey);
+            WritePacketOwnedMapleString(writer, sourcePortalName);
+            writer.Write((short)Math.Clamp((int)MathF.Round(sourceX), short.MinValue, short.MaxValue));
+            writer.Write((short)Math.Clamp((int)MathF.Round(sourceY), short.MinValue, short.MaxValue));
+            writer.Write((short)Math.Clamp((int)MathF.Round(targetX), short.MinValue, short.MaxValue));
+            writer.Write((short)Math.Clamp((int)MathF.Round(targetY), short.MinValue, short.MaxValue));
+            writer.Flush();
+
+            payload = stream.ToArray();
+            string targetNameToken = string.IsNullOrWhiteSpace(targetPortalName) ? "?" : targetPortalName;
+            summary = $"Recorded synthetic opcode {PacketOwnedTeleportPortalRequestOpcode} portal request for {sourcePortalName}->{targetNameToken} with field key {PacketOwnedTeleportSyntheticFieldKey} using {targetResolutionSummary}.";
+            return true;
         }
 
         private readonly struct PacketOwnedTeleportPortalRequestTarget

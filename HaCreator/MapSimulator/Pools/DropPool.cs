@@ -192,6 +192,7 @@ namespace HaCreator.MapSimulator.Pools
         public int PickupDurationMs { get; set; }
         public bool UsePickupAbsorbMotion { get; set; }
         public int RemovalFadeDurationMs { get; set; }
+        public bool TriggerPacketExplodeEffectOnRemove { get; set; }
         public float RemovalStartScale { get; set; } = 1f;
         public float RemovalTargetScale { get; set; } = 1f;
         #endregion
@@ -561,6 +562,8 @@ namespace HaCreator.MapSimulator.Pools
         // Meso explosion constants
         private const float MESO_EXPLOSION_RANGE = 150f;        // Default meso explosion range
         private const int MAX_MESO_EXPLOSION_DROPS = 10;        // Max mesos in single explosion
+        private const int PACKET_ENTER_SOUND_COOLDOWN = 300;
+        private const int PACKET_EXPLODE_SOUND_COOLDOWN = 90;
 
         // Recent pickup history
         private const int MAX_RECENT_PICKUPS = 50;              // Max pickup history entries
@@ -594,6 +597,8 @@ namespace HaCreator.MapSimulator.Pools
         #region State
         private int _nextDropId = 1;
         private int _lastUpdateTick = 0;
+        private int _lastPacketEnterSoundTime = int.MinValue;
+        private int _lastPacketExplodeSoundTime = int.MinValue;
         private Action<DropItem> _onDropSpawned;
         private Action<DropItem> _onDropPickedUp;
         private Action<DropItem> _onDropExpired;
@@ -606,6 +611,8 @@ namespace HaCreator.MapSimulator.Pools
         private Action<DropItem, int, string> _onRemoteOtherPickedUp;
         private Func<int, int, bool> _partyPickupMembershipEvaluator;
         private Func<string, IReadOnlyList<IDXObject>> _packetItemVisualResolver;
+        private Action<DropItem, int> _onPacketEnterSoundRequested;
+        private Action<DropItem, int> _onPacketExploded;
 
         // Ground level lookup function
         private Func<float, float, float> _getGroundY;
@@ -639,6 +646,8 @@ namespace HaCreator.MapSimulator.Pools
         public void SetOnRemotePlayerPickedUp(Action<DropItem, int, string> callback) => _onRemotePlayerPickedUp = callback;
         public void SetOnRemotePetPickedUp(Action<DropItem, int, string> callback) => _onRemotePetPickedUp = callback;
         public void SetOnRemoteOtherPickedUp(Action<DropItem, int, string> callback) => _onRemoteOtherPickedUp = callback;
+        public void SetOnPacketEnterSoundRequested(Action<DropItem, int> callback) => _onPacketEnterSoundRequested = callback;
+        public void SetOnPacketExploded(Action<DropItem, int> callback) => _onPacketExploded = callback;
 
         // Pet pickup events
         private Action<DropItem, int> _onPetPickedUp;          // (drop, petId)
@@ -697,6 +706,8 @@ namespace HaCreator.MapSimulator.Pools
             _activeDrops.Clear();
             _dropById.Clear();
             _nextDropId = 1;
+            _lastPacketEnterSoundTime = int.MinValue;
+            _lastPacketExplodeSoundTime = int.MinValue;
 
             // Clear new collections
             _petTargets.Clear();
@@ -887,6 +898,7 @@ namespace HaCreator.MapSimulator.Pools
             drop.PickupDurationMs = 0;
             drop.UsePickupAbsorbMotion = false;
             drop.RemovalFadeDurationMs = 0;
+            drop.TriggerPacketExplodeEffectOnRemove = false;
             drop.RemovalStartScale = 1f;
             drop.RemovalTargetScale = 1f;
             drop.CanPickup = true;
@@ -1286,10 +1298,28 @@ namespace HaCreator.MapSimulator.Pools
             for (int i = _activeDrops.Count - 1; i >= 0; i--)
             {
                 var drop = _activeDrops[i];
+                DropState previousState = drop.State;
                 drop.Update(currentTime, deltaTime);
+
+                if (previousState == DropState.Spawning
+                    && drop.State == DropState.Falling
+                    && drop.IsPacketControlled
+                    && drop.PacketEnterType == 1
+                    && currentTime - _lastPacketEnterSoundTime >= PACKET_ENTER_SOUND_COOLDOWN)
+                {
+                    _lastPacketEnterSoundTime = currentTime;
+                    _onPacketEnterSoundRequested?.Invoke(drop, currentTime);
+                }
 
                 if (drop.State == DropState.Removed)
                 {
+                    if (drop.TriggerPacketExplodeEffectOnRemove
+                        && currentTime - _lastPacketExplodeSoundTime >= PACKET_EXPLODE_SOUND_COOLDOWN)
+                    {
+                        _lastPacketExplodeSoundTime = currentTime;
+                        _onPacketExploded?.Invoke(drop, currentTime);
+                    }
+
                     if (drop.Alpha <= 0)
                         _onDropExpired?.Invoke(drop);
                     RemoveDrop(drop);
@@ -2170,6 +2200,7 @@ namespace HaCreator.MapSimulator.Pools
                     return true;
 
                 case PacketDropLeaveReason.Explode:
+                    drop.TriggerPacketExplodeEffectOnRemove = true;
                     drop.ScheduleRemoval(currentTime, packet.DelayMs, fadeOut: false);
                     return true;
 

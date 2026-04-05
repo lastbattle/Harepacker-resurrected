@@ -1222,7 +1222,14 @@ namespace HaCreator.MapSimulator.UI
                         return false;
                     }
 
-                    if (!_petEquipmentController.TryEquipItem(targetPet, liveSourceSlot.ItemId, out IReadOnlyList<CompanionEquipItem> displacedItems, out rejectReason))
+                    if (!_petEquipmentController.TryEquipItem(
+                            targetPet,
+                            liveSourceSlot.ItemId,
+                            out IReadOnlyList<CompanionEquipItem> displacedItems,
+                            out rejectReason,
+                            liveSourceSlot,
+                            null,
+                            _characterBuild?.Id ?? 0))
                     {
                         return false;
                     }
@@ -1238,7 +1245,14 @@ namespace HaCreator.MapSimulator.UI
                         return false;
                     }
 
-                    if (!_dragonEquipmentController.TryEquipItem(pendingChange.TargetDragonSlot.Value, liveSourceSlot.ItemId, out IReadOnlyList<CompanionEquipItem> dragonDisplacedItems, out rejectReason))
+                    if (!_dragonEquipmentController.TryEquipItem(
+                            pendingChange.TargetDragonSlot.Value,
+                            liveSourceSlot.ItemId,
+                            out IReadOnlyList<CompanionEquipItem> dragonDisplacedItems,
+                            out rejectReason,
+                            liveSourceSlot,
+                            null,
+                            _characterBuild?.Id ?? 0))
                     {
                         return false;
                     }
@@ -1253,7 +1267,14 @@ namespace HaCreator.MapSimulator.UI
                         return false;
                     }
 
-                    if (!_mechanicEquipmentController.TryEquipItem(pendingChange.TargetMechanicSlot.Value, liveSourceSlot.ItemId, out IReadOnlyList<CompanionEquipItem> mechanicDisplacedItems, out rejectReason))
+                    if (!_mechanicEquipmentController.TryEquipItem(
+                            pendingChange.TargetMechanicSlot.Value,
+                            liveSourceSlot.ItemId,
+                            out IReadOnlyList<CompanionEquipItem> mechanicDisplacedItems,
+                            out rejectReason,
+                            liveSourceSlot,
+                            null,
+                            _characterBuild?.Id ?? 0))
                     {
                         return false;
                     }
@@ -1268,7 +1289,14 @@ namespace HaCreator.MapSimulator.UI
                         return false;
                     }
 
-                    if (!_androidEquipmentController.TryEquipItem(pendingChange.TargetAndroidSlot.Value, liveSourceSlot.ItemId, out IReadOnlyList<CompanionEquipItem> androidDisplacedItems, out rejectReason))
+                    if (!_androidEquipmentController.TryEquipItem(
+                            pendingChange.TargetAndroidSlot.Value,
+                            liveSourceSlot.ItemId,
+                            out IReadOnlyList<CompanionEquipItem> androidDisplacedItems,
+                            out rejectReason,
+                            liveSourceSlot,
+                            null,
+                            _characterBuild?.Id ?? 0))
                     {
                         return false;
                     }
@@ -4944,6 +4972,9 @@ namespace HaCreator.MapSimulator.UI
                 ItemName = string.IsNullOrWhiteSpace(part.Name) ? $"Equip {part.ItemId}" : part.Name,
                 ItemTypeName = string.IsNullOrWhiteSpace(part.ItemCategory) ? "Equip" : part.ItemCategory,
                 Description = BuildEquipmentDescription(part),
+                OwnerAccountId = part.OwnerAccountId,
+                OwnerCharacterId = part.OwnerCharacterId,
+                IsCashOwnershipLocked = part.IsCashOwnershipLocked,
                 TooltipPart = part.Clone()
             };
         }
@@ -5052,6 +5083,9 @@ namespace HaCreator.MapSimulator.UI
                     ItemName = item.Name,
                     ItemTypeName = string.IsNullOrWhiteSpace(item.ItemCategory) ? "Equip" : item.ItemCategory,
                     Description = BuildCompanionEquipmentDescription(item),
+                    OwnerAccountId = item.OwnerAccountId,
+                    OwnerCharacterId = item.OwnerCharacterId,
+                    IsCashOwnershipLocked = item.IsCashOwnershipLocked,
                     TooltipPart = tooltipPart?.Clone()
                 });
             }
@@ -5079,6 +5113,9 @@ namespace HaCreator.MapSimulator.UI
                 ItemName = item.Name,
                 ItemTypeName = string.IsNullOrWhiteSpace(item.ItemCategory) ? "Equip" : item.ItemCategory,
                 Description = BuildCompanionEquipmentDescription(item),
+                OwnerAccountId = item.OwnerAccountId,
+                OwnerCharacterId = item.OwnerCharacterId,
+                IsCashOwnershipLocked = item.IsCashOwnershipLocked,
                 TooltipPart = TryCreateTooltipPart(item, out CharacterPart tooltipPart) ? tooltipPart.Clone() : null
             };
         }

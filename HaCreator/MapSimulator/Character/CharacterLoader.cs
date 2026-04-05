@@ -2671,6 +2671,8 @@ namespace HaCreator.MapSimulator.Character
                 49 => "gun",
                 52 => "double bowgun",
                 53 => "cannon",
+                56 => "shining rod",
+                58 => "soul shooter",
                 _ => "weapon"
             };
         }

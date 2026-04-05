@@ -13,6 +13,7 @@ using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using HaCreator.MapSimulator.Effects;
 using HaCreator.MapSimulator.Managers;
+using HaCreator.MapSimulator.Interaction;
 using System.Text;
 
 namespace HaCreator.MapSimulator.Character.Skills
@@ -77,6 +78,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             public Vector2? AttackOrigin { get; init; }
             public string ActionName { get; init; }
             public int? RawActionCode { get; init; }
+            public int? AttackActionType { get; init; }
+            public int? ActionSpeed { get; init; }
             public float? StoredVerticalLaunchSpeed { get; init; }
             public int ShootRange0 { get; init; }
             public ShootAmmoSelection ResolvedShootAmmoSelection { get; init; }
@@ -88,6 +91,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             public int SkillId { get; init; }
             public int ExecuteTime { get; init; }
             public Point LiveWorldPosition { get; init; }
+            public int? AttackActionType { get; init; }
+            public int? ActionSpeed { get; init; }
+            public int RepeatCount { get; set; }
+            public int CountLimit { get; init; }
         }
 
         private sealed class PendingProjectileSpawn
@@ -124,6 +131,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             public long SequenceId { get; init; }
             public int ExecuteTime { get; init; }
+            public int SummonObjectId { get; init; }
             public int SkillId { get; init; }
             public int Level { get; init; }
             public SkillData SkillData { get; init; }
@@ -133,6 +141,9 @@ namespace HaCreator.MapSimulator.Character.Skills
             public int AttackCount { get; init; }
             public int? DamagePercentOverride { get; init; }
             public int TargetOrderOffset { get; init; }
+            public bool IsSg88ManualAttackBatch { get; init; }
+            public bool IsSg88ManualFollowUpBatch { get; init; }
+            public int Sg88ManualRequestTime { get; init; } = int.MinValue;
             public int[] TargetMobIds { get; init; } = Array.Empty<int>();
         }
 
@@ -168,6 +179,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             public int Level { get; init; }
             public int TargetMobId { get; init; }
             public bool PendingAbsorbOutcome { get; set; }
+            public int PendingAbsorbExpireTime { get; init; }
             public bool IsDigesting { get; set; }
             public int DigestStartTime { get; set; }
             public int DigestCompleteTime { get; set; }
@@ -175,6 +187,14 @@ namespace HaCreator.MapSimulator.Character.Skills
         }
 
         public readonly record struct SwallowAbsorbRequest(int VisibleSkillId, int TargetMobId, int SkillLevel, int RequestedAt);
+        public readonly record struct Sg88ManualAttackRequest(
+            int SummonObjectId,
+            int SkillId,
+            int RequestedAt,
+            int PrimaryTargetMobId,
+            int[] TargetMobIds,
+            int BaseDelayMs,
+            int FollowUpDelayMs);
 
         private sealed class RepeatSkillSustainState
         {
@@ -266,6 +286,9 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const int ExclusiveRequestThrottleMs = 300;
         private const int MovingShootAntiRepeatHorizontalThresholdPx = 6;
         private const int MovingShootAntiRepeatVerticalThresholdPx = 150;
+        private const int MovingShootAttackActionTypeMelee = 0;
+        private const int MovingShootAttackActionTypeShoot = 1;
+        private const int MovingShootAttackActionTypeMagic = 2;
         private const int EnergyChargePointsPerSuccessfulHit = 10;
         private const int GenericBuffSortOrder = 999;
         private const int GenericBuffPrimaryPriority = 999;
@@ -593,6 +616,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public Action<int, int> OnClientSkillEffectRequested;
         public Action<int, int, int> OnRepeatSkillModeEndRequested;
         public Action<SwallowAbsorbRequest> OnSwallowAbsorbRequested;
+        public Action<Sg88ManualAttackRequest> OnSg88ManualAttackRequested;
         public Action<Rectangle, int, int, int> OnAttackAreaResolved;
         public Action<string> OnMacroPartyNotifyRequested;
         public Func<int, InventoryType, int, bool> OnItemHotkeyUseRequested;
@@ -3906,11 +3930,17 @@ namespace HaCreator.MapSimulator.Character.Skills
             CompletePendingTankSiegeModeEndRequest(currentTime);
         }
 
-        public bool TryAcknowledgeRepeatSkillModeEndRequest(int skillId, int currentTime)
+        public bool TryAcknowledgeRepeatSkillModeEndRequest(int skillId, int currentTime, int requestedAt = int.MinValue)
         {
             if (_activeRepeatSkillSustain == null
                 || _activeRepeatSkillSustain.SkillId != RepeatSkillTankSiegeId
                 || !_activeRepeatSkillSustain.PendingModeEndRequest)
+            {
+                return false;
+            }
+
+            if (requestedAt != int.MinValue
+                && _activeRepeatSkillSustain.PendingModeEndRequestTime != requestedAt)
             {
                 return false;
             }
@@ -3930,18 +3960,19 @@ namespace HaCreator.MapSimulator.Character.Skills
             return true;
         }
 
-        public bool HasPendingRepeatSkillModeEndRequest(int skillId, int returnSkillId)
+        public bool HasPendingRepeatSkillModeEndRequest(int skillId, int returnSkillId, int requestedAt = int.MinValue)
         {
             return _activeRepeatSkillSustain != null
                    && _activeRepeatSkillSustain.SkillId == RepeatSkillTankSiegeId
                    && _activeRepeatSkillSustain.PendingModeEndRequest
+                   && (requestedAt == int.MinValue || _activeRepeatSkillSustain.PendingModeEndRequestTime == requestedAt)
                    && _activeRepeatSkillSustain.SkillId == skillId
                    && _activeRepeatSkillSustain.ReturnSkillId == returnSkillId;
         }
 
-        public int GetPendingRepeatSkillModeEndFallbackDelayMs(int skillId, int returnSkillId)
+        public int GetPendingRepeatSkillModeEndFallbackDelayMs(int skillId, int returnSkillId, int requestedAt = int.MinValue)
         {
-            if (!HasPendingRepeatSkillModeEndRequest(skillId, returnSkillId))
+            if (!HasPendingRepeatSkillModeEndRequest(skillId, returnSkillId, requestedAt))
             {
                 return 0;
             }
@@ -4423,7 +4454,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                 ParentSkillId = skill.SkillId,
                 Level = level,
                 TargetMobId = target.PoolId,
-                PendingAbsorbOutcome = true
+                PendingAbsorbOutcome = true,
+                PendingAbsorbExpireTime = currentTime + WildHunterSwallowParity.ResolveAbsorbOutcomeTimeoutMs(
+                    GetSkillAnimationDuration(skill.Effect) ?? 0)
             };
 
             OnSwallowAbsorbRequested?.Invoke(new SwallowAbsorbRequest(skill.SkillId, target.PoolId, level, currentTime));
@@ -4643,6 +4676,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             Vector2? preferredTargetPosition = preferredTargetPositionOverride
                 ?? ResolveDeferredPreferredTargetPosition(preferredTargetMobId, currentTime);
             int equippedWeaponCode = GetEquippedWeaponCode();
+            int queuedAttackActionType = ResolveQueuedMovingShootAttackActionType(skill);
+            int queuedActionSpeed = ResolveQueuedMovingShootActionSpeed();
 
             _deferredSkillPayloads.Enqueue(new DeferredSkillPayload
             {
@@ -4659,6 +4694,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 // re-reading a later avatar state once the delayed shot finally executes.
                 ActionName = queuedActionName,
                 RawActionCode = queuedRawActionCode,
+                AttackActionType = queuedAttackActionType,
+                ActionSpeed = queuedActionSpeed,
                 IsQueuedFinalAttack = isQueuedFinalAttack,
                 IsQueuedSparkAttack = isQueuedSparkAttack,
                 ShootRange0 = shootRange0Override,
@@ -4806,8 +4843,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                 ?.PoolId;
         }
 
-        private static AttackResolutionMode ResolveDeferredTargetingMode(SkillData skill)
+        private static AttackResolutionMode ResolveDeferredTargetingMode(SkillData skill, int? queuedAttackActionType = null)
         {
+            if (TryResolveDeferredTargetingModeFromQueuedAttackActionType(skill, queuedAttackActionType, out AttackResolutionMode queuedMode))
+            {
+                return queuedMode;
+            }
+
             if (skill?.AttackType == SkillAttackType.Magic)
             {
                 return AttackResolutionMode.Magic;
@@ -4823,6 +4865,50 @@ namespace HaCreator.MapSimulator.Character.Skills
                     ? AttackResolutionMode.Melee
                     : AttackResolutionMode.Ranged
                 : AttackResolutionMode.Melee;
+        }
+
+        private static bool TryResolveDeferredTargetingModeFromQueuedAttackActionType(
+            SkillData skill,
+            int? queuedAttackActionType,
+            out AttackResolutionMode mode)
+        {
+            mode = AttackResolutionMode.Melee;
+            if (!queuedAttackActionType.HasValue)
+            {
+                return false;
+            }
+
+            switch (queuedAttackActionType.Value)
+            {
+                case MovingShootAttackActionTypeMagic:
+                    mode = AttackResolutionMode.Magic;
+                    return true;
+                case MovingShootAttackActionTypeShoot:
+                    mode = skill?.Projectile != null
+                        ? AttackResolutionMode.Projectile
+                        : AttackResolutionMode.Ranged;
+                    return true;
+                case MovingShootAttackActionTypeMelee:
+                    mode = AttackResolutionMode.Melee;
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
+        private static int ResolveQueuedMovingShootAttackActionType(SkillData skill)
+        {
+            AttackResolutionMode mode = ResolveDeferredTargetingMode(skill);
+            return mode == AttackResolutionMode.Magic
+                ? MovingShootAttackActionTypeMagic
+                : mode == AttackResolutionMode.Melee
+                    ? MovingShootAttackActionTypeMelee
+                    : MovingShootAttackActionTypeShoot;
+        }
+
+        private int ResolveQueuedMovingShootActionSpeed()
+        {
+            return Math.Max(0, _player?.Build?.GetWeapon()?.AttackSpeed ?? 0);
         }
 
         private Vector2? ResolveDeferredPreferredTargetPosition(int? preferredTargetMobId, int currentTime)
@@ -6210,7 +6296,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 int? preferredTargetMobId = pending.PreferredTargetMobId;
                 if (ShouldUseSmoothingMovingShoot(pending.Skill))
                 {
-                    if (ShouldSuppressDeferredMovingShootExecution(pending.Skill, currentTime))
+                    if (ShouldSuppressDeferredMovingShootExecution(pending.Skill, pending, currentTime))
                     {
                         continue;
                     }
@@ -6221,7 +6307,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                         pending,
                         currentTime,
                         pending.ShootRange0);
-                    RegisterDeferredMovingShootExecution(pending.Skill.SkillId, currentTime);
+                    RegisterDeferredMovingShootExecution(pending, currentTime);
                 }
 
                 ShootAmmoSelection previousResolvedShootAmmoSelection = LastResolvedShootAmmoSelection?.Snapshot();
@@ -6407,14 +6493,24 @@ namespace HaCreator.MapSimulator.Character.Skills
             return IsMobAttackable(mob) ? mob : null;
         }
 
-        private bool ShouldSuppressDeferredMovingShootExecution(SkillData skill, int currentTime)
+        private bool ShouldSuppressDeferredMovingShootExecution(SkillData skill, DeferredSkillPayload pending, int currentTime)
         {
-            if (skill == null || skill.SkillId == 33121009 || _lastDeferredMovingShootExecution == null)
+            if (skill == null || pending == null || skill.SkillId == 33121009 || _lastDeferredMovingShootExecution == null)
             {
                 return false;
             }
 
             if (_lastDeferredMovingShootExecution.SkillId != skill.SkillId)
+            {
+                return false;
+            }
+
+            if (!MatchesDeferredMovingShootExecutionMetadata(
+                    pending.AttackActionType,
+                    _lastDeferredMovingShootExecution.AttackActionType)
+                || !MatchesDeferredMovingShootExecutionMetadata(
+                    pending.ActionSpeed,
+                    _lastDeferredMovingShootExecution.ActionSpeed))
             {
                 return false;
             }
@@ -6427,9 +6523,20 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             Point liveWorldPosition = ResolveDeferredMovingShootLiveWorldPosition();
-            return IsWithinMovingShootAntiRepeatThreshold(
+            if (!IsWithinMovingShootAntiRepeatThreshold(
                 _lastDeferredMovingShootExecution.LiveWorldPosition,
-                liveWorldPosition);
+                liveWorldPosition))
+            {
+                return false;
+            }
+
+            if (_lastDeferredMovingShootExecution.RepeatCount < _lastDeferredMovingShootExecution.CountLimit)
+            {
+                _lastDeferredMovingShootExecution.RepeatCount++;
+                return false;
+            }
+
+            return true;
         }
 
         internal static bool ShouldCancelDeferredMovingShootForSkillLevel(int queuedLevel, int liveLevel)
@@ -6440,14 +6547,40 @@ namespace HaCreator.MapSimulator.Character.Skills
             return liveLevel <= 0 || liveLevel != queuedLevel;
         }
 
-        private void RegisterDeferredMovingShootExecution(int skillId, int currentTime)
+        private void RegisterDeferredMovingShootExecution(DeferredSkillPayload pending, int currentTime)
         {
+            if (pending == null)
+            {
+                return;
+            }
+
             _lastDeferredMovingShootExecution = new DeferredMovingShootExecutionState
             {
-                SkillId = skillId,
+                SkillId = pending.Skill?.SkillId ?? 0,
                 ExecuteTime = currentTime,
-                LiveWorldPosition = ResolveDeferredMovingShootLiveWorldPosition()
+                LiveWorldPosition = ResolveDeferredMovingShootLiveWorldPosition(),
+                AttackActionType = pending.AttackActionType,
+                ActionSpeed = pending.ActionSpeed,
+                RepeatCount = 0,
+                CountLimit = ResolveMovingShootAntiRepeatCountLimit(pending)
             };
+        }
+
+        private static bool MatchesDeferredMovingShootExecutionMetadata(int? queuedValue, int? previousValue)
+        {
+            if (!queuedValue.HasValue || !previousValue.HasValue)
+            {
+                return true;
+            }
+
+            return queuedValue.Value == previousValue.Value;
+        }
+
+        private static int ResolveMovingShootAntiRepeatCountLimit(DeferredSkillPayload pending)
+        {
+            // Keep the client's count-limit branch explicit in the seam even while the exact
+            // moving-shoot entry initialization table remains unresolved.
+            return 0;
         }
 
         private Point ResolveDeferredMovingShootLiveWorldPosition()
@@ -6487,9 +6620,35 @@ namespace HaCreator.MapSimulator.Character.Skills
                 _pendingProjectileSpawns.RemoveAt(0);
                 if (pending.Projectile != null)
                 {
+                    RefreshQueuedProjectileFireTimeMetadata(pending.Projectile);
                     _projectiles.Add(pending.Projectile);
                 }
             }
+        }
+
+        private void RefreshQueuedProjectileFireTimeMetadata(ActiveProjectile projectile)
+        {
+            if (projectile?.ResolvedShootAmmoSelection == null
+                || _inventoryRuntime == null
+                || _player?.Build == null
+                || (!projectile.IsQueuedFinalAttack && !projectile.IsQueuedSparkAttack))
+            {
+                return;
+            }
+
+            int weaponCode = GetEquippedWeaponCode();
+            int weaponItemId = _player.Build.GetWeapon()?.ItemId ?? 0;
+            if (weaponCode <= 0 || weaponItemId <= 0)
+            {
+                return;
+            }
+
+            projectile.ResolvedShootAmmoSelection = ClientShootAmmoResolver.RefreshQueuedSelectionSlotMetadata(
+                projectile.ResolvedShootAmmoSelection,
+                _inventoryRuntime.GetSlots(InventoryType.USE),
+                _inventoryRuntime.GetSlots(InventoryType.CASH),
+                weaponCode,
+                weaponItemId);
         }
 
         private void UpdateRocketBooster(int currentTime)
@@ -10406,6 +10565,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 {
                     SequenceId = _nextQueuedSummonAttackSequenceId++,
                     ExecuteTime = currentTime + ResolveSummonAttackExecutionDelayMs(summon, summonCenter, target, currentTime),
+                    SummonObjectId = summon.ObjectId,
                     SkillId = summon.SkillId,
                     Level = summon.Level,
                     SkillData = summon.SkillData,
@@ -10449,6 +10609,26 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             int baseDelayMs = ResolveSummonAttackExecutionDelayMs(summon, resolvedTargets, currentTime);
+            int[] resolvedTargetMobIds = resolvedTargets
+                .Select(static target => target?.PoolId ?? 0)
+                .Where(static mobId => mobId > 0)
+                .ToArray();
+            if (resolvedTargetMobIds.Length <= 0)
+            {
+                return false;
+            }
+
+            int requestTime = currentTime;
+            int followUpDelayMs = ResolveSg88ManualFollowUpDelayMs(resolvedTargetMobIds.Length);
+            int followUpExecuteTime = followUpDelayMs > 0
+                ? currentTime + baseDelayMs + followUpDelayMs
+                : int.MinValue;
+            ApplySg88ManualAttackRequestBookkeeping(
+                summon,
+                requestTime,
+                resolvedTargetMobIds,
+                followUpExecuteTime);
+
             bool queuedAnyAttack = false;
             foreach (SummonAttackBatch batch in ResolveSg88ManualAttackBatches(resolvedTargets.Count))
             {
@@ -10467,6 +10647,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 {
                     SequenceId = _nextQueuedSummonAttackSequenceId++,
                     ExecuteTime = currentTime + baseDelayMs + batch.DelayMs,
+                    SummonObjectId = summon.ObjectId,
                     SkillId = summon.SkillId,
                     Level = summon.Level,
                     SkillData = summon.SkillData,
@@ -10476,6 +10657,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                     AttackCount = attackCount,
                     DamagePercentOverride = damagePercentOverride,
                     TargetOrderOffset = batch.StartIndex,
+                    IsSg88ManualAttackBatch = true,
+                    IsSg88ManualFollowUpBatch = batch.DelayMs > 0,
+                    Sg88ManualRequestTime = requestTime,
                     TargetMobIds = targetMobIds
                 };
 
@@ -10488,6 +10672,22 @@ namespace HaCreator.MapSimulator.Character.Skills
                 {
                     ResolveQueuedSummonAttack(queuedAttack, currentTime);
                 }
+            }
+
+            if (queuedAnyAttack)
+            {
+                OnSg88ManualAttackRequested?.Invoke(new Sg88ManualAttackRequest(
+                    summon.ObjectId,
+                    summon.SkillId,
+                    requestTime,
+                    resolvedTargetMobIds[0],
+                    resolvedTargetMobIds,
+                    baseDelayMs,
+                    followUpDelayMs));
+            }
+            else
+            {
+                ClearPendingSg88ManualAttackRequestBookkeeping(summon);
             }
 
             return queuedAnyAttack;
@@ -10516,6 +10716,71 @@ namespace HaCreator.MapSimulator.Character.Skills
                     TargetCount: targetCount - 1,
                     DelayMs: SG88_MANUAL_CLUSTER_FOLLOW_UP_DELAY_MS)
             };
+        }
+
+        internal static int ResolveSg88ManualFollowUpDelayMs(int targetCount)
+        {
+            return targetCount > 1 ? SG88_MANUAL_CLUSTER_FOLLOW_UP_DELAY_MS : 0;
+        }
+
+        internal static void ApplySg88ManualAttackRequestBookkeeping(
+            ActiveSummon summon,
+            int requestedAt,
+            IReadOnlyList<int> targetMobIds,
+            int followUpExecuteTime)
+        {
+            if (summon == null)
+            {
+                return;
+            }
+
+            int[] resolvedTargetMobIds = targetMobIds?
+                .Where(static mobId => mobId > 0)
+                .ToArray() ?? Array.Empty<int>();
+
+            summon.PendingManualAttackRequest = resolvedTargetMobIds.Length > 0;
+            summon.PendingManualAttackRequestedAt = resolvedTargetMobIds.Length > 0 ? requestedAt : int.MinValue;
+            summon.PendingManualAttackPrimaryTargetMobId = resolvedTargetMobIds.Length > 0
+                ? resolvedTargetMobIds[0]
+                : 0;
+            summon.PendingManualAttackTargetMobIds = resolvedTargetMobIds;
+            summon.PendingManualAttackFollowUpAt = resolvedTargetMobIds.Length > 1
+                ? followUpExecuteTime
+                : int.MinValue;
+        }
+
+        internal static void ClearPendingSg88ManualAttackRequestBookkeeping(ActiveSummon summon)
+        {
+            if (summon == null)
+            {
+                return;
+            }
+
+            summon.PendingManualAttackRequest = false;
+            summon.PendingManualAttackRequestedAt = int.MinValue;
+            summon.PendingManualAttackPrimaryTargetMobId = 0;
+            summon.PendingManualAttackTargetMobIds = Array.Empty<int>();
+            summon.PendingManualAttackFollowUpAt = int.MinValue;
+        }
+
+        internal static bool TryResolvePendingSg88ManualAttackRequestBookkeeping(
+            ActiveSummon summon,
+            int requestedAt,
+            int currentTime)
+        {
+            if (summon == null || !summon.PendingManualAttackRequest)
+            {
+                return false;
+            }
+
+            if (requestedAt != int.MinValue && summon.PendingManualAttackRequestedAt != requestedAt)
+            {
+                return false;
+            }
+
+            summon.LastManualAttackResolvedTime = currentTime;
+            ClearPendingSg88ManualAttackRequestBookkeeping(summon);
+            return true;
         }
 
         public bool TryResolveSwallowAbsorbRequest(int skillId, int targetMobId, bool success, int currentTime)
@@ -12625,13 +12890,26 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
-            CharacterPart equippedMount = GetEquippedTamingMobPart();
-            if (IsWildHunterJaguarTamingMobPart(equippedMount))
+            CharacterPart mountedStatePart = _player?.ResolveMountedStateTamingMobPart()
+                ?? GetEquippedTamingMobPart();
+            if (CanAutoDeployWildHunterMine(mountedStatePart, _player?.CurrentActionName))
             {
                 return true;
             }
 
-            return IsWildHunterJaguarTamingMobItemId(ResolveWildHunterJaguarMountItemId());
+            // Keep a narrow fallback when action ownership is momentarily unavailable.
+            return string.IsNullOrWhiteSpace(_player?.CurrentActionName)
+                && IsWildHunterJaguarTamingMobItemId(ResolveWildHunterJaguarMountItemId());
+        }
+
+        internal static bool CanAutoDeployWildHunterMine(CharacterPart mountedStatePart, string actionName)
+        {
+            int mountedVehicleId = FollowCharacterEligibilityResolver.ResolveMountedVehicleId(
+                mountedStatePart,
+                actionName,
+                mechanicMode: null,
+                activeMountedRenderOwner: mountedStatePart);
+            return IsWildHunterJaguarTamingMobItemId(mountedVehicleId);
         }
 
         private void UpdateMineMovementState(int moveDirection, int currentTime)
@@ -15240,6 +15518,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 {
                     RequestActiveSwallowCancel(currentTime);
                 }
+                else if (_swallowState.PendingAbsorbExpireTime > 0
+                         && currentTime >= _swallowState.PendingAbsorbExpireTime)
+                {
+                    RequestActiveSwallowCancel(currentTime);
+                }
 
                 return;
             }
@@ -15894,6 +16177,53 @@ namespace HaCreator.MapSimulator.Character.Skills
             foreach (MobItem mob in mobsToKill)
             {
                 HandleMobDeath(mob, currentTime);
+            }
+
+            UpdateSg88ManualAttackBookkeepingAfterBatch(queuedAttack, currentTime);
+        }
+
+        public bool TryResolvePendingSg88ManualAttackRequest(int summonObjectId, int requestedAt, int currentTime)
+        {
+            ActiveSummon summon = _summons.FirstOrDefault(candidate =>
+                candidate?.ObjectId == summonObjectId
+                && candidate.SkillId == SG88_SKILL_ID
+                && candidate.AssistType == SummonAssistType.ManualAttack
+                && !candidate.IsPendingRemoval);
+
+            return TryResolvePendingSg88ManualAttackRequestBookkeeping(summon, requestedAt, currentTime);
+        }
+
+        private void UpdateSg88ManualAttackBookkeepingAfterBatch(QueuedSummonAttack queuedAttack, int currentTime)
+        {
+            if (queuedAttack == null
+                || !queuedAttack.IsSg88ManualAttackBatch
+                || queuedAttack.SummonObjectId <= 0)
+            {
+                return;
+            }
+
+            ActiveSummon summon = _summons.FirstOrDefault(candidate =>
+                candidate?.ObjectId == queuedAttack.SummonObjectId
+                && candidate.SkillId == SG88_SKILL_ID
+                && candidate.AssistType == SummonAssistType.ManualAttack
+                && !candidate.IsPendingRemoval);
+            if (summon == null || !summon.PendingManualAttackRequest)
+            {
+                return;
+            }
+
+            if (queuedAttack.Sg88ManualRequestTime != int.MinValue
+                && summon.PendingManualAttackRequestedAt != queuedAttack.Sg88ManualRequestTime)
+            {
+                return;
+            }
+
+            bool shouldResolveRequest = queuedAttack.IsSg88ManualFollowUpBatch
+                || summon.PendingManualAttackFollowUpAt == int.MinValue
+                || currentTime >= summon.PendingManualAttackFollowUpAt;
+            if (shouldResolveRequest)
+            {
+                TryResolvePendingSg88ManualAttackRequestBookkeeping(summon, queuedAttack.Sg88ManualRequestTime, currentTime);
             }
         }
 

@@ -178,6 +178,7 @@ namespace HaCreator.MapSimulator.Pools
         int MaxHoldDurationMs,
         bool IsKeydownSkill,
         bool IsHolding,
+        bool AutoEnterHold,
         bool ShowText,
         string SkinKey,
         string SkillName);
@@ -197,10 +198,21 @@ namespace HaCreator.MapSimulator.Pools
         int? HitCount,
         int? DamagePerMob,
         int? ActionSpeed,
+        int? BulletItemId,
+        byte? SerialAttackFlags,
         bool IsSerialAttack,
+        int? PreparedSkillReleaseFollowUpValue,
+        IReadOnlyList<RemoteUserMeleeAttackMobHit> MobHits,
         bool? FacingRight,
         string ActionName,
         int? ActionCode);
+    public readonly record struct RemoteUserMeleeAttackMobHit(
+        int MobId,
+        byte HitAction,
+        IReadOnlyList<RemoteUserMeleeAttackDamageEntry> DamageEntries);
+    public readonly record struct RemoteUserMeleeAttackDamageEntry(
+        byte? HitFlag,
+        int Damage);
     public readonly record struct RemoteUserItemEffectPacket(
         int CharacterId,
         int? ItemId,
@@ -1050,6 +1062,7 @@ namespace HaCreator.MapSimulator.Pools
                     maxHoldDurationMs,
                     (flags & 0x01) != 0,
                     (flags & 0x02) != 0,
+                    (flags & 0x08) != 0,
                     (flags & 0x04) != 0,
                     skinKey,
                     skillName);
@@ -1191,17 +1204,21 @@ namespace HaCreator.MapSimulator.Pools
                 }
 
                 packet = new RemoteUserMeleeAttackPacket(
-                    characterId,
-                    skillId,
-                    masteryPercent,
-                    chargeSkillId,
-                    null,
-                    null,
-                    null,
-                    false,
-                    facingRight,
-                    actionName,
-                    actionCode);
+                    CharacterId: characterId,
+                    SkillId: skillId,
+                    MasteryPercent: masteryPercent,
+                    ChargeSkillId: chargeSkillId,
+                    HitCount: null,
+                    DamagePerMob: null,
+                    ActionSpeed: null,
+                    BulletItemId: null,
+                    SerialAttackFlags: null,
+                    IsSerialAttack: false,
+                    PreparedSkillReleaseFollowUpValue: null,
+                    MobHits: Array.Empty<RemoteUserMeleeAttackMobHit>(),
+                    FacingRight: facingRight,
+                    ActionName: actionName,
+                    ActionCode: actionCode);
                 return true;
             }
             catch (InvalidOperationException ex)
@@ -1268,17 +1285,21 @@ namespace HaCreator.MapSimulator.Pools
 
                 string actionName = ResolveActionNameFromActionCode(actionCode);
                 packet = new RemoteUserMeleeAttackPacket(
-                    characterId,
-                    skillId,
-                    masteryPercent,
-                    0,
-                    hitCount,
-                    damagePerMob,
-                    actionSpeed,
-                    isSerialAttack,
-                    facingRight,
-                    actionName,
-                    actionCode);
+                    CharacterId: characterId,
+                    SkillId: skillId,
+                    MasteryPercent: masteryPercent,
+                    ChargeSkillId: 0,
+                    HitCount: hitCount,
+                    DamagePerMob: damagePerMob,
+                    ActionSpeed: actionSpeed,
+                    BulletItemId: null,
+                    SerialAttackFlags: serialAttackFlags,
+                    IsSerialAttack: isSerialAttack,
+                    PreparedSkillReleaseFollowUpValue: null,
+                    MobHits: Array.Empty<RemoteUserMeleeAttackMobHit>(),
+                    FacingRight: facingRight,
+                    ActionName: actionName,
+                    ActionCode: actionCode);
                 return true;
             }
             catch (InvalidOperationException ex)

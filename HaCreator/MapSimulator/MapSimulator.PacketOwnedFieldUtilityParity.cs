@@ -443,13 +443,26 @@ namespace HaCreator.MapSimulator
             }
 
             const string prefix = "platform-";
-            if (!name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
-                || !int.TryParse(name[prefix.Length..], NumberStyles.Integer, CultureInfo.InvariantCulture, out int platformId))
+            if (name.StartsWith(prefix, StringComparison.OrdinalIgnoreCase)
+                && int.TryParse(name[prefix.Length..], NumberStyles.Integer, CultureInfo.InvariantCulture, out int platformId))
             {
-                return false;
+                platform = _dynamicFootholds.GetPlatform(platformId);
+                if (platform != null)
+                {
+                    return true;
+                }
             }
 
-            platform = _dynamicFootholds.GetPlatform(platformId);
+            if (_dynamicFootholdField != null
+                && _dynamicFootholdField.TryResolveAuthoredDynamicObjectPlatformId(name, out int authoredPlatformId))
+            {
+                platform = _dynamicFootholds.GetPlatform(authoredPlatformId);
+                if (platform != null)
+                {
+                    return true;
+                }
+            }
+
             return platform != null;
         }
 

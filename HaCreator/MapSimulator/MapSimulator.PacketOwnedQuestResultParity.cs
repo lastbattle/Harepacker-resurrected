@@ -13,6 +13,13 @@ namespace HaCreator.MapSimulator
         private int _pendingPacketOwnedQuestResultFollowUpSpeakerNpcId;
         private string _pendingPacketOwnedQuestResultFollowUpQuestName = string.Empty;
         private bool _pendingPacketOwnedQuestResultFollowUpReady;
+        private int _pendingQuestDeliveryResultQuestId;
+        private bool _pendingQuestDeliveryResultCompletionPhase;
+        private int _pendingQuestDeliveryResultCashItemId;
+        private int _pendingQuestDeliveryResultCommoditySn;
+        private int _pendingQuestDeliveryResultRequestedAtTick = int.MinValue;
+        private string _pendingQuestDeliveryResultSourceContext = string.Empty;
+        private readonly PacketQuestResultFadeWindowRuntime _packetQuestResultFadeWindowRuntime = new();
 
         private bool TryApplyPacketOwnedQuestResultPayload(byte[] payload, out string message)
         {
@@ -132,6 +139,7 @@ namespace HaCreator.MapSimulator
         {
             int questId = reader.ReadUInt16();
             int speakerNpcId = reader.ReadInt32();
+            bool clearedQuestFadeWindow = _packetQuestResultFadeWindowRuntime.ApplyQuestResultDeleteFadeWindow(questId);
             if (reader.BaseStream.Length - reader.BaseStream.Position < sizeof(ushort))
             {
                 throw new InvalidDataException("Quest-result subtype 10 requires a trailing follow-up quest id.");
@@ -166,6 +174,11 @@ namespace HaCreator.MapSimulator
 
             string followUpStatus = string.Empty;
             string resultSummary = $"Applied packet-owned quest result for {presentation.QuestName}.";
+            if (clearedQuestFadeWindow)
+            {
+                resultSummary = $"{resultSummary} Cleared the packet-owned quest fade window owner before reading the follow-up quest id.";
+            }
+
             if (showedNotice && openedModal)
             {
                 resultSummary = $"{resultSummary} Displayed the notice and opened {presentation.ModalPages.Count} modal quest page(s).";
@@ -200,6 +213,11 @@ namespace HaCreator.MapSimulator
                 resultSummary = $"{resultSummary} {followUpStatus}";
             }
 
+            if (TryResolvePendingQuestDeliveryQuestResult(questId, out string deliveryOutcome))
+            {
+                resultSummary = $"{resultSummary} {deliveryOutcome}";
+            }
+
             message = resultSummary;
             return showedNotice
                 || openedModal
@@ -230,6 +248,11 @@ namespace HaCreator.MapSimulator
             message = string.IsNullOrWhiteSpace(noticeText)
                 ? $"Quest-result action summary for {questName} did not resolve any visible notice text."
                 : $"Displayed the packet-owned quest action summary for {questName}.";
+            if (TryResolvePendingQuestDeliveryQuestResult(questId, out string deliveryOutcome))
+            {
+                message = $"{message} {deliveryOutcome}";
+            }
+
             return !string.IsNullOrWhiteSpace(noticeText);
         }
 
@@ -255,6 +278,7 @@ namespace HaCreator.MapSimulator
         private void OpenPacketOwnedQuestResultModal(int speakerNpcId, PacketQuestResultPresentation presentation)
         {
             string npcName = ResolvePacketOwnedQuestResultSpeakerName(speakerNpcId, presentation.QuestName);
+            _packetQuestResultFadeWindowRuntime.RegisterQuestFadeWindow(presentation.QuestId);
             _npcInteractionOverlay.Open(new NpcInteractionState
             {
                 NpcName = npcName,
@@ -367,6 +391,56 @@ namespace HaCreator.MapSimulator
             return started
                 ? $"Packet-owned StartQuest accepted {resolvedQuestName} from {speakerLabel}."
                 : $"Packet-owned StartQuest for {resolvedQuestName} did not change quest state.";
+        }
+
+        private void RegisterPendingQuestDeliveryQuestResult(
+            int questId,
+            bool completionPhase,
+            int cashItemId,
+            int commoditySn,
+            string sourceContext)
+        {
+            _pendingQuestDeliveryResultQuestId = Math.Max(0, questId);
+            _pendingQuestDeliveryResultCompletionPhase = completionPhase;
+            _pendingQuestDeliveryResultCashItemId = Math.Max(0, cashItemId);
+            _pendingQuestDeliveryResultCommoditySn = Math.Max(0, commoditySn);
+            _pendingQuestDeliveryResultRequestedAtTick = currTickCount;
+            _pendingQuestDeliveryResultSourceContext = sourceContext ?? string.Empty;
+        }
+
+        private bool TryResolvePendingQuestDeliveryQuestResult(int questId, out string outcome)
+        {
+            outcome = string.Empty;
+            if (_pendingQuestDeliveryResultQuestId <= 0 || _pendingQuestDeliveryResultQuestId != questId)
+            {
+                return false;
+            }
+
+            int ageMs = _pendingQuestDeliveryResultRequestedAtTick == int.MinValue
+                ? 0
+                : Math.Max(0, unchecked(currTickCount - _pendingQuestDeliveryResultRequestedAtTick));
+            string phaseText = _pendingQuestDeliveryResultCompletionPhase ? "completion" : "accept";
+            string resultPrefix = !string.IsNullOrWhiteSpace(_pendingQuestDeliveryResultSourceContext)
+                ? _pendingQuestDeliveryResultSourceContext
+                : "quest-detail delivery action";
+            string commodityText = _pendingQuestDeliveryResultCommoditySn > 0
+                ? $" commodity SN {_pendingQuestDeliveryResultCommoditySn}"
+                : string.Empty;
+            string cashItemText = _pendingQuestDeliveryResultCashItemId > 0
+                ? $" cash item {_pendingQuestDeliveryResultCashItemId}"
+                : string.Empty;
+
+            outcome =
+                $"Resolved pending {phaseText} delivery from {resultPrefix} via quest-result packet for quest #{questId} "
+                + $"(age {ageMs}ms;{cashItemText}{commodityText}).";
+
+            _pendingQuestDeliveryResultQuestId = 0;
+            _pendingQuestDeliveryResultCompletionPhase = false;
+            _pendingQuestDeliveryResultCashItemId = 0;
+            _pendingQuestDeliveryResultCommoditySn = 0;
+            _pendingQuestDeliveryResultRequestedAtTick = int.MinValue;
+            _pendingQuestDeliveryResultSourceContext = string.Empty;
+            return true;
         }
 
         private static bool ApplyUnsupportedPacketOwnedQuestResult(int resultType, out string message)

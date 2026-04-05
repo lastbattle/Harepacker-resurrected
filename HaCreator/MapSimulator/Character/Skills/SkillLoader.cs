@@ -69,6 +69,12 @@ namespace HaCreator.MapSimulator.Character.Skills
             "back_finish"
         };
 
+        private static readonly string[] MoreWildPersistentAvatarEffectBranches =
+        {
+            "back",
+            "back_finish"
+        };
+
         private static readonly HashSet<int> ShadowPartnerSkillIds = new()
         {
             4111002,
@@ -465,8 +471,10 @@ namespace HaCreator.MapSimulator.Character.Skills
             bool looksLikeMovement = MatchesAction(skill.ActionName, "teleport", "rush", "dash", "flash", "jump", "step", "fly");
             bool looksLikePrepare = hasPrepare || MatchesAction(skill.ActionName, "prepare", "charge", "keydown", "keyDown");
             bool isSuddenDeathSkill = GetInt(infoNode, "suddenDeath") == 1;
-            skill.HideAvatarEffectOnRotateAction = isSuddenDeathSkill;
             bool hasPersistentAvatarEffect = HasPersistentAvatarEffectBranches(
+                skillNode.WzProperties.Select(child => child.Name),
+                isSuddenDeathSkill);
+            skill.HideAvatarEffectOnRotateAction = ShouldHidePersistentAvatarEffectOnRotateAction(
                 skillNode.WzProperties.Select(child => child.Name),
                 isSuddenDeathSkill);
 
@@ -2191,6 +2199,9 @@ namespace HaCreator.MapSimulator.Character.Skills
               }
 
               WzImageProperty hitNode = summonNode["hit"] ?? (summonNode.Parent as WzImageProperty)?["hit"];
+              AppendSummonIndexedAnimations(
+                  skill.SummonTargetHitAnimations,
+                  LoadSummonHitTargetAnimations(hitNode, "hit"));
               SkillAnimation hitAnimation = LoadSummonHitAnimation(hitNode);
               if (hitAnimation?.Frames.Count > 0)
               {
@@ -2370,6 +2381,89 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return null;
+        }
+
+        private List<SkillAnimation> LoadSummonHitTargetAnimations(WzImageProperty hitNode, string baseName)
+        {
+            var animations = new List<SkillAnimation>();
+            if (hitNode == null)
+            {
+                return animations;
+            }
+
+            if (hitNode.WzProperties.OfType<WzCanvasProperty>().Any()
+                && HasSummonHitTargetPresentationMetadata(hitNode))
+            {
+                TryAddSummonIndexedAnimation(animations, hitNode, baseName);
+                return animations;
+            }
+
+            foreach (WzImageProperty child in hitNode.WzProperties)
+            {
+                if (child == null || !int.TryParse(child.Name, out _))
+                {
+                    continue;
+                }
+
+                bool includeChild = HasSummonHitTargetPresentationMetadata(child);
+                if (child.WzProperties.OfType<WzCanvasProperty>().Any())
+                {
+                    if (includeChild)
+                    {
+                        TryAddSummonIndexedAnimation(animations, child, $"{baseName}/{child.Name}");
+                    }
+
+                    continue;
+                }
+
+                foreach (WzImageProperty nestedChild in child.WzProperties)
+                {
+                    if (nestedChild == null
+                        || !int.TryParse(nestedChild.Name, out _)
+                        || !nestedChild.WzProperties.OfType<WzCanvasProperty>().Any())
+                    {
+                        continue;
+                    }
+
+                    if (includeChild || HasSummonHitTargetPresentationMetadata(nestedChild))
+                    {
+                        TryAddSummonIndexedAnimation(
+                            animations,
+                            nestedChild,
+                            $"{baseName}/{child.Name}/{nestedChild.Name}");
+                    }
+                }
+            }
+
+            return animations;
+        }
+
+        private static bool HasSummonHitTargetPresentationMetadata(WzImageProperty node)
+        {
+            return node != null
+                && (GetInt(node, "hitAfter") > 0
+                    || node["pos"] != null);
+        }
+
+        private void TryAddSummonIndexedAnimation(List<SkillAnimation> animations, WzImageProperty node, string animationName)
+        {
+            if (animations == null || node == null)
+            {
+                return;
+            }
+
+            SkillAnimation animation = LoadSkillAnimation(node, animationName);
+            if (animation.Frames.Count <= 0)
+            {
+                return;
+            }
+
+            if (animation.Frames.Count > 1)
+            {
+                animation.Loop = true;
+            }
+
+            animations.Add(animation);
         }
 
         private List<SkillAnimation> LoadSummonIndexedAnimations(WzImageProperty rootNode, string baseName)
@@ -2562,6 +2656,38 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return suddenDeath && availableBranches.Contains("repeat");
+        }
+
+        public static bool ShouldHidePersistentAvatarEffectOnRotateAction(IEnumerable<string> branchNames, bool suddenDeath)
+        {
+            if (!HasPersistentAvatarEffectBranches(branchNames, suddenDeath))
+            {
+                return false;
+            }
+
+            if (suddenDeath)
+            {
+                return true;
+            }
+
+            if (branchNames == null)
+            {
+                return false;
+            }
+
+            var availableBranches = new HashSet<string>(
+                branchNames.Where(name => !string.IsNullOrWhiteSpace(name)),
+                StringComparer.OrdinalIgnoreCase);
+
+            foreach (string excludedBranch in MoreWildPersistentAvatarEffectBranches)
+            {
+                if (availableBranches.Contains(excludedBranch))
+                {
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         private static string SelectPreferredSummonBranch(IEnumerable<string> branchNames, IEnumerable<string> preferredBranches)

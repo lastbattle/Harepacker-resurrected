@@ -260,6 +260,7 @@ namespace HaCreator.MapSimulator.Effects
         public int GaugeDecreasePerSecond => _gaugeDec;
         public int DefaultGaugeIncrease => _defaultGaugeIncrease;
         public bool IsSkillDisabled => _disableSkill;
+        public bool UsesSkillUsageCounter => _countEffects.Exists(static effect => effect.RequiresSkillUse);
         public int HitCount => _hitCount;
         public int MissCount => _missCount;
         public int CoolCount => _coolCount;

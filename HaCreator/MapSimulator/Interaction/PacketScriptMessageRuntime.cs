@@ -31,6 +31,7 @@ namespace HaCreator.MapSimulator.Interaction
             byte[] payload,
             Func<int, NpcItem> findNpcById,
             NpcItem activeNpc,
+            Func<long, bool> isSelectablePetSerial,
             out PacketScriptMessageOpenRequest request,
             out string message)
         {
@@ -64,8 +65,8 @@ namespace HaCreator.MapSimulator.Interaction
                     7 => DecodeAskSpeedQuiz(reader, speaker, param),
                     8 => CreateDecodedResult(DecodeAskAvatar(reader, speaker, param, false)),
                     9 => CreateDecodedResult(DecodeAskAvatar(reader, speaker, param, true)),
-                    10 => DecodeAskPet(reader, speaker, param, false),
-                    11 => DecodeAskPet(reader, speaker, param, true),
+                    10 => DecodeAskPet(reader, speaker, param, false, isSelectablePetSerial),
+                    11 => DecodeAskPet(reader, speaker, param, true, isSelectablePetSerial),
                     12 => CreateDecodedResult(DecodeUnsupported(reader, speaker, messageType, param)),
                     13 => CreateDecodedResult(DecodeAskYesNo(reader, speaker, param, true)),
                     14 => CreateDecodedResult(DecodeAskBoxText(reader, speaker, param)),
@@ -317,10 +318,15 @@ namespace HaCreator.MapSimulator.Interaction
             return CreateDecodedResult(DecodeAskSpeedQuizCompactPacket(reader, speaker, param));
         }
 
-        private static PacketScriptDecodeResult DecodeAskPet(BinaryReader reader, PacketScriptSpeaker speaker, byte param, bool isPetAll)
+        private static PacketScriptDecodeResult DecodeAskPet(
+            BinaryReader reader,
+            PacketScriptSpeaker speaker,
+            byte param,
+            bool isPetAll,
+            Func<long, bool> isSelectablePetSerial)
         {
             long startPosition = reader.BaseStream.Position;
-            if (TryDecodeAskPetClientPacket(reader, speaker, param, isPetAll, out PacketScriptDecodeResult decoded))
+            if (TryDecodeAskPetClientPacket(reader, speaker, param, isPetAll, isSelectablePetSerial, out PacketScriptDecodeResult decoded))
             {
                 return decoded;
             }
@@ -519,7 +525,13 @@ namespace HaCreator.MapSimulator.Interaction
                 choices);
         }
 
-        private static bool TryDecodeAskPetClientPacket(BinaryReader reader, PacketScriptSpeaker speaker, byte param, bool isPetAll, out PacketScriptDecodeResult result)
+        private static bool TryDecodeAskPetClientPacket(
+            BinaryReader reader,
+            PacketScriptSpeaker speaker,
+            byte param,
+            bool isPetAll,
+            Func<long, bool> isSelectablePetSerial,
+            out PacketScriptDecodeResult result)
         {
             long startPosition = reader.BaseStream.Position;
             result = null;
@@ -540,8 +552,11 @@ namespace HaCreator.MapSimulator.Interaction
                     _ = reader.ReadByte();
                 }
 
-                bool implicitFallbackOnly = petSerialNumbers.Count == 0 ||
-                    (isPetAll && !exceptionExists && petSerialNumbers.Count == 1);
+                List<long> selectablePetSerialNumbers = FilterSelectablePetSerialNumbers(petSerialNumbers, isSelectablePetSerial);
+                int droppedSerialCount = petSerialNumbers.Count - selectablePetSerialNumbers.Count;
+
+                bool implicitFallbackOnly = selectablePetSerialNumbers.Count == 0 ||
+                    (isPetAll && !exceptionExists && selectablePetSerialNumbers.Count == 1);
                 if (implicitFallbackOnly)
                 {
                     result = CreateDecodedResult(
@@ -560,7 +575,23 @@ namespace HaCreator.MapSimulator.Interaction
 
                 if (string.IsNullOrWhiteSpace(rawText))
                 {
-                    long selectedPetSerialNumber = petSerialNumbers[0];
+                    if (selectablePetSerialNumbers.Count == 0)
+                    {
+                        result = CreateDecodedResult(
+                            null,
+                            CreateAutoResponsePacket(
+                                isPetAll ? 11 : 10,
+                                param,
+                                speaker,
+                                "auto-close",
+                                BuildStatusOnlyResponsePacket(isPetAll ? 11 : 10, 2),
+                                isPetAll
+                                    ? $"Auto-closed packet-authored multi-pet prompt for {speaker.DisplayName}: packet serials did not resolve to selectable pets on the current runtime branch."
+                                    : $"Auto-closed packet-authored pet prompt for {speaker.DisplayName}: packet serials did not resolve to selectable pets on the current runtime branch."));
+                        return true;
+                    }
+
+                    long selectedPetSerialNumber = selectablePetSerialNumbers[0];
                     result = CreateDecodedResult(
                         null,
                         CreateAutoResponsePacket(
@@ -581,7 +612,7 @@ namespace HaCreator.MapSimulator.Interaction
                     isPetAll,
                     rawText,
                     exceptionExists,
-                    petSerialNumbers.Select((serialNumber, index) => new NpcInteractionChoice
+                    selectablePetSerialNumbers.Select((serialNumber, index) => new NpcInteractionChoice
                     {
                         Label = BuildPetChoiceLabel(serialNumber, index),
                         SubmitSelection = true,
@@ -589,9 +620,12 @@ namespace HaCreator.MapSimulator.Interaction
                         SubmissionValue = serialNumber.ToString(),
                         SubmissionNumericValue = null
                     }).ToList(),
-                    petSerialNumbers.Count == 0
+                    selectablePetSerialNumbers.Count == 0
                         ? "No pet options were decoded from the packet payload."
-                        : string.Join("\n", petSerialNumbers.Select((serialNumber, index) => $"{index + 1}. {DescribePetOption(serialNumber, index)}"))));
+                        : string.Join("\n", selectablePetSerialNumbers.Select((serialNumber, index) => $"{index + 1}. {DescribePetOption(serialNumber, index)}")),
+                    droppedSerialCount > 0
+                        ? $"Skipped {droppedSerialCount} packet serial entr{(droppedSerialCount == 1 ? "y" : "ies")} that did not resolve to selectable pets on the current runtime branch."
+                        : null));
                 return true;
             }
             catch (Exception ex) when (ex is EndOfStreamException || ex is IOException || ex is ArgumentException)
@@ -632,7 +666,8 @@ namespace HaCreator.MapSimulator.Interaction
                 }).ToList(),
                 petItemIds.Count == 0
                     ? "Compact helper payload did not decode any pet item ids."
-                    : string.Join("\n", petItemIds.Select((itemId, index) => $"{index + 1}. {DescribePetItemOption(itemId, index)}")));
+                    : string.Join("\n", petItemIds.Select((itemId, index) => $"{index + 1}. {DescribePetItemOption(itemId, index)}")),
+                "Compact helper payload does not include pet-serial resolution details.");
         }
 
         private static NpcInteractionEntry CreatePetSelectionEntry(
@@ -642,7 +677,8 @@ namespace HaCreator.MapSimulator.Interaction
             string rawText,
             bool exceptionExists,
             IReadOnlyList<NpcInteractionChoice> choices,
-            string optionDetails)
+            string optionDetails,
+            string resolutionDetails)
         {
             return CreateEntry(
                 isPetAll ? "Pet Selection (All)" : "Pet Selection",
@@ -651,9 +687,39 @@ namespace HaCreator.MapSimulator.Interaction
                 AppendMetadata(
                     NpcDialogueTextFormatter.Format(rawText),
                     optionDetails,
+                    resolutionDetails,
                     isPetAll ? $"Multi-pet exception flag: {(exceptionExists ? 1 : 0)}." : null,
                     "WZ data exposes packet-owned pet utility surfaces under `UIWindow(.img|2.img)/UtilDlgEx_Pet` and `UtilDlgEx_MultiPetEquip`."),
                 choices);
+        }
+
+        private static List<long> FilterSelectablePetSerialNumbers(
+            IReadOnlyList<long> petSerialNumbers,
+            Func<long, bool> isSelectablePetSerial)
+        {
+            List<long> selectable = new();
+            if (petSerialNumbers == null)
+            {
+                return selectable;
+            }
+
+            for (int i = 0; i < petSerialNumbers.Count; i++)
+            {
+                long serialNumber = petSerialNumbers[i];
+                if (serialNumber <= 0)
+                {
+                    continue;
+                }
+
+                if (isSelectablePetSerial != null && !isSelectablePetSerial(serialNumber))
+                {
+                    continue;
+                }
+
+                selectable.Add(serialNumber);
+            }
+
+            return selectable;
         }
 
         private static string BuildPetItemChoiceLabel(int itemId, int index)

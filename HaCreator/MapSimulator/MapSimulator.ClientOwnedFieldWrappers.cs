@@ -1,6 +1,7 @@
 using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Fields;
 using HaCreator.MapSimulator.UI;
+using HaSharedLibrary.Wz;
 using MapleLib.WzLib.WzStructure;
 using MapleLib.WzLib.WzStructure.Data;
 using Microsoft.Xna.Framework;
@@ -403,7 +404,17 @@ namespace HaCreator.MapSimulator
 
         private void ConfigureDynamicFootholdFieldWrapper(MapInfo mapInfo)
         {
-            _dynamicFootholdField.Configure(mapInfo, _dynamicFootholds);
+            _dynamicFootholdField.Configure(mapInfo, _dynamicFootholds, ResolveDynamicFootholdLinkedContractImage);
+        }
+
+        private static WzImage ResolveDynamicFootholdLinkedContractImage(int linkedMapId)
+        {
+            if (linkedMapId <= 0 || Program.WzManager == null)
+            {
+                return null;
+            }
+
+            return WzInfoTools.FindMapImage(linkedMapId.ToString(), Program.WzManager);
         }
 
         private void ApplyTutorialFieldAppearance(MapInfo mapInfo)

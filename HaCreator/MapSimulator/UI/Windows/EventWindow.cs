@@ -694,22 +694,35 @@ namespace HaCreator.MapSimulator.UI
             int x = Position.X + 18;
             int y = Position.Y + 84;
             sprite.DrawString(_font, "Alarm", new Vector2(x, y), new Color(255, 228, 151));
-            y += _font.LineSpacing;
+            int stripTop = y + _font.LineSpacing;
+            int stripWidth = 198; // Client evidence: CUIEventAlarm::Draw clips m_aCT lines to width 198.
 
-            int visibleLines = Math.Min(2, snapshot.AlarmLines.Count);
+            int visibleLines = Math.Min(3, snapshot.AlarmLines.Count);
+            int maxLineBottom = stripTop;
             for (int i = 0; i < visibleLines; i++)
             {
-                string line = snapshot.AlarmLines[i]?.Text;
+                EventAlarmLineSnapshot lineSnapshot = snapshot.AlarmLines[i];
+                string line = lineSnapshot?.Text;
                 if (string.IsNullOrWhiteSpace(line))
                 {
                     continue;
                 }
 
-                sprite.DrawString(_font, line, new Vector2(x, y), new Color(224, 224, 224));
-                y += _font.LineSpacing;
+                int lineLeft = Math.Max(0, lineSnapshot.Left);
+                int lineTop = Math.Max(0, lineSnapshot.Top);
+                float maxWidth = Math.Max(40f, stripWidth - lineLeft);
+                string clippedLine = TrimTextToWidth(line, maxWidth);
+                int drawX = x + lineLeft;
+                int drawY = stripTop + lineTop;
+                sprite.DrawString(
+                    _font,
+                    clippedLine,
+                    new Vector2(drawX, drawY),
+                    lineSnapshot.IsHighlighted ? new Color(255, 228, 151) : new Color(224, 224, 224));
+                maxLineBottom = Math.Max(maxLineBottom, drawY + _font.LineSpacing);
             }
 
-            return Position.Y + 84 + (_font.LineSpacing * (visibleLines + 1)) + 6 - Position.Y;
+            return (maxLineBottom - Position.Y) + 6;
         }
 
         private int GetContentTop(EventWindowSnapshot snapshot)
@@ -719,8 +732,43 @@ namespace HaCreator.MapSimulator.UI
                 return 94;
             }
 
-            int visibleLines = Math.Min(2, snapshot.AlarmLines.Count);
-            return 84 + (_font.LineSpacing * (visibleLines + 1)) + 6;
+            int visibleLines = Math.Min(3, snapshot.AlarmLines.Count);
+            int stripTop = 84 + _font.LineSpacing;
+            int maxLineTop = 0;
+            for (int i = 0; i < visibleLines; i++)
+            {
+                EventAlarmLineSnapshot line = snapshot.AlarmLines[i];
+                if (line == null || string.IsNullOrWhiteSpace(line.Text))
+                {
+                    continue;
+                }
+
+                maxLineTop = Math.Max(maxLineTop, Math.Max(0, line.Top));
+            }
+
+            return stripTop + maxLineTop + _font.LineSpacing + 6;
+        }
+
+        private string TrimTextToWidth(string text, float maxWidth)
+        {
+            if (_font == null || string.IsNullOrEmpty(text))
+            {
+                return string.Empty;
+            }
+
+            if (_font.MeasureString(text).X <= maxWidth)
+            {
+                return text;
+            }
+
+            const string ellipsis = "...";
+            string candidate = text;
+            while (candidate.Length > 1 && _font.MeasureString(candidate + ellipsis).X > maxWidth)
+            {
+                candidate = candidate[..^1];
+            }
+
+            return candidate + ellipsis;
         }
 
         private EventWindowSnapshot RefreshSnapshot()

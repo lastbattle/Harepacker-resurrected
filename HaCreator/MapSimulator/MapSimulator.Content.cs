@@ -643,6 +643,7 @@ namespace HaCreator.MapSimulator
             ApplyClientOwnedFieldWrappers();
             _packetFieldStateRuntime.Initialize(GraphicsDevice, _mapBoard?.MapInfo);
             BindPacketOwnedStageTransitionMapState();
+            BindPacketOwnedReactorPoolMapState();
             SyncWeddingPacketInboxState();
             SyncSnowBallPacketInboxState();
             SyncCoconutPacketInboxState();
@@ -769,6 +770,7 @@ namespace HaCreator.MapSimulator
             RegisterRemoteUserChatCommand();
             RegisterSummonedPacketChatCommand();
             RegisterMobAttackPacketChatCommand();
+            RegisterReactorPoolPacketChatCommand();
             RegisterAnimationDisplayerChatCommand();
 
 
@@ -880,6 +882,8 @@ namespace HaCreator.MapSimulator
                 {
                     equipWindow.SetPetController(_playerManager.Pets);
                     equipWindow.SetDragonEquipmentController(_playerManager.CompanionEquipment?.Dragon);
+                    equipWindow.EquipmentChangeSubmitted = SubmitEquipmentChangeRequest;
+                    equipWindow.EquipmentChangeResultRequested = TryResolveEquipmentChangeRequest;
                 }
                 if (uiWindowManager.EquipWindow is EquipUIBigBang equipBigBang)
                 {
@@ -1115,6 +1119,7 @@ namespace HaCreator.MapSimulator
             _tooltipsArray = null;
             _dynamicObjectDirectionEventTriggers.Clear();
             _triggeredDynamicObjectDirectionEventIndices.Clear();
+            _scheduledDynamicObjectScriptPublications.Clear();
             _frameActiveMobs.Clear();
             _frameMovableMobs.Clear();
             _framePrimaryBossMob = null;
@@ -1225,6 +1230,7 @@ namespace HaCreator.MapSimulator
             _fieldMessageBoxRuntime.Clear();
             _packetFieldStateRuntime.Clear();
             ClearPacketOwnedStageTransitionState();
+            ClearPacketOwnedReactorPoolState();
             _gameState.ExitDirectionModeImmediate();
             _scriptedDirectionModeWindows.Reset();
 
@@ -1680,6 +1686,8 @@ namespace HaCreator.MapSimulator
                 {
                     equipWindow.SetPetController(_playerManager.Pets);
                     equipWindow.SetDragonEquipmentController(_playerManager.CompanionEquipment?.Dragon);
+                    equipWindow.EquipmentChangeSubmitted = SubmitEquipmentChangeRequest;
+                    equipWindow.EquipmentChangeResultRequested = TryResolveEquipmentChangeRequest;
                 }
                 if (uiWindowManager.EquipWindow is EquipUIBigBang equipBigBang)
                 {
@@ -1836,6 +1844,7 @@ namespace HaCreator.MapSimulator
             ApplyClientOwnedFieldWrappers();
             _packetFieldStateRuntime.Initialize(GraphicsDevice, _mapBoard?.MapInfo);
             BindPacketOwnedStageTransitionMapState();
+            BindPacketOwnedReactorPoolMapState();
             SyncSnowBallPacketInboxState();
             SyncCoconutPacketInboxState();
             SyncMemoryGamePacketInboxState();

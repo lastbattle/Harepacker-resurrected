@@ -9,6 +9,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
+using System.IO.Compression;
 using System.Linq;
 using System.Runtime.InteropServices;
 using SWF = System.Windows.Forms;
@@ -18,6 +19,8 @@ namespace HaCreator.MapSimulator.UI
     internal sealed class ClientTextRasterizer : IDisposable
     {
         private const int RasterPadding = 2;
+        private const int EmbeddedFontSignatureScanWindow = 8192;
+        private const int MaxEmbeddedFontDecompressedBytes = 8 * 1024 * 1024;
         private const byte KoreanGdiCharset = 129;
         private const string ClientTextFontPathEnvironmentVariable = "MAPSIM_CLIENT_TEXT_FONT_PATH";
         private const string ClientTextFontFaceEnvironmentVariable = "MAPSIM_CLIENT_TEXT_FONT_FACE";
@@ -794,6 +797,11 @@ namespace HaCreator.MapSimulator.UI
             return LooksLikeEmbeddedFontPayload(fontBytes);
         }
 
+        internal static bool TryExtractEmbeddedFontPayloadForTests(byte[] sourceBytes, out byte[] fontBytes)
+        {
+            return TryExtractEmbeddedFontPayload(sourceBytes, out fontBytes);
+        }
+
         private static IEnumerable<string> EnumerateDefaultPrivateFontSearchRoots()
         {
             HashSet<string> seenPaths = new(StringComparer.OrdinalIgnoreCase);
@@ -1315,12 +1323,12 @@ namespace HaCreator.MapSimulator.UI
                     foreach (string resourceName in NativeResourceReader.EnumerateResourceNames(module, resourceType))
                     {
                         if (!NativeResourceReader.TryLoadResource(module, resourceType, resourceName, out byte[] resourceBytes) ||
-                            !LooksLikeEmbeddedFontPayload(resourceBytes))
+                            !TryExtractEmbeddedFontPayload(resourceBytes, out byte[] fontBytes))
                         {
                             continue;
                         }
 
-                        yield return ($"{containerPath}|{resourceType.ToInt64()}|{resourceName}", resourceBytes);
+                        yield return ($"{containerPath}|{resourceType.ToInt64()}|{resourceName}", fontBytes);
                     }
                 }
             }
@@ -1337,20 +1345,210 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            if (fontBytes[0] == 0x00 && fontBytes[1] == 0x01 && fontBytes[2] == 0x00 && fontBytes[3] == 0x00)
+            if (IsTrueTypeHeader(fontBytes, 0))
             {
                 return true;
             }
 
-            if (fontBytes[0] == (byte)'t' && fontBytes[1] == (byte)'t' && fontBytes[2] == (byte)'c' && fontBytes[3] == (byte)'f')
+            if (IsTrueTypeCollectionHeader(fontBytes, 0))
             {
                 return true;
             }
 
-            return fontBytes[0] == (byte)'O'
-                && fontBytes[1] == (byte)'T'
-                && fontBytes[2] == (byte)'T'
-                && fontBytes[3] == (byte)'O';
+            return IsOpenTypeHeader(fontBytes, 0);
+        }
+
+        private static bool TryExtractEmbeddedFontPayload(byte[] sourceBytes, out byte[] fontBytes)
+        {
+            fontBytes = null;
+            if (sourceBytes == null || sourceBytes.Length < 4)
+            {
+                return false;
+            }
+
+            if (LooksLikeEmbeddedFontPayload(sourceBytes))
+            {
+                fontBytes = sourceBytes;
+                return true;
+            }
+
+            if (TryFindEmbeddedFontHeaderOffset(sourceBytes, out int rawOffset))
+            {
+                fontBytes = SliceBytes(sourceBytes, rawOffset);
+                return true;
+            }
+
+            if (!TryDecompressEmbeddedPayload(sourceBytes, out byte[] decompressedBytes))
+            {
+                return false;
+            }
+
+            if (LooksLikeEmbeddedFontPayload(decompressedBytes))
+            {
+                fontBytes = decompressedBytes;
+                return true;
+            }
+
+            if (!TryFindEmbeddedFontHeaderOffset(decompressedBytes, out int decompressedOffset))
+            {
+                return false;
+            }
+
+            fontBytes = SliceBytes(decompressedBytes, decompressedOffset);
+            return true;
+        }
+
+        private static bool TryFindEmbeddedFontHeaderOffset(byte[] bytes, out int headerOffset)
+        {
+            headerOffset = -1;
+            if (bytes == null || bytes.Length < 4)
+            {
+                return false;
+            }
+
+            int maxOffset = Math.Min(bytes.Length - 4, EmbeddedFontSignatureScanWindow);
+            for (int offset = 0; offset <= maxOffset; offset++)
+            {
+                if (IsTrueTypeHeader(bytes, offset) ||
+                    IsTrueTypeCollectionHeader(bytes, offset) ||
+                    IsOpenTypeHeader(bytes, offset))
+                {
+                    headerOffset = offset;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryDecompressEmbeddedPayload(byte[] sourceBytes, out byte[] decompressedBytes)
+        {
+            if (TryDecompressWithZlib(sourceBytes, out decompressedBytes))
+            {
+                return true;
+            }
+
+            return TryDecompressWithGzip(sourceBytes, out decompressedBytes);
+        }
+
+        private static bool TryDecompressWithZlib(byte[] sourceBytes, out byte[] decompressedBytes)
+        {
+            decompressedBytes = null;
+            if (!LooksLikeZlibHeader(sourceBytes))
+            {
+                return false;
+            }
+
+            return TryDecompressStream(sourceBytes, static stream => new ZLibStream(stream, CompressionMode.Decompress), out decompressedBytes);
+        }
+
+        private static bool TryDecompressWithGzip(byte[] sourceBytes, out byte[] decompressedBytes)
+        {
+            decompressedBytes = null;
+            if (sourceBytes.Length < 2 || sourceBytes[0] != 0x1F || sourceBytes[1] != 0x8B)
+            {
+                return false;
+            }
+
+            return TryDecompressStream(sourceBytes, static stream => new GZipStream(stream, CompressionMode.Decompress), out decompressedBytes);
+        }
+
+        private static bool TryDecompressStream(
+            byte[] sourceBytes,
+            Func<MemoryStream, Stream> createDecompressStream,
+            out byte[] decompressedBytes)
+        {
+            decompressedBytes = null;
+
+            try
+            {
+                using MemoryStream compressed = new(sourceBytes);
+                using Stream decompressor = createDecompressStream(compressed);
+                using MemoryStream output = new();
+                byte[] buffer = new byte[4096];
+                int totalBytes = 0;
+
+                while (true)
+                {
+                    int readCount = decompressor.Read(buffer, 0, buffer.Length);
+                    if (readCount <= 0)
+                    {
+                        break;
+                    }
+
+                    totalBytes += readCount;
+                    if (totalBytes > MaxEmbeddedFontDecompressedBytes)
+                    {
+                        return false;
+                    }
+
+                    output.Write(buffer, 0, readCount);
+                }
+
+                decompressedBytes = output.ToArray();
+                return decompressedBytes.Length > 0;
+            }
+            catch
+            {
+                return false;
+            }
+        }
+
+        private static bool LooksLikeZlibHeader(byte[] sourceBytes)
+        {
+            if (sourceBytes.Length < 2)
+            {
+                return false;
+            }
+
+            byte cmf = sourceBytes[0];
+            byte flg = sourceBytes[1];
+            if ((cmf & 0x0F) != 0x08)
+            {
+                return false;
+            }
+
+            return ((cmf << 8) + flg) % 31 == 0;
+        }
+
+        private static byte[] SliceBytes(byte[] sourceBytes, int offset)
+        {
+            if (offset <= 0)
+            {
+                return sourceBytes;
+            }
+
+            int length = sourceBytes.Length - offset;
+            byte[] sliced = new byte[length];
+            Buffer.BlockCopy(sourceBytes, offset, sliced, 0, length);
+            return sliced;
+        }
+
+        private static bool IsTrueTypeHeader(byte[] bytes, int offset)
+        {
+            return offset + 3 < bytes.Length
+                && bytes[offset] == 0x00
+                && bytes[offset + 1] == 0x01
+                && bytes[offset + 2] == 0x00
+                && bytes[offset + 3] == 0x00;
+        }
+
+        private static bool IsTrueTypeCollectionHeader(byte[] bytes, int offset)
+        {
+            return offset + 3 < bytes.Length
+                && bytes[offset] == (byte)'t'
+                && bytes[offset + 1] == (byte)'t'
+                && bytes[offset + 2] == (byte)'c'
+                && bytes[offset + 3] == (byte)'f';
+        }
+
+        private static bool IsOpenTypeHeader(byte[] bytes, int offset)
+        {
+            return offset + 3 < bytes.Length
+                && bytes[offset] == (byte)'O'
+                && bytes[offset + 1] == (byte)'T'
+                && bytes[offset + 2] == (byte)'T'
+                && bytes[offset + 3] == (byte)'O';
         }
 
         private static string BuildCacheKey(string text, float scale)

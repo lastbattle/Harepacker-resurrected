@@ -16,6 +16,8 @@ namespace HaCreator.MapSimulator.Interaction
         public int LastChairCorrectionRequestOpcode { get; private set; } = -1;
         public ushort LastChairCorrectionSeatToken { get; private set; }
         public byte[] LastChairCorrectionPayload { get; private set; } = Array.Empty<byte>();
+        public bool HasRadioCreateLayerLeftContextValue { get; private set; }
+        public bool RadioCreateLayerLeftContextValue { get; private set; }
         public bool HasPersistedApspState =>
             BoundCharacterId > 0
             || ApspReceiveContextToken > 0
@@ -46,6 +48,8 @@ namespace HaCreator.MapSimulator.Interaction
             LastObservedRuntimeCharacterId = 0;
             ApspReceiveContextToken = 0;
             ApspSendContextToken = 0;
+            HasRadioCreateLayerLeftContextValue = false;
+            RadioCreateLayerLeftContextValue = false;
             ClearChairContext();
         }
 
@@ -180,6 +184,36 @@ namespace HaCreator.MapSimulator.Interaction
             string receiveToken = ApspReceiveContextToken > 0 ? ApspReceiveContextToken.ToString() : "unset";
             string sendToken = ApspSendContextToken > 0 ? ApspSendContextToken.ToString() : "unset";
             return $"Packet-owned local utility CWvsContext AP/SP tokens: recv={receiveToken} (+0x20B4), send={sendToken} (+0x2030), boundCharacter={boundCharacter}.{persistence}{divergence}{runtimeDetail}";
+        }
+
+        public void SetRadioCreateLayerLeftContextValue(bool enabled)
+        {
+            HasRadioCreateLayerLeftContextValue = true;
+            RadioCreateLayerLeftContextValue = enabled;
+        }
+
+        public void ClearRadioCreateLayerLeftContextValue()
+        {
+            HasRadioCreateLayerLeftContextValue = false;
+            RadioCreateLayerLeftContextValue = false;
+        }
+
+        public bool ResolveRadioCreateLayerLeftContextValue(bool fallback)
+        {
+            return HasRadioCreateLayerLeftContextValue
+                ? RadioCreateLayerLeftContextValue
+                : fallback;
+        }
+
+        public string DescribeRadioCreateLayerContext(int contextSlot)
+        {
+            string value = HasRadioCreateLayerLeftContextValue
+                ? (RadioCreateLayerLeftContextValue ? "1" : "0")
+                : "unset";
+            string source = HasRadioCreateLayerLeftContextValue
+                ? "packet-owned context state"
+                : "fallback";
+            return $"Packet-owned local utility CWvsContext[{contextSlot}] (radio bLeft): {value} via {source}.";
         }
 
         public void ObserveChairSitResult(int currentTick)

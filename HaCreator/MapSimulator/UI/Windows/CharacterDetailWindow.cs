@@ -61,10 +61,40 @@ namespace HaCreator.MapSimulator.UI
             "DotumChe.ttf",
             "Dotum.ttf",
             "dotum.ttc",
+            "DODOOMCHE.ttf",
+            "DODOOM.ttf",
+            "DOTOOMCHE.ttf",
+            "DOTOOM.ttf",
+            "DODUMCHE.ttf",
+            "DODUM.ttf",
             "GulimChe.ttf",
             "Gulim.ttf",
             "gulim.ttc",
             "batang.ttc"
+        };
+        private static readonly string[] BasicBlackPreferredFileNameFragments =
+        {
+            "dodoomche",
+            "dotoomche",
+            "dodumche",
+            "dotumche",
+            "dotum",
+            "dodoom",
+            "dotoom",
+            "dodum"
+        };
+        private static readonly string[] BasicBlackSecondaryFileNameFragments =
+        {
+            "gulimche",
+            "gulim",
+            "batangche",
+            "batang"
+        };
+        private static readonly string[] BasicBlackFontExtensions =
+        {
+            ".ttf",
+            ".ttc",
+            ".otf"
         };
         private static readonly string[] BasicBlackFontSearchDirectorySuffixes =
         {
@@ -554,17 +584,7 @@ namespace HaCreator.MapSimulator.UI
 
         private static bool TryResolveBundledBasicBlackFontPath(out string resolvedFontPath)
         {
-            foreach (string candidatePath in EnumerateBasicBlackFontCandidatePaths())
-            {
-                if (File.Exists(candidatePath))
-                {
-                    resolvedFontPath = candidatePath;
-                    return true;
-                }
-            }
-
-            resolvedFontPath = null;
-            return false;
+            return TrySelectBestFontPath(EnumerateBasicBlackFontCandidatePaths(), out resolvedFontPath);
         }
 
         private static bool TryResolveFontPath(string candidatePath, out string resolvedFontPath)
@@ -581,17 +601,7 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            foreach (string discoveredFontPath in EnumerateCandidateFontPaths(candidatePath))
-            {
-                if (File.Exists(discoveredFontPath))
-                {
-                    resolvedFontPath = discoveredFontPath;
-                    return true;
-                }
-            }
-
-            resolvedFontPath = null;
-            return false;
+            return TrySelectBestFontPath(EnumerateCandidateFontPaths(candidatePath), out resolvedFontPath);
         }
 
         private static IEnumerable<string> EnumerateBasicBlackFontCandidatePaths()
@@ -632,10 +642,11 @@ namespace HaCreator.MapSimulator.UI
                 yield break;
             }
 
+            HashSet<string> seenPaths = new(StringComparer.OrdinalIgnoreCase);
             foreach (string fileName in BasicBlackFontFileCandidates)
             {
                 string directCandidatePath = Path.Combine(rootDirectory, fileName);
-                if (File.Exists(directCandidatePath))
+                if (File.Exists(directCandidatePath) && seenPaths.Add(directCandidatePath))
                 {
                     yield return directCandidatePath;
                 }
@@ -654,11 +665,163 @@ namespace HaCreator.MapSimulator.UI
             foreach (string recursiveMatch in recursiveMatches)
             {
                 string fileName = Path.GetFileName(recursiveMatch);
-                if (BasicBlackFontFileCandidates.Any(candidate => string.Equals(candidate, fileName, StringComparison.OrdinalIgnoreCase)))
+                if (IsBasicBlackCandidateFileName(fileName) && seenPaths.Add(recursiveMatch))
                 {
                     yield return recursiveMatch;
                 }
             }
+        }
+
+        private static bool TrySelectBestFontPath(IEnumerable<string> candidatePaths, out string resolvedFontPath)
+        {
+            resolvedFontPath = null;
+            int bestScore = int.MinValue;
+
+            foreach (string candidatePath in candidatePaths ?? Enumerable.Empty<string>())
+            {
+                if (string.IsNullOrWhiteSpace(candidatePath) || !File.Exists(candidatePath))
+                {
+                    continue;
+                }
+
+                int candidateScore = ScoreBasicBlackFontPath(candidatePath);
+                if (candidateScore < bestScore)
+                {
+                    continue;
+                }
+
+                if (candidateScore == bestScore && resolvedFontPath != null)
+                {
+                    if (string.Compare(candidatePath, resolvedFontPath, StringComparison.OrdinalIgnoreCase) >= 0)
+                    {
+                        continue;
+                    }
+                }
+
+                bestScore = candidateScore;
+                resolvedFontPath = candidatePath;
+            }
+
+            return !string.IsNullOrWhiteSpace(resolvedFontPath);
+        }
+
+        private static int ScoreBasicBlackFontPath(string fontPath)
+        {
+            if (string.IsNullOrWhiteSpace(fontPath))
+            {
+                return int.MinValue;
+            }
+
+            string fileName = Path.GetFileNameWithoutExtension(fontPath) ?? string.Empty;
+            string normalizedFileName = NormalizeFontNameToken(fileName);
+            string normalizedFullPath = NormalizeFontNameToken(fontPath);
+            int score = 0;
+
+            if (normalizedFullPath.Contains("maplestory", StringComparison.Ordinal))
+            {
+                score += 48;
+            }
+
+            if (normalizedFullPath.Contains("wizet", StringComparison.Ordinal))
+            {
+                score += 32;
+            }
+
+            if (normalizedFullPath.Contains("font", StringComparison.Ordinal))
+            {
+                score += 16;
+            }
+
+            string extension = Path.GetExtension(fontPath) ?? string.Empty;
+            if (extension.Equals(".ttf", StringComparison.OrdinalIgnoreCase))
+            {
+                score += 12;
+            }
+            else if (extension.Equals(".ttc", StringComparison.OrdinalIgnoreCase))
+            {
+                score += 6;
+            }
+            else if (extension.Equals(".otf", StringComparison.OrdinalIgnoreCase))
+            {
+                score += 3;
+            }
+
+            score += ScoreBasicBlackFontName(normalizedFileName);
+            return score;
+        }
+
+        private static int ScoreBasicBlackFontName(string normalizedFileName)
+        {
+            if (string.IsNullOrWhiteSpace(normalizedFileName))
+            {
+                return 0;
+            }
+
+            for (int index = 0; index < BasicBlackPreferredFileNameFragments.Length; index++)
+            {
+                if (normalizedFileName.Contains(BasicBlackPreferredFileNameFragments[index], StringComparison.Ordinal))
+                {
+                    return 256 - (index * 8);
+                }
+            }
+
+            for (int index = 0; index < BasicBlackSecondaryFileNameFragments.Length; index++)
+            {
+                if (normalizedFileName.Contains(BasicBlackSecondaryFileNameFragments[index], StringComparison.Ordinal))
+                {
+                    return 96 - (index * 6);
+                }
+            }
+
+            return 0;
+        }
+
+        private static bool IsBasicBlackCandidateFileName(string fileName)
+        {
+            if (string.IsNullOrWhiteSpace(fileName))
+            {
+                return false;
+            }
+
+            if (BasicBlackFontFileCandidates.Any(candidate => string.Equals(candidate, fileName, StringComparison.OrdinalIgnoreCase)))
+            {
+                return true;
+            }
+
+            string extension = Path.GetExtension(fileName);
+            if (string.IsNullOrWhiteSpace(extension) ||
+                !BasicBlackFontExtensions.Any(candidate => extension.Equals(candidate, StringComparison.OrdinalIgnoreCase)))
+            {
+                return false;
+            }
+
+            string normalizedFileName = NormalizeFontNameToken(Path.GetFileNameWithoutExtension(fileName));
+            if (string.IsNullOrWhiteSpace(normalizedFileName))
+            {
+                return false;
+            }
+
+            if (BasicBlackPreferredFileNameFragments.Any(fragment => normalizedFileName.Contains(fragment, StringComparison.Ordinal)))
+            {
+                return true;
+            }
+
+            return BasicBlackSecondaryFileNameFragments.Any(fragment => normalizedFileName.Contains(fragment, StringComparison.Ordinal));
+        }
+
+        private static string NormalizeFontNameToken(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return string.Empty;
+            }
+
+            return value
+                .Trim()
+                .Replace("_", string.Empty, StringComparison.Ordinal)
+                .Replace("-", string.Empty, StringComparison.Ordinal)
+                .Replace(" ", string.Empty, StringComparison.Ordinal)
+                .ToLowerInvariant();
         }
 
         private static IEnumerable<string> EnumerateBasicBlackFontSearchRoots()

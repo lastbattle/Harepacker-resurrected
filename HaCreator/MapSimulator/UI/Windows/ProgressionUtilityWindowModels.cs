@@ -106,7 +106,16 @@ namespace HaCreator.MapSimulator.UI
         public string Title { get; init; } = "Collection Book";
         public string Subtitle { get; init; } = string.Empty;
         public string StatusText { get; init; } = string.Empty;
+        public IReadOnlyList<CollectionBookClientTextStyleSnapshot> TextStyleMatrix { get; init; } = Array.Empty<CollectionBookClientTextStyleSnapshot>();
         public IReadOnlyList<CollectionBookPageSnapshot> Pages { get; init; } = Array.Empty<CollectionBookPageSnapshot>();
+    }
+
+    public sealed class CollectionBookClientTextStyleSnapshot
+    {
+        public int Index { get; init; }
+        public int FontStringPoolId { get; init; }
+        public int FontHeight { get; init; }
+        public int ArgbColor { get; init; }
     }
 
     public sealed class CollectionBookOwnerContextSnapshot
@@ -145,6 +154,23 @@ namespace HaCreator.MapSimulator.UI
     internal static class CollectionBookSnapshotFactory
     {
         private const int EntriesPerPage = 6;
+        private const int BookFontFamilyStringPoolId = 0x1A25;
+        private const int BookTextStyleCount = 12;
+        private static readonly int[] ClientBookTextStyleColorArgb =
+        {
+            unchecked((int)0xFF000000),
+            unchecked((int)0xFF000000),
+            unchecked((int)0xFFFF0000),
+            unchecked((int)0xFFFF0000),
+            unchecked((int)0xFF00FF00),
+            unchecked((int)0xFF00FF00),
+            unchecked((int)0xFF51378C),
+            unchecked((int)0xFF51378C),
+            unchecked((int)0xFF51378C),
+            unchecked((int)0xFF51378C),
+            unchecked((int)0xFF000000),
+            unchecked((int)0xFF51378C),
+        };
         private static readonly (string Label, EquipSlot Slot)[] EquipmentLedgerRows =
         {
             ("Ring 1", EquipSlot.Ring1),
@@ -209,8 +235,26 @@ namespace HaCreator.MapSimulator.UI
                 Title = "Collection Book",
                 Subtitle = BuildCollectionSubtitle(build, ownerContext),
                 StatusText = BuildCollectionStatusText(pages.Count, ownerContext),
+                TextStyleMatrix = BuildClientTextStyleMatrix(),
                 Pages = pages
             };
+        }
+
+        private static IReadOnlyList<CollectionBookClientTextStyleSnapshot> BuildClientTextStyleMatrix()
+        {
+            CollectionBookClientTextStyleSnapshot[] styles = new CollectionBookClientTextStyleSnapshot[BookTextStyleCount];
+            for (int i = 0; i < styles.Length; i++)
+            {
+                styles[i] = new CollectionBookClientTextStyleSnapshot
+                {
+                    Index = i,
+                    FontStringPoolId = BookFontFamilyStringPoolId,
+                    FontHeight = 12,
+                    ArgbColor = ClientBookTextStyleColorArgb[i]
+                };
+            }
+
+            return styles;
         }
 
         private static CollectionBookPageSnapshot CreateOverviewPage(CharacterBuild build, ItemMakerProgressionSnapshot progression, MonsterBookSnapshot monsterBook, CollectionBookOwnerContextSnapshot ownerContext)

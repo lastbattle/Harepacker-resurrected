@@ -299,6 +299,8 @@ namespace HaCreator.MapSimulator.AI
     /// </summary>
     public class MobAI
     {
+        // mob/0100101.img info/speed = -50 in v95-v115 data.
+        private const int DoomReservedSpeedPercent = -50;
         #region Constants
         private const int DEFAULT_AGGRO_RANGE = 200;        // Pixels to detect player
         private const int DEFAULT_ATTACK_RANGE = 50;        // Melee attack range
@@ -1261,12 +1263,10 @@ namespace HaCreator.MapSimulator.AI
                 slowPercent += GetStatusPercentOrDefault(MobStatusEffect.Weakness, 20);
             }
 
-            if (IsDoomed)
-            {
-                slowPercent += 65;
-            }
+            int netSpeedPercent = speedPercent - slowPercent;
+            netSpeedPercent = ApplyDoomSpeedReservation(netSpeedPercent, IsDoomed);
 
-            float statusMultiplier = 1f + (speedPercent - slowPercent) / 100f;
+            float statusMultiplier = 1f + netSpeedPercent / 100f;
             return Math.Max(0f, baseMultiplier * Math.Max(0f, statusMultiplier));
         }
 
@@ -2039,6 +2039,16 @@ namespace HaCreator.MapSimulator.AI
         }
 
         private bool CanTargetPlayerNow => _canTargetPlayer && !IsHypnotized;
+
+        internal static int ApplyDoomSpeedReservation(int netSpeedPercent, bool isDoomed)
+        {
+            if (!isDoomed)
+            {
+                return netSpeedPercent;
+            }
+
+            return Math.Min(netSpeedPercent, DoomReservedSpeedPercent);
+        }
 
         private int GetStatusPercent(MobStatusEffect effect)
         {

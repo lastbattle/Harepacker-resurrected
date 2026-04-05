@@ -222,12 +222,12 @@ namespace HaCreator.MapSimulator.Interaction
                         ResolvePacketOwnedParcelSubject(entry),
                         ResolvePacketOwnedParcelBody(entry),
                         displayTime,
-                        isRead: false,
-                        isKept: false,
+                        isRead: entry.IsRead,
+                        isKept: entry.IsKept,
                         attachmentItemId: entry.AttachmentItemId,
                         attachmentQuantity: entry.AttachmentQuantity,
                         attachmentMeso: ResolvePacketOwnedAttachmentMeso(entry),
-                        isAttachmentClaimed: false);
+                        isAttachmentClaimed: entry.IsAttachmentClaimed);
                     displayTime = displayTime.AddSeconds(-1);
                 }
             }
@@ -254,9 +254,9 @@ namespace HaCreator.MapSimulator.Interaction
                 entry.Sender,
                 ResolvePacketOwnedParcelSubject(entry),
                 ResolvePacketOwnedParcelBody(entry),
-                isRead: false,
-                isKept: false,
-                isClaimed: false,
+                isRead: entry.IsRead,
+                isKept: entry.IsKept,
+                isClaimed: entry.IsAttachmentClaimed,
                 attachmentItemId: entry.AttachmentItemId,
                 attachmentQuantity: entry.AttachmentQuantity,
                 attachmentMeso: ResolvePacketOwnedAttachmentMeso(entry),
@@ -637,7 +637,7 @@ namespace HaCreator.MapSimulator.Interaction
             DeliverMemo(
                 "Maple Delivery Service",
                 "Tax notice",
-                "Send and quick-send tabs share the fee popup in the client. The simulator keeps that popup informational while draft edits still flow through chat commands.",
+                "Send and quick-send tabs share the fee popup in the client. Draft edits stay in the parcel owner, with chat commands as supplemental controls.",
                 now.AddMinutes(-9));
             DeliverMemo(
                 "Cody",
@@ -900,9 +900,9 @@ namespace HaCreator.MapSimulator.Interaction
             return _activeTab switch
             {
                 ParcelDialogTab.QuickSend =>
-                    "Quick-delivery fee info is informational only here. Use /memo draft meso <amount> to stage the money field.",
+                    "Quick-delivery fee info is informational only here. Use the owner meso field or /memo draft meso <amount> for supplemental staging.",
                 _ =>
-                    "Parcel fee info is informational only here. Use /memo draft item ... or /memo draft meso ... to stage the package payload."
+                    "Parcel fee info is informational only here. Use the owner package lane and meso field, or /memo draft ... for supplemental staging."
             };
         }
 

@@ -27,8 +27,11 @@ namespace HaCreator.MapSimulator.Managers
         private const int ErrorInsufficientBuffer = 122;
         private const int FirstCarnivalOpcode = 346;
         private const int LastCarnivalOpcode = 353;
+        private const int RecentPacketCapacity = 8;
 
         private readonly ConcurrentQueue<MonsterCarnivalPacketInboxMessage> _pendingMessages = new();
+        private readonly ConcurrentDictionary<int, int> _opcodeMappings = new();
+        private readonly Queue<string> _recentPackets = new();
         private readonly object _sync = new();
 
         private TcpListener _listener;
@@ -100,7 +103,7 @@ namespace HaCreator.MapSimulator.Managers
             string session = HasConnectedSession
                 ? $"connected session {_activePair?.ClientEndpoint ?? "unknown-client"} -> {_activePair?.RemoteEndpoint ?? "unknown-remote"}"
                 : "no active Maple session";
-            return $"Monster Carnival official-session bridge {lifecycle}; {session}; received={ReceivedCount}. {LastStatus}";
+            return $"Monster Carnival official-session bridge {lifecycle}; {session}; received={ReceivedCount}; mappings={DescribePacketMappings()}; recent={DescribeRecentPackets()}. {LastStatus}";
         }
 
         public static IReadOnlyList<SessionDiscoveryCandidate> DiscoverEstablishedSessions(
@@ -289,6 +292,72 @@ namespace HaCreator.MapSimulator.Managers
             return DescribeDiscoveryCandidates(candidates, remotePort, owningProcessId, owningProcessName, localPort);
         }
 
+        public bool TryConfigurePacketMapping(int opcode, int packetType, out string status)
+        {
+            if (opcode <= 0)
+            {
+                status = "Monster Carnival opcode mappings require a positive opcode.";
+                return false;
+            }
+
+            if (packetType < FirstCarnivalOpcode || packetType > LastCarnivalOpcode)
+            {
+                status = $"Monster Carnival packet mappings only accept raw packet types {FirstCarnivalOpcode}-{LastCarnivalOpcode}.";
+                return false;
+            }
+
+            _opcodeMappings[opcode] = packetType;
+            status = $"Mapped Monster Carnival opcode {opcode} to {DescribePacketType(packetType)}.";
+            LastStatus = status;
+            return true;
+        }
+
+        public bool RemovePacketMapping(int opcode, out string status)
+        {
+            if (_opcodeMappings.TryRemove(opcode, out int packetType))
+            {
+                status = $"Removed Monster Carnival opcode {opcode} mapping for {DescribePacketType(packetType)}.";
+                LastStatus = status;
+                return true;
+            }
+
+            status = $"Monster Carnival opcode {opcode} is not currently mapped.";
+            return false;
+        }
+
+        public void ClearPacketMappings()
+        {
+            _opcodeMappings.Clear();
+            LastStatus = "Cleared Monster Carnival official-session opcode mappings.";
+        }
+
+        public string DescribePacketMappings()
+        {
+            if (_opcodeMappings.IsEmpty)
+            {
+                return "none";
+            }
+
+            return string.Join(
+                ", ",
+                _opcodeMappings
+                    .OrderBy(entry => entry.Key)
+                    .Select(entry => $"{entry.Key}->{DescribePacketType(entry.Value)}"));
+        }
+
+        public string DescribeRecentPackets()
+        {
+            lock (_sync)
+            {
+                if (_recentPackets.Count == 0)
+                {
+                    return "none";
+                }
+
+                return string.Join(" | ", _recentPackets);
+            }
+        }
+
         public void Stop()
         {
             lock (_sync)
@@ -413,19 +482,56 @@ namespace HaCreator.MapSimulator.Managers
 
                 pair.ClientSession.SendPacket((byte[])raw.Clone());
 
-                if (!TryDecodeInboundCarnivalPacket(raw, $"official-session:{pair.RemoteEndpoint}", out MonsterCarnivalPacketInboxMessage message))
+                if (!TryMapInboundPacket(raw, $"official-session:{pair.RemoteEndpoint}", out MonsterCarnivalPacketInboxMessage message))
                 {
                     return;
                 }
 
                 _pendingMessages.Enqueue(message);
                 ReceivedCount++;
-                LastStatus = $"Queued Monster Carnival opcode {message.PacketType} from live session {pair.RemoteEndpoint}.";
+                LastStatus = $"Queued Monster Carnival opcode {message.PacketType} ({DescribePacketType(message.PacketType)}) from live session {pair.RemoteEndpoint}.";
             }
             catch (Exception ex)
             {
                 ClearActivePair(pair, $"Monster Carnival official-session server handling failed: {ex.Message}");
             }
+        }
+
+        public bool TryMapInboundPacket(byte[] rawPacket, string source, out MonsterCarnivalPacketInboxMessage message)
+        {
+            message = null;
+            if (rawPacket == null || rawPacket.Length < sizeof(short))
+            {
+                return false;
+            }
+
+            int opcode = BitConverter.ToUInt16(rawPacket, 0);
+            byte[] payload = rawPacket.Skip(sizeof(short)).ToArray();
+            if (opcode >= FirstCarnivalOpcode && opcode <= LastCarnivalOpcode)
+            {
+                message = new MonsterCarnivalPacketInboxMessage(
+                    opcode,
+                    payload,
+                    source,
+                    $"packetraw {Convert.ToHexString(rawPacket)}");
+                RecordRecentPacket(opcode, rawPacket, opcode, "native");
+                return true;
+            }
+
+            if (!_opcodeMappings.TryGetValue(opcode, out int mappedPacketType))
+            {
+                RecordRecentPacket(opcode, rawPacket, mappedPacketType: null, "unmapped");
+                LastStatus = $"Ignored unmapped Monster Carnival opcode {opcode}; add /mcarnival session map <opcode> <rawPacketType> to route it into the recovered 346-353 seam.";
+                return false;
+            }
+
+            message = new MonsterCarnivalPacketInboxMessage(
+                mappedPacketType,
+                payload,
+                source,
+                $"packetraw {Convert.ToHexString(rawPacket)}");
+            RecordRecentPacket(opcode, rawPacket, mappedPacketType, "configured");
+            return true;
         }
 
         private void HandleClientPacket(BridgePair pair, PacketReader packet, bool isInit)
@@ -494,6 +600,10 @@ namespace HaCreator.MapSimulator.Managers
                 }
 
                 ReceivedCount = 0;
+                lock (_sync)
+                {
+                    _recentPackets.Clear();
+                }
             }
         }
 
@@ -523,6 +633,38 @@ namespace HaCreator.MapSimulator.Managers
                 source,
                 $"packetraw {Convert.ToHexString(rawPacket)}");
             return true;
+        }
+
+        private static string DescribePacketType(int packetType)
+        {
+            return packetType switch
+            {
+                346 => "enter",
+                347 => "personalcp",
+                348 => "teamcp",
+                349 => "requestresult",
+                350 => "requestfailure",
+                351 => "processfordeath",
+                352 => "memberout",
+                353 => "gameresult",
+                _ => $"packet {packetType}"
+            };
+        }
+
+        private void RecordRecentPacket(int opcode, byte[] rawPacket, int? mappedPacketType, string detail = null)
+        {
+            string summary = mappedPacketType.HasValue
+                ? $"{opcode}->{DescribePacketType(mappedPacketType.Value)}[{detail ?? "configured"}]:{Convert.ToHexString(rawPacket)}"
+                : $"{opcode}:{detail ?? "unmapped"}:{Convert.ToHexString(rawPacket)}";
+
+            lock (_sync)
+            {
+                _recentPackets.Enqueue(summary);
+                while (_recentPackets.Count > RecentPacketCapacity)
+                {
+                    _recentPackets.Dequeue();
+                }
+            }
         }
 
         private static IEnumerable<TcpRowOwnerPid> EnumerateTcpRows()

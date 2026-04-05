@@ -1830,6 +1830,18 @@ namespace HaCreator.MapSimulator.Loaders
             }
         }
 
+        private static Texture2D LoadCanvasTexture(WzCanvasProperty canvas, GraphicsDevice device)
+        {
+            try
+            {
+                return canvas?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
         private static WzImageProperty ResolveProperty(WzObject root, string propertyPath)
         {
             if (root == null || string.IsNullOrWhiteSpace(propertyPath))

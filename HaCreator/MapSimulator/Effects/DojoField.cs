@@ -156,6 +156,11 @@ namespace HaCreator.MapSimulator.Effects
                 return true;
             }
 
+            if (TryResolveAmbiguousTransferPacketType(candidates, out packetType, out reason))
+            {
+                return true;
+            }
+
             packetType = -1;
             reason = candidates.Count == 0
                 ? "unknown"
@@ -919,6 +924,31 @@ namespace HaCreator.MapSimulator.Effects
 
             return global::HaCreator.Program.WzManager == null || HasMapImage(mapId);
         }
+        private static bool TryResolveAmbiguousTransferPacketType(
+            IReadOnlyList<(int PacketType, string Summary)> candidates,
+            out int packetType,
+            out string reason)
+        {
+            packetType = -1;
+            reason = string.Empty;
+            if (candidates == null || candidates.Count != 2)
+            {
+                return false;
+            }
+
+            bool hasClear = candidates.Any(static candidate => candidate.PacketType == PacketTypeClear);
+            bool hasTimeOver = candidates.Any(static candidate => candidate.PacketType == PacketTypeTimeOver);
+            if (!hasClear || !hasTimeOver)
+            {
+                return false;
+            }
+
+            // IDA coverage for v95 Dojo exposes OnClock + Update ownership but no dedicated time-over packet handler.
+            // When transfer payloads are otherwise ambiguous, favor clear-transfer mapping to preserve stage progression.
+            packetType = PacketTypeClear;
+            reason = "clear(default transfer tie-break from v95 Dojo owner surface)";
+            return true;
+        }
         private static bool TryDecodePortalName(ReadOnlySpan<byte> payload, out string portalName, out int bytesConsumed)
         {
             portalName = string.Empty;
@@ -926,6 +956,11 @@ namespace HaCreator.MapSimulator.Effects
             if (payload.IsEmpty)
             {
                 return false;
+            }
+
+            if (TryDecodeLengthPrefixedPortalName(payload, out portalName, out bytesConsumed))
+            {
+                return true;
             }
 
             int trimmedLength = payload.Length;
@@ -952,15 +987,69 @@ namespace HaCreator.MapSimulator.Effects
                 }
             }
 
-            string utf8Candidate = Encoding.UTF8.GetString(trimmed);
-            if (IsPrintablePortalName(utf8Candidate))
+            string asciiCandidate = Encoding.ASCII.GetString(trimmed);
+            if (IsPrintablePortalName(asciiCandidate))
             {
-                portalName = utf8Candidate;
+                portalName = asciiCandidate;
                 bytesConsumed = payload.Length;
                 return true;
             }
 
             return false;
+        }
+        private static bool TryDecodeLengthPrefixedPortalName(ReadOnlySpan<byte> payload, out string portalName, out int bytesConsumed)
+        {
+            portalName = string.Empty;
+            bytesConsumed = 0;
+            if (payload.Length < sizeof(ushort))
+            {
+                return false;
+            }
+
+            int rawLength = BinaryPrimitives.ReadUInt16LittleEndian(payload.Slice(0, sizeof(ushort)));
+            if (rawLength < 0)
+            {
+                return false;
+            }
+
+            int asciiTotalLength = sizeof(ushort) + rawLength;
+            if (rawLength > 0 && asciiTotalLength <= payload.Length)
+            {
+                string asciiCandidate = Encoding.ASCII.GetString(payload.Slice(sizeof(ushort), rawLength));
+                if (IsPrintablePortalName(asciiCandidate))
+                {
+                    portalName = asciiCandidate;
+                    bytesConsumed = asciiTotalLength + CountTrailingNullBytes(payload.Slice(asciiTotalLength));
+                    return true;
+                }
+            }
+
+            if (rawLength > 0)
+            {
+                int unicodeByteLength = rawLength * sizeof(char);
+                int unicodeTotalLength = sizeof(ushort) + unicodeByteLength;
+                if (unicodeTotalLength <= payload.Length)
+                {
+                    string unicodeCandidate = Encoding.Unicode.GetString(payload.Slice(sizeof(ushort), unicodeByteLength));
+                    if (IsPrintablePortalName(unicodeCandidate))
+                    {
+                        portalName = unicodeCandidate;
+                        bytesConsumed = unicodeTotalLength + CountTrailingNullBytes(payload.Slice(unicodeTotalLength));
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+        private static int CountTrailingNullBytes(ReadOnlySpan<byte> payload)
+        {
+            int consumed = 0;
+            while (consumed < payload.Length && payload[consumed] == 0)
+            {
+                consumed++;
+            }
+            return consumed;
         }
         private static bool IsPrintablePortalName(string portalName)
         {
@@ -969,9 +1058,17 @@ namespace HaCreator.MapSimulator.Effects
                 return false;
             }
 
+            if (portalName.Length > 32)
+            {
+                return false;
+            }
+
             foreach (char character in portalName)
             {
-                if (char.IsControl(character))
+                if (!char.IsLetterOrDigit(character)
+                    && character != '_'
+                    && character != '-'
+                    && character != ':')
                 {
                     return false;
                 }

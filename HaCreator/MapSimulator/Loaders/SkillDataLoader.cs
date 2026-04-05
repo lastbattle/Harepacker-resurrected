@@ -1018,6 +1018,11 @@ namespace HaCreator.MapSimulator.Loaders
                 : value.ToString(CultureInfo.InvariantCulture);
         }
 
+        private static string FormatEnabledValue(int value)
+        {
+            return value > 0 ? "Enabled" : "Disabled";
+        }
+
         internal static string FormatFallbackItemConsumptionValue(int itemId, int quantity, string resolvedItemName = null)
         {
             if (itemId <= 0)
@@ -1121,7 +1126,10 @@ namespace HaCreator.MapSimulator.Loaders
             "mpCon",
             "hpCon",
             "moneyCon",
+            "damagebymoneyCon",
             "iceGageCon",
+            "massSpell",
+            "magicSteal",
             "itemCon",
             "itemConsume",
             "bulletConsume",
@@ -1194,7 +1202,10 @@ namespace HaCreator.MapSimulator.Loaders
                 ["mpCon"] = new("mpCon", "MP Cost"),
                 ["hpCon"] = new("hpCon", "HP Cost"),
                 ["moneyCon"] = new("moneyCon", "Meso Cost"),
+                ["damagebymoneyCon"] = new("damagebymoneyCon", "Damage by Meso Cost", formatter: FormatEnabledValue),
                 ["iceGageCon"] = new("iceGageCon", "Ice Gauge Cost"),
+                ["massSpell"] = new("massSpell", "Mass Spell", formatter: FormatEnabledValue),
+                ["magicSteal"] = new("magicSteal", "Magic Steal", formatter: FormatEnabledValue),
                 ["bulletConsume"] = new("bulletConsume", "Ammo Cost"),
                 ["cooltime"] = new("cooltime", "Cooldown", formatter: value => $"{value} sec"),
                 ["time"] = new("time", "Duration", formatter: value => $"{value} sec"),

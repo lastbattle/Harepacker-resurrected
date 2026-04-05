@@ -16,6 +16,8 @@ namespace HaCreator.MapSimulator
 {
     public partial class MapSimulator
     {
+        private readonly RemoteUserPacketInboxManager _remoteUserPacketInbox = new();
+
         private void RememberRemoteTownPortalOwnerFieldObservation(
             uint ownerCharacterId,
             Vector2 position,
@@ -47,7 +49,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "remoteuser",
                 "Create or mutate shared remote user actors",
-                "/remoteuser <status|clear|clone|avatar|move|action|chair|mount|effect|helper|team|follow|prepare|preparedclear|visible|inspect|remove|packet|packetraw> ...",
+                "/remoteuser <status|clear|clone|avatar|move|action|chair|mount|effect|helper|team|follow|prepare|preparedclear|visible|inspect|remove|packet|packetraw|inbox> ...",
                 args => HandleRemoteUserCommand(args, currTickCount));
         }
 
@@ -55,7 +57,7 @@ namespace HaCreator.MapSimulator
         {
             if (args == null || args.Length == 0)
             {
-                return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser <status|clear|clone|avatar|move|action|chair|mount|effect|helper|team|follow|prepare|preparedclear|visible|inspect|remove|packet|packetraw> ...");
+                return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser <status|clear|clone|avatar|move|action|chair|mount|effect|helper|team|follow|prepare|preparedclear|visible|inspect|remove|packet|packetraw|inbox> ...");
             }
 
             return args[0].ToLowerInvariant() switch
@@ -79,7 +81,8 @@ namespace HaCreator.MapSimulator
                 "remove" => HandleRemoteUserRemoveCommand(args),
                 "packet" => HandleRemoteUserPacketCommand(args, currentTime),
                 "packetraw" => HandleRemoteUserPacketRawCommand(args, currentTime),
-                _ => ChatCommandHandler.CommandResult.Error("Usage: /remoteuser <status|clear|clone|avatar|move|action|chair|mount|effect|helper|team|follow|prepare|preparedclear|visible|inspect|remove|packet|packetraw> ...")
+                "inbox" => HandleRemoteUserInboxCommand(args),
+                _ => ChatCommandHandler.CommandResult.Error("Usage: /remoteuser <status|clear|clone|avatar|move|action|chair|mount|effect|helper|team|follow|prepare|preparedclear|visible|inspect|remove|packet|packetraw|inbox> ...")
             };
         }
 
@@ -669,6 +672,50 @@ namespace HaCreator.MapSimulator
                 : ChatCommandHandler.CommandResult.Error(result);
         }
 
+        private ChatCommandHandler.CommandResult HandleRemoteUserInboxCommand(string[] args)
+        {
+            if (args.Length < 2)
+            {
+                return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser inbox [status|start [port]|stop]");
+            }
+
+            switch (args[1].ToLowerInvariant())
+            {
+                case "status":
+                    string listeningText = _remoteUserPacketInbox.IsRunning
+                        ? $"listening on 127.0.0.1:{_remoteUserPacketInbox.Port}"
+                        : $"inactive (default 127.0.0.1:{RemoteUserPacketInboxManager.DefaultPort})";
+                    return ChatCommandHandler.CommandResult.Info(
+                        $"Remote user packet inbox {listeningText}, received {_remoteUserPacketInbox.ReceivedCount} packet(s). {_remoteUserPacketInbox.LastStatus}");
+
+                case "start":
+                    int port = RemoteUserPacketInboxManager.DefaultPort;
+                    if (args.Length >= 3 && (!int.TryParse(args[2], out port) || port <= 0 || port > ushort.MaxValue))
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser inbox start [port]");
+                    }
+
+                    _remoteUserPacketInbox.Start(port);
+                    return ChatCommandHandler.CommandResult.Ok(_remoteUserPacketInbox.LastStatus);
+
+                case "stop":
+                    _remoteUserPacketInbox.Stop();
+                    return ChatCommandHandler.CommandResult.Ok(_remoteUserPacketInbox.LastStatus);
+
+                default:
+                    return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser inbox [status|start [port]|stop]");
+            }
+        }
+
+        private void DrainRemoteUserPacketInbox(int currentTime)
+        {
+            while (_remoteUserPacketInbox.TryDequeue(out RemoteUserPacketInboxMessage message))
+            {
+                bool applied = TryApplyRemoteUserPacket(message.PacketType, message.Payload, currentTime, out string result);
+                _remoteUserPacketInbox.RecordDispatchResult(message, applied, result);
+            }
+        }
+
         private bool TryApplyRemoteUserPacket(int packetType, byte[] payload, int currentTime, out string result, int? followCharacterId = null)
         {
             result = null;
@@ -931,11 +978,20 @@ namespace HaCreator.MapSimulator
                     }
 
                     PreparedSkillHudRules.PreparedSkillHudProfile hudProfile = PreparedSkillHudRules.ResolveProfile(preparePacket.SkillId);
+                    PreparedSkillHudRules.ResolveRemotePreparedSkillPhases(
+                        preparePacket.IsKeydownSkill,
+                        preparePacket.IsHolding,
+                        preparePacket.DurationMs,
+                        preparePacket.MaxHoldDurationMs,
+                        preparePacket.AutoEnterHold,
+                        out int activeDurationMs,
+                        out int prepareDurationMs,
+                        out bool autoEnterHold);
                     bool preparedApplied = _remoteUserPool.TrySetPreparedSkill(
                         preparePacket.CharacterId,
                         preparePacket.SkillId,
                         preparePacket.SkillName,
-                        preparePacket.DurationMs,
+                        activeDurationMs,
                         string.IsNullOrWhiteSpace(preparePacket.SkinKey) ? hudProfile.SkinKey : preparePacket.SkinKey,
                         preparePacket.IsKeydownSkill,
                         preparePacket.IsHolding,
@@ -943,11 +999,13 @@ namespace HaCreator.MapSimulator
                             preparePacket.SkillId,
                             preparePacket.GaugeDurationMs,
                             preparePacket.DurationMs),
-                        preparePacket.MaxHoldDurationMs,
+                        Math.Max(0, preparePacket.MaxHoldDurationMs),
                         PreparedSkillHudRules.ResolveTextVariant(preparePacket.SkillId),
                         preparePacket.ShowText && hudProfile.ShowText,
                         currentTime,
-                        out string prepareMessage);
+                        out string prepareMessage,
+                        prepareDurationMs: prepareDurationMs,
+                        autoEnterHold: autoEnterHold);
                     result = preparedApplied
                         ? $"Applied {DescribeRemoteUserPacketType(packetType)} for {preparePacket.CharacterId}."
                         : prepareMessage;

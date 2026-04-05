@@ -16,6 +16,9 @@ namespace HaCreator.MapSimulator.Interaction
         public string Sender { get; init; } = string.Empty;
         public string MemoText { get; init; } = string.Empty;
         public bool IsQuickDelivery { get; init; }
+        public bool IsRead { get; init; }
+        public bool IsKept { get; init; }
+        public bool IsAttachmentClaimed { get; init; }
         public int AttachmentItemId { get; init; }
         public int AttachmentQuantity { get; init; }
         public int AttachmentMeso { get; init; }
@@ -30,6 +33,11 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal static class PacketOwnedParcelPacketCodec
     {
+        private const byte ParcelFlagRead = 1 << 0;
+        private const byte ParcelFlagKeep = 1 << 1;
+        private const byte ParcelFlagClaimed = 1 << 2;
+        private const byte ParcelFlagHasItem = 1 << 3;
+        private const byte ParcelFlagHasMeso = 1 << 4;
         private const int ParcelFixedBodyLength = 0xEA;
         private const int ParcelSenderOffset = 4;
         private const int ParcelSenderLength = 13;
@@ -116,7 +124,9 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             byte[] parcelBytes = reader.ReadBytes(ParcelFixedBodyLength);
-            bool hasItemAttachment = reader.ReadByte() != 0;
+            byte flags = reader.ReadByte();
+            bool hasItemAttachment = (flags & ParcelFlagHasItem) != 0;
+            bool hasMesoAttachment = (flags & ParcelFlagHasMeso) != 0;
 
             int itemId = 0;
             int quantity = 0;
@@ -134,7 +144,7 @@ namespace HaCreator.MapSimulator.Interaction
             string sender = ReadFixedAscii(parcelBytes, ParcelSenderOffset, ParcelSenderLength);
             string memoText = ExtractMemoText(parcelBytes, sender);
             int serial = BinaryPrimitives.ReadInt32LittleEndian(parcelBytes.AsSpan(0, sizeof(int)));
-            int attachmentMeso = parcelBytes.Length >= ParcelMesoOffset + sizeof(int)
+            int attachmentMeso = hasMesoAttachment && parcelBytes.Length >= ParcelMesoOffset + sizeof(int)
                 ? Math.Max(0, BinaryPrimitives.ReadInt32LittleEndian(parcelBytes.AsSpan(ParcelMesoOffset, sizeof(int))))
                 : 0;
 
@@ -143,6 +153,9 @@ namespace HaCreator.MapSimulator.Interaction
                 ParcelSerial = Math.Max(0, serial),
                 Sender = string.IsNullOrWhiteSpace(sender) ? "Maple Delivery Service" : sender,
                 MemoText = memoText,
+                IsRead = (flags & ParcelFlagRead) != 0,
+                IsKept = (flags & ParcelFlagKeep) != 0,
+                IsAttachmentClaimed = (flags & ParcelFlagClaimed) != 0,
                 AttachmentItemId = Math.Max(0, itemId),
                 AttachmentQuantity = Math.Max(0, quantity),
                 AttachmentMeso = attachmentMeso,
@@ -337,6 +350,12 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static string ExtractMemoText(ReadOnlySpan<byte> bytes, string sender)
         {
+            string mapleStringCandidate = ExtractLongestMapleStringCandidate(bytes, sender);
+            if (!string.IsNullOrWhiteSpace(mapleStringCandidate))
+            {
+                return mapleStringCandidate;
+            }
+
             string best = string.Empty;
             for (int i = 0; i < bytes.Length; i++)
             {
@@ -372,6 +391,66 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return best;
+        }
+
+        private static string ExtractLongestMapleStringCandidate(ReadOnlySpan<byte> bytes, string sender)
+        {
+            string best = string.Empty;
+            for (int i = 0; i <= bytes.Length - sizeof(short); i++)
+            {
+                short length = BinaryPrimitives.ReadInt16LittleEndian(bytes.Slice(i, sizeof(short)));
+                if (length < MinimumMemoCandidateLength || length > 120)
+                {
+                    continue;
+                }
+
+                int start = i + sizeof(short);
+                if (start + length > bytes.Length)
+                {
+                    continue;
+                }
+
+                ReadOnlySpan<byte> slice = bytes.Slice(start, length);
+                if (!IsMostlyPrintableAscii(slice))
+                {
+                    continue;
+                }
+
+                string candidate = Encoding.ASCII.GetString(slice).TrimEnd('\0', ' ').Trim();
+                if (string.IsNullOrWhiteSpace(candidate)
+                    || string.Equals(candidate, sender, StringComparison.OrdinalIgnoreCase)
+                    || candidate.All(character => char.IsDigit(character)))
+                {
+                    continue;
+                }
+
+                if (candidate.Length > best.Length)
+                {
+                    best = candidate;
+                }
+            }
+
+            return best;
+        }
+
+        private static bool IsMostlyPrintableAscii(ReadOnlySpan<byte> bytes)
+        {
+            if (bytes.Length == 0)
+            {
+                return false;
+            }
+
+            int printableCount = 0;
+            for (int i = 0; i < bytes.Length; i++)
+            {
+                byte value = bytes[i];
+                if (value == 0 || IsPrintableAscii(value))
+                {
+                    printableCount++;
+                }
+            }
+
+            return printableCount >= (bytes.Length * 3) / 4;
         }
 
         private static bool IsPrintableAscii(byte value)

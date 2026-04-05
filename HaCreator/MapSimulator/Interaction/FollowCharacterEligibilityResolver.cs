@@ -25,33 +25,35 @@ namespace HaCreator.MapSimulator.Interaction
             int? mechanicMode,
             CharacterPart activeMountedRenderOwner)
         {
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return 0;
+            }
+
             if (activeMountedRenderOwner?.Slot == EquipSlot.TamingMob
                 && CharacterAssembler.SupportsTamingMobAction(activeMountedRenderOwner, actionName))
             {
                 return activeMountedRenderOwner.ItemId;
             }
 
-            if (ClientOwnedVehicleSkillClassifier.IsBattleshipVehicleOwnedCurrentActionName(actionName, includeSupportActions: true))
+            if (tamingMobPart?.Slot == EquipSlot.TamingMob
+                && CharacterAssembler.SupportsTamingMobAction(tamingMobPart, actionName))
+            {
+                return tamingMobPart.ItemId;
+            }
+
+            if (ClientOwnedVehicleSkillClassifier.IsBattleshipMountedActionName(actionName))
             {
                 return BattleshipTamingMobItemId;
             }
 
             if (mechanicMode.GetValueOrDefault() > 0
-                || ClientOwnedVehicleSkillClassifier.IsMechanicVehicleOwnedCurrentActionName(actionName, includeTransformStates: true))
+                || ClientOwnedVehicleSkillClassifier.IsDistinctMechanicVehicleActionName(actionName, includeTransformStates: true))
             {
                 return MechanicTamingMobItemId;
             }
 
-            if (tamingMobPart?.Slot != EquipSlot.TamingMob || string.IsNullOrWhiteSpace(actionName))
-            {
-                return 0;
-            }
-
-            return string.Equals(actionName, "ride2", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "getoff2", StringComparison.OrdinalIgnoreCase)
-                   || CharacterAssembler.SupportsTamingMobAction(tamingMobPart, actionName)
-                ? tamingMobPart.ItemId
-                : 0;
+            return 0;
         }
 
         public static bool IsGhostAction(string actionName)

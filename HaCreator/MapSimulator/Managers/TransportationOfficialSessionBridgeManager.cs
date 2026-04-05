@@ -24,9 +24,11 @@ namespace HaCreator.MapSimulator.Managers
         private const string DefaultProcessName = "MapleStory";
         private const int AddressFamilyInet = 2;
         private const int ErrorInsufficientBuffer = 122;
+        private const int MaxRecentOutboundPackets = 32;
 
         private readonly ConcurrentQueue<TransportationPacketInboxMessage> _pendingMessages = new();
         private readonly object _sync = new();
+        private readonly Queue<OutboundPacketTrace> _recentOutboundPackets = new();
 
         private TcpListener _listener;
         private CancellationTokenSource _listenerCancellation;
@@ -38,6 +40,11 @@ namespace HaCreator.MapSimulator.Managers
             string ProcessName,
             IPEndPoint LocalEndpoint,
             IPEndPoint RemoteEndpoint);
+        public readonly record struct OutboundPacketTrace(
+            int Opcode,
+            int PayloadLength,
+            string PayloadHex,
+            string Source);
 
         private sealed class BridgePair
         {
@@ -87,6 +94,8 @@ namespace HaCreator.MapSimulator.Managers
         public bool HasAttachedClient => _activePair != null;
         public bool HasConnectedSession => _activePair?.InitCompleted == true;
         public int ReceivedCount { get; private set; }
+        public int ForwardedOutboundCount { get; private set; }
+        public int ForwardedOutboundTransportCount { get; private set; }
         public string LastStatus { get; private set; } = "Transport official-session bridge inactive.";
 
         public string DescribeStatus()
@@ -97,7 +106,41 @@ namespace HaCreator.MapSimulator.Managers
             string session = HasConnectedSession
                 ? $"connected session {_activePair?.ClientEndpoint ?? "unknown-client"} -> {_activePair?.RemoteEndpoint ?? "unknown-remote"}"
                 : "no active Maple session";
-            return $"Transport official-session bridge {lifecycle}; {session}; received={ReceivedCount}. {LastStatus}";
+            return $"Transport official-session bridge {lifecycle}; {session}; received={ReceivedCount}; forwardedOutbound={ForwardedOutboundCount}; forwardedOutboundTransport={ForwardedOutboundTransportCount}. {LastStatus}";
+        }
+
+        public string DescribeRecentOutboundPackets(int maxCount = 10)
+        {
+            int normalizedCount = Math.Clamp(maxCount, 1, MaxRecentOutboundPackets);
+            lock (_sync)
+            {
+                if (_recentOutboundPackets.Count == 0)
+                {
+                    return "Transport official-session bridge outbound history is empty.";
+                }
+
+                OutboundPacketTrace[] entries = _recentOutboundPackets
+                    .Reverse()
+                    .Take(normalizedCount)
+                    .ToArray();
+                return "Transport official-session bridge outbound history:"
+                    + Environment.NewLine
+                    + string.Join(
+                        Environment.NewLine,
+                        entries.Select(entry =>
+                            $"opcode={entry.Opcode} payloadLen={entry.PayloadLength} source={entry.Source} payloadHex={entry.PayloadHex}"));
+            }
+        }
+
+        public string ClearRecentOutboundPackets()
+        {
+            lock (_sync)
+            {
+                _recentOutboundPackets.Clear();
+            }
+
+            LastStatus = "Transport official-session bridge outbound history cleared.";
+            return LastStatus;
         }
 
         public static IReadOnlyList<SessionDiscoveryCandidate> DiscoverEstablishedSessions(
@@ -433,11 +476,47 @@ namespace HaCreator.MapSimulator.Managers
 
             try
             {
-                pair.ServerSession.SendPacket(packet.ToArray());
+                byte[] raw = packet.ToArray();
+                pair.ServerSession.SendPacket((byte[])raw.Clone());
+                ForwardedOutboundCount++;
+
+                if (TryDecodeOpcode(raw, out int opcode, out byte[] payload))
+                {
+                    bool isTransportOpcode = opcode == TransportationPacketInboxManager.PacketTypeContiMove
+                        || opcode == TransportationPacketInboxManager.PacketTypeContiState;
+                    if (isTransportOpcode)
+                    {
+                        ForwardedOutboundTransportCount++;
+                    }
+
+                    RecordOutboundPacket(new OutboundPacketTrace(
+                        opcode,
+                        payload?.Length ?? 0,
+                        BuildPayloadPreview(payload),
+                        pair.ClientEndpoint));
+
+                    if (isTransportOpcode)
+                    {
+                        LastStatus = $"Forwarded outbound {TransportationPacketInboxManager.DescribePacket(opcode, payload)} from {pair.ClientEndpoint} to {pair.RemoteEndpoint}.";
+                    }
+                }
             }
             catch (Exception ex)
             {
                 ClearActivePair(pair, $"Transport official-session client handling failed: {ex.Message}");
+            }
+        }
+
+        private void RecordOutboundPacket(OutboundPacketTrace trace)
+        {
+            lock (_sync)
+            {
+                while (_recentOutboundPackets.Count >= MaxRecentOutboundPackets)
+                {
+                    _recentOutboundPackets.Dequeue();
+                }
+
+                _recentOutboundPackets.Enqueue(trace);
             }
         }
 
@@ -490,6 +569,9 @@ namespace HaCreator.MapSimulator.Managers
                 }
 
                 ReceivedCount = 0;
+                ForwardedOutboundCount = 0;
+                ForwardedOutboundTransportCount = 0;
+                _recentOutboundPackets.Clear();
             }
         }
 
@@ -501,26 +583,55 @@ namespace HaCreator.MapSimulator.Managers
         public static bool TryDecodeInboundTransportPacket(byte[] rawPacket, string source, out TransportationPacketInboxMessage message)
         {
             message = null;
-            if (rawPacket == null || rawPacket.Length < sizeof(short))
+            if (!TryDecodeOpcode(rawPacket, out int opcode, out byte[] payload))
             {
                 return false;
             }
 
-            int opcode = BitConverter.ToUInt16(rawPacket, 0);
             if (opcode != TransportationPacketInboxManager.PacketTypeContiMove
                 && opcode != TransportationPacketInboxManager.PacketTypeContiState)
             {
                 return false;
             }
 
-            byte[] payload = new byte[rawPacket.Length - sizeof(short)];
+            message = new TransportationPacketInboxMessage(opcode, payload, source, BitConverter.ToString(rawPacket).Replace("-", string.Empty, StringComparison.Ordinal));
+            return true;
+        }
+
+        private static bool TryDecodeOpcode(byte[] rawPacket, out int opcode, out byte[] payload)
+        {
+            opcode = 0;
+            payload = Array.Empty<byte>();
+            if (rawPacket == null || rawPacket.Length < sizeof(short))
+            {
+                return false;
+            }
+
+            opcode = BitConverter.ToUInt16(rawPacket, 0);
+            payload = new byte[rawPacket.Length - sizeof(short)];
             if (payload.Length > 0)
             {
                 Buffer.BlockCopy(rawPacket, sizeof(short), payload, 0, payload.Length);
             }
 
-            message = new TransportationPacketInboxMessage(opcode, payload, source, BitConverter.ToString(rawPacket).Replace("-", string.Empty, StringComparison.Ordinal));
             return true;
+        }
+
+        private static string BuildPayloadPreview(byte[] payload)
+        {
+            if (payload == null || payload.Length == 0)
+            {
+                return "<none>";
+            }
+
+            const int maxPreviewBytes = 24;
+            byte[] previewBytes = payload.Length <= maxPreviewBytes
+                ? payload
+                : payload.Take(maxPreviewBytes).ToArray();
+            string previewHex = Convert.ToHexString(previewBytes);
+            return payload.Length <= maxPreviewBytes
+                ? previewHex
+                : $"{previewHex}...";
         }
 
         public static bool TryResolveDiscoveryCandidate(

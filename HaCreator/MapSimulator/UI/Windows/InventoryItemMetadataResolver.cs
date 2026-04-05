@@ -35,6 +35,8 @@ namespace HaCreator.MapSimulator.UI
     public static class InventoryItemMetadataResolver
     {
         private const int DefaultStackLimit = 100;
+        private const int RewardPreviewLineLimit = 5;
+        private const int ConsumeItemRequirementLineLimit = 4;
         private static readonly (string Key, string Label)[] CurableStatusEffectKeys =
         {
             ("poison", "Poison"),
@@ -652,6 +654,7 @@ namespace HaCreator.MapSimulator.UI
             AppendScriptedUseEffectLines(effectLines, specProperty);
             AppendPickupModifierEffectLines(effectLines, specProperty);
             AppendMobEffectLines(effectLines, itemProperty?["mob"] as WzSubProperty);
+            AppendRewardEffectLines(effectLines, itemProperty?["reward"] as WzSubProperty);
 
             if (specProperty == null)
             {
@@ -682,6 +685,7 @@ namespace HaCreator.MapSimulator.UI
             AppendThawEffectLine(effectLines, specProperty["thaw"]);
             AppendCrossContinentEffectLine(effectLines, specProperty["ignoreContinent"]);
             AppendReturnMapRecordEffectLine(effectLines, specProperty["returnMapQR"]);
+            AppendRandomMoveInFieldSetEffectLine(effectLines, specProperty["randomMoveInFieldSet"]);
             AppendMobEffectLines(effectLines, specProperty["mob"] as WzSubProperty);
 
             int? durationMs = TryGetPositiveInt(specProperty["time"]);
@@ -739,6 +743,8 @@ namespace HaCreator.MapSimulator.UI
 
             AppendInfoMetadataLines(metadataLines, itemId, infoProperty);
             AppendMonsterBookMetadataLines(metadataLines, infoProperty);
+            AppendQuestRequirementMetadataLines(metadataLines, infoProperty);
+            AppendConsumeItemMetadataLines(metadataLines, infoProperty);
 
             if (isTradeBlocked)
             {
@@ -974,6 +980,20 @@ namespace HaCreator.MapSimulator.UI
                 : $"Item Pickup Modifier: {itemPickupModifier.ToString(CultureInfo.InvariantCulture)} ({targetItemLabel}){chanceSuffix}");
         }
 
+        private static void AppendRewardEffectLines(List<string> effectLines, WzSubProperty rewardProperty)
+        {
+            if (rewardProperty?.WzProperties == null)
+            {
+                return;
+            }
+
+            IReadOnlyList<string> previewLines = BuildRewardPreviewLines(rewardProperty, RewardPreviewLineLimit);
+            for (int i = 0; i < previewLines.Count; i++)
+            {
+                effectLines.Add(previewLines[i]);
+            }
+        }
+
         private static void AppendMobEffectLines(List<string> effectLines, WzSubProperty mobProperty)
         {
             if (mobProperty?.WzProperties == null)
@@ -1062,6 +1082,14 @@ namespace HaCreator.MapSimulator.UI
             if (returnMapRecordId > 0)
             {
                 effectLines.Add($"Uses return-map record #{returnMapRecordId.ToString(CultureInfo.InvariantCulture)}");
+            }
+        }
+
+        private static void AppendRandomMoveInFieldSetEffectLine(List<string> effectLines, WzImageProperty property)
+        {
+            if (GetIntValue(property) == 1)
+            {
+                effectLines.Add("Moves to a random location in the current field");
             }
         }
 
@@ -1174,6 +1202,39 @@ namespace HaCreator.MapSimulator.UI
             metadataLines.Add(isMonsterBookCard
                 ? $"Monster Book Card: {mobLabel}"
                 : $"Associated Mob: {mobLabel}");
+        }
+
+        private static void AppendQuestRequirementMetadataLines(List<string> metadataLines, WzSubProperty infoProperty)
+        {
+            if (infoProperty == null)
+            {
+                return;
+            }
+
+            int requiredQuestId = GetIntValue(infoProperty["reqQuestOnProgress"]);
+            if (requiredQuestId > 0)
+            {
+                metadataLines.Add($"Requires Quest In Progress: {ResolveQuestTooltipLabel(requiredQuestId)}");
+            }
+
+            if (GetIntValue(infoProperty["pquest"]) == 1)
+            {
+                metadataLines.Add("Party Quest Item");
+            }
+        }
+
+        private static void AppendConsumeItemMetadataLines(List<string> metadataLines, WzSubProperty infoProperty)
+        {
+            if (infoProperty?["consumeitem"] is not WzSubProperty consumeItemProperty)
+            {
+                return;
+            }
+
+            IReadOnlyList<string> requirementLines = BuildConsumeItemRequirementLines(consumeItemProperty, ConsumeItemRequirementLineLimit);
+            for (int i = 0; i < requirementLines.Count; i++)
+            {
+                metadataLines.Add(requirementLines[i]);
+            }
         }
 
         private static bool HasNumericChildEntries(WzSubProperty property, params string[] ignoredNames)
@@ -1298,6 +1359,125 @@ namespace HaCreator.MapSimulator.UI
                 : $"Skill: {skillName}";
         }
 
+        private static string ResolveQuestTooltipLabel(int questId)
+        {
+            if (global::HaCreator.Program.InfoManager?.QuestInfos != null
+                && global::HaCreator.Program.InfoManager.QuestInfos.TryGetValue(
+                    questId.ToString(CultureInfo.InvariantCulture),
+                    out WzSubProperty questProperty))
+            {
+                string questName = (questProperty?["name"] as WzStringProperty)?.Value?.Trim();
+                if (!string.IsNullOrWhiteSpace(questName))
+                {
+                    return questName;
+                }
+            }
+
+            return $"Quest #{questId.ToString(CultureInfo.InvariantCulture)}";
+        }
+
+        private static IReadOnlyList<string> BuildRewardPreviewLines(WzSubProperty rewardProperty, int previewLineLimit)
+        {
+            List<string> lines = new();
+            if (rewardProperty?.WzProperties == null)
+            {
+                return lines;
+            }
+
+            List<WzSubProperty> entries = GetNumericNamedChildren(rewardProperty);
+            if (entries.Count == 0)
+            {
+                return lines;
+            }
+
+            int maxLines = previewLineLimit <= 0 ? RewardPreviewLineLimit : previewLineLimit;
+            int visibleCount = Math.Min(entries.Count, maxLines);
+            for (int i = 0; i < visibleCount; i++)
+            {
+                WzSubProperty entry = entries[i];
+                int itemId = GetIntOrStringValue(entry["item"]);
+                if (itemId <= 0)
+                {
+                    continue;
+                }
+
+                string itemLabel = ResolveTooltipItemLabel(itemId);
+                int count = Math.Max(1, GetIntOrStringValue(entry["count"]));
+                int probability = GetIntOrStringValue(entry["prob"]);
+                string chanceSuffix = probability > 0
+                    ? $" ({probability.ToString(CultureInfo.InvariantCulture)}%)"
+                    : string.Empty;
+                lines.Add($"Reward: {itemLabel} x{count.ToString(CultureInfo.InvariantCulture)}{chanceSuffix}");
+            }
+
+            int remaining = entries.Count - visibleCount;
+            if (remaining > 0)
+            {
+                lines.Add($"Reward: ... and {remaining.ToString(CultureInfo.InvariantCulture)} more");
+            }
+
+            return lines;
+        }
+
+        private static IReadOnlyList<string> BuildConsumeItemRequirementLines(WzSubProperty consumeItemProperty, int previewLineLimit)
+        {
+            List<string> lines = new();
+            if (consumeItemProperty?.WzProperties == null)
+            {
+                return lines;
+            }
+
+            List<WzSubProperty> entries = GetNumericNamedChildren(consumeItemProperty);
+            if (entries.Count == 0)
+            {
+                return lines;
+            }
+
+            int maxLines = previewLineLimit <= 0 ? ConsumeItemRequirementLineLimit : previewLineLimit;
+            int visibleCount = Math.Min(entries.Count, maxLines);
+            for (int i = 0; i < visibleCount; i++)
+            {
+                WzSubProperty entry = entries[i];
+                int itemId = GetIntOrStringValue(entry["itemcode"]);
+                if (itemId <= 0)
+                {
+                    continue;
+                }
+
+                string itemLabel = ResolveTooltipItemLabel(itemId);
+                int count = Math.Max(1, GetIntOrStringValue(entry["count"]));
+                int rate = GetIntOrStringValue(entry["rate"]);
+                string countSuffix = count > 1 ? $" x{count.ToString(CultureInfo.InvariantCulture)}" : string.Empty;
+                string rateSuffix = rate > 0 ? $" ({rate.ToString(CultureInfo.InvariantCulture)}%)" : string.Empty;
+                lines.Add($"Consumes: {itemLabel}{countSuffix}{rateSuffix}");
+            }
+
+            int remaining = entries.Count - visibleCount;
+            if (remaining > 0)
+            {
+                lines.Add($"Consumes: ... and {remaining.ToString(CultureInfo.InvariantCulture)} more");
+            }
+
+            return lines;
+        }
+
+        public static IReadOnlyList<string> BuildRewardPreviewLinesForTests(WzSubProperty rewardProperty, int previewLineLimit = RewardPreviewLineLimit)
+        {
+            return BuildRewardPreviewLines(rewardProperty, previewLineLimit);
+        }
+
+        public static IReadOnlyList<string> BuildConsumeItemRequirementLinesForTests(WzSubProperty consumeItemProperty, int previewLineLimit = ConsumeItemRequirementLineLimit)
+        {
+            return BuildConsumeItemRequirementLines(consumeItemProperty, previewLineLimit);
+        }
+
+        public static IReadOnlyList<string> BuildQuestRequirementMetadataLinesForTests(WzSubProperty infoProperty)
+        {
+            List<string> lines = new();
+            AppendQuestRequirementMetadataLines(lines, infoProperty);
+            return lines;
+        }
+
         private static string ResolveSkillName(int skillId)
         {
             if (global::HaCreator.Program.InfoManager?.SkillNameCache == null)
@@ -1365,6 +1545,46 @@ namespace HaCreator.MapSimulator.UI
                 WzDoubleProperty doubleProperty => (int)doubleProperty.Value,
                 _ => 0
             };
+        }
+
+        private static int GetIntOrStringValue(WzImageProperty property)
+        {
+            if (property is WzStringProperty stringProperty
+                && int.TryParse(stringProperty.Value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsed))
+            {
+                return parsed;
+            }
+
+            return GetIntValue(property);
+        }
+
+        private static List<WzSubProperty> GetNumericNamedChildren(WzSubProperty property)
+        {
+            List<(int Index, WzSubProperty Entry)> indexedEntries = new();
+            if (property?.WzProperties == null)
+            {
+                return new List<WzSubProperty>();
+            }
+
+            foreach (WzImageProperty child in property.WzProperties)
+            {
+                if (child is not WzSubProperty entry
+                    || !int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int index))
+                {
+                    continue;
+                }
+
+                indexedEntries.Add((index, entry));
+            }
+
+            indexedEntries.Sort((left, right) => left.Index.CompareTo(right.Index));
+            List<WzSubProperty> sorted = new(indexedEntries.Count);
+            for (int i = 0; i < indexedEntries.Count; i++)
+            {
+                sorted.Add(indexedEntries[i].Entry);
+            }
+
+            return sorted;
         }
     }
 }

@@ -10,6 +10,7 @@ using MapleLib.WzLib.WzProperties;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
+using MapleLib.WzLib.WzStructure.Data.QuestStructure;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -591,7 +592,9 @@ namespace HaCreator.MapSimulator
                 new PacketOwnedBalloonTextFormattingContext
                 {
                     PlayerName = _playerManager?.Player?.Build?.Name,
-                    CurrentMapId = _mapBoard?.MapInfo?.id
+                    CurrentMapId = _mapBoard?.MapInfo?.id,
+                    ResolveItemCountText = ResolvePacketOwnedBalloonItemCountText,
+                    ResolveQuestStateText = ResolvePacketOwnedBalloonQuestStateText
                 });
             for (int i = 0; i < sanitized.Length; i++)
             {
@@ -674,9 +677,62 @@ namespace HaCreator.MapSimulator
                     consumedCharacters = 1;
                     return true;
 
+                case 'm':
+                case 'c':
+                    consumedCharacters = 1;
+                    return true;
+
                 default:
                     return false;
             }
+        }
+
+        private string ResolvePacketOwnedBalloonItemCountText(int itemId)
+        {
+            if (itemId <= 0 || uiWindowManager?.InventoryWindow is not IInventoryRuntime inventoryWindow)
+            {
+                return "0";
+            }
+
+            InventoryType inventoryType = InventoryItemMetadataResolver.ResolveInventoryType(itemId);
+            if (inventoryType != InventoryType.NONE)
+            {
+                return Math.Max(0, inventoryWindow.GetItemCount(inventoryType, itemId)).ToString(CultureInfo.InvariantCulture);
+            }
+
+            InventoryType[] fallbackTypes =
+            {
+                InventoryType.EQUIP,
+                InventoryType.USE,
+                InventoryType.SETUP,
+                InventoryType.ETC,
+                InventoryType.CASH
+            };
+
+            int totalCount = 0;
+            for (int i = 0; i < fallbackTypes.Length; i++)
+            {
+                totalCount += Math.Max(0, inventoryWindow.GetItemCount(fallbackTypes[i], itemId));
+            }
+
+            return totalCount.ToString(CultureInfo.InvariantCulture);
+        }
+
+        private string ResolvePacketOwnedBalloonQuestStateText(int questId)
+        {
+            if (questId <= 0)
+            {
+                return "Not started";
+            }
+
+            QuestStateType state = _questRuntime.GetCurrentState(questId);
+            return state switch
+            {
+                QuestStateType.Started => "In progress",
+                QuestStateType.Completed => "Completed",
+                QuestStateType.Not_Started => "Not started",
+                _ => state.ToString()
+            };
         }
 
         private int SkipPacketOwnedBalloonLineLeadingSpaces(PacketOwnedBalloonGlyph[] glyphs, int startIndex)

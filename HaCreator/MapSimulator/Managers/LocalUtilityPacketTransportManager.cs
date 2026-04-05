@@ -18,6 +18,8 @@ namespace HaCreator.MapSimulator.Managers
     {
         public const int DefaultPort = 18487;
 
+        private sealed record PendingOutboundPacket(int Opcode, byte[] RawPacket);
+
         private sealed class ConnectedClient : IDisposable
         {
             public ConnectedClient(int id, TcpClient client, string endpoint)
@@ -55,6 +57,7 @@ namespace HaCreator.MapSimulator.Managers
         }
 
         private readonly ConcurrentDictionary<int, ConnectedClient> _clients = new();
+        private readonly ConcurrentQueue<PendingOutboundPacket> _pendingOutboundPackets = new();
         private readonly object _listenerLock = new();
         private int _nextClientId;
 
@@ -69,6 +72,10 @@ namespace HaCreator.MapSimulator.Managers
         public int SentCount { get; private set; }
         public int LastSentOpcode { get; private set; } = -1;
         public byte[] LastSentRawPacket { get; private set; } = Array.Empty<byte>();
+        public int QueuedCount { get; private set; }
+        public int LastQueuedOpcode { get; private set; } = -1;
+        public byte[] LastQueuedRawPacket { get; private set; } = Array.Empty<byte>();
+        public int PendingPacketCount => _pendingOutboundPackets.Count;
         public string LastStatus { get; private set; } = "Local utility packet outbox inactive.";
 
         public string DescribeStatus()
@@ -82,7 +89,10 @@ namespace HaCreator.MapSimulator.Managers
             string lastPacket = LastSentOpcode >= 0
                 ? $" lastOut={LastSentOpcode}[{Convert.ToHexString(LastSentRawPacket)}]."
                 : string.Empty;
-            return $"Local utility packet outbox {lifecycle}; {clients}; sent={SentCount}.{lastPacket} {LastStatus}";
+            string queuedPacket = LastQueuedOpcode >= 0
+                ? $" lastQueued={LastQueuedOpcode}[{Convert.ToHexString(LastQueuedRawPacket)}]."
+                : string.Empty;
+            return $"Local utility packet outbox {lifecycle}; {clients}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}.{lastPacket}{queuedPacket} {LastStatus}";
         }
 
         public void Start(int port = DefaultPort)
@@ -125,6 +135,7 @@ namespace HaCreator.MapSimulator.Managers
 
         public bool TrySendOutboundPacket(int opcode, IReadOnlyList<byte> payload, out string status)
         {
+            FlushQueuedOutboundPackets();
             ConnectedClient[] clients = _clients.Values.ToArray();
             if (clients.Length == 0)
             {
@@ -177,6 +188,25 @@ namespace HaCreator.MapSimulator.Managers
             return true;
         }
 
+        public bool TryQueueOutboundPacket(int opcode, IReadOnlyList<byte> payload, out string status)
+        {
+            if (opcode < ushort.MinValue || opcode > ushort.MaxValue)
+            {
+                status = $"Local utility outbound opcode {opcode} is outside the 16-bit Maple packet range.";
+                LastStatus = status;
+                return false;
+            }
+
+            byte[] rawPacket = BuildRawPacket((ushort)opcode, payload);
+            _pendingOutboundPackets.Enqueue(new PendingOutboundPacket(opcode, rawPacket));
+            QueuedCount++;
+            LastQueuedOpcode = opcode;
+            LastQueuedRawPacket = rawPacket;
+            status = $"Queued packetoutraw {Convert.ToHexString(rawPacket)} for deferred local utility outbox delivery.";
+            LastStatus = status;
+            return true;
+        }
+
         public void Dispose()
         {
             lock (_listenerLock)
@@ -196,7 +226,10 @@ namespace HaCreator.MapSimulator.Managers
                     string endpoint = client.Client?.RemoteEndPoint?.ToString() ?? $"local-utility-outbox-{clientId}";
                     var connectedClient = new ConnectedClient(clientId, client, endpoint);
                     _clients[clientId] = connectedClient;
-                    LastStatus = $"Local utility packet outbox client connected: {endpoint}.";
+                    int flushed = FlushQueuedOutboundPackets();
+                    LastStatus = flushed > 0
+                        ? $"Local utility packet outbox client connected: {endpoint}. Flushed {flushed} queued packet(s)."
+                        : $"Local utility packet outbox client connected: {endpoint}.";
                     _ = Task.Run(() => HandleClientAsync(connectedClient, cancellationToken), cancellationToken);
                 }
             }
@@ -302,6 +335,55 @@ namespace HaCreator.MapSimulator.Managers
                 LastSentOpcode = -1;
                 LastSentRawPacket = Array.Empty<byte>();
             }
+        }
+
+        private int FlushQueuedOutboundPackets()
+        {
+            int flushed = 0;
+            while (_pendingOutboundPackets.TryPeek(out PendingOutboundPacket packet))
+            {
+                ConnectedClient[] clients = _clients.Values.ToArray();
+                if (clients.Length == 0)
+                {
+                    break;
+                }
+
+                string line = $"packetoutraw {Convert.ToHexString(packet.RawPacket)}";
+                int delivered = 0;
+                foreach (ConnectedClient client in clients)
+                {
+                    try
+                    {
+                        lock (client.WriteLock)
+                        {
+                            client.Writer.WriteLine(line);
+                        }
+
+                        delivered++;
+                    }
+                    catch (Exception ex)
+                    {
+                        RemoveClient(client.Id, $"Local utility packet outbox send failed for {client.Endpoint}: {ex.Message}");
+                    }
+                }
+
+                if (delivered == 0)
+                {
+                    break;
+                }
+
+                if (!_pendingOutboundPackets.TryDequeue(out PendingOutboundPacket dequeuedPacket))
+                {
+                    break;
+                }
+
+                SentCount++;
+                LastSentOpcode = dequeuedPacket.Opcode;
+                LastSentRawPacket = dequeuedPacket.RawPacket;
+                flushed++;
+            }
+
+            return flushed;
         }
 
         private static byte[] BuildRawPacket(ushort opcode, IReadOnlyList<byte> payload)

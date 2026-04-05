@@ -34,6 +34,7 @@ namespace HaCreator.MapSimulator
         };
 
         private readonly CashServicePacketInboxManager _cashServicePacketInbox = new();
+        private const string CashServiceStageBgmPath = "BgmUI/ShopBgm";
 
         private void WireCashServiceOwnerWindows()
         {
@@ -343,11 +344,13 @@ namespace HaCreator.MapSimulator
 
         private void WireItcChildOwnerWindows()
         {
-            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.Mts) is not AdminShopDialogUI mtsWindow
-                || uiWindowManager.GetWindow(MapSimulatorWindowNames.MtsStatus) is not CashServiceStageWindow mtsStageWindow)
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.MtsStatus) is not CashServiceStageWindow mtsStageWindow)
             {
                 return;
             }
+
+            AdminShopDialogUI mtsWindow = uiWindowManager.GetWindow(MapSimulatorWindowNames.Mts) as AdminShopDialogUI;
+            IInventoryRuntime inventoryRuntime = uiWindowManager.InventoryWindow as IInventoryRuntime;
 
             if (uiWindowManager.GetWindow(MapSimulatorWindowNames.ItcCharacter) is CashShopStageChildWindow characterWindow)
             {
@@ -359,20 +362,48 @@ namespace HaCreator.MapSimulator
             {
                 saleWindow.SetFont(_fontChat);
                 saleWindow.SetContentProvider(mtsStageWindow.DescribeSaleOwnerState);
+                saleWindow.SetExternalAction("BtShoppingBasket", () =>
+                    $"CITCWnd_Sale kept shopping-basket ownership in the ITC stage (normal-item mutations: {mtsStageWindow.ItcNormalItemMutationCount.ToString(CultureInfo.InvariantCulture)}).");
+                saleWindow.SetExternalAction("BtBuy", () =>
+                    $"CITCWnd_Sale staged listing {mtsStageWindow.ItcNormalItemSelectedListingId.ToString(CultureInfo.InvariantCulture)} at {mtsStageWindow.ItcNormalItemSelectedPrice.ToString("N0", CultureInfo.InvariantCulture)} mesos.");
             }
 
             if (uiWindowManager.GetWindow(MapSimulatorWindowNames.ItcPurchase) is CashShopStageChildWindow purchaseWindow)
             {
                 purchaseWindow.SetFont(_fontChat);
                 purchaseWindow.SetContentProvider(mtsStageWindow.DescribePurchaseOwnerState);
+                purchaseWindow.SetExternalAction("BtRegistration", () =>
+                    $"CITCWnd_Purchase armed listing registration on category {mtsStageWindow.ItcNormalItemCategory.ToString(CultureInfo.InvariantCulture)}, page {mtsStageWindow.ItcNormalItemPage.ToString(CultureInfo.InvariantCulture)}.");
+                purchaseWindow.SetExternalAction("BtSell", () =>
+                    "CITCWnd_Purchase switched focus back to the dedicated sale owner.");
             }
 
             if (uiWindowManager.GetWindow(MapSimulatorWindowNames.ItcInventory) is CashShopStageChildWindow inventoryWindow)
             {
                 inventoryWindow.SetFont(_fontChat);
-                inventoryWindow.SetContentProvider(mtsWindow.DescribeInventoryOwnerState);
+                inventoryWindow.SetContentProvider(mtsWindow != null
+                    ? mtsWindow.DescribeInventoryOwnerState
+                    : mtsStageWindow.DescribeInventoryOwnerState);
                 inventoryWindow.SetInventoryStateProvider(() =>
                 {
+                    if (mtsWindow == null)
+                    {
+                        return new CashShopStageChildWindow.InventoryOwnerState
+                        {
+                            EquipCount = inventoryRuntime?.GetSlots(InventoryType.EQUIP).Count ?? 0,
+                            UseCount = inventoryRuntime?.GetSlots(InventoryType.USE).Count ?? 0,
+                            SetupCount = inventoryRuntime?.GetSlots(InventoryType.SETUP).Count ?? 0,
+                            EtcCount = inventoryRuntime?.GetSlots(InventoryType.ETC).Count ?? 0,
+                            CashCount = inventoryRuntime?.GetSlots(InventoryType.CASH).Count ?? 0,
+                            ScrollOffset = 0,
+                            WheelRange = 158,
+                            HasNumberFont = true,
+                            SelectedEntryTitle = mtsStageWindow.ItcNormalItemMutationCount > 0
+                                ? $"Listing {mtsStageWindow.ItcNormalItemSelectedListingId.ToString(CultureInfo.InvariantCulture)}"
+                                : "No staged ITC listing."
+                        };
+                    }
+
                     AdminShopDialogUI.InventoryOwnerSnapshot snapshot = mtsWindow.GetInventoryOwnerSnapshot();
                     return new CashShopStageChildWindow.InventoryOwnerState
                     {
@@ -399,15 +430,57 @@ namespace HaCreator.MapSimulator
             {
                 subTabWindow.SetFont(_fontChat);
                 subTabWindow.SetContentProvider(mtsStageWindow.DescribeSubTabOwnerState);
+                subTabWindow.SetExternalAction("BtSearch", () =>
+                    $"CITCWnd_SubTab search stayed on category {mtsStageWindow.ItcNormalItemCategory.ToString(CultureInfo.InvariantCulture)}, page {mtsStageWindow.ItcNormalItemPage.ToString(CultureInfo.InvariantCulture)}.");
             }
 
             if (uiWindowManager.GetWindow(MapSimulatorWindowNames.ItcList) is CashShopStageChildWindow listWindow)
             {
                 listWindow.SetFont(_fontChat);
                 listWindow.SetContentProvider(() => BuildItcListOwnerLines(mtsWindow, mtsStageWindow));
+                listWindow.SetExternalAction("BtBuy", () =>
+                    $"CITCWnd_List buy staged listing {mtsStageWindow.ItcNormalItemSelectedListingId.ToString(CultureInfo.InvariantCulture)}.");
+                listWindow.SetExternalAction("BtDelete", () =>
+                    $"CITCWnd_List delete staged listing {mtsStageWindow.ItcNormalItemSelectedListingId.ToString(CultureInfo.InvariantCulture)}.");
+                listWindow.SetExternalAction("BtCancel", () => "CITCWnd_List cancelled the currently staged action.");
+                listWindow.SetExternalAction("BtBuy1", () =>
+                    $"CITCWnd_List opened alternate buy confirmation for listing {mtsStageWindow.ItcNormalItemSelectedListingId.ToString(CultureInfo.InvariantCulture)}.");
                 listWindow.SetListStateProvider(() =>
                 {
-                    AdminShopDialogUI.ListOwnerSnapshot snapshot = mtsWindow.GetListOwnerSnapshot();
+                    AdminShopDialogUI.ListOwnerSnapshot snapshot = mtsWindow?.GetListOwnerSnapshot();
+                    if (snapshot == null)
+                    {
+                        List<CashShopStageChildWindow.ListOwnerEntryState> fallbackEntries = new();
+                        if (mtsStageWindow.ItcNormalItemMutationCount > 0)
+                        {
+                            fallbackEntries.Add(new CashShopStageChildWindow.ListOwnerEntryState
+                            {
+                                Title = $"Listing {mtsStageWindow.ItcNormalItemSelectedListingId.ToString(CultureInfo.InvariantCulture)}",
+                                Detail = mtsStageWindow.ItcNormalItemLastSummary,
+                                Seller = "CITC packet owner",
+                                PriceLabel = mtsStageWindow.ItcNormalItemSelectedPrice.ToString("N0", CultureInfo.InvariantCulture),
+                                StateLabel = $"Subtype {mtsStageWindow.ItcNormalItemSubtype.ToString(CultureInfo.InvariantCulture)}",
+                                IsSelected = true
+                            });
+                        }
+
+                        return new CashShopStageChildWindow.ListOwnerState
+                        {
+                            PaneLabel = "CITC list",
+                            BrowseModeLabel = $"Sort {mtsStageWindow.ItcNormalItemSortType.ToString(CultureInfo.InvariantCulture)}",
+                            CategoryLabel = $"Category {mtsStageWindow.ItcNormalItemCategory.ToString(CultureInfo.InvariantCulture)}",
+                            FooterMessage = mtsStageWindow.ItcNormalItemLastSummary,
+                            SelectedEntryDetail = fallbackEntries.Count > 0 ? fallbackEntries[0].Detail : string.Empty,
+                            SelectedIndex = fallbackEntries.Count > 0 ? 0 : -1,
+                            ScrollOffset = 0,
+                            TotalCount = Math.Max(mtsStageWindow.ItcNormalItemEntryCount, fallbackEntries.Count),
+                            PlateFocusIndex = fallbackEntries.Count > 0 ? 0 : -1,
+                            HasKeyFocusCanvas = true,
+                            VisibleEntries = fallbackEntries,
+                            RecentPackets = mtsStageWindow.GetRecentPacketSummaries()
+                        };
+                    }
+
                     List<CashShopStageChildWindow.ListOwnerEntryState> entries = new();
                     for (int i = 0; i < snapshot.VisibleEntries.Count; i++)
                     {
@@ -426,9 +499,11 @@ namespace HaCreator.MapSimulator
                     return new CashShopStageChildWindow.ListOwnerState
                     {
                         PaneLabel = snapshot.PaneLabel,
-                        BrowseModeLabel = snapshot.BrowseModeLabel,
-                        CategoryLabel = snapshot.CategoryLabel,
-                        FooterMessage = snapshot.FooterMessage,
+                        BrowseModeLabel = $"{snapshot.BrowseModeLabel} / Sort {mtsStageWindow.ItcNormalItemSortType.ToString(CultureInfo.InvariantCulture)}",
+                        CategoryLabel = $"{snapshot.CategoryLabel} / Cat {mtsStageWindow.ItcNormalItemCategory.ToString(CultureInfo.InvariantCulture)}",
+                        FooterMessage = string.IsNullOrWhiteSpace(snapshot.FooterMessage)
+                            ? mtsStageWindow.ItcNormalItemLastSummary
+                            : $"{snapshot.FooterMessage} {mtsStageWindow.ItcNormalItemLastSummary}",
                         SelectedEntryDetail = snapshot.VisibleEntries.FirstOrDefault(entry => entry.IsSelected)?.Detail ?? string.Empty,
                         SelectedIndex = snapshot.SelectedIndex,
                         ScrollOffset = snapshot.ScrollOffset,
@@ -452,6 +527,14 @@ namespace HaCreator.MapSimulator
                     PrepaidCashBalance = mtsStageWindow.PrepaidCashBalance,
                     ChargeParam = mtsStageWindow.ChargeParam,
                     StatusMessage = mtsStageWindow.StatusMessage
+                });
+                statusWindow.SetExternalAction("BtCharge", () => "CITCWnd_Status kept charge ownership on the ITC stage.");
+                statusWindow.SetExternalAction("BtCheck", () =>
+                    $"CITCWnd_Status queried balances after {mtsStageWindow.ItcNormalItemMutationCount.ToString(CultureInfo.InvariantCulture)} normal-item mutation(s).");
+                statusWindow.SetExternalAction("BtExit", () =>
+                {
+                    HideItcOwnerFamilyWindows();
+                    return "CITCWnd_Status closed the parent CITC owner family.";
                 });
             }
         }
@@ -503,6 +586,8 @@ namespace HaCreator.MapSimulator
             {
                 uiWindowManager?.HideWindow(CashShopChildOwnerWindowNames[i]);
             }
+
+            RefreshCashServiceStageBgmOverride();
         }
 
         private void ShowCashShopChildOwnerWindows()
@@ -521,6 +606,8 @@ namespace HaCreator.MapSimulator
             {
                 uiWindowManager?.HideWindow(ItcChildOwnerWindowNames[i]);
             }
+
+            RefreshCashServiceStageBgmOverride();
         }
 
         private void ShowItcChildOwnerWindows()
@@ -547,6 +634,7 @@ namespace HaCreator.MapSimulator
                 ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.CashShop);
                 ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.CashAvatarPreview);
                 ShowCashShopChildOwnerWindows();
+                ApplyCashServiceStageBgmOverride();
                 SyncCashServiceStageWindowState(MapSimulatorWindowNames.CashShopStage, stageKind, resetStageSession);
                 return;
             }
@@ -555,7 +643,53 @@ namespace HaCreator.MapSimulator
             ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.MtsStatus);
             ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.Mts);
             ShowItcChildOwnerWindows();
+            ApplyCashServiceStageBgmOverride();
             SyncCashServiceStageWindowState(MapSimulatorWindowNames.MtsStatus, stageKind, resetStageSession);
+        }
+
+        private void ApplyCashServiceStageBgmOverride()
+        {
+            RequestSpecialFieldBgmOverride(CashServiceStageBgmPath);
+        }
+
+        private void RefreshCashServiceStageBgmOverride()
+        {
+            if (uiWindowManager == null)
+            {
+                ClearSpecialFieldBgmOverride();
+                return;
+            }
+
+            bool cashServiceVisible =
+                uiWindowManager.GetWindow(MapSimulatorWindowNames.CashShopStage)?.IsVisible == true
+                || uiWindowManager.GetWindow(MapSimulatorWindowNames.CashShop)?.IsVisible == true
+                || uiWindowManager.GetWindow(MapSimulatorWindowNames.CashAvatarPreview)?.IsVisible == true
+                || uiWindowManager.GetWindow(MapSimulatorWindowNames.MtsStatus)?.IsVisible == true
+                || uiWindowManager.GetWindow(MapSimulatorWindowNames.Mts)?.IsVisible == true;
+            if (!cashServiceVisible)
+            {
+                for (int i = 0; i < CashShopChildOwnerWindowNames.Length && !cashServiceVisible; i++)
+                {
+                    cashServiceVisible = uiWindowManager.GetWindow(CashShopChildOwnerWindowNames[i])?.IsVisible == true;
+                }
+            }
+
+            if (!cashServiceVisible)
+            {
+                for (int i = 0; i < ItcChildOwnerWindowNames.Length && !cashServiceVisible; i++)
+                {
+                    cashServiceVisible = uiWindowManager.GetWindow(ItcChildOwnerWindowNames[i])?.IsVisible == true;
+                }
+            }
+
+            if (cashServiceVisible)
+            {
+                ApplyCashServiceStageBgmOverride();
+            }
+            else
+            {
+                ClearSpecialFieldBgmOverride();
+            }
         }
 
         private void SyncCashServiceStageWindowState(string windowName, CashServiceOwnerStageKind stageKind, bool resetStageSession)

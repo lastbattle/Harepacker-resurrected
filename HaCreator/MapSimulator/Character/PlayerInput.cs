@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Runtime.InteropServices;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Input;
 
@@ -151,6 +152,9 @@ namespace HaCreator.MapSimulator.Character
     /// </summary>
     public class PlayerInput
     {
+        [DllImport("user32.dll", ExactSpelling = true)]
+        private static extern uint MapVirtualKey(uint uCode, uint uMapType);
+
         public enum GamepadAxisResponseCurve
         {
             Linear = 0,
@@ -772,11 +776,16 @@ namespace HaCreator.MapSimulator.Character
             const int ctrlBit = 1 << 29;
             const int keyboardTag = 1 << 30;
             const int gamepadTag = 1 << 28;
+            const int keyboardExtendedBit = 1 << 27;
 
             int token = requiresCtrl ? ctrlBit : 0;
             if (key.HasValue)
             {
-                return token | keyboardTag | (int)key.Value;
+                int physicalCode = ResolveKeyboardPhysicalInputCode(key.Value, out bool isExtended);
+                return token
+                    | keyboardTag
+                    | (isExtended ? keyboardExtendedBit : 0)
+                    | physicalCode;
             }
 
             if (gamepadButton.HasValue)
@@ -785,6 +794,42 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return token;
+        }
+
+        private static int ResolveKeyboardPhysicalInputCode(Keys key, out bool isExtended)
+        {
+            isExtended = IsExtendedKeyboardKey(key);
+
+            uint scanCode = MapVirtualKey((uint)key, 0);
+            if (scanCode > 0)
+            {
+                return (int)(scanCode & 0xFFFFu);
+            }
+
+            // Fall back to the logical key code if scan-code resolution fails.
+            return (int)key;
+        }
+
+        private static bool IsExtendedKeyboardKey(Keys key)
+        {
+            return key switch
+            {
+                Keys.RightAlt => true,
+                Keys.RightControl => true,
+                Keys.Insert => true,
+                Keys.Delete => true,
+                Keys.Home => true,
+                Keys.End => true,
+                Keys.PageUp => true,
+                Keys.PageDown => true,
+                Keys.Left => true,
+                Keys.Right => true,
+                Keys.Up => true,
+                Keys.Down => true,
+                Keys.NumLock => true,
+                Keys.Divide => true,
+                _ => false
+            };
         }
 
         /// <summary>

@@ -37,6 +37,21 @@ namespace HaCreator.MapSimulator.Entities
 
     public class ReactorItem : BaseDXDrawableItem
     {
+        internal readonly struct TransitionSelection
+        {
+            public TransitionSelection(int targetState, int authoredOrder)
+            {
+                TargetState = targetState;
+                AuthoredOrder = authoredOrder;
+            }
+
+            public int TargetState { get; }
+
+            public int AuthoredOrder { get; }
+
+            public bool IsAuthored => AuthoredOrder >= 0;
+        }
+
         private readonly struct AuthoredStateTransition
         {
             public AuthoredStateTransition(int eventType, int targetState, int[] selectorValues, int order)
@@ -192,6 +207,44 @@ namespace HaCreator.MapSimulator.Entities
             }
 
             return Array.Empty<int>();
+        }
+
+        internal bool TryResolveNextState(
+            int currentState,
+            ReactorTransitionRequest request,
+            out TransitionSelection selection,
+            bool includeNumericFallback = true,
+            int preferredAuthoredOrder = -1)
+        {
+            int resolvedState = ResolveState(currentState);
+            AuthoredStateTransition[] authoredCandidates = GetAuthoredTransitions(
+                resolvedState,
+                request,
+                preferredAuthoredOrder);
+            if (authoredCandidates.Length > 0)
+            {
+                AuthoredStateTransition authoredTransition = authoredCandidates[0];
+                selection = new TransitionSelection(authoredTransition.TargetState, authoredTransition.Order);
+                return true;
+            }
+
+            if (!includeNumericFallback || _availableStates.Length == 0)
+            {
+                selection = default;
+                return false;
+            }
+
+            for (int i = 0; i < _availableStates.Length; i++)
+            {
+                if (_availableStates[i] > resolvedState)
+                {
+                    selection = new TransitionSelection(_availableStates[i], authoredOrder: -1);
+                    return true;
+                }
+            }
+
+            selection = default;
+            return false;
         }
 
         internal bool CanActivateFromState(int currentState, ReactorTransitionRequest request)
@@ -396,13 +449,24 @@ namespace HaCreator.MapSimulator.Entities
 
         private int[] GetAuthoredCandidates(int resolvedState, ReactorTransitionRequest request)
         {
+            return GetAuthoredTransitions(resolvedState, request)
+                .Select(transition => transition.TargetState)
+                .Distinct()
+                .ToArray();
+        }
+
+        private AuthoredStateTransition[] GetAuthoredTransitions(
+            int resolvedState,
+            ReactorTransitionRequest request,
+            int preferredAuthoredOrder = -1)
+        {
             if (!_stateTransitions.TryGetValue(resolvedState, out AuthoredStateTransition[] transitions)
                 || transitions.Length == 0)
             {
-                return Array.Empty<int>();
+                return Array.Empty<AuthoredStateTransition>();
             }
 
-            return FilterTransitionsBySelector(
+            AuthoredStateTransition[] filteredTransitions = FilterTransitionsBySelector(
                 transitions.Where(transition => MatchesAuthoredEventType(transition.EventType, request.ActivationType)).ToArray(),
                 request)
                 .Where(transition => _stateFrames.ContainsKey(transition.TargetState))
@@ -410,9 +474,19 @@ namespace HaCreator.MapSimulator.Entities
                 .OrderBy(transition => GetEventTypePriority(transition.EventType, request))
                 .ThenBy(transition => GetSelectorPriority(transition, request))
                 .ThenBy(transition => transition.Order)
-                .Select(transition => transition.TargetState)
-                .Distinct()
                 .ToArray();
+
+            if (preferredAuthoredOrder < 0)
+            {
+                return filteredTransitions;
+            }
+
+            AuthoredStateTransition[] preferredOrderTransitions = filteredTransitions
+                .Where(transition => transition.Order == preferredAuthoredOrder)
+                .ToArray();
+            return preferredOrderTransitions.Length > 0
+                ? preferredOrderTransitions
+                : filteredTransitions;
         }
 
         private static AuthoredStateTransition[] FilterTransitionsBySelector(

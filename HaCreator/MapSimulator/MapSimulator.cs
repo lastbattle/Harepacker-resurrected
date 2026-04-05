@@ -125,6 +125,7 @@ namespace HaCreator.MapSimulator
         private readonly Dictionary<string, bool> _authoredDynamicObjectTagStates = new(StringComparer.OrdinalIgnoreCase);
         private readonly List<FieldObjectDirectionEventTriggerPoint> _dynamicObjectDirectionEventTriggers = new();
         private readonly HashSet<int> _triggeredDynamicObjectDirectionEventIndices = new();
+        private readonly List<ScheduledDynamicObjectScriptPublication> _scheduledDynamicObjectScriptPublications = new();
         private readonly HashSet<int> _consumedFirstUserEnterMaps = new();
         private NpcItem[] _npcsArray;
         private readonly Dictionary<int, NpcItem> _npcsById = new();
@@ -390,6 +391,19 @@ namespace HaCreator.MapSimulator
         private readonly List<MinimapUI.EmployeeMarker> _minimapEmployeeMarkersBuffer = new(1);
         private int _minimapTrackedUserMarkersCount;
         private int _minimapEmployeeMarkersCount;
+
+        private readonly struct ScheduledDynamicObjectScriptPublication
+        {
+            public ScheduledDynamicObjectScriptPublication(string scriptName, int dueTick)
+            {
+                ScriptName = scriptName ?? string.Empty;
+                DueTick = dueTick;
+            }
+
+            public string ScriptName { get; }
+
+            public int DueTick { get; }
+        }
 
 
         // Consolidated effect management
@@ -720,6 +734,7 @@ namespace HaCreator.MapSimulator
         private bool _loginUtilityDialogInputMasked;
         private int _loginUtilityDialogInputMaxLength;
         private Rectangle? _loginUtilityDialogInputBoundsOverride;
+        private string _loginUtilityDialogReturnWindowName = string.Empty;
         private int? _loginAccountId;
         private bool _loginAccountAcceptedEula;
         private string _loginAccountPicCode = string.Empty;
@@ -1997,6 +2012,7 @@ namespace HaCreator.MapSimulator
                                 ? "Quick Send money button selected. Use /memo draft meso <amount> to stage the field."
                                 : "Send money button selected. Use /memo draft meso <amount> or /memo draft item ... to update the parcel.");
                     },
+                    HandleMemoDraftAttachmentOwnerRequest,
                     recipient => _memoMailbox.UpdateDraftRecipientFromUi(recipient),
                     body => _memoMailbox.UpdateDraftBodyFromUi(body),
                     meso => _memoMailbox.UpdateDraftMesoFromUi(meso));
@@ -2074,6 +2090,94 @@ namespace HaCreator.MapSimulator
 
             ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.MemoGet);
 
+        }
+
+        private void HandleMemoDraftAttachmentOwnerRequest(ParcelDialogTab activeTab)
+        {
+            if (activeTab == ParcelDialogTab.QuickSend)
+            {
+                if (_memoMailbox.GetDraftSnapshot().AttachmentKind == MemoDraftAttachmentKind.Item)
+                {
+                    _memoMailbox.ClearDraftAttachment();
+                    ShowUtilityFeedbackMessage("Quick Send cleared the staged item package because this tab only supports meso attachments.");
+                    return;
+                }
+
+                ShowUtilityFeedbackMessage("Quick Send does not allow item packages. Use the meso field or /memo draft meso <amount>.");
+                return;
+            }
+
+            if (_memoMailbox.GetDraftSnapshot().AttachmentKind == MemoDraftAttachmentKind.Item)
+            {
+                _memoMailbox.ClearDraftAttachment();
+                ShowUtilityFeedbackMessage("Cleared the staged parcel item package.");
+                return;
+            }
+
+            if (TryStageMemoDraftAttachmentFromInventory(out string message))
+            {
+                ShowUtilityFeedbackMessage(message);
+                return;
+            }
+
+            ShowUtilityFeedbackMessage(message);
+        }
+
+        private bool TryStageMemoDraftAttachmentFromInventory(out string message)
+        {
+            message = "No inventory runtime is available for parcel item staging.";
+            if (uiWindowManager?.InventoryWindow is not IInventoryRuntime inventoryWindow)
+            {
+                return false;
+            }
+
+            InventoryType[] scanOrder =
+            {
+                InventoryType.USE,
+                InventoryType.ETC,
+                InventoryType.SETUP,
+                InventoryType.CASH,
+                InventoryType.EQUIP
+            };
+
+            for (int orderIndex = 0; orderIndex < scanOrder.Length; orderIndex++)
+            {
+                InventoryType type = scanOrder[orderIndex];
+                IReadOnlyList<InventorySlotData> slots = inventoryWindow.GetSlots(type);
+                if (slots == null)
+                {
+                    continue;
+                }
+
+                for (int slotIndex = 0; slotIndex < slots.Count; slotIndex++)
+                {
+                    InventorySlotData slot = slots[slotIndex];
+                    if (slot == null
+                        || slot.IsDisabled
+                        || slot.ItemId <= 0
+                        || Math.Max(0, slot.Quantity) <= 0)
+                    {
+                        continue;
+                    }
+
+                    int quantity = Math.Max(1, slot.Quantity);
+                    if (!_memoMailbox.SetDraftItemAttachment(slot.ItemId, quantity, out string _))
+                    {
+                        continue;
+                    }
+
+                    string itemName = !string.IsNullOrWhiteSpace(slot.ItemName)
+                        ? slot.ItemName.Trim()
+                        : InventoryItemMetadataResolver.TryResolveItemName(slot.ItemId, out string resolvedName)
+                            ? resolvedName
+                            : $"Item {slot.ItemId}";
+                    message = $"Staged {itemName} x{quantity} from {type} slot #{slotIndex + 1} into the parcel owner.";
+                    return true;
+                }
+            }
+
+            message = "No inventory item is available to stage as a parcel package.";
+            return false;
         }
 
 
@@ -2186,7 +2290,8 @@ namespace HaCreator.MapSimulator
                 _npcInteractionOverlay?.IsVisible == true,
                 _scriptedDirectionModeOwnerActive,
                 _specialFieldRuntime.SpecialEffects.Wedding.HasActiveScriptedDialog,
-                _specialFieldRuntime.Minigames.MemoryGame.IsVisible);
+                _specialFieldRuntime.Minigames.MemoryGame.IsVisible,
+                _specialFieldRuntime.Minigames.Tournament.MatchTableDialog.IsVisible);
         }
 
 
@@ -3099,7 +3204,7 @@ namespace HaCreator.MapSimulator
             userInfoWindow.EntrustedShopRequested = () => ShowSocialRoomWindow(SocialRoomKind.EntrustedShop);
             userInfoWindow.TradingRoomRequested = HandleCharacterInfoTradingRoomRequest;
             userInfoWindow.FamilyRequested = HandleCharacterInfoFamilyRequest;
-            userInfoWindow.PopularityRequested = (context, direction) => UserInfoPopularityPreviewService.HandleRequest(context, direction, _remoteUserPool);
+            userInfoWindow.PopularityRequested = HandleCharacterInfoPopularityRequest;
             userInfoWindow.BookCollectionRequested = HandleCharacterInfoBookCollectionRequest;
             userInfoWindow.WishPresentRequested = HandleCharacterInfoWishPresentRequest;
         }
@@ -3119,15 +3224,22 @@ namespace HaCreator.MapSimulator
                 return "Party invite preview requires the local player to be party leader, matching CUIUserInfo::OnButtonClicked.";
             }
 
-            string locationSummary = string.IsNullOrWhiteSpace(context.LocationSummary)
-                ? GetCurrentMapTransferDisplayName()
-                : context.LocationSummary;
+            if (!TryResolveRemoteCharacterInfoTargetPresence(
+                    context,
+                    out string locationSummary,
+                    out int channel,
+                    out string unavailableMessage))
+            {
+                ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.SocialList);
+                return unavailableMessage;
+            }
+
             string message = _socialListRuntime.InviteCharacterToParty(
                 context.CharacterName,
                 context.Build?.JobName,
                 context.Build?.Level ?? 1,
                 locationSummary,
-                context.Channel);
+                channel);
             ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.SocialList);
             return message;
         }
@@ -3138,6 +3250,15 @@ namespace HaCreator.MapSimulator
             if (!context.IsRemoteTarget)
             {
                 return "Trading-room shell opened.";
+            }
+
+            if (!TryResolveRemoteCharacterInfoTargetPresence(
+                    context,
+                    out _,
+                    out _,
+                    out string unavailableMessage))
+            {
+                return unavailableMessage;
             }
 
             return TryGetSocialRoomRuntime(SocialRoomKind.TradingRoom, out SocialRoomRuntime runtime)
@@ -3154,16 +3275,85 @@ namespace HaCreator.MapSimulator
                 return "Family chart opened from the profile window.";
             }
 
-            string locationSummary = string.IsNullOrWhiteSpace(context.LocationSummary)
-                ? GetCurrentMapTransferDisplayName()
-                : context.LocationSummary;
+            if (!TryResolveRemoteCharacterInfoTargetPresence(
+                    context,
+                    out string locationSummary,
+                    out int channel,
+                    out string unavailableMessage))
+            {
+                ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.FamilyChart);
+                return unavailableMessage;
+            }
+
             string message = _familyChartRuntime.PreviewRemoteFamilyRequest(
                 context.CharacterName,
                 context.Build,
                 locationSummary,
-                context.Channel);
+                channel);
             ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.FamilyChart);
             return message;
+        }
+
+        private string HandleCharacterInfoPopularityRequest(
+            UserInfoUI.UserInfoActionContext context,
+            UserInfoUI.PopularityChangeDirection direction)
+        {
+            if (!TryResolveRemoteCharacterInfoTargetPresence(
+                    context,
+                    out _,
+                    out _,
+                    out string unavailableMessage))
+            {
+                return unavailableMessage;
+            }
+
+            return UserInfoPopularityPreviewService.HandleRequest(context, direction, _remoteUserPool);
+        }
+
+        private bool TryResolveRemoteCharacterInfoTargetPresence(
+            UserInfoUI.UserInfoActionContext context,
+            out string locationSummary,
+            out int channel,
+            out string unavailableMessage)
+        {
+            locationSummary = string.IsNullOrWhiteSpace(context.LocationSummary)
+                ? "Location unknown"
+                : context.LocationSummary.Trim();
+            channel = context.Channel > 0 ? context.Channel : 0;
+            unavailableMessage = null;
+
+            if (!context.IsRemoteTarget)
+            {
+                return true;
+            }
+
+            if (_socialListRuntime.TryFindTrackedEntry(context.CharacterName, out SocialTrackedEntrySnapshot trackedEntry))
+            {
+                if (trackedEntry.IsOnline)
+                {
+                    if (!string.IsNullOrWhiteSpace(trackedEntry.LocationSummary))
+                    {
+                        locationSummary = trackedEntry.LocationSummary.Trim();
+                    }
+
+                    channel = trackedEntry.Channel > 0
+                        ? trackedEntry.Channel
+                        : Math.Max(channel, 1);
+                    return true;
+                }
+            }
+
+            bool foundActor = (context.CharacterId > 0 && _remoteUserPool.TryGetActor(context.CharacterId, out RemoteUserActor actor))
+                || _remoteUserPool.TryGetActorByName(context.CharacterName, out actor);
+            if (foundActor && actor != null && actor.IsVisibleInWorld)
+            {
+                locationSummary = GetCurrentMapTransferDisplayName();
+                channel = Math.Max(1, _simulatorChannelIndex + 1);
+                return true;
+            }
+
+            unavailableMessage = $"{context.CharacterName} is not discoverable as online from shared-field or social-roster seams, so this request remains a local preview only.";
+            return false;
         }
 
         private string HandleCharacterInfoBookCollectionRequest(UserInfoUI.UserInfoActionContext context)
@@ -3276,8 +3466,8 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            string locationSummary = GetCurrentMapTransferDisplayName();
-            int channel = Math.Max(1, _simulatorChannelIndex + 1);
+            string locationSummary = "Location unknown";
+            int channel = 0;
             if (_socialListRuntime.TryFindTrackedEntry(actor.Name, out SocialTrackedEntrySnapshot trackedEntry))
             {
                 if (!string.IsNullOrWhiteSpace(trackedEntry.LocationSummary))
@@ -3290,11 +3480,16 @@ namespace HaCreator.MapSimulator
                     channel = trackedEntry.Channel;
                 }
             }
+            else if (actor.IsVisibleInWorld)
+            {
+                locationSummary = GetCurrentMapTransferDisplayName();
+                channel = Math.Max(1, _simulatorChannelIndex + 1);
+            }
 
             ShowCharacterInfoWindow(
                 inspectionTarget: new UserInfoUI.UserInfoInspectionTarget
                 {
-                    Build = actor.Build.Clone(),
+                    Build = actor.Build,
                     CharacterId = actor.CharacterId,
                     Name = actor.Name,
                     LocationSummary = locationSummary,
@@ -3602,6 +3797,10 @@ namespace HaCreator.MapSimulator
             {
                 case EquipUI equipWindow:
                     equipWindow.ItemUpgradeRequested = OpenItemUpgradeWindowForEquipment;
+                    equipWindow.EquipmentChangeSubmitted = SubmitEquipmentChangeRequest;
+                    equipWindow.EquipmentChangeResultRequested = TryResolveEquipmentChangeRequest;
+                    equipWindow.EquipmentEquipGuard = GetBattlefieldEquipRestrictionMessage;
+                    equipWindow.EquipmentEquipBlocked = ShowFieldRestrictionMessage;
                     break;
                 case EquipUIBigBang equipWindowBigBang:
                     equipWindowBigBang.ItemUpgradeRequested = OpenItemUpgradeWindowForEquipment;
@@ -7294,6 +7493,7 @@ namespace HaCreator.MapSimulator
 
 
 
+            FinalizeSelectCharacterByVacFieldEntryHandoff(packetProfile);
             if (_loadMapCallback == null || !QueueMapTransfer(entry.FieldMapId, null))
             {
                 message = $"SelectCharacterByVACResult accepted {entry.Build.Name}, but map loading is unavailable.";
@@ -7308,7 +7508,6 @@ namespace HaCreator.MapSimulator
 
 
             HideLoginUtilityDialog();
-            FinalizeSelectCharacterByVacFieldEntryHandoff(packetProfile);
             message = BuildSelectCharacterByVacResultSuccessMessage(packetProfile, entry);
             _loginCharacterStatusMessage = message;
             handledRuntimeDispatch = true;
@@ -10685,6 +10884,7 @@ namespace HaCreator.MapSimulator
             {
                 uiWindowManager.HideWindow(MapSimulatorWindowNames.ConnectionNotice);
                 uiWindowManager.HideWindow(MapSimulatorWindowNames.LoginUtilityDialog);
+                _loginUtilityDialogReturnWindowName = string.Empty;
                 return;
             }
 
@@ -10843,6 +11043,12 @@ namespace HaCreator.MapSimulator
             LoginUtilityDialogVisualStyle visualStyle = LoginUtilityDialogVisualStyle.Default,
             Rectangle? inputBoundsOverride = null)
         {
+            if (_loginUtilityDialogAction == LoginUtilityDialogAction.None ||
+                string.IsNullOrWhiteSpace(_loginUtilityDialogReturnWindowName))
+            {
+                _loginUtilityDialogReturnWindowName = ResolveLoginUtilityDialogReturnWindowName();
+            }
+
             _loginUtilityDialogTitle = string.IsNullOrWhiteSpace(title) ? "Login Utility" : title;
             _loginUtilityDialogBody = body ?? string.Empty;
             _loginUtilityDialogButtonLayout = buttonLayout;
@@ -10884,7 +11090,76 @@ namespace HaCreator.MapSimulator
                 utilityDialogWindow.Hide();
             }
 
-            BringLoginTitleWindowToFront();
+            if (!TryBringLoginUtilityDialogReturnWindowToFront())
+            {
+                BringLoginTitleWindowToFront();
+            }
+
+            _loginUtilityDialogReturnWindowName = string.Empty;
+        }
+
+        private string ResolveLoginUtilityDialogReturnWindowName()
+        {
+            if (uiWindowManager == null)
+            {
+                return string.Empty;
+            }
+
+            static bool IsLoginUtilityOverlay(UIWindowBase window)
+            {
+                if (window == null)
+                {
+                    return false;
+                }
+
+                return string.Equals(window.WindowName, MapSimulatorWindowNames.LoginUtilityDialog, StringComparison.Ordinal) ||
+                       string.Equals(window.WindowName, MapSimulatorWindowNames.ConnectionNotice, StringComparison.Ordinal);
+            }
+
+            UIWindowBase focusedWindow = uiWindowManager.FocusedWindow;
+            if (focusedWindow?.IsVisible == true && !IsLoginUtilityOverlay(focusedWindow))
+            {
+                return focusedWindow.WindowName;
+            }
+
+            string[] fallbackWindowNames =
+            {
+                MapSimulatorWindowNames.LoginCreateCharacterNameSelect,
+                MapSimulatorWindowNames.LoginCreateCharacterAvatarSelect,
+                MapSimulatorWindowNames.LoginCreateCharacterJobSelect,
+                MapSimulatorWindowNames.LoginCreateCharacterRaceSelect,
+                MapSimulatorWindowNames.CharacterSelect,
+                MapSimulatorWindowNames.LoginTitle,
+                MapSimulatorWindowNames.MapTransfer,
+                MapSimulatorWindowNames.AntiMacro,
+                MapSimulatorWindowNames.AdminAntiMacro,
+            };
+
+            for (int i = 0; i < fallbackWindowNames.Length; i++)
+            {
+                string windowName = fallbackWindowNames[i];
+                if (uiWindowManager.GetWindow(windowName) is UIWindowBase window &&
+                    window.IsVisible &&
+                    !IsLoginUtilityOverlay(window))
+                {
+                    return windowName;
+                }
+            }
+
+            return string.Empty;
+        }
+
+        private bool TryBringLoginUtilityDialogReturnWindowToFront()
+        {
+            if (string.IsNullOrWhiteSpace(_loginUtilityDialogReturnWindowName) ||
+                uiWindowManager?.GetWindow(_loginUtilityDialogReturnWindowName) is not UIWindowBase returnWindow ||
+                !returnWindow.IsVisible)
+            {
+                return false;
+            }
+
+            uiWindowManager.BringToFront(returnWindow);
+            return true;
         }
 
         private void BringLoginTitleWindowToFront()
@@ -15450,6 +15725,7 @@ namespace HaCreator.MapSimulator
                 _portalPool?.Update(playerX.Value, playerY.Value, tickCount, deltaSecondsLocal);
                 UpdateDynamicObjectDirectionEventTriggers(tickCount);
             }
+            UpdateScheduledDynamicObjectScriptPublications(tickCount);
 
 
             // Update reactor pool for state management and respawns
@@ -17590,17 +17866,15 @@ namespace HaCreator.MapSimulator
                 recentActorName);
 
 
-            switch (result.FailureReason)
+            if (!ShouldSurfacePickupFailure(result.FailureReason))
             {
-                case Pools.DropPickupFailureReason.InventoryFull:
-                    AddPickupFailureMessage(messagePair, currentTime);
-                    break;
-                case Pools.DropPickupFailureReason.OwnershipRestricted:
-                case Pools.DropPickupFailureReason.PetPickupBlocked:
-                case Pools.DropPickupFailureReason.Unavailable:
-                    AddPickupFailureMessage(messagePair, currentTime);
-                    break;
+                return;
             }
+
+            AddPickupFailureMessage(
+                messagePair,
+                currentTime,
+                PickupNoticeTextFormatter.ResolveFailureScreenType(result.FailureReason));
         }
 
 
@@ -17989,11 +18263,33 @@ namespace HaCreator.MapSimulator
         }
 
 
+        internal static bool ShouldSurfacePickupFailure(Pools.DropPickupFailureReason reason)
+        {
+            return reason == Pools.DropPickupFailureReason.InventoryFull
+                || reason == Pools.DropPickupFailureReason.OwnershipRestricted
+                || reason == Pools.DropPickupFailureReason.PetPickupBlocked
+                || reason == Pools.DropPickupFailureReason.FieldRestricted
+                || reason == Pools.DropPickupFailureReason.Unavailable;
+        }
+
+
         private void AddPickupFailureMessage(PickupNoticeMessagePair messagePair, int currentTime)
+        {
+            AddPickupFailureMessage(messagePair, currentTime, PickupMessageType.CantPickup);
+        }
+
+
+        private void AddPickupFailureMessage(
+            PickupNoticeMessagePair messagePair,
+            int currentTime,
+            PickupMessageType screenMessageType)
         {
             if (!string.IsNullOrWhiteSpace(messagePair.ScreenMessage))
             {
-                _pickupNoticeUI.AddCantPickupMessage(messagePair.ScreenMessage, currentTime);
+                _pickupNoticeUI.AddFormattedNotice(
+                    messagePair.ScreenMessage,
+                    screenMessageType,
+                    currentTime);
             }
 
 
@@ -18281,9 +18577,9 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (supportsRecovery && IsConsumableRecoveryBlockedByMobStatus())
+            if (IsConsumableRecoveryBlockedByMobStatus(effect))
             {
-                ShowFieldRestrictionMessage("HP and MP recovery items cannot be used while Potion Lock is active.");
+                ShowFieldRestrictionMessage("Recovery and cure consumables cannot be used while Potion Lock is active.");
                 return false;
             }
 
@@ -18404,9 +18700,12 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
-        private bool IsConsumableRecoveryBlockedByMobStatus()
+        private bool IsConsumableRecoveryBlockedByMobStatus(ConsumableItemEffect effect)
         {
-            return _playerManager?.HasMobStatus(PlayerMobStatusEffect.StopPotion) == true;
+            return PlayerMobConsumableBlockEvaluator.IsStopPotionBlocked(
+                _playerManager?.HasMobStatus(PlayerMobStatusEffect.StopPotion) == true,
+                effect.HasSupportedRecovery,
+                effect.HasSupportedCure);
         }
 
         private static void ApplyConsumableRecovery(PlayerCharacter player, int hpGain, int mpGain)
@@ -19699,6 +19998,14 @@ namespace HaCreator.MapSimulator
             {
                 relationshipLines.Add("Friend");
             }
+            if (state.IsCouplePartner)
+            {
+                relationshipLines.Add("Couple partner");
+            }
+            if (state.IsMarriedPartner)
+            {
+                relationshipLines.Add("Married partner");
+            }
             if (state.IsStalkTarget)
             {
                 relationshipLines.Add("Stalk target");
@@ -19880,6 +20187,7 @@ namespace HaCreator.MapSimulator
                 state.Position = member.SimulatedPosition;
             }
             AppendPacketOwnedStalkTrackedUserMarkers(trackedUsers);
+            AppendPacketOwnedRelationshipTrackedUserMarkers(trackedUsers);
             AppendMiniRoomTrackedUserMarkers(trackedUsers, player);
             AppendTraderTrackedUserMarkers(trackedUsers, player);
 
@@ -20060,9 +20368,50 @@ namespace HaCreator.MapSimulator
             public bool IsGuildLeader { get; set; }
             public bool IsMatchParticipant { get; set; }
             public bool IsTrader { get; set; }
+            public bool IsCouplePartner { get; set; }
+            public bool IsMarriedPartner { get; set; }
             public bool IsStalkTarget { get; set; }
             public bool HasPosition { get; set; }
             public Vector2 Position { get; set; }
+        }
+
+        private void AppendPacketOwnedRelationshipTrackedUserMarkers(
+            Dictionary<string, MinimapTrackedUserState> trackedUsers)
+        {
+            if (trackedUsers == null || _remoteUserPool.Count == 0)
+            {
+                return;
+            }
+
+            foreach (RemoteUserActor actor in _remoteUserPool.Actors)
+            {
+                if (actor == null
+                    || !actor.IsVisibleInWorld
+                    || string.IsNullOrWhiteSpace(actor.Name)
+                    || actor.RelationshipOverlays == null
+                    || actor.RelationshipOverlays.Count == 0)
+                {
+                    continue;
+                }
+
+                bool hasFriendshipOverlay = actor.RelationshipOverlays.ContainsKey(RemoteRelationshipOverlayType.Friendship);
+                bool hasCoupleOverlay = actor.RelationshipOverlays.ContainsKey(RemoteRelationshipOverlayType.Couple);
+                bool hasMarriageOverlay = actor.RelationshipOverlays.ContainsKey(RemoteRelationshipOverlayType.Marriage);
+                if (!hasFriendshipOverlay && !hasCoupleOverlay && !hasMarriageOverlay)
+                {
+                    continue;
+                }
+
+                MinimapTrackedUserState state = GetOrCreateMinimapTrackedUserState(trackedUsers, actor.Name);
+                state.IsFriend |= hasFriendshipOverlay || hasCoupleOverlay || hasMarriageOverlay;
+                state.IsCouplePartner |= hasCoupleOverlay;
+                state.IsMarriedPartner |= hasMarriageOverlay;
+                if (!state.HasPosition)
+                {
+                    state.HasPosition = true;
+                    state.Position = actor.Position;
+                }
+            }
         }
 
 
@@ -20420,6 +20769,27 @@ namespace HaCreator.MapSimulator
         private void PlayDropItemSE()
         {
             _soundManager?.PlaySound("DropItem");
+        }
+
+        private void HandlePacketOwnedDropEnterSoundRequested(DropItem drop, int currentTime)
+        {
+            if (drop?.IsPacketControlled != true)
+            {
+                return;
+            }
+
+            PlayDropItemSE();
+        }
+
+        private void HandlePacketOwnedDropExploded(DropItem drop, int currentTime)
+        {
+            if (drop?.IsPacketControlled != true)
+            {
+                return;
+            }
+
+            _effectManager.FireExplosion(drop.X, drop.Y, 72f, 220, currentTime);
+            PlayDropItemSE();
         }
 
 
@@ -21355,8 +21725,48 @@ namespace HaCreator.MapSimulator
             if (_temporaryPortalField != null
                 && _temporaryPortalField.TryUseLinkedPortal(_mapBoard.MapInfo.id, playerX, playerY, out var temporaryPortalDestination))
             {
-                ResetPacketOwnedTeleportOutboundRequest(
-                    "Temporary portal travel does not expose a real CPortalList source portal name, so opcode 113 request bookkeeping cannot be emitted yet.");
+                PortalInstance temporarySourcePortal = null;
+                if (TryResolvePacketOwnedTeleportPortalByPosition(
+                    temporaryPortalDestination.SourceX,
+                    temporaryPortalDestination.SourceY,
+                    out _,
+                    out PortalInstance resolvedTemporarySourcePortal))
+                {
+                    temporarySourcePortal = resolvedTemporarySourcePortal;
+                }
+
+                string temporaryTargetPortalName = null;
+                string temporaryTargetResolutionSummary = "temporary portal destination coordinates";
+                if (temporaryPortalDestination.MapId == _mapBoard.MapInfo.id)
+                {
+                    if (TryResolvePacketOwnedTeleportPortalByPosition(
+                        temporaryPortalDestination.X,
+                        temporaryPortalDestination.Y,
+                        out _,
+                        out PortalInstance resolvedTemporaryTargetPortal))
+                    {
+                        temporaryTargetPortalName = resolvedTemporaryTargetPortal.pn;
+                        temporaryTargetResolutionSummary = $"current-field portal '{temporaryTargetPortalName}'";
+                    }
+                }
+                else if (TryResolvePacketOwnedTargetPortalNameByPosition(
+                    temporaryPortalDestination.MapId,
+                    temporaryPortalDestination.X,
+                    temporaryPortalDestination.Y,
+                    out string resolvedTemporaryCrossMapTargetPortalName))
+                {
+                    temporaryTargetPortalName = resolvedTemporaryCrossMapTargetPortalName;
+                    temporaryTargetResolutionSummary = $"target-map portal '{temporaryTargetPortalName}' in map {temporaryPortalDestination.MapId}";
+                }
+
+                RecordPacketOwnedTeleportPortalRequest(
+                    temporarySourcePortal?.pn,
+                    temporaryPortalDestination.SourceX,
+                    temporaryPortalDestination.SourceY,
+                    temporaryPortalDestination.X,
+                    temporaryPortalDestination.Y,
+                    temporaryTargetPortalName,
+                    temporaryTargetResolutionSummary);
                 if (temporaryPortalDestination.MapId != _mapBoard.MapInfo.id)
                 {
                     string transferRestrictionMessage = FieldInteractionRestrictionEvaluator.GetTransferRestrictionMessage(fieldLimit);
@@ -21396,12 +21806,6 @@ namespace HaCreator.MapSimulator
                 }
                 else
                 {
-                    string temporaryTargetPortalName = null;
-                    TryResolvePacketOwnedTargetPortalNameByPosition(
-                        temporaryPortalDestination.MapId,
-                        temporaryPortalDestination.X,
-                        temporaryPortalDestination.Y,
-                        out temporaryTargetPortalName);
                     StagePendingCrossMapTeleport(
                         temporaryPortalDestination.MapId,
                         targetPortalName: temporaryTargetPortalName,
@@ -21962,6 +22366,8 @@ namespace HaCreator.MapSimulator
             _dropPool.SetSourcePositionResolver(ResolveDropPacketSourcePosition);
             _dropPool.SetPacketItemVisualResolver(ResolvePacketItemDropVisuals);
             _dropPool.SetPartyPickupMembershipEvaluator(AreDropActorsInSameParty);
+            _dropPool.SetOnPacketEnterSoundRequested(HandlePacketOwnedDropEnterSoundRequested);
+            _dropPool.SetOnPacketExploded(HandlePacketOwnedDropExploded);
 
 
             // Set up pickup sound and notice callbacks
@@ -22438,6 +22844,7 @@ namespace HaCreator.MapSimulator
         {
             _dynamicObjectDirectionEventTriggers.Clear();
             _triggeredDynamicObjectDirectionEventIndices.Clear();
+            _scheduledDynamicObjectScriptPublications.Clear();
 
 
             WzImage mapImage = _mapBoard?.MapInfo?.Image;
@@ -22484,11 +22891,18 @@ namespace HaCreator.MapSimulator
 
 
                 bool publishedAny = false;
-                for (int scriptIndex = 0; scriptIndex < trigger.ScriptNames.Length; scriptIndex++)
+                for (int scriptIndex = 0; scriptIndex < trigger.ScriptPublications.Length; scriptIndex++)
                 {
-                    publishedAny |= PublishDynamicObjectTagStatesForScriptName(
-                        trigger.ScriptNames[scriptIndex],
-                        currentTickCount);
+                    FieldObjectScriptPublication publication = trigger.ScriptPublications[scriptIndex];
+                    if (publication == null || string.IsNullOrWhiteSpace(publication.ScriptName))
+                    {
+                        continue;
+                    }
+
+                    publishedAny |= PublishOrScheduleDynamicObjectTagStateForScriptName(
+                        publication.ScriptName,
+                        currentTickCount,
+                        publication.DelayMs);
                 }
 
 
@@ -22497,6 +22911,50 @@ namespace HaCreator.MapSimulator
                     _triggeredDynamicObjectDirectionEventIndices.Add(i);
                 }
             }
+        }
+
+        private void UpdateScheduledDynamicObjectScriptPublications(int currentTickCount)
+        {
+            if (_scheduledDynamicObjectScriptPublications.Count == 0
+                || _gameState.PendingMapChange
+                || _sameMapTeleportPending)
+            {
+                return;
+            }
+
+            for (int i = _scheduledDynamicObjectScriptPublications.Count - 1; i >= 0; i--)
+            {
+                ScheduledDynamicObjectScriptPublication scheduledPublication = _scheduledDynamicObjectScriptPublications[i];
+                if (unchecked(currentTickCount - scheduledPublication.DueTick) < 0)
+                {
+                    continue;
+                }
+
+                PublishDynamicObjectTagStatesForScriptName(scheduledPublication.ScriptName, currentTickCount);
+                _scheduledDynamicObjectScriptPublications.RemoveAt(i);
+            }
+        }
+
+        private bool PublishOrScheduleDynamicObjectTagStateForScriptName(
+            string scriptName,
+            int currentTickCount,
+            int delayMs)
+        {
+            if (string.IsNullOrWhiteSpace(scriptName))
+            {
+                return false;
+            }
+
+            int normalizedDelayMs = Math.Max(0, delayMs);
+            if (normalizedDelayMs <= 0)
+            {
+                return PublishDynamicObjectTagStatesForScriptName(scriptName, currentTickCount);
+            }
+
+            int dueTick = unchecked(currentTickCount + normalizedDelayMs);
+            _scheduledDynamicObjectScriptPublications.Add(
+                new ScheduledDynamicObjectScriptPublication(scriptName.Trim(), dueTick));
+            return true;
         }
 
 
@@ -23178,7 +23636,7 @@ namespace HaCreator.MapSimulator
                     _mapBoard?.MapInfo,
                     skill,
                     _playerManager?.Player?.Build?.Job ?? 0,
-                    IsMassacreSkillUsageDisabled())
+                    GetMassacreSkillUsageRestrictionMessage())
 
                     && (_fieldRuleRuntime?.CanUseSkill(skill) ?? true));
 
@@ -23187,7 +23645,7 @@ namespace HaCreator.MapSimulator
                     _mapBoard?.MapInfo,
                     skill,
                     _playerManager?.Player?.Build?.Job ?? 0,
-                    IsMassacreSkillUsageDisabled())
+                    GetMassacreSkillUsageRestrictionMessage())
 
                     ?? _fieldRuleRuntime?.GetSkillRestrictionMessage(skill));
 
@@ -23205,10 +23663,25 @@ namespace HaCreator.MapSimulator
 
         }
 
-        private bool IsMassacreSkillUsageDisabled()
+        private string GetMassacreSkillUsageRestrictionMessage()
         {
-            return _specialFieldRuntime?.SpecialEffects?.Massacre?.IsActive == true
-                   && _specialFieldRuntime.SpecialEffects.Massacre.IsSkillDisabled;
+            Effects.MassacreField massacreField = _specialFieldRuntime?.SpecialEffects?.Massacre;
+            if (massacreField?.IsActive != true)
+            {
+                return null;
+            }
+
+            if (massacreField.IsSkillDisabled)
+            {
+                return "Skills cannot be used while the Mu Lung Dojo massacre field disables skill usage.";
+            }
+
+            if (massacreField.UsesSkillUsageCounter && massacreField.SkillCount <= 0)
+            {
+                return "Skills cannot be used while no massacre skill uses remain.";
+            }
+
+            return null;
         }
 
 

@@ -8,11 +8,10 @@ namespace HaCreator.MapSimulator.Effects
         private int _fadeInMs;
         private int _holdMs;
         private int _fadeOutMs;
+        private int _totalDurationMs;
         private int _startingAlpha;
         private int _layerZ;
         private int _startedAt;
-        private int _fadeOutStartsAt;
-        private int _expiresAt;
         private bool _active;
 
         public bool IsActive => _active;
@@ -22,20 +21,19 @@ namespace HaCreator.MapSimulator.Effects
         public int HoldMs => _holdMs;
         public int FadeOutMs => _fadeOutMs;
         public int StartedAt => _startedAt;
-        public int FadeOutStartsAt => _active ? _fadeOutStartsAt : int.MinValue;
-        public int ExpiresAt => _active ? _expiresAt : int.MinValue;
+        public int FadeOutStartsAt => _active ? _startedAt + _fadeInMs + _holdMs : int.MinValue;
+        public int ExpiresAt => _active ? _startedAt + _totalDurationMs : int.MinValue;
 
         public void Start(int fadeInMs, int holdMs, int fadeOutMs, int startingAlpha, int layerZ, int currentTickCount)
         {
             _fadeInMs = Math.Max(0, fadeInMs);
             _holdMs = Math.Max(0, holdMs);
             _fadeOutMs = Math.Max(0, fadeOutMs);
+            _totalDurationMs = _fadeInMs + _holdMs + _fadeOutMs;
             _startingAlpha = Math.Clamp(startingAlpha, 0, byte.MaxValue);
             _layerZ = layerZ;
             _startedAt = currentTickCount;
-            _fadeOutStartsAt = currentTickCount + _fadeInMs + _holdMs;
-            _expiresAt = _fadeOutStartsAt + _fadeOutMs;
-            _active = _fadeInMs > 0 || _holdMs > 0 || _fadeOutMs > 0;
+            _active = _totalDurationMs > 0;
         }
 
         public void Clear()
@@ -44,11 +42,10 @@ namespace HaCreator.MapSimulator.Effects
             _fadeInMs = 0;
             _holdMs = 0;
             _fadeOutMs = 0;
+            _totalDurationMs = 0;
             _startingAlpha = 0;
             _layerZ = 0;
             _startedAt = 0;
-            _fadeOutStartsAt = 0;
-            _expiresAt = 0;
         }
 
         public void Update(int currentTickCount)
@@ -58,7 +55,7 @@ namespace HaCreator.MapSimulator.Effects
                 return;
             }
 
-            if (unchecked(currentTickCount - _expiresAt) >= 0)
+            if (unchecked(currentTickCount - ExpiresAt) >= 0)
             {
                 Clear();
             }
@@ -92,17 +89,18 @@ namespace HaCreator.MapSimulator.Effects
                 return MathHelper.Lerp(startingAlpha, 1f, fadeProgress);
             }
 
-            if (unchecked(currentTickCount - _fadeOutStartsAt) < 0)
+            int fadeOutStartsAt = FadeOutStartsAt;
+            if (unchecked(currentTickCount - fadeOutStartsAt) < 0)
             {
                 return 1f;
             }
 
             if (_fadeOutMs > 0)
             {
-                elapsed = Math.Max(0, unchecked(currentTickCount - _fadeOutStartsAt));
+                elapsed = Math.Max(0, unchecked(currentTickCount - fadeOutStartsAt));
                 if (elapsed < _fadeOutMs)
                 {
-                return 1f - MathHelper.Clamp((float)elapsed / _fadeOutMs, 0f, 1f);
+                    return 1f - MathHelper.Clamp((float)elapsed / _fadeOutMs, 0f, 1f);
                 }
             }
 

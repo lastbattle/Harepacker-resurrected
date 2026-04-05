@@ -82,7 +82,7 @@ namespace HaCreator.MapSimulator.UI
                 ShowFeedback(_snapshot.HasPremiumChoice ? _premiumHandler?.Invoke() : _normalHandler?.Invoke());
             }
 
-            if (IsVisible && _snapshot.HasPremiumChoice && (Pressed(keyboardState, Keys.Escape) || Pressed(keyboardState, Keys.N)))
+            if (IsVisible && (Pressed(keyboardState, Keys.Escape) || Pressed(keyboardState, Keys.N)))
             {
                 ShowFeedback(_normalHandler?.Invoke());
             }
@@ -93,6 +93,11 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _previousKeyboardState = keyboardState;
+        }
+
+        protected override void OnCloseButtonClicked(UIObject sender)
+        {
+            ShowFeedback(_normalHandler?.Invoke());
         }
 
         protected override void DrawContents(

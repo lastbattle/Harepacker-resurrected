@@ -18,7 +18,7 @@ namespace HaCreator.MapSimulator.Interaction
     {
         private const int DefaultItemId = 5370000;
         private const int DefaultFrameDelayMs = 100;
-        private const int DefaultLeaveFadeMs = 1000;
+        private const int ClientLeaveCanvasFadeDurationMs = 1000;
         private const int DefaultBoxOffsetX = -3;
         private const int DefaultBoxOffsetY = -100;
         private const float DefaultBobAmplitude = 3f;
@@ -38,9 +38,16 @@ namespace HaCreator.MapSimulator.Interaction
         private const string UiCenterPropertyName = "c";
         private const string UiBottomPropertyName = "s";
         private const string CreateFailedFallbackText = "The client refused to create the field message-box.";
-        private static readonly string[] DefaultClientVisualCandidatePaths = { ClientMessageBoxPropertyName };
-        private static readonly string[] ChalkboardFallbackVisualCandidatePaths =
+        private static readonly string[] DefaultClientVisualCandidatePaths =
         {
+            ClientMessageBoxPropertyName,
+            $"{InfoPropertyName}/{ClientMessageBoxPropertyName}",
+            UiPropertyName,
+            $"{InfoPropertyName}/{UiPropertyName}"
+        };
+        private static readonly string[] GenericFallbackVisualCandidatePaths =
+        {
+            ChalkboardSamplePropertyName,
             $"{InfoPropertyName}/{ChalkboardSamplePropertyName}"
         };
         private const int ClientLeaveStartAlpha = 255;
@@ -495,7 +502,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             visual = null;
 
-            if (TryResolveClientMessageBoxProperty(itemProperty, resolvedPath, out WzImageProperty clientMessageBoxProperty) &&
+            if (TryResolveClientMessageBoxProperty(itemProperty, out WzImageProperty clientMessageBoxProperty) &&
                 TryLoadVisualFromImageProperty(clientMessageBoxProperty, ClientMessageBoxPropertyName, out visual))
             {
                 visual = visual with { IconTexture = iconTexture ?? visual.IconTexture };
@@ -542,12 +549,7 @@ namespace HaCreator.MapSimulator.Interaction
             return GetFallbackVisualPropertyPaths(itemId);
         }
 
-        private static IReadOnlyList<string> GetFallbackVisualPropertyPaths(int itemId)
-        {
-            return IsKnownChalkboardItem(itemId)
-                ? ChalkboardFallbackVisualCandidatePaths
-                : Array.Empty<string>();
-        }
+        private static IReadOnlyList<string> GetFallbackVisualPropertyPaths(int itemId) => GenericFallbackVisualCandidatePaths;
 
         internal static string ResolveCreateFailedNoticeText()
         {
@@ -618,7 +620,7 @@ namespace HaCreator.MapSimulator.Interaction
             return property != null;
         }
 
-        private static bool TryResolveClientMessageBoxProperty(WzImageProperty itemProperty, string resolvedPath, out WzImageProperty messageBoxProperty)
+        private static bool TryResolveClientMessageBoxProperty(WzImageProperty itemProperty, out WzImageProperty messageBoxProperty)
         {
             messageBoxProperty = null;
             if (itemProperty == null)
@@ -774,7 +776,14 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            if (TryCollectFrames(property, layoutKey, out List<Texture2D> textures, out List<Point> origins, out List<int> delays, out MessageBoxTextLayout textLayout))
+            if (TryCollectFrames(
+                    property,
+                    layoutKey,
+                    metadataFallbackProperty: null,
+                    out List<Texture2D> textures,
+                    out List<Point> origins,
+                    out List<int> delays,
+                    out MessageBoxTextLayout textLayout))
             {
                 visual = new MessageBoxVisual(textures, origins, delays, null, textLayout);
                 return true;
@@ -798,7 +807,14 @@ namespace HaCreator.MapSimulator.Interaction
                     continue;
                 }
 
-                if (TryCollectFrames(nestedProperty, layoutKey, out List<Texture2D> nestedTextures, out List<Point> nestedOrigins, out List<int> nestedDelays, out MessageBoxTextLayout nestedLayout))
+                if (TryCollectFrames(
+                        nestedProperty,
+                        layoutKey,
+                        metadataFallbackProperty: property,
+                        out List<Texture2D> nestedTextures,
+                        out List<Point> nestedOrigins,
+                        out List<int> nestedDelays,
+                        out MessageBoxTextLayout nestedLayout))
                 {
                     visual = new MessageBoxVisual(nestedTextures, nestedOrigins, nestedDelays, null, nestedLayout);
                     return true;
@@ -906,6 +922,7 @@ namespace HaCreator.MapSimulator.Interaction
         private bool TryCollectFrames(
             WzSubProperty property,
             string layoutKey,
+            WzImageProperty metadataFallbackProperty,
             out List<Texture2D> textures,
             out List<Point> origins,
             out List<int> delays,
@@ -968,7 +985,7 @@ namespace HaCreator.MapSimulator.Interaction
                 resolvedLayoutKey = orderedCanvases[0].Canvas.Name;
             }
 
-            textLayout = ResolveTextLayout(resolvedLayoutKey, textures[0], property);
+            textLayout = ResolveTextLayout(resolvedLayoutKey, textures[0], property, metadataFallbackProperty);
 
             return textures.Count > 0;
         }
@@ -999,16 +1016,17 @@ namespace HaCreator.MapSimulator.Interaction
             return Math.Max(30, delay ?? DefaultFrameDelayMs);
         }
 
-        private static bool IsKnownChalkboardItem(int itemId)
+        private static MessageBoxTextLayout ResolveTextLayout(string propertyName, Texture2D texture, params WzImageProperty[] sourceProperties)
         {
-            return itemId is >= 5370000 and <= 5370002;
-        }
-
-        private static MessageBoxTextLayout ResolveTextLayout(string propertyName, Texture2D texture, WzImageProperty sourceProperty)
-        {
-            if (TryResolveMetadataBackedTextLayout(sourceProperty, texture, out MessageBoxTextLayout metadataLayout))
+            if (sourceProperties != null)
             {
-                return metadataLayout;
+                foreach (WzImageProperty sourceProperty in sourceProperties)
+                {
+                    if (TryResolveMetadataBackedTextLayout(sourceProperty, texture, out MessageBoxTextLayout metadataLayout))
+                    {
+                        return metadataLayout;
+                    }
+                }
             }
 
             if (TryResolveTextureBackedTextLayout(texture, out MessageBoxTextLayout textureBackedLayout))
@@ -1017,6 +1035,12 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             string name = propertyName ?? string.Empty;
+            int lastPathSeparator = name.LastIndexOf('/');
+            if (lastPathSeparator >= 0 && lastPathSeparator + 1 < name.Length)
+            {
+                name = name[(lastPathSeparator + 1)..];
+            }
+
             if (string.Equals(name, UiPropertyName, StringComparison.OrdinalIgnoreCase))
             {
                 int paddingLeft = Math.Clamp(texture?.Width / 12 ?? 6, 6, 12);
@@ -1245,6 +1269,27 @@ namespace HaCreator.MapSimulator.Interaction
         internal static float ComputeLeaveFadeAlphaForTest(int elapsedMs)
         {
             return ComputeLeaveFadeAlpha(elapsedMs);
+        }
+
+        internal static (int PaddingLeft, int PaddingTop, int PaddingRight, int PaddingBottom, int MaxLineCount) ComputeMetadataBackedTextLayoutWithParentFallbackForTest(
+            int textureWidth,
+            int textureHeight,
+            int left,
+            int top,
+            int right,
+            int bottom)
+        {
+            using Texture2D texture = new Texture2D(GraphicsDeviceServiceForTests.Instance, textureWidth, textureHeight);
+
+            WzSubProperty childWithoutLayoutMetadata = new("0");
+            WzSubProperty messageBoxProperty = new(ClientMessageBoxPropertyName);
+            WzSubProperty textProperty = new(TextPropertyName);
+            textProperty.AddProperty(new WzVectorProperty("lt", left, top));
+            textProperty.AddProperty(new WzVectorProperty("rb", right, bottom));
+            messageBoxProperty.AddProperty(textProperty);
+
+            MessageBoxTextLayout layout = ResolveTextLayout("0", texture, childWithoutLayoutMetadata, messageBoxProperty);
+            return (layout.PaddingLeft, layout.PaddingTop, layout.PaddingRight, layout.PaddingBottom, layout.MaxLineCount);
         }
 
         internal static (int PaddingLeft, int PaddingTop, int PaddingRight, int PaddingBottom, int MaxLineCount) ComputeMetadataBackedTextLayoutForTest(
@@ -1620,7 +1665,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             public bool ShouldRemove(int currentTick)
             {
-                return currentTick - _leaveStartedAt >= DefaultLeaveFadeMs;
+                return currentTick - _leaveStartedAt >= ClientLeaveCanvasFadeDurationMs;
             }
 
             public Texture2D GetDisplayTexture()
@@ -1712,7 +1757,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static float ComputeLeaveFadeAlpha(int elapsedMs)
         {
-            float progress = Math.Clamp(elapsedMs / (float)DefaultLeaveFadeMs, 0f, 1f);
+            float progress = Math.Clamp(elapsedMs / (float)ClientLeaveCanvasFadeDurationMs, 0f, 1f);
             int alpha = (int)Math.Round(ClientLeaveStartAlpha + ((ClientLeaveEndAlpha - ClientLeaveStartAlpha) * progress));
             return Math.Clamp(alpha / 255f, 0f, 1f);
         }

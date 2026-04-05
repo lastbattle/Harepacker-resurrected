@@ -145,6 +145,11 @@ namespace HaCreator.MapSimulator.Interaction
                 : "Tutor actor already idle.";
         }
 
+        internal IReadOnlyList<int> SnapshotRegisteredTutorVariants()
+        {
+            return _registeredTutorSkillIds.ToArray();
+        }
+
         internal void ApplyIndexedMessage(int index, int durationMs, int currentTick)
         {
             LastIndexedMessage = Math.Max(0, index);

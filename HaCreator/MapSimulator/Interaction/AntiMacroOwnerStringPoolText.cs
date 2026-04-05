@@ -1,5 +1,8 @@
 namespace HaCreator.MapSimulator.Interaction
 {
+    using System;
+    using System.Globalization;
+
     internal static class AntiMacroOwnerStringPoolText
     {
         internal const int AttemptMessageStringPoolId = 6677;
@@ -20,7 +23,8 @@ namespace HaCreator.MapSimulator.Interaction
         internal const int NoticeMacroSanctionStringPoolId = 0xC9A;
         internal const int NoticeAdminThanksStringPoolId = 0x1A65;
 
-        private const string AttemptMessageFallback = "Attempt {0} of 2";
+        // `CUIAntiMacro::Draw` formats StringPool 0x1A15 (6677) with a single integer argument.
+        private const string AttemptMessageFallback = "Attempt %d of 2";
         private const string NoticeUserNotFoundFallback = "The user cannot be found.";
         private const string NoticeTargetNotAttackingFallback = "You cannot use it on a user that isn't in the middle of attack.";
         private const string NoticeAlreadyTestedFallback = "This user has already been tested before.";
@@ -42,6 +46,41 @@ namespace HaCreator.MapSimulator.Interaction
             return GetResolvedOrFallback(AttemptMessageStringPoolId, AttemptMessageFallback, appendFallbackSuffix);
         }
 
+        public static string FormatAttemptMessageFromClientCounter(int answerCount, bool appendFallbackSuffix = false)
+        {
+            // Client draw path emits `!m_bRetry + 1`. In packet payload terms this maps to
+            // first-try counters (>1) => attempt 1, retry counters (<=1) => attempt 2.
+            int attemptNumber = answerCount > 1 ? 1 : 2;
+            return FormatAttemptMessage(attemptNumber, appendFallbackSuffix);
+        }
+
+        public static string FormatAttemptMessage(int attemptNumber, bool appendFallbackSuffix = false)
+        {
+            int resolvedAttempt = Math.Clamp(attemptNumber, 1, 2);
+            string format = GetAttemptMessageFormat(appendFallbackSuffix);
+
+            // Client format strings are `%d`-style. Keep compatibility with existing `{0}` fallback
+            // and other accidental variants so the window remains stable across data sets.
+            if (format.Contains("%d", StringComparison.Ordinal))
+            {
+                return format.Replace("%d", resolvedAttempt.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal);
+            }
+
+            if (format.Contains("%s", StringComparison.Ordinal))
+            {
+                return format.Replace("%s", resolvedAttempt.ToString(CultureInfo.InvariantCulture), StringComparison.Ordinal);
+            }
+
+            try
+            {
+                return string.Format(CultureInfo.InvariantCulture, format, resolvedAttempt);
+            }
+            catch
+            {
+                return string.Format(CultureInfo.InvariantCulture, AttemptMessageFallback.Replace("%d", "{0}", StringComparison.Ordinal), resolvedAttempt);
+            }
+        }
+
         public static bool TryResolve(int stringPoolId, out string text)
         {
             text = stringPoolId switch
@@ -61,6 +100,7 @@ namespace HaCreator.MapSimulator.Interaction
                 NoticePassedThanksStringPoolId => NoticePassedThanksFallback,
                 NoticeMacroSanctionStringPoolId => NoticeMacroSanctionFallback,
                 NoticeAdminThanksStringPoolId => NoticeAdminThanksFallback,
+                AttemptMessageStringPoolId => AttemptMessageFallback,
                 _ => null,
             };
 

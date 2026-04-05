@@ -127,6 +127,7 @@ namespace HaCreator.MapSimulator.UI
         internal event Action<int> QuestRequested;
         internal event Action<int, bool> QuestLogRequested;
         internal event Action<string> StatusMessageRequested;
+        internal event Action TrackerCleared;
 
         internal void SetSnapshotProvider(Func<QuestAlarmSnapshot> provider)
         {
@@ -1043,6 +1044,7 @@ namespace HaCreator.MapSimulator.UI
             UpdateButtonStates();
             SavePersistedState();
             Hide();
+            TrackerCleared?.Invoke();
         }
 
         private int ResolveQuestLogLaunchQuestId(QuestAlarmSnapshot snapshot)

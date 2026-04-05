@@ -14,6 +14,7 @@ namespace HaCreator.MapSimulator
                 payload,
                 FindNpcById,
                 _activeNpcInteractionNpc,
+                _ => true,
                 out PacketScriptMessageRuntime.PacketScriptMessageOpenRequest request,
                 out message))
             {

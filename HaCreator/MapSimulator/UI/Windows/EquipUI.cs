@@ -45,6 +45,9 @@ namespace HaCreator.MapSimulator.UI
             public int RequestedAtTick { get; init; }
             public EquipmentChangeOwnerKind OwnerKind { get; init; }
             public int OwnerSessionId { get; init; }
+            public InventoryType SourceInventoryType { get; init; }
+            public int SourceInventoryIndex { get; init; } = -1;
+            public bool SourceInventoryLocked { get; set; }
         }
 
         public enum EquipSlot
@@ -297,26 +300,191 @@ namespace HaCreator.MapSimulator.UI
 
             if (!result.Accepted)
             {
+                if (pendingChange.SourceInventoryLocked && inventoryWindow != null)
+                {
+                    inventoryWindow.TryClearPendingRequestState(pendingChange.RequestId);
+                }
+
                 NotifyEquipmentEquipBlocked(result.RejectReason);
                 return;
             }
 
             if (EquipmentChangeClientParity.IsResolvedResultStale(_characterBuild, result))
             {
+                if (pendingChange.SourceInventoryLocked && inventoryWindow != null)
+                {
+                    inventoryWindow.TryClearPendingRequestState(pendingChange.RequestId);
+                }
+
                 NotifyEquipmentEquipBlocked(EquipmentChangeClientParity.StaleCompletionMessage);
                 return;
             }
 
-            if (pendingChange.Kind == EquipmentChangeRequestKind.CharacterToInventory
-                && result.ReturnedPart != null
-                && inventoryWindow != null)
+            if (inventoryWindow == null)
             {
-                InventorySlotData returnedSlot = CreateInventorySlot(result.ReturnedPart);
-                if (returnedSlot != null)
+                return;
+            }
+
+            switch (pendingChange.Kind)
+            {
+                case EquipmentChangeRequestKind.InventoryToCharacter:
+                    inventoryWindow.TryRemovePendingRequestSlot(pendingChange.RequestId, out _);
+                    IReadOnlyList<InventorySlotData> displacedSlots = CreateInventorySlots(result.DisplacedParts);
+                    if (displacedSlots != null)
+                    {
+                        for (int i = 0; i < displacedSlots.Count; i++)
+                        {
+                            InventorySlotData displacedSlot = displacedSlots[i];
+                            if (displacedSlot != null)
+                            {
+                                inventoryWindow.AddItem(ResolveInventoryTypeForSlot(displacedSlot), displacedSlot);
+                            }
+                        }
+                    }
+                    break;
+
+                case EquipmentChangeRequestKind.CharacterToInventory:
+                    if (pendingChange.SourceInventoryLocked)
+                    {
+                        inventoryWindow.TryClearPendingRequestState(pendingChange.RequestId);
+                    }
+
+                    if (result.ReturnedPart != null)
+                    {
+                        InventorySlotData returnedSlot = CreateInventorySlot(result.ReturnedPart);
+                        if (returnedSlot != null)
+                        {
+                            inventoryWindow.AddItem(ResolveInventoryTypeForSlot(returnedSlot), returnedSlot);
+                        }
+                    }
+                    break;
+            }
+        }
+
+        public bool TryLockPendingInventorySource(InventoryUI inventoryWindow)
+        {
+            if (inventoryWindow == null
+                || _pendingEquipmentChange == null
+                || _pendingEquipmentChange.Kind != EquipmentChangeRequestKind.InventoryToCharacter
+                || _pendingEquipmentChange.SourceInventoryLocked)
+            {
+                return false;
+            }
+
+            bool locked = inventoryWindow.TrySetPendingRequestState(
+                _pendingEquipmentChange.SourceInventoryType,
+                _pendingEquipmentChange.SourceInventoryIndex,
+                _pendingEquipmentChange.RequestId,
+                isPending: true);
+            _pendingEquipmentChange.SourceInventoryLocked = locked;
+            return locked;
+        }
+
+        public bool TryHandleInventoryDrop(
+            int mouseX,
+            int mouseY,
+            InventoryType sourceInventoryType,
+            int sourceInventoryIndex,
+            InventorySlotData draggedSlotData,
+            out IReadOnlyList<InventorySlotData> displacedSlots)
+        {
+            displacedSlots = Array.Empty<InventorySlotData>();
+            if (_companionPaneMode != CompanionPaneMode.Hidden
+                || draggedSlotData == null
+                || draggedSlotData.IsDisabled
+                || sourceInventoryType != InventoryType.EQUIP)
+            {
+                return false;
+            }
+
+            if (HasPendingEquipmentChange)
+            {
+                NotifyEquipmentEquipBlocked("An equipment change is already pending.");
+                return false;
+            }
+
+            EquipSlot? targetUiSlot = GetSlotAtPosition(mouseX, mouseY);
+            if (!targetUiSlot.HasValue)
+            {
+                return false;
+            }
+
+            CharacterEquipSlot? targetSlot = MapToCharacterEquipSlot(targetUiSlot.Value);
+            if (!targetSlot.HasValue)
+            {
+                return false;
+            }
+
+            EquipSlotVisualState targetState = EquipSlotStateResolver.ResolveVisualState(_characterBuild, targetSlot.Value);
+            if (targetState.IsDisabled)
+            {
+                NotifyEquipmentEquipBlocked(targetState.Message);
+                return false;
+            }
+
+            CharacterPart incomingPart = draggedSlotData.TooltipPart?.Clone();
+            if (incomingPart != null)
+            {
+                if (!CanDisplayPartInSlot(incomingPart, targetUiSlot.Value))
                 {
-                    inventoryWindow.AddItem(ResolveInventoryTypeForSlot(returnedSlot), returnedSlot);
+                    NotifyEquipmentEquipBlocked(EquipUIBigBang.BuildSlotMismatchRejectReason(incomingPart));
+                    return false;
+                }
+
+                if (!EquipUIBigBang.TryGetEquipRequirementRejectReason(incomingPart, _characterBuild, out string requirementRejectReason))
+                {
+                    NotifyEquipmentEquipBlocked(requirementRejectReason);
+                    return false;
                 }
             }
+
+            string restrictionMessage = EquipmentEquipGuard?.Invoke(draggedSlotData.ItemId);
+            if (!string.IsNullOrWhiteSpace(restrictionMessage))
+            {
+                NotifyEquipmentEquipBlocked(restrictionMessage);
+                return false;
+            }
+
+            CharacterEquipSlot resolvedTargetSlot = incomingPart != null
+                ? ResolveTargetSlot(targetUiSlot.Value, incomingPart)
+                : targetSlot.Value;
+            EquipmentChangeResult changeResult = TryRequestInventoryToCharacterChange(
+                sourceInventoryType,
+                sourceInventoryIndex,
+                draggedSlotData,
+                incomingPart,
+                resolvedTargetSlot);
+            if (changeResult != null)
+            {
+                if (changeResult.IsPending)
+                {
+                    return true;
+                }
+
+                if (!changeResult.Accepted)
+                {
+                    NotifyEquipmentEquipBlocked(changeResult.RejectReason);
+                    return false;
+                }
+
+                displacedSlots = CreateInventorySlots(changeResult.DisplacedParts);
+                return true;
+            }
+
+            CharacterPart resolvedIncomingPart = incomingPart?.Clone();
+            if (resolvedIncomingPart == null)
+            {
+                string itemName = string.IsNullOrWhiteSpace(draggedSlotData.ItemName)
+                    ? $"Item #{draggedSlotData.ItemId}"
+                    : draggedSlotData.ItemName;
+                NotifyEquipmentEquipBlocked($"Unable to load {itemName} as an equipment item.");
+                return false;
+            }
+
+            IReadOnlyList<CharacterPart> displacedParts = _characterBuild?.PlaceEquipment(resolvedIncomingPart, resolvedTargetSlot)
+                ?? Array.Empty<CharacterPart>();
+            displacedSlots = CreateInventorySlots(displacedParts);
+            return true;
         }
 
         public bool HandlesEquipmentInteractionPoint(int mouseX, int mouseY)
@@ -975,6 +1143,38 @@ namespace HaCreator.MapSimulator.UI
             return TrySubmitEquipmentChangeRequest(request, EquipmentChangeRequestKind.CharacterToCharacter);
         }
 
+        private EquipmentChangeResult TryRequestInventoryToCharacterChange(
+            InventoryType sourceInventoryType,
+            int sourceInventoryIndex,
+            InventorySlotData draggedSlotData,
+            CharacterPart incomingPart,
+            CharacterEquipSlot resolvedTargetSlot)
+        {
+            if (draggedSlotData == null)
+            {
+                return null;
+            }
+
+            EquipmentChangeRequest request = new EquipmentChangeRequest
+            {
+                OwnerKind = EquipmentChangeOwnerKind.LegacyWindow,
+                OwnerSessionId = _equipmentRequestSessionId,
+                ExpectedCharacterId = _characterBuild?.Id ?? 0,
+                ExpectedBuildStateToken = _characterBuild?.ComputeEquipmentStateToken() ?? 0,
+                Kind = EquipmentChangeRequestKind.InventoryToCharacter,
+                SourceInventoryType = sourceInventoryType,
+                SourceInventoryIndex = sourceInventoryIndex,
+                TargetEquipSlot = resolvedTargetSlot,
+                ItemId = draggedSlotData.ItemId,
+                ItemName = draggedSlotData.ItemName ?? string.Empty,
+                Summary = $"Equip {draggedSlotData.ItemName ?? $"Item {draggedSlotData.ItemId}"} to {resolvedTargetSlot}.",
+                SourceInventorySlot = draggedSlotData.Clone(),
+                RequestedPart = incomingPart?.Clone()
+            };
+
+            return TrySubmitEquipmentChangeRequest(request, EquipmentChangeRequestKind.InventoryToCharacter);
+        }
+
         private EquipmentChangeResult TryRequestCharacterToInventoryChange()
         {
             if (_draggedPart == null)
@@ -1037,7 +1237,9 @@ namespace HaCreator.MapSimulator.UI
                     RequestId = submission.RequestId,
                     RequestedAtTick = submission.RequestedAtTick,
                     OwnerKind = request.OwnerKind,
-                    OwnerSessionId = request.OwnerSessionId
+                    OwnerSessionId = request.OwnerSessionId,
+                    SourceInventoryType = request.SourceInventoryType,
+                    SourceInventoryIndex = request.SourceInventoryIndex
                 };
 
                 return EquipmentChangeResult.Pending(submission.RequestId, submission.RequestedAtTick);
@@ -1265,6 +1467,26 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return Math.Max(1, currentSessionId + 1);
+        }
+
+        private IReadOnlyList<InventorySlotData> CreateInventorySlots(IReadOnlyList<CharacterPart> parts)
+        {
+            if (parts == null || parts.Count == 0)
+            {
+                return Array.Empty<InventorySlotData>();
+            }
+
+            List<InventorySlotData> slots = new(parts.Count);
+            for (int i = 0; i < parts.Count; i++)
+            {
+                InventorySlotData slot = CreateInventorySlot(parts[i]);
+                if (slot != null)
+                {
+                    slots.Add(slot);
+                }
+            }
+
+            return slots.Count == 0 ? Array.Empty<InventorySlotData>() : slots;
         }
 
         private InventorySlotData CreateInventorySlot(CharacterPart part)

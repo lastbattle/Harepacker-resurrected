@@ -111,6 +111,8 @@ namespace HaCreator.MapSimulator.Pools
         public QuestStateType? RequiredQuestState { get; set; }
         public IReadOnlyList<string> ScriptNames { get; set; } = Array.Empty<string>();
         public bool ScriptStatePublished { get; set; }
+        public int PreferredAuthoredEventOrder { get; set; } = -1;
+        public ReactorActivationType PreferredAuthoredActivationType { get; set; } = ReactorActivationType.None;
     }
 
     internal sealed class ReactorInteractionMetadata
@@ -236,7 +238,9 @@ namespace HaCreator.MapSimulator.Pools
                     RequiredQuestId = interactionMetadata.RequiredQuestId,
                     RequiredQuestState = interactionMetadata.RequiredQuestState,
                     ScriptNames = interactionMetadata.ScriptNames,
-                    ScriptStatePublished = false
+                    ScriptStatePublished = false,
+                    PreferredAuthoredEventOrder = -1,
+                    PreferredAuthoredActivationType = ReactorActivationType.None
                 };
                 _reactorData[i] = data;
 
@@ -764,9 +768,14 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            if (TryResolveNextVisualState(reactor, data, request, out int nextVisualState))
+            if (TryResolveNextVisualState(reactor, data, request, out int nextVisualState, out int selectedAuthoredOrder))
             {
                 data.VisualState = nextVisualState;
+                UpdatePreferredAuthoredOrder(data, activationType, selectedAuthoredOrder);
+            }
+            else
+            {
+                ClearPreferredAuthoredOrder(data);
             }
 
             data.ActivationType = activationType;
@@ -820,7 +829,8 @@ namespace HaCreator.MapSimulator.Pools
                         reactor,
                         data,
                         new ReactorTransitionRequest(ReactorActivationType.Hit, data.ReactorType, data.ActivationValue),
-                        out int nextVisualState))
+                        out int nextVisualState,
+                        out int selectedAuthoredOrder))
                     {
                         data.ActivationType = ReactorActivationType.Hit;
                         data.ActivationValue = 0;
@@ -829,9 +839,11 @@ namespace HaCreator.MapSimulator.Pools
                         data.StateStartTime = currentTick;
                         data.StateFrame = 0;
                         data.ActivatingPlayerId = playerId;
+                        UpdatePreferredAuthoredOrder(data, ReactorActivationType.Hit, selectedAuthoredOrder);
                     }
                     else
                     {
+                        ClearPreferredAuthoredOrder(data);
                         // Progress to terminal destroyed state when WZ does not expose another branch.
                         DestroyReactor(index, playerId, currentTick);
                     }
@@ -856,6 +868,7 @@ namespace HaCreator.MapSimulator.Pools
             data.State = ReactorState.Destroyed;
             data.StateStartTime = currentTick;
             data.PacketLeavePending = false;
+            ClearPreferredAuthoredOrder(data);
             PublishScriptState(reactor, data, isEnabled: false, currentTick);
 
             // Update spawn point
@@ -902,6 +915,8 @@ namespace HaCreator.MapSimulator.Pools
             data.PacketHitStartTime = 0;
             data.PacketStateEndTime = 0;
             data.PacketProperEventIndex = -1;
+            data.PreferredAuthoredEventOrder = -1;
+            data.PreferredAuthoredActivationType = ReactorActivationType.None;
             PublishScriptState(reactor, data, isEnabled: false, currentTick);
         }
 
@@ -1147,6 +1162,8 @@ namespace HaCreator.MapSimulator.Pools
                     data.PacketStateEndTime = 0;
                     data.PacketProperEventIndex = -1;
                     data.ScriptStatePublished = false;
+                    data.PreferredAuthoredEventOrder = -1;
+                    data.PreferredAuthoredActivationType = ReactorActivationType.None;
                 }
 
                 AddReactorNameLookup(newReactor?.ReactorInstance?.Name, spawnIndex);
@@ -1301,7 +1318,9 @@ namespace HaCreator.MapSimulator.Pools
                 PacketLeavePending = false,
                 PacketHitStartTime = 0,
                 PacketStateEndTime = currentTick + 800,
-                PacketProperEventIndex = -1
+                PacketProperEventIndex = -1,
+                PreferredAuthoredEventOrder = -1,
+                PreferredAuthoredActivationType = ReactorActivationType.None
             };
 
             ReactorItem reactor = SpawnReactor(spawnPoint.SpawnId, currentTick);
@@ -1732,6 +1751,7 @@ namespace HaCreator.MapSimulator.Pools
             data.StateStartTime = currentTick;
             data.Alpha = 1f;
             data.PacketLeavePending = false;
+            ClearPreferredAuthoredOrder(data);
 
             if (index < _spawnPoints.Count)
             {
@@ -1886,6 +1906,7 @@ namespace HaCreator.MapSimulator.Pools
                     data,
                     new ReactorTransitionRequest(ReactorActivationType.Time, data.ReactorType, data.ActivationValue),
                     out int nextVisualState,
+                    out int selectedAuthoredOrder,
                     allowNumericFallback: false))
             {
                 return false;
@@ -1901,6 +1922,7 @@ namespace HaCreator.MapSimulator.Pools
             data.State = ReactorState.Activated;
             data.StateStartTime = currentTick;
             data.StateFrame = 0;
+            UpdatePreferredAuthoredOrder(data, ReactorActivationType.Time, selectedAuthoredOrder);
             return true;
         }
 
@@ -1913,6 +1935,7 @@ namespace HaCreator.MapSimulator.Pools
                     data,
                     new ReactorTransitionRequest(ReactorActivationType.Time, data.ReactorType, data.ActivationValue),
                     out int nextVisualState,
+                    out int selectedAuthoredOrder,
                     allowNumericFallback: false))
             {
                 return false;
@@ -1925,12 +1948,13 @@ namespace HaCreator.MapSimulator.Pools
             data.StateStartTime = currentTick;
             data.StateFrame = 0;
             data.ActivatingPlayerId = 0;
+            UpdatePreferredAuthoredOrder(data, ReactorActivationType.Time, selectedAuthoredOrder);
             PublishScriptState(reactor, data, isEnabled: true, currentTick);
             _onReactorActivated?.Invoke(reactor, 0);
             return true;
         }
 
-        private static bool TryAdvanceToNextVisualState(ReactorItem reactor, ReactorRuntimeData data, int currentTick, ReactorActivationType activationType)
+        private bool TryAdvanceToNextVisualState(ReactorItem reactor, ReactorRuntimeData data, int currentTick, ReactorActivationType activationType)
         {
             if (reactor == null
                 || data == null
@@ -1938,7 +1962,8 @@ namespace HaCreator.MapSimulator.Pools
                     reactor,
                     data,
                     new ReactorTransitionRequest(activationType, data.ReactorType, data.ActivationValue),
-                    out int nextVisualState))
+                    out int nextVisualState,
+                    out int selectedAuthoredOrder))
             {
                 return false;
             }
@@ -1947,7 +1972,39 @@ namespace HaCreator.MapSimulator.Pools
             data.State = ReactorState.Activated;
             data.StateStartTime = currentTick;
             data.StateFrame = 0;
+            UpdatePreferredAuthoredOrder(data, activationType, selectedAuthoredOrder);
             return true;
+        }
+
+        private static void UpdatePreferredAuthoredOrder(
+            ReactorRuntimeData data,
+            ReactorActivationType activationType,
+            int selectedAuthoredOrder)
+        {
+            if (data == null)
+            {
+                return;
+            }
+
+            if (selectedAuthoredOrder < 0)
+            {
+                ClearPreferredAuthoredOrder(data);
+                return;
+            }
+
+            data.PreferredAuthoredActivationType = activationType;
+            data.PreferredAuthoredEventOrder = selectedAuthoredOrder;
+        }
+
+        private static void ClearPreferredAuthoredOrder(ReactorRuntimeData data)
+        {
+            if (data == null)
+            {
+                return;
+            }
+
+            data.PreferredAuthoredActivationType = ReactorActivationType.None;
+            data.PreferredAuthoredEventOrder = -1;
         }
 
         private static bool TryResolveNextVisualState(
@@ -1955,24 +2012,31 @@ namespace HaCreator.MapSimulator.Pools
             ReactorRuntimeData data,
             ReactorTransitionRequest request,
             out int nextVisualState,
+            out int selectedAuthoredOrder,
             bool allowNumericFallback = true)
         {
             nextVisualState = data?.VisualState ?? 0;
+            selectedAuthoredOrder = -1;
             if (reactor == null || data == null)
             {
                 return false;
             }
 
-            int[] candidates = reactor.GetNextStateCandidates(
+            int preferredOrder = data.PreferredAuthoredActivationType == request.ActivationType
+                ? data.PreferredAuthoredEventOrder
+                : -1;
+            if (!reactor.TryResolveNextState(
                 data.VisualState,
                 request,
-                includeNumericFallback: allowNumericFallback);
-            if (candidates.Length == 0)
+                out ReactorItem.TransitionSelection selection,
+                includeNumericFallback: allowNumericFallback,
+                preferredAuthoredOrder: preferredOrder))
             {
                 return false;
             }
 
-            nextVisualState = candidates[0];
+            nextVisualState = selection.TargetState;
+            selectedAuthoredOrder = selection.IsAuthored ? selection.AuthoredOrder : -1;
             return true;
         }
 

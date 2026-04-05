@@ -25,7 +25,7 @@ namespace HaCreator.MapSimulator.UI
         private const int DialogButtonY = 106;
         private const int OkButtonX = 100;
         private const int YesButtonX = 70;
-        private const int YesTightButtonX = 65;
+        private const int SecurityQuestionYesButtonX = 59;
         private const int NoButtonX = 129;
         private const int NowButtonX = 59;
         private const int InputPaddingX = 4;
@@ -34,6 +34,8 @@ namespace HaCreator.MapSimulator.UI
         private readonly UIObject _okButton;
         private readonly UIObject _yesButton;
         private readonly UIObject _noButton;
+        private readonly UIObject _questionYesButton;
+        private readonly UIObject _questionNoButton;
         private readonly UIObject _acceptButton;
         private readonly UIObject _nowButton;
         private readonly UIObject _laterButton;
@@ -76,6 +78,8 @@ namespace HaCreator.MapSimulator.UI
             UIObject okButton,
             UIObject yesButton,
             UIObject noButton,
+            UIObject questionYesButton,
+            UIObject questionNoButton,
             UIObject acceptButton,
             UIObject nowButton,
             UIObject laterButton,
@@ -88,6 +92,8 @@ namespace HaCreator.MapSimulator.UI
             _okButton = RegisterButton(okButton, true);
             _yesButton = RegisterButton(yesButton, true);
             _noButton = RegisterButton(noButton, false);
+            _questionYesButton = RegisterButton(questionYesButton, true);
+            _questionNoButton = RegisterButton(questionNoButton, false);
             _acceptButton = RegisterButton(acceptButton, true);
             _nowButton = RegisterButton(nowButton, true);
             _laterButton = RegisterButton(laterButton, false);
@@ -365,6 +371,8 @@ namespace HaCreator.MapSimulator.UI
             HideButton(_okButton);
             HideButton(_yesButton);
             HideButton(_noButton);
+            HideButton(_questionYesButton);
+            HideButton(_questionNoButton);
             HideButton(_acceptButton);
             HideButton(_nowButton);
             HideButton(_laterButton);
@@ -375,8 +383,16 @@ namespace HaCreator.MapSimulator.UI
             switch (_buttonLayout)
             {
                 case LoginUtilityDialogButtonLayout.YesNo:
-                    _activePrimaryButton = _yesButton ?? _okButton;
-                    _activeSecondaryButton = _noButton;
+                    if (_visualStyle == LoginUtilityDialogVisualStyle.SecurityYesNo)
+                    {
+                        _activePrimaryButton = _questionYesButton ?? _yesButton ?? _okButton;
+                        _activeSecondaryButton = _questionNoButton ?? _noButton;
+                    }
+                    else
+                    {
+                        _activePrimaryButton = _yesButton ?? _okButton;
+                        _activeSecondaryButton = _noButton;
+                    }
                     break;
                 case LoginUtilityDialogButtonLayout.Accept:
                     _activePrimaryButton = _acceptButton ?? _okButton;
@@ -419,8 +435,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 LoginUtilityDialogButtonLayout.NowLater => (NowButtonX, NoButtonX),
                 LoginUtilityDialogButtonLayout.EnableDisableSpw => (YesButtonX, NoButtonX),
-                LoginUtilityDialogButtonLayout.YesNo when _visualStyle == LoginUtilityDialogVisualStyle.SecurityYesNo => (YesTightButtonX, NoButtonX),
-                LoginUtilityDialogButtonLayout.YesNo when _drawPrimaryButtonLabel || _drawSecondaryButtonLabel => (YesTightButtonX, NoButtonX),
+                LoginUtilityDialogButtonLayout.YesNo when _visualStyle == LoginUtilityDialogVisualStyle.SecurityYesNo => (SecurityQuestionYesButtonX, NoButtonX),
                 _ => (YesButtonX, NoButtonX),
             };
         }

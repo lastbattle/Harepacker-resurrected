@@ -832,7 +832,13 @@ namespace HaCreator.MapSimulator.Fields
 
         public void OnShowGameResult(int resultCode, int tickCount)
         {
-            ShowStatus(DescribeGameResult(resultCode), tickCount);
+            string status = DescribeGameResult(resultCode);
+            if (string.IsNullOrWhiteSpace(status))
+            {
+                return;
+            }
+
+            ShowStatus(status, tickCount);
         }
 
         public void OnProcessForDeath(MonsterCarnivalTeam team, string characterName, int remainingRevives, int tickCount)
@@ -978,36 +984,43 @@ namespace HaCreator.MapSimulator.Fields
                             ReconcileSummonedMobStates(entry, count);
                         }
 
+                        RecordVariantWrapperPacketDelegation((int)packetType, rawPacket: false);
                         EnsurePacketConsumed(stream, "enter");
                         return true;
 
                     case MonsterCarnivalPacketType.RequestResult:
                         OnRequestResult(reader.ReadByte(), reader.ReadByte(), ReadPacketString(reader), currentTimeMs);
+                        RecordVariantWrapperPacketDelegation((int)packetType, rawPacket: false);
                         EnsurePacketConsumed(stream, "request-result");
                         return true;
 
                     case MonsterCarnivalPacketType.RequestFailure:
                         OnRequestFailure(reader.ReadByte(), currentTimeMs);
+                        RecordVariantWrapperPacketDelegation((int)packetType, rawPacket: false);
                         EnsurePacketConsumed(stream, "request-failure");
                         return true;
 
                     case MonsterCarnivalPacketType.GameResult:
                         OnShowGameResult(reader.ReadByte(), currentTimeMs);
+                        RecordVariantWrapperPacketDelegation((int)packetType, rawPacket: false);
                         EnsurePacketConsumed(stream, "game-result");
                         return true;
 
                     case MonsterCarnivalPacketType.ProcessForDeath:
                         OnProcessForDeath((MonsterCarnivalTeam)reader.ReadByte(), ReadPacketString(reader), reader.ReadByte(), currentTimeMs);
+                        RecordVariantWrapperPacketDelegation((int)packetType, rawPacket: false);
                         EnsurePacketConsumed(stream, "process-for-death");
                         return true;
 
                     case MonsterCarnivalPacketType.CpUpdate:
                         UpdateTeamCp(reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16());
+                        RecordVariantWrapperPacketDelegation((int)packetType, rawPacket: false);
                         EnsurePacketConsumed(stream, "cp-update");
                         return true;
 
                     case MonsterCarnivalPacketType.CpDelta:
                         ApplyTeamCpDelta(reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), reader.ReadInt16(), currentTimeMs);
+                        RecordVariantWrapperPacketDelegation((int)packetType, rawPacket: false);
                         EnsurePacketConsumed(stream, "cp-delta");
                         return true;
 
@@ -1017,6 +1030,7 @@ namespace HaCreator.MapSimulator.Fields
                             return false;
                         }
 
+                        RecordVariantWrapperPacketDelegation((int)packetType, rawPacket: false);
                         EnsurePacketConsumed(stream, "summoned-mob-count");
                         return true;
 
@@ -1066,41 +1080,49 @@ namespace HaCreator.MapSimulator.Fields
                             ReconcileSummonedMobStates(entry, count);
                         }
 
+                        RecordVariantWrapperPacketDelegation(packetType, rawPacket: true);
                         EnsurePacketConsumed(stream, "raw-enter");
                         return true;
 
                     case MonsterCarnivalRawPacketType.PersonalCp:
                         UpdatePersonalCp(reader.ReadInt16(), reader.ReadInt16());
+                        RecordVariantWrapperPacketDelegation(packetType, rawPacket: true);
                         EnsurePacketConsumed(stream, "raw-personal-cp");
                         return true;
 
                     case MonsterCarnivalRawPacketType.TeamCp:
                         UpdateTeamCp((MonsterCarnivalTeam)reader.ReadByte(), reader.ReadInt16(), reader.ReadInt16());
+                        RecordVariantWrapperPacketDelegation(packetType, rawPacket: true);
                         EnsurePacketConsumed(stream, "raw-team-cp");
                         return true;
 
                     case MonsterCarnivalRawPacketType.RequestResult:
                         OnRequestResult(reader.ReadByte(), reader.ReadByte(), ReadPacketString(reader), currentTimeMs);
+                        RecordVariantWrapperPacketDelegation(packetType, rawPacket: true);
                         EnsurePacketConsumed(stream, "raw-request-result");
                         return true;
 
                     case MonsterCarnivalRawPacketType.RequestFailure:
                         OnRequestFailure(reader.ReadByte(), currentTimeMs);
+                        RecordVariantWrapperPacketDelegation(packetType, rawPacket: true);
                         EnsurePacketConsumed(stream, "raw-request-failure");
                         return true;
 
                     case MonsterCarnivalRawPacketType.ProcessForDeath:
                         OnProcessForDeath((MonsterCarnivalTeam)reader.ReadByte(), ReadPacketString(reader), reader.ReadByte(), currentTimeMs);
+                        RecordVariantWrapperPacketDelegation(packetType, rawPacket: true);
                         EnsurePacketConsumed(stream, "raw-process-for-death");
                         return true;
 
                     case MonsterCarnivalRawPacketType.ShowMemberOutMessage:
                         OnShowMemberOutMessage(reader.ReadByte(), (MonsterCarnivalTeam)reader.ReadByte(), ReadPacketString(reader), currentTimeMs);
+                        RecordVariantWrapperPacketDelegation(packetType, rawPacket: true);
                         EnsurePacketConsumed(stream, "raw-show-member-out");
                         return true;
 
                     case MonsterCarnivalRawPacketType.GameResult:
                         OnShowGameResult(reader.ReadByte(), currentTimeMs);
+                        RecordVariantWrapperPacketDelegation(packetType, rawPacket: true);
                         EnsurePacketConsumed(stream, "raw-game-result");
                         return true;
 
@@ -1797,7 +1819,7 @@ namespace HaCreator.MapSimulator.Fields
                     RecordClientOwnerAction(
                         $"{_definition.ClientOwnerLabel}::OnShowGameResult ignored code {resultCode}.",
                         Array.Empty<int>());
-                    return $"{_definition.ClientOwnerLabel}::OnShowGameResult ignored result code {resultCode}.";
+                    return null;
                 }
 
                 return $"Monster Carnival result packet {resultCode} received.";
@@ -1813,6 +1835,19 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return message;
+        }
+
+        private void RecordVariantWrapperPacketDelegation(int packetType, bool rawPacket)
+        {
+            if (_definition == null || (!_definition.IsWaitingRoom && !_definition.IsSeason2Mode))
+            {
+                return;
+            }
+
+            string packetLabel = rawPacket ? "raw packet" : "packet";
+            RecordClientOwnerAction(
+                $"{_definition.ClientOwnerLabel}::Init retained monsterCarnival/mapType={_definition.MapType}; {packetLabel} {packetType} delegated to CField_MonsterCarnival.",
+                Array.Empty<int>());
         }
 
         private string BuildInitialClientOwnerAction(MonsterCarnivalFieldDefinition definition)

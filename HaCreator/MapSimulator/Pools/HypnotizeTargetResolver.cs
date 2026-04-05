@@ -70,7 +70,8 @@ namespace HaCreator.MapSimulator.Pools
                 ReferenceEquals(source, candidate) ||
                 candidate.AI == null ||
                 candidate.AI.IsDead ||
-                candidate.AI.IsHypnotized)
+                candidate.AI.IsHypnotized ||
+                candidate.AI.IsDoomed)
             {
                 return false;
             }
@@ -92,15 +93,15 @@ namespace HaCreator.MapSimulator.Pools
         {
             if (sourceTeam.HasValue && candidateTeam.HasValue && sourceTeam.Value == candidateTeam.Value)
             {
-                return usesEncounterTarget ? 1 : 0;
+                return usesEncounterTarget ? 0 : 1;
             }
 
             if (sourceTeam.HasValue)
             {
-                return usesEncounterTarget ? 3 : 2;
+                return usesEncounterTarget ? 2 : 3;
             }
 
-            return usesEncounterTarget ? 1 : 0;
+            return usesEncounterTarget ? 0 : 1;
         }
 
         internal static bool ShouldPreferCandidate(

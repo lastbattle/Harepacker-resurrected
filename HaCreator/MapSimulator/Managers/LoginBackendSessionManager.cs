@@ -36,11 +36,16 @@ namespace HaCreator.MapSimulator.Managers
             ActiveWorldId = 0;
             CanHaveExtraCharacter = false;
             SelectWorldRosterProfile = null;
+            ResetViewAllAggregation();
+            _selectWorldProfilesByWorld.Clear();
+        }
+
+        public void ResetViewAllAggregation()
+        {
             ViewAllCharRosterProfile = null;
             ViewAllExpectedCharacterCount = 0;
             ViewAllRemainingServerCount = 0;
             _viewAllEntries.Clear();
-            _selectWorldProfilesByWorld.Clear();
             _viewAllProfilesByWorld.Clear();
         }
 
@@ -67,9 +72,20 @@ namespace HaCreator.MapSimulator.Managers
             return ReevaluateExtraCharacterEntitlement();
         }
 
-        public bool ConsumeExtraCharacterEntitlement()
+        public bool ConsumeExtraCharacterEntitlement(int? accountId = null)
         {
-            _lastExtraCharInfoResultProfile = null;
+            int resolvedAccountId = accountId.HasValue && accountId.Value > 0
+                ? accountId.Value
+                : AuthenticatedAccountId.GetValueOrDefault();
+
+            _lastExtraCharInfoResultProfile = resolvedAccountId > 0
+                ? new LoginExtraCharInfoResultProfile
+                {
+                    AccountId = resolvedAccountId,
+                    ResultFlag = 1,
+                    CanHaveExtraCharacter = false
+                }
+                : null;
             return SetExtraCharacterEntitlement(false);
         }
 
@@ -421,6 +437,120 @@ namespace HaCreator.MapSimulator.Managers
             return true;
         }
 
+        public bool TryUpsertCharacter(
+            LoginSelectWorldCharacterEntry entry,
+            int fallbackWorldId,
+            out bool replacedExisting)
+        {
+            replacedExisting = false;
+            if (entry == null || entry.CharacterId <= 0)
+            {
+                return false;
+            }
+
+            int resolvedWorldId = Math.Max(0, entry.WorldId ?? 0);
+            if (resolvedWorldId <= 0)
+            {
+                resolvedWorldId = Math.Max(0, fallbackWorldId);
+            }
+
+            if (resolvedWorldId <= 0)
+            {
+                resolvedWorldId = Math.Max(0, ActiveWorldId);
+            }
+
+            if (resolvedWorldId <= 0)
+            {
+                resolvedWorldId = 0;
+            }
+
+            ActiveWorldId = resolvedWorldId;
+
+            LoginSelectWorldCharacterEntry normalizedEntry = CloneEntry(entry);
+            normalizedEntry = new LoginSelectWorldCharacterEntry
+            {
+                CharacterId = normalizedEntry.CharacterId,
+                WorldId = resolvedWorldId,
+                Name = normalizedEntry.Name ?? string.Empty,
+                Gender = normalizedEntry.Gender,
+                Skin = normalizedEntry.Skin,
+                FaceId = normalizedEntry.FaceId,
+                HairId = normalizedEntry.HairId,
+                Level = normalizedEntry.Level,
+                JobId = normalizedEntry.JobId,
+                SubJob = normalizedEntry.SubJob,
+                Strength = normalizedEntry.Strength,
+                Dexterity = normalizedEntry.Dexterity,
+                Intelligence = normalizedEntry.Intelligence,
+                Luck = normalizedEntry.Luck,
+                AbilityPoints = normalizedEntry.AbilityPoints,
+                HitPoints = normalizedEntry.HitPoints,
+                MaxHitPoints = normalizedEntry.MaxHitPoints,
+                ManaPoints = normalizedEntry.ManaPoints,
+                MaxManaPoints = normalizedEntry.MaxManaPoints,
+                Experience = normalizedEntry.Experience,
+                Fame = normalizedEntry.Fame,
+                FieldMapId = normalizedEntry.FieldMapId,
+                Portal = normalizedEntry.Portal,
+                PlayTime = normalizedEntry.PlayTime,
+                OnFamily = normalizedEntry.OnFamily,
+                WorldRank = normalizedEntry.WorldRank,
+                WorldRankMove = normalizedEntry.WorldRankMove,
+                JobRank = normalizedEntry.JobRank,
+                JobRankMove = normalizedEntry.JobRankMove,
+                AvatarLook = normalizedEntry.AvatarLook,
+                AvatarLookPacket = normalizedEntry.AvatarLookPacket != null
+                    ? (byte[])normalizedEntry.AvatarLookPacket.Clone()
+                    : Array.Empty<byte>()
+            };
+
+            bool changed = false;
+
+            LoginSelectWorldResultProfile selectWorldProfile = ResolveSelectWorldProfileForUpsert(resolvedWorldId);
+            if (selectWorldProfile != null &&
+                LoginSelectWorldResultCodec.IsSuccessCode(selectWorldProfile.ResultCode))
+            {
+                selectWorldProfile = UpsertCharacterInProfile(
+                    selectWorldProfile,
+                    normalizedEntry,
+                    out bool replacedInSelectWorld,
+                    out bool changedInSelectWorld);
+                _selectWorldProfilesByWorld[resolvedWorldId] = CloneProfile(selectWorldProfile);
+                if (resolvedWorldId == ActiveWorldId)
+                {
+                    SelectWorldRosterProfile = CloneProfile(selectWorldProfile);
+                }
+
+                replacedExisting |= replacedInSelectWorld;
+                changed |= changedInSelectWorld;
+            }
+
+            changed |= UpsertCharacterInEntries(_viewAllEntries, normalizedEntry, out bool replacedInViewAll);
+            replacedExisting |= replacedInViewAll;
+            ViewAllExpectedCharacterCount = Math.Max(0, _viewAllEntries.Count);
+            ViewAllRemainingServerCount = 0;
+
+            int slotCount = Math.Max(
+                1,
+                ResolveRosterSlotCount(
+                    _viewAllProfilesByWorld.TryGetValue(resolvedWorldId, out LoginSelectWorldResultProfile viewAllWorldProfile)
+                        ? viewAllWorldProfile
+                        : ViewAllCharRosterProfile,
+                    selectWorldProfile ?? SelectWorldRosterProfile));
+            int buyCharacterCount = NormalizeBuyCharacterCount(ResolveRosterBuyCharacterCount(
+                _viewAllProfilesByWorld.TryGetValue(resolvedWorldId, out viewAllWorldProfile)
+                    ? viewAllWorldProfile
+                    : ViewAllCharRosterProfile,
+                selectWorldProfile ?? SelectWorldRosterProfile));
+            bool loginOpt = (viewAllWorldProfile ?? ViewAllCharRosterProfile)?.LoginOpt
+                            ?? selectWorldProfile?.LoginOpt
+                            ?? SelectWorldRosterProfile?.LoginOpt
+                            ?? false;
+            CacheViewAllWorldProfiles(CreateRosterProfile(_viewAllEntries, slotCount, buyCharacterCount, loginOpt));
+
+            return changed;
+        }
+
         private bool HasSelectWorldRoster =>
             SelectWorldRosterProfile != null &&
             LoginSelectWorldResultCodec.IsSuccessCode(SelectWorldRosterProfile.ResultCode);
@@ -658,6 +788,161 @@ namespace HaCreator.MapSimulator.Managers
                 SlotCount = Math.Max(0, profile.SlotCount),
                 BuyCharacterCount = Math.Max(0, profile.BuyCharacterCount)
             };
+        }
+
+        private LoginSelectWorldResultProfile ResolveSelectWorldProfileForUpsert(int worldId)
+        {
+            int normalizedWorldId = Math.Max(0, worldId);
+            if (_selectWorldProfilesByWorld.TryGetValue(normalizedWorldId, out LoginSelectWorldResultProfile existingProfile) &&
+                existingProfile != null)
+            {
+                return CloneProfile(existingProfile);
+            }
+
+            if (normalizedWorldId == ActiveWorldId &&
+                SelectWorldRosterProfile != null)
+            {
+                return CloneProfile(SelectWorldRosterProfile);
+            }
+
+            if (_viewAllProfilesByWorld.TryGetValue(normalizedWorldId, out LoginSelectWorldResultProfile viewAllProfile) &&
+                viewAllProfile != null)
+            {
+                return new LoginSelectWorldResultProfile
+                {
+                    ResultCode = 0,
+                    Entries = viewAllProfile.Entries?
+                        .Where(candidate => candidate != null)
+                        .Select(CloneEntry)
+                        .ToArray()
+                        ?? Array.Empty<LoginSelectWorldCharacterEntry>(),
+                    LoginOpt = viewAllProfile.LoginOpt,
+                    SlotCount = Math.Max(0, viewAllProfile.SlotCount),
+                    BuyCharacterCount = Math.Max(0, viewAllProfile.BuyCharacterCount)
+                };
+            }
+
+            return new LoginSelectWorldResultProfile
+            {
+                ResultCode = 0,
+                Entries = Array.Empty<LoginSelectWorldCharacterEntry>(),
+                LoginOpt = false,
+                SlotCount = Math.Max(1, ViewAllCharRosterProfile?.SlotCount ?? 0),
+                BuyCharacterCount = NormalizeBuyCharacterCount(ViewAllCharRosterProfile?.BuyCharacterCount ?? 0)
+            };
+        }
+
+        private static LoginSelectWorldResultProfile UpsertCharacterInProfile(
+            LoginSelectWorldResultProfile profile,
+            LoginSelectWorldCharacterEntry upsertEntry,
+            out bool replacedExisting,
+            out bool changed)
+        {
+            replacedExisting = false;
+            changed = false;
+            if (profile == null || upsertEntry == null || upsertEntry.CharacterId <= 0)
+            {
+                return profile;
+            }
+
+            List<LoginSelectWorldCharacterEntry> entries = profile.Entries?
+                .Where(entry => entry != null)
+                .Select(CloneEntry)
+                .ToList()
+                ?? new List<LoginSelectWorldCharacterEntry>();
+            int existingIndex = entries.FindIndex(candidate => candidate.CharacterId == upsertEntry.CharacterId);
+            LoginSelectWorldCharacterEntry clonedUpsertEntry = CloneEntry(upsertEntry);
+            if (existingIndex >= 0)
+            {
+                replacedExisting = true;
+                changed = !AreEquivalentCharacterEntries(entries[existingIndex], clonedUpsertEntry);
+                entries[existingIndex] = clonedUpsertEntry;
+            }
+            else
+            {
+                entries.Add(clonedUpsertEntry);
+                changed = true;
+            }
+
+            return new LoginSelectWorldResultProfile
+            {
+                ResultCode = profile.ResultCode,
+                Entries = entries,
+                LoginOpt = profile.LoginOpt,
+                SlotCount = Math.Max(0, profile.SlotCount),
+                BuyCharacterCount = Math.Max(0, profile.BuyCharacterCount)
+            };
+        }
+
+        private static bool UpsertCharacterInEntries(
+            ICollection<LoginSelectWorldCharacterEntry> entries,
+            LoginSelectWorldCharacterEntry upsertEntry,
+            out bool replacedExisting)
+        {
+            replacedExisting = false;
+            if (entries == null || upsertEntry == null || upsertEntry.CharacterId <= 0)
+            {
+                return false;
+            }
+
+            LoginSelectWorldCharacterEntry existingEntry = entries.FirstOrDefault(entry => entry?.CharacterId == upsertEntry.CharacterId);
+            LoginSelectWorldCharacterEntry clonedUpsertEntry = CloneEntry(upsertEntry);
+            if (existingEntry != null)
+            {
+                replacedExisting = true;
+                bool changed = !AreEquivalentCharacterEntries(existingEntry, clonedUpsertEntry);
+                if (changed)
+                {
+                    entries.Remove(existingEntry);
+                    entries.Add(clonedUpsertEntry);
+                }
+
+                return changed;
+            }
+
+            entries.Add(clonedUpsertEntry);
+            return true;
+        }
+
+        private static bool AreEquivalentCharacterEntries(
+            LoginSelectWorldCharacterEntry left,
+            LoginSelectWorldCharacterEntry right)
+        {
+            if (left == null || right == null)
+            {
+                return left == right;
+            }
+
+            return left.CharacterId == right.CharacterId &&
+                   Math.Max(0, left.WorldId ?? 0) == Math.Max(0, right.WorldId ?? 0) &&
+                   string.Equals(left.Name ?? string.Empty, right.Name ?? string.Empty, StringComparison.Ordinal) &&
+                   left.Gender == right.Gender &&
+                   left.Skin == right.Skin &&
+                   left.FaceId == right.FaceId &&
+                   left.HairId == right.HairId &&
+                   left.Level == right.Level &&
+                   left.JobId == right.JobId &&
+                   left.SubJob == right.SubJob &&
+                   left.Strength == right.Strength &&
+                   left.Dexterity == right.Dexterity &&
+                   left.Intelligence == right.Intelligence &&
+                   left.Luck == right.Luck &&
+                   left.AbilityPoints == right.AbilityPoints &&
+                   left.HitPoints == right.HitPoints &&
+                   left.MaxHitPoints == right.MaxHitPoints &&
+                   left.ManaPoints == right.ManaPoints &&
+                   left.MaxManaPoints == right.MaxManaPoints &&
+                   left.Experience == right.Experience &&
+                   left.Fame == right.Fame &&
+                   left.FieldMapId == right.FieldMapId &&
+                   left.Portal == right.Portal &&
+                   left.PlayTime == right.PlayTime &&
+                   left.OnFamily == right.OnFamily &&
+                   left.WorldRank == right.WorldRank &&
+                   left.WorldRankMove == right.WorldRankMove &&
+                   left.JobRank == right.JobRank &&
+                   left.JobRankMove == right.JobRankMove &&
+                   (left.AvatarLookPacket?.AsSpan().SequenceEqual(right.AvatarLookPacket ?? Array.Empty<byte>()) ?? false);
         }
 
         private static LoginSelectWorldResultProfile CreateRosterProfile(
