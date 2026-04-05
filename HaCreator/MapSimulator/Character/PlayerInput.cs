@@ -152,7 +152,7 @@ namespace HaCreator.MapSimulator.Character
     /// </summary>
     public class PlayerInput
     {
-        [DllImport("user32.dll", ExactSpelling = true)]
+        [DllImport("user32.dll", EntryPoint = "MapVirtualKeyW", ExactSpelling = true)]
         private static extern uint MapVirtualKey(uint uCode, uint uMapType);
 
         public enum GamepadAxisResponseCurve
