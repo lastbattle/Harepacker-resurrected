@@ -197,7 +197,7 @@ The gap is that the simulator does not yet reproduce the client's actual compani
 
 ### 1. Companion and social-system parity
 
-This area is currently unowned by the backlog set even though both the client and simulator already expose concrete seams here.
+This area now has its own backlog document because both the client and simulator already expose concrete seams here.
 
 | Status | Area | Gap | Why it matters | Primary seam |
 |--------|------|-----|----------------|--------------|
