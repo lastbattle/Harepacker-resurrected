@@ -1878,7 +1878,7 @@ namespace HaCreator.MapSimulator.Loaders
                 graphics.FillRectangle(new System.Drawing.SolidBrush(System.Drawing.Color.Yellow), new System.Drawing.RectangleF(0, 0, bmp_DotPixel.Width, bmp_DotPixel.Height));
                 graphics.Flush();
             }
-            IDXObject dxObj_miniMapPixel = new DXObject(0, compactN?.Height ?? expandedN?.Height ?? 0, bmp_DotPixel.ToTexture2DAndDispose(device), 0);
+            IDXObject dxObj_miniMapPixel = new DXObject(0, 0, bmp_DotPixel.ToTexture2DAndDispose(device), 0);
 
             // Map
             IDXObject dxObj_miniMap_Minimised = new DXObject(0, 0, texturer_miniMapMinimised, 0);
@@ -1890,7 +1890,10 @@ namespace HaCreator.MapSimulator.Loaders
             HaUISize fullMiniMapStackPanelSize = fullMiniMapStackPanel.GetSize();
             int alignmentXOffset = HaUIHelper.CalculateAlignmentOffset(fullMiniMapStackPanelSize.Width, minimapUiImage.GetInfo().Bitmap.Width, minimapUiGrid.GetInfo().HorizontalAlignment);
 
-            Point minimapImageOffset = new Point(MAP_IMAGE_TEXT_PADDING + alignmentXOffset, 0);
+            int minimapImageYOffset = mapNameMarkStackPanel.GetInfo().Margins.Top
+                + mapNameMarkStackPanel.GetSize().Height
+                + minimapUiGrid.GetInfo().Margins.Top;
+            Point minimapImageOffset = new Point(MAP_IMAGE_TEXT_PADDING + alignmentXOffset, minimapImageYOffset);
             BaseDXDrawableItem userMarker = null;
             BaseDXDrawableItem npcMarker = null;
             BaseDXDrawableItem questStartNpcMarker = null;
