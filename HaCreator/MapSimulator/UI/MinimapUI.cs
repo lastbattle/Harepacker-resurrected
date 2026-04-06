@@ -117,6 +117,7 @@ namespace HaCreator.MapSimulator.UI
         public Func<NpcItem, NpcMarkerType> ResolveNpcMarkerType { get; set; }
         public Func<NpcItem, string> ResolveNpcTooltipText { get; set; }
         public Func<PortalItem, string> ResolvePortalTooltipText { get; set; }
+        public Action<Point> WindowPositionChanged { get; set; }
 
         public sealed class TrackedUserMarker
         {
@@ -443,6 +444,7 @@ namespace HaCreator.MapSimulator.UI
             Position = position;
             _expandedFrame?.CopyObjectPosition(this);
             _collapsedFrame?.CopyObjectPosition(this);
+            WindowPositionChanged?.Invoke(position);
         }
 
         #region IClickableUIObject
@@ -537,9 +539,7 @@ namespace HaCreator.MapSimulator.UI
                 newX = Math.Max(0, Math.Min(newX, renderWidth - frameWidth));
                 newY = Math.Max(0, Math.Min(newY, renderHeight - frameHeight));
 
-                this.Position = new Point(newX, newY);
-                _expandedFrame?.CopyObjectPosition(this);
-                _collapsedFrame?.CopyObjectPosition(this);
+                SetWindowPosition(new Point(newX, newY));
             }
             else
             {

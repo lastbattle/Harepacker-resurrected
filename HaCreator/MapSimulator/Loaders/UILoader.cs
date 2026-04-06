@@ -33,6 +33,7 @@ namespace HaCreator.MapSimulator.Loaders
         // Constants
         private const string GLOBAL_FONT = "Arial";
         private const float MINIMAP_STREETNAME_TOOLTIP_FONTSIZE = 10f;
+        private static readonly Point DefaultMinimapWindowPosition = new Point(10, 10);
         private static readonly ConcurrentDictionary<string, Tuple<StatusBarUI, StatusBarChatUI>> _statusBarCache = new(StringComparer.Ordinal);
         private static readonly ConcurrentDictionary<string, MinimapUI> _minimapCache = new(StringComparer.Ordinal);
         private static readonly ConcurrentDictionary<string, Dictionary<string, Texture2D>> _buffIconTextureCache = new(StringComparer.Ordinal);
@@ -42,6 +43,7 @@ namespace HaCreator.MapSimulator.Loaders
         private static readonly ConcurrentDictionary<string, StatusBarWarningAnimation> _warningAnimationCache = new(StringComparer.Ordinal);
         private static readonly ConcurrentDictionary<string, (Dictionary<MapSimulatorChatTargetType, Texture2D> Textures, Dictionary<MapSimulatorChatTargetType, Point> Origins)> _chatTargetTextureCache = new(StringComparer.Ordinal);
         private static readonly ConcurrentDictionary<string, StatusBarChatUI.StatusBarPointNotificationAnimation> _pointNotificationAnimationCache = new(StringComparer.Ordinal);
+        private static Point _sharedMinimapWindowPosition = DefaultMinimapWindowPosition;
 
         private static string GetDeviceCachePrefix(GraphicsDevice device)
         {
@@ -77,6 +79,17 @@ namespace HaCreator.MapSimulator.Loaders
         private static string BuildPointNotificationCacheKey(GraphicsDevice device, WzSubProperty notificationProperty)
         {
             return $"{GetDeviceCachePrefix(device)}|pointNotify:{notificationProperty?.FullPath ?? string.Empty}";
+        }
+
+        private static void ApplySharedMinimapWindowPosition(MinimapUI minimap)
+        {
+            if (minimap == null)
+            {
+                return;
+            }
+
+            minimap.WindowPositionChanged = position => _sharedMinimapWindowPosition = position;
+            minimap.SetWindowPosition(_sharedMinimapWindowPosition);
         }
 
         #region StatusBar
@@ -1874,6 +1887,7 @@ namespace HaCreator.MapSimulator.Loaders
             string minimapCacheKey = BuildMinimapCacheKey(device, mapBoard, UserScreenScaleFactor, bBigBang);
             if (_minimapCache.TryGetValue(minimapCacheKey, out MinimapUI cachedMinimap))
             {
+                ApplySharedMinimapWindowPosition(cachedMinimap);
                 return cachedMinimap;
             }
 
@@ -2332,7 +2346,7 @@ namespace HaCreator.MapSimulator.Loaders
                 directionMarkers,
                 helperMarkers);
 
-            minimapItem.SetWindowPosition(new Point(10, 10)); // default position and sync frame drawables
+            ApplySharedMinimapWindowPosition(minimapItem);
 
             ////////////// Minimap buttons////////////////////
             // This must be in order.
