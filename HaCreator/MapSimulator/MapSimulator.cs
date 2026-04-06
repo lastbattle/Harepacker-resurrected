@@ -561,6 +561,10 @@ namespace HaCreator.MapSimulator
         // Debug
 
         private Texture2D _debugBoundaryTexture;
+        private readonly Stopwatch _startupTraceStopwatch = Stopwatch.StartNew();
+        private bool _startupFirstUpdateLogged;
+        private bool _startupFirstDrawLogged;
+        private bool _startupPlayableLogged;
 
 
 
@@ -13776,6 +13780,12 @@ namespace HaCreator.MapSimulator
 
         private readonly StringBuilder _debugStringBuilder = new StringBuilder(256);
 
+        [Conditional("DEBUG")]
+        private void LogStartupCheckpoint(string stage)
+        {
+            Debug.WriteLine($"[Startup] +{_startupTraceStopwatch.ElapsedMilliseconds,5} ms {stage}");
+        }
+
 
 
         // Cached navigation help strings to avoid string.Format every frame
@@ -13792,6 +13802,7 @@ namespace HaCreator.MapSimulator
         /// <param name="spawnPortalName">Optional portal name to spawn at (from portal teleportation)</param>
         public MapSimulator(Board _mapBoard, string titleName, string spawnPortalName = null)
         {
+            LogStartupCheckpoint($"MapSimulator ctor begin (map={_mapBoard?.MapInfo?.id}, title={titleName})");
             _mobMirrorBoundaryResolver = ResolveMobMirrorBoundary;
             _npcMirrorBoundaryResolver = ResolveNpcMirrorBoundary;
             _chatFallbackMeasureGraphics = SD.Graphics.FromImage(_chatFallbackMeasureBitmap);
@@ -13821,6 +13832,7 @@ namespace HaCreator.MapSimulator
 
 
             InitialiseWindowAndMap_WidthHeight();
+            LogStartupCheckpoint($"Window sizing resolved ({Width}x{Height}, render={_renderParams.RenderWidth}x{_renderParams.RenderHeight}, scale={_renderParams.RenderObjectScaling:0.##})");
 
 
 
@@ -13875,6 +13887,7 @@ namespace HaCreator.MapSimulator
             };
             _DxDeviceManager.DeviceCreated += graphics_DeviceCreated;
             _DxDeviceManager.ApplyChanges();
+            LogStartupCheckpoint("Graphics device manager initialized");
 
 
             // Initialize rendering manager
@@ -14008,6 +14021,7 @@ namespace HaCreator.MapSimulator
                 () => _frameActiveMobs);
             _mobAttackSystem.SetPlayerHitboxAccessor(() => _playerManager?.GetPlayerHitbox() ?? Rectangle.Empty);
             _mobAttackSystem.SetPlayerGroundedAccessor(() => _playerManager?.IsPlayerOnGround() ?? true);
+            LogStartupCheckpoint("MapSimulator ctor completed");
         }
 
 
@@ -14128,6 +14142,7 @@ namespace HaCreator.MapSimulator
         protected override void Initialize()
 
         {
+            LogStartupCheckpoint("Initialize begin");
 
             // TODO: Add your initialization logic here
 
@@ -14139,6 +14154,7 @@ namespace HaCreator.MapSimulator
             {
                 mapObjects[i] = new List<BaseDXDrawableItem>();
             }
+            LogStartupCheckpoint("Initialize allocated map layer lists");
 
 
             //GraphicsDevice.Viewport = new Viewport(RenderWidth / 2 - 800 / 2, RenderHeight / 2 - 600 / 2, 800, 600);
@@ -14156,6 +14172,7 @@ namespace HaCreator.MapSimulator
             _fontNavigationKeysHelper.DefaultCharacter = '?';
             _fontChat.DefaultCharacter = '?';
             _fontDebugValues.DefaultCharacter = '?';
+            LogStartupCheckpoint("Initialize loaded fonts");
 
 
             // Set fonts on rendering manager
@@ -14173,6 +14190,7 @@ namespace HaCreator.MapSimulator
 
 
             base.Initialize();
+            LogStartupCheckpoint("Initialize completed");
 
         }
 

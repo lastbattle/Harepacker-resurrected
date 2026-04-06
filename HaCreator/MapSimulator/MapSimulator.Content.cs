@@ -67,6 +67,8 @@ namespace HaCreator.MapSimulator
         /// </summary>
         protected override void LoadContent()
         {
+            LogStartupCheckpoint("LoadContent begin");
+
             // Load physics constants from Map.wz/Physics.img
             LoadPhysicsConstants();
 
@@ -109,6 +111,7 @@ namespace HaCreator.MapSimulator
             _gameState.IsBigBangUpdate = WzFileManager.IsBigBangUpdate(uiWindow2Image); // different rendering for pre and post-bb, to support multiple vers
 
             _gameState.IsBigBang2Update = WzFileManager.IsBigBang2Update(uiWindow2Image); // chaos update
+            LogStartupCheckpoint("LoadContent resolved shared WZ/UI references");
 
 
 
@@ -193,6 +196,7 @@ namespace HaCreator.MapSimulator
             // Load tombstone animation from Effect.wz/Tomb.img
 
             LoadTombstoneAnimation();
+            LogStartupCheckpoint("LoadContent initialized audio/icons/tombstone assets");
 
 
 
@@ -1534,6 +1538,7 @@ namespace HaCreator.MapSimulator
             Stopwatch waitAllStopwatch = Stopwatch.StartNew();
             Task.WaitAll(t_tiles, t_Background, t_reactor, t_npc, t_mobs, t_portal, t_tooltips, t_minimap, t_statusBar, t_cursor);
             waitAllStopwatch.Stop();
+            LogStartupCheckpoint("LoadContent completed parallel asset tasks");
             ThreadPool.GetAvailableThreads(out int workerThreadsAfterWait, out int completionPortThreadsAfterWait);
             Debug.WriteLine($"[MapLoad] Task.WaitAll blocked for {waitAllStopwatch.ElapsedMilliseconds} ms (worker threads before/after: {workerThreadsBeforeWait}/{workerThreadsAfterWait}, IO before/after: {completionPortThreadsBeforeWait}/{completionPortThreadsAfterWait})");
             Debug.WriteLine($"[MapLoad] Parallel asset tasks finished in {loadMapContentStopwatch.ElapsedMilliseconds} ms");
@@ -1622,6 +1627,7 @@ namespace HaCreator.MapSimulator
             _weddingInvitationController.WireWindow(uiWindowManager, _playerManager?.Player?.Build, _fontChat, ShowUtilityFeedbackMessage);
             _weddingWishListController.WireWindow(uiWindowManager, _playerManager?.Player?.Build, uiWindowManager?.InventoryWindow as IInventoryRuntime, _fontChat, ShowUtilityFeedbackMessage);
             WireProgressionUtilityWindowLaunchers();
+            LogStartupCheckpoint("LoadContent created UI windows");
 
             RefreshMapTransferWindow();
 
@@ -1654,6 +1660,7 @@ namespace HaCreator.MapSimulator
                 statusBarChatUI.ToggleChatRequested = () => _chat.ToggleActive(Environment.TickCount);
                 statusBarChatUI.CycleChatTargetRequested = delta => _chat.CycleTarget(delta);
             }
+            LogStartupCheckpoint("LoadContent finished status/UI provider hookup");
             Debug.WriteLine($"[MapLoad] Status/UI provider hookup finished in {loadMapContentStopwatch.ElapsedMilliseconds} ms");
 
 
@@ -1835,6 +1842,7 @@ namespace HaCreator.MapSimulator
                 InitializeLoginCharacterRoster();
 
             }
+            LogStartupCheckpoint($"LoadContent initialized player/map runtime (loginMap={_gameState.IsLoginMap}, playerActive={_playerManager?.IsPlayerActive ?? false})");
 
             SetCookieHouseContextPoint(0);
 
@@ -1878,6 +1886,7 @@ namespace HaCreator.MapSimulator
 
             DetectAndInitializeTransportField();
             ApplyTransitAndVoyageFieldWrapper(_mapBoard?.MapInfo);
+            LogStartupCheckpoint("LoadContent initialized transport/camera runtime");
 
 
             // Create border textures
@@ -1950,6 +1959,7 @@ namespace HaCreator.MapSimulator
                 obj.MSTagSpine = null;
             }
 
+            LogStartupCheckpoint($"LoadContent completed for map {_mapBoard?.MapInfo?.id}");
             loadMapContentStopwatch.Stop();
             Debug.WriteLine($"[MapLoad] Total LoadMapContent for map {_mapBoard?.MapInfo?.id} took {loadMapContentStopwatch.ElapsedMilliseconds} ms");
         }

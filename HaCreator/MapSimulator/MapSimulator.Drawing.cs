@@ -68,6 +68,12 @@ namespace HaCreator.MapSimulator
         /// <param name="gameTime"></param>
         protected override void Draw(GameTime gameTime)
         {
+            if (!_startupFirstDrawLogged)
+            {
+                _startupFirstDrawLogged = true;
+                LogStartupCheckpoint("First Draw entered");
+            }
+
             float frameRate = 1 / (float)gameTime.ElapsedGameTime.TotalSeconds;
             int TickCount = currTickCount;
             //float delta = gameTime.ElapsedGameTime.Milliseconds / 1000f;

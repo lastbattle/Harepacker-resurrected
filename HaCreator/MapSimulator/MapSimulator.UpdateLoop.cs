@@ -68,6 +68,18 @@ namespace HaCreator.MapSimulator
         /// <param name="gameTime"></param>
         protected override void Update(GameTime gameTime)
         {
+            if (!_startupFirstUpdateLogged)
+            {
+                _startupFirstUpdateLogged = true;
+                LogStartupCheckpoint($"First Update entered (loginMap={_gameState.IsLoginMap}, playerActive={_playerManager?.IsPlayerActive ?? false}, controlEnabled={_gameState.PlayerControlEnabled})");
+            }
+
+            if (!_startupPlayableLogged && (_playerManager?.IsPlayerActive ?? false) && (_gameState.IsLoginMap || _gameState.PlayerControlEnabled))
+            {
+                _startupPlayableLogged = true;
+                LogStartupCheckpoint($"Startup reached playable update state at tick {Environment.TickCount}");
+            }
+
             SyncBgmPlaybackToWindowFocus();
             _soundManager?.Update();
 
