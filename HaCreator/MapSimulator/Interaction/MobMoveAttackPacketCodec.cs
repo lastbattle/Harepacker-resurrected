@@ -52,6 +52,19 @@ namespace HaCreator.MapSimulator.Interaction
             };
         }
 
+        internal static bool ShouldQueueSimulatorAttackOverrides(DecodedMoveAttackPacket decodedPacket)
+        {
+            if (decodedPacket == null || decodedPacket.AttackId <= 0 || !decodedPacket.NextAttackPossible)
+            {
+                return false;
+            }
+
+            // CMob::OnMove only reaches CMob::DoAttack for attack move-actions when
+            // bNotChangeAction is clear. Packet-owned target lanes should not leak
+            // into the simulator attack queue if the client suppressed the action.
+            return !decodedPacket.NotChangeAction;
+        }
+
         public static bool TryDecode(
             int packetType,
             byte[] payload,

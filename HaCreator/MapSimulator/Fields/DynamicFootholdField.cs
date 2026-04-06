@@ -16,6 +16,7 @@ namespace HaCreator.MapSimulator.Fields
     /// </summary>
     public sealed class DynamicFootholdField
     {
+        public const int ClientFieldFactoryAddress = 0x53F220;
         public const string ClientOwnerName = "CField_DynamicFoothold";
         public const int ClientGetFieldTypeAddress = 0x551020;
         public const int ClientInitStubAddress = 0x551050;
@@ -86,7 +87,7 @@ namespace HaCreator.MapSimulator.Fields
                     ? $"contractMap unresolved (info/link={_linkedContractMapId}), using local shell map {_mapId}"
                     : $"contractMap={_contractMapId}";
 
-            return $"Dynamic foothold: active | owner={ClientOwnerName} | getFieldType=0x{ClientGetFieldTypeAddress:X} | init=0x{ClientInitStubAddress:X} | map={_mapId} | fieldType={(int)FieldType.FIELDTYPE_DYNAMICFOOTHOLD} | {contractSummary} | {wzSummary} | {dynamicObjectSummary} | runtime {runtimeSummary}";
+            return $"Dynamic foothold: active | factory=0x{ClientFieldFactoryAddress:X} | owner={ClientOwnerName} | getFieldType=0x{ClientGetFieldTypeAddress:X} | init=0x{ClientInitStubAddress:X} | map={_mapId} | fieldType={(int)FieldType.FIELDTYPE_DYNAMICFOOTHOLD} | {contractSummary} | {wzSummary} | {dynamicObjectSummary} | runtime {runtimeSummary}";
         }
 
         public void Reset()

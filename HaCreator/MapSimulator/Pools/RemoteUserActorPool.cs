@@ -999,6 +999,7 @@ namespace HaCreator.MapSimulator.Pools
                 PairCharacterId = pairCharacterId
             };
             GetRelationshipRecordTable(packet.RelationshipType)[ownerCharacterId.Value] = normalizedRecord;
+            RefreshRelationshipOverlays(packet.RelationshipType, currentTime);
 
             if (!_actorsById.ContainsKey(ownerCharacterId.Value))
             {
@@ -1006,21 +1007,8 @@ namespace HaCreator.MapSimulator.Pools
                 return true;
             }
 
-            bool applied = TrySetItemEffect(
-                ownerCharacterId.Value,
-                packet.RelationshipType,
-                normalizedRecord.ItemId,
-                pairCharacterId,
-                currentTime,
-                out message,
-                normalizedRecord.ItemSerial,
-                normalizedRecord.PairItemSerial);
-            if (applied)
-            {
-                message = $"Remote user {ownerCharacterId.Value} {packet.RelationshipType} relationship record applied.";
-            }
-
-            return applied;
+            message = $"Remote user {ownerCharacterId.Value} {packet.RelationshipType} relationship record applied.";
+            return true;
         }
 
         public bool TryApplyRelationshipRecordRemove(
@@ -1068,9 +1056,11 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
-            message = removedCount == 1
+                message = removedCount == 1
                 ? $"Removed 1 {packet.RelationshipType} relationship overlay."
                 : $"Removed {removedCount} {packet.RelationshipType} relationship overlays.";
+
+            RefreshRelationshipOverlays(packet.RelationshipType, Environment.TickCount);
             return true;
         }
 
@@ -1370,7 +1360,7 @@ namespace HaCreator.MapSimulator.Pools
             overlay.MaxHoldDurationMs = prepared.MaxHoldDurationMs;
             overlay.TextVariant = prepared.TextVariant;
             overlay.ShowText = prepared.ShowText && !PreparedSkillHudRules.IsDragonOverlaySkill(prepared.SkillId);
-            overlay.WorldAnchor = ResolvePreparedSkillWorldAnchor(actor, prepared, currentTime);
+            overlay.WorldAnchor = ResolvePreparedSkillWorldAnchor(actor, prepared, currentTime, isHolding);
             return overlay;
         }
 
@@ -1442,7 +1432,11 @@ namespace HaCreator.MapSimulator.Pools
             return true;
         }
 
-        private static Vector2 ResolvePreparedSkillWorldAnchor(RemoteUserActor actor, RemotePreparedSkillState prepared, int currentTime)
+        private static Vector2 ResolvePreparedSkillWorldAnchor(
+            RemoteUserActor actor,
+            RemotePreparedSkillState prepared,
+            int currentTime,
+            bool isHolding)
         {
             if (actor == null)
             {
@@ -1452,7 +1446,7 @@ namespace HaCreator.MapSimulator.Pools
             if (prepared != null
                 && PreparedSkillHudRules.IsDragonOverlaySkill(prepared.SkillId))
             {
-                if (TryResolveRemoteDragonKeyDownBarAnchor(actor, prepared, currentTime, out Vector2 dragonAnchor))
+                if (TryResolveRemoteDragonKeyDownBarAnchor(actor, prepared, currentTime, isHolding, out Vector2 dragonAnchor))
                 {
                     return dragonAnchor;
                 }
@@ -1480,6 +1474,7 @@ namespace HaCreator.MapSimulator.Pools
             RemoteUserActor actor,
             RemotePreparedSkillState prepared,
             int currentTime,
+            bool isHolding,
             out Vector2 anchor)
         {
             anchor = Vector2.Zero;
@@ -1500,8 +1495,8 @@ namespace HaCreator.MapSimulator.Pools
                 actor.Position.X + (side * horizontalOffset),
                 ownerBodyOriginY + RemoteDragonGroundVerticalOffset);
 
-            string dragonActionName = ResolveRemoteDragonActionName(prepared);
-            int dragonActionElapsedMs = ResolveRemoteDragonActionElapsedMs(prepared, currentTime, dragonActionName);
+            string dragonActionName = ResolveRemoteDragonActionName(prepared, isHolding);
+            int dragonActionElapsedMs = ResolveRemoteDragonActionElapsedMs(prepared, currentTime, dragonActionName, isHolding);
             int dragonFrameHeight = metadata.ResolveFrameHeight(dragonActionName, dragonActionElapsedMs);
             anchor = new Vector2(
                 dragonAnchor.X - RemoteDragonKeyDownBarHalfWidth,
@@ -1626,9 +1621,9 @@ namespace HaCreator.MapSimulator.Pools
             return int.TryParse(value, out int parsed) ? parsed : int.MaxValue;
         }
 
-        private static string ResolveRemoteDragonActionName(RemotePreparedSkillState prepared)
+        internal static string ResolveRemoteDragonActionName(RemotePreparedSkillState prepared, bool isHolding)
         {
-            if (prepared?.IsHolding == true)
+            if (isHolding)
             {
                 return "stand";
             }
@@ -1641,17 +1636,18 @@ namespace HaCreator.MapSimulator.Pools
             };
         }
 
-        private static int ResolveRemoteDragonActionElapsedMs(
+        internal static int ResolveRemoteDragonActionElapsedMs(
             RemotePreparedSkillState prepared,
             int currentTime,
-            string actionName)
+            string actionName,
+            bool isHolding)
         {
             if (prepared == null)
             {
                 return 0;
             }
 
-            if (string.Equals(actionName, "stand", StringComparison.OrdinalIgnoreCase) && prepared.IsHolding)
+            if (string.Equals(actionName, "stand", StringComparison.OrdinalIgnoreCase) && isHolding)
             {
                 int holdStartTime = prepared.StartTime + Math.Max(0, prepared.PrepareDurationMs);
                 return Math.Max(0, currentTime - holdStartTime);
@@ -2643,19 +2639,9 @@ namespace HaCreator.MapSimulator.Pools
                 recordTable.Remove(actor.CharacterId);
             }
 
-            return TrySetItemEffect(
-                actor.CharacterId,
-                relationshipType,
-                relationshipRecord.IsActive ? relationshipRecord.ItemId : null,
-                relationshipRecord.IsActive
-                    ? (relationshipType == RemoteRelationshipOverlayType.Marriage
-                        ? ResolveMarriagePairCharacterId(actor.CharacterId, relationshipRecord)
-                        : relationshipRecord.PairCharacterId)
-                    : null,
-                currentTime,
-                out message,
-                relationshipRecord.IsActive ? relationshipRecord.ItemSerial : null,
-                relationshipRecord.IsActive ? relationshipRecord.PairItemSerial : null);
+            RefreshRelationshipOverlays(relationshipType, currentTime);
+            message = $"Remote user {actor.CharacterId} {relationshipType} relationship state refreshed.";
+            return true;
         }
 
         private static int? ResolveMarriagePairCharacterId(int ownerCharacterId, RemoteUserRelationshipRecord relationshipRecord)
@@ -2706,9 +2692,13 @@ namespace HaCreator.MapSimulator.Pools
                 return;
             }
 
-            int? pairCharacterId = relationshipType == RemoteRelationshipOverlayType.Marriage
-                ? ResolveMarriagePairCharacterId(actor.CharacterId, record)
-                : record.PairCharacterId;
+            int? pairCharacterId = ResolveRelationshipOverlayPairCharacterIdFromRecord(actor.CharacterId, relationshipType, record);
+            if (!pairCharacterId.HasValue || pairCharacterId.Value <= 0)
+            {
+                actor.RelationshipOverlays.Remove(relationshipType);
+                return;
+            }
+
             TrySetItemEffect(
                 actor.CharacterId,
                 relationshipType,
@@ -2718,6 +2708,102 @@ namespace HaCreator.MapSimulator.Pools
                 out _,
                 record.ItemSerial,
                 record.PairItemSerial);
+        }
+
+        private void RefreshRelationshipOverlays(RemoteRelationshipOverlayType relationshipType, int currentTime)
+        {
+            foreach (RemoteUserActor actor in _actorsById.Values)
+            {
+                SyncRelationshipOverlayFromRecord(actor, relationshipType, currentTime);
+            }
+        }
+
+        private int? ResolveRelationshipOverlayPairCharacterIdFromRecord(
+            int ownerCharacterId,
+            RemoteRelationshipOverlayType relationshipType,
+            RemoteUserRelationshipRecord relationshipRecord)
+        {
+            int? explicitPairCharacterId = relationshipType == RemoteRelationshipOverlayType.Marriage
+                ? ResolveMarriagePairCharacterId(ownerCharacterId, relationshipRecord)
+                : relationshipRecord.PairCharacterId;
+            if (relationshipType == RemoteRelationshipOverlayType.Generic)
+            {
+                return explicitPairCharacterId;
+            }
+
+            if (TryFindMatchedRemoteRelationshipRecordOwner(
+                    ownerCharacterId,
+                    relationshipType,
+                    relationshipRecord,
+                    explicitPairCharacterId,
+                    out int matchedRemoteCharacterId))
+            {
+                return matchedRemoteCharacterId;
+            }
+
+            if (explicitPairCharacterId.HasValue
+                && explicitPairCharacterId.Value > 0
+                && _actorsById.ContainsKey(explicitPairCharacterId.Value))
+            {
+                return null;
+            }
+
+            return explicitPairCharacterId;
+        }
+
+        private bool TryFindMatchedRemoteRelationshipRecordOwner(
+            int ownerCharacterId,
+            RemoteRelationshipOverlayType relationshipType,
+            RemoteUserRelationshipRecord relationshipRecord,
+            int? explicitPairCharacterId,
+            out int matchedRemoteCharacterId)
+        {
+            matchedRemoteCharacterId = 0;
+            Dictionary<int, RemoteUserRelationshipRecord> recordTable = GetRelationshipRecordTable(relationshipType);
+            if (recordTable.Count == 0)
+            {
+                return false;
+            }
+
+            if (explicitPairCharacterId.HasValue
+                && explicitPairCharacterId.Value > 0
+                && explicitPairCharacterId.Value != ownerCharacterId
+                && recordTable.TryGetValue(explicitPairCharacterId.Value, out RemoteUserRelationshipRecord explicitPartnerRecord)
+                && DoRelationshipRecordsMatch(
+                    relationshipType,
+                    ownerCharacterId,
+                    relationshipRecord,
+                    explicitPairCharacterId.Value,
+                    explicitPartnerRecord))
+            {
+                matchedRemoteCharacterId = explicitPairCharacterId.Value;
+                return true;
+            }
+
+            foreach (KeyValuePair<int, RemoteUserRelationshipRecord> entry in recordTable
+                .OrderByDescending(candidate => explicitPairCharacterId.HasValue && candidate.Key == explicitPairCharacterId.Value)
+                .ThenBy(candidate => candidate.Key))
+            {
+                if (entry.Key == ownerCharacterId)
+                {
+                    continue;
+                }
+
+                if (!DoRelationshipRecordsMatch(
+                        relationshipType,
+                        ownerCharacterId,
+                        relationshipRecord,
+                        entry.Key,
+                        entry.Value))
+                {
+                    continue;
+                }
+
+                matchedRemoteCharacterId = entry.Key;
+                return true;
+            }
+
+            return false;
         }
 
         private void EnsureRelationshipRecordTablesInitialized()
@@ -2787,6 +2873,100 @@ namespace HaCreator.MapSimulator.Pools
 
             long packetItemSerial = packet.ItemSerial.Value;
             return itemSerial == packetItemSerial || pairItemSerial == packetItemSerial;
+        }
+
+        internal static bool DoRelationshipRecordsMatch(
+            RemoteRelationshipOverlayType relationshipType,
+            int ownerCharacterId,
+            RemoteUserRelationshipRecord ownerRecord,
+            int partnerCharacterId,
+            RemoteUserRelationshipRecord partnerRecord)
+        {
+            if (!ownerRecord.IsActive
+                || !partnerRecord.IsActive
+                || ownerCharacterId <= 0
+                || partnerCharacterId <= 0
+                || ownerCharacterId == partnerCharacterId)
+            {
+                return false;
+            }
+
+            return relationshipType switch
+            {
+                RemoteRelationshipOverlayType.Couple => DoRingRelationshipRecordsMatch(
+                    ownerCharacterId,
+                    ownerRecord,
+                    partnerCharacterId,
+                    partnerRecord),
+                RemoteRelationshipOverlayType.Friendship => DoRingRelationshipRecordsMatch(
+                    ownerCharacterId,
+                    ownerRecord,
+                    partnerCharacterId,
+                    partnerRecord),
+                RemoteRelationshipOverlayType.NewYearCard => DoNewYearCardRelationshipRecordsMatch(
+                    ownerCharacterId,
+                    ownerRecord,
+                    partnerCharacterId,
+                    partnerRecord),
+                RemoteRelationshipOverlayType.Marriage => DoMarriageRelationshipRecordsMatch(
+                    ownerCharacterId,
+                    ownerRecord,
+                    partnerCharacterId,
+                    partnerRecord),
+                _ => false
+            };
+        }
+
+        private static bool DoRingRelationshipRecordsMatch(
+            int ownerCharacterId,
+            RemoteUserRelationshipRecord ownerRecord,
+            int partnerCharacterId,
+            RemoteUserRelationshipRecord partnerRecord)
+        {
+            return ownerRecord.ItemId > 0
+                && ownerRecord.ItemId == partnerRecord.ItemId
+                && ownerRecord.ItemSerial.HasValue
+                && ownerRecord.PairItemSerial.HasValue
+                && partnerRecord.ItemSerial.HasValue
+                && partnerRecord.PairItemSerial.HasValue
+                && ownerRecord.PairItemSerial.Value == partnerRecord.ItemSerial.Value
+                && partnerRecord.PairItemSerial.Value == ownerRecord.ItemSerial.Value
+                && RelationshipRecordTargetsCharacter(ownerRecord.PairCharacterId, partnerCharacterId)
+                && RelationshipRecordTargetsCharacter(partnerRecord.PairCharacterId, ownerCharacterId);
+        }
+
+        private static bool DoNewYearCardRelationshipRecordsMatch(
+            int ownerCharacterId,
+            RemoteUserRelationshipRecord ownerRecord,
+            int partnerCharacterId,
+            RemoteUserRelationshipRecord partnerRecord)
+        {
+            return ownerRecord.ItemId > 0
+                && ownerRecord.ItemId == partnerRecord.ItemId
+                && ownerRecord.ItemSerial.HasValue
+                && partnerRecord.ItemSerial.HasValue
+                && ownerRecord.ItemSerial.Value == partnerRecord.ItemSerial.Value
+                && RelationshipRecordTargetsCharacter(ownerRecord.PairCharacterId, partnerCharacterId)
+                && RelationshipRecordTargetsCharacter(partnerRecord.PairCharacterId, ownerCharacterId);
+        }
+
+        private static bool DoMarriageRelationshipRecordsMatch(
+            int ownerCharacterId,
+            RemoteUserRelationshipRecord ownerRecord,
+            int partnerCharacterId,
+            RemoteUserRelationshipRecord partnerRecord)
+        {
+            return ownerRecord.ItemId > 0
+                && ownerRecord.ItemId == partnerRecord.ItemId
+                && ResolveMarriagePairCharacterId(ownerCharacterId, ownerRecord) == partnerCharacterId
+                && ResolveMarriagePairCharacterId(partnerCharacterId, partnerRecord) == ownerCharacterId;
+        }
+
+        private static bool RelationshipRecordTargetsCharacter(int? candidateCharacterId, int expectedCharacterId)
+        {
+            return !candidateCharacterId.HasValue
+                || candidateCharacterId.Value <= 0
+                || candidateCharacterId.Value == expectedCharacterId;
         }
 
         private static void DrawOutlinedText(SpriteBatch spriteBatch, SpriteFont font, string text, Vector2 position, Color shadowColor, Color textColor)

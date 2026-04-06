@@ -12,12 +12,43 @@ namespace HaCreator.MapSimulator.UI
         internal const int ClientControlId = 1000;
         internal const int ClientFontStringPoolId = 0x1A25;
 
+        private readonly record struct VisualStyle(
+            bool DrawChrome,
+            Color TextColor,
+            Color CompositionColor,
+            Color CompositionUnderlineColor,
+            Color CaretColor,
+            Color BackgroundColor,
+            Color BorderColor,
+            Point TextPadding,
+            Point CaretPadding);
+
         private static readonly Color InputCaretColor = new(32, 32, 32);
         private static readonly Color InputTextColor = Color.Black;
         private static readonly Color InputCompositionColor = new(74, 74, 74);
         private static readonly Color InputCompositionUnderlineColor = new(74, 74, 74);
         private static readonly Color InputBackgroundColor = Color.White;
         private static readonly Color InputBorderColor = new(114, 114, 114);
+        private static readonly VisualStyle DefaultVisualStyle = new(
+            DrawChrome: true,
+            TextColor: InputTextColor,
+            CompositionColor: InputCompositionColor,
+            CompositionUnderlineColor: InputCompositionUnderlineColor,
+            CaretColor: InputCaretColor,
+            BackgroundColor: InputBackgroundColor,
+            BorderColor: InputBorderColor,
+            TextPadding: new Point(2, -2),
+            CaretPadding: new Point(2, 2));
+        private static readonly VisualStyle ClientAntiMacroVisualStyle = new(
+            DrawChrome: false,
+            TextColor: Color.Black,
+            CompositionColor: new Color(74, 74, 74),
+            CompositionUnderlineColor: new Color(74, 74, 74),
+            CaretColor: new Color(32, 32, 32),
+            BackgroundColor: Color.Transparent,
+            BorderColor: Color.Transparent,
+            TextPadding: new Point(0, -1),
+            CaretPadding: new Point(0, 1));
 
         private sealed class InputVisualState
         {
@@ -75,6 +106,7 @@ namespace HaCreator.MapSimulator.UI
         private int _compositionCaretIndex = -1;
         private int _compositionInsertionIndex = -1;
         private int _caretBlinkTick;
+        private VisualStyle _visualStyle = DefaultVisualStyle;
 
         public AntiMacroEditControl(Texture2D pixelTexture, Point inputOrigin, int width, int height, int maxLength)
         {
@@ -100,6 +132,11 @@ namespace HaCreator.MapSimulator.UI
         public void UpdateLayout(Point inputOrigin)
         {
             _inputOrigin = inputOrigin;
+        }
+
+        public void UseClientAntiMacroVisualStyle()
+        {
+            _visualStyle = ClientAntiMacroVisualStyle;
         }
 
         public Rectangle GetBounds(Rectangle ownerBounds)
@@ -314,40 +351,46 @@ namespace HaCreator.MapSimulator.UI
             }
 
             Rectangle inputBounds = GetBounds(ownerBounds);
-            if (drawChrome)
+            if (drawChrome && _visualStyle.DrawChrome)
             {
-                DrawBox(sprite, inputBounds, InputBackgroundColor, InputBorderColor);
+                DrawBox(sprite, inputBounds, _visualStyle.BackgroundColor, _visualStyle.BorderColor);
             }
 
-            Vector2 textPosition = new(inputBounds.X + 2, inputBounds.Y - 2);
+            Vector2 textPosition = new(
+                inputBounds.X + _visualStyle.TextPadding.X,
+                inputBounds.Y + _visualStyle.TextPadding.Y);
             InputVisualState visualState = BuildInputVisualState(Math.Max(1, inputBounds.Width - 4));
             if (!string.IsNullOrEmpty(visualState.VisibleText))
             {
                 if (visualState.VisibleCommittedPrefix.Length > 0)
                 {
-                    sprite.DrawString(_font, visualState.VisibleCommittedPrefix, textPosition, InputTextColor);
+                    sprite.DrawString(_font, visualState.VisibleCommittedPrefix, textPosition, _visualStyle.TextColor);
                 }
 
                 float committedPrefixWidth = MeasureTextWidth(visualState.VisibleCommittedPrefix);
                 Vector2 compositionPosition = textPosition + new Vector2(committedPrefixWidth, 0f);
                 if (visualState.VisibleComposition.Length > 0)
                 {
-                    sprite.DrawString(_font, visualState.VisibleComposition, compositionPosition, InputCompositionColor);
+                    sprite.DrawString(_font, visualState.VisibleComposition, compositionPosition, _visualStyle.CompositionColor);
                     DrawCompositionUnderline(sprite, compositionPosition, visualState.VisibleComposition, inputBounds);
                 }
 
                 if (visualState.VisibleCommittedSuffix.Length > 0)
                 {
                     Vector2 suffixPosition = compositionPosition + new Vector2(MeasureTextWidth(visualState.VisibleComposition), 0f);
-                    sprite.DrawString(_font, visualState.VisibleCommittedSuffix, suffixPosition, InputTextColor);
+                    sprite.DrawString(_font, visualState.VisibleCommittedSuffix, suffixPosition, _visualStyle.TextColor);
                 }
             }
 
             if (ShouldDrawCaret())
             {
                 float caretX = textPosition.X + MeasureTextWidth(visualState.VisibleText[..visualState.VisibleCaretIndex]);
-                Rectangle caretBounds = new((int)Math.Round(caretX), inputBounds.Y + 2, 1, Math.Max(1, inputBounds.Height - 4));
-                sprite.Draw(_pixelTexture, caretBounds, InputCaretColor);
+                Rectangle caretBounds = new(
+                    (int)Math.Round(caretX),
+                    inputBounds.Y + _visualStyle.CaretPadding.Y,
+                    1,
+                    Math.Max(1, inputBounds.Height - (2 * _visualStyle.CaretPadding.Y)));
+                sprite.Draw(_pixelTexture, caretBounds, _visualStyle.CaretColor);
             }
         }
 
@@ -478,7 +521,7 @@ namespace HaCreator.MapSimulator.UI
             int underlineX = (int)Math.Floor(compositionPosition.X);
             int underlineY = Math.Min(inputBounds.Bottom - 2, inputBounds.Y + _font.LineSpacing + 1);
             Rectangle underlineBounds = new(underlineX, underlineY, Math.Max(1, (int)Math.Ceiling(underlineWidth)), 1);
-            sprite.Draw(_pixelTexture, underlineBounds, InputCompositionUnderlineColor);
+            sprite.Draw(_pixelTexture, underlineBounds, _visualStyle.CompositionUnderlineColor);
         }
 
         private void DrawBox(SpriteBatch sprite, Rectangle bounds, Color fillColor, Color borderColor)

@@ -50,10 +50,12 @@ namespace HaCreator.MapSimulator.Interaction
         public string Sender { get; init; } = string.Empty;
         public string Subject { get; init; } = string.Empty;
         public string DeliveredAtText { get; init; } = string.Empty;
+        public string StatusText { get; init; } = string.Empty;
         public string AttachmentSummary { get; init; } = string.Empty;
         public string AttachmentDescription { get; init; } = string.Empty;
         public bool CanClaim { get; init; }
         public bool IsClaimed { get; init; }
+        public bool IsExpired { get; init; }
     }
 
     internal sealed class MemoMailboxEntrySnapshot
@@ -64,11 +66,14 @@ namespace HaCreator.MapSimulator.Interaction
         public string Body { get; init; } = string.Empty;
         public string Preview { get; init; } = string.Empty;
         public string DeliveredAtText { get; init; } = string.Empty;
+        public string StatusText { get; init; } = string.Empty;
         public bool IsRead { get; init; }
         public bool IsKept { get; init; }
+        public bool IsQuickDelivery { get; init; }
         public bool HasAttachment { get; init; }
         public bool CanClaimAttachment { get; init; }
         public bool IsAttachmentClaimed { get; init; }
+        public bool IsExpired { get; init; }
         public string AttachmentSummary { get; init; } = string.Empty;
     }
 

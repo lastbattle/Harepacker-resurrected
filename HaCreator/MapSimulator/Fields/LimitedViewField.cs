@@ -49,6 +49,8 @@ namespace HaCreator.MapSimulator.Fields
         private int _clientOwnedDarkLayerOffsetX;
         private int _clientOwnedDarkLayerOffsetY;
         private Vector2 _clientOwnedScreenMaskCenter;
+        private bool _clientOwnedFocusWorldPositionValid;
+        private Vector2 _clientOwnedFocusWorldPosition;
         #endregion
 
         #region Runtime State
@@ -265,6 +267,12 @@ namespace HaCreator.MapSimulator.Fields
             _clientOwnedViewrangeTexture = bitmap.ToTexture2DAndDispose(_device);
         }
 
+        public void SetClientOwnedFocusWorldPosition(float worldX, float worldY)
+        {
+            _clientOwnedFocusWorldPosition = new Vector2(worldX, worldY);
+            _clientOwnedFocusWorldPositionValid = true;
+        }
+
         public void ClearClientOwnedMask()
         {
             _clientOwnedMaskWidth = 0f;
@@ -277,6 +285,7 @@ namespace HaCreator.MapSimulator.Fields
             _clientOwnedDarkLayerOffsetY = 0;
             _clientOwnedImmediateMode = false;
             _clientOwnedUpdateParityMode = false;
+            _clientOwnedFocusWorldPositionValid = false;
         }
         #endregion
 
@@ -357,7 +366,7 @@ namespace HaCreator.MapSimulator.Fields
             Vector2 maskCenter = GetScreenMaskCenter();
             if (_clientOwnedUpdateParityMode)
             {
-                maskCenter = _clientOwnedScreenMaskCenter;
+                maskCenter = GetClientOwnedUpdateParityScreenMaskCenter(mapShiftX, mapShiftY, centerX, centerY);
             }
 
             int screenCenterX = (int)MathF.Round(maskCenter.X);
@@ -605,6 +614,20 @@ namespace HaCreator.MapSimulator.Fields
             float offsetX = (_clientOwnedMaskWidth * 0.5f) - _clientOwnedMaskOriginX;
             float offsetY = (_clientOwnedMaskHeight * 0.5f) - _clientOwnedMaskOriginY;
             return new Vector2(screenCenterX + offsetX, screenCenterY + offsetY);
+        }
+
+        internal Vector2 GetClientOwnedUpdateParityScreenMaskCenter(int mapShiftX, int mapShiftY, int centerX, int centerY)
+        {
+            if (!_clientOwnedFocusWorldPositionValid)
+            {
+                return _clientOwnedScreenMaskCenter;
+            }
+
+            float offsetX = (_clientOwnedMaskWidth * 0.5f) - _clientOwnedMaskOriginX;
+            float offsetY = (_clientOwnedMaskHeight * 0.5f) - _clientOwnedMaskOriginY;
+            float screenX = _clientOwnedFocusWorldPosition.X - mapShiftX + centerX + offsetX;
+            float screenY = _clientOwnedFocusWorldPosition.Y - mapShiftY + centerY + offsetY;
+            return new Vector2(screenX, screenY);
         }
 
         private Rectangle GetClientOwnedDarkLayerBounds()

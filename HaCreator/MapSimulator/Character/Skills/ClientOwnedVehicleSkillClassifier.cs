@@ -304,6 +304,24 @@ namespace HaCreator.MapSimulator.Character.Skills
                    && !string.Equals(actionName, "getoff2", StringComparison.OrdinalIgnoreCase);
         }
 
+        internal static bool IsOwnerlessMechanicVehicleInferenceActionName(string actionName, bool includeTransformStates = false)
+        {
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            if (includeTransformStates
+                && (string.Equals(actionName, "tank", StringComparison.OrdinalIgnoreCase)
+                    || string.Equals(actionName, "siege", StringComparison.OrdinalIgnoreCase)))
+            {
+                return true;
+            }
+
+            return actionName.StartsWith("tank_", StringComparison.OrdinalIgnoreCase)
+                   || actionName.StartsWith("siege_", StringComparison.OrdinalIgnoreCase);
+        }
+
         private static bool IsMountedMoveActionName(string actionName)
         {
             return ContainsActionName(SharedClientOwnedVehicleMountedMoveActions, actionName);

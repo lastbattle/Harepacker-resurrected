@@ -1366,7 +1366,7 @@ namespace HaCreator.MapSimulator.Pools
 
             ApplyPacketReactorState(index, state, x, y, reactor.ReactorInstance?.Flip ?? false, currentTick);
             data.PacketHitStartTime = hitStartDelayMs > 0 ? currentTick + hitStartDelayMs : 0;
-            data.PacketProperEventIndex = properEventIndex;
+            ApplyPacketProperEventIndexPreference(data, properEventIndex);
             data.PacketStateEndTime = stateEndDelayTicks > 0 ? currentTick + (stateEndDelayTicks * 100) : 0;
             data.State = hitStartDelayMs > 0 ? ReactorState.Activated : ReactorState.Active;
             data.StateStartTime = currentTick;
@@ -1994,6 +1994,32 @@ namespace HaCreator.MapSimulator.Pools
 
             data.PreferredAuthoredActivationType = activationType;
             data.PreferredAuthoredEventOrder = selectedAuthoredOrder;
+        }
+
+        internal static void ApplyPacketProperEventIndexPreference(ReactorRuntimeData data, int properEventIndex)
+        {
+            if (data == null)
+            {
+                return;
+            }
+
+            data.PacketProperEventIndex = properEventIndex;
+            if (properEventIndex < 0)
+            {
+                ClearPreferredAuthoredOrder(data);
+                return;
+            }
+
+            ReactorActivationType activationType = data.ActivationType != ReactorActivationType.None
+                ? data.ActivationType
+                : data.PrimaryActivationType;
+            if (activationType == ReactorActivationType.None)
+            {
+                ClearPreferredAuthoredOrder(data);
+                return;
+            }
+
+            UpdatePreferredAuthoredOrder(data, activationType, properEventIndex);
         }
 
         private static void ClearPreferredAuthoredOrder(ReactorRuntimeData data)

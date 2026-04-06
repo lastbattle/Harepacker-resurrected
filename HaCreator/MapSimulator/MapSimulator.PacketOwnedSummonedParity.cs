@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Managers;
+using HaCreator.MapSimulator.Pools;
 using Microsoft.Xna.Framework;
 using System;
 using System.Linq;
@@ -100,6 +101,20 @@ namespace HaCreator.MapSimulator
                 ? $"Applied {packetLabel}."
                 : $"Applied {packetLabel}. {detail}";
             return true;
+        }
+
+        internal static bool TryRouteLocalPacketOwnedSummonExpiryToClientCancel(
+            PacketOwnedSummonTimerExpiration expiration,
+            Func<int, int, bool> requestClientSkillCancel)
+        {
+            if (!expiration.OwnerIsLocal
+                || expiration.SkillId <= 0
+                || requestClientSkillCancel == null)
+            {
+                return false;
+            }
+
+            return requestClientSkillCancel(expiration.SkillId, expiration.CurrentTime);
         }
 
         private ChatCommandHandler.CommandResult HandlePacketOwnedSummonedCommand(string[] args)

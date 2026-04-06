@@ -6,6 +6,7 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text;
+using HaCreator.MapSimulator.Managers;
 
 namespace HaCreator.MapSimulator.Interaction
 {
@@ -196,6 +197,36 @@ namespace HaCreator.MapSimulator.Interaction
                 _lastRequestPayload,
                 customMessage,
                 out message);
+        }
+
+        internal bool TryBuildInboxDispatch(
+            int sealItemId,
+            string customMessage,
+            out EngagementProposalInboxDispatch dispatch,
+            out string message)
+        {
+            if (_lastRequestPacketType != AcceptPacketType || _lastRequestPayload.Length == 0)
+            {
+                dispatch = default;
+                message = "No staged engagement request payload is available. Use /engage open first before dispatching it through the inbox seam.";
+                return false;
+            }
+
+            if (_mode != EngagementProposalDialogMode.OutgoingRequest)
+            {
+                dispatch = default;
+                message = "Inbox dispatch only applies to the requester-side engagement owner. Reopen the outgoing request first.";
+                return false;
+            }
+
+            dispatch = new EngagementProposalInboxDispatch(
+                _proposerName,
+                _partnerName,
+                sealItemId > 0 ? sealItemId : _sealItemId,
+                (byte[])_lastRequestPayload.Clone(),
+                string.IsNullOrWhiteSpace(customMessage) ? _customMessage : customMessage.Trim());
+            message = $"Prepared staged engagement request 161 [00] for inbox delivery to {dispatch.PartnerName}.";
+            return true;
         }
 
         internal bool TrySendPrimaryAction(out EngagementProposalResponse response, out string message)
@@ -671,6 +702,13 @@ namespace HaCreator.MapSimulator.Interaction
         public int TextCanvasStringPoolId { get; init; }
         public int AcceptButtonUolStringPoolId { get; init; }
     }
+
+    internal readonly record struct EngagementProposalInboxDispatch(
+        string ProposerName,
+        string PartnerName,
+        int SealItemId,
+        byte[] RequestPayload,
+        string CustomMessage);
 
     internal sealed class EngagementProposalAcceptedSnapshot
     {

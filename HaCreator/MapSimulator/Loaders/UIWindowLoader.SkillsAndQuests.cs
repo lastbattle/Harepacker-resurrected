@@ -3052,6 +3052,12 @@ namespace HaCreator.MapSimulator.Loaders
             RegisterUserInfoProductSkillIcon(window, productSkillProperty, "9202", ItemMakerRecipeFamily.Shoes, device);
             RegisterUserInfoProductSkillIcon(window, productSkillProperty, "9203", ItemMakerRecipeFamily.Toys, device);
             RegisterUserInfoProductSkillRecipeIcon(window, productSkillProperty, "9204", device);
+
+            Texture2D marriedIconTexture = LoadCanvasTexture(characterProperty, "married", device);
+            if (marriedIconTexture != null)
+            {
+                window.SetMarriedIcon(new DXObject(0, 0, marriedIconTexture, 0));
+            }
         }
 
 

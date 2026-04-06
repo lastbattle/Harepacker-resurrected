@@ -140,6 +140,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         }
 
         public static void ResolveRemotePreparedSkillPhases(
+            int skillId,
             bool isKeydownSkill,
             bool isHolding,
             int durationMs,
@@ -151,12 +152,14 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             int normalizedDurationMs = Math.Max(0, durationMs);
             int normalizedMaxHoldDurationMs = Math.Max(0, maxHoldDurationMs);
+            bool usesReleaseTriggeredExecution = UsesReleaseTriggeredExecution(skillId);
 
             autoEnterHold = !isHolding
                 && isKeydownSkill
                 && normalizedDurationMs > 0
-                && normalizedMaxHoldDurationMs > 0
-                && (explicitAutoEnterHold || normalizedMaxHoldDurationMs != normalizedDurationMs);
+                && (explicitAutoEnterHold
+                    || usesReleaseTriggeredExecution
+                    || (normalizedMaxHoldDurationMs > 0 && normalizedMaxHoldDurationMs != normalizedDurationMs));
 
             if (autoEnterHold)
             {

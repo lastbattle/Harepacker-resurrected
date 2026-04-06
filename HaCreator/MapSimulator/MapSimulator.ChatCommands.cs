@@ -286,7 +286,7 @@ namespace HaCreator.MapSimulator
 
         private ChatCommandHandler.CommandResult HandleTransportSessionCommand(string[] args)
         {
-            const string sessionUsage = "Usage: /transport session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]";
+            const string sessionUsage = "Usage: /transport session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]";
             string sessionAction = args.Length > 1 ? args[1] : "status";
 
             switch (sessionAction.ToLowerInvariant())
@@ -317,6 +317,21 @@ namespace HaCreator.MapSimulator
 
                     return ChatCommandHandler.CommandResult.Info(
                         _transportOfficialSessionBridge.DescribeDiscoveredSessions(discoverRemotePort, processSelector, localPortFilter));
+
+                case "history":
+                    int historyCount = 10;
+                    if (args.Length >= 3
+                        && (!int.TryParse(args[2], out historyCount) || historyCount <= 0))
+                    {
+                        return ChatCommandHandler.CommandResult.Error(sessionUsage);
+                    }
+
+                    return ChatCommandHandler.CommandResult.Info(
+                        _transportOfficialSessionBridge.DescribeRecentOutboundPackets(historyCount));
+
+                case "clearhistory":
+                    return ChatCommandHandler.CommandResult.Ok(
+                        _transportOfficialSessionBridge.ClearRecentOutboundPackets());
 
                 case "start":
                     if (args.Length < 5
@@ -2661,10 +2676,10 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "sociallist",
                 "Inspect or drive the Social List, guild-manage, alliance-editor, and packet-owned roster-authority seams",
-                "/sociallist [status|open [friend|party|guild|alliance|blacklist]|search [party|partymember|expedition]|guildsearch open|guildmanage open [position|admission|change]|alliance open [rank|notice]|packet ...]",
+                "/sociallist [status|open [friend|party|guild|alliance|blacklist]|search [party|partymember|expedition]|guildsearch open|guildmanage open [position|admission|change]|alliance open [rank|notice]|packet ...|packetraw ...]",
                 args =>
                 {
-                    const string usage = "/sociallist [status|open [friend|party|guild|alliance|blacklist]|search [party|partymember|expedition]|guildsearch open|guildmanage open [position|admission|change]|alliance open [rank|notice]|packet ...]";
+                    const string usage = "/sociallist [status|open [friend|party|guild|alliance|blacklist]|search [party|partymember|expedition]|guildsearch open|guildmanage open [position|admission|change]|alliance open [rank|notice]|packet ...|packetraw ...]";
                     if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
                     {
                         return ChatCommandHandler.CommandResult.Info(_socialListRuntime.DescribeStatus());
@@ -2760,6 +2775,19 @@ namespace HaCreator.MapSimulator
                         }
 
                         string packetAction = args[1].ToLowerInvariant();
+                        if (TryParseSocialListTabToken(packetAction, out _)
+                            || string.Equals(packetAction, "guildauth", StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(packetAction, "allianceauth", StringComparison.OrdinalIgnoreCase)
+                            || string.Equals(packetAction, "guildui", StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (args.Length >= 3
+                                && (args[2].StartsWith("payloadhex=", StringComparison.OrdinalIgnoreCase)
+                                    || args[2].StartsWith("payloadb64=", StringComparison.OrdinalIgnoreCase)))
+                            {
+                                return HandleSocialListPacketCommand(args.Skip(1).ToArray());
+                            }
+                        }
+
                         if (string.Equals(packetAction, "owner", StringComparison.OrdinalIgnoreCase))
                         {
                             if (args.Length < 4 || !TryParseSocialListTabToken(args[2], out SocialListTab ownerTab))
@@ -2955,7 +2983,12 @@ namespace HaCreator.MapSimulator
                         }
 
                         return ChatCommandHandler.CommandResult.Error(
-                            "Usage: /sociallist packet [status|owner <tab> <local|packet> [summary]|seed <tab>|clear <tab>|remove <tab> <name>|select <tab> <name>|summary <tab> <summary>|resolve <tab> <approve|reject> [summary]|upsert <tab> <name>|<primary>|<secondary>|<location>|<channel>|<online>|<leader>|<blocked>|<local>|guildauth <clear|<role>|<rank>|<admission>|<notice>>|allianceauth <clear|<role>|<rank>|<notice>>|guildui <clear|<member>|<guildName>|<guildLevel>>]");
+                            SocialListPacketPayloadUsage);
+                    }
+
+                    if (string.Equals(args[0], "packetraw", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return HandleSocialListPacketRawCommand(args.Skip(1).ToArray());
                     }
 
                     return ChatCommandHandler.CommandResult.Error(usage);
@@ -6894,7 +6927,7 @@ namespace HaCreator.MapSimulator
                             if (args.Length == 1 || string.Equals(args[1], "status", StringComparison.OrdinalIgnoreCase))
                             {
                                 return ChatCommandHandler.CommandResult.Info(
-                                    $"Parcel session: {mailboxSnapshot.Entries.Count} row(s), active tab {mailboxSnapshot.ActiveTab}, unread {mailboxSnapshot.UnreadCount}, claimable {mailboxSnapshot.ClaimableCount}.");
+                                    $"{GetPacketOwnedSocialUtilityDialogDispatcher().DescribeParcelStatus()} Parcel session: {mailboxSnapshot.Entries.Count} row(s), active tab {mailboxSnapshot.ActiveTab}, unread {mailboxSnapshot.UnreadCount}, claimable {mailboxSnapshot.ClaimableCount}.");
                             }
 
                             if (string.Equals(args[1], "clear", StringComparison.OrdinalIgnoreCase))
@@ -6975,7 +7008,7 @@ namespace HaCreator.MapSimulator
                                     return ChatCommandHandler.CommandResult.Error("Usage: /memo packet deliver <sender>|<subject>|<body> [|read|keep|claimed|item:<id>:<qty>|meso:<amount>]");
                                 }
 
-                                return _memoMailbox.TryDeliverPacketOwnedParcel(
+                                return GetPacketOwnedSocialUtilityDialogDispatcher().TryDeliverParcel(
                                     segments[0].Trim(),
                                     segments[1].Trim(),
                                     segments[2].Trim(),
@@ -7554,7 +7587,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "localutility",
                 "Inspect or drive packet-authored local utility and event dispatch handlers",
-                "/localutility [status|inbox [status|start [port]|stop|packet <sitresult|questresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|follow|followfail|directionmode|standalone|damagemeter|hpdec|skillcooltime|193|231|242|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|1012|1013|1014|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]|packetclientraw <hex>]|outbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|directionmode <on|off|1|0> [delayMs]|standalone <on|off|1|0>|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv]|classcompetition|skillguide|antimacro [status|launch <normal|admin> [first|retry]|notice <noticeType> [antiMacroType]|result <mode> [antiMacroType] [userName]|clear]|apsp [status|seed [characterId]|receive <token>|send <token>|context <receiveToken> [sendToken]|<contextToken> <11|12|13>|text]|follow <status|request <driverId|name> [auto|manual] [keyinput]|ask <requesterId|name>|accept|decline|attach <driverId|name>|detach [transferX transferY]|passengerdetach [requesterId|name] [transferX transferY]>|followfail [reasonCode [driverId]|text]|packet <sitresult|questresult|openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|skillguide|antimacro|apspevent|directionmode|standalone|follow|followfail|193|231|242|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|1012|1013|1014> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]",
+                "/localutility [status|inbox [status|start [port]|stop|packet <sitresult|questresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|follow|followfail|directionmode|standalone|damagemeter|hpdec|skillcooltime|193|231|242|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|1012|1013|1014|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]|packetclientraw <hex>]|outbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|directionmode <on|off|1|0> [delayMs]|standalone <on|off|1|0>|openui <uiType> [defaultTab]|openuiwithoption <uiType> <option>|commodity <serialNumber>|notice <text>|chat [channel] <text>|buffzone [text]|eventsound <image/path or path>|minigamesound <image/path or path>|questguide <questId> <mobId:mapId[,mapId...]>...|questguide clear|delivery <questId> <itemId> [blockedQuestIdsCsv]|classcompetition|skillguide|antimacro [status|launch <normal|admin> [first|retry]|notice <noticeType> [antiMacroType]|result <mode> [antiMacroType] [userName]|clear]|apsp [status|seed [characterId]|receive <token>|send <token>|context <receiveToken> [sendToken]|<contextToken> <11|12|13>|text]|follow <status|request <driverId|name> [auto|manual] [keyinput]|withdraw|release|ask <requesterId|name>|accept|decline|attach <driverId|name>|detach [transferX transferY]|passengerdetach [requesterId|name] [transferX transferY]>|followfail [reasonCode [driverId]|text]|packet <sitresult|questresult|openui|openuiwithoption|commodity|fade|balloon|damagemeter|hpdec|notice|chat|buffzone|eventsound|minigamesound|questguide|delivery|classcompetition|skillguide|antimacro|apspevent|directionmode|standalone|follow|followfail|193|231|242|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|1012|1013|1014> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>]",
                 HandlePacketOwnedUtilityCommand);
             _chat.CommandHandler.RegisterCommand(
                 "expedition",
@@ -8876,6 +8909,47 @@ namespace HaCreator.MapSimulator
                                 ? ChatCommandHandler.CommandResult.Ok(quizMessage)
                                 : ChatCommandHandler.CommandResult.Error(quizMessage);
 
+                        case "quizclient":
+                            if (args.Length < 6 ||
+                                !int.TryParse(args[1], out int quizClientNpcId) ||
+                                !int.TryParse(args[3], out int quizClientAnswer) ||
+                                !int.TryParse(args[4], out int quizClientQuestionNumber) ||
+                                !int.TryParse(args[5], out int quizClientRemainingSeconds))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg quizclient <npcId> <title|problem|hint> <answer> <questionNo> <seconds>");
+                            }
+
+                            string[] quizClientSegments = args[2].Split(new[] { '|' }, 3, StringSplitOptions.None);
+                            if (quizClientSegments.Length != 3)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg quizclient <npcId> <title|problem|hint> <answer> <questionNo> <seconds>");
+                            }
+
+                            return TryApplyPacketOwnedScriptMessagePacket(
+                                BuildScriptMessageQuizClientPacket(
+                                    quizClientNpcId,
+                                    quizClientSegments[0],
+                                    quizClientSegments[1],
+                                    quizClientSegments[2],
+                                    quizClientAnswer,
+                                    quizClientQuestionNumber,
+                                    quizClientRemainingSeconds),
+                                out string quizClientMessage)
+                                ? ChatCommandHandler.CommandResult.Ok(quizClientMessage)
+                                : ChatCommandHandler.CommandResult.Error(quizClientMessage);
+
+                        case "quizclose":
+                            if (args.Length < 2 || !int.TryParse(args[1], out int quizCloseNpcId))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg quizclose <npcId>");
+                            }
+
+                            return TryApplyPacketOwnedScriptMessagePacket(
+                                BuildScriptMessageQuizClientClosePacket(quizCloseNpcId),
+                                out string quizCloseMessage)
+                                ? ChatCommandHandler.CommandResult.Ok(quizCloseMessage)
+                                : ChatCommandHandler.CommandResult.Error(quizCloseMessage);
+
                         case "speedquiz":
                             if (args.Length < 4 || !int.TryParse(args[1], out int speedQuizNpcId))
                             {
@@ -8890,6 +8964,42 @@ namespace HaCreator.MapSimulator
                                 out string speedQuizMessage)
                                 ? ChatCommandHandler.CommandResult.Ok(speedQuizMessage)
                                 : ChatCommandHandler.CommandResult.Error(speedQuizMessage);
+
+                        case "speedquizclient":
+                            if (args.Length < 7 ||
+                                !int.TryParse(args[1], out int speedQuizClientNpcId) ||
+                                !int.TryParse(args[2], out int currentQuestion) ||
+                                !int.TryParse(args[3], out int totalQuestions) ||
+                                !int.TryParse(args[4], out int correctAnswers) ||
+                                !int.TryParse(args[5], out int remainingQuestions) ||
+                                !int.TryParse(args[6], out int speedQuizRemainingSeconds))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg speedquizclient <npcId> <currentQuestion> <totalQuestions> <correctAnswers> <remainingQuestions> <seconds>");
+                            }
+
+                            return TryApplyPacketOwnedScriptMessagePacket(
+                                BuildScriptMessageSpeedQuizClientPacket(
+                                    speedQuizClientNpcId,
+                                    currentQuestion,
+                                    totalQuestions,
+                                    correctAnswers,
+                                    remainingQuestions,
+                                    speedQuizRemainingSeconds),
+                                out string speedQuizClientMessage)
+                                ? ChatCommandHandler.CommandResult.Ok(speedQuizClientMessage)
+                                : ChatCommandHandler.CommandResult.Error(speedQuizClientMessage);
+
+                        case "speedquizclose":
+                            if (args.Length < 2 || !int.TryParse(args[1], out int speedQuizCloseNpcId))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg speedquizclose <npcId>");
+                            }
+
+                            return TryApplyPacketOwnedScriptMessagePacket(
+                                BuildScriptMessageSpeedQuizClientClosePacket(speedQuizCloseNpcId),
+                                out string speedQuizCloseMessage)
+                                ? ChatCommandHandler.CommandResult.Ok(speedQuizCloseMessage)
+                                : ChatCommandHandler.CommandResult.Error(speedQuizCloseMessage);
 
                         case "sayimage":
                             if (args.Length < 3 || !int.TryParse(args[1], out int sayImageNpcId))
@@ -9527,6 +9637,43 @@ namespace HaCreator.MapSimulator
             return stream.ToArray();
         }
 
+        private static byte[] BuildScriptMessageQuizClientPacket(
+            int npcId,
+            string title,
+            string problemText,
+            string hintText,
+            int correctAnswer,
+            int questionNumber,
+            int remainingSeconds)
+        {
+            using var stream = new MemoryStream();
+            using var writer = new BinaryWriter(stream, Encoding.Default, leaveOpen: true);
+            writer.Write((byte)4);
+            writer.Write(npcId);
+            writer.Write((byte)6);
+            writer.Write((byte)0);
+            writer.Write((byte)0);
+            WritePacketOwnedMapleString(writer, title);
+            WritePacketOwnedMapleString(writer, problemText);
+            WritePacketOwnedMapleString(writer, hintText);
+            writer.Write(correctAnswer);
+            writer.Write(questionNumber);
+            writer.Write(remainingSeconds);
+            return stream.ToArray();
+        }
+
+        private static byte[] BuildScriptMessageQuizClientClosePacket(int npcId)
+        {
+            using var stream = new MemoryStream();
+            using var writer = new BinaryWriter(stream, Encoding.Default, leaveOpen: true);
+            writer.Write((byte)4);
+            writer.Write(npcId);
+            writer.Write((byte)6);
+            writer.Write((byte)0);
+            writer.Write((byte)1);
+            return stream.ToArray();
+        }
+
         private static byte[] BuildScriptMessageSpeedQuizPacket(int npcId, string prompt, string defaultText, IReadOnlyList<string> options)
         {
             using var stream = new MemoryStream();
@@ -9543,6 +9690,41 @@ namespace HaCreator.MapSimulator
                 WritePacketOwnedMapleString(writer, option);
             }
 
+            return stream.ToArray();
+        }
+
+        private static byte[] BuildScriptMessageSpeedQuizClientPacket(
+            int npcId,
+            int currentQuestion,
+            int totalQuestions,
+            int correctAnswers,
+            int remainingQuestions,
+            int remainingSeconds)
+        {
+            using var stream = new MemoryStream();
+            using var writer = new BinaryWriter(stream, Encoding.Default, leaveOpen: true);
+            writer.Write((byte)4);
+            writer.Write(npcId);
+            writer.Write((byte)7);
+            writer.Write((byte)0);
+            writer.Write((byte)0);
+            writer.Write(currentQuestion);
+            writer.Write(totalQuestions);
+            writer.Write(correctAnswers);
+            writer.Write(remainingQuestions);
+            writer.Write(remainingSeconds);
+            return stream.ToArray();
+        }
+
+        private static byte[] BuildScriptMessageSpeedQuizClientClosePacket(int npcId)
+        {
+            using var stream = new MemoryStream();
+            using var writer = new BinaryWriter(stream, Encoding.Default, leaveOpen: true);
+            writer.Write((byte)4);
+            writer.Write(npcId);
+            writer.Write((byte)7);
+            writer.Write((byte)0);
+            writer.Write((byte)1);
             return stream.ToArray();
         }
 

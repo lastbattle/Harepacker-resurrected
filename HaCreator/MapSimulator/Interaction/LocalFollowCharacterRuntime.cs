@@ -193,6 +193,35 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        public bool TrySendAttachedReleaseRequest(int currentTime, Func<int, string> nameResolver, out string message)
+        {
+            if (_attachedDriverId <= 0)
+            {
+                message = "No local follow driver is currently attached.";
+                return false;
+            }
+
+            if (_lastOutgoingRequestTick != int.MinValue
+                && currentTime != int.MinValue
+                && currentTime - _lastOutgoingRequestTick < FollowRequestThrottleMs)
+            {
+                int remainingMs = FollowRequestThrottleMs - Math.Max(0, currentTime - _lastOutgoingRequestTick);
+                message = $"Local follow release request is throttled for another {remainingMs} ms.";
+                return false;
+            }
+
+            string displayName = DescribeActor(_attachedDriverId, nameResolver);
+            _lastOutgoingRequestTick = currentTime;
+            _lastOutgoingRequestOpcodeDriverId = 0;
+            _lastOutgoingRequestOpcodeAutoRequest = false;
+            _lastOutgoingRequestOpcodeKeyInput = true;
+            _lastOutgoingRequestOpcodeTick = currentTime;
+            _lastStatusMessage =
+                $"Queued local follow release request from {displayName}; simulated outpacket {FollowRequestOpcode} (0, 0, 1).";
+            message = _lastStatusMessage;
+            return true;
+        }
+
         public string ClearAttachedPassenger(LocalFollowUserSnapshot requester, bool transferField, Vector2? transferPosition)
         {
             string displayName = requester.Exists && requester.CharacterId > 0

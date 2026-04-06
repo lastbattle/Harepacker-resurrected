@@ -160,6 +160,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly List<string> _wishEntries = new List<string> { "White Scroll", "Brown Work Gloves", "Ilbi Throwing-Star" };
         private readonly Dictionary<ItemMakerRecipeFamily, IDXObject> _productSkillIcons = new Dictionary<ItemMakerRecipeFamily, IDXObject>();
         private IDXObject _productSkillRecipeIcon;
+        private IDXObject _marriedIcon;
 
         private IDXObject _foreground;
         private Point _foregroundOffset;
@@ -220,6 +221,7 @@ namespace HaCreator.MapSimulator.UI
         private ItemMakerProgressionSnapshot _currentCollectionSnapshot = ItemMakerProgressionSnapshot.Default;
         private MonsterBookSnapshot _currentMonsterBookSnapshot = new MonsterBookSnapshot();
         private RankDeltaSnapshot _currentRankDeltaSnapshot;
+        private bool _isMarriedProfile;
 
         private static readonly Color ValueColor = new Color(45, 45, 45);
         private static readonly Color SecondaryColor = new Color(96, 96, 96);
@@ -258,6 +260,9 @@ namespace HaCreator.MapSimulator.UI
         public Action EntrustedShopRequested { get; set; }
         public Func<UserInfoActionContext, string> BookCollectionRequested { get; set; }
         public Func<UserInfoActionContext, string, string> WishPresentRequested { get; set; }
+        public Func<UserInfoActionContext, bool> MarriedBadgeProvider { get; set; }
+        public Func<string> LocalActionLocationSummaryProvider { get; set; }
+        public Func<int> LocalActionChannelProvider { get; set; }
 
         public override CharacterBuild CharacterBuild
         {
@@ -568,6 +573,11 @@ namespace HaCreator.MapSimulator.UI
             _productSkillRecipeIcon = icon;
         }
 
+        public void SetMarriedIcon(IDXObject icon)
+        {
+            _marriedIcon = icon;
+        }
+
         public void InitializePersonalityTooltip(
             IDXObject baseTop,
             IDXObject baseMiddle,
@@ -632,6 +642,7 @@ namespace HaCreator.MapSimulator.UI
                 ApplyCurrentPageFrame();
             }
 
+            RefreshMarriageBadgeState();
             UpdateButtonStates();
         }
 
@@ -639,6 +650,7 @@ namespace HaCreator.MapSimulator.UI
         {
             _inspectionTarget = null;
             _statusMessage = "Character actions are available from this profile window.";
+            RefreshMarriageBadgeState();
             UpdateButtonStates();
         }
 
@@ -646,6 +658,7 @@ namespace HaCreator.MapSimulator.UI
         {
             RefreshSnapshotCaches();
             ClampSelectedPetTabIndex();
+            RefreshMarriageBadgeState();
 
             if (_currentPage != UserInfoPage.Character && !IsPageAvailable(_currentPage))
             {
@@ -846,6 +859,7 @@ namespace HaCreator.MapSimulator.UI
                     jobRank,
                     fame,
                     guildAlliance);
+                DrawMarriageBadge(sprite);
                 DrawProductSkillSummary(sprite);
                 DrawProfileProgressSummary(sprite);
                 return;
@@ -1048,6 +1062,17 @@ namespace HaCreator.MapSimulator.UI
             string pocketText = BuildPocketSummary();
             DrawPlainText(sprite, FitText(medalText, 150), new Vector2(Position.X + 18, Position.Y + 152), MutedColor, 0.48f);
             DrawPlainText(sprite, FitText(pocketText, 150), new Vector2(Position.X + 18, Position.Y + 166), MutedColor, 0.48f);
+        }
+
+        private void DrawMarriageBadge(SpriteBatch sprite)
+        {
+            if (!_isBigBang || !_isMarriedProfile || _marriedIcon == null)
+            {
+                return;
+            }
+
+            // CUIUserInfo::Draw copies UI/UIWindow2.img/UserInfo/character/married at (15, 32).
+            _marriedIcon.DrawBackground(sprite, null, null, Position.X + 15, Position.Y + 32, Color.White, false, null);
         }
 
         private void DrawSectionHeader(SpriteBatch sprite, string title)
@@ -1484,10 +1509,10 @@ namespace HaCreator.MapSimulator.UI
             {
                 bool showPetException = _currentPage == UserInfoPage.Pet;
                 _petExceptionButton.ButtonVisible = showPetException;
-                _petExceptionButton.SetEnabled(showPetException && HasActivePets() && !_exceptionPopupOpen);
+                _petExceptionButton.SetEnabled(showPetException && !remoteInspection && HasActivePets() && !_exceptionPopupOpen);
             }
 
-            IReadOnlyList<PetRuntime> pets = _petController?.ActivePets;
+            int availablePetSlots = GetAvailablePetSlotCount();
             for (int i = 0; i < _petTabButtons.Count; i++)
             {
                 UIObject button = _petTabButtons[i];
@@ -1496,7 +1521,7 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
-                bool visible = _currentPage == UserInfoPage.Pet && pets != null && i < pets.Count;
+                bool visible = _currentPage == UserInfoPage.Pet && i < availablePetSlots;
                 button.ButtonVisible = visible;
                 button.SetEnabled(visible && !_exceptionPopupOpen);
                 button.SetButtonState(_selectedPetTabIndex == i ? UIObjectState.Pressed : UIObjectState.Normal);
@@ -1511,7 +1536,7 @@ namespace HaCreator.MapSimulator.UI
                 }
 
                 bool visible = !_isBigBang && _legacyExpandedPanel == LegacyExpandedPanel.Pet;
-                bool enabled = visible && i < (_petController?.ActivePets?.Count ?? 0) && !_exceptionPopupOpen;
+                bool enabled = visible && i < availablePetSlots && !_exceptionPopupOpen;
                 button.ButtonVisible = visible;
                 button.SetEnabled(enabled);
                 button.SetButtonState(_selectedPetTabIndex == i ? UIObjectState.Pressed : UIObjectState.Normal);
@@ -1757,6 +1782,11 @@ namespace HaCreator.MapSimulator.UI
         private bool HasActivePets()
         {
             return GetAvailablePetSlotCount() > 0;
+        }
+
+        private void RefreshMarriageBadgeState()
+        {
+            _isMarriedProfile = MarriedBadgeProvider?.Invoke(BuildCurrentActionContext()) ?? false;
         }
 
         private void ClampSelectedPetTabIndex()
@@ -2697,15 +2727,18 @@ namespace HaCreator.MapSimulator.UI
         private UserInfoActionContext BuildCurrentActionContext()
         {
             CharacterBuild build = _inspectionTarget?.Build ?? _characterBuild;
+            string locationSummary = IsRemoteInspectionActive()
+                ? _inspectionTarget?.LocationSummary ?? string.Empty
+                : LocalActionLocationSummaryProvider?.Invoke() ?? string.Empty;
             int channel = IsRemoteInspectionActive()
                 ? (_inspectionTarget?.Channel ?? 0)
-                : Math.Max(1, _inspectionTarget?.Channel ?? 1);
+                : Math.Max(1, LocalActionChannelProvider?.Invoke() ?? 1);
             return new UserInfoActionContext(
                 IsRemoteInspectionActive(),
                 _inspectionTarget?.CharacterId ?? build?.Id ?? 0,
                 _inspectionTarget?.Name ?? build?.Name ?? string.Empty,
                 build,
-                _inspectionTarget?.LocationSummary ?? string.Empty,
+                locationSummary,
                 channel);
         }
 

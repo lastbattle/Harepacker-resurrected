@@ -1196,6 +1196,39 @@ namespace HaCreator.MapSimulator.Character
             _pendingRepeatSkillModeEndRequestTime = requestedAt;
         }
 
+        public bool TryResolvePacketOwnedRepeatSkillModeEndRequest(
+            int skillId,
+            int returnSkillId,
+            int requestedAt,
+            int currentTime)
+        {
+            if (Skills == null
+                || requestedAt == int.MinValue
+                || requestedAt != _pendingRepeatSkillModeEndRequestTime
+                || skillId != _pendingRepeatSkillModeEndSkillId
+                || returnSkillId != _pendingRepeatSkillModeEndReturnSkillId
+                || !Skills.HasPendingRepeatSkillModeEndRequest(skillId, returnSkillId, requestedAt))
+            {
+                return false;
+            }
+
+            if (!Skills.TryAcknowledgeRepeatSkillModeEndRequest(skillId, currentTime, requestedAt)
+                && !Skills.TryAcknowledgeRepeatSkillModeEndRequest(returnSkillId, currentTime, requestedAt))
+            {
+                return false;
+            }
+
+            _pendingRepeatSkillModeEndSkillId = 0;
+            _pendingRepeatSkillModeEndReturnSkillId = 0;
+            _pendingRepeatSkillModeEndRequestTime = int.MinValue;
+            return true;
+        }
+
+        public bool TryResolvePacketOwnedSg88ManualAttackRequest(int summonObjectId, int requestedAt, int currentTime)
+        {
+            return Skills?.TryResolvePendingSg88ManualAttackRequest(summonObjectId, requestedAt, currentTime) == true;
+        }
+
         private void TryAcknowledgePendingRepeatSkillModeEnd(int currentTime)
         {
             if (Skills == null || _pendingRepeatSkillModeEndRequestTime == int.MinValue)

@@ -6,7 +6,11 @@ namespace HaCreator.MapSimulator.Interaction
     internal enum ReviveOwnerVariant
     {
         DefaultOnly = 0,
-        PremiumChoice = 1,
+        SafetyCharmChoice = 1,
+        PremiumSafetyCharmChoice = 2,
+        UpgradeTombChoice = 3,
+        SoulStoneChoice = 4,
+        PremiumChoice = PremiumSafetyCharmChoice,
     }
 
     internal readonly struct ReviveOwnerResolution
@@ -58,19 +62,20 @@ namespace HaCreator.MapSimulator.Interaction
     internal sealed class ReviveOwnerRuntime
     {
         private const int AutoResolveMs = 0x927C0;
+        private const float PremiumChoiceMinDistanceSquared = 1f;
 
         private int _openedAtTick = int.MinValue;
         private string _mapName = string.Empty;
         private string _normalDetail = string.Empty;
         private string _premiumDetail = string.Empty;
+        private string _ownerLabel = string.Empty;
 
         public bool IsOpen => _openedAtTick != int.MinValue;
-        public bool HasPremiumChoice { get; private set; }
         public ReviveOwnerVariant Variant { get; private set; }
+        public bool HasPremiumChoice => Variant != ReviveOwnerVariant.DefaultOnly;
 
         public void Open(
             string mapName,
-            bool hasPremiumChoice,
             string normalDetail,
             string premiumDetail,
             ReviveOwnerVariant variant,
@@ -79,29 +84,28 @@ namespace HaCreator.MapSimulator.Interaction
             _mapName = mapName ?? string.Empty;
             _normalDetail = normalDetail ?? string.Empty;
             _premiumDetail = premiumDetail ?? string.Empty;
-            HasPremiumChoice = hasPremiumChoice;
-            Variant = hasPremiumChoice ? variant : ReviveOwnerVariant.DefaultOnly;
+            Variant = variant;
+            _ownerLabel = GetOwnerLabel(variant);
             _openedAtTick = currentTick;
         }
 
         public void Open(
             string mapName,
-            bool hasPremiumChoice,
             string normalDetail,
             string premiumDetail,
             ReviveOwnerVariant variant)
         {
-            Open(mapName, hasPremiumChoice, normalDetail, premiumDetail, variant, Environment.TickCount);
+            Open(mapName, normalDetail, premiumDetail, variant, Environment.TickCount);
         }
 
         public void Close()
         {
             _openedAtTick = int.MinValue;
-            HasPremiumChoice = false;
             Variant = ReviveOwnerVariant.DefaultOnly;
             _mapName = string.Empty;
             _normalDetail = string.Empty;
             _premiumDetail = string.Empty;
+            _ownerLabel = string.Empty;
         }
 
         public ReviveOwnerResolution Update(int currentTick)
@@ -127,11 +131,12 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             bool resolvedPremium = premium && HasPremiumChoice;
+            string ownerLabel = string.IsNullOrWhiteSpace(_ownerLabel) ? "revive owner" : _ownerLabel;
             string summary = resolvedPremium
-                ? "CUIRevive premium recovery branch confirmed."
+                ? $"CUIRevive premium recovery branch confirmed through {ownerLabel}."
                 : timedOut
-                    ? "CUIRevive timed out and resolved through the default revive branch."
-                    : "CUIRevive default recovery branch confirmed.";
+                    ? $"CUIRevive timed out and resolved through the default revive branch ({ownerLabel})."
+                    : $"CUIRevive default recovery branch confirmed through {ownerLabel}.";
 
             Close();
             return new ReviveOwnerResolution(true, resolvedPremium, timedOut, summary);
@@ -143,6 +148,11 @@ namespace HaCreator.MapSimulator.Interaction
                 resolution.Premium,
                 resolution.TimedOut,
                 resolution.Summary);
+        }
+
+        public static bool ShouldOfferPremiumChoice(Vector2 deathPoint, Vector2 spawnPoint)
+        {
+            return Vector2.DistanceSquared(deathPoint, spawnPoint) > PremiumChoiceMinDistanceSquared;
         }
 
         public ReviveOwnerSnapshot BuildSnapshot(int currentTick)
@@ -157,6 +167,14 @@ namespace HaCreator.MapSimulator.Interaction
             string subtitle = string.IsNullOrWhiteSpace(_mapName)
                 ? "Dedicated death-recovery owner"
                 : $"Dedicated death-recovery owner for {_mapName}";
+            string variantStatus = Variant switch
+            {
+                ReviveOwnerVariant.SafetyCharmChoice => "Safety Charm branch available.",
+                ReviveOwnerVariant.PremiumSafetyCharmChoice => "Premium Safety Charm branch available.",
+                ReviveOwnerVariant.UpgradeTombChoice => "Upgrade Tomb branch available.",
+                ReviveOwnerVariant.SoulStoneChoice => "Soul Stone branch available.",
+                _ => "Default revive branch only."
+            };
 
             return new ReviveOwnerSnapshot
             {
@@ -169,17 +187,24 @@ namespace HaCreator.MapSimulator.Interaction
                 SecondaryDetail = HasPremiumChoice ? _normalDetail : "This simulator-local owner still uses one recovery branch when no alternate local revive path is available.",
                 CountdownText = $"Auto revive in {remaining.Minutes:00}:{remaining.Seconds:00}",
                 StatusText = HasPremiumChoice
-                    ? "Enter or Shift+R takes the premium branch. Escape, the close button, or R takes the default branch."
-                    : "Enter, the close button, or R confirms the default revive branch.",
+                    ? $"{variantStatus} Enter or Shift+R takes the premium branch. Escape, the close button, or R takes the default branch."
+                    : $"{variantStatus} Enter, the close button, or R confirms the default revive branch.",
                 PremiumButtonLabel = "Yes",
                 NormalButtonLabel = HasPremiumChoice ? "No" : "OK",
                 RemainingRatio = AutoResolveMs <= 0 ? 0f : MathHelper.Clamp((float)remainingMs / AutoResolveMs, 0f, 1f)
             };
         }
 
-        public static bool ShouldOfferPremiumChoice(Vector2 deathPosition, Vector2 respawnPosition)
+        public static string GetOwnerLabel(ReviveOwnerVariant variant)
         {
-            return Vector2.DistanceSquared(deathPosition, respawnPosition) >= 32f * 32f;
+            return variant switch
+            {
+                ReviveOwnerVariant.SafetyCharmChoice => "Safety Charm",
+                ReviveOwnerVariant.PremiumSafetyCharmChoice => "Premium Safety Charm",
+                ReviveOwnerVariant.UpgradeTombChoice => "Upgrade Tomb",
+                ReviveOwnerVariant.SoulStoneChoice => "Soul Stone",
+                _ => "Default revive owner"
+            };
         }
     }
 }

@@ -112,6 +112,8 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        public bool ShowsAllAvailableLevels => _showAllLevels;
+
         public QuestUI(IDXObject frame, GraphicsDevice device)
             : base(frame)
         {

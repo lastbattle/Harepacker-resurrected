@@ -5,6 +5,54 @@ namespace HaCreator.MapSimulator.Interaction
 {
     internal sealed partial class SocialListRuntime
     {
+        internal string ApplyPacketOwnedRosterPayload(SocialListTab tab, byte[] payload)
+        {
+            if (payload == null)
+            {
+                return $"Packet-owned {GetHeaderTitle(tab)} payload is missing.";
+            }
+
+            return SocialListPacketCodec.TryParseRoster(payload, out SocialListRosterPacket packet, out string error)
+                ? ApplyPacketOwnedRosterDelta(tab, packet)
+                : error ?? $"Packet-owned {GetHeaderTitle(tab)} payload could not be decoded.";
+        }
+
+        internal string ApplyPacketOwnedGuildAuthorityPayload(byte[] payload)
+        {
+            if (payload == null)
+            {
+                return "Packet-owned guild authority payload is missing.";
+            }
+
+            return SocialListPacketCodec.TryParseGuildAuthority(payload, out SocialListGuildAuthorityPacket packet, out string error)
+                ? ApplyPacketOwnedGuildAuthorityDelta(packet)
+                : error ?? "Packet-owned guild authority payload could not be decoded.";
+        }
+
+        internal string ApplyPacketOwnedAllianceAuthorityPayload(byte[] payload)
+        {
+            if (payload == null)
+            {
+                return "Packet-owned alliance authority payload is missing.";
+            }
+
+            return SocialListPacketCodec.TryParseAllianceAuthority(payload, out SocialListAllianceAuthorityPacket packet, out string error)
+                ? ApplyPacketOwnedAllianceAuthorityDelta(packet)
+                : error ?? "Packet-owned alliance authority payload could not be decoded.";
+        }
+
+        internal string ApplyPacketOwnedGuildUiPayload(byte[] payload)
+        {
+            if (payload == null)
+            {
+                return "Packet-owned guild UI payload is missing.";
+            }
+
+            return SocialListPacketCodec.TryParseGuildUi(payload, out SocialListGuildUiPacket packet, out string error)
+                ? ApplyPacketOwnedGuildUiDelta(packet)
+                : error ?? "Packet-owned guild UI payload could not be decoded.";
+        }
+
         internal string ApplyPacketOwnedRosterDelta(SocialListTab tab, SocialListRosterPacket packet)
         {
             return packet.Kind switch

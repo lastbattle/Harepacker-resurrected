@@ -47,20 +47,39 @@ namespace HaCreator.MapSimulator.UI
             public Point Offset { get; }
         }
 
+        private readonly struct TooltipValueSegment
+        {
+            public TooltipValueSegment(Texture2D texture, string text = null)
+            {
+                Texture = texture;
+                Text = text;
+            }
+
+            public Texture2D Texture { get; }
+            public string Text { get; }
+        }
+
         private readonly struct TooltipInfoRow
         {
-            public TooltipInfoRow(Texture2D labelTexture, string labelText, string valueText, Color valueColor)
+            public TooltipInfoRow(
+                Texture2D labelTexture,
+                string labelText,
+                string valueText,
+                Color valueColor,
+                IReadOnlyList<TooltipValueSegment> valueSegments = null)
             {
                 LabelTexture = labelTexture;
                 LabelText = labelText ?? string.Empty;
                 ValueText = valueText ?? string.Empty;
                 ValueColor = valueColor;
+                ValueSegments = valueSegments;
             }
 
             public Texture2D LabelTexture { get; }
             public string LabelText { get; }
             public string ValueText { get; }
             public Color ValueColor { get; }
+            public IReadOnlyList<TooltipValueSegment> ValueSegments { get; }
         }
 
         private const int RowLeft = 11;
@@ -690,6 +709,8 @@ namespace HaCreator.MapSimulator.UI
             List<TooltipInfoRow> requirementRows = BuildEquipTooltipRequirementRows(part);
             float statRowsHeight = MeasureTooltipInfoRowsHeight(statRows);
             float requirementRowsHeight = MeasureTooltipInfoRowsHeight(requirementRows);
+            List<Texture2D> jobBadges = BuildTooltipJobBadges(part.RequiredJobMask);
+            float jobBadgeHeight = jobBadges.Count > 0 ? 13f : 0f;
 
             List<string> footerLines = BuildEquipTooltipFooterLines(entry, part, metadata);
             List<string[]> wrappedFooterSections = WrapTooltipSections(
@@ -706,6 +727,11 @@ namespace HaCreator.MapSimulator.UI
             if (requirementRowsHeight > 0f)
             {
                 contentHeight += TooltipSectionGap + requirementRowsHeight;
+            }
+
+            if (jobBadgeHeight > 0f)
+            {
+                contentHeight += TooltipSectionGap + jobBadgeHeight;
             }
 
             if (footerHeight > 0f)
@@ -787,6 +813,12 @@ namespace HaCreator.MapSimulator.UI
                 sectionY = DrawTooltipInfoRows(sprite, tooltipX + TooltipPadding, sectionY, tooltipWidth - (TooltipPadding * 2), requirementRows);
             }
 
+            if (jobBadgeHeight > 0f)
+            {
+                sectionY += TooltipSectionGap;
+                sectionY = DrawJobBadgeRow(sprite, tooltipX + TooltipPadding, sectionY, jobBadges);
+            }
+
             if (footerHeight > 0f)
             {
                 sectionY += TooltipSectionGap;
@@ -815,7 +847,13 @@ namespace HaCreator.MapSimulator.UI
 
             if (part.EnhancementStarCount > 0)
             {
-                rows.Add(new TooltipInfoRow(_equipTooltipAssets?.StarLabel, "Stars:", part.EnhancementStarCount.ToString(CultureInfo.InvariantCulture), new Color(255, 232, 176)));
+                string valueText = part.EnhancementStarCount.ToString(CultureInfo.InvariantCulture);
+                rows.Add(new TooltipInfoRow(
+                    _equipTooltipAssets?.StarLabel,
+                    "Stars:",
+                    valueText,
+                    new Color(255, 232, 176),
+                    BuildTooltipValueSegments(valueText, enabled: true, preferGrowthDigits: false)));
             }
 
             int upgradeSlots = ResolveTooltipUpgradeSlotCount(part);
@@ -824,12 +862,23 @@ namespace HaCreator.MapSimulator.UI
                 string upgradeValue = part.TotalUpgradeSlotCount.HasValue && part.TotalUpgradeSlotCount.Value > 0
                     ? $"{upgradeSlots}/{part.TotalUpgradeSlotCount.Value}"
                     : upgradeSlots.ToString(CultureInfo.InvariantCulture);
-                rows.Add(new TooltipInfoRow(ResolvePropertyLabel("16"), "Upgrades Available:", upgradeValue, new Color(255, 232, 176)));
+                rows.Add(new TooltipInfoRow(
+                    ResolvePropertyLabel("16"),
+                    "Upgrades Available:",
+                    upgradeValue,
+                    new Color(255, 232, 176),
+                    BuildTooltipValueSegments(upgradeValue, enabled: true, preferGrowthDigits: false)));
             }
 
             if (part.SellPrice > 0)
             {
-                rows.Add(new TooltipInfoRow(_equipTooltipAssets?.MesosLabel, "Mesos:", part.SellPrice.ToString("N0", CultureInfo.InvariantCulture), new Color(255, 244, 186)));
+                string valueText = part.SellPrice.ToString("N0", CultureInfo.InvariantCulture);
+                rows.Add(new TooltipInfoRow(
+                    _equipTooltipAssets?.MesosLabel,
+                    "Mesos:",
+                    valueText,
+                    new Color(255, 244, 186),
+                    BuildTooltipValueSegments(valueText, enabled: true, preferGrowthDigits: false)));
             }
 
             if (part is WeaponPart weapon && weapon.AttackSpeed >= 0)
@@ -837,6 +886,8 @@ namespace HaCreator.MapSimulator.UI
                 Texture2D speedTexture = ResolveSpeedTexture(weapon.AttackSpeed);
                 rows.Add(new TooltipInfoRow(speedTexture ?? ResolvePropertyLabel("4"), "Attack Speed:", ResolveAttackSpeedText(weapon.AttackSpeed), new Color(181, 224, 255)));
             }
+
+            AppendGrowthRows(rows, part);
 
             return rows;
         }
@@ -861,7 +912,8 @@ namespace HaCreator.MapSimulator.UI
                     ResolveRequirementLabel(canUse, "durability"),
                     "Durability:",
                     value,
-                    canUse ? new Color(181, 224, 255) : new Color(255, 186, 186)));
+                    canUse ? new Color(181, 224, 255) : new Color(255, 186, 186),
+                    BuildTooltipValueSegments(value, enabled: canUse, preferGrowthDigits: false)));
             }
 
             return rows;
@@ -934,7 +986,12 @@ namespace HaCreator.MapSimulator.UI
             }
 
             string valueText = prefixPlus ? $"+{value}" : value.ToString(CultureInfo.InvariantCulture);
-            rows.Add(new TooltipInfoRow(labelTexture, fallbackLabel, valueText, valueColor));
+            rows.Add(new TooltipInfoRow(
+                labelTexture,
+                fallbackLabel,
+                valueText,
+                valueColor,
+                BuildTooltipValueSegments(valueText, enabled: true, preferGrowthDigits: true)));
         }
 
         private void AppendRequirementRow(List<TooltipInfoRow> rows, string labelKey, string fallbackLabel, int requiredValue, int actualValue)
@@ -949,7 +1006,8 @@ namespace HaCreator.MapSimulator.UI
                 ResolveRequirementLabel(canUse, labelKey),
                 fallbackLabel,
                 requiredValue.ToString(CultureInfo.InvariantCulture),
-                canUse ? new Color(181, 224, 255) : new Color(255, 186, 186)));
+                canUse ? new Color(181, 224, 255) : new Color(255, 186, 186),
+                BuildTooltipValueSegments(requiredValue.ToString(CultureInfo.InvariantCulture), enabled: canUse, preferGrowthDigits: false)));
         }
 
         private static int ResolveTooltipUpgradeSlotCount(CharacterPart part)
@@ -984,7 +1042,12 @@ namespace HaCreator.MapSimulator.UI
 
         private float MeasureTooltipInfoRowHeight(TooltipInfoRow row)
         {
-            float height = ClientTextDrawing.Measure((GraphicsDevice)null, row.ValueText ?? string.Empty, SecondaryTextScale, _font).Y;
+            float height = MeasureTooltipValueSegmentsHeight(row.ValueSegments);
+            if (height <= 0f)
+            {
+                height = ClientTextDrawing.Measure((GraphicsDevice)null, row.ValueText ?? string.Empty, SecondaryTextScale, _font).Y;
+            }
+
             if (row.LabelTexture != null)
             {
                 height = Math.Max(height, row.LabelTexture.Height);
@@ -1021,11 +1084,24 @@ namespace HaCreator.MapSimulator.UI
                     labelWidth = ClientTextDrawing.Measure((GraphicsDevice)null, row.LabelText, SecondaryTextScale, _font).X;
                 }
 
-                Vector2 valueSize = ClientTextDrawing.Measure((GraphicsDevice)null, row.ValueText ?? string.Empty, SecondaryTextScale, _font);
+                float valueWidth = MeasureTooltipValueSegmentsWidth(row.ValueSegments);
+                if (valueWidth <= 0f)
+                {
+                    valueWidth = ClientTextDrawing.Measure((GraphicsDevice)null, row.ValueText ?? string.Empty, SecondaryTextScale, _font).X;
+                }
+
                 float minValueX = x + labelWidth + 10f;
-                float preferredValueX = x + width - valueSize.X;
+                float preferredValueX = x + width - valueWidth;
                 float valueX = Math.Max(minValueX, preferredValueX);
-                DrawOutlinedText(sprite, row.ValueText, new Vector2(valueX, drawY), row.ValueColor, SecondaryTextScale);
+                if (row.ValueSegments != null && row.ValueSegments.Count > 0)
+                {
+                    DrawTooltipValueSegments(sprite, row.ValueSegments, valueX, drawY, row.ValueColor);
+                }
+                else
+                {
+                    DrawOutlinedText(sprite, row.ValueText, new Vector2(valueX, drawY), row.ValueColor, SecondaryTextScale);
+                }
+
                 drawY += rowHeight + 2f;
             }
 
@@ -1045,6 +1121,13 @@ namespace HaCreator.MapSimulator.UI
         private Texture2D ResolveSpeedTexture(int attackSpeed)
         {
             return TryResolveTooltipAsset(_equipTooltipAssets?.SpeedLabels, Math.Clamp(attackSpeed, 0, 6).ToString(CultureInfo.InvariantCulture));
+        }
+
+        private Texture2D ResolveGrowthLabel(bool enabled, string key)
+        {
+            return TryResolveTooltipAsset(
+                enabled ? _equipTooltipAssets?.GrowthEnabledLabels : _equipTooltipAssets?.GrowthDisabledLabels,
+                key);
         }
 
         private Texture2D ResolveCategoryTexture(CharacterPart part)
@@ -1121,6 +1204,223 @@ namespace HaCreator.MapSimulator.UI
                 6 => "Slowest",
                 _ => string.Empty
             };
+        }
+
+        private void AppendGrowthRows(List<TooltipInfoRow> rows, CharacterPart part)
+        {
+            if (rows == null || part == null || !part.HasGrowthInfo)
+            {
+                return;
+            }
+
+            int currentLevel = Math.Max(1, part.GrowthLevel);
+            int maxLevel = Math.Max(currentLevel, part.GrowthMaxLevel);
+            bool growthEnabled = currentLevel < maxLevel;
+
+            string levelText = currentLevel.ToString(CultureInfo.InvariantCulture);
+            rows.Add(new TooltipInfoRow(
+                ResolveGrowthLabel(growthEnabled, "itemLEV"),
+                "Item Level:",
+                levelText,
+                growthEnabled ? new Color(181, 224, 255) : new Color(192, 192, 192),
+                BuildTooltipValueSegments(levelText, enabled: growthEnabled, preferGrowthDigits: true)));
+
+            string expText = growthEnabled
+                ? $"{Math.Clamp(part.GrowthExpPercent, 0, 99)}%"
+                : "MAX";
+            rows.Add(new TooltipInfoRow(
+                ResolveGrowthLabel(growthEnabled, "itemEXP"),
+                "Item EXP:",
+                expText,
+                growthEnabled ? new Color(181, 224, 255) : new Color(192, 192, 192),
+                BuildTooltipValueSegments(expText, enabled: growthEnabled, preferGrowthDigits: true)));
+        }
+
+        private IReadOnlyList<TooltipValueSegment> BuildTooltipValueSegments(string valueText, bool enabled, bool preferGrowthDigits)
+        {
+            if (string.IsNullOrWhiteSpace(valueText) || _equipTooltipAssets == null)
+            {
+                return null;
+            }
+
+            IReadOnlyDictionary<string, Texture2D> source = preferGrowthDigits
+                ? (enabled ? _equipTooltipAssets.GrowthEnabledLabels : _equipTooltipAssets.GrowthDisabledLabels)
+                : (enabled ? _equipTooltipAssets.CanLabels : _equipTooltipAssets.CannotLabels);
+            if (source == null)
+            {
+                return null;
+            }
+
+            if (string.Equals(valueText, "MAX", StringComparison.OrdinalIgnoreCase))
+            {
+                Texture2D maxTexture = TryResolveTooltipAsset(source, "max");
+                return maxTexture == null ? null : new[] { new TooltipValueSegment(maxTexture) };
+            }
+
+            List<TooltipValueSegment> segments = new(valueText.Length);
+            for (int i = 0; i < valueText.Length; i++)
+            {
+                char character = valueText[i];
+                if (character == '+')
+                {
+                    continue;
+                }
+
+                string key = character switch
+                {
+                    '%' => "percent",
+                    _ => char.IsDigit(character) ? character.ToString() : null
+                };
+
+                if (key == null)
+                {
+                    if (character == '/' || character == '-' || character == '.' || character == ',')
+                    {
+                        segments.Add(new TooltipValueSegment(null, character.ToString()));
+                        continue;
+                    }
+
+                    return null;
+                }
+
+                Texture2D texture = TryResolveTooltipAsset(source, key);
+                if (texture == null)
+                {
+                    return null;
+                }
+
+                segments.Add(new TooltipValueSegment(texture));
+            }
+
+            return segments.Count > 0 ? segments : null;
+        }
+
+        private float MeasureTooltipValueSegmentsHeight(IReadOnlyList<TooltipValueSegment> segments)
+        {
+            if (segments == null || segments.Count == 0)
+            {
+                return 0f;
+            }
+
+            int height = 0;
+            for (int i = 0; i < segments.Count; i++)
+            {
+                TooltipValueSegment segment = segments[i];
+                if (segment.Texture != null)
+                {
+                    height = Math.Max(height, segment.Texture.Height);
+                }
+                else if (!string.IsNullOrEmpty(segment.Text))
+                {
+                    height = Math.Max(
+                        height,
+                        (int)Math.Ceiling(ClientTextDrawing.Measure((GraphicsDevice)null, segment.Text, SecondaryTextScale, _font).Y));
+                }
+            }
+
+            return height;
+        }
+
+        private float MeasureTooltipValueSegmentsWidth(IReadOnlyList<TooltipValueSegment> segments)
+        {
+            if (segments == null || segments.Count == 0)
+            {
+                return 0f;
+            }
+
+            float width = 0f;
+            for (int i = 0; i < segments.Count; i++)
+            {
+                TooltipValueSegment segment = segments[i];
+                if (segment.Texture != null)
+                {
+                    width += segment.Texture.Width;
+                }
+                else if (!string.IsNullOrEmpty(segment.Text))
+                {
+                    width += ClientTextDrawing.Measure((GraphicsDevice)null, segment.Text, SecondaryTextScale, _font).X;
+                }
+
+                if (i < segments.Count - 1)
+                {
+                    width += 1f;
+                }
+            }
+
+            return width;
+        }
+
+        private void DrawTooltipValueSegments(SpriteBatch sprite, IReadOnlyList<TooltipValueSegment> segments, float x, float y, Color color)
+        {
+            if (segments == null || segments.Count == 0)
+            {
+                return;
+            }
+
+            float drawX = x;
+            for (int i = 0; i < segments.Count; i++)
+            {
+                TooltipValueSegment segment = segments[i];
+                if (segment.Texture != null)
+                {
+                    sprite.Draw(segment.Texture, new Vector2(drawX, y), Color.White);
+                    drawX += segment.Texture.Width;
+                }
+                else if (!string.IsNullOrEmpty(segment.Text))
+                {
+                    DrawOutlinedText(sprite, segment.Text, new Vector2(drawX, y), color, SecondaryTextScale);
+                    drawX += ClientTextDrawing.Measure((GraphicsDevice)null, segment.Text, SecondaryTextScale, _font).X;
+                }
+
+                if (i < segments.Count - 1)
+                {
+                    drawX += 1f;
+                }
+            }
+        }
+
+        private List<Texture2D> BuildTooltipJobBadges(int requiredJobMask)
+        {
+            List<Texture2D> textures = new(6);
+            AppendJobBadgeTexture(textures, requiredJobMask, 1, "beginner");
+            AppendJobBadgeTexture(textures, requiredJobMask, 2, "warrior");
+            AppendJobBadgeTexture(textures, requiredJobMask, 4, "magician");
+            AppendJobBadgeTexture(textures, requiredJobMask, 8, "bowman");
+            AppendJobBadgeTexture(textures, requiredJobMask, 16, "thief");
+            AppendJobBadgeTexture(textures, requiredJobMask, 32, "pirate");
+            return textures;
+        }
+
+        private void AppendJobBadgeTexture(List<Texture2D> textures, int requiredJobMask, int maskBit, string key)
+        {
+            if (textures == null || (requiredJobMask & maskBit) == 0)
+            {
+                return;
+            }
+
+            Texture2D texture = ResolveRequirementLabel(true, key);
+            if (texture != null)
+            {
+                textures.Add(texture);
+            }
+        }
+
+        private static float DrawJobBadgeRow(SpriteBatch sprite, int x, float y, IReadOnlyList<Texture2D> textures)
+        {
+            int drawX = x;
+            for (int i = 0; i < textures.Count; i++)
+            {
+                Texture2D texture = textures[i];
+                if (texture == null)
+                {
+                    continue;
+                }
+
+                sprite.Draw(texture, new Vector2(drawX, y), Color.White);
+                drawX += texture.Width + 4;
+            }
+
+            return y + 13f;
         }
 
         private void UpdateButtonStates()

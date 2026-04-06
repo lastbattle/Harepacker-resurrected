@@ -205,8 +205,9 @@ namespace HaCreator.MapSimulator.Character
 
             bool prefersArcherAliases = PrefersArcherAttackAliases(actionName);
 
-            foreach (string authoredAlias in EnumeratePresentAliases(
+            foreach (string authoredAlias in EnumeratePreferredAuthoredAttackAliases(
                          morphPart,
+                         actionName,
                          prefersArcherAliases ? ArcherMorphAuthoredAttackAliases : PirateMorphAuthoredAttackAliases))
             {
                 if (yielded.Add(authoredAlias))
@@ -226,8 +227,9 @@ namespace HaCreator.MapSimulator.Character
                 }
             }
 
-            foreach (string authoredAlias in EnumeratePresentAliases(
+            foreach (string authoredAlias in EnumeratePreferredAuthoredAttackAliases(
                          morphPart,
+                         actionName,
                          prefersArcherAliases ? PirateMorphAuthoredAttackAliases : ArcherMorphAuthoredAttackAliases))
             {
                 if (yielded.Add(authoredAlias))
@@ -456,6 +458,86 @@ namespace HaCreator.MapSimulator.Character
                     yield return alias;
                 }
             }
+        }
+
+        private static IEnumerable<string> EnumeratePreferredAuthoredAttackAliases(
+            CharacterPart morphPart,
+            string requestedActionName,
+            IEnumerable<string> aliases)
+        {
+            if (morphPart?.Animations == null || aliases == null)
+            {
+                yield break;
+            }
+
+            foreach (var aliasEntry in aliases
+                         .Where(alias => !string.IsNullOrWhiteSpace(alias) && morphPart.Animations.ContainsKey(alias))
+                         .Select((alias, index) => new
+                         {
+                             Alias = alias,
+                             Index = index,
+                             Score = GetRequestedAuthoredAliasScore(requestedActionName, alias)
+                         })
+                         .OrderByDescending(entry => entry.Score)
+                         .ThenBy(entry => entry.Index))
+            {
+                yield return aliasEntry.Alias;
+            }
+        }
+
+        private static int GetRequestedAuthoredAliasScore(string requestedActionName, string authoredAlias)
+        {
+            if (string.IsNullOrWhiteSpace(requestedActionName) || string.IsNullOrWhiteSpace(authoredAlias))
+            {
+                return 0;
+            }
+
+            string normalizedRequestedAction = requestedActionName.Trim();
+            string normalizedAuthoredAlias = authoredAlias.Trim();
+
+            if (string.Equals(normalizedRequestedAction, normalizedAuthoredAlias, StringComparison.OrdinalIgnoreCase))
+            {
+                return 100;
+            }
+
+            if (ContainsIgnoreCase(normalizedRequestedAction, "eruption")
+                && ContainsIgnoreCase(normalizedAuthoredAlias, "rain"))
+            {
+                return 90;
+            }
+
+            if (ContainsIgnoreCase(normalizedRequestedAction, "break")
+                && ContainsIgnoreCase(normalizedAuthoredAlias, "break"))
+            {
+                return 90;
+            }
+
+            if (ContainsIgnoreCase(normalizedRequestedAction, "spear")
+                && ContainsIgnoreCase(normalizedAuthoredAlias, "spear"))
+            {
+                return 90;
+            }
+
+            if (ContainsIgnoreCase(normalizedRequestedAction, "shot")
+                && ContainsIgnoreCase(normalizedAuthoredAlias, "shot"))
+            {
+                return 90;
+            }
+
+            if (ContainsIgnoreCase(normalizedRequestedAction, "rain")
+                && ContainsIgnoreCase(normalizedAuthoredAlias, "rain"))
+            {
+                return 90;
+            }
+
+            return 0;
+        }
+
+        private static bool ContainsIgnoreCase(string text, string fragment)
+        {
+            return !string.IsNullOrWhiteSpace(text)
+                   && !string.IsNullOrWhiteSpace(fragment)
+                   && text.IndexOf(fragment, StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private static IEnumerable<string> EnumerateClientPublishedAuthoredAttackAliases(CharacterPart morphPart, string actionName)

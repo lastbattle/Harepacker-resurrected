@@ -146,6 +146,63 @@ namespace HaCreator.MapSimulator.Effects
         public string LastDecodedPacketTrailingPayloadHex => _lastDecodedPacketTrailingPayloadHex;
         public bool IsClearResultActive => _resultEffect == DojoResultEffect.Clear;
         public bool IsTimeOverResultActive => _resultEffect == DojoResultEffect.TimeOver;
+        public static bool TryInferClockPacketType(byte[] payload, out int packetType, out string reason)
+        {
+            packetType = -1;
+            if (!TryParseClockPacketPayload(payload, out int clockType, out int durationSec, out int payloadLength, out string trailingPayloadHex, out _, strictInference: true))
+            {
+                reason = "unknown";
+                return false;
+            }
+
+            packetType = PacketTypeClock;
+            string clockMode = clockType switch
+            {
+                1 => "type-1 no-op",
+                2 => "type-2 timerboard",
+                _ => $"type-{clockType}"
+            };
+            string trailingClockText = string.IsNullOrWhiteSpace(trailingPayloadHex)
+                ? string.Empty
+                : $", tail={trailingPayloadHex}";
+            reason = $"clock({clockMode}, duration={Math.Max(0, durationSec)}s, decoded={payloadLength}b{trailingClockText})";
+            return true;
+        }
+        public static string DescribeClockPayloadCandidates(byte[] payload)
+        {
+            return TryInferClockPacketType(payload, out _, out string reason) ? reason : "unknown";
+        }
+        public static bool TryInferFieldSpecificPacketType(byte[] payload, out int packetType, out string reason)
+        {
+            List<(int PacketType, string Summary)> candidates = CollectFieldSpecificPayloadCandidates(payload);
+            if (candidates.Count == 1)
+            {
+                packetType = candidates[0].PacketType;
+                reason = candidates[0].Summary;
+                return true;
+            }
+
+            if (TryResolveAmbiguousTransferPacketType(candidates, out packetType, out reason))
+            {
+                return true;
+            }
+
+            packetType = -1;
+            reason = candidates.Count == 0
+                ? "unknown"
+                : string.Join(" | ", candidates.Select(static candidate => candidate.Summary));
+            return false;
+        }
+        public static string DescribeFieldSpecificPayloadCandidates(byte[] payload)
+        {
+            List<(int PacketType, string Summary)> candidates = CollectFieldSpecificPayloadCandidates(payload);
+            if (candidates.Count == 0)
+            {
+                return "unknown";
+            }
+
+            return string.Join(" | ", candidates.Select(static candidate => candidate.Summary));
+        }
         public static bool TryInferPacketType(byte[] payload, out int packetType, out string reason)
         {
             List<(int PacketType, string Summary)> candidates = CollectPacketPayloadCandidates(payload);
@@ -727,22 +784,18 @@ namespace HaCreator.MapSimulator.Effects
             payload ??= Array.Empty<byte>();
 
             List<(int PacketType, string Summary)> candidates = new();
-            if (TryParseClockPacketPayload(payload, out int clockType, out int durationSec, out int clockPayloadLength, out string clockTrailingPayloadHex, out _, strictInference: true))
+            if (TryInferClockPacketType(payload, out int clockPacketType, out string clockSummary))
             {
-                string clockMode = clockType switch
-                {
-                    1 => "type-1 no-op",
-                    2 => "type-2 timerboard",
-                    _ => $"type-{clockType}"
-                };
-                string trailingClockText = string.IsNullOrWhiteSpace(clockTrailingPayloadHex)
-                    ? string.Empty
-                    : $", tail={clockTrailingPayloadHex}";
-                candidates.Add((
-                    PacketTypeClock,
-                    $"clock({clockMode}, duration={Math.Max(0, durationSec)}s, decoded={clockPayloadLength}b{trailingClockText})"));
+                candidates.Add((clockPacketType, clockSummary));
             }
 
+            candidates.AddRange(CollectFieldSpecificPayloadCandidates(payload));
+            return candidates;
+        }
+        private static List<(int PacketType, string Summary)> CollectFieldSpecificPayloadCandidates(byte[] payload)
+        {
+            payload ??= Array.Empty<byte>();
+            List<(int PacketType, string Summary)> candidates = new();
             if (TryParseStagePacketPayload(payload, out int stage, out int stagePayloadLength, out string stageTrailingPayloadHex, out _, strictInference: true))
             {
                 string trailingStageText = string.IsNullOrWhiteSpace(stageTrailingPayloadHex)

@@ -15,8 +15,8 @@ namespace HaCreator.MapSimulator.UI
     {
         // CUIMapleTV::Draw centers the broadcast art on a 240px-wide MapleTV surface and
         // draws the send-board item text at (39,70) with its one-pixel highlight at (40,71).
-        // The in-field layer uses WZ-authored origins, so center the composed frame union and
-        // keep it inside a top-safe strip instead of using older simulator-only anchors.
+        // The in-field layer should keep that same 240px base surface centered while the
+        // WZ-authored chat overlays are allowed to overhang from their own origins.
         private const int WorldOverlayTopMargin = 20;
         private static readonly Rectangle SelfMessageTextBounds = new(18, 113, 180, 75);
         private static readonly Rectangle ReceiverMessageTextBounds = new(40, 113, 135, 75);
@@ -201,7 +201,7 @@ namespace HaCreator.MapSimulator.UI
             if (!snapshot.IsShowingMessage)
             {
                 MapleTvAnimationFrame idleFrame = SelectFrame(_visualAssets.OffFrames.Count > 0 ? _visualAssets.OffFrames : _visualAssets.BasicFrames, tickCount);
-                Point idleOverlayOrigin = ResolveOverlayAnchor(renderWidth, WorldOverlayTopMargin, idleFrame);
+                Point idleOverlayOrigin = ResolveTopAnchoredFrameOrigin(renderWidth, WorldOverlayTopMargin, idleFrame, 240, 90);
                 DrawAnimationFrame(sprite, idleFrame, idleOverlayOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
                 return;
             }
@@ -211,7 +211,8 @@ namespace HaCreator.MapSimulator.UI
                 _visualAssets.OnFrames.Count > 0 ? _visualAssets.OnFrames : _visualAssets.BasicFrames,
                 tickCount);
             MapleTvAnimationFrame chatFrame = SelectFrame(_visualAssets.GetChatFrames(snapshot.ResolvedMediaIndex), tickCount);
-            Point overlayOrigin = ResolveOverlayAnchor(renderWidth, WorldOverlayTopMargin, mediaFrame, onFrame, chatFrame);
+            MapleTvAnimationFrame anchorFrame = mediaFrame ?? onFrame ?? chatFrame;
+            Point overlayOrigin = ResolveTopAnchoredFrameOrigin(renderWidth, WorldOverlayTopMargin, anchorFrame, 240, 180);
             DrawAnimationFrame(sprite, mediaFrame, overlayOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
             DrawAnimationFrame(sprite, onFrame, overlayOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
             DrawAnimationFrame(sprite, chatFrame, overlayOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
@@ -497,32 +498,20 @@ namespace HaCreator.MapSimulator.UI
                 : new Point(origin.X + frame.Offset.X, origin.Y + frame.Offset.Y);
         }
 
-        private static Point ResolveOverlayAnchor(int renderWidth, int topMargin, params MapleTvAnimationFrame[] frames)
+        internal static Point ResolveTopAnchoredFrameOrigin(
+            int renderWidth,
+            int topMargin,
+            MapleTvAnimationFrame frame,
+            int fallbackWidth,
+            int fallbackHeight)
         {
-            int minLeft = 0;
-            int minTop = 0;
-            int maxRight = 240;
-            int maxBottom = 90;
-
-            foreach (MapleTvAnimationFrame frame in frames ?? Array.Empty<MapleTvAnimationFrame>())
-            {
-                if (frame == null)
-                {
-                    continue;
-                }
-
-                minLeft = Math.Min(minLeft, frame.Offset.X);
-                minTop = Math.Min(minTop, frame.Offset.Y);
-                maxRight = Math.Max(maxRight, frame.Offset.X + frame.Width);
-                maxBottom = Math.Max(maxBottom, frame.Offset.Y + frame.Height);
-            }
-
-            int surfaceWidth = Math.Max(1, maxRight - minLeft);
-            int surfaceHeight = Math.Max(1, maxBottom - minTop);
-            int desiredLeft = Math.Max(0, (renderWidth - surfaceWidth) / 2);
+            int width = Math.Max(1, frame?.Width ?? fallbackWidth);
+            int height = Math.Max(1, frame?.Height ?? fallbackHeight);
+            Point offset = frame?.Offset ?? new Point(0, -height);
+            int desiredLeft = Math.Max(0, (renderWidth - width) / 2);
             int desiredTop = Math.Max(0, topMargin);
 
-            return new Point(desiredLeft - minLeft, desiredTop - minTop);
+            return new Point(desiredLeft - offset.X, desiredTop - offset.Y);
         }
 
         private void DrawChatText(

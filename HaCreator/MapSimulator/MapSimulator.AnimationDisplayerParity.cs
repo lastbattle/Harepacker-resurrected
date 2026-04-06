@@ -318,7 +318,9 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            int registrationKey = BuildAnimationDisplayerQuestDeliveryRegistrationKey(ownerCharacterId);
             return _animationEffects.RegisterUserState(
+                       registrationKey,
                        ownerCharacterId,
                        startFrames,
                        repeatFrames,
@@ -520,6 +522,13 @@ namespace HaCreator.MapSimulator
             return itemId > 0
                 ? $"{AnimationDisplayerQuestDeliveryEffectBaseUol}/{itemId.ToString(CultureInfo.InvariantCulture)}"
                 : null;
+        }
+
+        internal static int BuildAnimationDisplayerQuestDeliveryRegistrationKey(int ownerCharacterId)
+        {
+            return ownerCharacterId > 0
+                ? unchecked(int.MinValue | ownerCharacterId)
+                : 0;
         }
 
         internal static string[] EnumerateAnimationDisplayerQuestDeliveryEffectUols(int itemId)
@@ -811,7 +820,9 @@ namespace HaCreator.MapSimulator
             int localCharacterId = _playerManager?.Player?.Build?.Id ?? 0;
             if (localCharacterId > 0 && _animationDisplayerLocalQuestDeliveryItemId > 0)
             {
-                _animationEffects.RemoveUserState(localCharacterId, currTickCount);
+                _animationEffects.RemoveUserStateByRegistrationKey(
+                    BuildAnimationDisplayerQuestDeliveryRegistrationKey(localCharacterId),
+                    currTickCount);
             }
 
             _animationDisplayerLocalQuestDeliveryItemId = 0;

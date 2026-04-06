@@ -287,6 +287,7 @@ namespace HaCreator.MapSimulator.UI
         private sealed class WishlistSearchIndexEntry
         {
             public string CombinedText { get; init; } = string.Empty;
+            public string CollapsedText { get; init; } = string.Empty;
             public IReadOnlyList<string> Terms { get; init; } = Array.Empty<string>();
         }
 
@@ -2814,14 +2815,19 @@ namespace HaCreator.MapSimulator.UI
                 return 0;
             }
 
+            string collapsedQuery = CollapseWishlistSearchText(query);
             int score = 0;
             score = Math.Max(score, ScoreWishlistField(entry.Title, query, normalizedQuery, 500, 400, 300));
             score = Math.Max(score, ScoreWishlistField(entry.Detail, query, normalizedQuery, 220, 200, 180));
             score = Math.Max(score, ScoreWishlistField(entry.Seller, query, normalizedQuery, 120, 110, 90));
+            score = Math.Max(score, ScoreWishlistCollapsedField(entry.Title, collapsedQuery, 490, 370, 290));
+            score = Math.Max(score, ScoreWishlistCollapsedField(entry.Detail, collapsedQuery, 210, 190, 170));
+            score = Math.Max(score, ScoreWishlistCollapsedField(entry.Seller, collapsedQuery, 110, 100, 80));
 
             if (TryGetWishlistSearchIndexEntry(entry, out WishlistSearchIndexEntry searchIndexEntry))
             {
                 score = Math.Max(score, ScoreWishlistField(searchIndexEntry.CombinedText, query, normalizedQuery, 480, 360, 280));
+                score = Math.Max(score, ScoreWishlistCollapsedField(searchIndexEntry.CollapsedText, collapsedQuery, 470, 350, 270));
             }
 
             string aggregateSearchText = BuildWishlistAggregateSearchText(entry, out IReadOnlyList<string> indexTerms);
@@ -2870,6 +2876,34 @@ namespace HaCreator.MapSimulator.UI
 
             return normalizedFieldValue.Contains(normalizedQuery, StringComparison.Ordinal)
                 ? containsScore - 10
+                : 0;
+        }
+
+        private static int ScoreWishlistCollapsedField(string fieldValue, string collapsedQuery, int exactScore, int startsWithScore, int containsScore)
+        {
+            if (string.IsNullOrWhiteSpace(fieldValue) || string.IsNullOrWhiteSpace(collapsedQuery))
+            {
+                return 0;
+            }
+
+            string collapsedFieldValue = CollapseWishlistSearchText(fieldValue);
+            if (string.IsNullOrWhiteSpace(collapsedFieldValue))
+            {
+                return 0;
+            }
+
+            if (string.Equals(collapsedFieldValue, collapsedQuery, StringComparison.Ordinal))
+            {
+                return exactScore;
+            }
+
+            if (collapsedFieldValue.StartsWith(collapsedQuery, StringComparison.Ordinal))
+            {
+                return startsWithScore;
+            }
+
+            return collapsedFieldValue.Contains(collapsedQuery, StringComparison.Ordinal)
+                ? containsScore
                 : 0;
         }
 
@@ -2966,6 +3000,14 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return string.Join(" ", new string(buffer).Split(new[] { ' ' }, StringSplitOptions.RemoveEmptyEntries));
+        }
+
+        private static string CollapseWishlistSearchText(string value)
+        {
+            string normalized = NormalizeWishlistSearchText(value);
+            return string.IsNullOrWhiteSpace(normalized)
+                ? string.Empty
+                : string.Concat(normalized.Where(char.IsLetterOrDigit));
         }
 
         private static string[] SplitWishlistSearchTokens(string normalizedQuery)
@@ -4940,6 +4982,7 @@ namespace HaCreator.MapSimulator.UI
                     searchIndex[itemId] = new WishlistSearchIndexEntry
                     {
                         CombinedText = string.Join(" ", orderedTerms),
+                        CollapsedText = string.Concat(orderedTerms.Select(CollapseWishlistSearchText).Where(term => !string.IsNullOrWhiteSpace(term))),
                         Terms = orderedTerms
                     };
                 }

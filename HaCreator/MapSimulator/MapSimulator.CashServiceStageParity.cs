@@ -846,30 +846,97 @@ namespace HaCreator.MapSimulator
             message = null;
             if (packetType != 384
                 || uiWindowManager?.GetWindow(MapSimulatorWindowNames.CashShop) is not AdminShopDialogUI cashShopWindow
-                || !cashShopWindow.HasPendingStorageExpansionRequest
                 || !CashShopStorageExpansionPacketCodec.TryDecodePayload(payload, out CashShopStorageExpansionPacketResult packetResult)
                 || packetResult == null)
             {
                 return false;
             }
 
-            bool applied = cashShopWindow.TryApplyPacketOwnedStorageExpansionResult(
-                new AdminShopDialogUI.PacketOwnedStorageExpansionResult
-                {
-                    CommoditySerialNumber = packetResult.CommoditySerialNumber,
-                    ResultSubtype = packetResult.ResultSubtype,
-                    FailureReason = packetResult.FailureReason,
-                    NxPrice = packetResult.NxPrice,
-                    SlotLimitAfterResult = packetResult.SlotLimitAfterResult,
-                    ConsumeCash = packetResult.ConsumeCash,
-                    Message = packetResult.Message
-                },
-                out string storageMessage);
+            bool applied;
+            string storageMessage;
+            if (cashShopWindow.HasPendingStorageExpansionRequest)
+            {
+                applied = cashShopWindow.TryApplyPacketOwnedStorageExpansionResult(
+                    new AdminShopDialogUI.PacketOwnedStorageExpansionResult
+                    {
+                        PacketType = packetType,
+                        CommoditySerialNumber = packetResult.CommoditySerialNumber,
+                        ResultSubtype = packetResult.ResultSubtype,
+                        FailureReason = packetResult.FailureReason,
+                        NxPrice = packetResult.NxPrice,
+                        SlotLimitAfterResult = packetResult.SlotLimitAfterResult,
+                        ConsumeCash = packetResult.ConsumeCash,
+                        Message = packetResult.Message
+                    },
+                    out storageMessage);
+            }
+            else
+            {
+                applied = TryApplyPassiveCashShopStorageExpansionPacketResult(packetType, packetResult, out storageMessage);
+            }
 
             message = string.IsNullOrWhiteSpace(storageMessage)
                 ? CashShopStorageExpansionPacketCodec.BuildSummary(packetResult)
                 : storageMessage;
             return applied;
+        }
+
+        private bool TryApplyPassiveCashShopStorageExpansionPacketResult(
+            int packetType,
+            CashShopStorageExpansionPacketResult packetResult,
+            out string message)
+        {
+            message = "Packet-owned storage-expansion result could not be applied outside an active request.";
+            if (packetResult == null)
+            {
+                return false;
+            }
+
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.Trunk) is not IStorageRuntime storageRuntime)
+            {
+                message = "Storage runtime is unavailable for packet-owned trunk entitlement sync.";
+                return false;
+            }
+
+            if (packetResult.ResultSubtype == 1)
+            {
+                int slotLimitBeforeResult = storageRuntime.GetSlotLimit();
+                if (packetResult.SlotLimitAfterResult > 0)
+                {
+                    storageRuntime.SetSlotLimit(packetResult.SlotLimitAfterResult);
+                }
+                else if (storageRuntime.CanExpandSlotLimit())
+                {
+                    storageRuntime.TryExpandSlotLimit();
+                }
+
+                int slotLimitAfterResult = storageRuntime.GetSlotLimit();
+                if (slotLimitAfterResult <= slotLimitBeforeResult)
+                {
+                    message = "Packet-owned trunk entitlement sync did not advance the storage slot limit.";
+                    return false;
+                }
+            }
+
+            HandleStorageExpansionResolved(new AdminShopDialogUI.StorageExpansionResolution
+            {
+                CommoditySerialNumber = Math.Max(0, packetResult.CommoditySerialNumber),
+                ResultSubtype = packetResult.ResultSubtype,
+                FailureReason = Math.Max(0, packetResult.FailureReason),
+                NxPrice = Math.Max(0L, packetResult.NxPrice),
+                SlotLimitAfterResult = Math.Max(0, storageRuntime.GetSlotLimit()),
+                IsPacketOwned = true,
+                PacketType = Math.Max(0, packetType),
+                CashAlreadySettled = true,
+                Message = string.IsNullOrWhiteSpace(packetResult.Message)
+                    ? $"{CashShopStorageExpansionPacketCodec.BuildSummary(packetResult)} Passive account-owned trunk entitlement sync updated the simulator storage snapshot."
+                    : $"{packetResult.Message} Passive account-owned trunk entitlement sync updated the simulator storage snapshot."
+            });
+
+            message = packetResult.ResultSubtype == 1
+                ? $"Applied packet-owned trunk entitlement sync; storage now has {storageRuntime.GetSlotLimit().ToString(CultureInfo.InvariantCulture)} slots."
+                : CashShopStorageExpansionPacketCodec.BuildSummary(packetResult);
+            return true;
         }
 
         private bool TryApplyCashShopBalancePacket(int packetType, byte[] payload, out string message)

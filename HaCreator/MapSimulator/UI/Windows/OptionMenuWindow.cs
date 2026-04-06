@@ -202,6 +202,8 @@ namespace HaCreator.MapSimulator.UI
         private GamePadState _currentJoypadCaptureState;
         private KeyboardState _previousKeyboardState;
         private GamePadState _previousConfirmGamepadState;
+        private KeyboardState _previousJoypadNavigationKeyboardState;
+        private GamePadState _previousJoypadNavigationGamepadState;
         private bool _previousLeftMouseDown;
         private bool _previousRightMouseDown;
         private int _activeJoypadSliderRowIndex = -1;
@@ -292,9 +294,7 @@ namespace HaCreator.MapSimulator.UI
         {
             base.Update(gameTime);
 
-            if (!IsVisible
-                || _mode != OptionMenuMode.Joypad
-                || _armedJoypadBindingAction == null)
+            if (!IsVisible || _mode != OptionMenuMode.Joypad)
             {
                 return;
             }
@@ -307,6 +307,18 @@ namespace HaCreator.MapSimulator.UI
             }
 
             UpdateJoypadCaptureState(session);
+            HandleJoypadNavigationInput(session);
+            if (!IsVisible || _mode != OptionMenuMode.Joypad)
+            {
+                return;
+            }
+
+            if (_armedJoypadBindingAction == null)
+            {
+                HandleJoypadConfirmInput(session);
+                return;
+            }
+
             if (!TryGetPressedJoypadButton(session, _armedJoypadBindingAction.Value, out Buttons gamepadButton))
             {
                 HandleJoypadConfirmInput(session);
@@ -583,7 +595,7 @@ namespace HaCreator.MapSimulator.UI
             {
                 OptionMenuMode.Game => "`CUIGameOpt::OnCreate` roster: ids 1001-1014 copied from the client config owner.",
                 OptionMenuMode.System => "Same client checkbox roster routed through the system launcher entry instead of a generic simulator list.",
-                OptionMenuMode.Joypad => "Click a joypad row to cycle the active controller slot or allowed button binding.",
+                OptionMenuMode.Joypad => "Mouse, keyboard, and pad navigation all drive the same staged joypad control set.",
                 _ => "Shared miscellaneous toggles surfaced through the deeper option branch.",
             };
         }
@@ -1033,18 +1045,22 @@ namespace HaCreator.MapSimulator.UI
                 : $"P{(int)session.GamepadIndex + 1} disconnected";
             string calibrationText = state.IsConnected
                 ? $"LX {state.ThumbSticks.Left.X:+0.00;-0.00;0.00}  LY {state.ThumbSticks.Left.Y:+0.00;-0.00;0.00}  LT {state.Triggers.Left:0.00}  RT {state.Triggers.Right:0.00}"
-                : "Cycle the slot until a live controller is found; binding rows keep directional movement reserved.";
+                : "Cycle the slot until a live controller is found; movement directions stay reserved while this owner is open.";
             string thresholdText = $"DX {session.LeftStickDeadZoneX:0.00} DY {session.LeftStickDeadZoneY:0.00}  LT/RT {session.LeftTriggerThreshold:0.00}/{session.RightTriggerThreshold:0.00}  {FormatResponseCurve(session.ResponseCurve)}";
 
             DrawWindowText(sprite, connectionText, new Vector2(bounds.X + 8, bounds.Y + 3), Color.White);
             DrawWindowText(sprite, calibrationText, new Vector2(bounds.X + 8, bounds.Y + 17), new Color(210, 210, 210));
-            DrawWindowText(sprite, thresholdText, new Vector2(bounds.X + 8, bounds.Y + 28), new Color(255, 228, 151));
+            DrawJoypadMeter(sprite, new Rectangle(bounds.X + 8, bounds.Y + 28, 60, 8), "LX", NormalizeSignedAxis(state.ThumbSticks.Left.X), session.LeftStickDeadZoneX, session.LeftStickInvertX);
+            DrawJoypadMeter(sprite, new Rectangle(bounds.X + 74, bounds.Y + 28, 60, 8), "LY", NormalizeSignedAxis(state.ThumbSticks.Left.Y), session.LeftStickDeadZoneY, session.LeftStickInvertY);
+            DrawJoypadTriggerMeter(sprite, new Rectangle(bounds.X + 140, bounds.Y + 28, 48, 8), "LT", state.Triggers.Left, session.LeftTriggerThreshold);
+            DrawJoypadTriggerMeter(sprite, new Rectangle(bounds.X + 194, bounds.Y + 28, 48, 8), "RT", state.Triggers.Right, session.RightTriggerThreshold);
+            DrawWindowText(sprite, thresholdText, new Vector2(bounds.X + 8, bounds.Bottom - 1), new Color(255, 228, 151), 0.42f);
         }
 
         private void BeginSession()
         {
             _stagedOptionValues.Clear();
-            _selectedJoypadRowIndex = -1;
+            _selectedJoypadRowIndex = _joypadRows.Count > 0 ? 0 : -1;
             _armedJoypadBindingAction = null;
             _activeJoypadSliderRowIndex = -1;
             foreach (List<OptionRow> rows in _rows.Values)
@@ -1068,9 +1084,11 @@ namespace HaCreator.MapSimulator.UI
             _stagedJoypadSession = _originalJoypadSession?.Clone();
             ResetJoypadCaptureState(_stagedJoypadSession);
             _previousKeyboardState = Keyboard.GetState();
+            _previousJoypadNavigationKeyboardState = _previousKeyboardState;
             _previousConfirmGamepadState = _stagedJoypadSession != null
                 ? GamePad.GetState(_stagedJoypadSession.GamepadIndex)
                 : default;
+            _previousJoypadNavigationGamepadState = _previousConfirmGamepadState;
             MouseState mouseState = Mouse.GetState();
             _previousLeftMouseDown = mouseState.LeftButton == ButtonState.Pressed;
             _previousRightMouseDown = mouseState.RightButton == ButtonState.Pressed;
@@ -1115,7 +1133,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void HandleJoypadConfirmInput(JoypadSessionSnapshot session)
         {
-            if (!IsVisible || _mode != OptionMenuMode.Joypad || _armedJoypadBindingAction.HasValue)
+            if (!IsVisible || _mode != OptionMenuMode.Joypad)
             {
                 return;
             }
@@ -1127,12 +1145,24 @@ namespace HaCreator.MapSimulator.UI
 
             GamePadState gamepad = session != null ? GamePad.GetState(session.GamepadIndex) : default;
             bool confirmPressed = gamepad.IsConnected
-                && gamepad.IsButtonDown(Buttons.A)
-                && !_previousConfirmGamepadState.IsButtonDown(Buttons.A);
+                && gamepad.IsButtonDown(Buttons.Start)
+                && !_previousConfirmGamepadState.IsButtonDown(Buttons.Start);
             bool cancelPressed = gamepad.IsConnected
-                && gamepad.IsButtonDown(Buttons.B)
-                && !_previousConfirmGamepadState.IsButtonDown(Buttons.B);
+                && gamepad.IsButtonDown(Buttons.Back)
+                && !_previousConfirmGamepadState.IsButtonDown(Buttons.Back);
             _previousConfirmGamepadState = gamepad;
+
+            if (_armedJoypadBindingAction.HasValue && (escapePressed || cancelPressed))
+            {
+                _statusMessage = $"{FormatActionLabel(_armedJoypadBindingAction.Value)} capture cancelled. The staged binding remains unchanged until you arm the row again.";
+                _armedJoypadBindingAction = null;
+                return;
+            }
+
+            if (_armedJoypadBindingAction.HasValue)
+            {
+                return;
+            }
 
             if (enterPressed || confirmPressed)
             {
@@ -1225,6 +1255,145 @@ namespace HaCreator.MapSimulator.UI
                 : (Buttons)0;
         }
 
+        private void HandleJoypadNavigationInput(JoypadSessionSnapshot session)
+        {
+            if (session == null || !IsVisible || _mode != OptionMenuMode.Joypad)
+            {
+                return;
+            }
+
+            KeyboardState keyboard = Keyboard.GetState();
+            GamePadState gamepad = GamePad.GetState(session.GamepadIndex);
+
+            bool moveUp = IsNewKeyPress(keyboard, _previousJoypadNavigationKeyboardState, Keys.Up)
+                || IsNewKeyPress(keyboard, _previousJoypadNavigationKeyboardState, Keys.NumPad8)
+                || IsNewButtonPress(gamepad, _previousJoypadNavigationGamepadState, Buttons.DPadUp)
+                || IsNewButtonPress(gamepad, _previousJoypadNavigationGamepadState, Buttons.LeftThumbstickUp);
+            bool moveDown = IsNewKeyPress(keyboard, _previousJoypadNavigationKeyboardState, Keys.Down)
+                || IsNewKeyPress(keyboard, _previousJoypadNavigationKeyboardState, Keys.NumPad2)
+                || IsNewButtonPress(gamepad, _previousJoypadNavigationGamepadState, Buttons.DPadDown)
+                || IsNewButtonPress(gamepad, _previousJoypadNavigationGamepadState, Buttons.LeftThumbstickDown);
+            bool adjustLeft = IsNewKeyPress(keyboard, _previousJoypadNavigationKeyboardState, Keys.Left)
+                || IsNewKeyPress(keyboard, _previousJoypadNavigationKeyboardState, Keys.NumPad4)
+                || IsNewButtonPress(gamepad, _previousJoypadNavigationGamepadState, Buttons.DPadLeft)
+                || IsNewButtonPress(gamepad, _previousJoypadNavigationGamepadState, Buttons.LeftThumbstickLeft);
+            bool adjustRight = IsNewKeyPress(keyboard, _previousJoypadNavigationKeyboardState, Keys.Right)
+                || IsNewKeyPress(keyboard, _previousJoypadNavigationKeyboardState, Keys.NumPad6)
+                || IsNewButtonPress(gamepad, _previousJoypadNavigationGamepadState, Buttons.DPadRight)
+                || IsNewButtonPress(gamepad, _previousJoypadNavigationGamepadState, Buttons.LeftThumbstickRight);
+            bool activate = IsNewKeyPress(keyboard, _previousJoypadNavigationKeyboardState, Keys.Space)
+                || IsNewKeyPress(keyboard, _previousJoypadNavigationKeyboardState, Keys.Tab)
+                || IsNewButtonPress(gamepad, _previousJoypadNavigationGamepadState, Buttons.A);
+            bool clear = IsNewKeyPress(keyboard, _previousJoypadNavigationKeyboardState, Keys.Delete)
+                || IsNewKeyPress(keyboard, _previousJoypadNavigationKeyboardState, Keys.Back)
+                || IsNewButtonPress(gamepad, _previousJoypadNavigationGamepadState, Buttons.X)
+                || IsNewButtonPress(gamepad, _previousJoypadNavigationGamepadState, Buttons.B);
+
+            _previousJoypadNavigationKeyboardState = keyboard;
+            _previousJoypadNavigationGamepadState = gamepad;
+
+            if (_joypadRows.Count == 0)
+            {
+                return;
+            }
+
+            if (_selectedJoypadRowIndex < 0 || _selectedJoypadRowIndex >= _joypadRows.Count)
+            {
+                _selectedJoypadRowIndex = 0;
+            }
+
+            if (moveUp)
+            {
+                _selectedJoypadRowIndex = (_selectedJoypadRowIndex - 1 + _joypadRows.Count) % _joypadRows.Count;
+                _statusMessage = BuildJoypadSelectionStatus(_joypadRows[_selectedJoypadRowIndex], session);
+                return;
+            }
+
+            if (moveDown)
+            {
+                _selectedJoypadRowIndex = (_selectedJoypadRowIndex + 1) % _joypadRows.Count;
+                _statusMessage = BuildJoypadSelectionStatus(_joypadRows[_selectedJoypadRowIndex], session);
+                return;
+            }
+
+            JoypadRow row = _joypadRows[_selectedJoypadRowIndex];
+            if (_armedJoypadBindingAction.HasValue)
+            {
+                if (clear && row.Action == _armedJoypadBindingAction.Value)
+                {
+                    _statusMessage = $"{row.Label} capture cancelled. Press A or Space to re-arm live pad capture.";
+                    _armedJoypadBindingAction = null;
+                }
+
+                return;
+            }
+
+            if (adjustLeft)
+            {
+                ApplyJoypadRowSelection(row, session, -1, allowBindingCapture: false, allowBindingClear: false);
+                return;
+            }
+
+            if (adjustRight)
+            {
+                ApplyJoypadRowSelection(row, session, 1, allowBindingCapture: false, allowBindingClear: false);
+                return;
+            }
+
+            if (activate)
+            {
+                ApplyJoypadRowSelection(row, session, 1, allowBindingCapture: true, allowBindingClear: false);
+                return;
+            }
+
+            if (clear)
+            {
+                ApplyJoypadRowSelection(row, session, -1, allowBindingCapture: false, allowBindingClear: true);
+            }
+        }
+
+        private void ApplyJoypadRowSelection(
+            JoypadRow row,
+            JoypadSessionSnapshot session,
+            int direction,
+            bool allowBindingCapture,
+            bool allowBindingClear)
+        {
+            if (row == null || session == null)
+            {
+                return;
+            }
+
+            if (row.Action.HasValue)
+            {
+                if (allowBindingClear)
+                {
+                    session.Bindings[row.Action.Value] = 0;
+                    _armedJoypadBindingAction = null;
+                    _statusMessage = $"{row.Label}: Unbound. Delete, X, or B clears the staged button; A or Space arms capture.";
+                    return;
+                }
+
+                if (allowBindingCapture)
+                {
+                    ResetJoypadCaptureState(session);
+                    _armedJoypadBindingAction = row.Action.Value;
+                    _statusMessage = $"{row.Label} selected on P{(int)session.GamepadIndex + 1}. Press one of the shared utility pad buttons to stage a new binding.";
+                    return;
+                }
+
+                session.Bindings[row.Action.Value] = StepJoypadBinding(row.Action.Value, GetJoypadBinding(session, row.Action.Value), direction);
+                _statusMessage = $"{row.Label}: {FormatGamepadButton(GetJoypadBinding(session, row.Action.Value))}. Left or right cycles the staged shared-button binding; A arms live capture.";
+                return;
+            }
+
+            _armedJoypadBindingAction = null;
+            _activeJoypadSliderRowIndex = -1;
+            row.AdjustValue?.Invoke(session, direction);
+            string value = row.GetValue?.Invoke(session) ?? "Unavailable";
+            _statusMessage = BuildJoypadRowStatus(row, value, direction >= 0);
+        }
+
         private void ResetJoypadCaptureState(JoypadSessionSnapshot session)
         {
             if (session == null)
@@ -1278,6 +1447,29 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return false;
+        }
+
+        private static bool IsNewKeyPress(KeyboardState current, KeyboardState previous, Keys key)
+        {
+            return current.IsKeyDown(key) && previous.IsKeyUp(key);
+        }
+
+        private static bool IsNewButtonPress(GamePadState current, GamePadState previous, Buttons button)
+        {
+            return current.IsConnected
+                && current.IsButtonDown(button)
+                && !previous.IsButtonDown(button);
+        }
+
+        private static Buttons StepJoypadBinding(InputAction action, Buttons current, int direction)
+        {
+            IReadOnlyList<Buttons> allowedButtons = PlayerInput.GetConfigurableGamepadButtons(action);
+            List<Buttons> orderedButtons = new(allowedButtons.Count + 1)
+            {
+                0,
+            };
+            orderedButtons.AddRange(allowedButtons);
+            return GetSteppedValue(orderedButtons, current, direction);
         }
 
         private static bool IsConfiguredButtonDown(GamePadState state, Buttons button, JoypadSessionSnapshot session)
@@ -1398,6 +1590,19 @@ namespace HaCreator.MapSimulator.UI
             return string.IsNullOrWhiteSpace(row.Description)
                 ? $"{row.Label}: {value}"
                 : $"{row.Label}: {value}  {row.Description}";
+        }
+
+        private string BuildJoypadSelectionStatus(JoypadRow row, JoypadSessionSnapshot session)
+        {
+            if (row == null)
+            {
+                return string.Empty;
+            }
+
+            string value = row.GetValue?.Invoke(session) ?? "Unavailable";
+            return row.Action.HasValue
+                ? $"{row.Label}: {value}. Left or right cycles the staged shared-button binding, A or Space arms capture, and Delete or X clears it."
+                : $"{row.Label}: {value}. Use left/right or D-pad to adjust this staged control.";
         }
 
         private static int GetNearestStepIndex(IReadOnlyList<float> steps, float value)
@@ -1661,6 +1866,55 @@ namespace HaCreator.MapSimulator.UI
                 Buttons.DPadRight => "D-Right",
                 _ => button.ToString(),
             };
+        }
+
+        private void DrawJoypadMeter(
+            SpriteBatch sprite,
+            Rectangle bounds,
+            string label,
+            float normalizedValue,
+            float threshold,
+            bool inverted)
+        {
+            sprite.Draw(_highlightTexture, bounds, new Color(12, 18, 32, 220));
+            int centerX = bounds.X + (bounds.Width / 2);
+            sprite.Draw(_highlightTexture, new Rectangle(centerX, bounds.Y, 1, bounds.Height), new Color(96, 110, 150, 220));
+
+            int thresholdPixels = (int)Math.Round(Math.Clamp(threshold, 0f, 1f) * (bounds.Width / 2f), MidpointRounding.AwayFromZero);
+            sprite.Draw(_highlightTexture, new Rectangle(centerX - thresholdPixels, bounds.Y, 1, bounds.Height), new Color(198, 148, 88, 210));
+            sprite.Draw(_highlightTexture, new Rectangle(centerX + thresholdPixels, bounds.Y, 1, bounds.Height), new Color(198, 148, 88, 210));
+
+            float magnitude = Math.Clamp(Math.Abs(normalizedValue), 0f, 1f);
+            int fillPixels = (int)Math.Round(magnitude * ((bounds.Width / 2f) - 1f), MidpointRounding.AwayFromZero);
+            Rectangle fill = normalizedValue < 0f
+                ? new Rectangle(centerX - fillPixels, bounds.Y + 1, fillPixels, Math.Max(1, bounds.Height - 2))
+                : new Rectangle(centerX + 1, bounds.Y + 1, fillPixels, Math.Max(1, bounds.Height - 2));
+            if (fill.Width > 0)
+            {
+                sprite.Draw(_highlightTexture, fill, new Color(112, 182, 224, 220));
+            }
+
+            DrawWindowText(sprite, $"{label}{(inverted ? "*" : string.Empty)}", new Vector2(bounds.X, bounds.Y - 10), new Color(255, 228, 151), 0.4f);
+        }
+
+        private void DrawJoypadTriggerMeter(SpriteBatch sprite, Rectangle bounds, string label, float rawValue, float threshold)
+        {
+            sprite.Draw(_highlightTexture, bounds, new Color(12, 18, 32, 220));
+            int thresholdX = bounds.X + (int)Math.Round(Math.Clamp(threshold, 0f, 1f) * bounds.Width, MidpointRounding.AwayFromZero);
+            sprite.Draw(_highlightTexture, new Rectangle(thresholdX, bounds.Y, 1, bounds.Height), new Color(198, 148, 88, 210));
+
+            int fillWidth = (int)Math.Round(Math.Clamp(rawValue, 0f, 1f) * bounds.Width, MidpointRounding.AwayFromZero);
+            if (fillWidth > 0)
+            {
+                sprite.Draw(_highlightTexture, new Rectangle(bounds.X, bounds.Y + 1, fillWidth, Math.Max(1, bounds.Height - 2)), new Color(112, 182, 224, 220));
+            }
+
+            DrawWindowText(sprite, label, new Vector2(bounds.X, bounds.Y - 10), new Color(255, 228, 151), 0.4f);
+        }
+
+        private static float NormalizeSignedAxis(float value)
+        {
+            return Math.Clamp(value, -1f, 1f);
         }
 
         private void DrawWrappedText(SpriteBatch sprite, string text, int x, int y, float maxWidth, Color color)

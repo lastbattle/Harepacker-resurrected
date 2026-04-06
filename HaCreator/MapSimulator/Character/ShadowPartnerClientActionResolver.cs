@@ -111,6 +111,7 @@ namespace HaCreator.MapSimulator.Character
                 // Shadow Partner still only publishes generic `special/*` families, so keep these
                 // on client-owned helper rows before the plain raw-action fallback.
                 ["savage"] = new[] { "stabO1", "stabO2", "stabOF" },
+                ["showdown"] = new[] { "stabO1", "stabO2", "stabOF" },
                 ["assassination"] = new[] { "stabO1", "stabO2", "stabOF" },
                 ["assassinations"] = new[] { "stabO1", "stabO2", "stabOF" },
                 ["ninjastorm"] = new[] { "shoot1", "shoot2", "shootF" },

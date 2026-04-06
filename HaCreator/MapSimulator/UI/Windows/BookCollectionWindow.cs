@@ -88,6 +88,8 @@ namespace HaCreator.MapSimulator.UI
         private readonly Dictionary<int, Texture2D> _cardIconCache = new();
         private readonly List<SearchMatch> _searchMatches = new();
         private ClientTextRasterizer _clientTextRasterizer;
+        private ClientTextRasterizer _candidateTextRasterizer;
+        private ClientTextRasterizer _candidateSelectedTextRasterizer;
 
         private Texture2D _cardSlotTexture;
         private Texture2D _infoPageTexture;
@@ -881,15 +883,15 @@ namespace HaCreator.MapSimulator.UI
                         sprite.Draw(_pixel, rowBounds, selectedColor);
                     }
 
-                    DrawTrimmedString(sprite, $"{candidateIndex + 1}.", new Vector2(rowBounds.X + 4, rowBounds.Y + 1), selected ? selectedTextColor : MutedColor, 0.42f, numberWidth, preferClientText: true);
-                    DrawTrimmedString(
+                    string numberText = $"{i + 1}.";
+                    DrawCandidateWindowText(sprite, numberText, new Vector2(rowBounds.X + 4, rowBounds.Y + 1), selected ? selectedTextColor : MutedColor, selected, numberWidth);
+                    DrawCandidateWindowText(
                         sprite,
                         _candidateListState.Candidates[candidateIndex] ?? string.Empty,
                         new Vector2(rowBounds.X + 8 + numberWidth, rowBounds.Y + 1),
                         selected ? selectedTextColor : valueTextColor,
-                        0.42f,
-                        rowBounds.Width - (numberWidth + 12),
-                        preferClientText: true);
+                        selected,
+                        rowBounds.Width - (numberWidth + 12));
                 }
             }
             else
@@ -900,8 +902,8 @@ namespace HaCreator.MapSimulator.UI
                 {
                     int candidateIndex = start + i;
                     int cellX = candidateBounds.X + 3 + (i * cellWidth);
-                    string numberText = $"{candidateIndex + 1}.";
-                    int numberWidth = (int)Math.Ceiling(MeasureRenderedText(numberText, 0.42f, preferClientText: true).X);
+                    string numberText = $"{i + 1}.";
+                    int numberWidth = (int)Math.Ceiling(MeasureCandidateWindowText(numberText).X);
                     Rectangle cellBounds = new(cellX - 1, candidateBounds.Y + 1, cellWidth, Math.Max(1, candidateBounds.Height - 2));
                     bool selected = candidateIndex == _candidateListState.Selection;
                     if (selected)
@@ -909,15 +911,14 @@ namespace HaCreator.MapSimulator.UI
                         sprite.Draw(_pixel, cellBounds, selectedColor);
                     }
 
-                    DrawTrimmedString(sprite, numberText, new Vector2(cellX, textY), selected ? selectedTextColor : MutedColor, 0.42f, numberWidth, preferClientText: true);
-                    DrawTrimmedString(
+                    DrawCandidateWindowText(sprite, numberText, new Vector2(cellX, textY), selected ? selectedTextColor : MutedColor, selected, numberWidth);
+                    DrawCandidateWindowText(
                         sprite,
                         _candidateListState.Candidates[candidateIndex] ?? string.Empty,
                         new Vector2(cellX + numberWidth + 3, textY),
                         selected ? selectedTextColor : valueTextColor,
-                        0.42f,
-                        Math.Max(16, cellWidth - (numberWidth + 6)),
-                        preferClientText: true);
+                        selected,
+                        Math.Max(16, cellWidth - (numberWidth + 6)));
                 }
             }
         }
@@ -1529,6 +1530,89 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private Vector2 MeasureCandidateWindowText(string text)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return Vector2.Zero;
+            }
+
+            ClientTextRasterizer rasterizer = EnsureCandidateWindowTextRasterizer(selected: false);
+            return rasterizer?.MeasureString(text) ?? MeasureRenderedText(text, 0.42f, preferClientText: true);
+        }
+
+        private void DrawCandidateWindowText(SpriteBatch sprite, string text, Vector2 position, Color color, bool selected, int maxWidth)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            string visibleText = TrimCandidateWindowText(text, maxWidth);
+            if (string.IsNullOrEmpty(visibleText))
+            {
+                return;
+            }
+
+            ClientTextRasterizer rasterizer = EnsureCandidateWindowTextRasterizer(selected);
+            if (rasterizer != null)
+            {
+                rasterizer.DrawString(sprite, visibleText, position, color);
+                return;
+            }
+
+            DrawTrimmedString(sprite, visibleText, position, color, 0.42f, maxWidth, preferClientText: true);
+        }
+
+        private ClientTextRasterizer EnsureCandidateWindowTextRasterizer(bool selected)
+        {
+            if (_graphicsDevice == null || _font == null)
+            {
+                return null;
+            }
+
+            float basePointSize = Math.Max(1f, _font.LineSpacing);
+            if (selected)
+            {
+                _candidateSelectedTextRasterizer ??= new ClientTextRasterizer(
+                    _graphicsDevice,
+                    basePointSize: basePointSize,
+                    fontStyle: System.Drawing.FontStyle.Bold);
+                return _candidateSelectedTextRasterizer;
+            }
+
+            _candidateTextRasterizer ??= new ClientTextRasterizer(
+                _graphicsDevice,
+                basePointSize: basePointSize,
+                fontStyle: System.Drawing.FontStyle.Regular);
+            return _candidateTextRasterizer;
+        }
+
+        private string TrimCandidateWindowText(string text, int maxWidth)
+        {
+            if (string.IsNullOrEmpty(text) || maxWidth <= 0)
+            {
+                return string.Empty;
+            }
+
+            if (MeasureCandidateWindowText(text).X <= maxWidth)
+            {
+                return text;
+            }
+
+            const string ellipsis = "...";
+            for (int length = text.Length - 1; length > 0; length--)
+            {
+                string candidate = text.Substring(0, length) + ellipsis;
+                if (MeasureCandidateWindowText(candidate).X <= maxWidth)
+                {
+                    return candidate;
+                }
+            }
+
+            return ellipsis;
+        }
+
         private void OnSearchQueryChanged()
         {
             _searchCursorPosition = Math.Clamp(_searchCursorPosition, 0, _searchQuery.Length);
@@ -1858,16 +1942,19 @@ namespace HaCreator.MapSimulator.UI
             if (_candidateListState.Vertical)
             {
                 int widestEntryWidth = 0;
-                for (int i = 0; i < _candidateListState.Candidates.Count; i++)
+                int start = Math.Clamp(_candidateListState.PageStart, 0, _candidateListState.Candidates.Count);
+                int count = Math.Min(visibleCount, _candidateListState.Candidates.Count - start);
+                for (int i = 0; i < count; i++)
                 {
+                    int candidateIndex = start + i;
                     string numberText = $"{i + 1}.";
-                    string candidateText = _candidateListState.Candidates[i] ?? string.Empty;
-                    int entryWidth = (int)Math.Ceiling(MeasureRenderedText(numberText + candidateText, 0.42f, preferClientText: true).X) + 2;
+                    string candidateText = _candidateListState.Candidates[candidateIndex] ?? string.Empty;
+                    int entryWidth = (int)Math.Ceiling(MeasureCandidateWindowText(numberText).X + MeasureCandidateWindowText(candidateText).X) + 2;
                     widestEntryWidth = Math.Max(widestEntryWidth, entryWidth);
                 }
 
                 width = widestEntryWidth + GetScaledLineHeight() + 7;
-                height = (GetCandidatePageSize() * GetCandidateRowHeight()) + 3;
+                height = (count * GetCandidateRowHeight()) + 3;
             }
             else
             {
@@ -1965,9 +2052,9 @@ namespace HaCreator.MapSimulator.UI
             for (int i = 0; i < count; i++)
             {
                 int candidateIndex = start + i;
-                string numberText = $"{candidateIndex + 1}.";
+                string numberText = $"{i + 1}.";
                 string candidateText = _candidateListState.Candidates[candidateIndex] ?? string.Empty;
-                int cellWidth = (int)Math.Ceiling(MeasureRenderedText(numberText + candidateText, 0.42f, preferClientText: true).X) + CandidateWindowPadding + 6;
+                int cellWidth = (int)Math.Ceiling(MeasureCandidateWindowText(numberText).X + MeasureCandidateWindowText(candidateText).X) + CandidateWindowPadding + 6;
                 width = Math.Max(width, cellWidth);
             }
 
@@ -1992,8 +2079,8 @@ namespace HaCreator.MapSimulator.UI
                 return 0;
             }
 
-            int visibleEnd = Math.Clamp(_candidateListState.PageStart, 0, _candidateListState.Candidates.Count) + Math.Max(1, GetVisibleCandidateCount());
-            return (int)Math.Ceiling(MeasureRenderedText($"{visibleEnd}.", 0.42f, preferClientText: true).X);
+            int widestIndex = Math.Max(1, GetVisibleCandidateCount());
+            return (int)Math.Ceiling(MeasureCandidateWindowText($"{widestIndex}.").X);
         }
 
         private int GetScaledLineHeight()

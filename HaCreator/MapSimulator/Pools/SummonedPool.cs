@@ -72,7 +72,10 @@ namespace HaCreator.MapSimulator.Pools
     public readonly record struct PacketOwnedSummonTimerExpiration(
         int SkillId,
         int SummonedObjectId,
-        int ExpireTime);
+        int ExpireTime,
+        int CurrentTime,
+        int OwnerCharacterId,
+        bool OwnerIsLocal);
 
     internal readonly record struct PacketOwnedOneTimeActionClip(
         SkillAnimation Animation,
@@ -177,6 +180,7 @@ namespace HaCreator.MapSimulator.Pools
         private readonly List<ScheduledPacketOwnedHitEffect> _scheduledHitEffects = new();
         private readonly List<ActiveHitEffect> _hitEffects = new();
         private readonly List<PacketOwnedMobAttackHitEffectDisplay> _mobAttackHitEffects = new();
+        private readonly List<PacketOwnedSummonTileEffectDisplay> _summonTileEffects = new();
         private readonly List<PacketOwnedSummonTimer> _summonExpiryTimers = new();
         private long _nextScheduledHitEffectSequenceId = 1;
         private IReadOnlyCollection<SkillData> _cancelSkillCatalog;
@@ -191,7 +195,7 @@ namespace HaCreator.MapSimulator.Pools
         private CombatEffects _combatEffects;
 
         public Action<PacketOwnedSummonTimerExpiration[]> OnSummonExpiryTimersExpiredBatch { get; set; }
-        public Action<int, int> OnSummonExpiryTimerExpired { get; set; }
+        public Action<PacketOwnedSummonTimerExpiration> OnSummonExpiryTimerExpired { get; set; }
 
         public int Count => _summonsByObjectId.Count;
 
@@ -230,6 +234,7 @@ namespace HaCreator.MapSimulator.Pools
             _scheduledHitEffects.Clear();
             _hitEffects.Clear();
             _mobAttackHitEffects.Clear();
+            _summonTileEffects.Clear();
             _summonExpiryTimers.Clear();
             _cancelSkillCatalog = null;
         }
@@ -554,10 +559,15 @@ namespace HaCreator.MapSimulator.Pools
             state.LastAttackTargets = packet.Targets ?? Array.Empty<SummonedAttackTargetPacket>();
             state.Summon.LastAttackTime = currentTime;
             state.Summon.TeslaCoilState = state.TeslaCoilState > 0 ? (byte)2 : state.Summon.TeslaCoilState;
-            state.Summon.FacingRight = !packet.FacingLeft;
+            state.Summon.FacingRight = PacketOwnedSummonUpdateRules.ResolvePacketAttackFacingRight(
+                state.Summon,
+                state.LastMoveActionRaw,
+                packet.FacingLeft,
+                state.Summon.FacingRight);
             BeginPacketOwnedAttackAnimation(state, currentTime);
 
             SpawnPacketAttackVisuals(state, currentTime);
+            TryRegisterClientOwnedAttackTileOverlay(state, currentTime);
             return true;
         }
 
@@ -612,6 +622,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             ClearPacketOwnedOneTimeAction(state);
+            ClearPacketOwnedMobAttackHitEffects(state.Summon.ObjectId);
             state.Summon.LastAttackAnimationStartTime = currentTime;
             state.Summon.CurrentAnimationBranchName = ResolvePacketOwnedSkillBranch(state);
             ArmPacketOwnedSupportSuspend(state, currentTime);
@@ -657,7 +668,7 @@ namespace HaCreator.MapSimulator.Pools
                 : int.MinValue;
         }
 
-        private static void BeginPacketOwnedAttackAnimation(PacketOwnedSummonState state, int currentTime)
+        private void BeginPacketOwnedAttackAnimation(PacketOwnedSummonState state, int currentTime)
         {
             if (state?.Summon == null)
             {
@@ -665,6 +676,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             ClearPacketOwnedOneTimeAction(state);
+            ClearPacketOwnedMobAttackHitEffects(state.Summon.ObjectId);
             state.Summon.CurrentAnimationBranchName = null;
             int prepareDuration = GetSkillAnimationDuration(state.Summon.SkillData?.SummonAttackPrepareAnimation) ?? 0;
             if (state.Summon.LastAttackAnimationStartTime == int.MinValue
@@ -737,6 +749,50 @@ namespace HaCreator.MapSimulator.Pools
             SchedulePacketAttackImpactEffects(state.Summon, targets, currentTime);
         }
 
+        private void TryRegisterClientOwnedAttackTileOverlay(PacketOwnedSummonState state, int currentTime)
+        {
+            if (state?.Summon == null
+                || _mobPool == null
+                || !PacketOwnedSummonUpdateRules.ShouldRegisterClientOwnedAttackTileOverlay(state.Summon))
+            {
+                return;
+            }
+
+            int targetMobObjectId = state.LastAttackTargets?
+                .FirstOrDefault(static target => target.MobObjectId > 0)
+                .MobObjectId ?? 0;
+            if (targetMobObjectId <= 0)
+            {
+                return;
+            }
+
+            MobItem targetMob = _mobPool.GetMob(targetMobObjectId);
+            if (targetMob == null)
+            {
+                return;
+            }
+
+            Vector2 targetAnchor = GetMobHitboxCenter(targetMob, currentTime);
+            Rectangle area = PacketOwnedSummonUpdateRules.BuildClientOwnedAttackTileOverlayArea(targetAnchor, state.Summon);
+            if (area.Width <= 0 || area.Height <= 0)
+            {
+                return;
+            }
+
+            int attackDelayMs = Math.Max(0, ResolvePacketAttackImpactDelayMs(state.Summon, targetMob, currentTime));
+            const int tileDelayMs = 200;
+            const int tileDurationMs = 500;
+            _summonTileEffects.Add(new PacketOwnedSummonTileEffectDisplay
+            {
+                Animation = state.Summon.SkillData.ZoneAnimation,
+                Area = area,
+                StartTime = currentTime + attackDelayMs + tileDelayMs,
+                EndTime = currentTime + attackDelayMs + tileDelayMs + tileDurationMs,
+                StartAlpha = 128,
+                EndAlpha = byte.MaxValue
+            });
+        }
+
         public void Update(int currentTime)
         {
             for (int i = _projectiles.Count - 1; i >= 0; i--)
@@ -781,6 +837,14 @@ namespace HaCreator.MapSimulator.Pools
                 if (effect.IsComplete)
                 {
                     _mobAttackHitEffects.RemoveAt(i);
+                }
+            }
+
+            for (int i = _summonTileEffects.Count - 1; i >= 0; i--)
+            {
+                if (_summonTileEffects[i].IsExpired(currentTime))
+                {
+                    _summonTileEffects.RemoveAt(i);
                 }
             }
 
@@ -859,6 +923,11 @@ namespace HaCreator.MapSimulator.Pools
             foreach (ActiveHitEffect hitEffect in _hitEffects)
             {
                 DrawHitEffect(spriteBatch, hitEffect, mapShiftX, mapShiftY, centerX, centerY, currentTime);
+            }
+
+            foreach (PacketOwnedSummonTileEffectDisplay tileEffect in _summonTileEffects)
+            {
+                DrawSummonTileEffect(spriteBatch, tileEffect, mapShiftX, mapShiftY, centerX, centerY, currentTime);
             }
 
             foreach (PacketOwnedMobAttackHitEffectDisplay hitEffect in _mobAttackHitEffects)
@@ -1455,6 +1524,7 @@ namespace HaCreator.MapSimulator.Pools
             state.RemovalReason = reason;
             state.Summon.ExpiryActionTriggered = true;
             ClearPacketOwnedOneTimeAction(state);
+            ClearPacketOwnedMobAttackHitEffects(state.Summon.ObjectId);
             state.Summon.RemovalAnimationStartTime = currentTime;
             state.Summon.ActorState = SummonActorState.Die;
             state.Summon.LastStateChangeTime = currentTime;
@@ -1467,7 +1537,7 @@ namespace HaCreator.MapSimulator.Pools
             return Math.Max(1, levelData?.HP ?? 1);
         }
 
-        private static void RefreshIdleActorState(PacketOwnedSummonState state, int currentTime)
+        private void RefreshIdleActorState(PacketOwnedSummonState state, int currentTime)
         {
             if (state?.Summon == null || state.Summon.IsPendingRemoval)
             {
@@ -1488,6 +1558,7 @@ namespace HaCreator.MapSimulator.Pools
                 state.Summon.OneTimeActionFallbackStartTime = int.MinValue;
                 state.Summon.OneTimeActionFallbackAnimationTime = int.MinValue;
                 state.Summon.OneTimeActionFallbackEndTime = int.MinValue;
+                ClearPacketOwnedMobAttackHitEffects(state.Summon.ObjectId);
             }
 
             if (IsSummonAnimationActive(state.Summon.SkillData?.SummonHitAnimation, state.Summon.LastHitAnimationStartTime, currentTime)
@@ -1655,13 +1726,22 @@ namespace HaCreator.MapSimulator.Pools
             return Math.Max(240, remainingDuration);
         }
 
-        private static bool PreparePacketOwnedHitAction(PacketOwnedSummonState state, int currentTime)
+        private int ClearPacketOwnedMobAttackHitEffects(int summonObjectId)
+        {
+            return PacketOwnedSummonUpdateRules.ClearAttachedHitEffects(
+                _mobAttackHitEffects,
+                summonObjectId,
+                static effect => effect?.AttachedSummonObjectId ?? 0);
+        }
+
+        private bool PreparePacketOwnedHitAction(PacketOwnedSummonState state, int currentTime)
         {
             if (state?.Summon == null)
             {
                 return false;
             }
 
+            ClearPacketOwnedMobAttackHitEffects(state.Summon.ObjectId);
             bool hasHitAnimation = state.Summon.SkillData?.SummonHitAnimation?.Frames.Count > 0;
             state.OneTimeActionClip = null;
             state.Summon.OneTimeActionFallbackAnimation = null;
@@ -1813,6 +1893,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             CancelSummonExpiryTimer(state.Summon.ObjectId);
+            ClearPacketOwnedMobAttackHitEffects(state.Summon.ObjectId);
             UnregisterOwnerSummon(state);
             RemovePuppet(state.Summon);
             _summonsByObjectId.Remove(state.Summon.ObjectId);
@@ -2178,13 +2259,16 @@ namespace HaCreator.MapSimulator.Pools
                 .ThenBy(static timer => timer.SummonedObjectId)
                 .ToArray();
 
-            OnSummonExpiryTimersExpiredBatch?.Invoke(orderedTimers
-                .Select(static timer => new PacketOwnedSummonTimerExpiration(timer.SkillId, timer.SummonedObjectId, timer.ExpireTime))
-                .ToArray());
+            PacketOwnedSummonTimerExpiration[] expirations = orderedTimers
+                .Select(timer => CreateSummonExpiryTimerExpiration(timer, currentTime))
+                .ToArray();
 
-            foreach (PacketOwnedSummonTimer timer in orderedTimers)
+            OnSummonExpiryTimersExpiredBatch?.Invoke(expirations);
+
+            for (int i = 0; i < orderedTimers.Length; i++)
             {
-                OnSummonExpiryTimerExpired?.Invoke(timer.SkillId, timer.SummonedObjectId);
+                PacketOwnedSummonTimer timer = orderedTimers[i];
+                OnSummonExpiryTimerExpired?.Invoke(expirations[i]);
 
                 if (!_summonsByObjectId.TryGetValue(timer.SummonedObjectId, out PacketOwnedSummonState state)
                     || state.Summon == null
@@ -2206,6 +2290,58 @@ namespace HaCreator.MapSimulator.Pools
             }
         }
 
+        private sealed class PacketOwnedSummonTileEffectDisplay
+        {
+            public SkillAnimation Animation { get; init; }
+            public Rectangle Area { get; init; }
+            public int StartTime { get; init; }
+            public int EndTime { get; init; }
+            public byte StartAlpha { get; init; }
+            public byte EndAlpha { get; init; }
+
+            public bool IsActive(int currentTime) => currentTime >= StartTime && currentTime < EndTime;
+            public bool IsExpired(int currentTime) => currentTime >= EndTime;
+
+            public float GetAlpha(int currentTime)
+            {
+                if (EndTime <= StartTime)
+                {
+                    return EndAlpha / 255f;
+                }
+
+                float progress = MathHelper.Clamp((currentTime - StartTime) / (float)(EndTime - StartTime), 0f, 1f);
+                int alpha = (int)Math.Round(StartAlpha + ((EndAlpha - StartAlpha) * progress));
+                return MathHelper.Clamp(alpha / 255f, 0f, 1f);
+            }
+        }
+
+        private PacketOwnedSummonTimerExpiration CreateSummonExpiryTimerExpiration(PacketOwnedSummonTimer timer, int currentTime)
+        {
+            if (timer == null)
+            {
+                return default;
+            }
+
+            if (_summonsByObjectId.TryGetValue(timer.SummonedObjectId, out PacketOwnedSummonState state))
+            {
+                return new PacketOwnedSummonTimerExpiration(
+                    timer.SkillId,
+                    timer.SummonedObjectId,
+                    timer.ExpireTime,
+                    currentTime,
+                    state?.OwnerCharacterId ?? 0,
+                    state?.OwnerIsLocal == true);
+            }
+
+            return new PacketOwnedSummonTimerExpiration(
+                timer.SkillId,
+                timer.SummonedObjectId,
+                timer.ExpireTime,
+                currentTime,
+                0,
+                false);
+        }
+
         private bool TryTriggerExpiredSelfDestructAction(PacketOwnedSummonState state, int currentTime)
         {
             if (state?.Summon?.SkillData?.SelfDestructMinion != true)
@@ -2214,6 +2350,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             state.Summon.ExpiryActionTriggered = true;
+            ClearPacketOwnedMobAttackHitEffects(state.Summon.ObjectId);
             state.Summon.LastAttackAnimationStartTime = currentTime;
             state.Summon.CurrentAnimationBranchName = SummonRuntimeRules.ResolveSelfDestructFinalBranch(
                 state.Summon.SkillData,
@@ -2511,6 +2648,7 @@ namespace HaCreator.MapSimulator.Pools
             state.RemovalReason = 0;
             state.Summon.ExpiryActionTriggered = true;
             ClearPacketOwnedOneTimeAction(state);
+            ClearPacketOwnedMobAttackHitEffects(state.Summon.ObjectId);
             state.Summon.LastAttackAnimationStartTime = currentTime;
             state.Summon.CurrentAnimationBranchName = actionBranchName;
             bool hasPrepareAnimation = string.IsNullOrWhiteSpace(actionBranchName)
@@ -2547,7 +2685,7 @@ namespace HaCreator.MapSimulator.Pools
                 }
 
                 Vector2 targetCenter = GetMobHitboxCenter(target, currentTime);
-                int impactDelayMs = Math.Max(60, ResolvePacketAttackImpactDelayMs(summon, target, currentTime));
+                int impactDelayMs = Math.Max(60, ResolvePacketAttackImpactDelayMs(summon, target, currentTime, i));
                 SpawnPacketProjectileVisual(
                     summon,
                     source,
@@ -2591,12 +2729,22 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
+                int targetIndex = -1;
+                for (int targetCursor = 0; targetCursor < targets.Count; targetCursor++)
+                {
+                    if (ReferenceEquals(targets[targetCursor], target))
+                    {
+                        targetIndex = targetCursor;
+                        break;
+                    }
+                }
+
                 Vector2 targetCenter = GetMobHitboxCenter(target, currentTime);
                 int impactDelayMs = Math.Max(
                     60,
                     useTeslaPerTargetDelayJitter
-                        ? ResolvePacketTeslaTargetImpactDelayMs(teslaCoil, source, target, currentTime)
-                        : ResolvePacketAttackImpactDelayMs(teslaCoil, source, target, currentTime));
+                        ? ResolvePacketTeslaTargetImpactDelayMs(teslaCoil, source, target, currentTime, targetIndex >= 0 ? targetIndex : 0)
+                        : ResolvePacketAttackImpactDelayMs(teslaCoil, source, target, currentTime, targetIndex >= 0 ? targetIndex : 0));
                 SpawnPacketProjectileVisual(
                     teslaCoil,
                     source,
@@ -2686,10 +2834,15 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
-                Vector2 targetCenter = GetMobHitboxCenter(target, currentTime);
+                Vector2 impactPosition = ResolvePacketAttackImpactPosition(
+                    summon.SkillData,
+                    i,
+                    target,
+                    new Vector2(summon.PositionX, summon.PositionY),
+                    currentTime);
                 int executeTime = currentTime + (useTeslaPerTargetDelayJitter
-                    ? ResolvePacketTeslaTargetImpactDelayMs(summon, target, currentTime)
-                    : ResolvePacketAttackImpactDelayMs(summon, target, currentTime));
+                    ? ResolvePacketTeslaTargetImpactDelayMs(summon, target, currentTime, i)
+                    : ResolvePacketAttackImpactDelayMs(summon, target, currentTime, i));
                 _scheduledHitEffects.Add(new ScheduledPacketOwnedHitEffect
                 {
                     SequenceId = _nextScheduledHitEffectSequenceId++,
@@ -2697,8 +2850,8 @@ namespace HaCreator.MapSimulator.Pools
                     HitEffect = new ActiveHitEffect
                     {
                         SkillId = summon.SkillId,
-                        X = targetCenter.X,
-                        Y = targetCenter.Y,
+                        X = impactPosition.X,
+                        Y = impactPosition.Y,
                         StartTime = executeTime,
                         Animation = impactAnimation,
                         FacingRight = summon.FacingRight
@@ -2745,31 +2898,60 @@ namespace HaCreator.MapSimulator.Pools
             });
         }
 
-        private static SkillAnimation ResolvePacketAttackImpactAnimation(SkillData skill, int targetIndex)
+        private static SummonImpactPresentation ResolvePacketAttackImpactPresentation(SkillData skill, int targetIndex)
         {
-            if (skill?.SummonTargetHitAnimations != null && skill.SummonTargetHitAnimations.Count > 0)
-            {
-                SkillAnimation animation = skill.SummonTargetHitAnimations[Math.Abs(targetIndex) % skill.SummonTargetHitAnimations.Count];
-                if (animation?.Frames.Count > 0)
-                {
-                    return animation;
-                }
-            }
-
-            return skill?.HitEffect;
+            return skill?.GetSummonTargetHitPresentation(targetIndex);
         }
 
-        private int ResolvePacketTeslaTargetImpactDelayMs(ActiveSummon summon, MobItem target, int currentTime)
+        private static SkillAnimation ResolvePacketAttackImpactAnimation(SkillData skill, int targetIndex)
+        {
+            return ResolvePacketAttackImpactPresentation(skill, targetIndex)?.Animation ?? skill?.HitEffect;
+        }
+
+        private static int ResolvePacketAttackImpactAuthoredDelayMs(SkillData skill, int targetIndex)
+        {
+            SummonImpactPresentation presentation = ResolvePacketAttackImpactPresentation(skill, targetIndex);
+            return presentation?.HitAfterMs > 0
+                ? presentation.HitAfterMs
+                : Math.Max(0, skill?.SummonAttackHitDelayMs ?? 0);
+        }
+
+        private static Vector2 ResolvePacketAttackImpactPosition(
+            SkillData skill,
+            int targetIndex,
+            MobItem target,
+            Vector2 source,
+            int currentTime)
+        {
+            if (target == null)
+            {
+                return source;
+            }
+
+            SummonImpactPresentation presentation = ResolvePacketAttackImpactPresentation(skill, targetIndex);
+            if (presentation?.PositionCode == 2)
+            {
+                return source;
+            }
+
+            return GetMobHitboxCenter(target, currentTime);
+        }
+
+        private int ResolvePacketTeslaTargetImpactDelayMs(ActiveSummon summon, MobItem target, int currentTime, int targetIndex = 0)
         {
             Vector2 source = summon == null
                 ? Vector2.Zero
                 : new Vector2(summon.PositionX, summon.PositionY);
-            return ResolvePacketTeslaTargetImpactDelayMs(summon, source, target, currentTime);
+            return ResolvePacketTeslaTargetImpactDelayMs(summon, source, target, currentTime, targetIndex);
         }
 
-        private int ResolvePacketTeslaTargetImpactDelayMs(ActiveSummon summon, Vector2 source, MobItem target, int currentTime)
+        private int ResolvePacketTeslaTargetImpactDelayMs(ActiveSummon summon, Vector2 source, MobItem target, int currentTime, int targetIndex = 0)
         {
-            return ResolveTeslaImpactDelayMs(ResolvePacketTeslaAttackDelayWindowMs(summon));
+            int authoredDelayMs = ResolvePacketAttackImpactAuthoredDelayMs(summon?.SkillData, targetIndex);
+            int attackDelayWindowMs = authoredDelayMs > 0
+                ? Math.Max(TeslaMinimumImpactDelayMs, authoredDelayMs)
+                : ResolvePacketTeslaAttackDelayWindowMs(summon);
+            return ResolveTeslaImpactDelayMs(attackDelayWindowMs);
         }
 
         private int ResolveTeslaImpactDelayMs(int attackDelayMs)
@@ -2784,22 +2966,22 @@ namespace HaCreator.MapSimulator.Pools
             return TeslaMinimumImpactDelayMs + _random.Next(jitterWindowMs);
         }
 
-        private static int ResolvePacketAttackImpactDelayMs(ActiveSummon summon, MobItem target, int currentTime)
+        private static int ResolvePacketAttackImpactDelayMs(ActiveSummon summon, MobItem target, int currentTime, int targetIndex = 0)
         {
             Vector2 source = summon == null
                 ? Vector2.Zero
                 : new Vector2(summon.PositionX, summon.PositionY);
-            return ResolvePacketAttackImpactDelayMs(summon, source, target, currentTime);
+            return ResolvePacketAttackImpactDelayMs(summon, source, target, currentTime, targetIndex);
         }
 
-        private static int ResolvePacketAttackImpactDelayMs(ActiveSummon summon, Vector2 source, MobItem target, int currentTime)
+        private static int ResolvePacketAttackImpactDelayMs(ActiveSummon summon, Vector2 source, MobItem target, int currentTime, int targetIndex = 0)
         {
             if (summon?.SkillData == null || target == null)
             {
                 return 0;
             }
 
-            int delayMs = Math.Max(0, summon.SkillData.SummonAttackHitDelayMs);
+            int delayMs = ResolvePacketAttackImpactAuthoredDelayMs(summon.SkillData, targetIndex);
             delayMs += GetSkillAnimationDuration(summon.SkillData.SummonAttackPrepareAnimation) ?? 0;
 
             int projectileSpeed = summon.SkillData.SummonAttackProjectileSpeed;
@@ -3035,6 +3217,49 @@ namespace HaCreator.MapSimulator.Pools
             if (!string.IsNullOrWhiteSpace(soundKey))
             {
                 _soundManager.PlaySound(soundKey);
+            }
+        }
+
+        private void DrawSummonTileEffect(
+            SpriteBatch spriteBatch,
+            PacketOwnedSummonTileEffectDisplay tileEffect,
+            int mapShiftX,
+            int mapShiftY,
+            int centerX,
+            int centerY,
+            int currentTime)
+        {
+            if (tileEffect?.Animation?.Frames.Count <= 0 || !tileEffect.IsActive(currentTime))
+            {
+                return;
+            }
+
+            SkillFrame frame = tileEffect.Animation.GetFrameAtTime(Math.Max(0, currentTime - tileEffect.StartTime));
+            if (frame?.Texture == null)
+            {
+                return;
+            }
+
+            int tileWidth = Math.Max(1, frame.Texture.Width);
+            int tileHeight = Math.Max(1, frame.Texture.Height);
+            Color tint = Color.White * tileEffect.GetAlpha(currentTime);
+
+            for (int worldY = tileEffect.Area.Top; worldY < tileEffect.Area.Bottom; worldY += tileHeight)
+            {
+                for (int worldX = tileEffect.Area.Left; worldX < tileEffect.Area.Right; worldX += tileWidth)
+                {
+                    int screenX = worldX - mapShiftX + centerX;
+                    int screenY = worldY - mapShiftY + centerY;
+                    frame.Texture.DrawBackground(
+                        spriteBatch,
+                        null,
+                        null,
+                        screenX - frame.Origin.X,
+                        screenY - frame.Origin.Y,
+                        tint,
+                        false,
+                        null);
+                }
             }
         }
 

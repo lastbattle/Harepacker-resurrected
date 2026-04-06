@@ -10,17 +10,21 @@ namespace HaCreator.MapSimulator.Managers
 {
     internal sealed class CashShopStorageExpansionPacketResult
     {
+        public int CashItemResultSubtype { get; init; }
         public int CommoditySerialNumber { get; init; }
         public int ResultSubtype { get; init; }
         public int FailureReason { get; init; }
         public long NxPrice { get; init; }
         public int SlotLimitAfterResult { get; init; }
         public bool ConsumeCash { get; init; } = true;
+        public bool IsClientCashItemResultShape { get; init; }
         public string Message { get; init; } = string.Empty;
     }
 
     internal static class CashShopStorageExpansionPacketCodec
     {
+        internal const int CashItemResIncTrunkCountDoneSubtype = 111;
+        internal const int CashItemResIncTrunkCountFailedSubtype = 112;
         private static readonly Regex MessagePattern = new(@"(?:^|\s)message=(.+)$", RegexOptions.IgnoreCase | RegexOptions.Compiled);
 
         public static bool TryDecodePayload(byte[] payload, out CashShopStorageExpansionPacketResult result)
@@ -31,6 +35,17 @@ namespace HaCreator.MapSimulator.Managers
                 return false;
             }
 
+            if (TryDecodeClientCashItemResultPayload(payload, out result))
+            {
+                return true;
+            }
+
+            return TryDecodeStructuredPayload(payload, out result);
+        }
+
+        private static bool TryDecodeStructuredPayload(byte[] payload, out CashShopStorageExpansionPacketResult result)
+        {
+            result = null;
             try
             {
                 using MemoryStream stream = new(payload, writable: false);
@@ -76,6 +91,7 @@ namespace HaCreator.MapSimulator.Managers
                     NxPrice = nxPrice,
                     SlotLimitAfterResult = slotLimitAfterResult,
                     ConsumeCash = consumeCash,
+                    IsClientCashItemResultShape = false,
                     Message = message ?? string.Empty
                 };
                 return true;
@@ -85,6 +101,51 @@ namespace HaCreator.MapSimulator.Managers
                 result = null;
                 return false;
             }
+        }
+
+        private static bool TryDecodeClientCashItemResultPayload(byte[] payload, out CashShopStorageExpansionPacketResult result)
+        {
+            result = null;
+            if (payload == null || payload.Length < 2)
+            {
+                return false;
+            }
+
+            int subtype = payload[0];
+            switch (subtype)
+            {
+                case CashItemResIncTrunkCountDoneSubtype:
+                    if (payload.Length < 3)
+                    {
+                        return false;
+                    }
+
+                    int slotLimitAfterResult = BitConverter.ToUInt16(payload, 1);
+                    result = new CashShopStorageExpansionPacketResult
+                    {
+                        CashItemResultSubtype = subtype,
+                        ResultSubtype = 1,
+                        SlotLimitAfterResult = Math.Max(0, slotLimitAfterResult),
+                        ConsumeCash = false,
+                        IsClientCashItemResultShape = true,
+                        Message = $"Client packet subtype 111 updated the trunk slot limit to {Math.Max(0, slotLimitAfterResult).ToString(CultureInfo.InvariantCulture)}."
+                    };
+                    return true;
+
+                case CashItemResIncTrunkCountFailedSubtype:
+                    result = new CashShopStorageExpansionPacketResult
+                    {
+                        CashItemResultSubtype = subtype,
+                        ResultSubtype = 2,
+                        FailureReason = payload[1],
+                        ConsumeCash = false,
+                        IsClientCashItemResultShape = true,
+                        Message = $"Client packet subtype 112 rejected the trunk expansion request with failure reason {payload[1].ToString(CultureInfo.InvariantCulture)}."
+                    };
+                    return true;
+            }
+
+            return false;
         }
 
         public static byte[] EncodePayload(CashShopStorageExpansionPacketResult result)
@@ -292,6 +353,9 @@ namespace HaCreator.MapSimulator.Managers
                 ? $"SN {result.CommoditySerialNumber.ToString(CultureInfo.InvariantCulture)}"
                 : "local seam";
             string outcome = result.ResultSubtype == 1 ? "accepted" : "rejected";
+            string clientSubtypeText = result.CashItemResultSubtype > 0
+                ? $" (subtype {result.CashItemResultSubtype.ToString(CultureInfo.InvariantCulture)})"
+                : string.Empty;
             string priceText = result.NxPrice > 0
                 ? $"{result.NxPrice.ToString("N0", CultureInfo.InvariantCulture)} NX"
                 : "0 NX";
@@ -303,7 +367,7 @@ namespace HaCreator.MapSimulator.Managers
                 : string.Empty;
             string billedText = result.ConsumeCash ? ", cash billed on success" : ", cash already settled";
             string messageText = string.IsNullOrWhiteSpace(result.Message) ? string.Empty : $" {result.Message}";
-            return $"Storage-expansion result {outcome} via {commodityLabel} at {priceText}{slotText}{failureText}{billedText}.{messageText}".Trim();
+            return $"Storage-expansion result {outcome}{clientSubtypeText} via {commodityLabel} at {priceText}{slotText}{failureText}{billedText}.{messageText}".Trim();
         }
 
         private static bool TryParseSubtypeToken(string token, out int subtype)

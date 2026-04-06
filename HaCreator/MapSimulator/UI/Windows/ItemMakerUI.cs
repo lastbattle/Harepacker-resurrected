@@ -208,6 +208,11 @@ namespace HaCreator.MapSimulator.UI
                 message = $"Packet-owned maker result code {packetResult.ResultCode} subtype {packetResult.ResultType}.";
             }
 
+            if (TryCreatePacketOwnedCraftResult(packetResult, out ItemMakerCraftResult craftResult))
+            {
+                CraftCompleted?.Invoke(craftResult);
+            }
+
             ApplyPacketOwnedResult(message, packetResult.ResetItemSlot);
             return packetResult.ResultCode <= 1;
         }
@@ -1032,6 +1037,123 @@ namespace HaCreator.MapSimulator.UI
                 CraftedItemId = reward.ItemId,
                 CraftedQuantity = reward.Quantity
             });
+        }
+
+        private bool TryCreatePacketOwnedCraftResult(PacketOwnedItemMakerResult packetResult, out ItemMakerCraftResult result)
+        {
+            result = null;
+            if (packetResult == null || packetResult.ResultCode > 1)
+            {
+                return false;
+            }
+
+            ItemMakerRecipe recipe = ResolvePacketOwnedResultRecipe(packetResult);
+            if (recipe == null)
+            {
+                return false;
+            }
+
+            int craftedItemId = ResolvePacketOwnedCraftedItemId(packetResult, recipe);
+            int craftedQuantity = ResolvePacketOwnedCraftedQuantity(packetResult, recipe, craftedItemId);
+            result = new ItemMakerCraftResult
+            {
+                Family = recipe.Family,
+                IsHiddenRecipe = recipe.IsHidden,
+                RecipeKey = recipe.RecipeKey,
+                RecipeOutputItemId = recipe.OutputItemId,
+                CraftedItemId = craftedItemId,
+                CraftedQuantity = craftedQuantity
+            };
+            return true;
+        }
+
+        private ItemMakerRecipe ResolvePacketOwnedResultRecipe(PacketOwnedItemMakerResult packetResult)
+        {
+            ItemMakerRecipe activeCraftRecipe = ResolveIndexedRecipe(_craftingRecipeIndex);
+            if (IsPacketOwnedResultMatch(activeCraftRecipe, packetResult))
+            {
+                return activeCraftRecipe;
+            }
+
+            ItemMakerRecipe selectedRecipe = ResolveIndexedRecipe(_selectedRecipeIndex);
+            if (IsPacketOwnedResultMatch(selectedRecipe, packetResult))
+            {
+                return selectedRecipe;
+            }
+
+            return _allRecipes.FirstOrDefault(recipe => IsPacketOwnedResultMatch(recipe, packetResult));
+        }
+
+        private ItemMakerRecipe ResolveIndexedRecipe(int recipeIndex)
+        {
+            IReadOnlyList<ItemMakerRecipe> recipes = CurrentRecipes;
+            if (recipeIndex >= 0 && recipeIndex < recipes.Count)
+            {
+                return recipes[recipeIndex];
+            }
+
+            return null;
+        }
+
+        private static bool IsPacketOwnedResultMatch(ItemMakerRecipe recipe, PacketOwnedItemMakerResult packetResult)
+        {
+            if (recipe == null || packetResult == null)
+            {
+                return false;
+            }
+
+            if (packetResult.TargetItemId > 0 && recipe.OutputItemId == packetResult.TargetItemId)
+            {
+                return true;
+            }
+
+            if (packetResult.GeneratedItemId > 0 && recipe.OutputItemId == packetResult.GeneratedItemId)
+            {
+                return true;
+            }
+
+            return recipe.RandomRewards.Any(reward => reward.ItemId == packetResult.TargetItemId);
+        }
+
+        private static int ResolvePacketOwnedCraftedItemId(PacketOwnedItemMakerResult packetResult, ItemMakerRecipe recipe)
+        {
+            if (packetResult.TargetItemId > 0)
+            {
+                return packetResult.TargetItemId;
+            }
+
+            if (packetResult.GeneratedItemId > 0)
+            {
+                return packetResult.GeneratedItemId;
+            }
+
+            if (recipe.RandomRewards.Length > 0)
+            {
+                return recipe.RandomRewards[0].ItemId;
+            }
+
+            return recipe.OutputItemId;
+        }
+
+        private static int ResolvePacketOwnedCraftedQuantity(PacketOwnedItemMakerResult packetResult, ItemMakerRecipe recipe, int craftedItemId)
+        {
+            if (packetResult.TargetItemId > 0)
+            {
+                return Math.Max(1, packetResult.TargetItemCount);
+            }
+
+            if (packetResult.GeneratedItemId > 0)
+            {
+                return Math.Max(1, packetResult.GeneratedItemCount);
+            }
+
+            ItemMakerReward matchingRandomReward = recipe.RandomRewards.FirstOrDefault(reward => reward.ItemId == craftedItemId);
+            if (matchingRandomReward != null)
+            {
+                return Math.Max(1, matchingRandomReward.Quantity);
+            }
+
+            return Math.Max(1, recipe.OutputQuantity);
         }
 
         private bool CanCraftRecipe(ItemMakerRecipe recipe, out string failureReason)

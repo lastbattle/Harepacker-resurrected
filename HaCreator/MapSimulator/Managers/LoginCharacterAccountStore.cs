@@ -61,6 +61,9 @@ namespace HaCreator.MapSimulator.Managers
             public int FailureReason { get; init; }
             public long NxPrice { get; init; }
             public int SlotLimitAfterResult { get; init; }
+            public bool IsPacketOwned { get; init; }
+            public int PacketType { get; init; }
+            public bool CashAlreadySettled { get; init; }
             public string Message { get; init; } = string.Empty;
             public DateTime AppliedAtUtc { get; init; }
         }
@@ -551,6 +554,9 @@ namespace HaCreator.MapSimulator.Managers
                     FailureReason = Math.Max(0, record.FailureReason),
                     NxPrice = Math.Max(0L, record.NxPrice),
                     SlotLimitAfterResult = Math.Max(0, record.SlotLimitAfterResult),
+                    IsPacketOwned = record.IsPacketOwned,
+                    PacketType = Math.Max(0, record.PacketType),
+                    CashAlreadySettled = record.CashAlreadySettled,
                     Message = record.Message ?? string.Empty,
                     AppliedAtUtc = record.AppliedAtUtc == default ? DateTime.UtcNow : record.AppliedAtUtc
                 })

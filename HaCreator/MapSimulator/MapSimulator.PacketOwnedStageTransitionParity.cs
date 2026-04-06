@@ -35,6 +35,62 @@ namespace HaCreator.MapSimulator
                 out message);
         }
 
+        private bool TryRelayLoginOwnedStageTransitionPacket(LoginPacketType packetType, string[] args, out string message)
+        {
+            message = null;
+            if (!TryResolveLoginOwnedStageTransitionPacketType(packetType, out int stagePacketType))
+            {
+                return false;
+            }
+
+            byte[] payload = Array.Empty<byte>();
+            if (stagePacketType is not 142 and not 143 and not 146)
+            {
+                string payloadError = null;
+                foreach (string arg in args ?? Array.Empty<string>())
+                {
+                    if (TryParseBinaryPayloadArgument(arg, out byte[] payloadBytes, out string candidateError))
+                    {
+                        payload = payloadBytes;
+                        payloadError = null;
+                        break;
+                    }
+
+                    if (!string.IsNullOrWhiteSpace(candidateError))
+                    {
+                        payloadError = candidateError;
+                    }
+                }
+
+                if (payload == null)
+                {
+                    message = $"CLogin::OnPacket forwarded {packetType}, but the relay payload was missing or invalid. {payloadError ?? "Stage-transition payloads must use payloadhex=.. or payloadb64=.."}";
+                    return true;
+                }
+            }
+
+            bool applied = TryApplyPacketOwnedStageTransitionPacket(stagePacketType, payload, out string detail);
+            message = string.IsNullOrWhiteSpace(detail)
+                ? $"CLogin::OnPacket forwarded {packetType} to the stage-transition runtime."
+                : $"CLogin::OnPacket forwarded {packetType} to the stage-transition runtime. {detail}";
+            return true;
+        }
+
+        private static bool TryResolveLoginOwnedStageTransitionPacketType(LoginPacketType packetType, out int stagePacketType)
+        {
+            stagePacketType = packetType switch
+            {
+                LoginPacketType.SetField => 141,
+                LoginPacketType.SetITC => 142,
+                LoginPacketType.SetCashShop => 143,
+                LoginPacketType.SetBackEffect => 144,
+                LoginPacketType.SetMapObjectVisible => 145,
+                LoginPacketType.ClearBackEffect => 146,
+                _ => 0
+            };
+            return stagePacketType != 0;
+        }
+
         private PacketStageTransitionCallbacks BuildPacketOwnedStageTransitionCallbacks()
         {
             return new PacketStageTransitionCallbacks

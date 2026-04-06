@@ -14,8 +14,6 @@ namespace HaCreator.MapSimulator.Interaction
         private const int BubbleLifetimeMs = 4200;
         private const int BlinkDurationMs = 3000;
         private const int BlinkPulseIntervalMs = 180;
-        private const int DeleteGateDelayMs = 450;
-
         private static readonly MessengerContactDefinition[] ContactDefinitions =
         {
             new("Rondo", "Lith Harbor", 4, "Ready to board.", "Boarding soon. Meet me at the dock.", "Pirate", 34),
@@ -36,10 +34,10 @@ namespace HaCreator.MapSimulator.Interaction
         private int _nextClaimId = 1;
         private int _blinkStartTick = int.MinValue;
         private int _blinkEndTick = int.MinValue;
-        private int _deleteEligibleTick = int.MinValue;
         private MessengerWindowState _windowState;
         private PendingMessengerInviteState _pendingInvite;
         private PendingMessengerInviteState _incomingInvite;
+        private bool _deleteRequested;
         private bool _windowCloseReady;
         private string _lastActionSummary = "Messenger opened.";
         private string _lastPacketSummary = "Messenger packet trace idle.";
@@ -372,6 +370,7 @@ namespace HaCreator.MapSimulator.Interaction
             AddSystemLog(_lastActionSummary);
             StartBlink(Environment.TickCount);
             RecordPacketSummary($"Sent simulated Messenger invite-reject packet to {incomingInvite.ContactName}.");
+            TryResolveDeleteGateAfterStateChange("Messenger close gate passed after the invite response cleared.");
             return _lastActionSummary;
         }
 
@@ -587,6 +586,7 @@ namespace HaCreator.MapSimulator.Interaction
             _lastActionSummary = $"{localPlayer.Name} left the Messenger.";
             AddSystemLog($"{localPlayer.Name} left the Messenger. Simulator room reset to a solo state.");
             RecordPacketSummary("Simulated Messenger delete or leave lifecycle for the local player.");
+            TryResolveDeleteGateAfterStateChange("Messenger close gate passed after the local room reset.");
             return _lastActionSummary;
         }
 
@@ -594,8 +594,9 @@ namespace HaCreator.MapSimulator.Interaction
         {
             if (_incomingInvite != null)
             {
+                _deleteRequested = true;
                 string message = RejectIncomingInvite();
-                return new MessengerDeleteResult(message, false);
+                return new MessengerDeleteResult(message, _windowCloseReady);
             }
 
             if (_windowCloseReady)
@@ -603,23 +604,24 @@ namespace HaCreator.MapSimulator.Interaction
                 return new MessengerDeleteResult(_lastActionSummary, true);
             }
 
-            if (_pendingInvite != null || _participants.Count > 1)
+            if (!CanDestroyMessengerWindow())
             {
-                if (_deleteEligibleTick == int.MinValue)
+                if (!_deleteRequested)
                 {
-                    _deleteEligibleTick = Environment.TickCount + DeleteGateDelayMs;
+                    _deleteRequested = true;
                     _lastActionSummary = _pendingInvite != null
                         ? $"Messenger close requested while invite {_pendingInvite.InviteId} is still owned by the server seam."
                         : "Messenger close requested while the server-owned room state is still active.";
                     AddSystemLog(_lastActionSummary);
                     RecordPacketSummary(_pendingInvite != null
                         ? $"Sent simulated Messenger delete request while invite {_pendingInvite.InviteId} is pending."
-                        : "Sent simulated Messenger delete request while remote participants are still bound to the room.");
+                        : "Sent simulated Messenger delete request while remote participants are still bound to the room. Waiting for packet-owned room state to clear.");
                 }
 
                 return new MessengerDeleteResult(_lastActionSummary, false);
             }
 
+            _deleteRequested = false;
             _windowCloseReady = true;
             _lastActionSummary = "Messenger close gate passed with only the local profile present.";
             RecordPacketSummary("Simulated Messenger TryDelete destroy after the local-only gate passed.");
@@ -629,6 +631,7 @@ namespace HaCreator.MapSimulator.Interaction
         public void AcknowledgeWindowClose()
         {
             _windowCloseReady = false;
+            _deleteRequested = false;
         }
 
         public string RemoveParticipant(string name, bool rejectedInvite)
@@ -666,6 +669,7 @@ namespace HaCreator.MapSimulator.Interaction
             RecordPacketSummary(rejectedInvite
                 ? $"Applied simulated Messenger reject packet from {participant.Name}."
                 : $"Applied simulated Messenger leave packet from {participant.Name}.");
+            TryResolveDeleteGateAfterStateChange("Messenger close gate passed after the remote slot cleared.");
             return _lastActionSummary;
         }
 
@@ -1017,11 +1021,6 @@ namespace HaCreator.MapSimulator.Interaction
                 ResolvePendingInvite(_pendingInvite.WillAccept, packetDriven: true);
             }
 
-            if (_deleteEligibleTick != int.MinValue && tickCount >= _deleteEligibleTick)
-            {
-                ResolveDeleteGate();
-            }
-
             if (_lastPulseTick == int.MinValue)
             {
                 _lastPulseTick = tickCount;
@@ -1308,31 +1307,23 @@ namespace HaCreator.MapSimulator.Interaction
             return firstParticipant?.SlotIndex ?? 0;
         }
 
-        private void ResolveDeleteGate()
+        private bool CanDestroyMessengerWindow()
         {
-            _deleteEligibleTick = int.MinValue;
+            return _pendingInvite == null && _participants.Count <= 1;
+        }
 
-            if (_pendingInvite != null)
+        private void TryResolveDeleteGateAfterStateChange(string summary)
+        {
+            if (!_deleteRequested || !CanDestroyMessengerWindow())
             {
-                string contactName = _pendingInvite.ContactName;
-                _pendingInvite = null;
-                _lastActionSummary = $"Canceled Messenger invite to {contactName} after the server-owned delete gate resolved.";
-                AddSystemLog(_lastActionSummary);
-                RecordPacketSummary($"Applied simulated Messenger invite-cancel packet to {contactName}.");
+                return;
             }
 
-            if (_participants.Count > 1)
-            {
-                MessengerParticipantState localPlayer = GetLocalParticipant();
-                _participants.Clear();
-                _participants.Add(localPlayer);
-                _selectedSlot = 0;
-                _lastActionSummary = $"{localPlayer.Name} left the Messenger after the delete gate resolved.";
-                AddSystemLog(_lastActionSummary);
-                RecordPacketSummary("Applied simulated Messenger leave packet after the delete gate resolved.");
-            }
-
+            _deleteRequested = false;
             _windowCloseReady = true;
+            _lastActionSummary = summary;
+            AddSystemLog(summary);
+            RecordPacketSummary("Simulated Messenger TryDelete destroy after packet-owned room state cleared.");
         }
 
         private void ApplyPacketProfile(string name, bool isOnline, int channel, int level, string jobName, string locationSummary, string statusText)
@@ -1657,6 +1648,7 @@ namespace HaCreator.MapSimulator.Interaction
             AddSystemLog(_lastActionSummary);
             StartBlink(Environment.TickCount);
             RecordPacketSummary($"Decoded Messenger migrated packet with {packet.Participants.Length} slot record(s).");
+            TryResolveDeleteGateAfterStateChange("Messenger close gate passed after the migrated room state collapsed.");
             return _lastActionSummary;
         }
 
@@ -1674,6 +1666,7 @@ namespace HaCreator.MapSimulator.Interaction
             RecordPacketSummary(packet.Succeeded
                 ? "Decoded Messenger self-enter result packet: success."
                 : "Decoded Messenger self-enter result packet: failure.");
+            TryResolveDeleteGateAfterStateChange("Messenger close gate passed after the self-enter result cleared the pending session gate.");
             return _lastActionSummary;
         }
 

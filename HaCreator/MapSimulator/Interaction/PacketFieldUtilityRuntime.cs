@@ -475,7 +475,7 @@ namespace HaCreator.MapSimulator.Interaction
                 6 => new PacketFieldUtilityAdminResult(
                     subtype,
                     "Admin",
-                    "Updated Maple Admin notice mode.",
+                    "Processed the subtype-6 direct notice branch.",
                     DecodeMapleAdminNoticeMode(reader, out int stringPoolId),
                     stringPoolId,
                     9,
@@ -491,13 +491,13 @@ namespace HaCreator.MapSimulator.Interaction
             string channel = ReadMapleString(reader);
             if (string.IsNullOrWhiteSpace(channel))
             {
-                string noticeBody = PacketFieldUtilityAdminResultStringPoolText.GetClearAdminNoticeText();
+                string noticeBody = PacketFieldUtilityAdminResultStringPoolText.GetSubtype11EmptyChannelText();
                 return new PacketFieldUtilityAdminResult(
                     subtype,
                     "Admin",
-                    "Cleared the current admin notice.",
+                    "Processed the subtype-11 empty-channel branch.",
                     noticeBody,
-                    PacketFieldUtilityAdminResultStringPoolText.ClearAdminNoticeStringPoolId,
+                    PacketFieldUtilityAdminResultStringPoolText.WrongNpcNameStringPoolId,
                     12,
                     true,
                     false,
@@ -521,16 +521,16 @@ namespace HaCreator.MapSimulator.Interaction
                 bool success = channel <= 0xFD;
                 string target = $"channel {channel}";
                 string body = success
-                    ? PacketFieldUtilityAdminResultStringPoolText.FormatMoveTargetText(target)
-                    : PacketFieldUtilityAdminResultStringPoolText.GetMoveChannelFailureText();
+                    ? PacketFieldUtilityAdminResultStringPoolText.FormatHiredMerchantLocationText(target)
+                    : PacketFieldUtilityAdminResultStringPoolText.GetHiredMerchantNotFoundText();
                 return new PacketFieldUtilityAdminResult(
                     subtype,
                     "Admin",
-                    "Processed the admin move request.",
+                    success ? "Reported the hired merchant location." : "Unable to find the hired merchant.",
                     body,
                     success
-                        ? PacketFieldUtilityAdminResultStringPoolText.MoveTargetFormattedStringPoolId
-                        : PacketFieldUtilityAdminResultStringPoolText.MoveChannelFailureStringPoolId,
+                        ? PacketFieldUtilityAdminResultStringPoolText.HiredMerchantLocatedFormatStringPoolId
+                        : PacketFieldUtilityAdminResultStringPoolText.HiredMerchantNotFoundStringPoolId,
                     12,
                     true,
                     false,
@@ -539,13 +539,13 @@ namespace HaCreator.MapSimulator.Interaction
 
             int mapId = reader.ReadInt32();
             string mapName = PacketFieldUtilityAdminResultStringPoolText.GetMapNameFallback(mapId);
-            string bodyText = PacketFieldUtilityAdminResultStringPoolText.FormatMoveTargetText(mapName);
+            string bodyText = PacketFieldUtilityAdminResultStringPoolText.FormatHiredMerchantLocationText(mapName);
             return new PacketFieldUtilityAdminResult(
                 subtype,
                 "Admin",
-                $"Processed the admin map move to {mapId}.",
+                $"Reported the hired merchant location for map {mapId}.",
                 bodyText,
-                PacketFieldUtilityAdminResultStringPoolText.MoveTargetFormattedStringPoolId,
+                PacketFieldUtilityAdminResultStringPoolText.HiredMerchantLocatedFormatStringPoolId,
                 12,
                 true,
                 false,
@@ -560,9 +560,9 @@ namespace HaCreator.MapSimulator.Interaction
                 : new PacketFieldUtilityAdminResult(
                     subtype,
                     "Admin",
-                    "Updated the admin-claim state.",
-                    PacketFieldUtilityAdminResultStringPoolText.GetClaimUnavailableText(),
-                    PacketFieldUtilityAdminResultStringPoolText.ClaimUnavailableStringPoolId,
+                    "Processed the subtype-42 failure branch.",
+                    PacketFieldUtilityAdminResultStringPoolText.GetSubtype42FailureText(),
+                    PacketFieldUtilityAdminResultStringPoolText.RequestFailedStringPoolId,
                     9,
                     true,
                     false,
@@ -575,11 +575,11 @@ namespace HaCreator.MapSimulator.Interaction
             return new PacketFieldUtilityAdminResult(
                 subtype,
                 "Admin",
-                "Updated the admin block state.",
-                PacketFieldUtilityAdminResultStringPoolText.GetAdminBlockText(enabled),
+                enabled ? "Warning send succeeded." : "Warning send failed.",
+                PacketFieldUtilityAdminResultStringPoolText.GetWarningText(enabled),
                 enabled
-                    ? PacketFieldUtilityAdminResultStringPoolText.AdminBlockEnabledStringPoolId
-                    : PacketFieldUtilityAdminResultStringPoolText.AdminBlockDisabledStringPoolId,
+                    ? PacketFieldUtilityAdminResultStringPoolText.WarningSentStringPoolId
+                    : PacketFieldUtilityAdminResultStringPoolText.WarningMessageNotEnteredStringPoolId,
                 9,
                 true,
                 false,
@@ -607,11 +607,13 @@ namespace HaCreator.MapSimulator.Interaction
             return new PacketFieldUtilityAdminResult(
                 subtype,
                 "Admin",
-                $"Updated admin mode subtype {subtype}.",
-                PacketFieldUtilityAdminResultStringPoolText.GetModeNotice(subtype),
+                subtype == 4 ? "Processed the block-access success branch." : "Processed the unblock-access success branch.",
                 subtype == 4
-                    ? PacketFieldUtilityAdminResultStringPoolText.Mode4StringPoolId
-                    : PacketFieldUtilityAdminResultStringPoolText.Mode5StringPoolId,
+                    ? PacketFieldUtilityAdminResultStringPoolText.GetSubtype4Notice()
+                    : PacketFieldUtilityAdminResultStringPoolText.GetSubtype5Notice(),
+                subtype == 4
+                    ? PacketFieldUtilityAdminResultStringPoolText.BlockAccessSuccessStringPoolId
+                    : PacketFieldUtilityAdminResultStringPoolText.UnblockAccessSuccessStringPoolId,
                 9,
                 true,
                 false,
@@ -620,11 +622,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static string DecodeMapleAdminNoticeMode(BinaryReader reader, out int stringPoolId)
         {
-            bool enabled = reader.ReadByte() != 0;
-            stringPoolId = enabled
-                ? PacketFieldUtilityAdminResultStringPoolText.MapleAdminNoticeEnabledStringPoolId
-                : PacketFieldUtilityAdminResultStringPoolText.MapleAdminNoticeDisabledStringPoolId;
-            return PacketFieldUtilityAdminResultStringPoolText.GetMapleAdminNoticeModeNotice(enabled);
+            bool successBranch = reader.ReadByte() != 0;
+            stringPoolId = successBranch
+                ? PacketFieldUtilityAdminResultStringPoolText.InvalidCharacterNameStringPoolId
+                : PacketFieldUtilityAdminResultStringPoolText.RemoveNameFromRanksStringPoolId;
+            return PacketFieldUtilityAdminResultStringPoolText.GetSubtype6Notice(successBranch);
         }
 
         private static bool Unsupported(PacketFieldUtilityPacketKind kind, out string message)

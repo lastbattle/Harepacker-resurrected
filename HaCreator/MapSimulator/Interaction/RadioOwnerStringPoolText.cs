@@ -9,20 +9,20 @@ namespace HaCreator.MapSimulator.Interaction
         internal const int TrackPathTemplateStringPoolId = 0x1501;
         internal const int AudioPathTemplateStringPoolId = 0x1502;
 
-        private const string StartNoticeFallback = "Radio started: {0}";
-        private const string CompleteNoticeFallback = "Radio completed: {0}";
-
         public static string FormatNotice(int stringPoolId, string trackName, bool appendFallbackSuffix = false)
         {
             string format = ResolveNoticeFormat(stringPoolId);
             bool hasResolvedText = !string.IsNullOrWhiteSpace(format);
-            string effectiveFormat = hasResolvedText ? format : ResolveFallbackNoticeFormat(stringPoolId);
-            string formatted = string.Format(
-                effectiveFormat,
-                string.IsNullOrWhiteSpace(trackName) ? "radio track" : trackName.Trim());
-            return appendFallbackSuffix && !hasResolvedText
-                ? $"{formatted} (StringPool 0x{stringPoolId:X} fallback)"
-                : formatted;
+            string displayName = string.IsNullOrWhiteSpace(trackName) ? "radio track" : trackName.Trim();
+            if (hasResolvedText)
+            {
+                return string.Format(format, displayName);
+            }
+
+            string placeholder = $"{FormatStringPoolId(stringPoolId)} {Quote(displayName)}";
+            return appendFallbackSuffix
+                ? $"{placeholder} (localized client text unresolved)"
+                : placeholder;
         }
 
         public static string FormatPathTemplateResolution(
@@ -54,16 +54,6 @@ namespace HaCreator.MapSimulator.Interaction
             // (`CRadioManager::Play` / `Stop`), but literal localized string
             // payloads are still not fully extracted.
             return null;
-        }
-
-        private static string ResolveFallbackNoticeFormat(int stringPoolId)
-        {
-            return stringPoolId switch
-            {
-                StartNoticeStringPoolId => StartNoticeFallback,
-                CompleteNoticeStringPoolId => CompleteNoticeFallback,
-                _ => "{0}",
-            };
         }
 
         private static string FormatStringPoolId(int stringPoolId)

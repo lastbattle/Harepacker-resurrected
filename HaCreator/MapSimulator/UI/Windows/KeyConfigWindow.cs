@@ -493,27 +493,61 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawPaletteGrid(SpriteBatch sprite)
         {
+            const int footerMargin = 12;
+            const int padding = 8;
+            const int infoWidth = 184;
+            const int iconColumns = 9;
+            const int iconRows = 5;
+            const int iconCell = 15;
+            const float iconScale = 0.45f;
+
+            int footerWidth = (CurrentFrame?.Width ?? 622) - (footerMargin * 2);
+            int footerHeight = Math.Max(76, (iconRows * iconCell) + (padding * 2));
+            int footerX = Position.X + footerMargin;
+            int footerY = Position.Y + (CurrentFrame?.Height ?? 374) - footerHeight - 10;
+            Rectangle footerBounds = new(footerX, footerY, footerWidth, footerHeight);
+            Rectangle infoBounds = new(footerBounds.X + padding, footerBounds.Y + padding, infoWidth, footerBounds.Height - (padding * 2));
+            Rectangle paletteBounds = new(
+                infoBounds.Right + padding,
+                footerBounds.Y + padding,
+                footerBounds.Right - infoBounds.Right - (padding * 2),
+                footerBounds.Height - (padding * 2));
+
+            sprite.Draw(_highlightTexture, footerBounds, new Color(20, 25, 37, 225));
+            sprite.Draw(_highlightTexture, infoBounds, new Color(36, 46, 62, 220));
+            sprite.Draw(_highlightTexture, paletteBounds, new Color(28, 34, 48, 210));
+
+            sprite.DrawString(_font, "Palette / Map", new Vector2(infoBounds.X + 6, infoBounds.Y + 2), new Color(220, 220, 220), 0f, Vector2.Zero, 0.5f, SpriteEffects.None, 0f);
+            string ownerText = _selectedAction.HasValue
+                ? $"{GetSelectedLabel()} owner focus"
+                : "Select a key row to inspect its staged palette state.";
+            sprite.DrawString(_font, ownerText, new Vector2(infoBounds.X + 6, infoBounds.Y + 18), new Color(255, 228, 151), 0f, Vector2.Zero, 0.42f, SpriteEffects.None, 0f);
+
+            string summaryText = _selectedAction.HasValue
+                ? (_captureArmed
+                    ? "Capture armed: press a key or pad button."
+                    : "The footer now tracks the selected action instead of an unowned icon strip.")
+                : "WZ-backed footer palette loaded from UIWindow2.img/KeyConfig/icon.";
+            sprite.DrawString(_font, summaryText, new Vector2(infoBounds.X + 6, infoBounds.Y + 33), new Color(210, 210, 210), 0f, Vector2.Zero, 0.36f, SpriteEffects.None, 0f);
+
+            if (_selectedAction.HasValue)
+            {
+                Rectangle bindingBounds = new(infoBounds.X + 6, infoBounds.Bottom - 28, infoBounds.Width - 12, 22);
+                sprite.Draw(_highlightTexture, bindingBounds, new Color(56, 68, 92, 215));
+                DrawBindingValue(sprite, bindingBounds, GetBinding(_selectedAction.Value));
+            }
+
             if (_paletteTextures.Count == 0)
             {
                 return;
             }
 
-            const float scale = 0.45f;
-            const int columns = 9;
-            const int cellSize = 15;
-            const int padding = 6;
-            int rows = (int)Math.Ceiling(_paletteTextures.Count / (float)columns);
-            int panelWidth = (columns * cellSize) + (padding * 2);
-            int panelHeight = (rows * cellSize) + (_font.LineSpacing / 2) + (padding * 2);
-            int panelX = Position.X + (CurrentFrame?.Width ?? 622) - panelWidth - 12;
-            int panelY = Position.Y + (CurrentFrame?.Height ?? 374) - panelHeight - 10;
-            Rectangle panelBounds = new(panelX, panelY, panelWidth, panelHeight);
+            sprite.DrawString(_font, "WZ icon palette", new Vector2(paletteBounds.X + 6, paletteBounds.Y + 2), new Color(220, 220, 220), 0f, Vector2.Zero, 0.5f, SpriteEffects.None, 0f);
 
-            sprite.Draw(_highlightTexture, panelBounds, new Color(28, 34, 48, 210));
-            sprite.DrawString(_font, "Palette", new Vector2(panelBounds.X + padding, panelBounds.Y + 2), new Color(220, 220, 220), 0f, Vector2.Zero, 0.5f, SpriteEffects.None, 0f);
-
-            int iconOriginY = panelBounds.Y + padding + (_font.LineSpacing / 2);
-            for (int i = 0; i < _paletteTextures.Count; i++)
+            int iconOriginY = paletteBounds.Y + 14;
+            int iconOriginX = paletteBounds.X + 8;
+            int maxIcons = Math.Min(_paletteTextures.Count, iconColumns * iconRows);
+            for (int i = 0; i < maxIcons; i++)
             {
                 Texture2D texture = _paletteTextures[i];
                 if (texture == null)
@@ -521,12 +555,18 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
-                int column = i % columns;
-                int row = i / columns;
+                int column = i % iconColumns;
+                int row = i / iconColumns;
+                Rectangle cellBounds = new(
+                    iconOriginX + (column * iconCell) - 1,
+                    iconOriginY + (row * iconCell) - 1,
+                    iconCell,
+                    iconCell);
+                sprite.Draw(_highlightTexture, cellBounds, _selectedAction.HasValue ? new Color(52, 62, 86, 180) : new Color(34, 40, 58, 160));
                 Vector2 iconPosition = new(
-                    panelBounds.X + padding + (column * cellSize),
-                    iconOriginY + (row * cellSize));
-                sprite.Draw(texture, iconPosition, null, Color.White, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
+                    iconOriginX + (column * iconCell),
+                    iconOriginY + (row * iconCell));
+                sprite.Draw(texture, iconPosition, null, Color.White, 0f, Vector2.Zero, iconScale, SpriteEffects.None, 0f);
             }
         }
 

@@ -2180,33 +2180,38 @@ namespace HaCreator.MapSimulator.Character.Skills
               }
 
               skill.SummonProjectileAnimations = LoadSummonIndexedAnimations(summonNode["ball"], "ball");
-              skill.SummonTargetHitAnimations = LoadSummonIndexedAnimations(summonNode["mob"], "mob");
+              skill.SummonTargetHitPresentations = LoadSummonImpactPresentations(summonNode["mob"], "mob");
 
               AppendSummonIndexedAnimations(
                   skill.SummonProjectileAnimations,
                   LoadSummonIndexedAnimations(attackBranch["info"]?["ball"], $"{attackBranchName}/info/ball"));
-              AppendSummonIndexedAnimations(
-                  skill.SummonTargetHitAnimations,
-                  LoadSummonIndexedAnimations(attackBranch["info"]?["mob"], $"{attackBranchName}/info/mob"));
+              AppendSummonImpactPresentations(
+                  skill.SummonTargetHitPresentations,
+                  LoadSummonImpactPresentations(attackBranch["info"]?["mob"], $"{attackBranchName}/info/mob"));
               if (removalBranch != null)
               {
                   AppendSummonIndexedAnimations(
                       skill.SummonProjectileAnimations,
                       LoadSummonIndexedAnimations(removalBranch["info"]?["ball"], $"{removalBranchName}/info/ball"));
-                  AppendSummonIndexedAnimations(
-                      skill.SummonTargetHitAnimations,
-                      LoadSummonIndexedAnimations(removalBranch["info"]?["mob"], $"{removalBranchName}/info/mob"));
+                  AppendSummonImpactPresentations(
+                      skill.SummonTargetHitPresentations,
+                      LoadSummonImpactPresentations(removalBranch["info"]?["mob"], $"{removalBranchName}/info/mob"));
               }
 
               WzImageProperty hitNode = summonNode["hit"] ?? (summonNode.Parent as WzImageProperty)?["hit"];
-              AppendSummonIndexedAnimations(
-                  skill.SummonTargetHitAnimations,
+              AppendSummonImpactPresentations(
+                  skill.SummonTargetHitPresentations,
                   LoadSummonHitTargetAnimations(hitNode, "hit"));
               SkillAnimation hitAnimation = LoadSummonHitAnimation(hitNode);
               if (hitAnimation?.Frames.Count > 0)
               {
                   skill.SummonHitAnimation = hitAnimation;
               }
+
+              skill.SummonTargetHitAnimations = skill.SummonTargetHitPresentations
+                  .Select(static presentation => presentation?.Animation)
+                  .Where(static animation => animation?.Frames.Count > 0)
+                  .ToList();
 
               LoadSupplementalSummonAnimations(skill, summonNode, branchNames);
               PopulateSummonHitTimingMetadata(skill, attackBranchName, hitNode);
@@ -2383,9 +2388,9 @@ namespace HaCreator.MapSimulator.Character.Skills
             return null;
         }
 
-        private List<SkillAnimation> LoadSummonHitTargetAnimations(WzImageProperty hitNode, string baseName)
+        private List<SummonImpactPresentation> LoadSummonHitTargetAnimations(WzImageProperty hitNode, string baseName)
         {
-            var animations = new List<SkillAnimation>();
+            var animations = new List<SummonImpactPresentation>();
             if (hitNode == null)
             {
                 return animations;
@@ -2394,7 +2399,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             if (hitNode.WzProperties.OfType<WzCanvasProperty>().Any()
                 && HasSummonHitTargetPresentationMetadata(hitNode))
             {
-                TryAddSummonIndexedAnimation(animations, hitNode, baseName);
+                TryAddSummonImpactPresentation(animations, hitNode, baseName);
                 return animations;
             }
 
@@ -2410,7 +2415,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 {
                     if (includeChild)
                     {
-                        TryAddSummonIndexedAnimation(animations, child, $"{baseName}/{child.Name}");
+                        TryAddSummonImpactPresentation(animations, child, $"{baseName}/{child.Name}");
                     }
 
                     continue;
@@ -2427,7 +2432,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
                     if (includeChild || HasSummonHitTargetPresentationMetadata(nestedChild))
                     {
-                        TryAddSummonIndexedAnimation(
+                        TryAddSummonImpactPresentation(
                             animations,
                             nestedChild,
                             $"{baseName}/{child.Name}/{nestedChild.Name}");
@@ -2445,7 +2450,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                     || node["pos"] != null);
         }
 
-        private void TryAddSummonIndexedAnimation(List<SkillAnimation> animations, WzImageProperty node, string animationName)
+        private void TryAddSummonImpactPresentation(List<SummonImpactPresentation> animations, WzImageProperty node, string animationName)
         {
             if (animations == null || node == null)
             {
@@ -2463,7 +2468,39 @@ namespace HaCreator.MapSimulator.Character.Skills
                 animation.Loop = true;
             }
 
-            animations.Add(animation);
+            animations.Add(new SummonImpactPresentation
+            {
+                Animation = animation,
+                HitAfterMs = Math.Max(0, GetInt(node, "hitAfter")),
+                PositionCode = node["pos"] != null ? (int?)GetInt(node, "pos") : null
+            });
+        }
+
+        private List<SummonImpactPresentation> LoadSummonImpactPresentations(WzImageProperty rootNode, string baseName)
+        {
+            var animations = new List<SummonImpactPresentation>();
+            if (rootNode == null)
+            {
+                return animations;
+            }
+
+            if (rootNode.WzProperties.OfType<WzCanvasProperty>().Any())
+            {
+                TryAddSummonImpactPresentation(animations, rootNode, baseName);
+                return animations;
+            }
+
+            foreach (WzImageProperty child in rootNode.WzProperties)
+            {
+                if (child == null || !int.TryParse(child.Name, out _))
+                {
+                    continue;
+                }
+
+                TryAddSummonImpactPresentation(animations, child, $"{baseName}/{child.Name}");
+            }
+
+            return animations;
         }
 
         private List<SkillAnimation> LoadSummonIndexedAnimations(WzImageProperty rootNode, string baseName)
@@ -2512,6 +2549,30 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return animations;
+        }
+
+        private static void AppendSummonImpactPresentations(List<SummonImpactPresentation> destination, IEnumerable<SummonImpactPresentation> source)
+        {
+            if (destination == null || source == null)
+            {
+                return;
+            }
+
+            foreach (SummonImpactPresentation presentation in source)
+            {
+                if (presentation?.Animation?.Frames.Count <= 0)
+                {
+                    continue;
+                }
+
+                bool alreadyLoaded = destination.Any(existing =>
+                    existing?.Animation != null
+                    && string.Equals(existing.Animation.Name, presentation.Animation.Name, StringComparison.OrdinalIgnoreCase));
+                if (!alreadyLoaded)
+                {
+                    destination.Add(presentation);
+                }
+            }
         }
 
         private static void AppendSummonIndexedAnimations(List<SkillAnimation> destination, IEnumerable<SkillAnimation> source)

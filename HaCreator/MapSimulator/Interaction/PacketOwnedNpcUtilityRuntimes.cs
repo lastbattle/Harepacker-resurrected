@@ -682,6 +682,9 @@ namespace HaCreator.MapSimulator.Interaction
             internal int Quantity { get; init; }
             internal byte SlotType { get; init; }
             internal bool HasCashSerialNumber { get; init; }
+            internal long ItemSerialNumber { get; init; }
+            internal long CashSerialNumber { get; init; }
+            internal bool IsRechargeBundle { get; init; }
         }
 
         private readonly struct StoreInventoryGroup
@@ -1048,16 +1051,11 @@ namespace HaCreator.MapSimulator.Interaction
                         continue;
                     }
 
-                    string quantitySuffix = item.Quantity > 1 ? $" x{item.Quantity.ToString(CultureInfo.InvariantCulture)}" : string.Empty;
-                    string slotSuffix = item.SlotType == 1
-                        ? " [equip]"
-                        : item.SlotType == 3
-                            ? " [pet]"
-                            : item.HasCashSerialNumber
-                                ? " [recharge]"
-                                : string.Empty;
-                    names.Add($"{item.ItemName}{quantitySuffix}{slotSuffix}");
-                    if (names.Count >= 2)
+                    string quantitySuffix = item.Quantity > 1
+                        ? $" x{item.Quantity.ToString(CultureInfo.InvariantCulture)}"
+                        : string.Empty;
+                    names.Add($"{item.ItemName}{quantitySuffix}{BuildDecodedItemMarker(item)}");
+                    if (names.Count >= 3)
                     {
                         break;
                     }
@@ -1082,6 +1080,27 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return $"Shipment prompt: context {_lastPromptContextValue.ToString(CultureInfo.InvariantCulture)}, token {_lastPromptTokenValue.ToString(CultureInfo.InvariantCulture)}, channel {_lastPromptChannelId.ToString(CultureInfo.InvariantCulture)}.";
+        }
+
+        private static string BuildDecodedItemMarker(StoreBankItemEntry item)
+        {
+            List<string> markers = new();
+            markers.Add(item.SlotType switch
+            {
+                1 => "equip",
+                2 => item.IsRechargeBundle ? "recharge" : "bundle",
+                3 => "pet",
+                _ => "item"
+            });
+
+            if (item.HasCashSerialNumber)
+            {
+                markers.Add("cash");
+            }
+
+            return markers.Count > 0
+                ? $" [{string.Join("/", markers)}]"
+                : string.Empty;
         }
 
         private string DescribePacket()
@@ -1125,6 +1144,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             int itemId = reader.ReadInt32();
             bool hasCashSerialNumber = reader.ReadByte() != 0;
+            long cashSerialNumber = 0;
             if (hasCashSerialNumber)
             {
                 if (stream.Length - stream.Position < sizeof(long))
@@ -1132,7 +1152,7 @@ namespace HaCreator.MapSimulator.Interaction
                     return false;
                 }
 
-                _ = reader.ReadInt64();
+                cashSerialNumber = reader.ReadInt64();
             }
 
             if (stream.Length - stream.Position < sizeof(long))
@@ -1140,7 +1160,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            _ = reader.ReadInt64();
+            long itemSerialNumber = reader.ReadInt64();
 
             int quantity = 1;
             string title = string.Empty;
@@ -1193,7 +1213,10 @@ namespace HaCreator.MapSimulator.Interaction
                 InventoryType = resolvedInventoryType,
                 Quantity = Math.Max(1, quantity),
                 SlotType = slotType,
-                HasCashSerialNumber = hasCashSerialNumber
+                HasCashSerialNumber = hasCashSerialNumber,
+                ItemSerialNumber = itemSerialNumber,
+                CashSerialNumber = cashSerialNumber,
+                IsRechargeBundle = slotType == 2 && itemId / 10000 is 207 or 233
             };
             return true;
         }
@@ -1356,7 +1379,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 case 420:
                     _packetCount420++;
-                    StatusMessage = "CField forwarded packet 420 into CBattleRecordMan, but the v95 client decompile shows no 420 branch inside CBattleRecordMan::OnPacket itself.";
+                    StatusMessage = "CField routed packet 420 through the battle-record owner family, but the v95 `CBattleRecordMan::OnPacket` decompile has no 420 branch, so the manager state stayed unchanged.";
                     break;
 
                 case 421:
@@ -1392,7 +1415,7 @@ namespace HaCreator.MapSimulator.Interaction
 
                 case 423:
                     _packetCount423++;
-                    StatusMessage = "CField forwarded packet 423 into CBattleRecordMan, but the v95 client decompile shows no 423 branch inside CBattleRecordMan::OnPacket itself.";
+                    StatusMessage = "CField routed packet 423 through the battle-record owner family, but the v95 `CBattleRecordMan::OnPacket` decompile has no 423 branch, so the manager state stayed unchanged.";
                     break;
 
                 default:

@@ -92,6 +92,7 @@ namespace HaCreator.MapSimulator.UI
         };
         private const int ExpandedAlphabeticGroupCount = 9;
         private const int ExpandedAlphabeticCommitKeyIndex = 9;
+        private const int SwitchingCharacterTimeoutMs = 1200;
 
         private const int KeyOriginXRow0 = 24;
         private const int KeyOriginXRow1 = 47;
@@ -148,6 +149,9 @@ namespace HaCreator.MapSimulator.UI
         private int _switchingKeyIndex = -1;
         private int _switchingCharacterOffset = -1;
         private char _switchingCharacter = '\0';
+        private SoftKeyboardTabMode _switchingTabMode = SoftKeyboardTabMode.Numeric;
+        private int _switchingTextLength = -1;
+        private int _switchingStartedTick;
         private string _statusMessage = string.Empty;
 
         public SoftKeyboardUI(
@@ -271,6 +275,32 @@ namespace HaCreator.MapSimulator.UI
             }
 
             if (_host?.SoftKeyboardTextLength <= 0 && _switchingCharacter != '\0')
+            {
+                ClearSwitchingCharacter();
+                return;
+            }
+
+            if (_switchingCharacter == '\0' || _host == null)
+            {
+                return;
+            }
+
+            if (_host.SoftKeyboardTextLength != _switchingTextLength)
+            {
+                ClearSwitchingCharacter();
+                return;
+            }
+
+            if (_isExpandedLayout
+                && _tabMode != _switchingTabMode
+                && _switchingTabMode != SoftKeyboardTabMode.Numeric)
+            {
+                ClearSwitchingCharacter();
+                return;
+            }
+
+            int elapsed = Environment.TickCount - _switchingStartedTick;
+            if (elapsed >= SwitchingCharacterTimeoutMs)
             {
                 ClearSwitchingCharacter();
             }
@@ -407,6 +437,10 @@ namespace HaCreator.MapSimulator.UI
                     _capsLockEnabled = false;
                     _shiftEnabled = false;
                     ClearSwitchingCharacter();
+                    if (_tabMode == SoftKeyboardTabMode.Numeric)
+                    {
+                        ResetDigitOrder();
+                    }
                     _statusMessage = _tabMode switch
                     {
                         SoftKeyboardTabMode.Numeric => "Numeric tab enabled with a fresh randomized keypad.",
@@ -620,6 +654,11 @@ namespace HaCreator.MapSimulator.UI
             if (_hoveredKeyIndex == keyIndex)
             {
                 return SoftKeyboardVisualState.MouseOver;
+            }
+
+            if (IsSwitchingKeyActive(keyIndex))
+            {
+                return SoftKeyboardVisualState.Pressed;
             }
 
             return SoftKeyboardVisualState.Normal;
@@ -1208,6 +1247,7 @@ namespace HaCreator.MapSimulator.UI
             if (keyIndex == ExpandedAlphabeticCommitKeyIndex)
             {
                 ClearSwitchingCharacter();
+                errorMessage = string.Empty;
                 return true;
             }
 
@@ -1231,7 +1271,7 @@ namespace HaCreator.MapSimulator.UI
                 applied = _host.TryReplaceLastSoftKeyboardCharacter(nextCharacter, out errorMessage);
                 if (applied)
                 {
-                    _switchingCharacterOffset = nextOffset;
+                    BeginSwitchingCharacter(keyIndex, nextCharacter, nextOffset);
                 }
             }
             else
@@ -1240,7 +1280,7 @@ namespace HaCreator.MapSimulator.UI
                 applied = _host.TryInsertSoftKeyboardCharacter(nextCharacter, out errorMessage);
                 if (applied)
                 {
-                    _switchingCharacterOffset = 0;
+                    BeginSwitchingCharacter(keyIndex, nextCharacter, 0);
                 }
             }
 
@@ -1250,8 +1290,6 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            _switchingKeyIndex = keyIndex;
-            _switchingCharacter = nextCharacter;
             return true;
         }
 
@@ -1291,6 +1329,28 @@ namespace HaCreator.MapSimulator.UI
             _switchingKeyIndex = -1;
             _switchingCharacterOffset = -1;
             _switchingCharacter = '\0';
+            _switchingTabMode = SoftKeyboardTabMode.Numeric;
+            _switchingTextLength = -1;
+            _switchingStartedTick = 0;
+        }
+
+        private void BeginSwitchingCharacter(int keyIndex, char character, int offset)
+        {
+            _switchingKeyIndex = keyIndex;
+            _switchingCharacter = character;
+            _switchingCharacterOffset = offset;
+            _switchingTabMode = _tabMode;
+            _switchingTextLength = _host?.SoftKeyboardTextLength ?? -1;
+            _switchingStartedTick = Environment.TickCount;
+        }
+
+        private bool IsSwitchingKeyActive(int keyIndex)
+        {
+            return _isExpandedLayout
+                && _switchingCharacter != '\0'
+                && keyIndex >= 0
+                && keyIndex == _switchingKeyIndex
+                && keyIndex < ExpandedAlphabeticGroupCount;
         }
 
         private void ResetDigitOrder()

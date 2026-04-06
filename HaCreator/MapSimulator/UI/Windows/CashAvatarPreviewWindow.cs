@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Managers;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
@@ -37,6 +38,7 @@ namespace HaCreator.MapSimulator.UI
         private SpriteFont _font;
         private Func<AdminShopAvatarPreviewSelection> _selectionProvider;
         private Func<string> _shopRequestHandler;
+        private LoginAvatarLook _initialAvatarLook;
         private CharacterBuild _initialAvatarBuild;
         private CharacterBuild _previewBuild;
         private CharacterAssembler _previewAssembler;
@@ -44,8 +46,11 @@ namespace HaCreator.MapSimulator.UI
         private Func<int, CharacterPart> _equipmentLoader;
         private string _selectionSignature = string.Empty;
         private string _statusMessage = "CCSWnd_Char preview idle.";
+        private string _previewOwnerState = "CUserPreview / physical-space seam idle.";
         private AdminShopAvatarPreviewSelection _currentSelection;
         private EquipSlot? _lastPreviewedSlot;
+        private bool _lastPreviewedWeaponSticker;
+        private int _previewPetItemId;
 
         public CashAvatarPreviewWindow(
             GraphicsDevice device,
@@ -176,8 +181,9 @@ namespace HaCreator.MapSimulator.UI
 
             sprite.DrawString(_font, "CCSWnd_Char preview", new Vector2(Position.X + 12, Position.Y + 10), Color.White);
             sprite.DrawString(_font, ResolveSelectionLabel(), new Vector2(Position.X + 12, Position.Y + 24), new Color(232, 222, 188));
+            sprite.DrawString(_font, TrimForDisplay(_previewOwnerState, 34), new Vector2(Position.X + 12, Position.Y + 38), new Color(200, 200, 200));
 
-            float lineY = Position.Y + 210;
+            float lineY = Position.Y + 196;
             foreach (string line in WrapText(_statusMessage, 222f))
             {
                 sprite.DrawString(_font, line, new Vector2(Position.X + 12, lineY), new Color(255, 225, 157));
@@ -220,8 +226,9 @@ namespace HaCreator.MapSimulator.UI
 
             ResetPreviewBuild();
             _lastPreviewedSlot = null;
+            _lastPreviewedWeaponSticker = false;
             _buyAvatarButton?.SetEnabled(true);
-            _statusMessage = "CCSWnd_Char::OnDefaultAvatar restored the initial avatar snapshot and re-armed the buy button.";
+            _statusMessage = "CCSWnd_Char::OnDefaultAvatar restored the avatar-look snapshot, pet/riding state, and preview objects.";
         }
 
         private void HandleTakeoffAvatar()
@@ -233,12 +240,24 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            CharacterPart removedPart = _previewBuild.Unequip(_lastPreviewedSlot.Value);
+            CharacterPart removedPart;
+            if (_lastPreviewedWeaponSticker)
+            {
+                removedPart = _previewBuild.WeaponSticker;
+                _previewBuild.WeaponSticker = null;
+            }
+            else
+            {
+                removedPart = _previewBuild.Unequip(_lastPreviewedSlot.Value);
+            }
+
             _previewAssembler = new CharacterAssembler(_previewBuild);
             _statusMessage = removedPart == null
                 ? "CCSWnd_Char::OnTakeoffAvatar found no previewed equip on the selected slot."
                 : $"CCSWnd_Char::OnTakeoffAvatar removed {removedPart.Name}.";
             _lastPreviewedSlot = null;
+            _lastPreviewedWeaponSticker = false;
+            _previewOwnerState = "CUserPreview kept the avatar-preview layer active after the takeoff mutation.";
         }
 
         private bool TryExecuteServiceAction(out string message)
@@ -340,12 +359,14 @@ namespace HaCreator.MapSimulator.UI
             if (_equipmentLoader == null || selection.RewardInventoryType != InventoryType.EQUIP)
             {
                 _lastPreviewedSlot = null;
+                _lastPreviewedWeaponSticker = false;
                 if (selection.Title.Contains("Pet", StringComparison.OrdinalIgnoreCase) || selection.Detail.Contains("pet", StringComparison.OrdinalIgnoreCase))
                 {
-                    _statusMessage = $"CCSWnd_Char::SetPet staged {selection.Title} without changing avatar equipment.";
+                    ApplyPetPreview(selection);
                 }
                 else
                 {
+                    _previewOwnerState = "CUserPreview stayed on the current avatar because the selected cash row is non-equip.";
                     _statusMessage = $"CCSWnd_Char kept the current avatar while highlighting {selection.Title}.";
                 }
 
@@ -356,15 +377,12 @@ namespace HaCreator.MapSimulator.UI
             if (loadedPart == null)
             {
                 _lastPreviewedSlot = null;
+                _lastPreviewedWeaponSticker = false;
                 _statusMessage = $"CCSWnd_Char could not resolve an equip preview for {selection.Title}.";
                 return;
             }
 
-            _previewBuild.PlaceEquipment(loadedPart, loadedPart.Slot);
-            _previewAssembler = new CharacterAssembler(_previewBuild);
-            _lastPreviewedSlot = loadedPart.Slot;
-            _buyAvatarButton?.SetEnabled(true);
-            _statusMessage = $"CCSWnd_Char::OnWear previewed {selection.Title} on {loadedPart.Slot}.";
+            ApplyWearPreview(selection, loadedPart);
         }
 
         private void SyncPreviewBuild(bool forceReset = false)
@@ -379,6 +397,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (forceReset || !ReferenceEquals(_previewSourceBuild, CharacterBuild) || _previewBuild == null)
             {
+                _initialAvatarLook = CharacterBuild == null ? null : LoginAvatarLookCodec.CreateLook(CharacterBuild);
                 _initialAvatarBuild = CharacterBuild?.Clone();
                 ResetPreviewBuild();
             }
@@ -389,6 +408,10 @@ namespace HaCreator.MapSimulator.UI
             _previewSourceBuild = CharacterBuild;
             _previewBuild = (_initialAvatarBuild ?? CharacterBuild)?.Clone();
             _previewAssembler = _previewBuild == null ? null : new CharacterAssembler(_previewBuild);
+            _previewPetItemId = _initialAvatarLook?.PetIds?.Count > 0 ? _initialAvatarLook.PetIds[0] : 0;
+            _previewOwnerState = _previewBuild == null
+                ? "CUserPreview / physical-space seam unavailable."
+                : "CCSWnd_Char created the CUserPreview actor over the 24,40 212x165 preview space.";
         }
 
         private Texture2D ResolveBackgroundTexture()
@@ -445,6 +468,95 @@ namespace HaCreator.MapSimulator.UI
             return _currentSelection.IsUserListing
                 ? $"User-side preview: {_currentSelection.Title}"
                 : $"NPC-side preview: {_currentSelection.Title}";
+        }
+
+        private void ApplyPetPreview(AdminShopAvatarPreviewSelection selection)
+        {
+            if (_previewBuild == null)
+            {
+                _statusMessage = "CCSWnd_Char::SetPet has no preview build to mutate.";
+                return;
+            }
+
+            _previewPetItemId = selection.RewardItemId;
+            _previewBuild.RemotePetItemIds = new[] { selection.RewardItemId, 0, 0 };
+            _previewAssembler = new CharacterAssembler(_previewBuild);
+            _previewOwnerState = $"CUserPreview::SetPet staged pet {selection.RewardItemId.ToString()} on the preview actor.";
+            _statusMessage = $"CCSWnd_Char::SetPet staged {selection.Title} on the dedicated preview actor.";
+        }
+
+        private void ApplyWearPreview(AdminShopAvatarPreviewSelection selection, CharacterPart loadedPart)
+        {
+            if (_previewBuild == null || loadedPart == null)
+            {
+                _statusMessage = $"CCSWnd_Char::OnWear could not preview {selection.Title}.";
+                return;
+            }
+
+            if (loadedPart.Slot == EquipSlot.Shield
+                && EquipSlotStateResolver.ResolveVisualState(_previewBuild, EquipSlot.Shield).Reason == EquipSlotDisableReason.TwoHandedWeapon)
+            {
+                _previewOwnerState = "CUserPreview rejected the shield preview because the base avatar still owns a two-handed weapon.";
+                _statusMessage = $"CCSWnd_Char::OnWear blocked {selection.Title} while a two-handed weapon is active.";
+                return;
+            }
+
+            if (loadedPart.Slot == EquipSlot.Weapon && loadedPart.IsCash)
+            {
+                ApplyWeaponPreview(selection, loadedPart);
+                return;
+            }
+
+            if (loadedPart.Slot == EquipSlot.Longcoat)
+            {
+                _previewBuild.Unequip(EquipSlot.Pants);
+            }
+            else if (loadedPart.Slot == EquipSlot.Pants)
+            {
+                _previewBuild.Unequip(EquipSlot.Longcoat);
+            }
+
+            _previewBuild.PlaceEquipment(loadedPart, loadedPart.Slot);
+            if (loadedPart is WeaponPart weaponPart && weaponPart.IsTwoHanded)
+            {
+                _previewBuild.Unequip(EquipSlot.Shield);
+            }
+
+            _previewAssembler = new CharacterAssembler(_previewBuild);
+            _lastPreviewedSlot = loadedPart.Slot;
+            _lastPreviewedWeaponSticker = false;
+            _buyAvatarButton?.SetEnabled(true);
+            _previewOwnerState = $"CUserPreview::SetAvatarLook refreshed body-part {(int)loadedPart.Slot} with client-style coat or shield conflict rules.";
+            _statusMessage = $"CCSWnd_Char::OnWear previewed {selection.Title} on {loadedPart.Slot}.";
+        }
+
+        private void ApplyWeaponPreview(AdminShopAvatarPreviewSelection selection, CharacterPart loadedPart)
+        {
+            _previewBuild.WeaponSticker = loadedPart;
+            CharacterPart visibleWeapon = EquipSlotStateResolver.GetEquippedPart(_previewBuild, EquipSlot.Weapon);
+            CharacterPart underlyingWeapon = EquipSlotStateResolver.ResolveUnderlyingPart(_previewBuild, EquipSlot.Weapon) ?? visibleWeapon;
+            if (underlyingWeapon is WeaponPart weaponPart && weaponPart.IsTwoHanded)
+            {
+                _previewBuild.Unequip(EquipSlot.Shield);
+            }
+
+            _previewAssembler = new CharacterAssembler(_previewBuild);
+            _lastPreviewedSlot = EquipSlot.Weapon;
+            _lastPreviewedWeaponSticker = true;
+            _buyAvatarButton?.SetEnabled(true);
+            string visibleWeaponLabel = underlyingWeapon?.Name ?? "base weapon";
+            _previewOwnerState = $"CCSWnd_Char kept {visibleWeaponLabel} as the avatar weapon and routed the cash item through nWeaponStickerID.";
+            _statusMessage = $"CCSWnd_Char::OnWear previewed weapon sticker {selection.Title}.";
+        }
+
+        private static string TrimForDisplay(string text, int maxLength)
+        {
+            if (string.IsNullOrWhiteSpace(text) || text.Length <= maxLength)
+            {
+                return text ?? string.Empty;
+            }
+
+            return text.Substring(0, Math.Max(0, maxLength - 3)) + "...";
         }
 
         private static IDXObject CreateFrame(GraphicsDevice device)

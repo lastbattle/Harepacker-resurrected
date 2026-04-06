@@ -433,7 +433,9 @@ namespace HaCreator.MapSimulator
                 return ChatCommandHandler.CommandResult.Error("Prepared-skill gauge and hold durations must be zero or greater.");
             }
 
-            if (autoEnterHold && holdDurationMs <= 0)
+            if (autoEnterHold
+                && holdDurationMs <= 0
+                && !PreparedSkillHudRules.UsesReleaseTriggeredExecution(skillId))
             {
                 return ChatCommandHandler.CommandResult.Error("Prepared-skill auto state requires hold=<ms>.");
             }
@@ -474,7 +476,9 @@ namespace HaCreator.MapSimulator
                     startHolding
                         ? $"Remote user {characterId} prepared skill {skillId} entered hold state for {activeDurationMs}ms."
                         : autoEnterHold
-                            ? $"Remote user {characterId} prepared skill {skillId} armed for {durationMs}ms then holds for {maxHoldDurationMs}ms."
+                            ? maxHoldDurationMs > 0
+                                ? $"Remote user {characterId} prepared skill {skillId} armed for {durationMs}ms then holds for {maxHoldDurationMs}ms."
+                                : $"Remote user {characterId} prepared skill {skillId} armed for {durationMs}ms then waits for release."
                             : $"Remote user {characterId} prepared skill {skillId} armed for {activeDurationMs}ms.")
                 : ChatCommandHandler.CommandResult.Error(message);
         }
@@ -979,6 +983,7 @@ namespace HaCreator.MapSimulator
 
                     PreparedSkillHudRules.PreparedSkillHudProfile hudProfile = PreparedSkillHudRules.ResolveProfile(preparePacket.SkillId);
                     PreparedSkillHudRules.ResolveRemotePreparedSkillPhases(
+                        preparePacket.SkillId,
                         preparePacket.IsKeydownSkill,
                         preparePacket.IsHolding,
                         preparePacket.DurationMs,

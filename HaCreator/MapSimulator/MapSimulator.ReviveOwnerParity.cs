@@ -54,7 +54,6 @@ namespace HaCreator.MapSimulator
 
             _reviveOwnerRuntime.Open(
                 GetCurrentMapTransferDisplayName(),
-                hasPremiumChoice,
                 normalDetail,
                 premiumDetail,
                 hasPremiumChoice ? ReviveOwnerVariant.PremiumChoice : ReviveOwnerVariant.DefaultOnly,

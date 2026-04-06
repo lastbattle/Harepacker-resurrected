@@ -95,9 +95,11 @@ namespace HaCreator.MapSimulator
 
             if (ShouldRouteFieldSpecificPairToPartyRaid(ownerHint) &&
                 _specialFieldRuntime.PartyRaid.IsActive &&
-                _specialFieldRuntime.PartyRaid.OnFieldSetVariable(key, value))
+                _specialFieldRuntime.PartyRaid.TryApplyFieldSpecificPair(key, value, ownerHint, out string partyRaidOwner))
             {
-                target = "PartyRaidField";
+                target = string.IsNullOrWhiteSpace(partyRaidOwner)
+                    ? "PartyRaidField"
+                    : $"PartyRaidField ({partyRaidOwner})";
                 return true;
             }
 
@@ -277,6 +279,7 @@ namespace HaCreator.MapSimulator
                 TargetItemName = state.TargetItemName,
                 HasDetailInset = true,
                 TimeLimitSeconds = state.TimeLimitSeconds,
+                RemainingTimeSeconds = state.RemainingTimeSeconds,
                 TimerUiKey = state.TimerUiKey,
                 DeliveryType = state.DeliveryType,
                 DeliveryActionEnabled = state.DeliveryActionEnabled,

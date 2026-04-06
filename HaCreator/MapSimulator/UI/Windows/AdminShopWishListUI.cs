@@ -640,6 +640,11 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            if (IsCategoryAddOnOpen())
+            {
+                CloseCategoryAddOn();
+            }
+
             IReadOnlyList<AdminShopDialogUI.WishlistSearchResult> results = _sourceDialog.SearchWishlistEntries(_searchQuery, _selectedCategoryKey, _selectedPriceRangeIndex, out _statusMessage);
             _searchResults = results.ToList();
             _selectedResultIndex = 0;

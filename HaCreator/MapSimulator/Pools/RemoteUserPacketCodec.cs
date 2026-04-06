@@ -48,7 +48,12 @@ namespace HaCreator.MapSimulator.Pools
         string ActionName,
         bool IsVisibleInWorld,
         int? PortableChairItemId,
-        RemoteUserTemporaryStatSnapshot TemporaryStats);
+        RemoteUserTemporaryStatSnapshot TemporaryStats,
+        int? Level = null,
+        string GuildName = null,
+        int? JobId = null,
+        int? CarryItemEffect = null,
+        int CompletedSetItemId = 0);
 
     public readonly record struct RemoteUserTemporaryStatSnapshot(
         int EncodedLength,
@@ -246,6 +251,8 @@ namespace HaCreator.MapSimulator.Pools
     public readonly record struct RemoteUserBattlefieldTeamPacket(int CharacterId, int? TeamId);
     public static class RemoteUserPacketCodec
     {
+        private const int OfficialEnterFieldSuffixLength = sizeof(int) * 6 + sizeof(short) * 2 + sizeof(byte);
+
         private enum RemoteTemporaryStatMaskBit
         {
             Speed = 0,
@@ -547,7 +554,12 @@ namespace HaCreator.MapSimulator.Pools
                     ResolveActionNameFromMoveAction(moveAction, portableChairItemId),
                     true,
                     portableChairItemId > 0 ? portableChairItemId : null,
-                    temporaryStats);
+                    temporaryStats,
+                    null,
+                    null,
+                    null,
+                    null,
+                    0);
                 return true;
             }
             catch (InvalidOperationException ex)
@@ -1278,10 +1290,11 @@ namespace HaCreator.MapSimulator.Pools
 
                 int actionSpeed = reader.ReadByte();
                 int masteryPercent = reader.ReadByte();
-                reader.ReadInt32(); // bullet item id; melee packets still carry this field
+                int bulletItemId = reader.ReadInt32();
 
-                SkipOfficialAttackInfoPayload(ref reader, skillId, hitCount, damagePerMob);
-                SkipOfficialPostAttackPayload(ref reader, skillId);
+                IReadOnlyList<RemoteUserMeleeAttackMobHit> mobHits =
+                    DecodeOfficialAttackInfoPayload(ref reader, skillId, hitCount, damagePerMob);
+                int? preparedSkillReleaseFollowUpValue = DecodeOfficialPostAttackPayload(ref reader, skillId);
 
                 string actionName = ResolveActionNameFromActionCode(actionCode);
                 packet = new RemoteUserMeleeAttackPacket(
@@ -1292,11 +1305,11 @@ namespace HaCreator.MapSimulator.Pools
                     HitCount: hitCount,
                     DamagePerMob: damagePerMob,
                     ActionSpeed: actionSpeed,
-                    BulletItemId: null,
+                    BulletItemId: bulletItemId,
                     SerialAttackFlags: serialAttackFlags,
                     IsSerialAttack: isSerialAttack,
-                    PreparedSkillReleaseFollowUpValue: null,
-                    MobHits: Array.Empty<RemoteUserMeleeAttackMobHit>(),
+                    PreparedSkillReleaseFollowUpValue: preparedSkillReleaseFollowUpValue,
+                    MobHits: mobHits,
                     FacingRight: facingRight,
                     ActionName: actionName,
                     ActionCode: actionCode);
@@ -1472,7 +1485,8 @@ namespace HaCreator.MapSimulator.Pools
             }
         }
 
-        private const int OfficialEnterFieldSuffixLength = (sizeof(int) * 6) + (sizeof(short) * 2) + sizeof(byte);
+        private const int MinimumOfficialEnterFieldPostAvatarLookLength =
+            (sizeof(int) * 6) + (sizeof(short) * 2) + sizeof(byte);
 
         internal static RemoteUserTemporaryStatSnapshot DecodeOfficialRemoteTemporaryStats(
             ReadOnlySpan<byte> payload,
@@ -1926,8 +1940,18 @@ namespace HaCreator.MapSimulator.Pools
                 : null;
         }
 
-        private static void SkipOfficialAttackInfoPayload(ref PacketReader reader, int skillId, int hitCount, int damagePerMob)
+        private static IReadOnlyList<RemoteUserMeleeAttackMobHit> DecodeOfficialAttackInfoPayload(
+            ref PacketReader reader,
+            int skillId,
+            int hitCount,
+            int damagePerMob)
         {
+            if (hitCount <= 0)
+            {
+                return Array.Empty<RemoteUserMeleeAttackMobHit>();
+            }
+
+            List<RemoteUserMeleeAttackMobHit> mobHits = new(hitCount);
             for (int i = 0; i < hitCount; i++)
             {
                 int mobId = reader.ReadInt32();
@@ -1936,32 +1960,44 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
-                reader.ReadByte(); // hit action / template index
+                byte hitAction = reader.ReadByte();
                 if (skillId == 4211006)
                 {
                     int damageEntryCount = reader.ReadByte();
+                    List<RemoteUserMeleeAttackDamageEntry> damageEntries = new(damageEntryCount);
                     for (int damageIndex = 0; damageIndex < damageEntryCount; damageIndex++)
                     {
-                        reader.ReadInt32();
+                        damageEntries.Add(new RemoteUserMeleeAttackDamageEntry(
+                            HitFlag: null,
+                            Damage: reader.ReadInt32()));
                     }
 
+                    mobHits.Add(new RemoteUserMeleeAttackMobHit(mobId, hitAction, damageEntries));
                     continue;
                 }
 
+                List<RemoteUserMeleeAttackDamageEntry> standardDamageEntries = new(Math.Max(0, damagePerMob));
                 for (int damageIndex = 0; damageIndex < damagePerMob; damageIndex++)
                 {
-                    reader.ReadByte(); // hit-flag / critical flag
-                    reader.ReadInt32();
+                    standardDamageEntries.Add(new RemoteUserMeleeAttackDamageEntry(
+                        HitFlag: reader.ReadByte(),
+                        Damage: reader.ReadInt32()));
                 }
+
+                mobHits.Add(new RemoteUserMeleeAttackMobHit(mobId, hitAction, standardDamageEntries));
             }
+
+            return mobHits;
         }
 
-        private static void SkipOfficialPostAttackPayload(ref PacketReader reader, int skillId)
+        private static int? DecodeOfficialPostAttackPayload(ref PacketReader reader, int skillId)
         {
             if (PreparedSkillHudRules.UsesRemoteReleaseFollowUpPayload(skillId))
             {
-                reader.ReadInt32();
+                return reader.ReadInt32();
             }
+
+            return null;
         }
 
         private static bool TryDecodeMoveSnapshot(ref PacketReader reader, int currentTime, out PlayerMovementSyncSnapshot snapshot, out byte moveAction)

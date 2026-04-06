@@ -445,7 +445,9 @@ namespace HaCreator.MapSimulator
 
         private static bool ApplyUnsupportedPacketOwnedQuestResult(int resultType, out string message)
         {
-            message = $"Quest-result subtype {resultType} is not modeled by the simulator yet.";
+            message = PacketQuestResultClientSemantics.IsHandledSubtype(resultType)
+                ? $"Quest-result subtype {resultType} is client-handled but not modeled by the simulator yet."
+                : $"Quest-result subtype {resultType} falls outside the client-handled OnQuestResult range ({PacketQuestResultClientSemantics.FirstHandledSubtype} through {PacketQuestResultClientSemantics.LastHandledSubtype}).";
             return false;
         }
     }

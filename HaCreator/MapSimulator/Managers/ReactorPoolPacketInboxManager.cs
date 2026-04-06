@@ -165,6 +165,31 @@ namespace HaCreator.MapSimulator.Managers
                 : $"packet {packetType}";
         }
 
+        public static bool TryDecodeOpcodeFramedPacket(byte[] rawPacket, out int packetType, out byte[] payload, out string error)
+        {
+            packetType = 0;
+            payload = Array.Empty<byte>();
+            error = null;
+
+            if (rawPacket == null || rawPacket.Length < sizeof(ushort))
+            {
+                error = "Reactor client packet must include a 2-byte opcode.";
+                return false;
+            }
+
+            packetType = BitConverter.ToUInt16(rawPacket, 0);
+            if (!Enum.IsDefined(typeof(PacketReactorPoolPacketKind), (PacketReactorPoolPacketKind)packetType))
+            {
+                error = $"Unsupported reactor client opcode {packetType}.";
+                return false;
+            }
+
+            payload = rawPacket.Length == sizeof(ushort)
+                ? Array.Empty<byte>()
+                : rawPacket[sizeof(ushort)..];
+            return true;
+        }
+
         public void Dispose()
         {
             lock (_listenerLock)

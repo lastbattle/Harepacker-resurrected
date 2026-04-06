@@ -12,7 +12,8 @@ namespace HaCreator.MapSimulator.Interaction
     {
         private const int DefaultSlotLimit = 24;
         private const int MinSlotLimit = 24;
-        private const int MaxSlotLimit = 96;
+        // Client `CCashShop::OnCashItemResIncTrunkCountDone` rejects values above 48.
+        private const int MaxSlotLimit = 48;
         private const int SlotExpansionStep = 4;
 
         private readonly Dictionary<InventoryType, List<InventorySlotData>> _storageItems = new()

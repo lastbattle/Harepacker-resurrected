@@ -99,6 +99,7 @@ namespace HaCreator.MapSimulator.UI
             Texture2D pixelTexture = new(graphicsDevice, 1, 1);
             pixelTexture.SetData(new[] { Color.White });
             _editControl = new AntiMacroEditControl(pixelTexture, _layout.InputOrigin, InputWidth, InputHeight, InputMaxLength);
+            _editControl.UseClientAntiMacroVisualStyle();
         }
 
         public override string WindowName => _windowName;
@@ -387,8 +388,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawAttemptMessage(SpriteBatch sprite, Rectangle bounds)
         {
-            int attemptNumber = Math.Clamp(_answerCount <= 0 ? 1 : _answerCount, 1, 2);
-            string attemptMessage = string.Format(_attemptMessageFormat, attemptNumber);
+            string attemptMessage = AntiMacroOwnerStringPoolText.FormatAttemptMessageFromClientCounter(_answerCount, _attemptMessageFormat);
             DrawShadowedText(
                 sprite,
                 attemptMessage,

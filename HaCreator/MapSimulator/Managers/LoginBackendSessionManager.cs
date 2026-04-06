@@ -105,6 +105,16 @@ namespace HaCreator.MapSimulator.Managers
             return true;
         }
 
+        public int NormalizePersistentBuyCharacterCount(int buyCharacterCount)
+        {
+            if (AuthenticatedAccountId.HasValue)
+            {
+                return NormalizeBuyCharacterCount(buyCharacterCount);
+            }
+
+            return Math.Max(0, buyCharacterCount);
+        }
+
         public void SetActiveWorld(int worldId)
         {
             ActiveWorldId = Math.Max(0, worldId);

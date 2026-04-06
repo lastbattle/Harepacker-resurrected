@@ -409,7 +409,7 @@ namespace HaCreator.MapSimulator.Character
 
         private AssembledFrame ResolveDynamicPortableChairFrame(AssembledFrame frame, int timeMs)
         {
-            if (frame?.Parts == null || frame.Parts.Count == 0 || _build?.ActivePortableChair?.Layers == null)
+            if (frame?.Parts == null || frame.Parts.Count == 0 || _build?.ActivePortableChair == null)
             {
                 return frame;
             }
@@ -713,14 +713,13 @@ namespace HaCreator.MapSimulator.Character
         private void AddPortableChairLayers(List<AssembledPart> parts, int frameIndex)
         {
             PortableChair chair = _build?.ActivePortableChair;
-            if (chair?.Layers == null)
+            if (chair == null)
             {
                 return;
             }
 
-            for (int i = 0; i < chair.Layers.Count; i++)
+            foreach (PortableChairLayer layer in EnumerateActivePortableChairLayers(chair))
             {
-                PortableChairLayer layer = chair.Layers[i];
                 CharacterFrame frame = GetPortableChairFrame(layer, frameIndex);
                 if (frame == null)
                 {
@@ -735,6 +734,41 @@ namespace HaCreator.MapSimulator.Character
                     sourcePart: null,
                     zOverride: GetPortableChairZIndex(layer.RelativeZ),
                     sourcePortableChairLayer: layer);
+            }
+        }
+
+        private IEnumerable<PortableChairLayer> EnumerateActivePortableChairLayers(PortableChair chair)
+        {
+            if (chair?.Layers != null)
+            {
+                for (int i = 0; i < chair.Layers.Count; i++)
+                {
+                    PortableChairLayer layer = chair.Layers[i];
+                    if (layer != null)
+                    {
+                        yield return layer;
+                    }
+                }
+            }
+
+            if (chair?.ExpressionLayers == null || chair.ExpressionLayers.Count == 0)
+            {
+                yield break;
+            }
+
+            if (!chair.ExpressionLayers.TryGetValue(_faceExpressionName, out List<PortableChairLayer> expressionLayers)
+                || expressionLayers == null)
+            {
+                yield break;
+            }
+
+            for (int i = 0; i < expressionLayers.Count; i++)
+            {
+                PortableChairLayer layer = expressionLayers[i];
+                if (layer != null)
+                {
+                    yield return layer;
+                }
             }
         }
 

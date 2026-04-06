@@ -585,10 +585,7 @@ namespace HaCreator.MapSimulator.Loaders
                 enterButton,
                 newButton,
                 deleteButton,
-                new IReadOnlyList<CharacterSelectWindow.AnimationFrame>[]
-                {
-                    LoadCharacterSelectAnimationFrames(charSelectProperty?["scroll"]?["0"] as WzSubProperty, device)
-                },
+                LoadCharacterSelectAnimationFrameSets(charSelectProperty?["scroll"] as WzSubProperty, device),
                 LoadCharacterSelectAnimationFrames(charSelectProperty?["effect"]?["0"] as WzSubProperty, device),
                 LoadCharacterSelectAnimationFrames(charSelectProperty?["effect"]?["1"] as WzSubProperty, device),
                 LoadCharacterSelectAnimationFrames(charSelectProperty?["character"]?["0"] as WzSubProperty, device),
@@ -997,6 +994,32 @@ namespace HaCreator.MapSimulator.Loaders
                 .OrderBy(child => int.Parse(child.Name, CultureInfo.InvariantCulture))
                 .LastOrDefault();
             return newestEntry?["0"] as WzCanvasProperty;
+        }
+
+        private static IReadOnlyList<IReadOnlyList<CharacterSelectWindow.AnimationFrame>> LoadCharacterSelectAnimationFrameSets(
+            WzSubProperty sourceProperty,
+            GraphicsDevice device)
+        {
+            List<IReadOnlyList<CharacterSelectWindow.AnimationFrame>> frameSets = new();
+            if (sourceProperty == null || device == null)
+            {
+                return frameSets;
+            }
+
+            foreach (WzSubProperty indexedChild in sourceProperty.WzProperties
+                         .OfType<WzSubProperty>()
+                         .Where(static child => int.TryParse(child.Name, out _))
+                         .OrderBy(child => int.Parse(child.Name, CultureInfo.InvariantCulture)))
+            {
+                frameSets.Add(LoadCharacterSelectAnimationFrames(indexedChild, device));
+            }
+
+            if (frameSets.Count == 0)
+            {
+                frameSets.Add(LoadCharacterSelectAnimationFrames(sourceProperty, device));
+            }
+
+            return frameSets;
         }
 
 

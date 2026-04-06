@@ -2227,6 +2227,7 @@ namespace HaCreator.MapSimulator.Character
                 20 when absoluteJobId == 2001 => AutoAssignClassMagician,
                 20 when absoluteJobId == 2002 => AutoAssignClassBowman,
                 20 when absoluteJobId == 2003 => AutoAssignClassThief,
+                20 when absoluteJobId == 2004 => AutoAssignClassMagician,
                 // Resistance uses a shared Citizen beginner plus the Demon beginner root.
                 30 when absoluteJobId == 3001 => AutoAssignClassWarrior,
                 // Post-Big Bang roots keep their own beginner ids before advancing into later job branches.

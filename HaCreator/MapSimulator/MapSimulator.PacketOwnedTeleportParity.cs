@@ -170,9 +170,7 @@ namespace HaCreator.MapSimulator
 
             if (TryBuildPacketOwnedTeleportPortalRequest(sourcePortal, out byte[] payload, out string summary))
             {
-                _lastPacketOwnedTeleportOutboundOpcode = PacketOwnedTeleportPortalRequestOpcode;
-                _lastPacketOwnedTeleportOutboundPayload = payload;
-                _lastPacketOwnedTeleportOutboundSummary = summary;
+                StorePacketOwnedTeleportOutboundRequest(payload, summary);
                 return;
             }
 
@@ -203,9 +201,7 @@ namespace HaCreator.MapSimulator
                 out byte[] payload,
                 out string summary))
             {
-                _lastPacketOwnedTeleportOutboundOpcode = PacketOwnedTeleportPortalRequestOpcode;
-                _lastPacketOwnedTeleportOutboundPayload = payload;
-                _lastPacketOwnedTeleportOutboundSummary = summary;
+                StorePacketOwnedTeleportOutboundRequest(payload, summary);
                 return;
             }
 
@@ -228,6 +224,55 @@ namespace HaCreator.MapSimulator
             _lastPacketOwnedTeleportOutboundOpcode = -1;
             _lastPacketOwnedTeleportOutboundPayload = Array.Empty<byte>();
             _lastPacketOwnedTeleportOutboundSummary = summary;
+        }
+
+        private void StorePacketOwnedTeleportOutboundRequest(byte[] payload, string summary)
+        {
+            _lastPacketOwnedTeleportOutboundOpcode = PacketOwnedTeleportPortalRequestOpcode;
+            _lastPacketOwnedTeleportOutboundPayload = payload ?? Array.Empty<byte>();
+            _lastPacketOwnedTeleportOutboundSummary = DispatchPacketOwnedTeleportPortalRequest(
+                _lastPacketOwnedTeleportOutboundPayload,
+                summary);
+        }
+
+        private string DispatchPacketOwnedTeleportPortalRequest(byte[] payload, string summary)
+        {
+            payload ??= Array.Empty<byte>();
+
+            if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(
+                PacketOwnedTeleportPortalRequestOpcode,
+                payload,
+                out string bridgeStatus))
+            {
+                return $"{summary} Dispatched it through the live official-session bridge. {bridgeStatus}";
+            }
+
+            if (_localUtilityPacketOutbox.TrySendOutboundPacket(
+                PacketOwnedTeleportPortalRequestOpcode,
+                payload,
+                out string outboxStatus))
+            {
+                return $"{summary} Dispatched it through the generic packet outbox after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus}";
+            }
+
+            if (_localUtilityOfficialSessionBridge.IsRunning
+                && _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(
+                    PacketOwnedTeleportPortalRequestOpcode,
+                    payload,
+                    out string queuedBridgeStatus))
+            {
+                return $"{summary} Queued it for deferred official-session injection after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred bridge: {queuedBridgeStatus}";
+            }
+
+            if (_localUtilityPacketOutbox.TryQueueOutboundPacket(
+                PacketOwnedTeleportPortalRequestOpcode,
+                payload,
+                out string queuedOutboxStatus))
+            {
+                return $"{summary} Queued it for deferred generic packet outbox delivery after the live bridge path was unavailable. Bridge: {bridgeStatus} Outbox: {outboxStatus} Deferred outbox: {queuedOutboxStatus}";
+            }
+
+            return $"{summary} The request remained simulator-owned because neither the live bridge nor the packet outbox accepted opcode {PacketOwnedTeleportPortalRequestOpcode}. Bridge: {bridgeStatus} Outbox: {outboxStatus}";
         }
 
         private bool IsPacketOwnedTeleportRegistrationCoolingDown(int currentTime)

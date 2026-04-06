@@ -1219,6 +1219,11 @@ namespace HaCreator.MapSimulator.Companions
             return animation;
         }
 
+        internal static bool ShouldHideAuxiliaryLayerForAction(string actionName)
+        {
+            return IsExplicitDragonAction(actionName);
+        }
+
         private bool ShouldShowDragonFury(PlayerCharacter owner)
         {
             if (_dragonFuryAnimation == null || _isSuppressed || _alpha <= 0.01f)
@@ -1231,7 +1236,7 @@ namespace HaCreator.MapSimulator.Companions
                 return false;
             }
 
-            return !IsExplicitDragonAction(_currentActionName);
+            return !ShouldHideAuxiliaryLayerForAction(_currentActionName);
         }
 
         private void DrawLayerAnimationSequence(
@@ -1424,6 +1429,11 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             if (HasMountedVehicle(owner))
+            {
+                return false;
+            }
+
+            if (ShouldHideAuxiliaryLayerForAction(_currentActionName))
             {
                 return false;
             }

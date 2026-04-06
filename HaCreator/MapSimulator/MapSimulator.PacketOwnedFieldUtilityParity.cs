@@ -473,10 +473,22 @@ namespace HaCreator.MapSimulator
             _packetFieldUtilityFootholdRequestSummary = snapshot.Count == 0
                 ? "Received packet-owned foothold-info request; no dynamic foothold entries were available to snapshot."
                 : $"Received packet-owned foothold-info request; prepared {snapshot.Count} dynamic foothold snapshot entr{(snapshot.Count == 1 ? "y" : "ies")} for the current runtime.";
-            _packetFieldUtilityFootholdOfficialResponseSummary = snapshot.Count == 0
+            _packetFieldUtilityFootholdOfficialResponseSummary = DescribePacketOwnedFootholdOfficialResponse(officialResponsePayload, snapshot.Count);
+            return _packetFieldUtilityFootholdRequestSummary;
+        }
+
+        private string DescribePacketOwnedFootholdOfficialResponse(byte[] officialResponsePayload, int snapshotCount)
+        {
+            string payloadSummary = snapshotCount == 0
                 ? "Prepared an empty client-shaped foothold-info response payload."
                 : $"Prepared client-shaped foothold-info response payload ({officialResponsePayload.Length} byte{(officialResponsePayload.Length == 1 ? string.Empty : "s")}, hex={Convert.ToHexString(officialResponsePayload)}).";
-            return _packetFieldUtilityFootholdRequestSummary;
+
+            if (_localUtilityOfficialSessionBridge?.TrySendOutboundPacket(270, officialResponsePayload, out string dispatchStatus) == true)
+            {
+                return $"{payloadSummary} {dispatchStatus}";
+            }
+
+            return payloadSummary;
         }
 
         private IReadOnlyList<PacketFieldUtilityFootholdEntry> BuildPacketOwnedFootholdSnapshot()

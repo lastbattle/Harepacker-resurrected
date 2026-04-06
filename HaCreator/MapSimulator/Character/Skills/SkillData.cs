@@ -329,6 +329,13 @@ namespace HaCreator.MapSimulator.Character.Skills
         }
     }
 
+    public sealed class SummonImpactPresentation
+    {
+        public SkillAnimation Animation { get; set; }
+        public int HitAfterMs { get; set; }
+        public int? PositionCode { get; set; }
+    }
+
     #endregion
 
     #region Melee Afterimage
@@ -468,6 +475,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public SkillAnimation SummonRemovalAnimation { get; set; } // Optional self-destruct / removal branch
         public List<SkillAnimation> SummonProjectileAnimations { get; set; } = new();
         public List<SkillAnimation> SummonTargetHitAnimations { get; set; } = new();
+        public List<SummonImpactPresentation> SummonTargetHitPresentations { get; set; } = new();
         public Dictionary<string, SkillAnimation> SummonNamedAnimations { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public string SummonAttackBranchName { get; set; }
         public SkillAnimation AvatarOverlayEffect { get; set; } // Avatar-bound looping overlay
@@ -980,6 +988,21 @@ namespace HaCreator.MapSimulator.Character.Skills
                     _index++;
                 }
             }
+        }
+
+        public SummonImpactPresentation GetSummonTargetHitPresentation(int targetOrder)
+        {
+            if (SummonTargetHitPresentations == null || SummonTargetHitPresentations.Count == 0)
+            {
+                return null;
+            }
+
+            return SummonTargetHitPresentations[Math.Abs(targetOrder) % SummonTargetHitPresentations.Count];
+        }
+
+        public SkillAnimation GetSummonTargetHitAnimation(int targetOrder)
+        {
+            return GetSummonTargetHitPresentation(targetOrder)?.Animation;
         }
     }
 

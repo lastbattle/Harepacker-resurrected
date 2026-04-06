@@ -37,18 +37,15 @@ namespace HaCreator.MapSimulator.Interaction
         private const string UiTopPropertyName = "t";
         private const string UiCenterPropertyName = "c";
         private const string UiBottomPropertyName = "s";
-        private const string CreateFailedFallbackText = "The client refused to create the field message-box.";
         private static readonly string[] DefaultClientVisualCandidatePaths =
         {
             ClientMessageBoxPropertyName,
-            $"{InfoPropertyName}/{ClientMessageBoxPropertyName}",
-            UiPropertyName,
-            $"{InfoPropertyName}/{UiPropertyName}"
+            $"{InfoPropertyName}/{ClientMessageBoxPropertyName}"
         };
         private static readonly string[] GenericFallbackVisualCandidatePaths =
         {
-            ChalkboardSamplePropertyName,
-            $"{InfoPropertyName}/{ChalkboardSamplePropertyName}"
+            $"{InfoPropertyName}/{ChalkboardSamplePropertyName}",
+            ChalkboardSamplePropertyName
         };
         private const int ClientLeaveStartAlpha = 255;
         private const int ClientLeaveEndAlpha = 0;
@@ -549,11 +546,21 @@ namespace HaCreator.MapSimulator.Interaction
             return GetFallbackVisualPropertyPaths(itemId);
         }
 
-        private static IReadOnlyList<string> GetFallbackVisualPropertyPaths(int itemId) => GenericFallbackVisualCandidatePaths;
+        private static IReadOnlyList<string> GetFallbackVisualPropertyPaths(int itemId)
+        {
+            return IsKnownChalkboardItem(itemId)
+                ? GenericFallbackVisualCandidatePaths
+                : Array.Empty<string>();
+        }
 
         internal static string ResolveCreateFailedNoticeText()
         {
-            return CreateFailedFallbackText;
+            return MessageBoxOwnerStringPoolText.GetCreateFailedNotice();
+        }
+
+        private static bool IsKnownChalkboardItem(int itemId)
+        {
+            return itemId / 10000 == 537;
         }
 
         private bool TryLoadItemProperty(string category, string imagePath, int itemId, out WzSubProperty itemProperty)

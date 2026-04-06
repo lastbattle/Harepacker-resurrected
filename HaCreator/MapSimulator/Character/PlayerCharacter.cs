@@ -3392,14 +3392,14 @@ namespace HaCreator.MapSimulator.Character
                     underFaceDrawn = true;
                 }
 
-                DrawMirrorImage(spriteBatch, skeletonRenderer, frame, currentFrameIndex, screenX, screenY, currentTime, overlayTargetLayer);
-                drawnMirrorLayers[layerIndex] = true;
-
                 if (overlayTargetLayer == AvatarRenderLayer.UnderFace && !shadowPartnerDrawn)
                 {
                     DrawShadowPartner(spriteBatch, skeletonRenderer, screenX, screenY, currentTime);
                     shadowPartnerDrawn = true;
                 }
+
+                DrawMirrorImage(spriteBatch, skeletonRenderer, frame, currentFrameIndex, screenX, screenY, currentTime, overlayTargetLayer);
+                drawnMirrorLayers[layerIndex] = true;
             }
         }
 

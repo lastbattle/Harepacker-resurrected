@@ -7,8 +7,12 @@ namespace HaCreator.MapSimulator.Interaction
         internal const int QuestLogRemainTimeStringPoolId = 0x1014;
         internal const int TooltipRemainTimeStringPoolId = 0x18BD;
 
-        private const string QuestLogRemainTimeFallback = "Time left: {0:00}:{1:00}:{2:00}";
-        private const string TooltipRemainTimeFallback = "{0:00}:{1:00}:{2:00}";
+        // Recovered from MapleStory.exe v95 StringPool::ms_aString with
+        // StringPool::GetString / Decode<char>:
+        // - 0x1014 seed 0x4B raw "4B 93 4D 02 F0 0C ED 79 7D CF 33 54 15 82 90 2B 93 1A 0A"
+        // - 0x18BD seed 0xF4 raw "F4 9A B8 01 BB 34 E6 0B 6E A7 16 52 46 D4 C9 06 9A 22 1B 07 91 29 95 11"
+        private const string QuestLogRemainTimeFallback = "Time Left {0}:{1}:{2}";
+        private const string TooltipRemainTimeFallback = "Time Remaining {0}:{1}:{2}";
         private const string QuestLogRemainTimeStringPoolPayload = "Time Left %d:%d:%d";
         private const string TooltipRemainTimeStringPoolPayload = "Time Remaining %d:%d:%d";
 

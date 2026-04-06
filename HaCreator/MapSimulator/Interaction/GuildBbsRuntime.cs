@@ -36,7 +36,8 @@ namespace HaCreator.MapSimulator.Interaction
         private const int VisibleCommentCount = 4;
         private const int VisibleCashEmoticonCount = 7;
         private const int DefaultBasicEmoticonCount = 3;
-        private const int DefaultCashEmoticonCount = 8;
+        private const int DefaultCashEmoticonCount = 7;
+        private const int MaxClientCashEmoticonCount = 7;
         private const int CashEmoticonItemIdStart = 5290000;
         private const int ClientCashEmoticonIdStart = 100;
         private const GuildBbsPermissionMask SupportedPermissionMask =
@@ -126,7 +127,7 @@ namespace HaCreator.MapSimulator.Interaction
         public void ConfigureEmoticonCatalog(int basicEmoticonCount, int cashEmoticonCount)
         {
             _basicEmoticonCount = Math.Max(1, basicEmoticonCount);
-            _cashEmoticonCount = Math.Max(1, cashEmoticonCount);
+            _cashEmoticonCount = Math.Max(1, Math.Min(MaxClientCashEmoticonCount, cashEmoticonCount));
             NormalizeDraftState();
         }
 
@@ -560,6 +561,39 @@ namespace HaCreator.MapSimulator.Interaction
             selectedThread.Comments.Remove(comment);
             EnsureCommentPageInRange(selectedThread.Comments.Count);
             return $"Removed the latest Guild BBS reply from thread #{selectedThread.ThreadId}.";
+        }
+
+        public string DeleteReplyAtVisibleIndex(int visibleIndex)
+        {
+            GuildBbsThreadState selectedThread = GetSelectedThread();
+            if (selectedThread == null)
+            {
+                return "Select a Guild BBS thread before removing a reply.";
+            }
+
+            if (visibleIndex < 0 || visibleIndex >= VisibleCommentCount)
+            {
+                return "That Guild BBS reply slot is outside the visible client comment range.";
+            }
+
+            IReadOnlyList<GuildBbsCommentState> orderedComments = selectedThread.Comments
+                .OrderBy(comment => comment.CreatedAt)
+                .ToArray();
+            int commentIndex = (_commentPageIndex * VisibleCommentCount) + visibleIndex;
+            if (commentIndex < 0 || commentIndex >= orderedComments.Count)
+            {
+                return "No Guild BBS reply is loaded in that visible client comment slot.";
+            }
+
+            GuildBbsCommentState comment = orderedComments[commentIndex];
+            if (!CanDeleteComment(comment))
+            {
+                return "That Guild BBS reply cannot be deleted by the current simulator authority.";
+            }
+
+            selectedThread.Comments.Remove(comment);
+            EnsureCommentPageInRange(selectedThread.Comments.Count);
+            return $"Removed Guild BBS reply #{comment.CommentId} from thread #{selectedThread.ThreadId}.";
         }
 
         public string SetComposeTitle(string title)

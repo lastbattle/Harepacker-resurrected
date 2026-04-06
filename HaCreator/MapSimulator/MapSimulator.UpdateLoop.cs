@@ -158,6 +158,7 @@ namespace HaCreator.MapSimulator
                 EnsureEngagementProposalInboxState(shouldRun: false);
                 EnsureStageTransitionPacketInboxState(shouldRun: false);
                 EnsureReactorPoolPacketInboxState(shouldRun: false);
+                EnsureReactorPoolOfficialSessionBridgeState(shouldRun: false);
                 EnsureSummonedPacketInboxState(shouldRun: false);
                 EnsureMobAttackPacketInboxState(shouldRun: false);
                 UpdateLoginRuntimeFrame(gameTime, newKeyboardState, newMouseState, isWindowActive);
@@ -235,7 +236,10 @@ namespace HaCreator.MapSimulator
             EnsureStageTransitionPacketInboxState(shouldRun: _mapBoard?.MapInfo != null);
             DrainStageTransitionPacketInbox();
             EnsureReactorPoolPacketInboxState(shouldRun: _mapBoard?.MapInfo != null);
+            EnsureReactorPoolOfficialSessionBridgeState(shouldRun: _mapBoard?.MapInfo != null);
+            RefreshReactorPoolOfficialSessionBridgeDiscovery(currTickCount);
             DrainReactorPoolPacketInbox();
+            DrainReactorPoolOfficialSessionBridge();
             EnsureComboCounterPacketInboxState(shouldRun: true);
             DrainComboCounterPacketInbox();
             UpdatePacketOwnedComboState(currTickCount);
@@ -433,8 +437,8 @@ namespace HaCreator.MapSimulator
                 }
 
 
-                // Minimap M
-                if (newKeyboardState.IsKeyDown(Keys.M))
+                // Minimap uses the current player binding instead of a hardcoded M key.
+                if (_playerManager?.Input?.IsPressed(InputAction.ToggleMinimap) == true)
                 {
                     if (miniMapUi != null)
                         miniMapUi.MinimiseOrMaximiseMinimap(currTickCount);
@@ -841,6 +845,12 @@ namespace HaCreator.MapSimulator
             {
                 _playerManager.IsPlayerControlEnabled = _gameState.IsPlayerInputEnabled;
                 _playerManager.Update(currTickCount, deltaSeconds, _chat.IsActive || uiCapturesKeyboard, isWindowActive);
+                UpdatePacketOwnedFuncKeyRuntime(
+                    currTickCount,
+                    newKeyboardState,
+                    _oldKeyboardState,
+                    isWindowActive,
+                    chatConsumedInput || _chat.IsActive || uiCapturesKeyboard);
                 UpdateReviveOwnerState(currTickCount);
                 UpdatePacketOwnedPetConsumeMpRuntime(currTickCount);
                 SyncPacketOwnedLocalFollowCharacter();

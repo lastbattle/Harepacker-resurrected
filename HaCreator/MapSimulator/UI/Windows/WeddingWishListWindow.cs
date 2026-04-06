@@ -36,6 +36,8 @@ namespace HaCreator.MapSimulator.UI
         private Func<int, string> _setTabHandler;
         private Func<WeddingWishListSelectionPane, int, string> _selectEntryHandler;
         private Func<WeddingWishListSelectionPane, int, string> _scrollPaneHandler;
+        private Func<char, string> _appendCandidateQueryHandler;
+        private Func<string> _backspaceCandidateQueryHandler;
         private Func<string> _getSelectedHandler;
         private Func<string> _putSelectedHandler;
         private Func<string> _enterSelectedHandler;
@@ -105,6 +107,8 @@ namespace HaCreator.MapSimulator.UI
             Func<int, string> setTabHandler,
             Func<WeddingWishListSelectionPane, int, string> selectEntryHandler,
             Func<WeddingWishListSelectionPane, int, string> scrollPaneHandler,
+            Func<char, string> appendCandidateQueryHandler,
+            Func<string> backspaceCandidateQueryHandler,
             Func<string> getSelectedHandler,
             Func<string> putSelectedHandler,
             Func<string> enterSelectedHandler,
@@ -117,6 +121,8 @@ namespace HaCreator.MapSimulator.UI
             _setTabHandler = setTabHandler;
             _selectEntryHandler = selectEntryHandler;
             _scrollPaneHandler = scrollPaneHandler;
+            _appendCandidateQueryHandler = appendCandidateQueryHandler;
+            _backspaceCandidateQueryHandler = backspaceCandidateQueryHandler;
             _getSelectedHandler = getSelectedHandler;
             _putSelectedHandler = putSelectedHandler;
             _enterSelectedHandler = enterSelectedHandler;
@@ -239,6 +245,19 @@ namespace HaCreator.MapSimulator.UI
             {
                 ShowFeedback(_closeHandler?.Invoke());
                 return;
+            }
+
+            if (_snapshot.Mode == WeddingWishListDialogMode.Input && _snapshot.ActivePane == WeddingWishListSelectionPane.Candidate)
+            {
+                if (Pressed(keyboardState, Keys.Back))
+                {
+                    ShowFeedback(_backspaceCandidateQueryHandler?.Invoke());
+                }
+
+                foreach (char character in EnumerateTypedCharacters(keyboardState))
+                {
+                    ShowFeedback(_appendCandidateQueryHandler?.Invoke(character));
+                }
             }
 
             if (_snapshot.Mode == WeddingWishListDialogMode.Receive || _snapshot.Mode == WeddingWishListDialogMode.Give)
@@ -497,17 +516,29 @@ namespace HaCreator.MapSimulator.UI
         {
             Rectangle fieldBounds = GetInputCandidateFieldBounds();
             InventorySlotData candidate = GetSelectedItem(WeddingWishListSelectionPane.Candidate);
+            string query = _snapshot.CandidateQuery?.Trim() ?? string.Empty;
             bool selected = _snapshot.ActivePane == WeddingWishListSelectionPane.Candidate;
             sprite.Draw(_pixel, fieldBounds, selected ? new Color(255, 247, 205) : new Color(255, 255, 255));
             sprite.Draw(_pixel, new Rectangle(fieldBounds.X, fieldBounds.Y, fieldBounds.Width, 1), new Color(91, 91, 91));
             sprite.Draw(_pixel, new Rectangle(fieldBounds.X, fieldBounds.Bottom - 1, fieldBounds.Width, 1), new Color(178, 178, 178));
 
-            if (candidate == null || _font == null)
+            if (_font == null)
             {
                 return;
             }
 
-            DrawItemLabel(sprite, candidate, new Rectangle(fieldBounds.X + 4, fieldBounds.Y + 1, fieldBounds.Width - 8, fieldBounds.Height - 2), selected);
+            Rectangle textBounds = new Rectangle(fieldBounds.X + 4, fieldBounds.Y + 1, fieldBounds.Width - 8, fieldBounds.Height - 2);
+            if (!string.IsNullOrWhiteSpace(query))
+            {
+                string visibleQuery = TrimToWidth(query, Math.Max(24f, textBounds.Width), ItemTextScale);
+                InventoryRenderUtil.DrawOutlinedText(sprite, _font, visibleQuery, new Vector2(textBounds.X, textBounds.Y), new Color(92, 56, 11), ItemTextScale);
+                return;
+            }
+
+            if (candidate != null)
+            {
+                DrawItemLabel(sprite, candidate, textBounds, selected);
+            }
         }
 
         private void DrawPane(SpriteBatch sprite, WeddingWishListSelectionPane pane, IReadOnlyList<InventorySlotData> entries, int visibleRowCount, Rectangle area)
@@ -960,6 +991,65 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return lines.ToArray();
+        }
+
+        private IEnumerable<char> EnumerateTypedCharacters(KeyboardState keyboardState)
+        {
+            bool shift = keyboardState.IsKeyDown(Keys.LeftShift) || keyboardState.IsKeyDown(Keys.RightShift);
+            foreach (Keys key in keyboardState.GetPressedKeys())
+            {
+                if (_previousKeyboardState.IsKeyDown(key))
+                {
+                    continue;
+                }
+
+                if (TryTranslateCharacter(key, shift, out char value))
+                {
+                    yield return value;
+                }
+            }
+        }
+
+        private static bool TryTranslateCharacter(Keys key, bool shift, out char value)
+        {
+            if (key >= Keys.A && key <= Keys.Z)
+            {
+                int offset = key - Keys.A;
+                value = (char)((shift ? 'A' : 'a') + offset);
+                return true;
+            }
+
+            if (key >= Keys.D0 && key <= Keys.D9)
+            {
+                string shiftedDigits = ")!@#$%^&*(";
+                int offset = key - Keys.D0;
+                value = shift ? shiftedDigits[offset] : (char)('0' + offset);
+                return true;
+            }
+
+            if (key >= Keys.NumPad0 && key <= Keys.NumPad9)
+            {
+                value = (char)('0' + (key - Keys.NumPad0));
+                return true;
+            }
+
+            value = key switch
+            {
+                Keys.Space => ' ',
+                Keys.OemMinus => shift ? '_' : '-',
+                Keys.OemPlus => shift ? '+' : '=',
+                Keys.OemComma => shift ? '<' : ',',
+                Keys.OemPeriod => shift ? '>' : '.',
+                Keys.OemQuestion => shift ? '?' : '/',
+                Keys.OemSemicolon => shift ? ':' : ';',
+                Keys.OemQuotes => shift ? '"' : '\'',
+                Keys.OemOpenBrackets => shift ? '{' : '[',
+                Keys.OemCloseBrackets => shift ? '}' : ']',
+                Keys.OemPipe => shift ? '|' : '\\',
+                _ => '\0'
+            };
+
+            return value != '\0';
         }
 
         private static string ResolveItemLabel(InventorySlotData item)

@@ -48,7 +48,9 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             if (mechanicMode.GetValueOrDefault() > 0
-                || ClientOwnedVehicleSkillClassifier.IsDistinctMechanicVehicleActionName(actionName, includeTransformStates: true))
+                || ClientOwnedVehicleSkillClassifier.IsOwnerlessMechanicVehicleInferenceActionName(
+                    actionName,
+                    includeTransformStates: true))
             {
                 return MechanicTamingMobItemId;
             }

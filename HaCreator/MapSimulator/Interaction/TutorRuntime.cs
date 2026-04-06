@@ -26,10 +26,12 @@ namespace HaCreator.MapSimulator.Interaction
         internal const int MaxTextWidth = 420;
 
         internal bool IsActive { get; private set; }
+        internal int BoundCharacterId { get; private set; }
         internal int ActiveSkillId { get; private set; }
         internal int ActiveSummonObjectId { get; private set; }
         internal int ActiveActorHeight { get; private set; }
         internal int LastHireTick { get; private set; } = int.MinValue;
+        internal int LastRegistryMutationTick { get; private set; } = int.MinValue;
         internal TutorMessageKind MessageKind { get; private set; }
         internal int LastIndexedMessage { get; private set; } = -1;
         internal string ActiveMessageText { get; private set; }
@@ -101,13 +103,46 @@ namespace HaCreator.MapSimulator.Interaction
             return skillId == CygnusTutorSkillId ? CygnusTutorObjectId : AranTutorObjectId;
         }
 
-        internal void ApplyHireRequest(int requestedSkillId, int actorHeight, int currentTick)
+        internal bool RequiresCharacterRebind(int runtimeCharacterId)
         {
+            return runtimeCharacterId > 0
+                && BoundCharacterId > 0
+                && BoundCharacterId != runtimeCharacterId;
+        }
+
+        internal void BindRuntimeCharacter(int runtimeCharacterId)
+        {
+            if (runtimeCharacterId > 0)
+            {
+                BoundCharacterId = runtimeCharacterId;
+            }
+        }
+
+        internal void ResetForRuntimeCharacter(int runtimeCharacterId, int currentTick)
+        {
+            BoundCharacterId = Math.Max(0, runtimeCharacterId);
+            _registeredTutorSkillIds.Clear();
+            LastRegistryMutationTick = currentTick;
+            IsActive = false;
+            ActiveSkillId = 0;
+            ActiveSummonObjectId = 0;
+            ActiveActorHeight = 0;
+            LastHireTick = int.MinValue;
+            ClearMessage();
+            StatusMessage = BoundCharacterId > 0
+                ? $"Tutor runtime reset for runtime character {BoundCharacterId}."
+                : "Tutor runtime reset.";
+        }
+
+        internal void ApplyHireRequest(int requestedSkillId, int actorHeight, int currentTick, int runtimeCharacterId)
+        {
+            BindRuntimeCharacter(runtimeCharacterId);
             int normalizedSkillId = NormalizeTutorSkillId(requestedSkillId);
             if (normalizedSkillId > 0)
             {
                 RemoveRegisteredTutorVariant(normalizedSkillId);
                 _registeredTutorSkillIds.Add(normalizedSkillId);
+                LastRegistryMutationTick = currentTick;
             }
 
             IsActive = true;
@@ -123,13 +158,14 @@ namespace HaCreator.MapSimulator.Interaction
             StatusMessage = $"Tutor actor active with skill {normalizedSkillId} at height {ResolveActorHeight()}.";
         }
 
-        internal void ApplyRemovalRequest(int requestedSkillId, string reason = null)
+        internal void ApplyRemovalRequest(int requestedSkillId, int currentTick, string reason = null)
         {
             int normalizedSkillId = NormalizeTutorSkillId(requestedSkillId);
             bool hadActor = IsActive;
             if (normalizedSkillId > 0)
             {
                 RemoveRegisteredTutorVariant(normalizedSkillId);
+                LastRegistryMutationTick = currentTick;
             }
 
             IsActive = false;

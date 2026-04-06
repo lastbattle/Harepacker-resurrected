@@ -387,7 +387,8 @@ namespace HaCreator.MapSimulator.Pools
                 itemProperty,
                 itemDescription,
                 LoadLinkedAreaBuffItemProperty,
-                LoadLinkedAreaBuffItemDescription);
+                LoadLinkedAreaBuffItemDescription,
+                LoadLinkedAreaBuffPathProperty);
         }
 
         private static int ResolveStartTime(int currentTime, short startDelayUnits)
@@ -556,6 +557,60 @@ namespace HaCreator.MapSimulator.Pools
             return InventoryItemMetadataResolver.TryResolveItemDescription(itemId, out string description)
                 ? description
                 : null;
+        }
+
+        private static WzImageProperty LoadLinkedAreaBuffPathProperty(string linkedPath)
+        {
+            string normalizedPath = linkedPath?.Trim().Replace('\\', '/');
+            if (string.IsNullOrWhiteSpace(normalizedPath))
+            {
+                return null;
+            }
+
+            string[] segments = normalizedPath.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length < 3)
+            {
+                return null;
+            }
+
+            string category = segments[0];
+            int imageSegmentIndex = -1;
+            for (int i = 1; i < segments.Length; i++)
+            {
+                if (segments[i].EndsWith(".img", StringComparison.OrdinalIgnoreCase))
+                {
+                    imageSegmentIndex = i;
+                    break;
+                }
+            }
+
+            if (imageSegmentIndex <= 0 || imageSegmentIndex >= segments.Length - 1)
+            {
+                return null;
+            }
+
+            string imagePath = string.Join("/", segments, 1, imageSegmentIndex);
+            WzImage image = global::HaCreator.Program.FindImage(category, imagePath);
+            if (image == null)
+            {
+                return null;
+            }
+
+            image.ParseImage();
+            string propertyPath = string.Join("/", segments, imageSegmentIndex + 1, segments.Length - imageSegmentIndex - 1);
+            if (string.IsNullOrWhiteSpace(propertyPath))
+            {
+                return null;
+            }
+
+            WzImageProperty current = image[propertyPath.Split('/')[0]];
+            string[] propertySegments = propertyPath.Split('/');
+            for (int i = 1; i < propertySegments.Length && current != null; i++)
+            {
+                current = current[propertySegments[i]];
+            }
+
+            return current;
         }
 
         private static bool TryResolveLinkedItemId(string itemInfoPath, out int itemId)

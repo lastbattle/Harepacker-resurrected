@@ -1114,6 +1114,8 @@ namespace HaCreator.MapSimulator.UI
 
             AppendSkillBookMetadataLines(metadataLines, infoProperty);
             AppendRequiredMapMetadataLines(metadataLines, infoProperty);
+            AppendCreateMetadataLines(metadataLines, infoProperty);
+            AppendReplaceMetadataLines(metadataLines, infoProperty);
         }
 
         private static void AppendSkillBookMetadataLines(List<string> metadataLines, WzSubProperty infoProperty)
@@ -1225,7 +1227,9 @@ namespace HaCreator.MapSimulator.UI
 
         private static void AppendConsumeItemMetadataLines(List<string> metadataLines, WzSubProperty infoProperty)
         {
-            if (infoProperty?["consumeitem"] is not WzSubProperty consumeItemProperty)
+            WzSubProperty consumeItemProperty = infoProperty?["consumeitem"] as WzSubProperty
+                                               ?? infoProperty?["consumeItem"] as WzSubProperty;
+            if (consumeItemProperty == null)
             {
                 return;
             }
@@ -1234,6 +1238,43 @@ namespace HaCreator.MapSimulator.UI
             for (int i = 0; i < requirementLines.Count; i++)
             {
                 metadataLines.Add(requirementLines[i]);
+            }
+        }
+
+        private static void AppendCreateMetadataLines(List<string> metadataLines, WzSubProperty infoProperty)
+        {
+            int createdItemId = GetIntOrStringValue(infoProperty?["create"]);
+            if (createdItemId <= 0)
+            {
+                return;
+            }
+
+            metadataLines.Add($"Creates: {ResolveTooltipItemLabel(createdItemId)}");
+
+            int createPeriodDays = GetIntOrStringValue(infoProperty["createPeriod"]);
+            if (createPeriodDays > 0)
+            {
+                metadataLines.Add($"Created item expires after {FormatDayCount(createPeriodDays)}");
+            }
+        }
+
+        private static void AppendReplaceMetadataLines(List<string> metadataLines, WzSubProperty infoProperty)
+        {
+            if (infoProperty?["replace"] is not WzSubProperty replaceProperty)
+            {
+                return;
+            }
+
+            int replacementItemId = GetIntOrStringValue(replaceProperty["itemid"]);
+            if (replacementItemId > 0)
+            {
+                metadataLines.Add($"Replaces with: {ResolveTooltipItemLabel(replacementItemId)}");
+            }
+
+            int replacementPeriodMinutes = GetIntOrStringValue(replaceProperty["period"]);
+            if (replacementPeriodMinutes > 0)
+            {
+                metadataLines.Add($"Replacement lasts {FormatMinuteDuration(replacementPeriodMinutes)}");
             }
         }
 
@@ -1427,7 +1468,7 @@ namespace HaCreator.MapSimulator.UI
                 return lines;
             }
 
-            List<WzSubProperty> entries = GetNumericNamedChildren(consumeItemProperty);
+            List<ConsumeItemRequirementEntry> entries = GetConsumeItemRequirementEntries(consumeItemProperty);
             if (entries.Count == 0)
             {
                 return lines;
@@ -1437,16 +1478,16 @@ namespace HaCreator.MapSimulator.UI
             int visibleCount = Math.Min(entries.Count, maxLines);
             for (int i = 0; i < visibleCount; i++)
             {
-                WzSubProperty entry = entries[i];
-                int itemId = GetIntOrStringValue(entry["itemcode"]);
+                ConsumeItemRequirementEntry entry = entries[i];
+                int itemId = entry.ItemId;
                 if (itemId <= 0)
                 {
                     continue;
                 }
 
                 string itemLabel = ResolveTooltipItemLabel(itemId);
-                int count = Math.Max(1, GetIntOrStringValue(entry["count"]));
-                int rate = GetIntOrStringValue(entry["rate"]);
+                int count = Math.Max(1, entry.Count);
+                int rate = entry.Rate;
                 string countSuffix = count > 1 ? $" x{count.ToString(CultureInfo.InvariantCulture)}" : string.Empty;
                 string rateSuffix = rate > 0 ? $" ({rate.ToString(CultureInfo.InvariantCulture)}%)" : string.Empty;
                 lines.Add($"Consumes: {itemLabel}{countSuffix}{rateSuffix}");
@@ -1459,6 +1500,67 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return lines;
+        }
+
+        private static List<ConsumeItemRequirementEntry> GetConsumeItemRequirementEntries(WzSubProperty consumeItemProperty)
+        {
+            List<(int Index, ConsumeItemRequirementEntry Entry)> indexedEntries = new();
+            if (consumeItemProperty?.WzProperties == null)
+            {
+                return new List<ConsumeItemRequirementEntry>();
+            }
+
+            foreach (WzImageProperty child in consumeItemProperty.WzProperties)
+            {
+                if (!int.TryParse(child.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int index))
+                {
+                    continue;
+                }
+
+                if (child is WzSubProperty structuredEntry)
+                {
+                    int itemId = GetIntOrStringValue(structuredEntry["itemcode"]);
+                    if (itemId <= 0)
+                    {
+                        itemId = GetIntOrStringValue(structuredEntry["item"]);
+                    }
+
+                    if (itemId <= 0)
+                    {
+                        continue;
+                    }
+
+                    indexedEntries.Add((index, new ConsumeItemRequirementEntry
+                    {
+                        ItemId = itemId,
+                        Count = Math.Max(1, GetIntOrStringValue(structuredEntry["count"])),
+                        Rate = Math.Max(0, GetIntOrStringValue(structuredEntry["rate"]))
+                    }));
+                    continue;
+                }
+
+                int simpleItemId = GetIntOrStringValue(child);
+                if (simpleItemId <= 0)
+                {
+                    continue;
+                }
+
+                indexedEntries.Add((index, new ConsumeItemRequirementEntry
+                {
+                    ItemId = simpleItemId,
+                    Count = 1,
+                    Rate = 0
+                }));
+            }
+
+            indexedEntries.Sort((left, right) => left.Index.CompareTo(right.Index));
+            List<ConsumeItemRequirementEntry> sortedEntries = new(indexedEntries.Count);
+            for (int i = 0; i < indexedEntries.Count; i++)
+            {
+                sortedEntries.Add(indexedEntries[i].Entry);
+            }
+
+            return sortedEntries;
         }
 
         public static IReadOnlyList<string> BuildRewardPreviewLinesForTests(WzSubProperty rewardProperty, int previewLineLimit = RewardPreviewLineLimit)
@@ -1475,6 +1577,13 @@ namespace HaCreator.MapSimulator.UI
         {
             List<string> lines = new();
             AppendQuestRequirementMetadataLines(lines, infoProperty);
+            return lines;
+        }
+
+        public static IReadOnlyList<string> BuildInfoMetadataLinesForTests(int itemId, WzSubProperty infoProperty)
+        {
+            List<string> lines = new();
+            AppendInfoMetadataLines(lines, itemId, infoProperty);
             return lines;
         }
 
@@ -1506,6 +1615,35 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return $"{Math.Max(1, (int)Math.Round(duration.TotalSeconds)).ToString(CultureInfo.InvariantCulture)} sec";
+        }
+
+        private static string FormatDayCount(int days)
+        {
+            return days == 1
+                ? "1 day"
+                : $"{days.ToString(CultureInfo.InvariantCulture)} days";
+        }
+
+        private static string FormatMinuteDuration(int minutes)
+        {
+            TimeSpan duration = TimeSpan.FromMinutes(minutes);
+            if (duration.TotalDays >= 1d && Math.Abs(duration.TotalDays - Math.Round(duration.TotalDays)) < 0.0001d)
+            {
+                int wholeDays = Math.Max(1, (int)Math.Round(duration.TotalDays));
+                return FormatDayCount(wholeDays);
+            }
+
+            if (duration.TotalHours >= 1d && Math.Abs(duration.TotalHours - Math.Round(duration.TotalHours)) < 0.0001d)
+            {
+                int wholeHours = Math.Max(1, (int)Math.Round(duration.TotalHours));
+                return wholeHours == 1
+                    ? "1 hour"
+                    : $"{wholeHours.ToString(CultureInfo.InvariantCulture)} hours";
+            }
+
+            return minutes == 1
+                ? "1 minute"
+                : $"{minutes.ToString(CultureInfo.InvariantCulture)} minutes";
         }
 
         private static string FormatSignedValue(int value)
@@ -1585,6 +1723,13 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return sorted;
+        }
+
+        private sealed class ConsumeItemRequirementEntry
+        {
+            public int ItemId { get; init; }
+            public int Count { get; init; } = 1;
+            public int Rate { get; init; }
         }
     }
 }

@@ -658,6 +658,7 @@ namespace HaCreator.MapSimulator.Loaders
                     chatUI.SetPointNotificationAnimations(
                         LoadPointNotificationAnimation(mainBarProperties?["ApNotify"] as WzSubProperty, device),
                         LoadPointNotificationAnimation(mainBarProperties?["SpNotify"] as WzSubProperty, device));
+                    chatUI.SetPointNotificationAnchor(mainBarFrameOrigin);
                     chatUI.BindControls(obj_Ui_chatTarget, obj_Ui_chatOpen, obj_Ui_chatClose, obj_Ui_scrollUp, obj_Ui_scrollDown, obj_Ui_BtCharacter, obj_Ui_MemoIcon);
 
                     var result = new Tuple<StatusBarUI, StatusBarChatUI>(statusBar, chatUI);

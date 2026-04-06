@@ -465,25 +465,27 @@ namespace HaCreator.MapSimulator.UI
                 return configuredFont;
             }
 
-            string selectedFamilyName = ResolveInstalledFontFamilyName(BasicBlackFontFamilyCandidates);
+            string requestedFamily = ResolveInstalledFontFamilyName(BasicBlackFontFamilyCandidates);
+            string resolvedFamily = ClientTextRasterizer.ResolvePreferredFontFamily(
+                requestedFamily,
+                BasicBlackFontPathEnvironmentVariable,
+                BasicBlackFontFaceEnvironmentVariable,
+                BasicBlackFontFamilyCandidates);
 
-            fontFamilyName = selectedFamilyName;
+            // Client inspection shows FONT_BASIC_BLACK is created through get_basic_font
+            // from the same DODOOMCHE/basic-black face family used elsewhere. Reuse the
+            // shared resolver so the detail panel can also pick up Maple private fonts
+            // and embedded client font resources before falling back to installed faces.
+            SD.Font font = ClientTextRasterizer.CreateClientFont(
+                BasicBlackFontHeight,
+                SD.FontStyle.Regular,
+                resolvedFamily,
+                BasicBlackFontPathEnvironmentVariable,
+                BasicBlackFontFaceEnvironmentVariable,
+                BasicBlackFontFamilyCandidates);
 
-            try
-            {
-                // Client inspection shows FONT_BASIC_BLACK is created from the same
-                // underlying face resource used by the DODOOMCHE/basic-black variants.
-                return new SD.Font(
-                    selectedFamilyName,
-                    BasicBlackFontHeight,
-                    SD.FontStyle.Regular,
-                    SD.GraphicsUnit.Pixel,
-                    KoreanGdiCharset);
-            }
-            catch (ArgumentException)
-            {
-                return new SD.Font(selectedFamilyName, BasicBlackFontHeight, SD.FontStyle.Regular, SD.GraphicsUnit.Pixel);
-            }
+            fontFamilyName = font.FontFamily?.Name ?? resolvedFamily;
+            return font;
         }
 
         private static bool TryCreateConfiguredBasicBlackFont(out SD.Font font, out string fontFamilyName)

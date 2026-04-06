@@ -17,13 +17,15 @@ namespace HaCreator.MapSimulator.Pools
             WzSubProperty itemProperty,
             string itemDescription = null,
             Func<string, WzSubProperty> linkedItemPropertyLoader = null,
-            Func<string, string> linkedItemDescriptionLoader = null)
+            Func<string, string> linkedItemDescriptionLoader = null,
+            Func<string, WzImageProperty> linkedPropertyLoader = null)
         {
             return ResolveDurationMsCore(
                 itemProperty,
                 itemDescription,
                 linkedItemPropertyLoader,
                 linkedItemDescriptionLoader,
+                linkedPropertyLoader,
                 new HashSet<string>(StringComparer.OrdinalIgnoreCase));
         }
 
@@ -32,6 +34,7 @@ namespace HaCreator.MapSimulator.Pools
             string itemDescription,
             Func<string, WzSubProperty> linkedItemPropertyLoader,
             Func<string, string> linkedItemDescriptionLoader,
+            Func<string, WzImageProperty> linkedPropertyLoader,
             HashSet<string> visitedLinkedPaths)
         {
             int durationSeconds = ResolveDurationSeconds(itemProperty);
@@ -50,10 +53,40 @@ namespace HaCreator.MapSimulator.Pools
                     linkedItemDescriptionLoader?.Invoke(linkedPath),
                     linkedItemPropertyLoader,
                     linkedItemDescriptionLoader,
+                    linkedPropertyLoader,
                     visitedLinkedPaths);
                 if (linkedDurationMs > 0)
                 {
                     return linkedDurationMs;
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(linkedPath)
+                && linkedPropertyLoader != null
+                && visitedLinkedPaths.Add($"{linkedPath}#property"))
+            {
+                WzImageProperty linkedProperty = linkedPropertyLoader(linkedPath);
+                if (linkedProperty is WzSubProperty linkedSubProperty)
+                {
+                    int linkedDurationMs = ResolveDurationMsCore(
+                        linkedSubProperty,
+                        linkedItemDescriptionLoader?.Invoke(linkedPath),
+                        linkedItemPropertyLoader,
+                        linkedItemDescriptionLoader,
+                        linkedPropertyLoader,
+                        visitedLinkedPaths);
+                    if (linkedDurationMs > 0)
+                    {
+                        return linkedDurationMs;
+                    }
+                }
+                else
+                {
+                    durationSeconds = ResolveDurationSeconds(linkedProperty);
+                    if (durationSeconds > 0)
+                    {
+                        return checked(durationSeconds * 1000);
+                    }
                 }
             }
 
@@ -109,7 +142,7 @@ namespace HaCreator.MapSimulator.Pools
             return totalSeconds;
         }
 
-        private static int ResolveDurationSeconds(WzSubProperty itemProperty)
+        private static int ResolveDurationSeconds(WzImageProperty itemProperty)
         {
             if (itemProperty == null)
             {

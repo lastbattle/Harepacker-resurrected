@@ -93,6 +93,8 @@ namespace HaCreator.MapSimulator.Managers
         public const int MessengerDispatchPacketType = 1017;
         public const int MarriageResultPacketType = 1018;
         public const int ItemMakerHiddenRecipeUnlockPacketType = PacketOwnedItemMakerHiddenRecipeUnlockRuntime.PacketType;
+        public const int RepeatSkillModeEndAckPacketType = PacketOwnedMechanicRepeatSkillRuntime.RepeatSkillModeEndAckPacketType;
+        public const int Sg88ManualAttackConfirmPacketType = PacketOwnedMechanicRepeatSkillRuntime.Sg88ManualAttackConfirmPacketType;
 
         private readonly ConcurrentQueue<LocalUtilityPacketInboxMessage> _pendingMessages = new();
         private readonly object _listenerLock = new();
@@ -641,6 +643,24 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
+            if (token.Equals("repeatskillmodeend", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("repeatskillmodeendack", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("tanksiegeend", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("tanksiegemodeend", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = RepeatSkillModeEndAckPacketType;
+                return true;
+            }
+
+            if (token.Equals("sg88manual", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("sg88manualattack", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("sg88manualconfirm", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("summonattackconfirm", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = Sg88ManualAttackConfirmPacketType;
+                return true;
+            }
+
             if (token.Equals("skillcooltime", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("skillcooltimeset", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("cooltime", StringComparison.OrdinalIgnoreCase))
@@ -913,6 +933,8 @@ namespace HaCreator.MapSimulator.Managers
                 MessengerDispatchPacketType => "Messenger OnPacket(1017)",
                 MarriageResultPacketType => "MarriageResult OnMarriageResult(1018)",
                 ItemMakerHiddenRecipeUnlockPacketType => "ItemMakerHiddenRecipeUnlock(1019)",
+                RepeatSkillModeEndAckPacketType => "RepeatSkillModeEndAck(1020)",
+                Sg88ManualAttackConfirmPacketType => "Sg88ManualAttackConfirm(1021)",
                 _ => $"packet {packetType}"
             };
         }

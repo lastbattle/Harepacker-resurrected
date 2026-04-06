@@ -667,6 +667,11 @@ namespace HaCreator.MapSimulator.Loaders
             return builder.ToString().Trim();
         }
 
+        internal static string BuildFallbackLevelDescriptionForTests(WzSubProperty skillEntry, int level)
+        {
+            return BuildFallbackLevelDescription(skillEntry, level);
+        }
+
         private static void AppendFallbackStatsFromNode(
             StringBuilder builder,
             WzSubProperty skillEntry,
@@ -784,6 +789,13 @@ namespace HaCreator.MapSimulator.Loaders
             {
                 int originalLength = builder.Length;
                 AppendElementAttributeStat(builder, levelNode, commonNode, infoNode);
+                return builder.Length != originalLength;
+            }
+
+            if (string.Equals(statKey, "dotType", StringComparison.OrdinalIgnoreCase))
+            {
+                int originalLength = builder.Length;
+                AppendDamageOverTimeTypeStat(builder, levelNode, commonNode, infoNode);
                 return builder.Length != originalLength;
             }
 
@@ -931,6 +943,23 @@ namespace HaCreator.MapSimulator.Loaders
             string formatted = FormatElementAttributeValue(elementAttribute);
             if (!string.IsNullOrWhiteSpace(formatted))
                 AppendStatLine(builder, "Element", formatted);
+        }
+
+        private static void AppendDamageOverTimeTypeStat(
+            StringBuilder builder,
+            WzImageProperty levelNode,
+            WzImageProperty commonNode,
+            WzImageProperty infoNode)
+        {
+            string dotType = GetStringValue(levelNode, "dotType")
+                             ?? GetStringValue(commonNode, "dotType")
+                             ?? GetStringValue(infoNode, "dotType");
+            if (string.IsNullOrWhiteSpace(dotType))
+                return;
+
+            string formatted = FormatDamageOverTimeTypeValue(dotType);
+            if (!string.IsNullOrWhiteSpace(formatted))
+                AppendStatLine(builder, "Damage Over Time Type", formatted);
         }
 
         private static bool TryGetVectorValue(
@@ -1098,6 +1127,21 @@ namespace HaCreator.MapSimulator.Loaders
                 : value.Trim();
         }
 
+        private static string FormatDamageOverTimeTypeValue(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return string.Empty;
+
+            return value.Trim().ToLowerInvariant() switch
+            {
+                "burn" => "Burn",
+                "frostbite" => "Frostbite",
+                "invenom" => "Venom",
+                "aura" => "Aura",
+                _ => CultureInfo.InvariantCulture.TextInfo.ToTitleCase(value.Trim().ToLowerInvariant())
+            };
+        }
+
         private sealed class FallbackSkillStatDefinition
         {
             public FallbackSkillStatDefinition(
@@ -1121,6 +1165,7 @@ namespace HaCreator.MapSimulator.Loaders
         private static readonly string[] FallbackSkillStatOrder =
         {
             "damage",
+            "dot",
             "attackCount",
             "mobCount",
             "mpCon",
@@ -1135,6 +1180,9 @@ namespace HaCreator.MapSimulator.Loaders
             "bulletConsume",
             "cooltime",
             "time",
+            "dotTime",
+            "dotInterval",
+            "dotType",
             "range",
             "mastery",
             "cr",
@@ -1197,6 +1245,7 @@ namespace HaCreator.MapSimulator.Loaders
             new Dictionary<string, FallbackSkillStatDefinition>(StringComparer.OrdinalIgnoreCase)
             {
                 ["damage"] = new("damage", "Damage", isPercent: true),
+                ["dot"] = new("dot", "Damage Over Time"),
                 ["attackCount"] = new("attackCount", "Attack Count"),
                 ["mobCount"] = new("mobCount", "Mob Count"),
                 ["mpCon"] = new("mpCon", "MP Cost"),
@@ -1209,6 +1258,8 @@ namespace HaCreator.MapSimulator.Loaders
                 ["bulletConsume"] = new("bulletConsume", "Ammo Cost"),
                 ["cooltime"] = new("cooltime", "Cooldown", formatter: value => $"{value} sec"),
                 ["time"] = new("time", "Duration", formatter: value => $"{value} sec"),
+                ["dotTime"] = new("dotTime", "Damage Over Time Duration", formatter: value => $"{value} sec"),
+                ["dotInterval"] = new("dotInterval", "Damage Over Time Interval", formatter: value => $"{value} sec"),
                 ["mastery"] = new("mastery", "Mastery", isPercent: true),
                 ["cr"] = new("cr", "Critical Rate", isPercent: true),
                 ["criticaldamageMin"] = new("criticaldamageMin", "Critical Damage (Min)", isPercent: true),

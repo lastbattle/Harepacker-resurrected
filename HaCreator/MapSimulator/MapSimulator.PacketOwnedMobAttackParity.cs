@@ -117,6 +117,13 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
+            if (!MobMoveAttackPacketCodec.ShouldQueueSimulatorAttackOverrides(decodedPacket))
+            {
+                _mobAttackSystem.SetNextAttackPacketOverrides(decodedPacket.MobId, decodedPacket.AttackId, currentTime);
+                message = $"Ignored packet attack overrides for mob {decodedPacket.MobId} attack{decodedPacket.AttackId} from {MobAttackPacketInboxManager.DescribePacketType(packetType)} because bNotChangeAction=1 suppressed CMob::DoAttack.";
+                return true;
+            }
+
             bool sourceFacesRight = !decodedPacket.FacingLeft;
             bool hasMultiTargetOverrides = decodedPacket.MultiTargetForBall?.Count > 0;
             bool hasAreaDelayOverrides = decodedPacket.RandTimeForAreaAttack?.Count > 0;
@@ -129,7 +136,7 @@ namespace HaCreator.MapSimulator
                     decodedPacket.AttackId,
                     currentTime,
                     sourceFacesRight: sourceFacesRight);
-                message = $"Cleared packet attack overrides for mob {decodedPacket.MobId} attack{decodedPacket.AttackId} from {MobAttackPacketInboxManager.DescribePacketType(packetType)}.";
+                message = $"Queued packet facing override for mob {decodedPacket.MobId} attack{decodedPacket.AttackId} from {MobAttackPacketInboxManager.DescribePacketType(packetType)} with no locked target, multiball lanes, or area delays.";
                 return true;
             }
 

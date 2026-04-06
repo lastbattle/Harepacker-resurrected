@@ -309,7 +309,7 @@ namespace HaCreator.MapSimulator.Effects
 
             byte rankCode = payload[0];
             int score = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(sizeof(byte), sizeof(int)));
-            ShowResultPresentation(true, currentTimeMs, score, MapClientResultRank(rankCode));
+            ShowPacketOwnedResultPresentation(currentTimeMs, score, MapClientResultRank(rankCode));
             return true;
         }
         public float GaugeProgress => Math.Clamp(_maxGauge <= 0 ? 0f : _displayGauge / _maxGauge, 0f, 1f);
@@ -989,6 +989,14 @@ namespace HaCreator.MapSimulator.Effects
             _resultRank = NormalizeRank(rankOverride ?? ComputeResultRank());
             (_resultKillRate, _resultCoolRate, _resultMissRate) = CalculateResultRates();
         }
+        public void ShowPacketOwnedResultPresentation(int currentTimeMs, int? scoreOverride = null, char? rankOverride = null)
+        {
+            _resultPresentation = MassacreResultPresentation.PacketOwned;
+            _resultPresentationStartTick = currentTimeMs;
+            _resultScore = Math.Max(0, scoreOverride ?? _killCount);
+            _resultRank = NormalizeRank(rankOverride ?? ComputeResultRank());
+            (_resultKillRate, _resultCoolRate, _resultMissRate) = CalculateResultRates();
+        }
         public void ShowBonusPresentation(int currentTimeMs)
         {
             _bonusPresentationStartTick = currentTimeMs;
@@ -1132,13 +1140,16 @@ namespace HaCreator.MapSimulator.Effects
             bool repeatResultLayer = currentTimeMs >= _resultPresentationStartTick
                 && currentTimeMs - _resultPresentationStartTick < ResultPresentationDurationMs;
             Vector2 center = new(viewport.Width / 2f, viewport.Height / 2f);
-            DrawAnimation(
-                spriteBatch,
-                _resultPresentation == MassacreResultPresentation.Clear ? _resultClearFrames : _resultFailFrames,
-                currentTimeMs,
-                _resultPresentationStartTick,
-                center,
-                repeat: false);
+            if (_resultPresentation == MassacreResultPresentation.Clear || _resultPresentation == MassacreResultPresentation.Fail)
+            {
+                DrawAnimation(
+                    spriteBatch,
+                    _resultPresentation == MassacreResultPresentation.Clear ? _resultClearFrames : _resultFailFrames,
+                    currentTimeMs,
+                    _resultPresentationStartTick,
+                    center,
+                    repeat: false);
+            }
             DrawAnimation(spriteBatch, GetResultRankEffectFrames(_resultRank), currentTimeMs, _resultPresentationStartTick, center, repeat: repeatResultLayer);
             if (_resultBoardTexture != null)
             {
@@ -1577,6 +1588,7 @@ namespace HaCreator.MapSimulator.Effects
         private enum MassacreResultPresentation
         {
             None,
+            PacketOwned,
             Clear,
             Fail
         }

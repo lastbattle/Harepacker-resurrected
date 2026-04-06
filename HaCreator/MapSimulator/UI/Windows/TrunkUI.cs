@@ -15,7 +15,7 @@ using System.Linq;
 
 namespace HaCreator.MapSimulator.UI
 {
-    public sealed partial class TrunkUI : UIWindowBase
+    public sealed partial class TrunkUI : UIWindowBase, ISoftKeyboardHost
     {
         private const int MaxVisibleRows = 6;
         private const int RowHeight = 35;
@@ -42,6 +42,7 @@ namespace HaCreator.MapSimulator.UI
         private const int StatusTextWidth = 430;
         private const int MaxMesoDigits = 10;
         private const int MaxAccountSecurityLength = 16;
+        private const int ClientPicEditMaxLength = 8;
         private const int MinSecondaryPasswordDigits = 4;
         private const int MaxSecondaryPasswordDigits = 8;
         private const int TooltipPadding = 10;
@@ -109,6 +110,9 @@ namespace HaCreator.MapSimulator.UI
         private string _mesoEntryPrompt = string.Empty;
         private bool _mesoEntryReplaceOnDigit;
         private string _secondaryPasswordConfirmationText = string.Empty;
+        private bool _softKeyboardActive;
+        private string _compositionText = string.Empty;
+        private ImeCandidateListState _candidateListState = ImeCandidateListState.Empty;
         private Point _lastMousePosition;
         private TrunkPane _hoveredPane = TrunkPane.None;
         private int _hoveredStorageIndex = -1;
@@ -220,6 +224,11 @@ namespace HaCreator.MapSimulator.UI
 
         public override string WindowName => MapSimulatorWindowNames.Trunk;
         public override bool CapturesKeyboardInput => IsVisible && _mesoEntryMode != MesoEntryMode.None;
+        bool ISoftKeyboardHost.WantsSoftKeyboard => IsVisible && _mesoEntryMode != MesoEntryMode.None && _softKeyboardActive;
+        SoftKeyboardKeyboardType ISoftKeyboardHost.SoftKeyboardKeyboardType => GetSoftKeyboardType(_mesoEntryMode);
+        int ISoftKeyboardHost.SoftKeyboardTextLength => GetEffectiveEntryValue().Length;
+        int ISoftKeyboardHost.SoftKeyboardMaxLength => GetEntryMaxLength(_mesoEntryMode);
+        bool ISoftKeyboardHost.CanSubmitSoftKeyboard => _mesoEntryMode != MesoEntryMode.None;
 
         public override void Show()
         {
@@ -304,6 +313,8 @@ namespace HaCreator.MapSimulator.UI
             UpdateAccessStatusMessage();
             UpdateButtonStates();
         }
+
+        public IStorageRuntime StorageRuntime => _storageRuntime;
 
         public void ConfigureStorageAccess(string accountLabel, string accountKey, string currentCharacterName, IEnumerable<string> sharedCharacterNames)
         {
@@ -451,6 +462,7 @@ namespace HaCreator.MapSimulator.UI
 
             DrawMoneyValues(sprite);
             DrawMesoPrompt(sprite);
+            DrawImeCandidateWindow(sprite);
             DrawStatusText(sprite);
         }
 
@@ -750,6 +762,8 @@ namespace HaCreator.MapSimulator.UI
             };
             _mesoEntryReplaceOnDigit = true;
             _secondaryPasswordConfirmationText ??= string.Empty;
+            _softKeyboardActive = true;
+            ClearCompositionText();
             UpdateButtonStates();
         }
 
@@ -957,12 +971,10 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            string amountText = IsMesoTransferMode(_mesoEntryMode)
-                ? (string.IsNullOrEmpty(_mesoEntryText) ? "0" : _mesoEntryText)
-                : _mesoEntryText ?? string.Empty;
+            string amountText = BuildVisibleEntryValue();
             string prompt = IsMesoTransferMode(_mesoEntryMode)
                 ? $"{_mesoEntryPrompt}: {amountText} / {_mesoEntryMaxValue.ToString("N0", CultureInfo.InvariantCulture)}"
-                : $"{_mesoEntryPrompt}: {new string('*', amountText.Length)}";
+                : $"{_mesoEntryPrompt}: {amountText}";
             InventoryRenderUtil.DrawOutlinedText(
                 sprite,
                 _font,
@@ -1254,54 +1266,7 @@ namespace HaCreator.MapSimulator.UI
                 {
                     _mesoEntryText = _mesoEntryReplaceOnDigit ? string.Empty : _mesoEntryText[..^1];
                     _mesoEntryReplaceOnDigit = false;
-                }
-
-                bool shift = keyboardState.IsKeyDown(Keys.LeftShift) || keyboardState.IsKeyDown(Keys.RightShift);
-                foreach (Keys key in keyboardState.GetPressedKeys())
-                {
-                    if (_previousKeyboardState.IsKeyDown(key))
-                    {
-                        continue;
-                    }
-
-                    if (KeyboardTextInputHelper.IsControlKey(key))
-                    {
-                        continue;
-                    }
-
-                    char? character = ResolveEntryCharacter(_mesoEntryMode, key, shift);
-                    if (!character.HasValue)
-                    {
-                        continue;
-                    }
-
-                    string source = _mesoEntryReplaceOnDigit ? character.Value.ToString() : _mesoEntryText + character.Value;
-                    if (IsNumericEntryMode(_mesoEntryMode))
-                    {
-                        string rawValue = source.TrimStart('0');
-                        string candidate = string.IsNullOrEmpty(rawValue) ? "0" : rawValue;
-                        if (candidate.Length > GetEntryMaxLength(_mesoEntryMode))
-                        {
-                            continue;
-                        }
-
-                        if (long.TryParse(candidate, NumberStyles.None, CultureInfo.InvariantCulture, out long parsed) &&
-                            parsed <= int.MaxValue)
-                        {
-                            _mesoEntryText = candidate;
-                            _mesoEntryReplaceOnDigit = false;
-                        }
-
-                        continue;
-                    }
-
-                    if (source.Length > GetEntryMaxLength(_mesoEntryMode))
-                    {
-                        continue;
-                    }
-
-                    _mesoEntryText = source;
-                    _mesoEntryReplaceOnDigit = false;
+                    ClearCompositionText();
                 }
             }
             finally
@@ -1318,6 +1283,8 @@ namespace HaCreator.MapSimulator.UI
             _mesoEntryPrompt = string.Empty;
             _mesoEntryReplaceOnDigit = false;
             _secondaryPasswordConfirmationText = string.Empty;
+            _softKeyboardActive = false;
+            ClearCompositionText();
         }
 
         private bool TryParseMesoEntry(out long amount)
@@ -1657,6 +1624,7 @@ namespace HaCreator.MapSimulator.UI
         {
             return mode is MesoEntryMode.Withdraw
                 or MesoEntryMode.Deposit
+                or MesoEntryMode.VerifyAccountPic
                 or MesoEntryMode.SetupSecondaryPassword
                 or MesoEntryMode.ConfirmSecondaryPassword
                 or MesoEntryMode.VerifySecondaryPassword;
@@ -1667,20 +1635,11 @@ namespace HaCreator.MapSimulator.UI
             return mode switch
             {
                 MesoEntryMode.Withdraw or MesoEntryMode.Deposit => MaxMesoDigits,
+                MesoEntryMode.VerifyAccountPic => ClientPicEditMaxLength,
                 MesoEntryMode.SetupSecondaryPassword or MesoEntryMode.ConfirmSecondaryPassword or MesoEntryMode.VerifySecondaryPassword => MaxSecondaryPasswordDigits,
-                MesoEntryMode.VerifyAccountPic or MesoEntryMode.VerifyAccountSecondaryPassword => MaxAccountSecurityLength,
+                MesoEntryMode.VerifyAccountSecondaryPassword => MaxAccountSecurityLength,
                 _ => MaxMesoDigits
             };
-        }
-
-        private static char? ResolveEntryCharacter(MesoEntryMode mode, Keys key, bool shift)
-        {
-            if (IsNumericEntryMode(mode))
-            {
-                return KeyToDigit(key);
-            }
-
-            return KeyboardTextInputHelper.KeyToChar(key, shift);
         }
 
         private static char? KeyToDigit(Keys key)
@@ -1696,6 +1655,368 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return null;
+        }
+
+        public override void HandleCommittedText(string text)
+        {
+            if (!CapturesKeyboardInput || string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            ClearCompositionText();
+            foreach (char character in text)
+            {
+                TryAcceptEntryCharacter(character, out _);
+            }
+        }
+
+        public override void HandleCompositionText(string text)
+        {
+            HandleCompositionState(new ImeCompositionState(text ?? string.Empty, Array.Empty<int>(), -1));
+        }
+
+        public override void HandleCompositionState(ImeCompositionState state)
+        {
+            if (!CapturesKeyboardInput)
+            {
+                ClearCompositionText();
+                return;
+            }
+
+            string sanitized = SanitizeCompositionText(state?.Text);
+            _compositionText = sanitized;
+            if (sanitized.Length == 0)
+            {
+                ClearImeCandidateList();
+            }
+        }
+
+        public override void ClearCompositionText()
+        {
+            _compositionText = string.Empty;
+            ClearImeCandidateList();
+        }
+
+        public override void HandleImeCandidateList(ImeCandidateListState state)
+        {
+            _candidateListState = CapturesKeyboardInput && state != null && state.HasCandidates
+                ? state
+                : ImeCandidateListState.Empty;
+        }
+
+        public override void ClearImeCandidateList()
+        {
+            _candidateListState = ImeCandidateListState.Empty;
+        }
+
+        Rectangle ISoftKeyboardHost.GetSoftKeyboardAnchorBounds() => GetEntryBounds();
+
+        bool ISoftKeyboardHost.TryInsertSoftKeyboardCharacter(char character, out string errorMessage)
+        {
+            if (TryAcceptEntryCharacter(character, out errorMessage))
+            {
+                ClearCompositionText();
+                return true;
+            }
+
+            return false;
+        }
+
+        bool ISoftKeyboardHost.TryReplaceLastSoftKeyboardCharacter(char character, out string errorMessage)
+        {
+            errorMessage = string.Empty;
+            string currentValue = GetEffectiveEntryValue();
+            if (!SoftKeyboardUI.CanBackspace(currentValue.Length))
+            {
+                errorMessage = "Nothing to replace.";
+                return false;
+            }
+
+            string previousValue = _mesoEntryText;
+            bool previousReplaceOnDigit = _mesoEntryReplaceOnDigit;
+            _mesoEntryText = previousReplaceOnDigit && previousValue == "0"
+                ? string.Empty
+                : previousValue[..^1];
+            _mesoEntryReplaceOnDigit = false;
+            if (TryAcceptEntryCharacter(character, out errorMessage))
+            {
+                ClearCompositionText();
+                return true;
+            }
+
+            _mesoEntryText = previousValue;
+            _mesoEntryReplaceOnDigit = previousReplaceOnDigit;
+            return false;
+        }
+
+        bool ISoftKeyboardHost.TryBackspaceSoftKeyboard(out string errorMessage)
+        {
+            errorMessage = string.Empty;
+            if (!SoftKeyboardUI.CanBackspace(GetEffectiveEntryValue().Length))
+            {
+                errorMessage = "Nothing to remove.";
+                return false;
+            }
+
+            _mesoEntryText = _mesoEntryReplaceOnDigit ? string.Empty : _mesoEntryText[..^1];
+            _mesoEntryReplaceOnDigit = false;
+            ClearCompositionText();
+            return true;
+        }
+
+        bool ISoftKeyboardHost.TrySubmitSoftKeyboard(out string errorMessage)
+        {
+            errorMessage = string.Empty;
+            if (_mesoEntryMode == MesoEntryMode.None)
+            {
+                errorMessage = "This trunk prompt is not active.";
+                return false;
+            }
+
+            ConfirmMesoEntry();
+            return true;
+        }
+
+        void ISoftKeyboardHost.OnSoftKeyboardClosed()
+        {
+            _softKeyboardActive = false;
+        }
+
+        private static SoftKeyboardKeyboardType GetSoftKeyboardType(MesoEntryMode mode)
+        {
+            return mode switch
+            {
+                MesoEntryMode.VerifyAccountPic => SoftKeyboardKeyboardType.NumericOnlyAlt,
+                MesoEntryMode.VerifyAccountSecondaryPassword => SoftKeyboardKeyboardType.AlphaNumeric,
+                MesoEntryMode.Withdraw or
+                MesoEntryMode.Deposit or
+                MesoEntryMode.SetupSecondaryPassword or
+                MesoEntryMode.ConfirmSecondaryPassword or
+                MesoEntryMode.VerifySecondaryPassword => SoftKeyboardKeyboardType.NumericOnly,
+                _ => SoftKeyboardKeyboardType.AlphaNumeric
+            };
+        }
+
+        private bool TryAcceptEntryCharacter(char character, out string errorMessage)
+        {
+            errorMessage = string.Empty;
+            if (_mesoEntryMode == MesoEntryMode.None)
+            {
+                errorMessage = "This trunk prompt is not active.";
+                return false;
+            }
+
+            if (!CanAcceptEntryCharacter(character))
+            {
+                errorMessage = "That key is disabled for this trunk prompt.";
+                return false;
+            }
+
+            string source = _mesoEntryReplaceOnDigit ? character.ToString() : _mesoEntryText + character;
+            if (IsNumericEntryMode(_mesoEntryMode))
+            {
+                string rawValue = source.TrimStart('0');
+                string candidate = string.IsNullOrEmpty(rawValue) ? "0" : rawValue;
+                if (candidate.Length > GetEntryMaxLength(_mesoEntryMode))
+                {
+                    errorMessage = "The input field is full.";
+                    return false;
+                }
+
+                if (!long.TryParse(candidate, NumberStyles.None, CultureInfo.InvariantCulture, out long parsed) ||
+                    parsed > int.MaxValue)
+                {
+                    errorMessage = "That value is out of range.";
+                    return false;
+                }
+
+                _mesoEntryText = candidate;
+                _mesoEntryReplaceOnDigit = false;
+                return true;
+            }
+
+            if (source.Length > GetEntryMaxLength(_mesoEntryMode))
+            {
+                errorMessage = "The input field is full.";
+                return false;
+            }
+
+            _mesoEntryText = source;
+            _mesoEntryReplaceOnDigit = false;
+            return true;
+        }
+
+        private bool CanAcceptEntryCharacter(char character)
+        {
+            if (_mesoEntryMode == MesoEntryMode.None)
+            {
+                return false;
+            }
+
+            return SoftKeyboardUI.CanAcceptCharacter(
+                GetSoftKeyboardType(_mesoEntryMode),
+                GetEffectiveEntryValue().Length,
+                GetEntryMaxLength(_mesoEntryMode),
+                character);
+        }
+
+        private string GetEffectiveEntryValue()
+        {
+            if (_mesoEntryMode == MesoEntryMode.None)
+            {
+                return string.Empty;
+            }
+
+            return _mesoEntryReplaceOnDigit && _mesoEntryText == "0"
+                ? string.Empty
+                : _mesoEntryText ?? string.Empty;
+        }
+
+        private string BuildVisibleEntryValue()
+        {
+            string value = GetEffectiveEntryValue();
+            if (_mesoEntryMode == MesoEntryMode.None)
+            {
+                return string.Empty;
+            }
+
+            if (IsMesoTransferMode(_mesoEntryMode))
+            {
+                string visible = string.IsNullOrEmpty(value) ? "0" : value;
+                return string.IsNullOrEmpty(_compositionText) ? visible : visible + _compositionText;
+            }
+
+            return new string('*', value.Length + _compositionText.Length);
+        }
+
+        private string SanitizeCompositionText(string text)
+        {
+            if (string.IsNullOrEmpty(text) || _mesoEntryMode == MesoEntryMode.None)
+            {
+                return string.Empty;
+            }
+
+            List<char> accepted = new(text.Length);
+            int textLength = GetEffectiveEntryValue().Length;
+            foreach (char character in text)
+            {
+                if (!SoftKeyboardUI.CanAcceptCharacter(
+                        GetSoftKeyboardType(_mesoEntryMode),
+                        textLength + accepted.Count,
+                        GetEntryMaxLength(_mesoEntryMode),
+                        character))
+                {
+                    continue;
+                }
+
+                if (IsNumericEntryMode(_mesoEntryMode) && !char.IsDigit(character))
+                {
+                    continue;
+                }
+
+                accepted.Add(character);
+            }
+
+            return new string(accepted.ToArray());
+        }
+
+        private Rectangle GetEntryBounds()
+        {
+            int lineHeight = Math.Max(_font?.LineSpacing ?? 16, 16);
+            return new Rectangle(
+                Position.X + StatusTextX,
+                Position.Y + MesoPromptTextY - 1,
+                StatusTextWidth,
+                lineHeight + 4);
+        }
+
+        private void DrawImeCandidateWindow(SpriteBatch sprite)
+        {
+            if (_font == null || !_candidateListState.HasCandidates || _debugTooltipTexture == null)
+            {
+                return;
+            }
+
+            Rectangle bounds = GetImeCandidateWindowBounds(sprite.GraphicsDevice.Viewport);
+            if (bounds.Width <= 0 || bounds.Height <= 0)
+            {
+                return;
+            }
+
+            sprite.Draw(_debugTooltipTexture, bounds, new Color(33, 33, 41, 235));
+            sprite.Draw(_debugTooltipTexture, new Rectangle(bounds.X, bounds.Y, bounds.Width, 1), new Color(214, 214, 214, 220));
+            sprite.Draw(_debugTooltipTexture, new Rectangle(bounds.X, bounds.Bottom - 1, bounds.Width, 1), new Color(214, 214, 214, 220));
+            sprite.Draw(_debugTooltipTexture, new Rectangle(bounds.X, bounds.Y, 1, bounds.Height), new Color(214, 214, 214, 220));
+            sprite.Draw(_debugTooltipTexture, new Rectangle(bounds.Right - 1, bounds.Y, 1, bounds.Height), new Color(214, 214, 214, 220));
+
+            int start = Math.Clamp(_candidateListState.PageStart, 0, _candidateListState.Candidates.Count);
+            int count = Math.Min(GetVisibleCandidateCount(), _candidateListState.Candidates.Count - start);
+            int rowHeight = Math.Max(_font.LineSpacing + 1, 16);
+            for (int i = 0; i < count; i++)
+            {
+                int candidateIndex = start + i;
+                string numberText = $"{i + 1}.";
+                Rectangle rowBounds = new(bounds.X + 2, bounds.Y + 2 + (i * rowHeight), bounds.Width - 4, rowHeight);
+                bool selected = candidateIndex == _candidateListState.Selection;
+                if (selected)
+                {
+                    sprite.Draw(_debugTooltipTexture, rowBounds, new Color(89, 108, 147, 220));
+                }
+
+                ClientTextDrawing.Draw(sprite, numberText, new Vector2(rowBounds.X + 4, rowBounds.Y), selected ? Color.White : new Color(222, 222, 222), 1.0f, _font);
+                ClientTextDrawing.Draw(
+                    sprite,
+                    _candidateListState.Candidates[candidateIndex] ?? string.Empty,
+                    new Vector2(rowBounds.X + 8 + (int)Math.Ceiling(ClientTextDrawing.Measure((GraphicsDevice)null, $"{count}.", 1.0f, _font).X), rowBounds.Y),
+                    selected ? Color.White : new Color(240, 235, 200),
+                    1.0f,
+                    _font);
+            }
+        }
+
+        private Rectangle GetImeCandidateWindowBounds(Viewport viewport)
+        {
+            int visibleCount = GetVisibleCandidateCount();
+            if (visibleCount <= 0 || _font == null)
+            {
+                return Rectangle.Empty;
+            }
+
+            Rectangle entryBounds = GetEntryBounds();
+            int widestEntryWidth = 0;
+            for (int i = 0; i < visibleCount; i++)
+            {
+                int candidateIndex = Math.Clamp(_candidateListState.PageStart + i, 0, _candidateListState.Candidates.Count - 1);
+                string candidateText = _candidateListState.Candidates[candidateIndex] ?? string.Empty;
+                int entryWidth = (int)Math.Ceiling(
+                    ClientTextDrawing.Measure((GraphicsDevice)null, $"{i + 1}.", 1.0f, _font).X +
+                    ClientTextDrawing.Measure((GraphicsDevice)null, candidateText, 1.0f, _font).X) + 16;
+                widestEntryWidth = Math.Max(widestEntryWidth, entryWidth);
+            }
+
+            int width = Math.Max(96, widestEntryWidth + 14);
+            int height = (visibleCount * Math.Max(_font.LineSpacing + 1, 16)) + 4;
+            int x = Math.Clamp(entryBounds.X, 0, Math.Max(0, viewport.Width - width));
+            int y = entryBounds.Bottom + 2;
+            if (y + height > viewport.Height)
+            {
+                y = Math.Max(0, entryBounds.Y - height - 2);
+            }
+
+            return new Rectangle(x, y, width, height);
+        }
+
+        private int GetVisibleCandidateCount()
+        {
+            if (!_candidateListState.HasCandidates)
+            {
+                return 0;
+            }
+
+            int start = Math.Clamp(_candidateListState.PageStart, 0, _candidateListState.Candidates.Count);
+            int pageSize = _candidateListState.PageSize > 0 ? _candidateListState.PageSize : _candidateListState.Candidates.Count;
+            return Math.Max(0, Math.Min(pageSize, _candidateListState.Candidates.Count - start));
         }
     }
 }

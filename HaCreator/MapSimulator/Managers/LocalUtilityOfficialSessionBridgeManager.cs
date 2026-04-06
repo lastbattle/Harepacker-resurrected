@@ -19,8 +19,10 @@ namespace HaCreator.MapSimulator.Managers
     {
         public const int DefaultListenPort = 18496;
         private const string DefaultProcessName = "MapleStory";
+        private sealed record PendingOutboundPacket(int Opcode, byte[] RawPacket);
 
         private readonly ConcurrentQueue<LocalUtilityPacketInboxMessage> _pendingMessages = new();
+        private readonly ConcurrentQueue<PendingOutboundPacket> _pendingOutboundPackets = new();
         private readonly object _sync = new();
 
         private TcpListener _listener;
@@ -79,6 +81,10 @@ namespace HaCreator.MapSimulator.Managers
         public int SentCount { get; private set; }
         public int LastSentOpcode { get; private set; } = -1;
         public byte[] LastSentRawPacket { get; private set; } = Array.Empty<byte>();
+        public int QueuedCount { get; private set; }
+        public int LastQueuedOpcode { get; private set; } = -1;
+        public byte[] LastQueuedRawPacket { get; private set; } = Array.Empty<byte>();
+        public int PendingPacketCount => _pendingOutboundPackets.Count;
         public string LastStatus { get; private set; } = "Local utility official-session bridge inactive.";
 
         public string DescribeStatus()
@@ -92,14 +98,18 @@ namespace HaCreator.MapSimulator.Managers
             string lastOutbound = LastSentOpcode >= 0
                 ? $" lastOut={LastSentOpcode}[{Convert.ToHexString(LastSentRawPacket)}]."
                 : string.Empty;
-            return $"Local utility official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; inbound opcodes=193,253,254,270; outbound opcodes=45,134,135.{lastOutbound} {LastStatus}";
+            string lastQueued = LastQueuedOpcode >= 0
+                ? $" lastQueued={LastQueuedOpcode}[{Convert.ToHexString(LastQueuedRawPacket)}]."
+                : string.Empty;
+            return $"Local utility official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; pending={PendingPacketCount}; queued={QueuedCount}; inbound opcodes=193,253,254,270; outbound opcodes=45,113,134,135.{lastOutbound}{lastQueued} {LastStatus}";
         }
 
         public void Start(int listenPort, string remoteHost, int remotePort)
         {
             lock (_sync)
             {
-                StopInternal(clearPending: true);
+                StopInternal(clearPending: false);
+                ResetInboundState();
 
                 try
                 {
@@ -114,7 +124,7 @@ namespace HaCreator.MapSimulator.Managers
                 }
                 catch (Exception ex)
                 {
-                    StopInternal(clearPending: true);
+                    StopInternal(clearPending: false);
                     LastStatus = $"Local utility official-session bridge failed to start: {ex.Message}";
                 }
             }
@@ -252,6 +262,25 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
+        public bool TryQueueOutboundPacket(int opcode, IReadOnlyList<byte> payload, out string status)
+        {
+            if (opcode < ushort.MinValue || opcode > ushort.MaxValue)
+            {
+                status = $"Local utility outbound opcode {opcode} is outside the 16-bit Maple packet range.";
+                LastStatus = status;
+                return false;
+            }
+
+            byte[] rawPacket = BuildRawPacket((ushort)opcode, payload);
+            _pendingOutboundPackets.Enqueue(new PendingOutboundPacket(opcode, rawPacket));
+            QueuedCount++;
+            LastQueuedOpcode = opcode;
+            LastQueuedRawPacket = rawPacket;
+            status = $"Queued local utility outbound opcode {opcode} for deferred live-session injection.";
+            LastStatus = status;
+            return true;
+        }
+
         internal static byte[] BuildFollowCharacterRequestPayload(int driverId, bool autoRequest, bool keyInput)
         {
             byte[] payload = new byte[sizeof(int) + sizeof(byte) + sizeof(byte)];
@@ -358,7 +387,10 @@ namespace HaCreator.MapSimulator.Managers
                     pair.ClientSession.RIV = CreateCrypto(clientSendIv, pair.Version);
                     pair.ClientSession.SendInitialPacket(pair.Version, patchLocation, clientSendIv, clientReceiveIv, serverType);
                     pair.InitCompleted = true;
-                    LastStatus = $"Local utility official-session bridge initialized Maple crypto for {pair.ClientEndpoint} <-> {pair.RemoteEndpoint}.";
+                    int flushed = FlushQueuedOutboundPackets(pair);
+                    LastStatus = flushed > 0
+                        ? $"Local utility official-session bridge initialized Maple crypto for {pair.ClientEndpoint} <-> {pair.RemoteEndpoint} and flushed {flushed} queued outbound packet(s)."
+                        : $"Local utility official-session bridge initialized Maple crypto for {pair.ClientEndpoint} <-> {pair.RemoteEndpoint}.";
                     pair.ClientSession.WaitForData();
                     return;
                 }
@@ -460,15 +492,52 @@ namespace HaCreator.MapSimulator.Managers
 
             if (clearPending)
             {
-                while (_pendingMessages.TryDequeue(out _))
+                ResetInboundState();
+                while (_pendingOutboundPackets.TryDequeue(out _))
                 {
                 }
 
-                ReceivedCount = 0;
                 SentCount = 0;
                 LastSentOpcode = -1;
                 LastSentRawPacket = Array.Empty<byte>();
+                QueuedCount = 0;
+                LastQueuedOpcode = -1;
+                LastQueuedRawPacket = Array.Empty<byte>();
             }
+        }
+
+        private int FlushQueuedOutboundPackets(BridgePair pair)
+        {
+            if (pair == null || !pair.InitCompleted)
+            {
+                return 0;
+            }
+
+            int flushed = 0;
+            while (_pendingOutboundPackets.TryPeek(out PendingOutboundPacket packet))
+            {
+                pair.ServerSession.SendPacket(packet.RawPacket);
+                if (!_pendingOutboundPackets.TryDequeue(out PendingOutboundPacket dequeuedPacket))
+                {
+                    break;
+                }
+
+                SentCount++;
+                LastSentOpcode = dequeuedPacket.Opcode;
+                LastSentRawPacket = dequeuedPacket.RawPacket;
+                flushed++;
+            }
+
+            return flushed;
+        }
+
+        private void ResetInboundState()
+        {
+            while (_pendingMessages.TryDequeue(out _))
+            {
+            }
+
+            ReceivedCount = 0;
         }
 
         private static byte[] BuildRawPacket(ushort opcode, IReadOnlyList<byte> payload)

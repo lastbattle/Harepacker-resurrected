@@ -217,6 +217,11 @@ namespace HaCreator.MapSimulator.UI
             _skillPointNotificationAnimation = skillPointAnimation ?? new StatusBarPointNotificationAnimation();
         }
 
+        public void SetPointNotificationAnchor(Point pointNotificationAnchor)
+        {
+            _pointNotificationAnchor = pointNotificationAnchor;
+        }
+
         public void SetLayoutMetrics(
             Point frameAnchor,
             Vector2 chatTargetLabelPos,

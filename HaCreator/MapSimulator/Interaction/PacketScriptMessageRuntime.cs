@@ -83,9 +83,18 @@ namespace HaCreator.MapSimulator.Interaction
 
                 if (entry == null)
                 {
-                    request = new PacketScriptMessageOpenRequest(null, speaker.NpcId, CloseExistingDialog: true, AutoResponse: autoResponse);
+                    if (decoded.SuppressDialogMutation)
+                    {
+                        request = null;
+                        _activePromptContext = null;
+                        _statusMessage = decoded.StatusMessage ?? $"Ignored packet-authored script payload for {speaker.DisplayName}.";
+                        message = _statusMessage;
+                        return true;
+                    }
+
+                    request = new PacketScriptMessageOpenRequest(null, speaker.NpcId, CloseExistingDialog: decoded.CloseExistingDialog || entry == null, AutoResponse: autoResponse);
                     _activePromptContext = null;
-                    _statusMessage = autoResponse?.Summary ?? $"Closed packet-authored script dialog for {speaker.DisplayName}.";
+                    _statusMessage = autoResponse?.Summary ?? decoded.StatusMessage ?? $"Closed packet-authored script dialog for {speaker.DisplayName}.";
                     message = _statusMessage;
                     return true;
                 }
@@ -297,9 +306,9 @@ namespace HaCreator.MapSimulator.Interaction
         private static PacketScriptDecodeResult DecodeAskQuiz(BinaryReader reader, PacketScriptSpeaker speaker, byte param)
         {
             long startPosition = reader.BaseStream.Position;
-            if (TryDecodeAskQuizClientPacket(reader, speaker, param, out NpcInteractionEntry entry))
+            if (TryDecodeAskQuizClientPacket(reader, speaker, param, out PacketScriptDecodeResult decoded))
             {
-                return CreateDecodedResult(entry);
+                return decoded;
             }
 
             reader.BaseStream.Position = startPosition;
@@ -309,9 +318,9 @@ namespace HaCreator.MapSimulator.Interaction
         private static PacketScriptDecodeResult DecodeAskSpeedQuiz(BinaryReader reader, PacketScriptSpeaker speaker, byte param)
         {
             long startPosition = reader.BaseStream.Position;
-            if (TryDecodeAskSpeedQuizClientPacket(reader, speaker, param, out NpcInteractionEntry entry))
+            if (TryDecodeAskSpeedQuizClientPacket(reader, speaker, param, out PacketScriptDecodeResult decoded))
             {
-                return CreateDecodedResult(entry);
+                return decoded;
             }
 
             reader.BaseStream.Position = startPosition;
@@ -372,10 +381,10 @@ namespace HaCreator.MapSimulator.Interaction
                 });
         }
 
-        private static bool TryDecodeAskQuizClientPacket(BinaryReader reader, PacketScriptSpeaker speaker, byte param, out NpcInteractionEntry entry)
+        private static bool TryDecodeAskQuizClientPacket(BinaryReader reader, PacketScriptSpeaker speaker, byte param, out PacketScriptDecodeResult result)
         {
             long startPosition = reader.BaseStream.Position;
-            entry = null;
+            result = null;
             try
             {
                 if (!TryReadByte(reader, out byte mode))
@@ -384,9 +393,21 @@ namespace HaCreator.MapSimulator.Interaction
                     return false;
                 }
 
-                if (mode == 1 && reader.BaseStream.Position == reader.BaseStream.Length)
+                if (mode == 1)
                 {
-                    entry = null;
+                    result = CreateDecodedResult(
+                        null,
+                        closeExistingDialog: true,
+                        statusMessage: $"Closed packet-authored quiz owner for {speaker.DisplayName}: client mode 1 destroys `CUIInitialQuiz`.");
+                    return true;
+                }
+
+                if (mode != 0)
+                {
+                    result = CreateDecodedResult(
+                        null,
+                        suppressDialogMutation: true,
+                        statusMessage: $"Ignored packet-authored quiz payload for {speaker.DisplayName}: client `CWvsContext::OnInitialQuiz` only opens mode 0 and closes on mode 1.");
                     return true;
                 }
 
@@ -397,7 +418,7 @@ namespace HaCreator.MapSimulator.Interaction
                 int questionNumber = reader.ReadInt32();
                 int remainingSeconds = reader.ReadInt32();
 
-                entry = CreateEntry(
+                result = CreateDecodedResult(CreateEntry(
                     "Quiz",
                     BuildSpeakerSubtitle(speaker, "AskQuiz", param, mode),
                     problemText,
@@ -406,19 +427,19 @@ namespace HaCreator.MapSimulator.Interaction
                         NpcDialogueTextFormatter.Format(problemText),
                         string.IsNullOrWhiteSpace(hintText) ? null : $"Hint text: {FormatQuotedValue(hintText)}",
                         $"Client payload: answer={correctAnswer}, questionNo={questionNumber}, remaining={remainingSeconds} sec.",
-                        "WZ data exposes a dedicated `UIWindow(.img|2.img)/InitialQuiz` surface for this packet-owned prompt family."),
+                        "WZ data exposes a dedicated `UIWindow(.img|2.img)/InitialQuiz` surface with numbered glyph strips, animated digits, and explicit OK / Next / Give up owners for this prompt family."),
                     new[]
                     {
                         CreateNumericResponseChoice("OK", "OK", 1),
                         CreateNumericResponseChoice("Next", "Next", 2),
                         CreateNumericResponseChoice("Give Up", "Give Up", 0)
-                    });
+                    }));
                 return true;
             }
             catch (Exception ex) when (ex is EndOfStreamException || ex is IOException || ex is ArgumentException)
             {
                 reader.BaseStream.Position = startPosition;
-                entry = null;
+                result = null;
                 return false;
             }
         }
@@ -447,10 +468,10 @@ namespace HaCreator.MapSimulator.Interaction
                 });
         }
 
-        private static bool TryDecodeAskSpeedQuizClientPacket(BinaryReader reader, PacketScriptSpeaker speaker, byte param, out NpcInteractionEntry entry)
+        private static bool TryDecodeAskSpeedQuizClientPacket(BinaryReader reader, PacketScriptSpeaker speaker, byte param, out PacketScriptDecodeResult result)
         {
             long startPosition = reader.BaseStream.Position;
-            entry = null;
+            result = null;
             try
             {
                 if (!TryReadByte(reader, out byte mode))
@@ -459,9 +480,21 @@ namespace HaCreator.MapSimulator.Interaction
                     return false;
                 }
 
-                if (mode == 1 && reader.BaseStream.Position == reader.BaseStream.Length)
+                if (mode == 1)
                 {
-                    entry = null;
+                    result = CreateDecodedResult(
+                        null,
+                        closeExistingDialog: true,
+                        statusMessage: $"Closed packet-authored speed-quiz owner for {speaker.DisplayName}: client mode 1 destroys `CUISpeedQuiz`.");
+                    return true;
+                }
+
+                if (mode != 0)
+                {
+                    result = CreateDecodedResult(
+                        null,
+                        suppressDialogMutation: true,
+                        statusMessage: $"Ignored packet-authored speed-quiz payload for {speaker.DisplayName}: client `CWvsContext::OnInitialSpeedQuiz` only opens mode 0 and closes on mode 1.");
                     return true;
                 }
 
@@ -471,7 +504,7 @@ namespace HaCreator.MapSimulator.Interaction
                 int remainingQuestions = reader.ReadInt32();
                 int remainingSeconds = reader.ReadInt32();
 
-                entry = CreateEntry(
+                result = CreateDecodedResult(CreateEntry(
                     "Speed Quiz",
                     BuildSpeakerSubtitle(speaker, "AskSpeedQuiz", param, mode),
                     string.Empty,
@@ -480,19 +513,19 @@ namespace HaCreator.MapSimulator.Interaction
                         $"Correct answers: {correctAnswers}",
                         $"Questions remaining: {remainingQuestions}",
                         $"Time remaining: {remainingSeconds} sec.",
-                        "WZ data exposes `UIWindow(.img|2.img)/SpeedQuiz` with dedicated OK / Next / Give up controls."),
+                        "WZ data exposes `UIWindow(.img|2.img)/SpeedQuiz` with dedicated OK / Next / Give up controls plus the matching numeric-strip owners used by the client packet path."),
                     new[]
                     {
                         CreateNumericResponseChoice("OK", "OK", 1),
                         CreateNumericResponseChoice("Next", "Next", 2),
                         CreateNumericResponseChoice("Give Up", "Give Up", 0)
-                    });
+                    }));
                 return true;
             }
             catch (Exception ex) when (ex is EndOfStreamException || ex is IOException || ex is ArgumentException)
             {
                 reader.BaseStream.Position = startPosition;
-                entry = null;
+                result = null;
                 return false;
             }
         }
@@ -824,9 +857,12 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static PacketScriptDecodeResult CreateDecodedResult(
             NpcInteractionEntry entry,
-            PacketScriptResponsePacket autoResponse = null)
+            PacketScriptResponsePacket autoResponse = null,
+            bool closeExistingDialog = false,
+            bool suppressDialogMutation = false,
+            string statusMessage = null)
         {
-            return new PacketScriptDecodeResult(entry, autoResponse);
+            return new PacketScriptDecodeResult(entry, autoResponse, closeExistingDialog, suppressDialogMutation, statusMessage);
         }
 
         private static NpcInteractionEntry DecodeUnsupported(BinaryReader reader, PacketScriptSpeaker speaker, int messageType, byte param)
@@ -1443,7 +1479,10 @@ namespace HaCreator.MapSimulator.Interaction
             PacketScriptResponsePacket AutoResponse = null);
         private sealed record PacketScriptDecodeResult(
             NpcInteractionEntry Entry,
-            PacketScriptResponsePacket AutoResponse = null);
+            PacketScriptResponsePacket AutoResponse = null,
+            bool CloseExistingDialog = false,
+            bool SuppressDialogMutation = false,
+            string StatusMessage = null);
         internal sealed record PacketScriptResponsePacket(
             int MessageType,
             byte Param,

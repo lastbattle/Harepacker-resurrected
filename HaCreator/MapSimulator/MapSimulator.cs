@@ -349,6 +349,7 @@ namespace HaCreator.MapSimulator
         private Texture2D _npcQuestCompletableIcon;
         private bool _npcQuestAlertIconsLoaded;
         private readonly NpcFeedbackBalloonQueue _npcQuestFeedback = new();
+        private const int NpcQuestAlertVerticalGap = 4;
         private readonly Random _npcIdleSpeechRandom = new();
         private int _nextNpcIdleSpeechTick;
         private readonly Random _petIdleSpeechRandom = new();
@@ -610,6 +611,7 @@ namespace HaCreator.MapSimulator
         private const int PICKUP_REMOTE_NOTICE_SUPPRESSION_MS = 900;
         private const string SkillCooldownNoticeSoundKey = "SkillCooldownNotice";
         private const string LoginEntryGameInSoundKey = "LoginEntryGameIn";
+        private const string LoginEntryGameInSoundWzPath = "Sound/Game.img/GameIn";
         private const string BookDialogLifecycleSoundKey = "BookDialogLifecycle";
         private const int DefaultSimulatorWorldId = 0;
         private const int DefaultSimulatorChannelIndex = 0;
@@ -3211,6 +3213,9 @@ namespace HaCreator.MapSimulator
             userInfoWindow.PopularityRequested = HandleCharacterInfoPopularityRequest;
             userInfoWindow.BookCollectionRequested = HandleCharacterInfoBookCollectionRequest;
             userInfoWindow.WishPresentRequested = HandleCharacterInfoWishPresentRequest;
+            userInfoWindow.MarriedBadgeProvider = ResolveCharacterInfoMarriageBadgeState;
+            userInfoWindow.LocalActionLocationSummaryProvider = GetCurrentMapTransferDisplayName;
+            userInfoWindow.LocalActionChannelProvider = () => Math.Max(1, _simulatorChannelIndex + 1);
         }
         private string HandleCharacterInfoPartyRequest(UserInfoUI.UserInfoActionContext context)
         {
@@ -3362,6 +3367,7 @@ namespace HaCreator.MapSimulator
 
         private string HandleCharacterInfoBookCollectionRequest(UserInfoUI.UserInfoActionContext context)
         {
+            context = NormalizeCharacterInfoActionContext(context);
             _bookCollectionActionContext = context;
             ShowWindowWithInheritedDirectionModeOwner(MapSimulatorWindowNames.BookCollection);
             return context.IsRemoteTarget
@@ -3371,6 +3377,7 @@ namespace HaCreator.MapSimulator
 
         private string HandleCharacterInfoWishPresentRequest(UserInfoUI.UserInfoActionContext context, string wishEntry)
         {
+            context = NormalizeCharacterInfoActionContext(context);
             if (string.IsNullOrWhiteSpace(wishEntry))
             {
                 return "Wish entry is unavailable.";
@@ -3399,6 +3406,75 @@ namespace HaCreator.MapSimulator
                 ? $" for {context.CharacterName}"
                 : string.Empty;
             return $"{applyMessage} Opened the Cash Shop wish-list owner to preview gifting {wishEntry}{targetLabel}.";
+        }
+
+        private UserInfoUI.UserInfoActionContext NormalizeCharacterInfoActionContext(UserInfoUI.UserInfoActionContext context)
+        {
+            if (context.IsRemoteTarget)
+            {
+                return context;
+            }
+
+            return new UserInfoUI.UserInfoActionContext(
+                false,
+                context.CharacterId,
+                context.CharacterName,
+                context.Build,
+                GetCurrentMapTransferDisplayName(),
+                Math.Max(1, _simulatorChannelIndex + 1));
+        }
+
+        private bool ResolveCharacterInfoMarriageBadgeState(UserInfoUI.UserInfoActionContext context)
+        {
+            if (context.IsRemoteTarget)
+            {
+                bool foundActor = (context.CharacterId > 0 && _remoteUserPool.TryGetActor(context.CharacterId, out RemoteUserActor actor))
+                    || _remoteUserPool.TryGetActorByName(context.CharacterName, out actor);
+                if (foundActor && actor?.RelationshipOverlays != null)
+                {
+                    return actor.RelationshipOverlays.ContainsKey(RemoteRelationshipOverlayType.Marriage);
+                }
+            }
+
+            CharacterBuild build = context.Build;
+            if (build == null)
+            {
+                return false;
+            }
+
+            EquipSlot[] ringSlots = { EquipSlot.Ring1, EquipSlot.Ring2, EquipSlot.Ring3, EquipSlot.Ring4 };
+            foreach (EquipSlot slot in ringSlots)
+            {
+                if (TryResolveEquippedItemName(build, slot, out string itemName)
+                    && itemName.IndexOf("wedding ring", StringComparison.OrdinalIgnoreCase) >= 0)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TryResolveEquippedItemName(CharacterBuild build, EquipSlot slot, out string itemName)
+        {
+            itemName = null;
+            if (build?.Equipment != null
+                && build.Equipment.TryGetValue(slot, out CharacterPart part)
+                && !string.IsNullOrWhiteSpace(part?.Name))
+            {
+                itemName = part.Name.Trim();
+                return true;
+            }
+
+            if (build?.HiddenEquipment != null
+                && build.HiddenEquipment.TryGetValue(slot, out CharacterPart hiddenPart)
+                && !string.IsNullOrWhiteSpace(hiddenPart?.Name))
+            {
+                itemName = hiddenPart.Name.Trim();
+                return true;
+            }
+
+            return false;
         }
 
         private UserInfoUI.UserInfoActionContext ResolveBookCollectionActionContext()
@@ -3880,7 +3956,7 @@ namespace HaCreator.MapSimulator
 
             bool used = inventoryType switch
             {
-                InventoryType.SETUP => TryTogglePortableChair(itemId, out _),
+                InventoryType.SETUP => TryUseSetupInventoryItem(itemId, currentTime),
                 InventoryType.USE => TryUseConsumableInventoryItem(itemId, inventoryType, currentTime),
                 InventoryType.CASH => TryUseCashInventoryItem(itemId)
                                       || TryUseConsumableInventoryItem(itemId, inventoryType, currentTime),
@@ -4093,16 +4169,10 @@ namespace HaCreator.MapSimulator
             if (!_playerManager.Pets.TryPlanFoodItemUse(
                     effect.SupportedPetItemIds,
                     effect.FullnessIncrease,
-                    out PetController.PetFoodItemUsePlan foodPlan))
+                    out PetController.PetFoodItemUsePlan foodPlan,
+                    out PetController.PetFoodItemUseFailureReason failureReason))
             {
-                PushFieldRuleMessage(
-                    _playerManager.Pets.ActivePets.Count == 0
-                        ? "Summon a pet before using that pet food."
-                        : effect.SupportedPetItemIds.Length > 0
-                            ? "None of the summoned pets can eat that pet food."
-                            : "None of the summoned pets want that pet food right now.",
-                    currentTime,
-                    false);
+                PushFieldRuleMessage(BuildPetFoodFailureMessage(failureReason), currentTime, false);
 
                 return false;
 
@@ -5222,7 +5292,7 @@ namespace HaCreator.MapSimulator
         }
         private bool TryApplyMapleTvPacket(int packetType, byte[] payload, out string message)
         {
-            bool applied = _mapleTvRuntime.TryApplyPacket(
+            bool applied = GetPacketOwnedSocialUtilityDialogDispatcher().TryApplyMapleTvPacket(
                 packetType,
                 payload,
                 currTickCount,
@@ -7518,6 +7588,54 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
+        private bool TryUseSetupInventoryItem(int itemId, int currentTime)
+        {
+            if (itemId <= 0)
+            {
+                return false;
+            }
+
+            PortableChair activeChair = _playerManager?.Player?.Build?.ActivePortableChair;
+            bool isActiveChair = activeChair?.ItemId == itemId;
+            bool canResolveChair = _playerManager?.Loader?.LoadPortableChair(itemId) != null;
+            if (isActiveChair || canResolveChair)
+            {
+                return TryTogglePortableChair(itemId, out _);
+            }
+
+            string fieldItemRestrictionMessage = GetFieldItemUseRestrictionMessage(InventoryType.SETUP, itemId, 1);
+            if (!string.IsNullOrWhiteSpace(fieldItemRestrictionMessage))
+            {
+                ShowFieldRestrictionMessage(fieldItemRestrictionMessage);
+                return false;
+            }
+
+            if (!HasInventoryItem(itemId))
+            {
+                return false;
+            }
+
+            string itemName = ResolvePickupItemName(itemId);
+            PushFieldRuleMessage(
+                string.IsNullOrWhiteSpace(itemName)
+                    ? "That setup item cannot be used right now."
+                    : $"{itemName} cannot be used right now.",
+                currentTime,
+                false);
+            return false;
+        }
+
+        private static string BuildPetFoodFailureMessage(PetController.PetFoodItemUseFailureReason failureReason)
+        {
+            return failureReason switch
+            {
+                PetController.PetFoodItemUseFailureReason.NoActivePets => "Summon a pet before using that pet food.",
+                PetController.PetFoodItemUseFailureReason.NoCompatiblePets => "None of the summoned pets can eat that pet food.",
+                PetController.PetFoodItemUseFailureReason.NoHungryCompatiblePets => "None of the summoned pets want that pet food right now.",
+                _ => "That pet food cannot be used right now.",
+            };
+        }
+
         private bool TryHandlePacketOwnedViewAllCharResult(out string summary, out bool continueRuntimeDispatch)
         {
             summary = null;
@@ -8208,7 +8326,7 @@ namespace HaCreator.MapSimulator
                 ? $" Premium argument {packetProfile.PremiumArgument.Value}."
                 : string.Empty;
             string handoffText = packetProfile?.HasCompleteConnectPayload == true
-                ? " Issued simulator-side direct connect before Login.img/GameIn."
+                ? $" Issued simulator-side direct connect before {LoginEntryGameInSoundWzPath}."
                 : string.Empty;
 
 
@@ -10172,6 +10290,9 @@ namespace HaCreator.MapSimulator
                 FailureReason = Math.Max(0, record.FailureReason),
                 NxPrice = Math.Max(0L, record.NxPrice),
                 SlotLimitAfterResult = Math.Max(0, record.SlotLimitAfterResult),
+                IsPacketOwned = record.IsPacketOwned,
+                PacketType = Math.Max(0, record.PacketType),
+                CashAlreadySettled = record.CashAlreadySettled,
                 Message = record.Message ?? string.Empty,
                 AppliedAtUtc = record.AppliedAtUtc == default ? DateTime.UtcNow : record.AppliedAtUtc
             };
@@ -19537,7 +19658,7 @@ namespace HaCreator.MapSimulator
                 IDXObject currentFrame = npc.GetCurrentFrame();
                 int npcTop = npc.CurrentY - (currentFrame?.Height ?? npc.NpcInstance.Height);
                 int screenX = npc.CurrentX - renderContext.MapShiftX + renderContext.MapCenterX - (alertTexture.Width / 2);
-                int screenY = npcTop - renderContext.MapShiftY + renderContext.MapCenterY - alertTexture.Height - 10;
+                int screenY = npcTop - renderContext.MapShiftY + renderContext.MapCenterY - alertTexture.Height - NpcQuestAlertVerticalGap;
                 screenY += ((renderContext.TickCount / 180) % 2 == 0) ? 0 : -2;
 
 
@@ -21526,11 +21647,12 @@ namespace HaCreator.MapSimulator
                 && int.TryParse(mob.MobInstance.MobInfo.ID, out int killedMobId)
                 && _monsterBookManager.TryResolveCardItemId(killedMobId, out int monsterCardItemId))
             {
+                int cardQuantity = MobStatusRewardParity.ResolveItemQuantity(mob, 1);
                 _dropPool.SpawnItemDrop(
                     mobX + 18f,
                     mobY,
                     monsterCardItemId.ToString(CultureInfo.InvariantCulture),
-                    1,
+                    cardQuantity,
                     currentTick,
                     isRare: true);
             }
@@ -23269,6 +23391,10 @@ namespace HaCreator.MapSimulator
             {
                 _playerManager.Skills.OnClientSkillCancelRequested = (cancelSkillId, _, currentTime) =>
                     _summonedPool.TryCancelLocalOwnerSummonsBySkillRequest(cancelSkillId, currentTime);
+                _summonedPool.OnSummonExpiryTimerExpired = expiration =>
+                    TryRouteLocalPacketOwnedSummonExpiryToClientCancel(
+                        expiration,
+                        (skillId, currentTime) => _playerManager?.Skills?.RequestClientSkillCancel(skillId, currentTime) == true);
             }
             Debug.WriteLine($"[Player] PlayerManager initialized with Character.wz: {characterWz != null}, Skill.wz: {skillWz != null}");
 
@@ -24570,6 +24696,12 @@ namespace HaCreator.MapSimulator
             string deliveryMessage = localHandoff?.Invoke() ?? "Opened the local quest-delivery handoff.";
             if (cashItemId <= 0)
             {
+                RegisterPendingQuestDeliveryQuestResult(
+                    questId,
+                    completionPhase,
+                    cashItemId: 0,
+                    commoditySn: 0,
+                    sourceContext);
                 return new QuestWindowActionResult
                 {
                     QuestId = questId,
@@ -24585,6 +24717,16 @@ namespace HaCreator.MapSimulator
                 bool consumedCashItem = resolvedCashSlot
                     && uiWindowManager?.InventoryWindow is IInventoryRuntime inventoryWindow
                     && inventoryWindow.TryConsumeItemAtSlot(deliveryInventoryType, deliveryRuntimeSlotIndex, cashItemId, 1);
+                if (consumedCashItem)
+                {
+                    RegisterPendingQuestDeliveryQuestResult(
+                        questId,
+                        completionPhase,
+                        cashItemId,
+                        commoditySn: 0,
+                        sourceContext);
+                }
+
                 return new QuestWindowActionResult
                 {
                     QuestId = questId,
@@ -30128,6 +30270,17 @@ namespace HaCreator.MapSimulator
             }
 
             DispatchLoginRuntimePacket(message.PacketType, out _);
+            if (TryRelayLoginOwnedStageTransitionPacket(message.PacketType, args, out string stageTransitionMessage) &&
+                !string.IsNullOrWhiteSpace(stageTransitionMessage))
+            {
+                _loginRuntime.OverrideLastEventSummary(stageTransitionMessage);
+                _loginTitleStatusMessage = stageTransitionMessage;
+                if (_chat != null)
+                {
+                    _chat.AddSystemMessage(stageTransitionMessage, currTickCount);
+                }
+            }
+
             return true;
         }
 

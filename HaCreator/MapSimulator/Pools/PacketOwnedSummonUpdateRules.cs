@@ -1,11 +1,17 @@
 using HaCreator.MapSimulator.Character.Skills;
 using Microsoft.Xna.Framework;
 using System;
+using System.Collections.Generic;
 
 namespace HaCreator.MapSimulator.Pools
 {
     internal static class PacketOwnedSummonUpdateRules
     {
+        private const int ClientConfirmedPhoenixLegacySkillId = 3121006;
+        private const int ClientConfirmedPhoenixCurrentSkillId = 3120010;
+        private const int ClientConfirmedFrostpreyLegacySkillId = 3221005;
+        private const int ClientConfirmedFrostpreyCurrentSkillId = 3211005;
+
         public static SummonMovementStyle ResolveEffectiveMovementStyle(ActiveSummon summon)
         {
             if (summon == null)
@@ -153,6 +159,81 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return SummonActorState.Idle;
+        }
+
+        public static bool ResolvePacketAttackFacingRight(
+            ActiveSummon summon,
+            byte moveActionRaw,
+            bool packetFacingLeft,
+            bool fallbackFacingRight)
+        {
+            if (ShouldUseMoveActionFacingForAttack(summon)
+                && moveActionRaw != 0)
+            {
+                return (moveActionRaw & 1) == 0;
+            }
+
+            return !packetFacingLeft;
+        }
+
+        public static bool ShouldRegisterClientOwnedAttackTileOverlay(ActiveSummon summon)
+        {
+            if (summon?.SkillData?.ZoneAnimation?.Frames.Count <= 0)
+            {
+                return false;
+            }
+
+            return summon.SkillId == ClientConfirmedPhoenixLegacySkillId
+                   || summon.SkillId == ClientConfirmedPhoenixCurrentSkillId
+                   || summon.SkillId == ClientConfirmedFrostpreyLegacySkillId
+                   || summon.SkillId == ClientConfirmedFrostpreyCurrentSkillId;
+        }
+
+        internal static Rectangle BuildClientOwnedAttackTileOverlayArea(Vector2 anchor, ActiveSummon summon)
+        {
+            int left = summon?.SkillData?.SummonAttackRangeLeft ?? 0;
+            int right = summon?.SkillData?.SummonAttackRangeRight ?? 0;
+            int top = summon?.SkillData?.SummonAttackRangeTop ?? 0;
+            int bottom = (summon?.SkillData?.SummonAttackRangeBottom ?? 0) + 100;
+
+            int x = (int)MathF.Round(anchor.X) + left;
+            int y = (int)MathF.Round(anchor.Y) + top;
+            int width = Math.Max(1, right - left);
+            int height = Math.Max(1, bottom - top);
+            return new Rectangle(x, y, width, height);
+        }
+
+        public static int ClearAttachedHitEffects<T>(
+            IList<T> hitEffects,
+            int summonObjectId,
+            Func<T, int> attachedSummonObjectIdSelector)
+        {
+            if (hitEffects == null
+                || summonObjectId <= 0
+                || attachedSummonObjectIdSelector == null)
+            {
+                return 0;
+            }
+
+            int removedCount = 0;
+            for (int index = hitEffects.Count - 1; index >= 0; index--)
+            {
+                T effect = hitEffects[index];
+                if (effect is null || attachedSummonObjectIdSelector(effect) != summonObjectId)
+                {
+                    continue;
+                }
+
+                hitEffects.RemoveAt(index);
+                removedCount++;
+            }
+
+            return removedCount;
+        }
+
+        private static bool ShouldUseMoveActionFacingForAttack(ActiveSummon summon)
+        {
+            return SummonRuntimeRules.UsesReactiveDamageTriggerSummon(summon?.SkillData);
         }
 
         private static bool IsSpawnAnimationActive(ActiveSummon summon, int currentTime)
