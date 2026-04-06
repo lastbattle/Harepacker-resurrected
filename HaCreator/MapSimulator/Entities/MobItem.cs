@@ -1305,14 +1305,14 @@ namespace HaCreator.MapSimulator.Entities
             // Check for death/hit states first - these always take priority
             if (AIEnabled && AI != null && (AI.State == MobAIState.Death || AI.State == MobAIState.Removed))
             {
-                targetAction = _animationSet.HasAnimation("die1") ? "die1" : "stand";
+                targetAction = AnimationKeys.ResolveMobDeathAction(_animationSet);
                 SetAction(targetAction);
                 return;
             }
 
             if (AIEnabled && AI != null && AI.State == MobAIState.Hit)
             {
-                targetAction = _animationSet.HasAnimation("hit1") ? "hit1" : "stand";
+                targetAction = AnimationKeys.ResolveMobHitAction(_animationSet);
                 SetAction(targetAction);
                 return;
             }

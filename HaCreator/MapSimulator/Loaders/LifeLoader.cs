@@ -93,7 +93,9 @@ namespace HaCreator.MapSimulator.Loaders
                         case "walk":
                         case "fly":
                         case "jump":
+                        case "hit":
                         case "hit1":
+                        case "die":
                         case "die1":
                         case "die2":
                         case "attack1":
@@ -227,7 +229,9 @@ namespace HaCreator.MapSimulator.Loaders
                 string actionName = mobStateProperty.Name.ToLowerInvariant();
                 if (actionName != "stand" &&
                     actionName != "move" &&
+                    actionName != "hit" &&
                     actionName != "hit1" &&
+                    actionName != "die" &&
                     actionName != "die1")
                 {
                     continue;

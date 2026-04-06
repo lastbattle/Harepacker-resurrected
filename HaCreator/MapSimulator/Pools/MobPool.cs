@@ -523,8 +523,13 @@ namespace HaCreator.MapSimulator.Pools
                     continue;
                 }
 
-                // Check if death animation has finished playing
-                if (mob.IsDeathAnimationComplete)
+                bool deathAnimationFinished = mob.IsDeathAnimationComplete;
+                bool aiMarkedRemoved = mob.AI.State == MobAIState.Removed;
+                bool deathTimedOut = mob.AI.State == MobAIState.Death &&
+                                     mob.AI.StateElapsed(currentTick) >= DEATH_ANIMATION_TIME;
+
+                // Death cleanup must not depend solely on render-driven animation completion.
+                if (deathAnimationFinished || aiMarkedRemoved || deathTimedOut)
                 {
                     System.Diagnostics.Debug.WriteLine($"[MobPool] Mob death animation complete, removing");
                     // Mark AI as removed so it's properly cleaned up

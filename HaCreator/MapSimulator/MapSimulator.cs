@@ -14987,6 +14987,25 @@ namespace HaCreator.MapSimulator
                     _framePrimaryBossMob = mob;
                 }
             }
+
+            IReadOnlyList<MobItem> dyingMobs = _mobPool?.DyingMobs;
+            if (dyingMobs == null || dyingMobs.Count == 0)
+            {
+                return;
+            }
+
+            for (int i = 0; i < dyingMobs.Count; i++)
+            {
+                MobItem mob = dyingMobs[i];
+                if (mob?.MovementInfo == null)
+                {
+                    continue;
+                }
+
+                // Dying mobs remain in the render arrays until the pool removes them,
+                // so keep advancing their movement/animation state to let death play out.
+                _frameMovableMobs.Add(mob);
+            }
         }
 
 
