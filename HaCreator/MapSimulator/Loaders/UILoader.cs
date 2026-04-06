@@ -20,6 +20,7 @@ using System.Collections.Generic;
 using HaCreator.MapSimulator.UI.Controls;
 using System.Linq;
 using System.Runtime.CompilerServices;
+using System.Runtime.InteropServices;
 
 namespace HaCreator.MapSimulator.Loaders
 {
@@ -1688,6 +1689,162 @@ namespace HaCreator.MapSimulator.Loaders
             }
         }
 
+        private enum MinimapMarkerAnchorProfile
+        {
+            StandingPoint,
+            PortalPoint
+        }
+
+        private static System.Drawing.PointF ResolveMinimapMarkerOrigin(
+            WzCanvasProperty canvas,
+            System.Drawing.Bitmap bitmap,
+            MinimapMarkerAnchorProfile profile)
+        {
+            System.Drawing.PointF origin = canvas?.GetCanvasOriginPosition() ?? new System.Drawing.PointF(0f, 0f);
+            if (origin.X != 0f || origin.Y != 0f || bitmap == null)
+            {
+                return origin;
+            }
+
+            return profile switch
+            {
+                MinimapMarkerAnchorProfile.PortalPoint => new System.Drawing.PointF(
+                    -((bitmap.Width - 1) / 2) - 1,
+                    -Math.Max(0, bitmap.Height - 2)),
+                _ => new System.Drawing.PointF(
+                    -((bitmap.Width - 1) / 2) - 2,
+                    -Math.Max(0, bitmap.Height - 1))
+            };
+        }
+
+        private static Point ResolveMinimapImageOffset(
+            System.Drawing.Bitmap container,
+            System.Drawing.Bitmap content,
+            Point fallbackOffset)
+        {
+            return TryFindEmbeddedBitmapOffset(container, content, out Point offset)
+                ? offset
+                : fallbackOffset;
+        }
+
+        private static bool TryFindEmbeddedBitmapOffset(
+            System.Drawing.Bitmap container,
+            System.Drawing.Bitmap content,
+            out Point offset)
+        {
+            offset = Point.Zero;
+            if (!TryGetBitmapDimensions(container, out int containerWidth, out int containerHeight) ||
+                !TryGetBitmapDimensions(content, out int contentWidth, out int contentHeight) ||
+                contentWidth <= 0 || contentHeight <= 0 ||
+                contentWidth > containerWidth || contentHeight > containerHeight)
+            {
+                return false;
+            }
+
+            using System.Drawing.Bitmap normalizedContainer = EnsureArgbBitmap(container);
+            using System.Drawing.Bitmap normalizedContent = EnsureArgbBitmap(content);
+
+            byte[] containerBytes = CopyBitmapBytes(normalizedContainer, out int containerStride);
+            byte[] contentBytes = CopyBitmapBytes(normalizedContent, out int contentStride);
+            if (containerBytes == null || contentBytes == null)
+            {
+                return false;
+            }
+
+            int maxX = containerWidth - contentWidth;
+            int maxY = containerHeight - contentHeight;
+            const int bytesPerPixel = 4;
+
+            int sampleTopLeft = 0;
+            int sampleCenter = ((contentHeight / 2) * contentStride) + ((contentWidth / 2) * bytesPerPixel);
+            int sampleBottomRight = ((contentHeight - 1) * contentStride) + ((contentWidth - 1) * bytesPerPixel);
+
+            for (int y = 0; y <= maxY; y++)
+            {
+                for (int x = 0; x <= maxX; x++)
+                {
+                    int containerBase = (y * containerStride) + (x * bytesPerPixel);
+                    if (!PixelEquals(containerBytes, containerBase + sampleTopLeft, contentBytes, sampleTopLeft) ||
+                        !PixelEquals(containerBytes, containerBase + sampleCenter, contentBytes, sampleCenter) ||
+                        !PixelEquals(containerBytes, containerBase + sampleBottomRight, contentBytes, sampleBottomRight))
+                    {
+                        continue;
+                    }
+
+                    bool matched = true;
+                    for (int row = 0; row < contentHeight && matched; row++)
+                    {
+                        int containerRow = ((y + row) * containerStride) + (x * bytesPerPixel);
+                        int contentRow = row * contentStride;
+                        for (int col = 0; col < contentWidth * bytesPerPixel; col++)
+                        {
+                            if (containerBytes[containerRow + col] != contentBytes[contentRow + col])
+                            {
+                                matched = false;
+                                break;
+                            }
+                        }
+                    }
+
+                    if (matched)
+                    {
+                        offset = new Point(x, y);
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        private static System.Drawing.Bitmap EnsureArgbBitmap(System.Drawing.Bitmap bitmap)
+        {
+            if (bitmap.PixelFormat == System.Drawing.Imaging.PixelFormat.Format32bppArgb)
+            {
+                return (System.Drawing.Bitmap)bitmap.Clone();
+            }
+
+            System.Drawing.Rectangle bounds = new System.Drawing.Rectangle(0, 0, bitmap.Width, bitmap.Height);
+            return bitmap.Clone(bounds, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+        }
+
+        private static byte[] CopyBitmapBytes(System.Drawing.Bitmap bitmap, out int stride)
+        {
+            stride = 0;
+            if (bitmap == null)
+            {
+                return null;
+            }
+
+            System.Drawing.Rectangle bounds = new System.Drawing.Rectangle(0, 0, bitmap.Width, bitmap.Height);
+            System.Drawing.Imaging.BitmapData data = null;
+            try
+            {
+                data = bitmap.LockBits(bounds, System.Drawing.Imaging.ImageLockMode.ReadOnly, System.Drawing.Imaging.PixelFormat.Format32bppArgb);
+                stride = data.Stride;
+                int byteCount = Math.Abs(stride) * bitmap.Height;
+                byte[] bytes = new byte[byteCount];
+                Marshal.Copy(data.Scan0, bytes, 0, byteCount);
+                return bytes;
+            }
+            finally
+            {
+                if (data != null)
+                {
+                    bitmap.UnlockBits(data);
+                }
+            }
+        }
+
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool PixelEquals(byte[] left, int leftIndex, byte[] right, int rightIndex)
+        {
+            return left[leftIndex] == right[rightIndex] &&
+                   left[leftIndex + 1] == right[rightIndex + 1] &&
+                   left[leftIndex + 2] == right[rightIndex + 2] &&
+                   left[leftIndex + 3] == right[rightIndex + 3];
+        }
+
         #endregion
 
         #region Minimap
@@ -1890,10 +2047,10 @@ namespace HaCreator.MapSimulator.Loaders
             HaUISize fullMiniMapStackPanelSize = fullMiniMapStackPanel.GetSize();
             int alignmentXOffset = HaUIHelper.CalculateAlignmentOffset(fullMiniMapStackPanelSize.Width, minimapUiImage.GetInfo().Bitmap.Width, minimapUiGrid.GetInfo().HorizontalAlignment);
 
-            int minimapImageYOffset = mapNameMarkStackPanel.GetInfo().Margins.Top
-                + mapNameMarkStackPanel.GetSize().Height
-                + minimapUiGrid.GetInfo().Margins.Top;
-            Point minimapImageOffset = new Point(MAP_IMAGE_TEXT_PADDING + alignmentXOffset, minimapImageYOffset);
+            Point compactFallbackOffset = new Point(MAP_IMAGE_TEXT_PADDING + alignmentXOffset, compactN?.Height ?? 0);
+            Point expandedFallbackOffset = new Point(MAP_IMAGE_TEXT_PADDING + alignmentXOffset, expandedN?.Height ?? 0);
+            Point compactMinimapImageOffset = ResolveMinimapImageOffset(finalCompactMinimapBitmap, miniMapImage, compactFallbackOffset);
+            Point expandedMinimapImageOffset = ResolveMinimapImageOffset(finalExpandedMinimapBitmap, miniMapImage, expandedFallbackOffset);
             BaseDXDrawableItem userMarker = null;
             BaseDXDrawableItem npcMarker = null;
             BaseDXDrawableItem questStartNpcMarker = null;
@@ -1912,10 +2069,14 @@ namespace HaCreator.MapSimulator.Loaders
                 System.Drawing.Bitmap userMarkerBitmap = userCanvas.GetLinkedWzCanvasBitmap();
                 if (userMarkerBitmap != null)
                 {
-                    IDXObject dxObjUserMarker = new DXObject(userCanvas.GetCanvasOriginPosition(), userMarkerBitmap.ToTexture2DAndDispose(device), 0);
+                    System.Drawing.PointF userMarkerOrigin = ResolveMinimapMarkerOrigin(
+                        userCanvas,
+                        userMarkerBitmap,
+                        MinimapMarkerAnchorProfile.StandingPoint);
+                    IDXObject dxObjUserMarker = new DXObject(userMarkerOrigin, userMarkerBitmap.ToTexture2DAndDispose(device), 0);
                     userMarker = new BaseDXDrawableItem(dxObjUserMarker, false)
                     {
-                        Position = minimapImageOffset
+                        Position = compactMinimapImageOffset
                     };
                 }
             }
@@ -1924,7 +2085,7 @@ namespace HaCreator.MapSimulator.Loaders
                 defaultHelperProperty?["npc"] as WzCanvasProperty ??
                 (bBigBang ? (WzCanvasProperty)minimapFrameProperty["iconNpc"]?["0"] : null);
             BaseDXDrawableItem animatedNpcMarker = bBigBang
-                ? LoadAnimatedMinimapMarker(minimapFrameProperty["iconNpc"] as WzSubProperty, device, minimapImageOffset, 120)
+                ? LoadAnimatedMinimapMarker(minimapFrameProperty["iconNpc"] as WzSubProperty, device, compactMinimapImageOffset, 120)
                 : null;
             if (animatedNpcMarker != null)
             {
@@ -1938,7 +2099,7 @@ namespace HaCreator.MapSimulator.Loaders
                     IDXObject dxObjNpcMarker = new DXObject(iconNpcCanvas.GetCanvasOriginPosition(), npcMarkerBitmap.ToTexture2DAndDispose(device), 0);
                     npcMarker = new BaseDXDrawableItem(dxObjNpcMarker, false)
                     {
-                        Position = minimapImageOffset
+                        Position = compactMinimapImageOffset
                     };
                 }
             }
@@ -1952,7 +2113,7 @@ namespace HaCreator.MapSimulator.Loaders
                     IDXObject dxObjQuestStartNpc = new DXObject(questStartNpcCanvas.GetCanvasOriginPosition(), questStartNpcBitmap.ToTexture2DAndDispose(device), 0);
                     questStartNpcMarker = new BaseDXDrawableItem(dxObjQuestStartNpc, false)
                     {
-                        Position = minimapImageOffset
+                        Position = compactMinimapImageOffset
                     };
                 }
             }
@@ -1966,7 +2127,7 @@ namespace HaCreator.MapSimulator.Loaders
                     IDXObject dxObjQuestEndNpc = new DXObject(questEndNpcCanvas.GetCanvasOriginPosition(), questEndNpcBitmap.ToTexture2DAndDispose(device), 0);
                     questEndNpcMarker = new BaseDXDrawableItem(dxObjQuestEndNpc, false)
                     {
-                        Position = minimapImageOffset
+                        Position = compactMinimapImageOffset
                     };
                 }
             }
@@ -1977,10 +2138,14 @@ namespace HaCreator.MapSimulator.Loaders
                 System.Drawing.Bitmap portalBitmap = portalCanvas.GetLinkedWzCanvasBitmap();
                 if (portalBitmap != null)
                 {
-                    IDXObject dxObjPortalMarker = new DXObject(portalCanvas.GetCanvasOriginPosition(), portalBitmap.ToTexture2DAndDispose(device), 0);
+                    System.Drawing.PointF portalMarkerOrigin = ResolveMinimapMarkerOrigin(
+                        portalCanvas,
+                        portalBitmap,
+                        MinimapMarkerAnchorProfile.PortalPoint);
+                    IDXObject dxObjPortalMarker = new DXObject(portalMarkerOrigin, portalBitmap.ToTexture2DAndDispose(device), 0);
                     portalMarker = new BaseDXDrawableItem(dxObjPortalMarker, false)
                     {
-                        Position = minimapImageOffset
+                        Position = compactMinimapImageOffset
                     };
                 }
             }
@@ -2008,10 +2173,14 @@ namespace HaCreator.MapSimulator.Loaders
                 if (helperBitmap == null)
                     continue;
 
-                IDXObject dxObjHelper = new DXObject(helperCanvas.GetCanvasOriginPosition(), helperBitmap.ToTexture2DAndDispose(device), 0);
+                System.Drawing.PointF helperOrigin = ResolveMinimapMarkerOrigin(
+                    helperCanvas,
+                    helperBitmap,
+                    MinimapMarkerAnchorProfile.StandingPoint);
+                IDXObject dxObjHelper = new DXObject(helperOrigin, helperBitmap.ToTexture2DAndDispose(device), 0);
                 helperMarkers[helperEntry.Key] = new BaseDXDrawableItem(dxObjHelper, false)
                 {
-                    Position = minimapImageOffset
+                    Position = compactMinimapImageOffset
                 };
             }
 
@@ -2032,7 +2201,7 @@ namespace HaCreator.MapSimulator.Loaders
                 BaseDXDrawableItem animatedArrow = null;
                 if (bBigBang)
                 {
-                    animatedArrow = LoadAnimatedMinimapMarker(minimapFrameProperty["iconDirection"]?[ToLegacyArrowKey(arrowEntry.Key)] as WzSubProperty, device, minimapImageOffset, 120);
+                    animatedArrow = LoadAnimatedMinimapMarker(minimapFrameProperty["iconDirection"]?[ToLegacyArrowKey(arrowEntry.Key)] as WzSubProperty, device, compactMinimapImageOffset, 120);
                 }
 
                 if (animatedArrow != null)
@@ -2052,7 +2221,7 @@ namespace HaCreator.MapSimulator.Loaders
                 IDXObject dxObjArrow = new DXObject(arrowCanvas.GetCanvasOriginPosition(), arrowBitmap.ToTexture2DAndDispose(device), 0);
                 directionMarkers[arrowEntry.Key] = new BaseDXDrawableItem(dxObjArrow, false)
                 {
-                    Position = minimapImageOffset
+                    Position = compactMinimapImageOffset
                 };
             }
 
@@ -2140,7 +2309,7 @@ namespace HaCreator.MapSimulator.Loaders
             MinimapUI minimapItem = new MinimapUI(dxObj_miniMap,
                 new BaseDXDrawableItem(dxObj_miniMapPixel, false)
                 {
-                    Position = minimapImageOffset // map is on the center
+                    Position = compactMinimapImageOffset // map image origin in compact mode
                 },
                 new BaseDXDrawableItem(dxObj_miniMapExpanded, false)
                 {
@@ -2152,6 +2321,8 @@ namespace HaCreator.MapSimulator.Loaders
                 },
                 miniMapImage.Width,
                 miniMapImage.Height,
+                compactMinimapImageOffset,
+                expandedMinimapImageOffset,
                 userMarker,
                 npcMarker,
                 questStartNpcMarker,
@@ -2161,7 +2332,7 @@ namespace HaCreator.MapSimulator.Loaders
                 directionMarkers,
                 helperMarkers);
 
-            minimapItem.Position = new Point(10, 10); // default position
+            minimapItem.SetWindowPosition(new Point(10, 10)); // default position and sync frame drawables
 
             ////////////// Minimap buttons////////////////////
             // This must be in order.

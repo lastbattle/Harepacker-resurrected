@@ -77,6 +77,8 @@ namespace HaCreator.MapSimulator.UI
         private int _previousExpandedOption = ClientOptionExpanded;
         private readonly int _minimapImageWidth;
         private readonly int _minimapImageHeight;
+        private readonly Point _compactMarkerOffset;
+        private readonly Point _expandedMarkerOffset;
         private IReadOnlyList<NpcItem> _npcMarkers = Array.Empty<NpcItem>();
         private IReadOnlyList<PortalItem> _portalMarkers = Array.Empty<PortalItem>();
         private IReadOnlyList<TrackedUserMarker> _trackedUserMarkers = Array.Empty<TrackedUserMarker>();
@@ -173,6 +175,8 @@ namespace HaCreator.MapSimulator.UI
             BaseDXDrawableItem _collapsedFrame,
             int minimapImageWidth,
             int minimapImageHeight,
+            Point compactMarkerOffset,
+            Point expandedMarkerOffset,
             BaseDXDrawableItem userMarker = null,
             BaseDXDrawableItem npcMarker = null,
             BaseDXDrawableItem questStartNpcMarker = null,
@@ -188,6 +192,8 @@ namespace HaCreator.MapSimulator.UI
             this._collapsedFrame = _collapsedFrame;
             _minimapImageWidth = minimapImageWidth;
             _minimapImageHeight = minimapImageHeight;
+            _compactMarkerOffset = compactMarkerOffset;
+            _expandedMarkerOffset = expandedMarkerOffset;
             _userMarker = userMarker;
             _npcMarker = npcMarker;
             _questStartNpcMarker = questStartNpcMarker;
@@ -329,6 +335,7 @@ namespace HaCreator.MapSimulator.UI
             else
             {
                 ResetHoverTargets();
+                ApplyMarkerOffsetForCurrentState();
 
                 BaseDXDrawableItem expandedFrame = GetActiveExpandedFrame();
                 if (ReferenceEquals(expandedFrame, this))
@@ -429,6 +436,13 @@ namespace HaCreator.MapSimulator.UI
             {
                 ObjUIBtMax_ButtonClickReleased(null);
             }
+        }
+
+        public void SetWindowPosition(Point position)
+        {
+            Position = position;
+            _expandedFrame?.CopyObjectPosition(this);
+            _collapsedFrame?.CopyObjectPosition(this);
         }
 
         #region IClickableUIObject
@@ -682,6 +696,60 @@ namespace HaCreator.MapSimulator.UI
         private BaseDXDrawableItem GetVisibleFrame()
         {
             return _bIsCollapsedState ? _collapsedFrame : GetActiveExpandedFrame();
+        }
+
+        private Point GetCurrentMarkerOffset()
+        {
+            return NormalizeExpandedOption(_currentOption) >= ClientOptionExpanded
+                ? _expandedMarkerOffset
+                : _compactMarkerOffset;
+        }
+
+        private void ApplyMarkerOffsetForCurrentState()
+        {
+            Point markerOffset = GetCurrentMarkerOffset();
+            _pixelDot.Position = markerOffset;
+
+            if (_userMarker != null)
+            {
+                _userMarker.Position = markerOffset;
+            }
+
+            if (_npcMarker != null)
+            {
+                _npcMarker.Position = markerOffset;
+            }
+
+            if (_questStartNpcMarker != null)
+            {
+                _questStartNpcMarker.Position = markerOffset;
+            }
+
+            if (_questEndNpcMarker != null)
+            {
+                _questEndNpcMarker.Position = markerOffset;
+            }
+
+            if (_portalMarker != null)
+            {
+                _portalMarker.Position = markerOffset;
+            }
+
+            foreach (BaseDXDrawableItem marker in _helperMarkers.Values)
+            {
+                if (marker != null)
+                {
+                    marker.Position = markerOffset;
+                }
+            }
+
+            foreach (BaseDXDrawableItem marker in _directionMarkers.Values)
+            {
+                if (marker != null)
+                {
+                    marker.Position = markerOffset;
+                }
+            }
         }
 
         private void SyncFramePositionsFrom(BaseDXDrawableItem source)
