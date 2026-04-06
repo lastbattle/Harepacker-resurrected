@@ -1,0 +1,5 @@
+<?xml version="1.0" encoding="utf-8"?>
+<RuleSet Name="AllRules" Description="Placeholder ruleset to satisfy legacy project references." ToolsVersion="16.0">
+  <Rules AnalyzerId="Microsoft.Analyzers.ManagedCodeAnalysis" RuleNamespace="Microsoft.Rules.Managed">
+  </Rules>
+</RuleSet>
