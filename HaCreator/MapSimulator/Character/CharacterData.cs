@@ -744,6 +744,8 @@ namespace HaCreator.MapSimulator.Character
 
         // Animations indexed by action name
         public Dictionary<string, CharacterAnimation> Animations { get; set; } = new();
+        public HashSet<string> AvailableAnimations { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+        internal Func<string, CharacterAnimation> AnimationResolver { get; set; }
 
         // For equipment with visible slots
         public string VSlot { get; set; }           // Visible slot conflicts
@@ -818,6 +820,7 @@ namespace HaCreator.MapSimulator.Character
                 Type = Type,
                 Slot = Slot,
                 Animations = new Dictionary<string, CharacterAnimation>(Animations),
+                AvailableAnimations = new HashSet<string>(AvailableAnimations ?? Enumerable.Empty<string>(), StringComparer.OrdinalIgnoreCase),
                 VSlot = VSlot,
                 ISlot = ISlot,
                 IsCash = IsCash,
@@ -877,7 +880,8 @@ namespace HaCreator.MapSimulator.Character
                 GrowthMaxLevel = GrowthMaxLevel,
                 GrowthExpPercent = GrowthExpPercent,
                 Icon = Icon,
-                IconRaw = IconRaw
+                IconRaw = IconRaw,
+                AnimationResolver = AnimationResolver
             };
         }
 
@@ -891,7 +895,63 @@ namespace HaCreator.MapSimulator.Character
 
         public CharacterAnimation GetAnimation(string actionName)
         {
-            return FindAnimation(Animations, actionName);
+            foreach (string candidate in GetActionLookupStrings(actionName))
+            {
+                if (TryGetAnimation(candidate, out CharacterAnimation animation))
+                {
+                    return animation;
+                }
+            }
+
+            if (TryGetAnimation("stand1", out CharacterAnimation standAnimation))
+            {
+                return standAnimation;
+            }
+
+            foreach (CharacterAnimation animation in Animations.Values)
+            {
+                if (animation?.Frames?.Count > 0)
+                {
+                    return animation;
+                }
+            }
+
+            return null;
+        }
+
+        private bool TryGetAnimation(string actionName, out CharacterAnimation animation)
+        {
+            animation = null;
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            if (Animations.TryGetValue(actionName, out animation))
+            {
+                return animation?.Frames?.Count > 0;
+            }
+
+            if (AnimationResolver == null)
+            {
+                return false;
+            }
+
+            if (AvailableAnimations != null
+                && AvailableAnimations.Count > 0
+                && !AvailableAnimations.Contains(actionName))
+            {
+                return false;
+            }
+
+            animation = AnimationResolver(actionName);
+            if (animation?.Frames?.Count > 0)
+            {
+                Animations[actionName] = animation;
+                return true;
+            }
+
+            return false;
         }
 
         public static CharacterAnimation FindAnimation(IReadOnlyDictionary<string, CharacterAnimation> animations, string actionName)

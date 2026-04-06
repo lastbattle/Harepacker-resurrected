@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Diagnostics;
 using System.Globalization;
 using System.Linq;
 using HaCreator.MapSimulator.Managers;
@@ -62,6 +63,7 @@ namespace HaCreator.MapSimulator.Character
         private readonly Dictionary<RemoteRelationshipOverlayType, RelationshipTextTagStyle> _relationshipTextTagCache = new();
         private readonly Dictionary<CharacterGender, StarterAvatarRandomizationCatalog> _starterAvatarCatalogCache = new();
         private CarryItemEffectDefinition _carryItemEffectCache;
+        private readonly HashSet<string> _loggedAnimationFallbackKeys = new(StringComparer.Ordinal);
 
         // Standard actions to load
         private static readonly string[] StandardActions = new[]
@@ -1373,31 +1375,10 @@ namespace HaCreator.MapSimulator.Character
 
             img.ParseImage();
 
-            // Debug: show top-level nodes in hair image
-            System.Diagnostics.Debug.WriteLine($"[CharacterLoader] Hair image nodes:");
-            foreach (var prop in img.WzProperties)
-            {
-                System.Diagnostics.Debug.WriteLine($"  - {prop.Name} ({prop.GetType().Name})");
-                // Show subnodes for stand1
-                if (prop is WzSubProperty subProp && prop.Name == "stand1")
-                {
-                    foreach (var child in subProp.WzProperties)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"    - {child.Name} ({child.GetType().Name})");
-                        // Show one more level for hair subnode
-                        if (child is WzSubProperty childSub && child.Name == "hair")
-                        {
-                            foreach (var grandchild in childSub.WzProperties)
-                            {
-                                System.Diagnostics.Debug.WriteLine($"      - {grandchild.Name} ({grandchild.GetType().Name})");
-                            }
-                        }
-                    }
-                }
-            }
-
             // Load regular hair animations - include attack animations for proper character posing
-            var allActions = BuildActionLoadOrder(img.WzProperties.Select(prop => prop.Name), includeAttackActions: true);
+            var allActions = BuildEagerActionLoadOrder(
+                BuildAvailableActionSet(img.WzProperties.Select(prop => prop.Name)),
+                includeAttackActions: true);
             foreach (var action in allActions)
             {
                 var actionNode = img[action];
@@ -1413,7 +1394,6 @@ namespace HaCreator.MapSimulator.Character
                             anim.ActionName = action;
                             anim.Action = CharacterPart.ParseActionString(action);
                             hair.Animations[action] = anim;
-                            System.Diagnostics.Debug.WriteLine($"[CharacterLoader] Hair action '{action}' loaded with {anim.Frames.Count} frames");
                         }
                     }
 
@@ -1426,7 +1406,6 @@ namespace HaCreator.MapSimulator.Character
                         {
                             anim.ActionName = action + "_overHead";
                             // Store separately or merge - for now just log
-                            System.Diagnostics.Debug.WriteLine($"[CharacterLoader] Hair overHead '{action}' loaded with {anim.Frames.Count} frames");
                         }
                     }
 
@@ -1445,7 +1424,6 @@ namespace HaCreator.MapSimulator.Character
                 }
             }
 
-            System.Diagnostics.Debug.WriteLine($"[CharacterLoader] Hair loaded with {hair.Animations.Count} animations");
         }
 
         /// <summary>
@@ -1602,7 +1580,9 @@ namespace HaCreator.MapSimulator.Character
             if (img == null) return;
 
             // Combine standard and attack actions
-            var allActions = BuildActionLoadOrder(img.WzProperties.Select(prop => prop.Name), includeAttackActions: true);
+            var allActions = BuildEagerActionLoadOrder(
+                BuildAvailableActionSet(img.WzProperties.Select(prop => prop.Name)),
+                includeAttackActions: true);
 
             foreach (var action in allActions)
             {
@@ -2023,82 +2003,67 @@ namespace HaCreator.MapSimulator.Character
 
             img.ParseImage();
 
-            // Debug: list top-level nodes in the image
-            System.Diagnostics.Debug.WriteLine($"[CharacterLoader] LoadPartAnimations for {part.Name}, nodes:");
-            foreach (var prop in img.WzProperties)
-            {
-                System.Diagnostics.Debug.WriteLine($"  - {prop.Name} ({prop.GetType().Name})");
-            }
+            HashSet<string> availableActions = BuildAvailableActionSet(img.WzProperties.Select(prop => prop.Name));
+            part.AvailableAnimations = availableActions;
+            part.AnimationResolver = actionName => LoadAnimationForAction(img, actionName);
 
-            // Debug head structure specifically
-            bool isHead = part.Name.Contains("Head");
-            if (isHead)
-            {
-                var stand1Node = img["stand1"];
-                if (stand1Node is WzSubProperty stand1Sub)
-                {
-                    System.Diagnostics.Debug.WriteLine($"[CharacterLoader] HEAD stand1 contents:");
-                    foreach (var child in stand1Sub.WzProperties)
-                    {
-                        System.Diagnostics.Debug.WriteLine($"  - {child.Name} ({child.GetType().Name})");
-                    }
-                }
-            }
-
-            var actionsToLoad = BuildActionLoadOrder(img.WzProperties.Select(prop => prop.Name), includeAttackActions);
+            // Startup only needs the common locomotion and attack families. Less common
+            // actions are resolved lazily the first time the assembler requests them.
+            var actionsToLoad = BuildEagerActionLoadOrder(availableActions, includeAttackActions);
 
             foreach (var action in actionsToLoad)
             {
-                var actionNode = img[action];
-                if (actionNode != null)
+                CharacterAnimation anim = LoadAnimationForAction(img, action);
+                if (anim != null && anim.Frames.Count > 0)
                 {
-                    // Pass debug context for head to see structure
-                    var anim = LoadAnimation(actionNode, isHead && action == "stand1" ? $"{part.Name}/{action}" : null);
-                    if (anim != null && anim.Frames.Count > 0)
-                    {
-                        anim.ActionName = action;
-                        anim.Action = CharacterPart.ParseActionString(action);
-                        part.Animations[action] = anim;
-                    }
+                    part.Animations[action] = anim;
+                }
+            }
+        }
+
+        private static HashSet<string> BuildAvailableActionSet(IEnumerable<string> availableActionNames)
+        {
+            var availableActions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            if (availableActionNames == null)
+            {
+                return availableActions;
+            }
+
+            foreach (string actionName in availableActionNames)
+            {
+                if (LooksLikeActionName(actionName))
+                {
+                    availableActions.Add(actionName);
                 }
             }
 
-            System.Diagnostics.Debug.WriteLine($"[CharacterLoader] {part.Name} has {part.Animations.Count} animations");
+            return availableActions;
         }
 
-        private static IReadOnlyList<string> BuildActionLoadOrder(IEnumerable<string> availableActionNames, bool includeAttackActions)
+        private static IReadOnlyList<string> BuildEagerActionLoadOrder(ISet<string> availableActionNames, bool includeAttackActions)
         {
             var orderedActions = new List<string>();
-            var seen = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-
-            void AddAction(string actionName)
+            if (availableActionNames == null || availableActionNames.Count == 0)
             {
-                if (string.IsNullOrWhiteSpace(actionName) || !seen.Add(actionName) || !LooksLikeActionName(actionName))
-                {
-                    return;
-                }
-
-                orderedActions.Add(actionName);
+                return orderedActions;
             }
 
             foreach (string action in StandardActions)
             {
-                AddAction(action);
+                if (availableActionNames.Contains(action))
+                {
+                    orderedActions.Add(action);
+                }
             }
 
             if (includeAttackActions)
             {
                 foreach (string action in AttackActions)
                 {
-                    AddAction(action);
-                }
-            }
-
-            if (availableActionNames != null)
-            {
-                foreach (string action in availableActionNames.OrderBy(name => name, StringComparer.OrdinalIgnoreCase))
-                {
-                    AddAction(action);
+                    if (availableActionNames.Contains(action))
+                    {
+                        orderedActions.Add(action);
+                    }
                 }
             }
 
@@ -2112,6 +2077,44 @@ namespace HaCreator.MapSimulator.Character
                    && !name.StartsWith("_", StringComparison.Ordinal);
         }
 
+        [Conditional("DEBUG")]
+        private void LogAnimationFallbackOnce(string fallbackKey, WzSubProperty firstFrame, WzObject resolvedUolTarget)
+        {
+            if (string.IsNullOrWhiteSpace(fallbackKey) || !_loggedAnimationFallbackKeys.Add(fallbackKey))
+            {
+                return;
+            }
+
+            string frameContents = firstFrame == null
+                ? "none"
+                : string.Join(", ", firstFrame.WzProperties.Select(static child => $"{child.Name}:{child.GetType().Name}"));
+            string resolvedType = resolvedUolTarget?.GetType().Name ?? "NULL";
+            Debug.WriteLine($"[LoadAnimation] Fallback scan for '{fallbackKey}' because direct numbered frames contained no canvas. Frame0 children: {frameContents}. First resolved UOL type: {resolvedType}.");
+        }
+
+        private CharacterAnimation LoadAnimationForAction(WzImage img, string actionName)
+        {
+            if (img == null || string.IsNullOrWhiteSpace(actionName))
+            {
+                return null;
+            }
+
+            WzImageProperty actionNode = img[actionName];
+            if (actionNode == null)
+            {
+                return null;
+            }
+
+            CharacterAnimation animation = LoadAnimation(actionNode);
+            if (animation != null && animation.Frames.Count > 0)
+            {
+                animation.ActionName = actionName;
+                animation.Action = CharacterPart.ParseActionString(actionName);
+            }
+
+            return animation;
+        }
+
         private CharacterAnimation LoadAnimation(WzImageProperty node, string debugContext = null)
         {
             if (node == null) return null;
@@ -2122,16 +2125,6 @@ namespace HaCreator.MapSimulator.Character
             }
 
             var anim = new CharacterAnimation();
-
-            // Debug: show what's inside the action node
-            if (debugContext != null && node is WzSubProperty debugSub)
-            {
-                System.Diagnostics.Debug.WriteLine($"[LoadAnimation] {debugContext} contents:");
-                foreach (var child in debugSub.WzProperties)
-                {
-                    System.Diagnostics.Debug.WriteLine($"  - {child.Name} ({child.GetType().Name})");
-                }
-            }
 
             // Check if node is a direct canvas (single frame)
             if (node is WzCanvasProperty canvas)
@@ -2186,7 +2179,13 @@ namespace HaCreator.MapSimulator.Character
                 // Structure: stand1/0/head, stand1/1/head (for head images)
                 if (foundDirectFrames && anim.Frames.Count == 0)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[LoadAnimation] Found frames but no canvas, checking for 'head' inside each frame");
+                    string fallbackKey = debugContext
+                        ?? node.FullPath
+                        ?? node.Name
+                        ?? "<unknown>";
+                    WzSubProperty firstFrameSub = subProp["0"] as WzSubProperty;
+                    WzObject firstResolvedUolTarget = (firstFrameSub?["head"] as WzUOLProperty)?.LinkValue;
+                    LogAnimationFallbackOnce(fallbackKey, firstFrameSub, firstResolvedUolTarget);
                     for (int i = 0; i < 100; i++)
                     {
                         var frameNode = subProp[i.ToString()];
@@ -2195,16 +2194,6 @@ namespace HaCreator.MapSimulator.Character
 
                         if (frameNode is WzSubProperty frameSub)
                         {
-                            // Debug: show what's inside frame 0
-                            if (i == 0)
-                            {
-                                System.Diagnostics.Debug.WriteLine($"[LoadAnimation] Frame 0 contents:");
-                                foreach (var fc in frameSub.WzProperties)
-                                {
-                                    System.Diagnostics.Debug.WriteLine($"  - {fc.Name} ({fc.GetType().Name})");
-                                }
-                            }
-
                             // Look for "head" property inside the frame
                             var headProp = frameSub["head"];
                             WzCanvasProperty headCanvas = null;
@@ -2213,7 +2202,6 @@ namespace HaCreator.MapSimulator.Character
                             if (headProp is WzUOLProperty uol)
                             {
                                 var resolved = uol.LinkValue;
-                                System.Diagnostics.Debug.WriteLine($"[LoadAnimation] Resolved UOL to: {resolved?.GetType().Name ?? "NULL"}");
                                 if (resolved is WzCanvasProperty resolvedCanvas)
                                 {
                                     headCanvas = resolvedCanvas;
@@ -2268,9 +2256,7 @@ namespace HaCreator.MapSimulator.Character
                 // If no direct numbered frames, check for "head" subnode (alternate structure)
                 if (!foundDirectFrames && anim.Frames.Count == 0)
                 {
-                    System.Diagnostics.Debug.WriteLine($"[LoadAnimation] No direct frames, checking for 'head' subnode");
                     var headNode = subProp["head"];
-                    System.Diagnostics.Debug.WriteLine($"[LoadAnimation] headNode: {headNode?.GetType().Name ?? "NULL"}");
 
                     if (headNode is WzSubProperty headSub)
                     {

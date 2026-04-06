@@ -415,7 +415,7 @@ namespace HaCreator.MapSimulator.Loaders
 
 
                     var skillMap = new Dictionary<int, SkillDisplayData>();
-                    foreach (int bookJobId in GetSkillBookAliasesForJob(pathJobId))
+                    foreach (int bookJobId in GetSkillBookAliasesForJob(pathJobId).Distinct())
                     {
                         var skills = SkillDataLoader.LoadSkillsForJob(bookJobId, device);
                         foreach (var skill in skills)
@@ -445,7 +445,7 @@ namespace HaCreator.MapSimulator.Loaders
                     if (jobIcon == null)
                     {
                         // Fallback for jobs where the icon lives in another book (e.g. GM).
-                        foreach (int bookJobId in GetSkillBookAliasesForJob(pathJobId))
+                        foreach (int bookJobId in GetSkillBookAliasesForJob(pathJobId).Distinct())
                         {
                             jobIcon = SkillDataLoader.LoadJobIcon(bookJobId, device);
                             if (jobIcon != null)
@@ -530,7 +530,7 @@ namespace HaCreator.MapSimulator.Loaders
 
 
 
-                    foreach (int resolvedBookJobId in GetSkillBookAliasesForJob(bookJobId))
+                    foreach (int resolvedBookJobId in GetSkillBookAliasesForJob(bookJobId).Distinct())
                     {
                         var skills = SkillDataLoader.LoadSkillsForJob(resolvedBookJobId, device);
                         foreach (var skill in skills)
@@ -633,7 +633,7 @@ namespace HaCreator.MapSimulator.Loaders
         private static IReadOnlyList<int> GetDisplayedSkillBookJobIdsForJob(int jobId)
         {
             if (ShouldLoadFocusedJobOnly(jobId))
-                return GetSkillBookAliasesForJob(jobId);
+                return new[] { jobId };
 
 
             if (IsDualBladeJob(jobId))
