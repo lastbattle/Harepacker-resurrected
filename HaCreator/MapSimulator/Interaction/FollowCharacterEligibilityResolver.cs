@@ -25,6 +25,16 @@ namespace HaCreator.MapSimulator.Interaction
             int? mechanicMode,
             CharacterPart activeMountedRenderOwner)
         {
+            int explicitMountedVehicleId = ResolveExplicitMountedVehicleId(
+                tamingMobPart,
+                mechanicMode,
+                activeMountedRenderOwner);
+            if (explicitMountedVehicleId > 0
+                && string.IsNullOrWhiteSpace(actionName))
+            {
+                return explicitMountedVehicleId;
+            }
+
             if (string.IsNullOrWhiteSpace(actionName))
             {
                 return 0;
@@ -47,7 +57,8 @@ namespace HaCreator.MapSimulator.Interaction
                 return BattleshipTamingMobItemId;
             }
 
-            if (mechanicMode.GetValueOrDefault() > 0
+            if (explicitMountedVehicleId == MechanicTamingMobItemId
+                || mechanicMode.GetValueOrDefault() > 0
                 || ClientOwnedVehicleSkillClassifier.IsOwnerlessMechanicVehicleInferenceActionName(
                     actionName,
                     includeTransformStates: true))
@@ -64,6 +75,35 @@ namespace HaCreator.MapSimulator.Interaction
                 actionName,
                 CharacterPart.GetActionString(CharacterAction.Ghost),
                 StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static int ResolveExplicitMountedVehicleId(
+            CharacterPart tamingMobPart,
+            int? mechanicMode,
+            CharacterPart activeMountedRenderOwner)
+        {
+            int activeMountedOwnerItemId = NormalizeMountedVehicleOwnerItemId(activeMountedRenderOwner?.ItemId ?? 0);
+            if (activeMountedOwnerItemId > 0)
+            {
+                return activeMountedOwnerItemId;
+            }
+
+            int equippedMountedOwnerItemId = NormalizeMountedVehicleOwnerItemId(tamingMobPart?.ItemId ?? 0);
+            if (equippedMountedOwnerItemId > 0)
+            {
+                return equippedMountedOwnerItemId;
+            }
+
+            return mechanicMode.GetValueOrDefault() > 0
+                ? MechanicTamingMobItemId
+                : 0;
+        }
+
+        private static int NormalizeMountedVehicleOwnerItemId(int mountItemId)
+        {
+            return mountItemId == BattleshipTamingMobItemId || mountItemId == MechanicTamingMobItemId
+                ? mountItemId
+                : 0;
         }
     }
 }

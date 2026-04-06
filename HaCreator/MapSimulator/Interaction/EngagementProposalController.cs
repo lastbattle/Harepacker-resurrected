@@ -33,7 +33,7 @@ namespace HaCreator.MapSimulator.Interaction
             _runtime.UpdateLocalContext(build);
             window.SetSnapshotProvider(() => _runtime.BuildSnapshot());
             window.SetActionHandlers(
-                () => Accept(windowManager),
+                () => PerformPrimaryAction(windowManager),
                 () => Dismiss(windowManager),
                 feedbackHandler);
             window.SetFont(font);
@@ -138,9 +138,31 @@ namespace HaCreator.MapSimulator.Interaction
             return message;
         }
 
+        internal string PerformPrimaryAction(UIWindowManager windowManager)
+        {
+            if (!_runtime.TryInvokePrimaryAction(out _, out string message))
+            {
+                return message;
+            }
+
+            windowManager?.HideWindow(MapSimulatorWindowNames.EngagementProposal);
+            return message;
+        }
+
         internal string Accept(UIWindowManager windowManager)
         {
             if (!_runtime.TryAccept(out _, out string message))
+            {
+                return message;
+            }
+
+            windowManager?.HideWindow(MapSimulatorWindowNames.EngagementProposal);
+            return message;
+        }
+
+        internal string Withdraw(UIWindowManager windowManager)
+        {
+            if (!_runtime.TryWithdrawOutgoingRequest(out _, out string message))
             {
                 return message;
             }

@@ -2,6 +2,7 @@ using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
 using System.Collections.Generic;
@@ -114,9 +115,12 @@ namespace HaCreator.MapSimulator.UI
         private Func<ListOwnerState> _listStateProvider;
         private Func<StatusOwnerState> _statusStateProvider;
         private Func<OneADayOwnerState> _oneADayStateProvider;
+        private Func<int, string> _listRowSelectionAction;
+        private Func<int, string> _listScrollAction;
         private string _statusMessage = string.Empty;
         private Rectangle _contentBounds;
         private Point? _titlePositionOverride;
+        private MouseState _previousMouseState;
         private int _lockerCharacterIndex;
         private int _lockerScrollOffset;
         private string _lockerActionState = "Locker selector idle.";
@@ -190,6 +194,16 @@ namespace HaCreator.MapSimulator.UI
             _listStateProvider = provider;
         }
 
+        public void SetListRowSelectionAction(Func<int, string> action)
+        {
+            _listRowSelectionAction = action;
+        }
+
+        public void SetListScrollAction(Func<int, string> action)
+        {
+            _listScrollAction = action;
+        }
+
         public void SetStatusStateProvider(Func<StatusOwnerState> provider)
         {
             _statusStateProvider = provider;
@@ -245,6 +259,12 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _externalButtonActions[actionKey] = action;
+        }
+
+        public override void Show()
+        {
+            base.Show();
+            _previousMouseState = Mouse.GetState();
         }
 
         protected override void DrawContents(
@@ -586,6 +606,73 @@ namespace HaCreator.MapSimulator.UI
             {
                 _statusMessage = message.Trim();
             }
+        }
+
+        public override bool CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState, MouseCursorItem mouseCursor, int renderWidth, int renderHeight)
+        {
+            if (!IsVisible)
+            {
+                _previousMouseState = mouseState;
+                return false;
+            }
+
+            bool handledByOwnerSurface = HandleOwnerSurfaceMouse(mouseState, mouseCursor);
+            bool handledByBase = base.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState, mouseCursor, renderWidth, renderHeight);
+            _previousMouseState = mouseState;
+            return handledByOwnerSurface || handledByBase;
+        }
+
+        private bool HandleOwnerSurfaceMouse(MouseState mouseState, MouseCursorItem mouseCursor)
+        {
+            if (_windowName != MapSimulatorWindowNames.CashShopList && _windowName != MapSimulatorWindowNames.ItcList)
+            {
+                return false;
+            }
+
+            Rectangle contentBounds = ResolveContentBounds();
+            Rectangle absoluteBounds = new(Position.X + contentBounds.X, Position.Y + contentBounds.Y, contentBounds.Width, contentBounds.Height);
+            if (!absoluteBounds.Contains(mouseState.Position))
+            {
+                return false;
+            }
+
+            int wheelDelta = mouseState.ScrollWheelValue - _previousMouseState.ScrollWheelValue;
+            if (wheelDelta != 0 && _listScrollAction != null)
+            {
+                string message = _listScrollAction.Invoke(wheelDelta > 0 ? -1 : 1);
+                if (!string.IsNullOrWhiteSpace(message))
+                {
+                    _statusMessage = message.Trim();
+                }
+
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+                return true;
+            }
+
+            bool leftJustPressed = mouseState.LeftButton == ButtonState.Pressed
+                && _previousMouseState.LeftButton == ButtonState.Released;
+            if (!leftJustPressed || _listRowSelectionAction == null)
+            {
+                return false;
+            }
+
+            Rectangle rowsBounds = new(absoluteBounds.X + 12, absoluteBounds.Y + 54, Math.Max(80, absoluteBounds.Width - 132), 140);
+            if (!rowsBounds.Contains(mouseState.Position))
+            {
+                return false;
+            }
+
+            int relativeY = mouseState.Y - rowsBounds.Y;
+            int rowHeight = _font?.LineSpacing * 2 + 2 ?? 26;
+            int visibleRowIndex = Math.Clamp(relativeY / Math.Max(1, rowHeight), 0, 4);
+            string selectionMessage = _listRowSelectionAction.Invoke(visibleRowIndex);
+            if (!string.IsNullOrWhiteSpace(selectionMessage))
+            {
+                _statusMessage = selectionMessage.Trim();
+            }
+
+            mouseCursor?.SetMouseCursorMovedToClickableItem();
+            return true;
         }
 
         private void ApplyLocalButtonState(string actionKey)

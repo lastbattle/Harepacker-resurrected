@@ -292,6 +292,7 @@ namespace HaCreator.MapSimulator.Interaction
             GuildRankingSeedEntry entry = new(
                 normalizedGuildName,
                 string.IsNullOrWhiteSpace(masterName) ? "Guild Master" : masterName.Trim(),
+                null,
                 string.IsNullOrWhiteSpace(levelRange) ? "Lv. 1" : levelRange.Trim(),
                 string.IsNullOrWhiteSpace(memberSummary) ? "1/1 online" : memberSummary.Trim(),
                 notice?.Trim() ?? string.Empty,

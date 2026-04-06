@@ -200,6 +200,35 @@ namespace HaCreator.MapSimulator.Interaction
             return stream.ToArray();
         }
 
+        internal static bool TryDecodeTrailingLogoutGiftConfigPayload(byte[] trailingPayload, out int[] commoditySerialNumbers, out int leadingOpaqueByteCount, out string error)
+        {
+            const int logoutGiftEntryCount = 3;
+            const int logoutGiftConfigByteLength = logoutGiftEntryCount * sizeof(int);
+
+            commoditySerialNumbers = new int[logoutGiftEntryCount];
+            leadingOpaqueByteCount = 0;
+            error = null;
+            trailingPayload ??= Array.Empty<byte>();
+
+            if (trailingPayload.Length < logoutGiftConfigByteLength)
+            {
+                error = trailingPayload.Length == 0
+                    ? "Character-data SetField did not carry trailing logout-gift bytes."
+                    : $"Character-data SetField preserved only {trailingPayload.Length.ToString(CultureInfo.InvariantCulture)} trailing byte(s), which is too short for the client 12-byte logout-gift cache.";
+                return false;
+            }
+
+            leadingOpaqueByteCount = trailingPayload.Length - logoutGiftConfigByteLength;
+            using MemoryStream stream = new(trailingPayload, leadingOpaqueByteCount, logoutGiftConfigByteLength, writable: false);
+            using BinaryReader reader = new(stream);
+            for (int i = 0; i < commoditySerialNumbers.Length; i++)
+            {
+                commoditySerialNumbers[i] = Math.Max(0, reader.ReadInt32());
+            }
+
+            return true;
+        }
+
         private static void WriteCharacterStatPayload(
             BinaryWriter writer,
             int characterId,
@@ -462,9 +491,16 @@ namespace HaCreator.MapSimulator.Interaction
 
                 if (hasCharacterData)
                 {
-                    if (!TryDecodeCharacterDataTransferHead(reader, out PacketCharacterDataTransferHead transferHead, out error))
+                    long characterDataStart = stream.Position;
+                    ulong characterDataFlags = 0;
+                    PacketCharacterDataTransferHead transferHead;
+                    if (!TryDecodeCharacterDataDecodePrelude(reader, out transferHead, out characterDataFlags, out _))
                     {
-                        return false;
+                        stream.Position = characterDataStart;
+                        if (!TryDecodeCharacterDataTransferHead(reader, out transferHead, out error))
+                        {
+                            return false;
+                        }
                     }
 
                     int remainingBytes = checked((int)(stream.Length - stream.Position));
@@ -493,7 +529,9 @@ namespace HaCreator.MapSimulator.Interaction
                         false,
                         0,
                         0,
+                        characterDataFlags,
                         transferServerFileTime,
+                        remainingBytes > 0 ? reader.ReadBytes(remainingBytes) : Array.Empty<byte>(),
                         remainingBytes);
                     return true;
                 }
@@ -540,7 +578,9 @@ namespace HaCreator.MapSimulator.Interaction
                     chaseEnabled,
                     chaseX,
                     chaseY,
+                    0,
                     serverFileTime,
+                    Array.Empty<byte>(),
                     0);
                 return true;
             }
@@ -555,6 +595,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             head = default;
             error = null;
+            long restorePosition = reader.BaseStream.Position;
             try
             {
                 _ = reader.ReadInt32(); // damage seed 1
@@ -597,7 +638,105 @@ namespace HaCreator.MapSimulator.Interaction
             }
             catch (Exception ex) when (ex is IOException || ex is EndOfStreamException || ex is ArgumentException || ex is InvalidDataException)
             {
+                if (reader.BaseStream.CanSeek)
+                {
+                    reader.BaseStream.Position = restorePosition;
+                }
+
                 error = $"Official CStage::OnSetField character-data branch could not be decoded far enough to recover transfer fields: {ex.Message}";
+                return false;
+            }
+        }
+
+        private static bool TryDecodeCharacterDataDecodePrelude(
+            BinaryReader reader,
+            out PacketCharacterDataTransferHead head,
+            out ulong characterDataFlags,
+            out int consumedBytes)
+        {
+            head = default;
+            characterDataFlags = 0;
+            consumedBytes = 0;
+
+            long startPosition = reader.BaseStream.Position;
+            try
+            {
+                characterDataFlags = reader.ReadUInt64();
+                _ = reader.ReadByte(); // nCombatOrders
+                bool hasBackwardUpdate = reader.ReadByte() != 0;
+                if (hasBackwardUpdate)
+                {
+                    _ = reader.ReadByte(); // update subtype
+                    int removedSnCount = reader.ReadInt32();
+                    if (removedSnCount < 0)
+                    {
+                        return false;
+                    }
+
+                    checked
+                    {
+                        reader.BaseStream.Position += removedSnCount * sizeof(long);
+                    }
+
+                    int removedCashCount = reader.ReadInt32();
+                    if (removedCashCount < 0)
+                    {
+                        return false;
+                    }
+
+                    checked
+                    {
+                        reader.BaseStream.Position += removedCashCount * sizeof(long);
+                    }
+                }
+
+                if ((characterDataFlags & 0x1UL) == 0)
+                {
+                    return false;
+                }
+
+                _ = reader.ReadInt32(); // character id
+                _ = ReadMapleString(reader); // character name
+                _ = reader.ReadByte(); // gender
+                _ = reader.ReadByte(); // skin
+                _ = reader.ReadInt32(); // face
+                _ = reader.ReadInt32(); // hair
+                _ = reader.ReadByte(); // level
+                _ = reader.ReadInt16(); // job
+                _ = reader.ReadInt16(); // str
+                _ = reader.ReadInt16(); // dex
+                _ = reader.ReadInt16(); // int
+                _ = reader.ReadInt16(); // luk
+                int hp = reader.ReadInt32();
+                _ = reader.ReadInt32(); // max hp
+                _ = reader.ReadInt32(); // mp
+                _ = reader.ReadInt32(); // max mp
+                _ = reader.ReadInt16(); // ap
+                _ = reader.ReadInt16(); // sp
+                _ = reader.ReadInt32(); // exp
+                _ = reader.ReadInt16(); // fame
+                _ = reader.ReadInt32(); // temp exp
+                int fieldId = reader.ReadInt32();
+                byte portalIndex = reader.ReadByte();
+                _ = reader.ReadInt32(); // play time
+                _ = reader.ReadInt16(); // sub job
+                _ = reader.ReadByte(); // friend max
+                bool hasLinkedCharacterName = reader.ReadByte() != 0;
+                if (hasLinkedCharacterName)
+                {
+                    _ = ReadMapleString(reader);
+                }
+
+                head = new PacketCharacterDataTransferHead(fieldId, portalIndex, hp);
+                consumedBytes = checked((int)(reader.BaseStream.Position - startPosition));
+                return true;
+            }
+            catch (Exception) when (reader.BaseStream.CanSeek)
+            {
+                reader.BaseStream.Position = startPosition;
+                head = default;
+                characterDataFlags = 0;
+                consumedBytes = 0;
                 return false;
             }
         }
@@ -755,6 +894,8 @@ namespace HaCreator.MapSimulator.Interaction
         bool ChaseEnabled,
         int ChaseX,
         int ChaseY,
+        ulong CharacterDataFlags,
         long ServerFileTime,
+        byte[] TrailingPayload,
         int TrailingBytes);
 }

@@ -257,12 +257,24 @@ namespace HaCreator.MapSimulator
                 return true;
             }
 
-            if (!RemoteAffectedAreaSupportResolver.IsRecoveryZone(skill, levelData))
+            bool isRecoveryZone = RemoteAffectedAreaSupportResolver.IsRecoveryZone(skill, levelData);
+            bool isStatusCleansingZone = RemoteAffectedAreaSupportResolver.IsStatusCleansingZone(skill, supportSkills);
+            if (!isRecoveryZone && !isStatusCleansingZone)
             {
                 return true;
             }
 
             if (!_affectedAreaPool.TryBeginGameplayTick(area, currentTime, RemoteAffectedAreaFallbackTickMs))
+            {
+                return true;
+            }
+
+            if (isStatusCleansingZone)
+            {
+                _playerManager?.ClearMobStatuses(RemoteAffectedAreaSupportResolver.GetSupportedAreaCleanseEffects());
+            }
+
+            if (!isRecoveryZone)
             {
                 return true;
             }

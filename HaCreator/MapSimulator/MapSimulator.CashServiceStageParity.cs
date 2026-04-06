@@ -173,6 +173,8 @@ namespace HaCreator.MapSimulator
             {
                 listWindow.SetFont(_fontChat);
                 listWindow.SetContentProvider(() => BuildCashShopListOwnerLines(cashShopWindow));
+                listWindow.SetListRowSelectionAction(cashShopWindow.SelectListOwnerVisibleRow);
+                listWindow.SetListScrollAction(cashShopWindow.MoveListOwnerSelection);
                 listWindow.SetExternalAction("BtBuy", () => cashShopWindow.ExecuteCashStageListAction("BtBuy"));
                 listWindow.SetExternalAction("BtGift", () => cashShopWindow.ExecuteCashStageListAction("BtGift"));
                 listWindow.SetExternalAction("BtReserve", () => cashShopWindow.ExecuteCashStageListAction("BtReserve"));
@@ -860,6 +862,7 @@ namespace HaCreator.MapSimulator
                     new AdminShopDialogUI.PacketOwnedStorageExpansionResult
                     {
                         PacketType = packetType,
+                        CashItemResultSubtype = packetResult.CashItemResultSubtype,
                         CommoditySerialNumber = packetResult.CommoditySerialNumber,
                         ResultSubtype = packetResult.ResultSubtype,
                         FailureReason = packetResult.FailureReason,
@@ -878,6 +881,12 @@ namespace HaCreator.MapSimulator
             message = string.IsNullOrWhiteSpace(storageMessage)
                 ? CashShopStorageExpansionPacketCodec.BuildSummary(packetResult)
                 : storageMessage;
+            if (ShouldExitCashShopAfterStorageExpansionFailure(packetResult))
+            {
+                HideCashShopOwnerFamilyWindows();
+                message = $"{message} Client subtype 112 failure reason {packetResult.FailureReason.ToString(CultureInfo.InvariantCulture)} forced the simulator out of the Cash Shop owner family.";
+            }
+
             return applied;
         }
 
@@ -920,6 +929,7 @@ namespace HaCreator.MapSimulator
 
             HandleStorageExpansionResolved(new AdminShopDialogUI.StorageExpansionResolution
             {
+                CashItemResultSubtype = Math.Max(0, packetResult.CashItemResultSubtype),
                 CommoditySerialNumber = Math.Max(0, packetResult.CommoditySerialNumber),
                 ResultSubtype = packetResult.ResultSubtype,
                 FailureReason = Math.Max(0, packetResult.FailureReason),
@@ -937,6 +947,13 @@ namespace HaCreator.MapSimulator
                 ? $"Applied packet-owned trunk entitlement sync; storage now has {storageRuntime.GetSlotLimit().ToString(CultureInfo.InvariantCulture)} slots."
                 : CashShopStorageExpansionPacketCodec.BuildSummary(packetResult);
             return true;
+        }
+
+        private static bool ShouldExitCashShopAfterStorageExpansionFailure(CashShopStorageExpansionPacketResult packetResult)
+        {
+            return packetResult?.CashItemResultSubtype == CashShopStorageExpansionPacketCodec.CashItemResIncTrunkCountFailedSubtype
+                && packetResult.ResultSubtype != 1
+                && packetResult.FailureReason is 0 or 1 or 2;
         }
 
         private bool TryApplyCashShopBalancePacket(int packetType, byte[] payload, out string message)

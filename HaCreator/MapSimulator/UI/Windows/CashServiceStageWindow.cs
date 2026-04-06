@@ -100,16 +100,26 @@ namespace HaCreator.MapSimulator.UI
         private int _cashItemProductId;
         private int _cashItemPrice;
         private int _cashItemMutationCount;
+        private int _cashLockerItemCount;
+        private int _cashLockerSlotLimit;
+        private int _cashCharacterSlotCount;
+        private int _cashBuyCharacterCount;
+        private int _cashCharacterCount;
+        private readonly int[] _cashWishlistSerialNumbers = new int[10];
         private string _cashItemLastSummary = "No cash-item result routed yet.";
         private int _itcNormalItemSubtype = -1;
         private int _itcNormalItemPage;
         private int _itcNormalItemCategory;
+        private int _itcNormalItemSubCategory;
         private int _itcNormalItemSortType = 1;
         private int _itcNormalItemSortColumn;
         private int _itcNormalItemEntryCount;
+        private int _itcNormalItemPageEntryCount;
         private int _itcNormalItemSelectedListingId;
         private int _itcNormalItemSelectedPrice;
         private int _itcNormalItemMutationCount;
+        private int _itcSaleItemCount;
+        private int _itcPurchaseItemCount;
         private string _itcNormalItemLastSummary = "No ITC normal-item packet routed yet.";
 
         public CashServiceStageWindow(IDXObject frame, string windowName, CashServiceStageKind stageKind, GraphicsDevice device)
@@ -137,16 +147,26 @@ namespace HaCreator.MapSimulator.UI
         public bool HasPendingCommodityMigration => _hasPendingMigration;
         public bool IsOneADayPending => _packetRoutes.ContainsKey(395);
         public int CashItemMutationCount => _cashItemMutationCount;
+        public int CashLockerItemCount => _cashLockerItemCount;
+        public int CashLockerSlotLimit => _cashLockerSlotLimit;
+        public int CashCharacterSlotCount => _cashCharacterSlotCount;
+        public int CashBuyCharacterCount => _cashBuyCharacterCount;
+        public int CashCharacterCount => _cashCharacterCount;
+        public IReadOnlyList<int> CashWishlistSerialNumbers => _cashWishlistSerialNumbers;
         public string CashItemLastSummary => _cashItemLastSummary;
         public int ItcNormalItemMutationCount => _itcNormalItemMutationCount;
         public int ItcNormalItemSubtype => _itcNormalItemSubtype;
         public int ItcNormalItemPage => _itcNormalItemPage;
         public int ItcNormalItemCategory => _itcNormalItemCategory;
+        public int ItcNormalItemSubCategory => _itcNormalItemSubCategory;
         public int ItcNormalItemSortType => _itcNormalItemSortType;
         public int ItcNormalItemSortColumn => _itcNormalItemSortColumn;
         public int ItcNormalItemEntryCount => _itcNormalItemEntryCount;
+        public int ItcNormalItemPageEntryCount => _itcNormalItemPageEntryCount;
         public int ItcNormalItemSelectedListingId => _itcNormalItemSelectedListingId;
         public int ItcNormalItemSelectedPrice => _itcNormalItemSelectedPrice;
+        public int ItcSaleItemCount => _itcSaleItemCount;
+        public int ItcPurchaseItemCount => _itcPurchaseItemCount;
         public string ItcNormalItemLastSummary => _itcNormalItemLastSummary;
 
         public override void SetFont(SpriteFont font)

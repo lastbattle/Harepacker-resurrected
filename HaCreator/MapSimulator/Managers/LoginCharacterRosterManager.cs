@@ -16,7 +16,8 @@ namespace HaCreator.MapSimulator.Managers
             int? previousJobRank = null,
             LoginAvatarLook avatarLook = null,
             byte[] avatarLookPacket = null,
-            int portal = 0)
+            int portal = 0,
+            int? worldId = null)
         {
             Build = build ?? throw new ArgumentNullException(nameof(build));
             FieldMapId = fieldMapId;
@@ -27,6 +28,7 @@ namespace HaCreator.MapSimulator.Managers
             AvatarLook = LoginAvatarLookCodec.CloneLook(avatarLook);
             AvatarLookPacket = avatarLookPacket != null ? (byte[])avatarLookPacket.Clone() : null;
             Portal = portal;
+            WorldId = worldId.HasValue ? Math.Max(0, worldId.Value) : null;
         }
 
         public CharacterBuild Build { get; }
@@ -38,6 +40,7 @@ namespace HaCreator.MapSimulator.Managers
         public LoginAvatarLook AvatarLook { get; }
         public byte[] AvatarLookPacket { get; }
         public int Portal { get; }
+        public int? WorldId { get; }
 
         public CharacterBuild CreateRuntimeBuild(CharacterLoader loader)
         {

@@ -185,6 +185,9 @@ namespace HaCreator.MapSimulator.Managers
 
         public static bool RequiresWebsiteHandoff(byte resultCode)
         {
+            // Client evidence: CLogin::OnSelectCharacterByVACResult (0x5de670)
+            // uses CLoginUtilDlg::YesNo2(27) for result 14 and YesNo2(26) for result 15
+            // before opening the same StringPool URL (0xB6C).
             return resultCode is 14 or 15;
         }
 
@@ -237,6 +240,8 @@ namespace HaCreator.MapSimulator.Managers
                 11 => 14,
                 13 => 21,
                 14 => 27,
+                // Client evidence: result 15 stays in the website-handoff family but
+                // uses notice 26 rather than 27 before opening the shared URL.
                 15 => 26,
                 16 or 21 => 33,
                 17 => 27,

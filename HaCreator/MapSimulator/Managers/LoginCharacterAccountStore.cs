@@ -33,6 +33,7 @@ namespace HaCreator.MapSimulator.Managers
             public string BirthDate { get; set; }
             public bool IsSecondaryPasswordEnabled { get; set; }
             public string SecondaryPassword { get; set; }
+            public LoginExtraCharInfoResultProfile ExtraCharInfoResult { get; set; }
             public List<CashShopStorageExpansionRecordState> StorageExpansionHistory { get; set; } = new();
             public List<LoginCharacterAccountEntryState> Entries { get; set; } = new();
         }
@@ -50,12 +51,14 @@ namespace HaCreator.MapSimulator.Managers
             public string BirthDate { get; init; } = string.Empty;
             public bool IsSecondaryPasswordEnabled { get; init; }
             public string SecondaryPassword { get; init; } = string.Empty;
+            public LoginExtraCharInfoResultProfile ExtraCharInfoResult { get; init; }
             public IReadOnlyList<CashShopStorageExpansionRecordState> StorageExpansionHistory { get; init; } = Array.Empty<CashShopStorageExpansionRecordState>();
             public IReadOnlyList<LoginCharacterAccountEntryState> Entries { get; init; } = Array.Empty<LoginCharacterAccountEntryState>();
         }
 
         public sealed class CashShopStorageExpansionRecordState
         {
+            public int CashItemResultSubtype { get; init; }
             public int CommoditySerialNumber { get; init; }
             public int ResultSubtype { get; init; }
             public int FailureReason { get; init; }
@@ -172,6 +175,7 @@ namespace HaCreator.MapSimulator.Managers
                 BirthDate = NormalizeBirthDate(persisted.BirthDate),
                 IsSecondaryPasswordEnabled = persisted.IsSecondaryPasswordEnabled,
                 SecondaryPassword = NormalizeSecret(persisted.SecondaryPassword),
+                ExtraCharInfoResult = CloneExtraCharInfoResultProfile(persisted.ExtraCharInfoResult),
                 StorageExpansionHistory = CloneStorageExpansionHistory(persisted.StorageExpansionHistory),
                 Entries = entries
             };
@@ -212,6 +216,7 @@ namespace HaCreator.MapSimulator.Managers
             bool isSecondaryPasswordEnabled = false,
             string secondaryPassword = null,
             int? accountId = null,
+            LoginExtraCharInfoResultProfile extraCharInfoResult = null,
             IEnumerable<CashShopStorageExpansionRecordState> storageExpansionHistory = null)
         {
             string normalizedAccountName = string.IsNullOrWhiteSpace(accountName) ? "explorergm" : accountName.Trim();
@@ -237,6 +242,7 @@ namespace HaCreator.MapSimulator.Managers
                 BirthDate = NormalizeBirthDate(birthDate),
                 IsSecondaryPasswordEnabled = isSecondaryPasswordEnabled,
                 SecondaryPassword = NormalizeSecret(secondaryPassword),
+                ExtraCharInfoResult = CloneExtraCharInfoResultProfile(extraCharInfoResult),
                 StorageExpansionHistory = CloneStorageExpansionHistory(storageExpansionHistory),
                 Entries = normalizedEntries
             };
@@ -320,6 +326,38 @@ namespace HaCreator.MapSimulator.Managers
             return true;
         }
 
+        public int PruneStatesForAccount(string accountName, IEnumerable<int> keepWorldIds, int? accountId = null)
+        {
+            string normalizedAccountName = string.IsNullOrWhiteSpace(accountName)
+                ? "explorergm"
+                : accountName.Trim();
+            HashSet<int> retainedWorldIds = keepWorldIds?
+                .Select(worldId => Math.Max(0, worldId))
+                .ToHashSet()
+                ?? new HashSet<int>();
+            List<int> removedWorldIds = EnumeratePersistedStatesForAccount(normalizedAccountName, accountId)
+                .Where(state => state != null && !retainedWorldIds.Contains(Math.Max(0, state.WorldId)))
+                .Select(state => Math.Max(0, state.WorldId))
+                .Distinct()
+                .ToList();
+            if (removedWorldIds.Count == 0)
+            {
+                return 0;
+            }
+
+            foreach (int worldId in removedWorldIds)
+            {
+                _accountsByKey.Remove(ResolveAccountKey(normalizedAccountName, worldId));
+                if (accountId.HasValue && accountId.Value > 0)
+                {
+                    _accountsByKey.Remove(ResolveAccountKey(normalizedAccountName, worldId, accountId.Value));
+                }
+            }
+
+            SaveToDisk();
+            return removedWorldIds.Count;
+        }
+
         private PersistedAccountState TryGetPersistedState(string accountName, int worldId, int? accountId)
         {
             string accountIdKey = ResolveAccountKey(accountName, worldId, accountId);
@@ -398,6 +436,7 @@ namespace HaCreator.MapSimulator.Managers
                 BirthDate = NormalizeBirthDate(persisted.BirthDate),
                 IsSecondaryPasswordEnabled = persisted.IsSecondaryPasswordEnabled,
                 SecondaryPassword = NormalizeSecret(persisted.SecondaryPassword),
+                ExtraCharInfoResult = CloneExtraCharInfoResultProfile(persisted.ExtraCharInfoResult),
                 StorageExpansionHistory = CloneStorageExpansionHistory(persisted.StorageExpansionHistory),
                 Entries = entries
             };
@@ -534,6 +573,7 @@ namespace HaCreator.MapSimulator.Managers
                 BirthDate = NormalizeBirthDate(state?.BirthDate),
                 IsSecondaryPasswordEnabled = state?.IsSecondaryPasswordEnabled ?? false,
                 SecondaryPassword = NormalizeSecret(state?.SecondaryPassword),
+                ExtraCharInfoResult = CloneExtraCharInfoResultProfile(state?.ExtraCharInfoResult),
                 StorageExpansionHistory = CloneStorageExpansionHistory(state?.StorageExpansionHistory),
                 Entries = state?.Entries?
                     .Where(entry => entry != null)
@@ -549,6 +589,7 @@ namespace HaCreator.MapSimulator.Managers
                 .Where(record => record != null)
                 .Select(record => new CashShopStorageExpansionRecordState
                 {
+                    CashItemResultSubtype = Math.Max(0, record.CashItemResultSubtype),
                     CommoditySerialNumber = Math.Max(0, record.CommoditySerialNumber),
                     ResultSubtype = record.ResultSubtype,
                     FailureReason = Math.Max(0, record.FailureReason),
@@ -562,6 +603,21 @@ namespace HaCreator.MapSimulator.Managers
                 })
                 .ToList()
                 ?? new List<CashShopStorageExpansionRecordState>();
+        }
+
+        private static LoginExtraCharInfoResultProfile CloneExtraCharInfoResultProfile(LoginExtraCharInfoResultProfile profile)
+        {
+            if (profile == null)
+            {
+                return null;
+            }
+
+            return new LoginExtraCharInfoResultProfile
+            {
+                AccountId = profile.AccountId,
+                ResultFlag = profile.ResultFlag,
+                CanHaveExtraCharacter = profile.CanHaveExtraCharacter
+            };
         }
     }
 }

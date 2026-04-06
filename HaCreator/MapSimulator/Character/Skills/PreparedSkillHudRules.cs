@@ -100,6 +100,24 @@ namespace HaCreator.MapSimulator.Character.Skills
                 || RemoteReleaseFollowUpPayloadSkillIds.Contains(skillId);
         }
 
+        public static bool TryResolveRemotePreparedSkillReleaseOwner(int skillId, int? followUpValue, out int preparedSkillId)
+        {
+            preparedSkillId = 0;
+            if (UsesReleaseTriggeredExecution(skillId))
+            {
+                preparedSkillId = skillId;
+                return true;
+            }
+
+            if (skillId == WildHunterSwallowAttackSkillId && followUpValue.HasValue)
+            {
+                preparedSkillId = WildHunterSwallowSkillId;
+                return true;
+            }
+
+            return false;
+        }
+
         public static int ResolveGaugeDuration(int skillId, int authoredDurationMs = 0)
         {
             if (authoredDurationMs > 0)

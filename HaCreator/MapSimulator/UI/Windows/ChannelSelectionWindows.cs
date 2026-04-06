@@ -27,7 +27,10 @@ namespace HaCreator.MapSimulator.UI
             bool isSelectable,
             bool hasAdultChannels = false,
             bool isRecommended = false,
-            bool isLatestConnected = false)
+            bool isLatestConnected = false,
+            byte worldState = 0,
+            bool blocksCharacterCreation = false,
+            string worldName = null)
         {
             WorldId = worldId;
             ActiveChannels = Math.Max(0, activeChannels);
@@ -37,6 +40,9 @@ namespace HaCreator.MapSimulator.UI
             HasAdultChannels = hasAdultChannels;
             IsRecommended = isRecommended;
             IsLatestConnected = isLatestConnected;
+            WorldState = worldState;
+            BlocksCharacterCreation = blocksCharacterCreation;
+            WorldName = string.IsNullOrWhiteSpace(worldName) ? null : worldName.Trim();
         }
 
         public int WorldId { get; }
@@ -47,6 +53,9 @@ namespace HaCreator.MapSimulator.UI
         public bool HasAdultChannels { get; }
         public bool IsRecommended { get; }
         public bool IsLatestConnected { get; }
+        public byte WorldState { get; }
+        public bool BlocksCharacterCreation { get; }
+        public string WorldName { get; }
 
         public SelectorAvailability Availability => !IsSelectable
             ? SelectorAvailability.Disabled
@@ -94,6 +103,17 @@ namespace HaCreator.MapSimulator.UI
 
     public sealed class WorldSelectWindow : UIWindowBase
     {
+        private const int ClientWorldSlotCount = 36;
+        private const int ClientWorldSlotColumnCount = 6;
+        private const int ClientWorldSlotRowCount = 6;
+        private const int ClientWorldSlotStartX = 0;
+        private const int ClientWorldSlotStartY = 0;
+        private const int ClientWorldSlotColumnSpacing = 96;
+        private const int ClientWorldSlotRowSpacing = 26;
+        private const int ClientViewButtonY = 238;
+        private const int ClientViewChoiceX = 78;
+        private const int ClientViewAllX = 192;
+
         private sealed class WorldButtonEntry
         {
             public WorldButtonEntry(int worldId, UIObject button, Texture2D icon)
@@ -109,6 +129,7 @@ namespace HaCreator.MapSimulator.UI
         }
 
         private readonly List<WorldButtonEntry> _worldButtons = new List<WorldButtonEntry>();
+        private readonly List<UIObject> _emptyWorldButtons = new List<UIObject>();
         private readonly Dictionary<int, WorldSelectionState> _worldStates = new Dictionary<int, WorldSelectionState>();
         private readonly List<int> _orderedWorldIds = new List<int>();
         private readonly Texture2D _frameOverlayTexture;
@@ -130,6 +151,7 @@ namespace HaCreator.MapSimulator.UI
             Point frameOverlayOffset,
             Texture2D highlightTexture,
             IEnumerable<(int worldId, UIObject button, Texture2D icon)> worldButtons,
+            IEnumerable<UIObject> emptySlotButtons = null,
             UIObject viewChoiceButton = null,
             UIObject viewAllButton = null)
             : base(frame)
@@ -151,6 +173,18 @@ namespace HaCreator.MapSimulator.UI
                 button.ButtonClickReleased += _ => SelectWorld(capturedWorldId);
                 AddButton(button);
                 _worldButtons.Add(new WorldButtonEntry(worldId, button, icon));
+            }
+
+            foreach (UIObject button in emptySlotButtons ?? Enumerable.Empty<UIObject>())
+            {
+                if (button == null)
+                {
+                    continue;
+                }
+
+                button.SetEnabled(false);
+                AddButton(button);
+                _emptyWorldButtons.Add(button);
             }
 
             if (_worldButtons.Count > 0)
@@ -394,6 +428,12 @@ namespace HaCreator.MapSimulator.UI
                     : UIObjectState.Normal);
             }
 
+            foreach (UIObject button in _emptyWorldButtons)
+            {
+                button.SetEnabled(false);
+                button.SetButtonState(UIObjectState.Disabled);
+            }
+
             if (_viewChoiceButton != null)
             {
                 _viewChoiceButton.SetVisible(true);
@@ -411,16 +451,6 @@ namespace HaCreator.MapSimulator.UI
 
         private void UpdateWorldButtonLayout()
         {
-            const int columnCount = 6;
-            const int rowCount = 6;
-            const int startX = 0;
-            const int startY = 0;
-            const int columnSpacing = 96;
-            const int rowSpacing = 26;
-            const int viewButtonY = 238;
-            const int viewChoiceX = 78;
-            const int viewAllX = 192;
-
             Dictionary<int, int> orderLookup = _orderedWorldIds
                 .Select((worldId, index) => new { worldId, index })
                 .ToDictionary(pair => pair.worldId, pair => pair.index);
@@ -433,29 +463,48 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
-                int column = index / rowCount;
-                int row = index % rowCount;
-                if (column >= columnCount)
+                int slotIndex = Math.Clamp(index, 0, ClientWorldSlotCount - 1);
+                int column = slotIndex % ClientWorldSlotColumnCount;
+                int row = slotIndex / ClientWorldSlotColumnCount;
+                if (row >= ClientWorldSlotRowCount)
                 {
                     entry.Button.SetVisible(false);
                     continue;
                 }
 
-                entry.Button.X = startX + (column * columnSpacing);
-                entry.Button.Y = startY + (row * rowSpacing);
+                entry.Button.X = ClientWorldSlotStartX + (column * ClientWorldSlotColumnSpacing);
+                entry.Button.Y = ClientWorldSlotStartY + (row * ClientWorldSlotRowSpacing);
                 entry.Button.SetVisible(true);
+            }
+
+            int firstEmptySlotIndex = Math.Min(_orderedWorldIds.Count, ClientWorldSlotCount);
+            for (int i = 0; i < _emptyWorldButtons.Count; i++)
+            {
+                UIObject button = _emptyWorldButtons[i];
+                int slotIndex = firstEmptySlotIndex + i;
+                if (slotIndex >= ClientWorldSlotCount)
+                {
+                    button.SetVisible(false);
+                    continue;
+                }
+
+                int column = slotIndex % ClientWorldSlotColumnCount;
+                int row = slotIndex / ClientWorldSlotColumnCount;
+                button.X = ClientWorldSlotStartX + (column * ClientWorldSlotColumnSpacing);
+                button.Y = ClientWorldSlotStartY + (row * ClientWorldSlotRowSpacing);
+                button.SetVisible(true);
             }
 
             if (_viewChoiceButton != null)
             {
-                _viewChoiceButton.X = viewChoiceX;
-                _viewChoiceButton.Y = viewButtonY;
+                _viewChoiceButton.X = ClientViewChoiceX;
+                _viewChoiceButton.Y = ClientViewButtonY;
             }
 
             if (_viewAllButton != null)
             {
-                _viewAllButton.X = viewAllX;
-                _viewAllButton.Y = viewButtonY;
+                _viewAllButton.X = ClientViewAllX;
+                _viewAllButton.Y = ClientViewButtonY;
             }
         }
     }
@@ -628,7 +677,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (_worldBadges.TryGetValue(_selectedWorldId, out Texture2D badgeTexture))
             {
-                sprite.Draw(badgeTexture, new Vector2(Position.X + 18, Position.Y + 18), Color.White);
+                sprite.Draw(badgeTexture, new Vector2(Position.X + 34, Position.Y + 10), Color.White);
             }
 
             if (_highlightTexture != null)
@@ -1107,13 +1156,36 @@ namespace HaCreator.MapSimulator.UI
                 return null;
             }
 
+            string worldStateLabel = state.WorldState switch
+            {
+                >= 2 => "World full",
+                1 => "World busy",
+                _ => null,
+            };
+
+            if (state.BlocksCharacterCreation)
+            {
+                return !string.IsNullOrWhiteSpace(worldStateLabel)
+                    ? $"{worldStateLabel}; character creation blocked"
+                    : "Character creation blocked";
+            }
+
             if (state.IsLatestConnected && state.IsRecommended)
             {
-                return "Latest connected and recommended";
+                return !string.IsNullOrWhiteSpace(worldStateLabel)
+                    ? $"Latest connected and recommended; {worldStateLabel.ToLowerInvariant()}"
+                    : "Latest connected and recommended";
             }
 
             if (state.IsLatestConnected)
             {
+                if (!string.IsNullOrWhiteSpace(worldStateLabel))
+                {
+                    return state.HasAdultChannels
+                        ? $"Latest connected; {worldStateLabel.ToLowerInvariant()}; adult channels"
+                        : $"Latest connected; {worldStateLabel.ToLowerInvariant()}";
+                }
+
                 return state.HasAdultChannels
                     ? "Latest connected world with adult channels"
                     : "Latest connected world";
@@ -1121,9 +1193,23 @@ namespace HaCreator.MapSimulator.UI
 
             if (state.IsRecommended)
             {
+                if (!string.IsNullOrWhiteSpace(worldStateLabel))
+                {
+                    return state.HasAdultChannels
+                        ? $"Recommended; {worldStateLabel.ToLowerInvariant()}; adult channels"
+                        : $"Recommended; {worldStateLabel.ToLowerInvariant()}";
+                }
+
                 return state.HasAdultChannels
                     ? "Recommended world with adult channels"
                     : "Recommended world";
+            }
+
+            if (!string.IsNullOrWhiteSpace(worldStateLabel))
+            {
+                return state.HasAdultChannels
+                    ? $"{worldStateLabel}; adult channels"
+                    : worldStateLabel;
             }
 
             if (state.HasAdultChannels)

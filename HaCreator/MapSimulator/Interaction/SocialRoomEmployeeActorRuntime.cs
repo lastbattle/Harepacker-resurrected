@@ -28,6 +28,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const string StoreBankerNpcId = "9030000";
         private const int SignVerticalOffset = 34;
         private const int MiniRoomBalloonVerticalOffset = 10;
+        private const int ShopMiniRoomBalloonRaisedOffset = 7;
         private const float HeadlineScale = 0.48f;
         private const float DetailScale = 0.42f;
 
@@ -591,7 +592,12 @@ namespace HaCreator.MapSimulator.Interaction
             int actorScreenX = _activeActor.CurrentX - mapShiftX + mapCenterX;
             int actorScreenY = _activeActor.CurrentY - mapShiftY + mapCenterY;
             int boardX = actorScreenX - (boardTexture.Width / 2);
-            int boardY = actorScreenY - _activeActor.NpcInstance.Height - boardTexture.Height - MiniRoomBalloonVerticalOffset;
+            int boardY =
+                actorScreenY
+                - _activeActor.NpcInstance.Height
+                - boardTexture.Height
+                - MiniRoomBalloonVerticalOffset
+                + ResolveMiniRoomBalloonVerticalAdjustment(_activeSnapshot);
             Vector2 boardPosition = new(boardX, boardY);
 
             spriteBatch.Draw(boardTexture, boardPosition, Color.White);
@@ -601,8 +607,8 @@ namespace HaCreator.MapSimulator.Interaction
                 spriteBatch.Draw(assets.PersonalShopIcon, new Vector2(boardX + 12, boardY + 83), Color.White);
             }
 
-            DrawMiniRoomBalloonCount(spriteBatch, assets.CurrentCountDigits, _activeSnapshot.MiniRoomBalloonByte0, boardX + 29, boardY + 85);
-            DrawMiniRoomBalloonCount(spriteBatch, assets.MaxCountDigits, _activeSnapshot.MiniRoomBalloonByte1, boardX + 46, boardY + 85);
+            DrawMiniRoomBalloonCount(spriteBatch, assets.CurrentCountDigits, ResolveMiniRoomCurrentUsers(_activeSnapshot), boardX + 29, boardY + 85);
+            DrawMiniRoomBalloonCount(spriteBatch, assets.MaxCountDigits, ResolveMiniRoomMaxUsers(_activeSnapshot), boardX + 46, boardY + 85);
 
             Texture2D statusTexture = ResolveMiniRoomStatusTexture(_activeSnapshot, assets);
             if (statusTexture != null)
@@ -623,8 +629,14 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (snapshot.MiniRoomType is 3 or 4 or 5)
             {
-                return assets.ShopBoards.Length > 1 && assets.ShopBoards[1] != null
-                    ? assets.ShopBoards[1]
+                int preferredSkinIndex = Math.Clamp(ResolveMiniRoomSpec(snapshot), 0, Math.Max(0, assets.ShopBoards.Length - 1));
+                if (preferredSkinIndex <= 0 && assets.ShopBoards.Length > 1)
+                {
+                    preferredSkinIndex = 1;
+                }
+
+                return assets.ShopBoards.Length > preferredSkinIndex && assets.ShopBoards[preferredSkinIndex] != null
+                    ? assets.ShopBoards[preferredSkinIndex]
                     : assets.Background;
             }
 
@@ -655,6 +667,37 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return assets.Able;
+        }
+
+        private static int ResolveMiniRoomBalloonVerticalAdjustment(SocialRoomFieldActorSnapshot snapshot)
+        {
+            if (snapshot == null)
+            {
+                return 0;
+            }
+
+            if (snapshot.MiniRoomType == 5
+                || (snapshot.MiniRoomType == 4 && ResolveMiniRoomSpec(snapshot) > 0))
+            {
+                return ShopMiniRoomBalloonRaisedOffset;
+            }
+
+            return 0;
+        }
+
+        private static byte ResolveMiniRoomSpec(SocialRoomFieldActorSnapshot snapshot)
+        {
+            return snapshot?.MiniRoomBalloonByte0 ?? 0;
+        }
+
+        private static byte ResolveMiniRoomCurrentUsers(SocialRoomFieldActorSnapshot snapshot)
+        {
+            return snapshot?.MiniRoomBalloonByte1 ?? 0;
+        }
+
+        private static byte ResolveMiniRoomMaxUsers(SocialRoomFieldActorSnapshot snapshot)
+        {
+            return snapshot?.MiniRoomBalloonByte2 ?? 0;
         }
 
         private static void DrawMiniRoomBalloonCount(SpriteBatch spriteBatch, IReadOnlyList<Texture2D> digits, byte value, int x, int y)

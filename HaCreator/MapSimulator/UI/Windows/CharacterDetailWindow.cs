@@ -460,29 +460,27 @@ namespace HaCreator.MapSimulator.UI
 
         private static SD.Font CreateBasicBlackFont(out string fontFamilyName)
         {
-            if (TryCreateConfiguredBasicBlackFont(out SD.Font configuredFont, out fontFamilyName))
-            {
-                return configuredFont;
-            }
-
             string requestedFamily = ResolveInstalledFontFamilyName(BasicBlackFontFamilyCandidates);
             string resolvedFamily = ClientTextRasterizer.ResolvePreferredFontFamily(
                 requestedFamily,
                 BasicBlackFontPathEnvironmentVariable,
                 BasicBlackFontFaceEnvironmentVariable,
-                BasicBlackFontFamilyCandidates);
+                BasicBlackFontFamilyCandidates,
+                preferEmbeddedPrivateFontSources: true);
 
             // Client inspection shows FONT_BASIC_BLACK is created through get_basic_font
-            // from the same DODOOMCHE/basic-black face family used elsewhere. Reuse the
-            // shared resolver so the detail panel can also pick up Maple private fonts
-            // and embedded client font resources before falling back to installed faces.
+            // from the same DODOOMCHE/basic-black face family used elsewhere. Route the
+            // detail panel through the shared client-text resolver so row rendering can
+            // consume private Maple font files and embedded executable or DLL font
+            // payloads instead of stopping at this window's older file-only probing path.
             SD.Font font = ClientTextRasterizer.CreateClientFont(
                 BasicBlackFontHeight,
                 SD.FontStyle.Regular,
                 resolvedFamily,
                 BasicBlackFontPathEnvironmentVariable,
                 BasicBlackFontFaceEnvironmentVariable,
-                BasicBlackFontFamilyCandidates);
+                BasicBlackFontFamilyCandidates,
+                preferEmbeddedPrivateFontSources: true);
 
             fontFamilyName = font.FontFamily?.Name ?? resolvedFamily;
             return font;

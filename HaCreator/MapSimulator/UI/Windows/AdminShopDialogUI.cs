@@ -1,6 +1,7 @@
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Util;
+using HaCreator.MapSimulator.Interaction;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using MapleLib.WzLib.WzProperties;
@@ -39,6 +40,8 @@ namespace HaCreator.MapSimulator.UI
             public string PriceLabel { get; init; } = string.Empty;
             public string Detail { get; init; } = string.Empty;
             public string CategoryLabel { get; init; } = string.Empty;
+            public int RewardItemId { get; init; }
+            public Texture2D IconTexture { get; init; }
             public bool AlreadyWishlisted { get; init; }
             public int Score { get; init; }
         }
@@ -96,6 +99,7 @@ namespace HaCreator.MapSimulator.UI
 
         public sealed class StorageExpansionResolution
         {
+            public int CashItemResultSubtype { get; init; }
             public int CommoditySerialNumber { get; init; }
             public int ResultSubtype { get; init; }
             public int FailureReason { get; init; }
@@ -110,6 +114,7 @@ namespace HaCreator.MapSimulator.UI
         public sealed class PacketOwnedStorageExpansionResult
         {
             public int PacketType { get; init; }
+            public int CashItemResultSubtype { get; init; }
             public int CommoditySerialNumber { get; init; }
             public int ResultSubtype { get; init; }
             public int FailureReason { get; init; }
@@ -928,6 +933,8 @@ namespace HaCreator.MapSimulator.UI
                     PriceLabel = match.Entry.PriceLabel,
                     Detail = match.Entry.Detail,
                     CategoryLabel = GetCategoryLabel(match.Entry.Category),
+                    RewardItemId = match.Entry.RewardItemId,
+                    IconTexture = match.Entry.IconTexture,
                     AlreadyWishlisted = match.Entry.Wishlisted || _wishlistedEntryKeys[_currentMode].Contains(GetEntryKey(match.Entry)),
                     Score = match.Score
                 })
@@ -1106,6 +1113,24 @@ namespace HaCreator.MapSimulator.UI
             commoditySerialNumber = Math.Max(0, commodity.SerialNumber);
             price = Math.Max(0L, commodity.Price);
             return commoditySerialNumber > 0;
+        }
+
+        public static bool TryResolveCommodityBySerialNumber(int commoditySerialNumber, out int itemId, out long price, out int count, out bool onSale)
+        {
+            itemId = 0;
+            price = 0;
+            count = 0;
+            onSale = false;
+            if (commoditySerialNumber <= 0 || !TryGetCommodityBySerialNumber(commoditySerialNumber, out AdminShopCommodityData commodity) || commodity == null)
+            {
+                return false;
+            }
+
+            itemId = Math.Max(0, commodity.ItemId);
+            price = Math.Max(0L, commodity.Price);
+            count = Math.Max(1, commodity.Count);
+            onSale = commodity.OnSale;
+            return itemId > 0;
         }
 
         public override void Update(GameTime gameTime)
@@ -3870,6 +3895,7 @@ namespace HaCreator.MapSimulator.UI
             int failureReason,
             bool isPacketOwned = false,
             int packetType = 0,
+            int cashItemResultSubtype = 0,
             bool cashAlreadySettled = false,
             bool markPurchased = false)
         {
@@ -3887,6 +3913,7 @@ namespace HaCreator.MapSimulator.UI
 
             StorageExpansionResolved?.Invoke(new StorageExpansionResolution
             {
+                CashItemResultSubtype = Math.Max(0, cashItemResultSubtype),
                 CommoditySerialNumber = ResolveStorageExpansionCommoditySerialNumber?.Invoke() ?? entry?.CommoditySerialNumber ?? 0,
                 ResultSubtype = resultSubtype,
                 FailureReason = failureReason,
@@ -3983,6 +4010,7 @@ namespace HaCreator.MapSimulator.UI
                         StorageExpansionFailureReason.ExpansionFailed,
                         isPacketOwned: true,
                         packetType: packetResult.PacketType,
+                        cashItemResultSubtype: packetResult.CashItemResultSubtype,
                         cashAlreadySettled: !packetResult.ConsumeCash);
                     message = _footerMessage;
                     return false;
@@ -4000,6 +4028,7 @@ namespace HaCreator.MapSimulator.UI
                     StorageExpansionFailureReason.None,
                     isPacketOwned: true,
                     packetType: packetResult.PacketType,
+                    cashItemResultSubtype: packetResult.CashItemResultSubtype,
                     cashAlreadySettled: !packetResult.ConsumeCash,
                     markPurchased: true);
                 message = _footerMessage;
@@ -4018,6 +4047,7 @@ namespace HaCreator.MapSimulator.UI
                 Math.Max(StorageExpansionFailureReason.None, packetResult.FailureReason),
                 isPacketOwned: true,
                 packetType: packetResult.PacketType,
+                cashItemResultSubtype: packetResult.CashItemResultSubtype,
                 cashAlreadySettled: !packetResult.ConsumeCash);
             message = _footerMessage;
             return true;
@@ -4402,9 +4432,9 @@ namespace HaCreator.MapSimulator.UI
             // CUIAdminShopWishListCategory::OnCreate pushes 11 top-level rows and then
             // four child stages sourced from StringPool ids:
             // stage 1 = 5 rows, stage 2 = 4 rows, stage 3 = 6 rows, stage 4 = 10 rows.
-            // The simulator still falls back to authored English labels until those
-            // StringPool texts are decoded, but the row ordering and group ownership now
-            // match the client constructor instead of a free-form hierarchy.
+            // MapleStoryStringPool now supplies the recovered client labels where the
+            // extracted table has them, with the authored English strings kept only
+            // as local fallbacks for unresolved ids.
             WishlistCategoryClientDefinition[] definitions =
             {
                 new WishlistCategoryClientDefinition { Key = "all", FallbackLabel = "All", StringPoolId = 634 },
@@ -4604,7 +4634,7 @@ namespace HaCreator.MapSimulator.UI
             return new WishlistCategoryNode
             {
                 Key = definition.Key,
-                Label = definition.FallbackLabel,
+                Label = MapleStoryStringPool.GetOrFallback(definition.StringPoolId, definition.FallbackLabel),
                 ParentKey = parentKey ?? string.Empty,
                 ClientStringPoolId = definition.StringPoolId,
                 ClientChildStageIndex = definition.ChildStageIndex,

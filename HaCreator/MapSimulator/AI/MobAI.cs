@@ -106,7 +106,8 @@ namespace HaCreator.MapSimulator.AI
         None = 0,
         Summoned = 1,
         Encounter = 2,
-        Hypnotize = 3
+        Hypnotize = 3,
+        Dazzle = 4
     }
 
     /// <summary>
@@ -683,7 +684,7 @@ namespace HaCreator.MapSimulator.AI
         {
             if (_target.IsValid && _target.TargetType != MobTargetType.Player)
             {
-                if (_externalTargetSource == MobExternalTargetSource.Hypnotize && !IsHypnotized)
+                if (!IsExternalTargetSourceStillActive())
                 {
                     _target = new MobTargetInfo();
                     _externalTargetSource = MobExternalTargetSource.None;
@@ -768,6 +769,16 @@ namespace HaCreator.MapSimulator.AI
             {
                 SetState(MobAIState.Patrol, currentTick);
             }
+        }
+
+        private bool IsExternalTargetSourceStillActive()
+        {
+            return _externalTargetSource switch
+            {
+                MobExternalTargetSource.Hypnotize => IsHypnotized,
+                MobExternalTargetSource.Dazzle => IsDazzled,
+                _ => true
+            };
         }
 
         private void UpdatePatrolState(int currentTick)
@@ -2038,7 +2049,7 @@ namespace HaCreator.MapSimulator.AI
                    effect == MobStatusEffect.Burned;
         }
 
-        private bool CanTargetPlayerNow => _canTargetPlayer && !IsHypnotized;
+        private bool CanTargetPlayerNow => _canTargetPlayer && !IsHypnotized && !IsDazzled;
 
         internal static int ApplyDoomSpeedReservation(int netSpeedPercent, bool isDoomed)
         {

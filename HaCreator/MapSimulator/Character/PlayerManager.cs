@@ -1053,7 +1053,10 @@ namespace HaCreator.MapSimulator.Character
 
             SkillData skill = SkillLoader?.LoadSkill(area.SkillId);
             SkillData[] supportSkills = ResolveAffectedAreaSupportSkills(skill);
-            if (!ShouldPromoteAffectedAreaAvatarEffect(skill, supportSkills))
+            SkillLevelData levelData = ResolveAffectedAreaSkillLevel(skill, area.SkillLevel);
+            SkillLevelData supportLevelData = ResolveAffectedAreaSupportLevelData(levelData, supportSkills);
+            SkillLevelData effectiveLevelData = supportLevelData ?? levelData;
+            if (!ShouldPromoteAffectedAreaAvatarEffect(skill, supportSkills, effectiveLevelData))
             {
                 return false;
             }
@@ -1064,7 +1067,8 @@ namespace HaCreator.MapSimulator.Character
                     supportSkills,
                     localPlayerId,
                     area.OwnerId,
-                    ownerIsPartyMember))
+                    ownerIsPartyMember,
+                    effectiveLevelData))
             {
                 return false;
             }
@@ -1122,12 +1126,51 @@ namespace HaCreator.MapSimulator.Character
             }
         }
 
-        private static bool ShouldPromoteAffectedAreaAvatarEffect(
+        internal static bool ShouldPromoteAffectedAreaAvatarEffect(
             SkillData skill,
-            IReadOnlyCollection<SkillData> supportSkills)
+            IReadOnlyCollection<SkillData> supportSkills,
+            SkillLevelData levelData = null)
         {
-            return RemoteAffectedAreaSupportResolver.IsFriendlyPlayerAreaSkill(skill)
+            return RemoteAffectedAreaSupportResolver.IsFriendlyPlayerAreaSkill(skill, supportSkills, levelData)
                    && AffectedAreaAvatarEffectResolver.HasPromotableAffectedBranch(skill, supportSkills);
+        }
+
+        internal static SkillLevelData ResolveAffectedAreaSupportLevelData(
+            SkillLevelData primaryLevelData,
+            params SkillData[] supportSkills)
+        {
+            if (supportSkills == null || supportSkills.Length == 0)
+            {
+                return primaryLevelData;
+            }
+
+            var levelDataEntries = new List<SkillLevelData>
+            {
+                primaryLevelData
+            };
+
+            for (int i = 0; i < supportSkills.Length; i++)
+            {
+                SkillData supportSkill = supportSkills[i];
+                SkillLevelData supportLevelData = ResolveAffectedAreaSkillLevel(supportSkill, primaryLevelData?.Level ?? 1);
+                if (supportLevelData != null)
+                {
+                    levelDataEntries.Add(supportLevelData);
+                }
+            }
+
+            return RemoteAffectedAreaSupportResolver.CreateProjectedSupportBuffLevelData(levelDataEntries.ToArray()) ?? primaryLevelData;
+        }
+
+        internal static SkillLevelData ResolveAffectedAreaSkillLevel(SkillData skill, int skillLevel)
+        {
+            if (skill == null)
+            {
+                return null;
+            }
+
+            int resolvedLevel = skillLevel > 0 ? skillLevel : 1;
+            return skill.GetLevel(resolvedLevel);
         }
 
         private SkillData GetOrCreateAffectedAreaAvatarEffectSkill(
@@ -1189,6 +1232,18 @@ namespace HaCreator.MapSimulator.Character
             return _mobStatusController?.HasStatusEffect(effect) == true;
         }
 
+        internal bool TryGetFearMobStatusVisualState(int currentTime, out float intensity, out int remainingDurationMs)
+        {
+            if (_mobStatusController == null)
+            {
+                intensity = 0f;
+                remainingDurationMs = 0;
+                return false;
+            }
+
+            return _mobStatusController.TryGetFearVisualState(currentTime, out intensity, out remainingDurationMs);
+        }
+
         private void HandleRepeatSkillModeEndRequested(int skillId, int returnSkillId, int requestedAt)
         {
             _pendingRepeatSkillModeEndSkillId = skillId;
@@ -1227,6 +1282,14 @@ namespace HaCreator.MapSimulator.Character
         public bool TryResolvePacketOwnedSg88ManualAttackRequest(int summonObjectId, int requestedAt, int currentTime)
         {
             return Skills?.TryResolvePendingSg88ManualAttackRequest(summonObjectId, requestedAt, currentTime) == true;
+        }
+
+        public bool TryResolvePacketOwnedSg88ManualAttackPacket(
+            int summonObjectId,
+            IReadOnlyList<int> targetMobIds,
+            int currentTime)
+        {
+            return Skills?.TryResolvePendingSg88ManualAttackPacket(summonObjectId, targetMobIds, currentTime) == true;
         }
 
         private void TryAcknowledgePendingRepeatSkillModeEnd(int currentTime)

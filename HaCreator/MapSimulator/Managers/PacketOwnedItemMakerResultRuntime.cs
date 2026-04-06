@@ -1,5 +1,7 @@
+using HaCreator.MapSimulator.Interaction;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using System.IO;
 using System.Text;
 
@@ -34,6 +36,12 @@ namespace HaCreator.MapSimulator.Managers
     internal static class PacketOwnedItemMakerResultRuntime
     {
         public const int ClientPacketType = 248;
+        private const int GainedItemPluralStringPoolId = 5446;
+        private const int GainedItemSingularStringPoolId = 5447;
+        private const int LostMesosStringPoolId = 309;
+        private const int DisassemblySuccessStringPoolId = 772;
+        private const int IncorrectRequestStringPoolId = 3948;
+        private const int CannotDisassembleStringPoolId = 4579;
 
         public static bool TryDecode(byte[] payload, out PacketOwnedItemMakerResult result, out string error)
         {
@@ -183,6 +191,93 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
+        public static string BuildStatusMessage(PacketOwnedItemMakerResult result)
+        {
+            if (result == null)
+            {
+                return "Item Maker result is unavailable.";
+            }
+
+            if (result.RepresentsSuccessfulCraft)
+            {
+                return $"Created {ResolveItemName(result.TargetItemId)} x{Math.Max(1, result.TargetItemCount)}.";
+            }
+
+            if (result.ResultType == 3
+                && result.TargetItemId > 0
+                && result.GeneratedItemId > 0)
+            {
+                return $"Disassembled {ResolveItemName(result.TargetItemId)} and produced {ResolveItemName(result.GeneratedItemId)} x{Math.Max(1, result.GeneratedItemCount)}.";
+            }
+
+            if (result.DisassembledItemId > 0)
+            {
+                return FormatDisassemblySuccess(result.DisassembledItemId);
+            }
+
+            return result.ResultCode switch
+            {
+                2 => MapleStoryStringPool.GetOrFallback(IncorrectRequestStringPoolId, "You have made an incorrect request."),
+                3 => MapleStoryStringPool.GetOrFallback(CannotDisassembleStringPoolId, "This item cannot be disassembled."),
+                _ => $"Packet-owned maker result code {result.ResultCode} subtype {result.ResultType}."
+            };
+        }
+
+        public static IReadOnlyList<string> BuildFeedbackLines(PacketOwnedItemMakerResult result)
+        {
+            if (result == null)
+            {
+                return Array.Empty<string>();
+            }
+
+            List<string> lines = new();
+            if (result.ResultCode > 1)
+            {
+                return lines;
+            }
+
+            switch (result.ResultType)
+            {
+                case 1:
+                case 2:
+                    if (!result.SuppressedPrimaryTargetNotice)
+                    {
+                        AppendGainedItemLine(lines, result.TargetItemId, result.TargetItemCount);
+                    }
+
+                    AppendRewardLines(lines, result.RewardItems);
+                    AppendBonusLines(lines, result.BonusItemIds);
+                    if (result.HasAuxiliaryItem)
+                    {
+                        AppendGainedItemLine(lines, result.AuxiliaryItemId, 1);
+                    }
+
+                    AppendMesoLossLine(lines, result.MesoDelta);
+                    break;
+
+                case 3:
+                    if (result.TargetItemId > 0)
+                    {
+                        lines.Add(FormatDisassemblySuccess(result.TargetItemId));
+                    }
+
+                    AppendGainedItemLine(lines, result.GeneratedItemId, result.GeneratedItemCount);
+                    break;
+
+                case 4:
+                    if (result.DisassembledItemId > 0)
+                    {
+                        lines.Add(FormatDisassemblySuccess(result.DisassembledItemId));
+                    }
+
+                    AppendRewardLines(lines, result.RewardItems);
+                    AppendMesoLossLine(lines, result.MesoDelta);
+                    break;
+            }
+
+            return lines;
+        }
+
         private static void EnsureReadable(BinaryReader reader, int requiredBytes, string message)
         {
             if (reader.BaseStream.Length - reader.BaseStream.Position < requiredBytes)
@@ -201,6 +296,105 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             return count;
+        }
+
+        private static void AppendRewardLines(List<string> lines, IReadOnlyList<PacketOwnedItemMakerResultItemEntry> items)
+        {
+            if (items == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < items.Count; i++)
+            {
+                PacketOwnedItemMakerResultItemEntry item = items[i];
+                AppendGainedItemLine(lines, item.ItemId, item.Quantity);
+            }
+        }
+
+        private static void AppendBonusLines(List<string> lines, IReadOnlyList<int> bonusItemIds)
+        {
+            if (bonusItemIds == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < bonusItemIds.Count; i++)
+            {
+                AppendGainedItemLine(lines, bonusItemIds[i], 1);
+            }
+        }
+
+        private static void AppendGainedItemLine(List<string> lines, int itemId, int quantity)
+        {
+            if (lines == null || itemId <= 0)
+            {
+                return;
+            }
+
+            int clampedQuantity = Math.Max(1, quantity);
+            bool plural = clampedQuantity > 1;
+            string fallbackFormat = plural
+                ? "You have gained items in the {0} tab ({1} {2})"
+                : "You have gained an item in the {0} tab ({1})";
+            string format = MapleStoryStringPool.GetCompositeFormatOrFallback(
+                plural ? GainedItemPluralStringPoolId : GainedItemSingularStringPoolId,
+                fallbackFormat,
+                maxPlaceholderCount: 3,
+                out _);
+            string inventoryLabel = ResolveInventoryTabLabel(itemId);
+            string itemName = ResolveItemName(itemId);
+            string line = plural
+                ? string.Format(CultureInfo.InvariantCulture, format, inventoryLabel, itemName, clampedQuantity)
+                : string.Format(CultureInfo.InvariantCulture, format, inventoryLabel, itemName);
+            lines.Add(line);
+        }
+
+        private static void AppendMesoLossLine(List<string> lines, int mesoDelta)
+        {
+            if (lines == null || mesoDelta <= 0)
+            {
+                return;
+            }
+
+            string format = MapleStoryStringPool.GetCompositeFormatOrFallback(
+                LostMesosStringPoolId,
+                "You have lost mesos. ({0})",
+                maxPlaceholderCount: 1,
+                out _);
+            lines.Add(string.Format(CultureInfo.InvariantCulture, format, mesoDelta));
+        }
+
+        private static string FormatDisassemblySuccess(int itemId)
+        {
+            string format = MapleStoryStringPool.GetCompositeFormatOrFallback(
+                DisassemblySuccessStringPoolId,
+                "You have successfully disassembled the {0}.",
+                maxPlaceholderCount: 1,
+                out _);
+            return string.Format(CultureInfo.InvariantCulture, format, ResolveItemName(itemId));
+        }
+
+        private static string ResolveItemName(int itemId)
+        {
+            return HaCreator.Program.InfoManager.ItemNameCache.TryGetValue(itemId, out Tuple<string, string, string> itemInfo)
+                && !string.IsNullOrWhiteSpace(itemInfo?.Item2)
+                ? itemInfo.Item2
+                : $"Item #{itemId}";
+        }
+
+        private static string ResolveInventoryTabLabel(int itemId)
+        {
+            int typeBucket = itemId / 1000000;
+            return typeBucket switch
+            {
+                1 => "Eqp",
+                2 => "Use",
+                3 => "Setup",
+                4 => "Etc",
+                5 => "Cash",
+                _ => "Inventory"
+            };
         }
     }
 }

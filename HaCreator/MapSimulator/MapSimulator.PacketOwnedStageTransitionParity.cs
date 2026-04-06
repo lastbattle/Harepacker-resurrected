@@ -27,6 +27,13 @@ namespace HaCreator.MapSimulator
         private bool TryApplyPacketOwnedStageTransitionPacket(int packetType, byte[] payload, out string message)
         {
             _packetStageTransitionRuntime.BindMap(_mapBoard?.MapInfo?.id ?? 0);
+            if (packetType == 141
+                && PacketStageTransitionRuntime.TryDecodeOfficialSetFieldPayload(payload, out PacketSetFieldPacket setFieldPacket, out _))
+            {
+                UpdatePacketOwnedLogoutGiftConfigFromSetField(setFieldPacket);
+                UpdatePacketOwnedMapTransferBootstrapFromSetField(setFieldPacket);
+            }
+
             return _packetStageTransitionRuntime.TryApplyPacket(
                 packetType,
                 payload,
@@ -146,6 +153,7 @@ namespace HaCreator.MapSimulator
         {
             ResetPacketOwnedStageTransitionRuntimeState();
             _packetStageTransitionNamedObjects.Clear();
+            ResetPacketOwnedLogoutGiftRuntimeState(clearConfig: true, hideWindow: true, summary: "Packet-owned logout-gift owner cleared with stage-transition state.");
         }
 
         private void ResetPacketOwnedStageTransitionRuntimeState()

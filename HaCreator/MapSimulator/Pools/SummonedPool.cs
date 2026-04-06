@@ -118,6 +118,7 @@ namespace HaCreator.MapSimulator.Pools
             public int OneTimeAction { get; set; }
             public int OneTimeActionEndTime { get; set; } = int.MinValue;
             public PacketOwnedOneTimeActionClip? OneTimeActionClip { get; set; }
+            public int LastCompletedAttackLayerRefreshStartTime { get; set; } = int.MinValue;
             public int LastPassiveMovementUpdateTime { get; set; } = int.MinValue;
             public PlayerMovementSyncSnapshot MovementSnapshot { get; set; }
         }
@@ -196,6 +197,7 @@ namespace HaCreator.MapSimulator.Pools
 
         public Action<PacketOwnedSummonTimerExpiration[]> OnSummonExpiryTimersExpiredBatch { get; set; }
         public Action<PacketOwnedSummonTimerExpiration> OnSummonExpiryTimerExpired { get; set; }
+        public Action<SummonedAttackPacket, int> OnLocalOwnerAttackPacketApplied { get; set; }
 
         public int Count => _summonsByObjectId.Count;
 
@@ -355,6 +357,26 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return removedCount > 0;
+        }
+
+        public bool TryPrimeLocalOwnerSummonNaturalExpiry(int summonedObjectId, int currentTime)
+        {
+            if (summonedObjectId <= 0
+                || !_summonsByObjectId.TryGetValue(summonedObjectId, out PacketOwnedSummonState state)
+                || state?.Summon == null
+                || !state.OwnerIsLocal
+                || state.Summon.IsPendingRemoval
+                || state.Summon.ExpiryActionTriggered)
+            {
+                return false;
+            }
+
+            if (TryBeginSelfDestructRemoval(state, currentTime, requiresNaturalExpiry: true))
+            {
+                return true;
+            }
+
+            return TryTriggerExpiredSelfDestructAction(state, currentTime);
         }
 
         public bool TryDamageSummonByObjectId(int objectId, int damage, int currentTime)
@@ -568,6 +590,11 @@ namespace HaCreator.MapSimulator.Pools
 
             SpawnPacketAttackVisuals(state, currentTime);
             TryRegisterClientOwnedAttackTileOverlay(state, currentTime);
+            if (state.OwnerIsLocal)
+            {
+                OnLocalOwnerAttackPacketApplied?.Invoke(packet, currentTime);
+            }
+
             return true;
         }
 
@@ -1569,6 +1596,15 @@ namespace HaCreator.MapSimulator.Pools
                     GetSkillAnimationDuration(state.Summon.SkillData?.SummonAttackPrepareAnimation) ?? 0))
             {
                 return;
+            }
+
+            if (HasCompletedPacketOwnedAttackLayerRefresh(
+                    state.Summon,
+                    state.LastCompletedAttackLayerRefreshStartTime,
+                    currentTime))
+            {
+                state.LastCompletedAttackLayerRefreshStartTime = state.Summon.LastAttackAnimationStartTime;
+                ClearPacketOwnedMobAttackHitEffects(state.Summon.ObjectId);
             }
 
             SummonActorState idleState = PacketOwnedSummonUpdateRules.ResolveIdleActorState(
@@ -3798,6 +3834,60 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             return skill.SummonAttackAnimation;
+        }
+
+        internal static bool HasCompletedPacketOwnedAttackLayerRefresh(
+            ActiveSummon summon,
+            int lastCompletedAttackLayerRefreshStartTime,
+            int currentTime)
+        {
+            if (summon?.SkillData == null)
+            {
+                return false;
+            }
+
+            int attackStartTime = summon.LastAttackAnimationStartTime;
+            if (attackStartTime == int.MinValue
+                || attackStartTime == lastCompletedAttackLayerRefreshStartTime)
+            {
+                return false;
+            }
+
+            int playbackDuration = ResolveSummonAttackPlaybackDurationMs(summon);
+            if (playbackDuration <= 0)
+            {
+                return false;
+            }
+
+            return currentTime - attackStartTime >= playbackDuration;
+        }
+
+        internal static int ResolveSummonAttackPlaybackDurationMs(ActiveSummon summon)
+        {
+            SkillData skill = summon?.SkillData;
+            if (skill == null)
+            {
+                return 0;
+            }
+
+            SkillAnimation prepareAnimation = skill.SummonAttackPrepareAnimation;
+            int prepareDuration = GetSkillAnimationDuration(prepareAnimation) ?? 0;
+
+            SkillAnimation branchAnimation = null;
+            bool hasBranchAnimation = !string.IsNullOrWhiteSpace(summon.CurrentAnimationBranchName)
+                && skill.SummonNamedAnimations != null
+                && skill.SummonNamedAnimations.TryGetValue(summon.CurrentAnimationBranchName, out branchAnimation)
+                && branchAnimation?.Frames.Count > 0;
+            SkillAnimation attackAnimation = hasBranchAnimation
+                ? branchAnimation
+                : skill.SummonAttackAnimation;
+            int attackDuration = GetSkillAnimationDuration(attackAnimation) ?? 0;
+            if (attackDuration <= 0)
+            {
+                return 0;
+            }
+
+            return (hasBranchAnimation ? 0 : prepareDuration) + attackDuration;
         }
 
         private static string ResolveSelfDestructAttackBranch(ActiveSummon summon)

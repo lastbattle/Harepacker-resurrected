@@ -25,7 +25,6 @@ namespace HaCreator.MapSimulator.UI
         private Action<string> _feedbackHandler;
         private WeddingInvitationSnapshot _lastSnapshot = new();
         private ClientTextRasterizer _basicBlackTextRasterizer;
-        private string _basicBlackFontFamily = string.Empty;
 
         internal WeddingInvitationWindow(
             IReadOnlyDictionary<WeddingInvitationStyle, Texture2D> backgrounds,
@@ -177,17 +176,12 @@ namespace HaCreator.MapSimulator.UI
 
         private ClientTextRasterizer EnsureBasicBlackTextRasterizer()
         {
-            string requestedFamily = string.IsNullOrWhiteSpace(_lastSnapshot.RequestedNameFontFamily)
-                ? null
-                : _lastSnapshot.RequestedNameFontFamily;
-            if (_basicBlackTextRasterizer != null
-                && string.Equals(_basicBlackFontFamily, requestedFamily, StringComparison.Ordinal))
+            if (_basicBlackTextRasterizer != null)
             {
                 return _basicBlackTextRasterizer;
             }
 
-            _basicBlackTextRasterizer = new ClientTextRasterizer(_device, requestedFamily);
-            _basicBlackFontFamily = requestedFamily ?? string.Empty;
+            _basicBlackTextRasterizer = new ClientTextRasterizer(_device);
             return _basicBlackTextRasterizer;
         }
 

@@ -565,6 +565,7 @@ namespace HaCreator.MapSimulator.Animation
 
         public int UserStateCount => _userStateAnimations.Count;
         public int AreaAnimationCount => _areaAnimations.Count;
+        public int FollowAnimationCount => _followAnimations.Count;
 
         #endregion
     }

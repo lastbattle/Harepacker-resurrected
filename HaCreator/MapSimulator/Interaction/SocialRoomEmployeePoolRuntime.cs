@@ -374,48 +374,46 @@ namespace HaCreator.MapSimulator.Interaction
         internal bool TryApplyEnterField(byte[] packetBytes, out string message)
         {
             message = null;
-            if (!SocialRoomEmployeePoolCodec.TryDecodeEmployerId(packetBytes, out int employerId, out string employerError))
-            {
-                message = employerError;
-                return false;
-            }
-
-            if (_entries.TryGetValue(employerId, out SocialRoomEmployeePoolEntryState existing))
-            {
-                existing.Flags |= SocialRoomEmployeePoolFlags.EnteredField;
-                _lastTouchedEmployerId = employerId;
-                message = $"Retained pooled employee entry for employer={employerId}; enter-field only refreshed the pool flag.";
-                return true;
-            }
-
             if (!SocialRoomEmployeePoolCodec.TryDecodeEnterField(packetBytes, out SocialRoomEmployeePoolCodec.EnterFieldPacket packet, out string error))
             {
                 message = error;
                 return false;
             }
 
-            SocialRoomEmployeePoolEntryState state = new(packet.EmployerId)
+            if (_entries.TryGetValue(packet.EmployerId, out SocialRoomEmployeePoolEntryState existing))
             {
-                Flags = SocialRoomEmployeePoolFlags.EnteredField,
-                TemplateId = Math.Max(0, packet.TemplateId),
-                WorldX = packet.WorldX,
-                WorldY = packet.WorldY,
-                FootholdId = packet.FootholdId,
-                NameTag = packet.NameTag,
-                MiniRoomType = packet.MiniRoomType,
-                MiniRoomSerial = packet.MiniRoomSerial,
-                BalloonTitle = packet.BalloonTitle,
-                BalloonByte0 = packet.BalloonByte0,
-                BalloonByte1 = packet.BalloonByte1,
-                BalloonByte2 = packet.BalloonByte2
-            };
-            _entries[state.EmployerId] = state;
-            _lastTouchedEmployerId = state.EmployerId;
-            string displayTemplate = state.TemplateId > 0 ? state.TemplateId.ToString() : "legacy";
-            string displayBalloon = string.IsNullOrWhiteSpace(state.BalloonTitle) ? "no balloon" : state.BalloonTitle;
+                ApplyEnterField(existing, packet);
+            }
+            else
+            {
+                SocialRoomEmployeePoolEntryState state = new(packet.EmployerId);
+                ApplyEnterField(state, packet);
+                _entries[state.EmployerId] = state;
+            }
+
+            SocialRoomEmployeePoolEntryState appliedState = _entries[packet.EmployerId];
+            _lastTouchedEmployerId = appliedState.EmployerId;
+            string displayTemplate = appliedState.TemplateId > 0 ? appliedState.TemplateId.ToString() : "legacy";
+            string displayBalloon = string.IsNullOrWhiteSpace(appliedState.BalloonTitle) ? "no balloon" : appliedState.BalloonTitle;
             message =
-                $"Applied pooled employee enter-field packet: employer={state.EmployerId}, template={displayTemplate}, world=({state.WorldX}, {state.WorldY}), owner={state.NameTag}, balloon={displayBalloon}.";
+                $"Applied pooled employee enter-field packet: employer={appliedState.EmployerId}, template={displayTemplate}, world=({appliedState.WorldX}, {appliedState.WorldY}), owner={appliedState.NameTag}, balloon={displayBalloon}.";
             return true;
+        }
+
+        private static void ApplyEnterField(SocialRoomEmployeePoolEntryState state, SocialRoomEmployeePoolCodec.EnterFieldPacket packet)
+        {
+            state.Flags |= SocialRoomEmployeePoolFlags.EnteredField;
+            state.TemplateId = Math.Max(0, packet.TemplateId);
+            state.WorldX = packet.WorldX;
+            state.WorldY = packet.WorldY;
+            state.FootholdId = packet.FootholdId;
+            state.NameTag = packet.NameTag;
+            state.MiniRoomType = packet.MiniRoomType;
+            state.MiniRoomSerial = packet.MiniRoomSerial;
+            state.BalloonTitle = packet.BalloonTitle;
+            state.BalloonByte0 = packet.BalloonByte0;
+            state.BalloonByte1 = packet.BalloonByte1;
+            state.BalloonByte2 = packet.BalloonByte2;
         }
 
         internal bool TryApplyLeaveField(byte[] packetBytes, out string message)

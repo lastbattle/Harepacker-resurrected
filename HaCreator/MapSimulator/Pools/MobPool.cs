@@ -1151,7 +1151,10 @@ namespace HaCreator.MapSimulator.Pools
 
             if (source.IsProtectedFromPlayerDamage)
             {
-                return FindNearestMobTarget(source, candidate => !candidate.UsesMobCombatLane, Math.Max(320f, source.AI.AggroRange));
+                return FindNearestEncounterTarget(
+                    source,
+                    candidate => !candidate.UsesMobCombatLane,
+                    Math.Max(320f, source.AI.AggroRange));
             }
 
             if ((source.MobData?.Escort ?? 0) > 0)
@@ -1159,7 +1162,66 @@ namespace HaCreator.MapSimulator.Pools
                 return null;
             }
 
-            return FindNearestMobTarget(source, candidate => candidate.UsesMobCombatLane, Math.Max(320f, source.AI.AggroRange));
+            return FindNearestEncounterTarget(
+                source,
+                candidate => candidate.UsesMobCombatLane,
+                Math.Max(320f, source.AI.AggroRange));
+        }
+
+        private MobItem FindNearestEncounterTarget(MobItem source, System.Predicate<MobItem> predicate, float maxDistance)
+        {
+            if (source == null)
+            {
+                return null;
+            }
+
+            float maxDistanceSq = maxDistance * maxDistance;
+            MobItem nearest = null;
+            float nearestDistanceSq = maxDistanceSq;
+            int bestPriority = int.MaxValue;
+            int? sourceTeam = source.MobInstance?.Team;
+
+            for (int i = 0; i < _activeMobs.Count; i++)
+            {
+                MobItem candidate = _activeMobs[i];
+                if (candidate == null ||
+                    candidate == source ||
+                    candidate.AI == null ||
+                    candidate.AI.IsDead)
+                {
+                    continue;
+                }
+
+                if (predicate != null && !predicate(candidate))
+                {
+                    continue;
+                }
+
+                // Encounter mobs should not retarget explicit same-team actors when map life publishes teams.
+                int teamPriority = SpecialMobInteractionRules.ResolveEncounterTargetPriority(sourceTeam, candidate.MobInstance?.Team);
+                if (teamPriority == SpecialMobInteractionRules.InvalidEncounterTargetPriority ||
+                    teamPriority > bestPriority)
+                {
+                    continue;
+                }
+
+                float dx = candidate.CurrentX - source.CurrentX;
+                float dy = candidate.CurrentY - source.CurrentY;
+                float distanceSq = (dx * dx) + (dy * dy);
+                if (distanceSq > maxDistanceSq)
+                {
+                    continue;
+                }
+
+                if (teamPriority < bestPriority || distanceSq < nearestDistanceSq)
+                {
+                    nearest = candidate;
+                    nearestDistanceSq = distanceSq;
+                    bestPriority = teamPriority;
+                }
+            }
+
+            return nearest;
         }
 
         private MobItem FindNearestMobTarget(MobItem source, System.Predicate<MobItem> predicate, float maxDistance)

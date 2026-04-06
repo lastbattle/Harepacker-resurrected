@@ -401,7 +401,7 @@ namespace HaCreator.MapSimulator
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.AntiMacroNotice) is AntiMacroNoticeWindow noticeWindow)
             {
                 noticeWindow.Configure(
-                    FormatPacketOwnedAntiMacroStringPoolText(definition.Text, definition.StringPoolId),
+                    definition.Text,
                     definition.StringPoolId);
                 noticeWindow.ConfigureVisuals(
                     LoadUiCanvasTexture(ResolvePacketOwnedAntiMacroCanvas(definition.AvatarCanvasPath)),
@@ -525,11 +525,14 @@ namespace HaCreator.MapSimulator
             string resolvedName = string.IsNullOrWhiteSpace(userName) ? "Unknown" : userName.Trim();
             PacketOwnedAntiMacroChatDefinition definition = ResolvePacketOwnedAntiMacroChatDefinition(mode, antiMacroType);
             _lastPacketOwnedAntiMacroChatStringPoolId = definition?.StringPoolId ?? -1;
-            string chatText = FormatPacketOwnedAntiMacroClientString(definition?.FormatText, resolvedName);
+            string chatText = AntiMacroOwnerStringPoolText.FormatUserBranchText(
+                definition?.StringPoolId ?? -1,
+                definition?.FormatText,
+                resolvedName);
             if (!string.IsNullOrWhiteSpace(chatText))
             {
                 _chat?.AddClientChatMessage(
-                    FormatPacketOwnedAntiMacroStringPoolText(chatText, definition.StringPoolId),
+                    chatText,
                     Environment.TickCount,
                     12);
             }
@@ -569,27 +572,6 @@ namespace HaCreator.MapSimulator
                     SaveScreenshot: false),
                 _ => null
             };
-        }
-
-        private static string FormatPacketOwnedAntiMacroClientString(string formatText, string userName)
-        {
-            if (string.IsNullOrWhiteSpace(formatText))
-            {
-                return string.Empty;
-            }
-
-            string resolvedName = string.IsNullOrWhiteSpace(userName) ? "Unknown" : userName.Trim();
-            return formatText
-                .Replace("%s", resolvedName, StringComparison.Ordinal)
-                .Replace('_', ' ')
-                .Trim();
-        }
-
-        private static string FormatPacketOwnedAntiMacroStringPoolText(string text, int stringPoolId)
-        {
-            return stringPoolId > 0
-                ? $"{text} [StringPool 0x{stringPoolId:X}]"
-                : text;
         }
 
         private bool TrySendPacketOwnedAntiMacroAnswerToOfficialSession(

@@ -24,6 +24,22 @@ namespace HaCreator.MapSimulator.Interaction
                 : placeholder;
         }
 
+        public static string DescribeNoticeInvocation(int stringPoolId, string trackName, bool appendFallbackSuffix = false)
+        {
+            string displayName = string.IsNullOrWhiteSpace(trackName) ? "radio track" : trackName.Trim();
+            if (MapleStoryStringPool.TryGet(stringPoolId, out string resolvedFormat)
+                && !string.IsNullOrWhiteSpace(resolvedFormat))
+            {
+                string compositeFormat = MapleStoryStringPool.GetCompositeFormatOrFallback(stringPoolId, null, 1, out _);
+                return $"{FormatStringPoolId(stringPoolId)}: {Quote(resolvedFormat)} with {Quote(displayName)} => {Quote(string.Format(compositeFormat, displayName))}";
+            }
+
+            string placeholder = $"{FormatStringPoolId(stringPoolId)} invocation with {Quote(displayName)}";
+            return appendFallbackSuffix
+                ? $"{placeholder} (localized client text unresolved)"
+                : placeholder;
+        }
+
         public static string FormatPathTemplateResolution(
             int stringPoolId,
             string authoredTrack,
@@ -37,7 +53,10 @@ namespace HaCreator.MapSimulator.Interaction
             if (MapleStoryStringPool.GetCompositeFormatOrFallback(stringPoolId, null, 1, out hasResolvedText) is string format && hasResolvedText)
             {
                 line = string.Format(format, authored);
-                line = $"{FormatStringPoolId(stringPoolId)}: {Quote(authored)} => {Quote(line)}";
+                string rawFormat = MapleStoryStringPool.TryGet(stringPoolId, out string resolvedFormat)
+                    ? resolvedFormat
+                    : format;
+                line = $"{FormatStringPoolId(stringPoolId)}: {Quote(rawFormat)} with {Quote(authored)} => {Quote(line)}";
             }
             else
             {

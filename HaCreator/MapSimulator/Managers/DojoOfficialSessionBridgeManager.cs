@@ -33,6 +33,9 @@ namespace HaCreator.MapSimulator.Managers
         private readonly ConcurrentDictionary<int, int> _opcodeMappings = new();
         private readonly Queue<string> _recentPackets = new();
         private readonly object _sync = new();
+        private int _inferenceClearMapId = -1;
+        private string _inferenceClearPortalName = string.Empty;
+        private int _inferenceExitMapId = -1;
 
         private TcpListener _listener;
         private CancellationTokenSource _listenerCancellation;
@@ -103,7 +106,25 @@ namespace HaCreator.MapSimulator.Managers
             string session = HasConnectedSession
                 ? $"connected session {_activePair?.ClientEndpoint ?? "unknown-client"} -> {_activePair?.RemoteEndpoint ?? "unknown-remote"}"
                 : "no active Maple session";
-            return $"Dojo official-session bridge {lifecycle}; {session}; received={ReceivedCount}; mappings={DescribePacketMappings()}; recent={DescribeRecentPackets()}. {LastStatus}";
+            return $"Dojo official-session bridge {lifecycle}; {session}; received={ReceivedCount}; mappings={DescribePacketMappings()}; inference={DescribeInferenceContext()}; recent={DescribeRecentPackets()}. {LastStatus}";
+        }
+
+        public void UpdateInferenceContext(DojoField field)
+        {
+            lock (_sync)
+            {
+                if (field == null || !field.IsActive)
+                {
+                    _inferenceClearMapId = -1;
+                    _inferenceClearPortalName = string.Empty;
+                    _inferenceExitMapId = -1;
+                    return;
+                }
+
+                _inferenceClearMapId = field.NextFloorMapId;
+                _inferenceClearPortalName = field.NextFloorPortalName ?? string.Empty;
+                _inferenceExitMapId = field.ExitMapId;
+            }
         }
 
         public static IReadOnlyList<SessionDiscoveryCandidate> DiscoverEstablishedSessions(
@@ -603,8 +624,17 @@ namespace HaCreator.MapSimulator.Managers
         {
             packetType = -1;
             mappingReason = string.Empty;
+            int clearMapIdHint;
+            string clearPortalNameHint;
+            int exitMapIdHint;
+            lock (_sync)
+            {
+                clearMapIdHint = _inferenceClearMapId;
+                clearPortalNameHint = _inferenceClearPortalName;
+                exitMapIdHint = _inferenceExitMapId;
+            }
 
-            if (DojoField.TryInferPacketType(payload, out packetType, out string reason))
+            if (DojoField.TryInferPacketType(payload, clearMapIdHint, clearPortalNameHint, exitMapIdHint, out packetType, out string reason))
             {
                 _opcodeMappings[opcode] = packetType;
                 mappingReason = $"auto:{reason}";
@@ -612,13 +642,32 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
-            string candidateSummary = DojoField.DescribePacketPayloadCandidates(payload);
+            string candidateSummary = DojoField.DescribePacketPayloadCandidates(payload, clearMapIdHint, clearPortalNameHint, exitMapIdHint);
             mappingReason = candidateSummary;
             RecordRecentPacket(opcode, BuildRawPacket(opcode, payload), mappedPacketType: null, $"unmapped:{candidateSummary}");
             LastStatus = candidateSummary == "unknown"
                 ? $"Ignored unmapped Dojo opcode {opcode}; payload did not match any known Dojo packet shape."
                 : $"Ignored unmapped Dojo opcode {opcode}; payload matched multiple Dojo packet candidates ({candidateSummary}).";
             return false;
+        }
+
+        private string DescribeInferenceContext()
+        {
+            lock (_sync)
+            {
+                string clearTarget = _inferenceClearMapId > 0
+                    ? _inferenceClearMapId.ToString()
+                    : "unknown";
+                if (!string.IsNullOrWhiteSpace(_inferenceClearPortalName))
+                {
+                    clearTarget = $"{clearTarget}:{_inferenceClearPortalName}";
+                }
+
+                string exitTarget = _inferenceExitMapId > 0
+                    ? _inferenceExitMapId.ToString()
+                    : "unknown";
+                return $"clear={clearTarget}, exit={exitTarget}";
+            }
         }
 
         private static byte[] BuildRawPacket(int opcode, byte[] payload)

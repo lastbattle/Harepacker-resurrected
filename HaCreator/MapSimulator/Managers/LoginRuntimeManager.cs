@@ -106,6 +106,12 @@ namespace HaCreator.MapSimulator.Managers
         public bool FieldEntryRequested { get; private set; }
         public int ForwardedStagePacketCount { get; private set; }
         public int ForwardedMapLoadPacketCount { get; private set; }
+        public int AppliedStagePacketCount { get; private set; }
+        public int AppliedMapLoadPacketCount { get; private set; }
+        public LoginPacketType? LastForwardedPacketType { get; private set; }
+        public string LastForwardedPacketTarget { get; private set; }
+        public bool? LastForwardedPacketApplied { get; private set; }
+        public string LastForwardedPacketDetail { get; private set; }
 
         public bool BlocksFieldSimulation => !FieldEntryRequested;
 
@@ -135,6 +141,12 @@ namespace HaCreator.MapSimulator.Managers
             FieldEntryRequested = false;
             ForwardedStagePacketCount = 0;
             ForwardedMapLoadPacketCount = 0;
+            AppliedStagePacketCount = 0;
+            AppliedMapLoadPacketCount = 0;
+            LastForwardedPacketType = null;
+            LastForwardedPacketTarget = null;
+            LastForwardedPacketApplied = null;
+            LastForwardedPacketDetail = null;
             _packetCounts.Clear();
         }
 
@@ -276,10 +288,62 @@ namespace HaCreator.MapSimulator.Managers
             builder.Append(" | Worlds loaded: ").Append(HasWorldInformation ? "yes" : "no");
             builder.Append(" | Character select ready: ").Append(CharacterSelectReady ? "yes" : "no");
             builder.Append(" | Stage handoff: ").Append(ForwardedStagePacketCount.ToString());
+            builder.Append('/').Append(AppliedStagePacketCount.ToString()).Append(" applied");
             builder.Append(" | Map-load handoff: ").Append(ForwardedMapLoadPacketCount.ToString());
+            builder.Append('/').Append(AppliedMapLoadPacketCount.ToString()).Append(" applied");
+            if (LastForwardedPacketType.HasValue)
+            {
+                builder.AppendLine();
+                builder.Append("Last handoff: ").Append(LastForwardedPacketType.Value);
+                builder.Append(" -> ").Append(LastForwardedPacketTarget ?? "unknown target");
+                builder.Append(" | ").Append(LastForwardedPacketApplied == true ? "applied" : "failed");
+                if (!string.IsNullOrWhiteSpace(LastForwardedPacketDetail))
+                {
+                    builder.Append(" | ").Append(LastForwardedPacketDetail);
+                }
+            }
             builder.AppendLine();
             builder.Append("Last event: ").Append(LastEventSummary);
             return builder.ToString();
+        }
+
+        public void RecordForwardedStageTransitionResult(LoginPacketType packetType, bool applied, string detail)
+        {
+            if (!TryResolveForwardedPacketTarget(packetType, out string target, out bool stageOwned))
+            {
+                return;
+            }
+
+            LastForwardedPacketType = packetType;
+            LastForwardedPacketTarget = target;
+            LastForwardedPacketApplied = applied;
+            LastForwardedPacketDetail = string.IsNullOrWhiteSpace(detail) ? null : detail.Trim();
+
+            if (applied)
+            {
+                if (stageOwned)
+                {
+                    AppliedStagePacketCount++;
+                }
+                else
+                {
+                    AppliedMapLoadPacketCount++;
+                }
+            }
+
+            string summary = $"CLogin::OnPacket forwarded {DescribeForwardedPacket(packetType)} to {target}";
+            if (applied)
+            {
+                LastEventSummary = string.IsNullOrWhiteSpace(LastForwardedPacketDetail)
+                    ? $"{summary}."
+                    : $"{summary}. {LastForwardedPacketDetail}";
+            }
+            else
+            {
+                LastEventSummary = string.IsNullOrWhiteSpace(LastForwardedPacketDetail)
+                    ? $"{summary}, but the simulator relay could not apply it."
+                    : $"{summary}, but the simulator relay could not apply it. {LastForwardedPacketDetail}";
+            }
         }
 
         public static bool TryParseStep(string text, out LoginStep step)
@@ -498,37 +562,74 @@ namespace HaCreator.MapSimulator.Managers
         private void HandleSetField(int currentTickCount)
         {
             ForwardedStagePacketCount++;
-            LastEventSummary = "Forwarded SetField(141) from CLogin::OnPacket to CStage::OnPacket.";
+            LastEventSummary = "CLogin::OnPacket routed SetField(141) into the shared CStage::OnPacket handoff seam.";
         }
 
         private void HandleSetItc(int currentTickCount)
         {
             ForwardedStagePacketCount++;
-            LastEventSummary = "Forwarded SetITC(142) from CLogin::OnPacket to CStage::OnPacket.";
+            LastEventSummary = "CLogin::OnPacket routed SetITC(142) into the shared CStage::OnPacket handoff seam.";
         }
 
         private void HandleSetCashShop(int currentTickCount)
         {
             ForwardedStagePacketCount++;
-            LastEventSummary = "Forwarded SetCashShop(143) from CLogin::OnPacket to CStage::OnPacket.";
+            LastEventSummary = "CLogin::OnPacket routed SetCashShop(143) into the shared CStage::OnPacket handoff seam.";
         }
 
         private void HandleSetBackEffect(int currentTickCount)
         {
             ForwardedMapLoadPacketCount++;
-            LastEventSummary = "Forwarded SetBackEffect(144) from CLogin::OnPacket to CMapLoadable::OnPacket.";
+            LastEventSummary = "CLogin::OnPacket routed SetBackEffect(144) into the shared CMapLoadable::OnPacket handoff seam.";
         }
 
         private void HandleSetMapObjectVisible(int currentTickCount)
         {
             ForwardedMapLoadPacketCount++;
-            LastEventSummary = "Forwarded SetMapObjectVisible(145) from CLogin::OnPacket to CMapLoadable::OnPacket.";
+            LastEventSummary = "CLogin::OnPacket routed SetMapObjectVisible(145) into the shared CMapLoadable::OnPacket handoff seam.";
         }
 
         private void HandleClearBackEffect(int currentTickCount)
         {
             ForwardedMapLoadPacketCount++;
-            LastEventSummary = "Forwarded ClearBackEffect(146) from CLogin::OnPacket to CMapLoadable::OnPacket.";
+            LastEventSummary = "CLogin::OnPacket routed ClearBackEffect(146) into the shared CMapLoadable::OnPacket handoff seam.";
+        }
+
+        private static bool TryResolveForwardedPacketTarget(LoginPacketType packetType, out string target, out bool stageOwned)
+        {
+            switch (packetType)
+            {
+                case LoginPacketType.SetField:
+                case LoginPacketType.SetITC:
+                case LoginPacketType.SetCashShop:
+                    target = "CStage::OnPacket";
+                    stageOwned = true;
+                    return true;
+                case LoginPacketType.SetBackEffect:
+                case LoginPacketType.SetMapObjectVisible:
+                case LoginPacketType.ClearBackEffect:
+                    target = "CMapLoadable::OnPacket";
+                    stageOwned = false;
+                    return true;
+                default:
+                    target = null;
+                    stageOwned = false;
+                    return false;
+            }
+        }
+
+        private static string DescribeForwardedPacket(LoginPacketType packetType)
+        {
+            return packetType switch
+            {
+                LoginPacketType.SetField => "SetField(141)",
+                LoginPacketType.SetITC => "SetITC(142)",
+                LoginPacketType.SetCashShop => "SetCashShop(143)",
+                LoginPacketType.SetBackEffect => "SetBackEffect(144)",
+                LoginPacketType.SetMapObjectVisible => "SetMapObjectVisible(145)",
+                LoginPacketType.ClearBackEffect => "ClearBackEffect(146)",
+                _ => packetType.ToString()
+            };
         }
 
         private static bool Assign(LoginStep value, out LoginStep step)

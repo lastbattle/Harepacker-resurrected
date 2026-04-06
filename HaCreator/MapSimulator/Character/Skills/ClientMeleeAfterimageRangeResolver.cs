@@ -1,4 +1,6 @@
+using HaCreator.MapSimulator.Character;
 using Microsoft.Xna.Framework;
+using System.Collections.Generic;
 
 namespace HaCreator.MapSimulator.Character.Skills
 {
@@ -74,6 +76,46 @@ namespace HaCreator.MapSimulator.Character.Skills
                 FrameSets = action?.FrameSets ?? new(),
                 Range = overrideRange
             };
+        }
+
+        public static int ResolveActivationDelayMs(
+            MeleeAfterImageAction action,
+            IReadOnlyList<AssembledFrame> actionFrames)
+        {
+            if (action?.FrameSets == null
+                || action.FrameSets.Count == 0
+                || actionFrames == null
+                || actionFrames.Count == 0)
+            {
+                return 0;
+            }
+
+            int firstRenderableFrameIndex = int.MaxValue;
+            foreach ((int frameIndex, _) in action.FrameSets)
+            {
+                if (frameIndex >= 0 && frameIndex < firstRenderableFrameIndex)
+                {
+                    firstRenderableFrameIndex = frameIndex;
+                }
+            }
+
+            if (firstRenderableFrameIndex == int.MaxValue || firstRenderableFrameIndex <= 0)
+            {
+                return 0;
+            }
+
+            int clampedFrameIndex = firstRenderableFrameIndex > actionFrames.Count
+                ? actionFrames.Count
+                : firstRenderableFrameIndex;
+            int delayMs = 0;
+            for (int i = 0; i < clampedFrameIndex; i++)
+            {
+                delayMs += actionFrames[i]?.Duration > 0
+                    ? actionFrames[i].Duration
+                    : 0;
+            }
+
+            return delayMs;
         }
     }
 }

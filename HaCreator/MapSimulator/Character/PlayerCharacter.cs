@@ -154,6 +154,7 @@ namespace HaCreator.MapSimulator.Character
             public string ActionName { get; init; }
             public MeleeAfterImageAction AfterImageAction { get; init; }
             public int AnimationStartTime { get; set; }
+            public int ActivationStartTime { get; init; }
             public bool FacingRight { get; init; }
             public int ActionDuration { get; init; }
             public int FadeDuration { get; init; }
@@ -241,6 +242,7 @@ namespace HaCreator.MapSimulator.Character
 
         // GM Fly Mode - not in Physics.img, hardcoded for convenience
         private const float GM_FLY_SPEED = 400f; // pixels per second - fast flying for map exploration
+        private const int BattleshipTamingMobItemId = 1932000;
         private const int MechanicTamingMobItemId = 1932016;
 
         // Hitboxes - Y position is now at feet, so hitbox extends upward from feet
@@ -566,7 +568,7 @@ namespace HaCreator.MapSimulator.Character
 
         public bool TryActivatePortableChair(PortableChair chair)
         {
-            if (chair == null || Build == null || !IsAlive || !Physics.IsOnFoothold())
+            if (GetPortableChairActivationRestrictionMessage(chair) != null)
             {
                 return false;
             }
@@ -586,6 +588,18 @@ namespace HaCreator.MapSimulator.Character
             _packetOwnedChairSitConfirmed = false;
             ConfigurePortableChairPairPreview(chair);
             return true;
+        }
+
+        internal string GetPortableChairActivationRestrictionMessage(PortableChair chair)
+        {
+            return ResolvePortableChairActivationRestrictionMessage(
+                chair,
+                Build != null,
+                IsAlive,
+                State,
+                Physics?.IsOnFoothold() == true,
+                HasActiveMorphTransform,
+                HasPortableChairBlockedMountState());
         }
 
         public bool PacketOwnedChairSitConfirmed => _packetOwnedChairSitConfirmed;
@@ -1981,6 +1995,9 @@ namespace HaCreator.MapSimulator.Character
                 ActionName = actionName,
                 AfterImageAction = afterImageAction,
                 AnimationStartTime = currentTime,
+                ActivationStartTime = currentTime + ClientMeleeAfterimageRangeResolver.ResolveActivationDelayMs(
+                    afterImageAction,
+                    Assembler?.GetAnimation(actionName)),
                 FacingRight = FacingRight,
                 ActionDuration = GetMeleeAfterImageActionDuration(actionName),
                 FadeDuration = GetMeleeAfterImageFadeDuration(actionName)
@@ -3417,6 +3434,20 @@ namespace HaCreator.MapSimulator.Character
                 return;
             }
 
+            if (currentTime < _activeMeleeAfterImage.ActivationStartTime)
+            {
+                bool sameAction = State == PlayerState.Attacking
+                    && string.Equals(CurrentActionName, _activeMeleeAfterImage.ActionName, StringComparison.OrdinalIgnoreCase);
+                if (!sameAction
+                    || (_activeMeleeAfterImage.ActionDuration > 0
+                        && currentTime - _activeMeleeAfterImage.AnimationStartTime >= _activeMeleeAfterImage.ActionDuration))
+                {
+                    _activeMeleeAfterImage = null;
+                }
+
+                return;
+            }
+
             bool activeAction = _activeMeleeAfterImage.FadeStartTime < 0
                 && State == PlayerState.Attacking
                 && string.Equals(CurrentActionName, _activeMeleeAfterImage.ActionName, StringComparison.OrdinalIgnoreCase);
@@ -3922,6 +3953,7 @@ namespace HaCreator.MapSimulator.Character
                 signature.Add(part.OffsetY);
                 signature.Add(part.ZIndex);
                 signature.Add(part.IsVisible);
+                signature.Add(part.Tint.PackedValue);
                 signature.Add((int)part.PartType);
                 signature.Add((int)part.RenderLayer);
                 signature.Add(part.ZLayer, StringComparer.Ordinal);
@@ -5034,15 +5066,6 @@ namespace HaCreator.MapSimulator.Character
             string resolvedActionName,
             string playerActionName)
         {
-            if (actionAnimations == null
-                || string.IsNullOrWhiteSpace(resolvedActionName)
-                || !actionAnimations.TryGetValue(resolvedActionName, out SkillAnimation baseAnimation)
-                || baseAnimation?.Frames == null
-                || baseAnimation.Frames.Count == 0)
-            {
-                return null;
-            }
-
             string rawActionName = null;
             if (!string.IsNullOrWhiteSpace(playerActionName)
                 && TryGetCurrentClientRawActionCode(out int rawActionCode))
@@ -5050,38 +5073,11 @@ namespace HaCreator.MapSimulator.Character
                 CharacterPart.TryGetActionStringFromCode(rawActionCode, out rawActionName);
             }
 
-            IReadOnlyList<int> frameRemap = ShadowPartnerClientActionResolver.ResolveClientFrameRemap(
-                playerActionName,
-                rawActionName,
+            return ShadowPartnerClientActionResolver.ResolvePlaybackAnimation(
+                actionAnimations,
                 resolvedActionName,
-                baseAnimation.Frames.Count);
-            if (frameRemap == null || frameRemap.Count == 0)
-            {
-                return baseAnimation;
-            }
-
-            var remappedFrames = new List<SkillFrame>(frameRemap.Count);
-            foreach (int requestedIndex in frameRemap)
-            {
-                int frameIndex = Math.Clamp(requestedIndex, 0, baseAnimation.Frames.Count - 1);
-                remappedFrames.Add(baseAnimation.Frames[frameIndex]);
-            }
-
-            if (remappedFrames.Count == 0)
-            {
-                return baseAnimation;
-            }
-
-            var remappedAnimation = new SkillAnimation
-            {
-                Name = baseAnimation.Name,
-                Frames = remappedFrames,
-                Loop = baseAnimation.Loop,
-                Origin = baseAnimation.Origin,
-                ZOrder = baseAnimation.ZOrder
-            };
-            remappedAnimation.CalculateDuration();
-            return remappedAnimation;
+                playerActionName,
+                rawActionName);
         }
 
         private bool ShouldHoldShadowPartnerCurrentAction(int currentTime)
@@ -5327,6 +5323,48 @@ namespace HaCreator.MapSimulator.Character
         internal static bool IsPortableChairRidingChairMountItemId(int itemId)
         {
             return itemId > 0 && itemId / 1000 == 1983;
+        }
+
+        internal static string ResolvePortableChairActivationRestrictionMessage(
+            PortableChair chair,
+            bool hasBuild,
+            bool isAlive,
+            PlayerState state,
+            bool isOnFoothold,
+            bool hasActiveMorphTransform,
+            bool hasBlockedMountState)
+        {
+            if (chair == null || !hasBuild)
+            {
+                return "Player runtime is not available.";
+            }
+
+            if (!isAlive)
+            {
+                return "Portable chairs cannot be activated while dead.";
+            }
+
+            if (state != PlayerState.Standing)
+            {
+                return "Portable chairs can only be activated while standing still.";
+            }
+
+            if (!isOnFoothold)
+            {
+                return "Portable chairs can only be activated while standing on a foothold.";
+            }
+
+            if (hasActiveMorphTransform)
+            {
+                return "Portable chairs cannot be activated while morphed.";
+            }
+
+            if (hasBlockedMountState)
+            {
+                return "Portable chairs cannot be activated while mounted.";
+            }
+
+            return null;
         }
 
         internal static bool IsPortableChairPairPlacementValid(
@@ -5629,7 +5667,13 @@ namespace HaCreator.MapSimulator.Character
 
             for (int i = 0; i < parts.Count; i++)
             {
-                int layerIndex = (int)parts[i].RenderLayer;
+                AssembledPart part = parts[i];
+                if (part?.Texture == null || !part.IsVisible)
+                {
+                    continue;
+                }
+
+                int layerIndex = (int)part.RenderLayer;
                 if ((uint)layerIndex >= (uint)insertionIndices.Length)
                 {
                     continue;
@@ -5882,7 +5926,7 @@ namespace HaCreator.MapSimulator.Character
             }
 
             CharacterPart clientOwnedVehicleMount = GetClientOwnedVehicleTamingMobPart();
-            if (CharacterAssembler.SupportsTamingMobAction(clientOwnedVehicleMount, CurrentActionName))
+            if (ShouldKeepClientOwnedVehicleRenderOwner(clientOwnedVehicleMount, CurrentActionName))
             {
                 SetStateDrivenTamingMobOverride(clientOwnedVehicleMount);
                 return;
@@ -5981,7 +6025,29 @@ namespace HaCreator.MapSimulator.Character
         private static bool IsMechanicTamingMobPart(CharacterPart mountPart)
         {
             return mountPart?.Slot == EquipSlot.TamingMob
-                   && mountPart.ItemId == MechanicTamingMobItemId;
+                && mountPart.ItemId == MechanicTamingMobItemId;
+        }
+
+        private bool HasPortableChairBlockedMountState()
+        {
+            return _clientOwnedVehicleTamingMobActive || IsMechanicTamingMobStateActive();
+        }
+
+        internal static bool ShouldKeepClientOwnedVehicleRenderOwner(CharacterPart mountPart, string actionName)
+        {
+            if (mountPart?.Slot != EquipSlot.TamingMob)
+            {
+                return false;
+            }
+
+            if (CharacterAssembler.SupportsTamingMobAction(mountPart, actionName))
+            {
+                return true;
+            }
+
+            return string.IsNullOrWhiteSpace(actionName)
+                   && (mountPart.ItemId == BattleshipTamingMobItemId
+                       || mountPart.ItemId == MechanicTamingMobItemId);
         }
 
         private static bool IsStateDrivenMechanicVehicleAction(string actionName)

@@ -237,7 +237,7 @@ namespace HaCreator.MapSimulator.Fields
                     int platformId = _authoredDynamicObjectNames.Count;
                     string resolvedName = ResolveDynamicObjectName(rootChild, mapObject, platformId);
                     _authoredDynamicObjectNames.Add(resolvedName);
-                    RegisterAuthoredDynamicObjectName(resolvedName, platformId);
+                    RegisterDynamicObjectAliases(rootChild, mapObject, resolvedName, platformId);
 
                     if (TryReadDynamicFlag(dynamicProperty, out int dynamicFlag) && dynamicFlag != 0)
                     {
@@ -299,11 +299,116 @@ namespace HaCreator.MapSimulator.Fields
             _authoredDynamicObjectPlatformByName[normalized] = platformId;
         }
 
+        private void RegisterDynamicObjectAliases(WzImageProperty layer, WzImageProperty mapObject, string resolvedName, int platformId)
+        {
+            if (platformId < 0)
+            {
+                return;
+            }
+
+            string objectKeyName = TryResolveObjectKeyName(mapObject, out string candidateObjectKeyName)
+                ? candidateObjectKeyName
+                : null;
+            int? piece = TryReadIntProperty(mapObject, "piece", out int pieceValue)
+                ? pieceValue
+                : null;
+            int? x = TryReadIntProperty(mapObject, "x", out int xValue)
+                ? xValue
+                : null;
+            int? y = TryReadIntProperty(mapObject, "y", out int yValue)
+                ? yValue
+                : null;
+
+            foreach (string alias in BuildDynamicObjectAliasCandidates(resolvedName, objectKeyName, layer?.Name, mapObject?.Name, piece, x, y))
+            {
+                RegisterAuthoredDynamicObjectName(alias, platformId);
+            }
+        }
+
         private static string NormalizeDynamicObjectKey(string name)
         {
             return string.IsNullOrWhiteSpace(name)
                 ? string.Empty
                 : name.Trim().Replace('\\', '/');
+        }
+
+        private static IReadOnlyList<string> BuildDynamicObjectAliasCandidates(
+            string resolvedName,
+            string objectKeyName,
+            string layerName,
+            string objectName,
+            int? piece,
+            int? x,
+            int? y)
+        {
+            HashSet<string> aliases = new(StringComparer.OrdinalIgnoreCase);
+            AddDynamicObjectAlias(aliases, resolvedName);
+            AddDynamicObjectAlias(aliases, objectKeyName);
+
+            string layerObjectAlias = BuildLayerObjectAlias(layerName, objectName);
+            AddDynamicObjectAlias(aliases, layerObjectAlias);
+            AddCoordinateAliases(aliases, objectKeyName, x, y);
+            AddCoordinateAliases(aliases, layerObjectAlias, x, y);
+
+            if (piece is int pieceValue && pieceValue >= 0)
+            {
+                string pieceSuffix = pieceValue.ToString(CultureInfo.InvariantCulture);
+                if (!string.IsNullOrWhiteSpace(objectKeyName))
+                {
+                    AddDynamicObjectAlias(aliases, $"{objectKeyName}/{pieceSuffix}");
+                    AddDynamicObjectAlias(aliases, $"{objectKeyName}/piece/{pieceSuffix}");
+                    AddCoordinateAliases(aliases, $"{objectKeyName}/{pieceSuffix}", x, y);
+                    AddCoordinateAliases(aliases, $"{objectKeyName}/piece/{pieceSuffix}", x, y);
+                }
+
+                if (!string.IsNullOrWhiteSpace(layerObjectAlias))
+                {
+                    AddDynamicObjectAlias(aliases, $"{layerObjectAlias}/{pieceSuffix}");
+                    AddDynamicObjectAlias(aliases, $"{layerObjectAlias}/piece/{pieceSuffix}");
+                    AddCoordinateAliases(aliases, $"{layerObjectAlias}/{pieceSuffix}", x, y);
+                    AddCoordinateAliases(aliases, $"{layerObjectAlias}/piece/{pieceSuffix}", x, y);
+                }
+            }
+
+            List<string> aliasList = new(aliases.Count);
+            foreach (string alias in aliases)
+            {
+                aliasList.Add(alias);
+            }
+
+            return aliasList;
+        }
+
+        private static void AddDynamicObjectAlias(ISet<string> aliases, string candidate)
+        {
+            string normalized = NormalizeDynamicObjectKey(candidate);
+            if (normalized.Length > 0)
+            {
+                aliases.Add(normalized);
+            }
+        }
+
+        private static void AddCoordinateAliases(ISet<string> aliases, string baseAlias, int? x, int? y)
+        {
+            if (string.IsNullOrWhiteSpace(baseAlias) || x is not int xValue || y is not int yValue)
+            {
+                return;
+            }
+
+            string xToken = xValue.ToString(CultureInfo.InvariantCulture);
+            string yToken = yValue.ToString(CultureInfo.InvariantCulture);
+            AddDynamicObjectAlias(aliases, $"{baseAlias}/{xToken}/{yToken}");
+            AddDynamicObjectAlias(aliases, $"{baseAlias}/{xToken},{yToken}");
+        }
+
+        private static string BuildLayerObjectAlias(string layerName, string objectName)
+        {
+            if (string.IsNullOrWhiteSpace(layerName) || string.IsNullOrWhiteSpace(objectName))
+            {
+                return null;
+            }
+
+            return $"{layerName.Trim()}/{objectName.Trim()}";
         }
 
         private static string ResolveDynamicObjectName(WzImageProperty layer, WzImageProperty mapObject, int fallbackIndex)
@@ -350,6 +455,30 @@ namespace HaCreator.MapSimulator.Fields
 
             value = stringProperty.Value.Trim();
             return true;
+        }
+
+        private static bool TryReadIntProperty(WzImageProperty parent, string propertyName, out int value)
+        {
+            value = 0;
+            if (parent?[propertyName] is not WzImageProperty property)
+            {
+                return false;
+            }
+
+            switch (property)
+            {
+                case WzIntProperty intProperty:
+                    value = intProperty.Value;
+                    return true;
+                case WzShortProperty shortProperty:
+                    value = shortProperty.Value;
+                    return true;
+                case WzLongProperty longProperty when longProperty.Value >= int.MinValue && longProperty.Value <= int.MaxValue:
+                    value = (int)longProperty.Value;
+                    return true;
+                default:
+                    return false;
+            }
         }
 
         private static bool TryReadTokenProperty(WzImageProperty parent, string propertyName, out string value)

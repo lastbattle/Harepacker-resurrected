@@ -2634,8 +2634,14 @@ namespace HaCreator.MapSimulator.Loaders
                 LoadButton(uiWindow2Image?["QuestGuide"]?["Button"] as WzSubProperty, "Location", clickSound, overSound, device),
                 LoadButton(uiWindow2Image?["QuestGuide"]?["Button"] as WzSubProperty, "WorldMapQuestToggle", clickSound, overSound, device));
 
-
-            UIObject closeButton = CreateUserInfoCloseButton(basicImage, clickSound, overSound, device, frameTexture.Width);
+            WzSubProperty questInfoProperty = uiWindow2Image?["Quest"]?["quest_info"] as WzSubProperty;
+            UIObject closeButton = CreateCloseButton(
+                questInfoProperty?["BtClose"] as WzSubProperty,
+                clickSound,
+                overSound,
+                device,
+                frameTexture.Width)
+                ?? CreateUserInfoCloseButton(basicImage, clickSound, overSound, device, frameTexture.Width);
             if (closeButton != null)
             {
                 window.InitializeCloseButton(closeButton);
@@ -3209,7 +3215,16 @@ namespace HaCreator.MapSimulator.Loaders
             GraphicsDevice device,
             int windowWidth)
         {
-            WzSubProperty closeButtonProperty = basicImage?["BtClose"] as WzSubProperty;
+            return CreateCloseButton(basicImage?["BtClose"] as WzSubProperty, clickSound, overSound, device, windowWidth);
+        }
+
+        private static UIObject CreateCloseButton(
+            WzSubProperty closeButtonProperty,
+            WzBinaryProperty clickSound,
+            WzBinaryProperty overSound,
+            GraphicsDevice device,
+            int windowWidth)
+        {
             if (closeButtonProperty == null)
             {
                 return null;

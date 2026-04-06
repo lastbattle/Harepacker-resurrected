@@ -7,9 +7,9 @@ namespace HaCreator.MapSimulator
     public partial class MapSimulator
     {
         private const string SocialListPacketPayloadUsage =
-            "Usage: /sociallist packet [status|<friend|party|guild|alliance|blacklist> <payloadhex=..|payloadb64=..>|owner <tab> <local|packet> [summary]|seed <tab>|clear <tab>|remove <tab> <name>|select <tab> <name>|summary <tab> <summary>|resolve <tab> <approve|reject> [summary]|upsert <tab> <name>|<primary>|<secondary>|<location>|<channel>|<online>|<leader>|<blocked>|<local>|guildauth <clear|payloadhex=..|payloadb64=..|<role>|<rank>|<admission>|<notice>>|allianceauth <clear|payloadhex=..|payloadb64=..|<role>|<rank>|<notice>>|guildui <clear|payloadhex=..|payloadb64=..|<member>|<guildName>|<guildLevel>>]";
+            "Usage: /sociallist packet [status|<friend|party|guild|alliance|blacklist> <payloadhex=..|payloadb64=..>|guildresult <payloadhex=..|payloadb64=..>|allianceresult <payloadhex=..|payloadb64=..>|owner <tab> <local|packet> [summary]|seed <tab>|clear <tab>|remove <tab> <name>|select <tab> <name>|summary <tab> <summary>|resolve <tab> <approve|reject> [summary]|upsert <tab> <name>|<primary>|<secondary>|<location>|<channel>|<online>|<leader>|<blocked>|<local>|guildauth <clear|payloadhex=..|payloadb64=..|<role>|<rank>|<admission>|<notice>>|allianceauth <clear|payloadhex=..|payloadb64=..|<role>|<rank>|<notice>>|guildui <clear|payloadhex=..|payloadb64=..|<member>|<guildName>|<guildLevel>>]";
         private const string SocialListPacketRawUsage =
-            "Usage: /sociallist packetraw <friend|party|guild|alliance|blacklist|guildauth|allianceauth|guildui> <hex>";
+            "Usage: /sociallist packetraw <friend|party|guild|alliance|blacklist|guildauth|allianceauth|guildui|guildresult|allianceresult> <hex>";
 
         private ChatCommandHandler.CommandResult HandleSocialListPacketCommand(string[] args)
         {
@@ -59,6 +59,20 @@ namespace HaCreator.MapSimulator
                     $"CWvsContext::OnGuildResult UI: {_socialListRuntime.ApplyPacketOwnedGuildUiPayload(guildUiPayload)}");
             }
 
+            if (string.Equals(packetAction, "guildresult", StringComparison.OrdinalIgnoreCase)
+                && TryParseSocialListPacketPayloadArgument(args, 1, out byte[] guildResultPayload, out _))
+            {
+                return ChatCommandHandler.CommandResult.Ok(
+                    $"CWvsContext::OnGuildResult: {_socialListRuntime.ApplyClientGuildResultPayload(guildResultPayload)}");
+            }
+
+            if (string.Equals(packetAction, "allianceresult", StringComparison.OrdinalIgnoreCase)
+                && TryParseSocialListPacketPayloadArgument(args, 1, out byte[] allianceResultPayload, out _))
+            {
+                return ChatCommandHandler.CommandResult.Ok(
+                    $"CWvsContext::OnAllianceResult: {_socialListRuntime.ApplyClientAllianceResultPayload(allianceResultPayload)}");
+            }
+
             return ChatCommandHandler.CommandResult.Error(SocialListPacketPayloadUsage);
         }
 
@@ -88,6 +102,16 @@ namespace HaCreator.MapSimulator
             if (string.Equals(target, "guildui", StringComparison.OrdinalIgnoreCase))
             {
                 return ChatCommandHandler.CommandResult.Ok(_socialListRuntime.ApplyPacketOwnedGuildUiPayload(payload));
+            }
+
+            if (string.Equals(target, "guildresult", StringComparison.OrdinalIgnoreCase))
+            {
+                return ChatCommandHandler.CommandResult.Ok(_socialListRuntime.ApplyClientGuildResultPayload(payload));
+            }
+
+            if (string.Equals(target, "allianceresult", StringComparison.OrdinalIgnoreCase))
+            {
+                return ChatCommandHandler.CommandResult.Ok(_socialListRuntime.ApplyClientAllianceResultPayload(payload));
             }
 
             return ChatCommandHandler.CommandResult.Error(SocialListPacketRawUsage);

@@ -84,6 +84,10 @@ namespace HaCreator.MapSimulator.UI {
         public Texture2D IconTexture { get; set; }
         public int RemainingMs { get; set; }
         public int DurationMs { get; set; }
+        public string CounterText { get; set; }
+        public string TooltipStateText { get; set; }
+        public bool SuppressProgressOverlay { get; set; }
+        public bool SuppressCounterText { get; set; }
     }
 
     public class StatusBarKeyDownBarTextures
@@ -1153,18 +1157,23 @@ namespace HaCreator.MapSimulator.UI {
                         sprite.Draw(cooldownEntry.IconTexture, iconRect, Color.White);
                     }
 
-                    float remainingProgress = cooldownEntry.DurationMs > 0
-                        ? Math.Clamp(cooldownEntry.RemainingMs / (float)cooldownEntry.DurationMs, 0f, 1f)
-                        : 1f;
-                    DrawCooldownOverlay(sprite, iconRect, remainingProgress);
+                    if (!cooldownEntry.SuppressProgressOverlay)
+                    {
+                        float remainingProgress = cooldownEntry.DurationMs > 0
+                            ? Math.Clamp(cooldownEntry.RemainingMs / (float)cooldownEntry.DurationMs, 0f, 1f)
+                            : 1f;
+                        DrawCooldownOverlay(sprite, iconRect, remainingProgress);
+                    }
 
-                    if (_font == null || cooldownEntry.RemainingMs <= 0)
+                    if (_font == null || cooldownEntry.RemainingMs <= 0 || cooldownEntry.SuppressCounterText)
                     {
                         continue;
                     }
 
                     float textScale = iconSize < BUFF_ICON_SIZE ? 0.45f : 0.5f;
-                    string remainingText = Math.Max(1, (int)Math.Ceiling(cooldownEntry.RemainingMs / 1000f)).ToString();
+                    string remainingText = string.IsNullOrWhiteSpace(cooldownEntry.CounterText)
+                        ? Math.Max(1, (int)Math.Ceiling(cooldownEntry.RemainingMs / 1000f)).ToString()
+                        : cooldownEntry.CounterText;
                     Vector2 textSize = _font.MeasureString(remainingText) * textScale;
                     Vector2 textPosition = new Vector2(
                         iconRect.Right - textSize.X - 2,
@@ -1188,7 +1197,9 @@ namespace HaCreator.MapSimulator.UI {
                 renderWidth,
                 renderHeight,
                 SanitizeTooltipText(cooldownEntry.SkillName),
-                $"Cooldown: {SkillCooldownTooltipText.FormatCooldownState(cooldownEntry.RemainingMs)}",
+                SanitizeTooltipText(string.IsNullOrWhiteSpace(cooldownEntry.TooltipStateText)
+                    ? $"Cooldown: {SkillCooldownTooltipText.FormatCooldownState(cooldownEntry.RemainingMs)}"
+                    : cooldownEntry.TooltipStateText),
                 string.Empty,
                 SanitizeTooltipText(cooldownEntry.Description),
                 cooldownEntry.IconTexture);

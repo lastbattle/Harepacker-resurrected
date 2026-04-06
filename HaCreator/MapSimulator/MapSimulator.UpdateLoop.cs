@@ -60,6 +60,56 @@ namespace HaCreator.MapSimulator
 {
     public partial class MapSimulator : Microsoft.Xna.Framework.Game
     {
+        internal static bool ShouldRefreshMobFearFieldEffect(
+            bool isFearActive,
+            int desiredExpireTick,
+            int currentExpireTick,
+            float desiredIntensity,
+            float currentIntensity)
+        {
+            if (!isFearActive)
+            {
+                return true;
+            }
+
+            if (desiredExpireTick > currentExpireTick)
+            {
+                return true;
+            }
+
+            return Math.Abs(desiredIntensity - currentIntensity) > 0.001f;
+        }
+
+        private void SyncMobFearFieldEffect(int currentTime)
+        {
+            if (_playerManager?.TryGetFearMobStatusVisualState(currentTime, out float intensity, out int remainingFearDurationMs) != true
+                || remainingFearDurationMs <= 0)
+            {
+                _mobFearEffectExpireTick = int.MinValue;
+                _mobFearEffectIntensity = 0f;
+                if (_fieldEffects.IsFearActive)
+                {
+                    _fieldEffects.StopFearEffect();
+                }
+
+                return;
+            }
+
+            int desiredExpireTick = currentTime + remainingFearDurationMs;
+            if (!ShouldRefreshMobFearFieldEffect(
+                    _fieldEffects.IsFearActive,
+                    desiredExpireTick,
+                    _mobFearEffectExpireTick,
+                    intensity,
+                    _mobFearEffectIntensity))
+            {
+                return;
+            }
+
+            _fieldEffects.InitFearEffect(intensity, remainingFearDurationMs, MobFearEffectPulseCount, currentTime);
+            _mobFearEffectExpireTick = desiredExpireTick;
+            _mobFearEffectIntensity = intensity;
+        }
 
 
         /// <summary>
@@ -155,11 +205,14 @@ namespace HaCreator.MapSimulator
                 EnsureLocalOverlayPacketInboxState(shouldRun: false);
                 EnsureLocalUtilityPacketInboxState(shouldRun: false);
                 EnsureLocalUtilityOfficialSessionBridgeState(shouldRun: false);
+                EnsureExpeditionIntermediaryPacketInboxState(shouldRun: false);
+                EnsureExpeditionIntermediaryOfficialSessionBridgeState(shouldRun: false);
                 EnsureEngagementProposalInboxState(shouldRun: false);
                 EnsureStageTransitionPacketInboxState(shouldRun: false);
                 EnsureReactorPoolPacketInboxState(shouldRun: false);
                 EnsureReactorPoolOfficialSessionBridgeState(shouldRun: false);
                 EnsureSummonedPacketInboxState(shouldRun: false);
+                EnsureSummonedOfficialSessionBridgeState(shouldRun: false);
                 EnsureMobAttackPacketInboxState(shouldRun: false);
                 UpdateLoginRuntimeFrame(gameTime, newKeyboardState, newMouseState, isWindowActive);
                 return;
@@ -209,10 +262,14 @@ namespace HaCreator.MapSimulator
                 _playerManager?.Player?.Build?.Clone(),
                 _playerManager?.Player?.Position ?? Vector2.Zero,
                 ResolveSyntheticRemoteUserId);
+            DrainRemoteUserPacketInbox(currTickCount);
             _remoteUserPool.Update(currTickCount, _playerManager?.Player);
             _remoteUserPool.SyncPortableChairPairState(_playerManager?.Player);
             EnsureSummonedPacketInboxState(shouldRun: true);
+            EnsureSummonedOfficialSessionBridgeState(shouldRun: true);
+            RefreshSummonedOfficialSessionBridgeDiscovery(currTickCount);
             DrainSummonedPacketInbox();
+            DrainSummonedOfficialSessionBridge();
             EnsureMobAttackPacketInboxState(shouldRun: true);
             DrainMobAttackPacketInbox();
             _summonedPool.Update(currTickCount);
@@ -247,10 +304,17 @@ namespace HaCreator.MapSimulator
             DrainLocalOverlayPacketInbox();
             SyncPacketOwnedApspContextLifecycle();
             EnsureLocalUtilityPacketInboxState(shouldRun: true);
+            EnsurePacketScriptOfficialSessionBridgeState(shouldRun: true);
+            RefreshPacketScriptOfficialSessionBridgeDiscovery(currTickCount);
             EnsureLocalUtilityOfficialSessionBridgeState(shouldRun: true);
             RefreshLocalUtilityOfficialSessionBridgeDiscovery(currTickCount);
+            EnsureExpeditionIntermediaryPacketInboxState(shouldRun: true);
+            EnsureExpeditionIntermediaryOfficialSessionBridgeState(shouldRun: true);
+            RefreshExpeditionIntermediaryOfficialSessionBridgeDiscovery(currTickCount);
             DrainLocalUtilityPacketInbox();
             DrainLocalUtilityOfficialSessionBridge();
+            DrainExpeditionIntermediaryPacketInbox();
+            DrainExpeditionIntermediaryOfficialSessionBridge();
             EnsureMapTransferOfficialSessionBridgeState(shouldRun: _mapBoard?.MapInfo != null);
             RefreshMapTransferOfficialSessionBridgeDiscovery(currTickCount);
             DrainMapTransferOfficialSessionBridge();
@@ -844,6 +908,12 @@ namespace HaCreator.MapSimulator
             if (_playerManager != null)
             {
                 _playerManager.IsPlayerControlEnabled = _gameState.IsPlayerInputEnabled;
+                TryHandlePacketOwnedLocalFollowReleaseInput(
+                    newKeyboardState,
+                    _oldKeyboardState,
+                    isWindowActive,
+                    chatConsumedInput || _chat.IsActive || uiCapturesKeyboard,
+                    currTickCount);
                 _playerManager.Update(currTickCount, deltaSeconds, _chat.IsActive || uiCapturesKeyboard, isWindowActive);
                 UpdatePacketOwnedFuncKeyRuntime(
                     currTickCount,
@@ -970,6 +1040,8 @@ namespace HaCreator.MapSimulator
 
             UpdateReactorRuntime(currTickCount, deltaSeconds);
 
+            SyncMobFearFieldEffect(currTickCount);
+
 
 
             // Update field effects (weather messages, fear effect, obstacles)
@@ -987,6 +1059,7 @@ namespace HaCreator.MapSimulator
             float playerY = _playerManager?.IsPlayerActive == true
                 ? _playerManager.GetPlayerPosition().Y
                 : mapShiftY + _renderParams.RenderHeight / 2f;
+            SyncClientOwnedLimitedViewFocus(playerX, playerY);
             _limitedViewField.Update(gameTime, playerX, playerY);
 
 
@@ -1097,7 +1170,10 @@ namespace HaCreator.MapSimulator
                     metadata.RequiresAdultAccount,
                     metadata.HasAuthoritativePopulationData,
                     metadata.RecommendMessage,
-                    metadata.RecommendOrder);
+                    metadata.RecommendOrder,
+                    metadata.WorldState,
+                    metadata.BlocksCharacterCreation,
+                    metadata.WorldName);
                 changed = true;
             }
 

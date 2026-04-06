@@ -446,7 +446,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Type a whisper before sending.";
             }
 
-            string author = _participants.Count > 0 ? _participants[0].Name : "Player";
+            string author = GetLocalParticipant()?.Name ?? "Player";
             AddParticipantLog(author, resolvedMessage, isWhisper: true, targetName: participant.Name);
             string autoReply = BuildAutoReply(participant, resolvedMessage, whisper: true);
             AddParticipantLog(participant.Name, autoReply, isWhisper: true, targetName: author);
@@ -479,7 +479,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return $"{participant.Name} is offline and cannot whisper.";
             }
 
-            string localPlayerName = _participants.Count > 0 ? _participants[0].Name : "Player";
+            string localPlayerName = GetLocalParticipant()?.Name ?? "Player";
             AddParticipantLog(participant.Name, resolvedMessage, isWhisper: true, targetName: localPlayerName);
             SetParticipantBubble(participant.Name, resolvedMessage, Environment.TickCount);
             NotifySocialChatObserved(resolvedMessage);
@@ -1478,7 +1478,7 @@ namespace HaCreator.MapSimulator.Interaction
 
                 _participants.Add(new MessengerParticipantState
                 {
-                    SlotIndex = targetSlot == 0 ? FindFirstEmptyRemoteSlot() : targetSlot,
+                    SlotIndex = targetSlot,
                     Name = resolvedName,
                     LocationSummary = "Field",
                     Channel = packet.Channel,
@@ -1575,35 +1575,58 @@ namespace HaCreator.MapSimulator.Interaction
                 UpdateLocalContext("Player", "Field", 1);
             }
 
-            MessengerParticipantState localPlayer = GetLocalParticipant();
-            _participants.Clear();
-            _participants.Add(localPlayer);
-
-            foreach (MessengerMigratedParticipantPacket participantPacket in packet.Participants
-                         .Where(candidate => candidate.Present)
-                         .OrderBy(candidate => candidate.SlotIndex))
+            MessengerParticipantState[] migratedSlots = new MessengerParticipantState[MaxParticipants];
+            Dictionary<string, MessengerParticipantState> existingParticipantsByName = new(StringComparer.OrdinalIgnoreCase);
+            for (int i = 0; i < _participants.Count; i++)
             {
-                if (string.Equals(participantPacket.ContactName, localPlayer.Name, StringComparison.OrdinalIgnoreCase))
+                MessengerParticipantState participant = _participants[i];
+                if (participant == null)
                 {
                     continue;
                 }
 
-                int targetSlot = Math.Clamp(participantPacket.SlotIndex, 0, MaxParticipants - 1);
-                if (_participants.Count >= MaxParticipants)
+                if (participant.SlotIndex >= 0 && participant.SlotIndex < migratedSlots.Length)
                 {
-                    break;
+                    migratedSlots[participant.SlotIndex] = participant;
+                }
+
+                if (!string.IsNullOrWhiteSpace(participant.Name))
+                {
+                    existingParticipantsByName[participant.Name] = participant;
+                }
+            }
+
+            MessengerParticipantState localPlayer = GetLocalParticipant();
+            for (int slotIndex = 0; slotIndex < Math.Min(MaxParticipants, packet.Participants.Length); slotIndex++)
+            {
+                MessengerMigratedParticipantPacket participantPacket = packet.Participants[slotIndex];
+                if (participantPacket.ClearSlot)
+                {
+                    migratedSlots[slotIndex] = null;
+                    continue;
+                }
+
+                if (participantPacket.PreserveSlot)
+                {
+                    continue;
                 }
 
                 string resolvedName = NormalizeParticipantName(participantPacket.ContactName);
                 if (resolvedName == null)
                 {
+                    migratedSlots[slotIndex] = null;
                     continue;
                 }
 
-                string locationSummary = "Field";
-                string statusText = participantPacket.IsOnline ? "Online" : "Offline";
-                string jobName = "Adventurer";
-                int level = 1;
+                MessengerParticipantState existingParticipant = existingParticipantsByName.TryGetValue(resolvedName, out MessengerParticipantState existing)
+                    ? existing
+                    : null;
+                string locationSummary = existingParticipant?.LocationSummary ?? "Field";
+                string statusText = participantPacket.IsOnline
+                    ? existingParticipant?.StatusText ?? "Online"
+                    : "Offline";
+                string jobName = existingParticipant?.JobName ?? "Adventurer";
+                int level = existingParticipant?.Level ?? 1;
 
                 if (_contacts.TryGetValue(resolvedName, out MessengerContactState contact))
                 {
@@ -1618,29 +1641,43 @@ namespace HaCreator.MapSimulator.Interaction
                     level = contact.Level;
                 }
 
-                if (targetSlot == 0)
+                for (int duplicateSlotIndex = 0; duplicateSlotIndex < migratedSlots.Length; duplicateSlotIndex++)
                 {
-                    targetSlot = FindFirstEmptyRemoteSlot();
-                    if (targetSlot < 0)
+                    if (duplicateSlotIndex == slotIndex)
                     {
-                        break;
+                        continue;
+                    }
+
+                    MessengerParticipantState duplicate = migratedSlots[duplicateSlotIndex];
+                    if (duplicate != null && string.Equals(duplicate.Name, resolvedName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        migratedSlots[duplicateSlotIndex] = null;
                     }
                 }
 
-                _participants.Add(new MessengerParticipantState
+                migratedSlots[slotIndex] = new MessengerParticipantState
                 {
-                    SlotIndex = targetSlot,
+                    SlotIndex = slotIndex,
                     Name = resolvedName,
                     LocationSummary = locationSummary,
                     Channel = participantPacket.Channel,
                     StatusText = statusText,
                     JobName = jobName,
                     Level = level,
-                    IsLocalPlayer = false,
+                    IsLocalPlayer = localPlayer != null && string.Equals(resolvedName, localPlayer.Name, StringComparison.OrdinalIgnoreCase),
                     IsOnline = participantPacket.IsOnline,
-                    AvatarLook = participantPacket.AvatarLook,
+                    AvatarLook = participantPacket.AvatarLook ?? existingParticipant?.AvatarLook,
                     DataSourceLabel = "packet"
-                });
+                };
+            }
+
+            _participants.Clear();
+            foreach (MessengerParticipantState participant in migratedSlots
+                         .Where(candidate => candidate != null)
+                         .OrderBy(candidate => candidate.IsLocalPlayer ? 0 : 1)
+                         .ThenBy(candidate => candidate.SlotIndex))
+            {
+                _participants.Add(participant);
             }
 
             _selectedSlot = ResolveSelectedSlotAfterRosterMutation();
@@ -1658,16 +1695,53 @@ namespace HaCreator.MapSimulator.Interaction
                 ? "Applied decoded Messenger self-enter result packet: join succeeded."
                 : "Applied decoded Messenger self-enter result packet: join failed.";
             AddSystemLog(_lastActionSummary);
-            if (packet.Succeeded && packet.SlotIndex >= 0 && packet.SlotIndex < MaxParticipants)
-            {
-                _selectedSlot = packet.SlotIndex;
-            }
+            SetLocalParticipantSlot(packet.Succeeded ? packet.SlotIndex : 0);
             StartBlink(Environment.TickCount);
             RecordPacketSummary(packet.Succeeded
                 ? "Decoded Messenger self-enter result packet: success."
                 : "Decoded Messenger self-enter result packet: failure.");
             TryResolveDeleteGateAfterStateChange("Messenger close gate passed after the self-enter result cleared the pending session gate.");
             return _lastActionSummary;
+        }
+
+        private void SetLocalParticipantSlot(int slotIndex)
+        {
+            slotIndex = Math.Clamp(slotIndex, 0, MaxParticipants - 1);
+
+            MessengerParticipantState localParticipant = GetLocalParticipant();
+            if (localParticipant == null)
+            {
+                UpdateLocalContext("Player", "Field", 1);
+                localParticipant = GetLocalParticipant();
+                if (localParticipant == null)
+                {
+                    return;
+                }
+            }
+
+            int localParticipantIndex = FindParticipantIndex(localParticipant.Name);
+            if (localParticipantIndex < 0)
+            {
+                return;
+            }
+
+            int slotOccupantIndex = FindParticipantIndexBySlot(slotIndex);
+            if (slotOccupantIndex >= 0 && slotOccupantIndex != localParticipantIndex && !_participants[slotOccupantIndex].IsLocalPlayer)
+            {
+                _participants.RemoveAt(slotOccupantIndex);
+                if (slotOccupantIndex < localParticipantIndex)
+                {
+                    localParticipantIndex--;
+                }
+            }
+
+            MessengerParticipantState currentLocalParticipant = _participants[localParticipantIndex];
+            _participants[localParticipantIndex] = currentLocalParticipant with
+            {
+                SlotIndex = slotIndex,
+                IsLocalPlayer = true
+            };
+            _selectedSlot = slotIndex;
         }
 
         private void SyncParticipantFromContact(MessengerContactState contact)

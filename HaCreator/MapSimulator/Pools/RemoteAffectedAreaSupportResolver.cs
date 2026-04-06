@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Character.Skills;
 
 namespace HaCreator.MapSimulator.Pools
@@ -15,6 +16,11 @@ namespace HaCreator.MapSimulator.Pools
     {
         private static readonly string[] FriendlyAreaDescriptionTokens =
         {
+            "ally",
+            "allies",
+            "nearby ally",
+            "nearby allies",
+            "all allies",
             "party member",
             "party members",
             "team member",
@@ -30,6 +36,20 @@ namespace HaCreator.MapSimulator.Pools
             "heal",
             "recovery",
             "regeneration",
+            "protect",
+            "protective",
+            "protection",
+            "shield",
+            "barrier",
+            "wall",
+            "absorb",
+            "resistance",
+            "abnormal condition",
+            "abnormal conditions",
+            "magic effect",
+            "magic effects",
+            "dispel",
+            "remove",
             "damage",
             "attack",
             "defense",
@@ -40,6 +60,32 @@ namespace HaCreator.MapSimulator.Pools
             "dodge chance",
             "movement speed",
             "attack speed"
+        };
+
+        private static readonly string[] FriendlyAreaCleanseTokens =
+        {
+            "remove all abnormal conditions",
+            "removing all abnormal conditions",
+            "remove abnormal conditions",
+            "removing abnormal conditions",
+            "cure abnormal conditions",
+            "nullifies all enemy magic effects"
+        };
+
+        private static readonly PlayerMobStatusEffect[] SupportedAreaCleanseEffects =
+        {
+            PlayerMobStatusEffect.Seal,
+            PlayerMobStatusEffect.Darkness,
+            PlayerMobStatusEffect.Weakness,
+            PlayerMobStatusEffect.Stun,
+            PlayerMobStatusEffect.Poison,
+            PlayerMobStatusEffect.Slow,
+            PlayerMobStatusEffect.Freeze,
+            PlayerMobStatusEffect.Curse,
+            PlayerMobStatusEffect.PainMark,
+            PlayerMobStatusEffect.Attract,
+            PlayerMobStatusEffect.ReverseInput,
+            PlayerMobStatusEffect.Undead
         };
 
         private static readonly string[] HostileAreaTokens =
@@ -105,6 +151,39 @@ namespace HaCreator.MapSimulator.Pools
         public static bool IsSupportZone(SkillData skill, SkillLevelData levelData = null)
         {
             return IsInvincibleZone(skill) || IsRecoveryZone(skill, levelData);
+        }
+
+        internal static bool IsStatusCleansingZone(SkillData skill, IEnumerable<SkillData> supportSkills = null)
+        {
+            if (HasStatusCleansingMetadata(skill))
+            {
+                return true;
+            }
+
+            if (supportSkills == null)
+            {
+                return false;
+            }
+
+            foreach (SkillData supportSkill in supportSkills)
+            {
+                if (supportSkill == null || ReferenceEquals(supportSkill, skill))
+                {
+                    continue;
+                }
+
+                if (HasStatusCleansingMetadata(supportSkill))
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        internal static IReadOnlyList<PlayerMobStatusEffect> GetSupportedAreaCleanseEffects()
+        {
+            return SupportedAreaCleanseEffects;
         }
 
         public static bool HasProjectableSupportBuffMetadata(SkillLevelData levelData)
@@ -525,6 +604,24 @@ namespace HaCreator.MapSimulator.Pools
                    || levelData.MesoRate > 0
                    || levelData.AbnormalStatusResistance > 0
                    || levelData.ElementalResistance > 0;
+        }
+
+        private static bool HasStatusCleansingMetadata(SkillData skill)
+        {
+            if (skill == null)
+            {
+                return false;
+            }
+
+            if (skill.HasDispelMetadata)
+            {
+                return true;
+            }
+
+            return ContainsToken(skill.Name, "dispel")
+                   || ContainsToken(skill.Description, FriendlyAreaCleanseTokens)
+                   || (ContainsToken(skill.Description, "abnormal condition", "abnormal conditions")
+                       && ContainsToken(skill.Description, "remove", "removing", "dispel", "nullifies"));
         }
 
         private static bool SupportsPartyMembers(SkillData skill)

@@ -36,6 +36,7 @@ namespace HaCreator.MapSimulator.UI
         private const int VisibleCashEmoticonCount = 7;
         private const int ComposeBodyLineHeight = 12;
         private const int ComposeBodyVisibleLineCount = 15;
+        private const int ComposeBodyClientMaxLineWidth = 240;
         private const int ComposeScrollBarWidth = 12;
         private const int CommentScrollBarWidth = 10;
         private const int KeyRepeatDelayMs = 400;
@@ -640,9 +641,7 @@ namespace HaCreator.MapSimulator.UI
                 }
                 else if (_activeInputTarget == InputTarget.ComposeBody)
                 {
-                    _inputBuffer.Insert(_cursorPosition, '\n');
-                    _cursorPosition++;
-                    SyncInputBuffer();
+                    TryInsertInputText("\n");
                 }
                 else if (_activeInputTarget == InputTarget.ReplyBody)
                 {
@@ -691,12 +690,12 @@ namespace HaCreator.MapSimulator.UI
                     continue;
                 }
 
-                _inputBuffer.Insert(_cursorPosition, character.Value);
-                _cursorPosition++;
-                _lastHeldKey = key;
-                _keyHoldStartTime = tickCount;
-                _lastKeyRepeatTime = tickCount;
-                SyncInputBuffer();
+                if (TryInsertInputText(character.Value.ToString()))
+                {
+                    _lastHeldKey = key;
+                    _keyHoldStartTime = tickCount;
+                    _lastKeyRepeatTime = tickCount;
+                }
             }
 
             if (_lastHeldKey != Keys.None
@@ -707,10 +706,10 @@ namespace HaCreator.MapSimulator.UI
                 char? repeatedCharacter = KeyToChar(_lastHeldKey, shift);
                 if (repeatedCharacter.HasValue)
                 {
-                    _inputBuffer.Insert(_cursorPosition, repeatedCharacter.Value);
-                    _cursorPosition++;
-                    _lastKeyRepeatTime = tickCount;
-                    SyncInputBuffer();
+                    if (TryInsertInputText(repeatedCharacter.Value.ToString()))
+                    {
+                        _lastKeyRepeatTime = tickCount;
+                    }
                 }
             }
             else if (_lastHeldKey != Keys.None && !keyboardState.IsKeyDown(_lastHeldKey))
@@ -874,8 +873,29 @@ namespace HaCreator.MapSimulator.UI
                     break;
             }
 
+            ReconcileInputBufferWithSnapshot(RefreshSnapshot());
             _cursorBlinkTimer = Environment.TickCount;
             EnsureComposeCursorVisible();
+        }
+
+        private void ReconcileInputBufferWithSnapshot(GuildBbsSnapshot snapshot)
+        {
+            string resolvedValue = _activeInputTarget switch
+            {
+                InputTarget.ComposeTitle => snapshot.Compose?.Title ?? string.Empty,
+                InputTarget.ComposeBody => snapshot.Compose?.Body ?? string.Empty,
+                InputTarget.ReplyBody => snapshot.ReplyDraft?.Body ?? string.Empty,
+                _ => null
+            };
+
+            if (resolvedValue == null || string.Equals(_inputBuffer.ToString(), resolvedValue, StringComparison.Ordinal))
+            {
+                return;
+            }
+
+            _inputBuffer.Clear();
+            _inputBuffer.Append(resolvedValue);
+            _cursorPosition = Math.Clamp(_cursorPosition, 0, _inputBuffer.Length);
         }
 
         private void UpdateButtonStates(GuildBbsSnapshot snapshot)
@@ -1203,6 +1223,25 @@ namespace HaCreator.MapSimulator.UI
             {
                 sprite.Draw(thumbTexture, new Vector2(thumbBounds.X, thumbBounds.Y), Color.White);
             }
+        }
+
+        private bool TryInsertInputText(string insertedText)
+        {
+            if (string.IsNullOrEmpty(insertedText))
+            {
+                return false;
+            }
+
+            string candidate = _inputBuffer.ToString().Insert(_cursorPosition, insertedText);
+            if (_activeInputTarget == InputTarget.ComposeBody && !CanAcceptComposeBodyText(candidate))
+            {
+                return false;
+            }
+
+            _inputBuffer.Insert(_cursorPosition, insertedText);
+            _cursorPosition += insertedText.Length;
+            SyncInputBuffer();
+            return true;
         }
 
         private void DrawEmoticonStrip(SpriteBatch sprite, GuildBbsEmoticonSnapshot selectedEmoticon, int cashPageIndex, int cashPageCount, IReadOnlyList<bool> cashOwnership)
@@ -1740,7 +1779,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            IReadOnlyList<TextLineLayout> lines = BuildTextLines(_inputBuffer.ToString(), GetComposeBodyBounds().Width - 8, 0.37f);
+            IReadOnlyList<TextLineLayout> lines = BuildComposeBodyTextLines(_inputBuffer.ToString());
             int lineIndex = ResolveCursorLineIndex(lines, _cursorPosition);
             if (lineIndex < 0)
             {
@@ -1763,7 +1802,7 @@ namespace HaCreator.MapSimulator.UI
 
         private ScrollMetrics BuildComposeScrollMetrics(string text, Rectangle bodyBounds)
         {
-            IReadOnlyList<TextLineLayout> lines = BuildTextLines(text ?? string.Empty, bodyBounds.Width - 8, 0.37f);
+            IReadOnlyList<TextLineLayout> lines = BuildComposeBodyTextLines(text ?? string.Empty);
             int totalLines = Math.Max(1, lines.Count);
             int visibleLines = Math.Min(ComposeBodyVisibleLineCount, totalLines);
             int maxScrollLine = Math.Max(0, totalLines - visibleLines);
@@ -1914,7 +1953,7 @@ namespace HaCreator.MapSimulator.UI
             };
 
             _cursorPosition = target == InputTarget.ComposeBody
-                ? ResolveMultilineCursorPosition(source, GetComposeBodyBounds(), mousePosition, 0.37f)
+                ? ResolveMultilineCursorPosition(source, GetComposeBodyBounds(), mousePosition, 0.37f, ComposeBodyClientMaxLineWidth)
                 : ResolveSingleLineCursorPosition(
                     source,
                     target == InputTarget.ComposeTitle ? GetComposeTitleBounds() : GetReplyInputBounds(),
@@ -1944,9 +1983,9 @@ namespace HaCreator.MapSimulator.UI
             return bestIndex;
         }
 
-        private int ResolveMultilineCursorPosition(string text, Rectangle bounds, Point mousePosition, float scale)
+        private int ResolveMultilineCursorPosition(string text, Rectangle bounds, Point mousePosition, float scale, float? maxWidthOverride = null)
         {
-            IReadOnlyList<TextLineLayout> lines = BuildTextLines(text ?? string.Empty, bounds.Width - 8, scale);
+            IReadOnlyList<TextLineLayout> lines = BuildTextLines(text ?? string.Empty, maxWidthOverride ?? (bounds.Width - 8), scale);
             if (lines.Count == 0)
             {
                 return 0;
@@ -1979,7 +2018,7 @@ namespace HaCreator.MapSimulator.UI
                 return 0;
             }
 
-            IReadOnlyList<TextLineLayout> lines = BuildTextLines(_inputBuffer.ToString(), GetComposeBodyBounds().Width - 8, 0.37f);
+            IReadOnlyList<TextLineLayout> lines = BuildComposeBodyTextLines(_inputBuffer.ToString());
             int lineIndex = ResolveCursorLineIndex(lines, _cursorPosition);
             return lineIndex >= 0 ? lines[lineIndex].StartIndex : 0;
         }
@@ -1991,14 +2030,14 @@ namespace HaCreator.MapSimulator.UI
                 return _inputBuffer.Length;
             }
 
-            IReadOnlyList<TextLineLayout> lines = BuildTextLines(_inputBuffer.ToString(), GetComposeBodyBounds().Width - 8, 0.37f);
+            IReadOnlyList<TextLineLayout> lines = BuildComposeBodyTextLines(_inputBuffer.ToString());
             int lineIndex = ResolveCursorLineIndex(lines, _cursorPosition);
             return lineIndex >= 0 ? lines[lineIndex].EndIndex : _inputBuffer.Length;
         }
 
         private void MoveComposeBodyCursorVertical(int delta)
         {
-            IReadOnlyList<TextLineLayout> lines = BuildTextLines(_inputBuffer.ToString(), GetComposeBodyBounds().Width - 8, 0.37f);
+            IReadOnlyList<TextLineLayout> lines = BuildComposeBodyTextLines(_inputBuffer.ToString());
             if (lines.Count == 0)
             {
                 _cursorPosition = 0;
@@ -2022,6 +2061,16 @@ namespace HaCreator.MapSimulator.UI
             int column = Math.Clamp(_cursorPosition - currentLine.StartIndex, 0, currentLine.Text.Length);
             _cursorPosition = Math.Clamp(targetLine.StartIndex + column, targetLine.StartIndex, targetLine.EndIndex);
             EnsureComposeCursorVisible();
+        }
+
+        private IReadOnlyList<TextLineLayout> BuildComposeBodyTextLines(string text)
+        {
+            return BuildTextLines(text, ComposeBodyClientMaxLineWidth, 0.37f);
+        }
+
+        private bool CanAcceptComposeBodyText(string candidate)
+        {
+            return candidate != null;
         }
 
         private IReadOnlyList<TextLineLayout> BuildTextLines(string text, float maxWidth, float scale)

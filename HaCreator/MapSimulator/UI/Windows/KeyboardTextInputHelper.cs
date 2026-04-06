@@ -1,9 +1,14 @@
 using Microsoft.Xna.Framework.Input;
+using System;
+
 
 namespace HaCreator.MapSimulator.UI
 {
     internal static class KeyboardTextInputHelper
     {
+        private const int FallbackInitialDelayMs = 380;
+        private const int FallbackRepeatDelayMs = 45;
+
         internal static bool IsControlKey(Keys key)
         {
             return key is Keys.LeftShift or Keys.RightShift
@@ -20,14 +25,45 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
-            const int initialDelay = 380;
-            const int repeatDelay = 45;
+            int initialDelay = GetInitialRepeatDelayMilliseconds();
+            int repeatDelay = GetRepeatDelayMilliseconds();
             if (tickCount - holdStartTime < initialDelay)
             {
                 return false;
             }
 
             return tickCount - lastRepeatTime >= repeatDelay;
+        }
+
+        private static int GetInitialRepeatDelayMilliseconds()
+        {
+            try
+            {
+                return (Math.Clamp(System.Windows.Forms.SystemInformation.KeyboardDelay, 0, 3) + 1) * 250;
+            }
+            catch
+            {
+                return FallbackInitialDelayMs;
+            }
+        }
+
+        private static int GetRepeatDelayMilliseconds()
+        {
+            try
+            {
+                int keyboardSpeed = Math.Clamp(System.Windows.Forms.SystemInformation.KeyboardSpeed, 0, 31);
+                double charactersPerSecond = 2.5 + ((keyboardSpeed / 31d) * 27.5);
+                if (charactersPerSecond <= 0d)
+                {
+                    return FallbackRepeatDelayMs;
+                }
+
+                return Math.Max(1, (int)Math.Round(1000d / charactersPerSecond));
+            }
+            catch
+            {
+                return FallbackRepeatDelayMs;
+            }
         }
 
         internal static char? KeyToChar(Keys key, bool shift)

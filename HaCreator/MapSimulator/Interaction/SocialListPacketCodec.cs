@@ -51,6 +51,30 @@ namespace HaCreator.MapSimulator.Interaction
         string GuildName,
         int GuildLevel);
 
+    internal enum SocialListClientGuildResultKind : byte
+    {
+        RankTitles = 68,
+        Notice = 71
+    }
+
+    internal readonly record struct SocialListClientGuildResultPacket(
+        SocialListClientGuildResultKind Kind,
+        int GuildId,
+        IReadOnlyList<string> RankTitles,
+        string Notice);
+
+    internal enum SocialListClientAllianceResultKind : byte
+    {
+        RankTitles = 26,
+        Notice = 28
+    }
+
+    internal readonly record struct SocialListClientAllianceResultPacket(
+        SocialListClientAllianceResultKind Kind,
+        int AllianceId,
+        IReadOnlyList<string> RankTitles,
+        string Notice);
+
     internal static class SocialListPacketCodec
     {
         public static bool TryParseRoster(ReadOnlySpan<byte> payload, out SocialListRosterPacket packet, out string error)
@@ -208,6 +232,92 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
+        public static bool TryParseClientGuildResult(ReadOnlySpan<byte> payload, out SocialListClientGuildResultPacket packet, out string error)
+        {
+            packet = default;
+            error = null;
+
+            try
+            {
+                PacketReader reader = new(payload);
+                SocialListClientGuildResultKind kind = (SocialListClientGuildResultKind)reader.ReadByte();
+                switch (kind)
+                {
+                    case SocialListClientGuildResultKind.RankTitles:
+                    {
+                        int guildId = reader.ReadInt32();
+                        string[] titles = new string[5];
+                        for (int i = 0; i < titles.Length; i++)
+                        {
+                            titles[i] = NormalizeRoleLabel(reader.ReadString16(), $"Rank {i + 1}");
+                        }
+
+                        packet = new SocialListClientGuildResultPacket(kind, guildId, titles, null);
+                        return true;
+                    }
+
+                    case SocialListClientGuildResultKind.Notice:
+                    {
+                        int guildId = reader.ReadInt32();
+                        packet = new SocialListClientGuildResultPacket(kind, guildId, Array.Empty<string>(), reader.ReadString16().Trim());
+                        return true;
+                    }
+
+                    default:
+                        error = $"Unsupported client guild-result subtype {(byte)kind}.";
+                        return false;
+                }
+            }
+            catch (InvalidOperationException ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+        }
+
+        public static bool TryParseClientAllianceResult(ReadOnlySpan<byte> payload, out SocialListClientAllianceResultPacket packet, out string error)
+        {
+            packet = default;
+            error = null;
+
+            try
+            {
+                PacketReader reader = new(payload);
+                SocialListClientAllianceResultKind kind = (SocialListClientAllianceResultKind)reader.ReadByte();
+                switch (kind)
+                {
+                    case SocialListClientAllianceResultKind.RankTitles:
+                    {
+                        int allianceId = reader.ReadInt32();
+                        string[] titles = new string[5];
+                        for (int i = 0; i < titles.Length; i++)
+                        {
+                            titles[i] = NormalizeRoleLabel(reader.ReadString16(), $"Rank {i + 1}");
+                        }
+
+                        packet = new SocialListClientAllianceResultPacket(kind, allianceId, titles, null);
+                        return true;
+                    }
+
+                    case SocialListClientAllianceResultKind.Notice:
+                    {
+                        int allianceId = reader.ReadInt32();
+                        packet = new SocialListClientAllianceResultPacket(kind, allianceId, Array.Empty<string>(), reader.ReadString16().Trim());
+                        return true;
+                    }
+
+                    default:
+                        error = $"Unsupported client alliance-result subtype {(byte)kind}.";
+                        return false;
+                }
+            }
+            catch (InvalidOperationException ex)
+            {
+                error = ex.Message;
+                return false;
+            }
+        }
+
         private static SocialListPacketEntry ReadEntry(ref PacketReader reader)
         {
             string name = reader.ReadString8();
@@ -262,6 +372,17 @@ namespace HaCreator.MapSimulator.Interaction
                 EnsureRemaining(2);
                 ushort value = (ushort)(_payload[_offset] | (_payload[_offset + 1] << 8));
                 _offset += 2;
+                return value;
+            }
+
+            public int ReadInt32()
+            {
+                EnsureRemaining(4);
+                int value = _payload[_offset]
+                    | (_payload[_offset + 1] << 8)
+                    | (_payload[_offset + 2] << 16)
+                    | (_payload[_offset + 3] << 24);
+                _offset += 4;
                 return value;
             }
 

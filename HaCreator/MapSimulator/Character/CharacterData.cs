@@ -2219,21 +2219,33 @@ namespace HaCreator.MapSimulator.Character
             {
                 1 or 11 or 21 or 31 or 51 or 61 => AutoAssignClassWarrior,
                 2 or 12 or 22 or 27 or 32 => AutoAssignClassMagician,
-                3 or 13 or 23 or 33 => AutoAssignClassBowman,
-                4 or 14 or 24 => AutoAssignClassThief,
-                5 or 15 or 35 or 65 => AutoAssignClassPirate,
+                3 or 13 or 23 or 33 or 63 => AutoAssignClassBowman,
+                4 or 14 or 24 or 64 => AutoAssignClassThief,
+                5 or 15 or 25 or 35 or 65 or 155 => AutoAssignClassPirate,
+                37 or 41 or 101 or 151 => AutoAssignClassWarrior,
+                42 or 142 or 152 => AutoAssignClassMagician,
                 // Hero branches use job-root starters before their first advancement.
                 20 when absoluteJobId == 2000 => AutoAssignClassWarrior,
                 20 when absoluteJobId == 2001 => AutoAssignClassMagician,
                 20 when absoluteJobId == 2002 => AutoAssignClassBowman,
                 20 when absoluteJobId == 2003 => AutoAssignClassThief,
                 20 when absoluteJobId == 2004 => AutoAssignClassMagician,
+                20 when absoluteJobId == 2005 => AutoAssignClassPirate,
                 // Resistance uses a shared Citizen beginner plus the Demon beginner root.
                 30 when absoluteJobId == 3001 => AutoAssignClassWarrior,
+                30 when absoluteJobId == 3002 => AutoAssignClassBeginner,
+                40 when absoluteJobId == 4001 => AutoAssignClassWarrior,
+                40 when absoluteJobId == 4002 => AutoAssignClassMagician,
                 // Post-Big Bang roots keep their own beginner ids before advancing into later job branches.
                 50 when absoluteJobId == 5000 => AutoAssignClassWarrior,
                 60 when absoluteJobId == 6000 => AutoAssignClassWarrior,
                 60 when absoluteJobId == 6001 => AutoAssignClassPirate,
+                60 when absoluteJobId == 6002 => AutoAssignClassThief,
+                60 when absoluteJobId == 6003 => AutoAssignClassBowman,
+                100 when absoluteJobId == 10000 => AutoAssignClassWarrior,
+                150 when absoluteJobId == 15000 => AutoAssignClassMagician,
+                150 when absoluteJobId == 15001 => AutoAssignClassPirate,
+                150 when absoluteJobId == 15002 => AutoAssignClassWarrior,
                 _ => AutoAssignClassBeginner
             };
         }

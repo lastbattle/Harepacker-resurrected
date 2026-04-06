@@ -879,12 +879,19 @@ namespace HaCreator.MapSimulator.Effects
                 return false;
             }
 
+            return TryApplyRemoteSpawnPacket(spawn, out errorMessage);
+        }
+
+        internal bool TryApplyRemoteSpawnPacket(WeddingRemoteSpawnPacket spawn, out string errorMessage)
+        {
+            errorMessage = null;
             CharacterBuild build = CreateRemoteBuildFromAvatarLook(spawn.Name, spawn.AvatarLook, out errorMessage);
             if (build == null)
             {
                 return false;
             }
 
+            ApplyRemoteSpawnMetadata(build, spawn);
             string actionName = ResolveRemoteActionName(spawn.MoveAction, spawn.PortableChairItemId);
             bool facingRight = (spawn.MoveAction & 1) == 0;
             _officialRemoteLifecycleActorIds.Add(spawn.CharacterId);
@@ -1081,6 +1088,7 @@ namespace HaCreator.MapSimulator.Effects
                     return false;
                 }
 
+                CopyPersistentBuildMetadata(build, participantSnapshot.Build);
                 ApplyAvatarModifiedStateToBuild(build, packet);
                 bool configured = TryConfigureParticipantActor(packet.CharacterId, position, build, facingRight, actionName, out errorMessage);
                 if (configured && _participantActors.TryGetValue(packet.CharacterId, out WeddingRemoteParticipant participant))
@@ -1103,6 +1111,7 @@ namespace HaCreator.MapSimulator.Effects
                 return false;
             }
 
+            CopyPersistentBuildMetadata(audienceBuild, audienceSnapshot.Build);
             ApplyAvatarModifiedStateToBuild(audienceBuild, packet);
             UpsertAudienceParticipant(audienceBuild, audienceSnapshot.Position, audienceSnapshot.FacingRight, audienceSnapshot.ActionName, packet.CharacterId);
             if (TryGetAudienceActorById(packet.CharacterId, out WeddingRemoteParticipant audienceParticipant))
@@ -1400,6 +1409,57 @@ namespace HaCreator.MapSimulator.Effects
             return build;
         }
 
+        internal static void ApplyRemoteSpawnMetadata(CharacterBuild build, WeddingRemoteSpawnPacket spawn)
+        {
+            if (build == null)
+            {
+                return;
+            }
+
+            if (spawn.Level.HasValue && spawn.Level.Value > 0)
+            {
+                build.Level = spawn.Level.Value;
+            }
+
+            if (spawn.JobId.HasValue && spawn.JobId.Value >= 0)
+            {
+                build.Job = spawn.JobId.Value;
+            }
+
+            if (!string.IsNullOrWhiteSpace(spawn.GuildName))
+            {
+                build.GuildName = spawn.GuildName.Trim();
+            }
+        }
+
+        private static void CopyPersistentBuildMetadata(CharacterBuild destination, CharacterBuild source)
+        {
+            if (destination == null || source == null)
+            {
+                return;
+            }
+
+            if (source.Level > 0)
+            {
+                destination.Level = source.Level;
+            }
+
+            if (source.Job >= 0)
+            {
+                destination.Job = source.Job;
+            }
+
+            if (!string.IsNullOrWhiteSpace(source.JobName) && string.IsNullOrWhiteSpace(destination.JobName))
+            {
+                destination.JobName = source.JobName;
+            }
+
+            if (!string.IsNullOrWhiteSpace(source.GuildName))
+            {
+                destination.GuildName = source.GuildName;
+            }
+        }
+
         private static bool TryDecodeRemoteSpawnPacket(byte[] payload, out WeddingRemoteSpawnPacket packet, out string errorMessage)
         {
             packet = default;
@@ -1416,7 +1476,10 @@ namespace HaCreator.MapSimulator.Effects
                 new Vector2(spawn.X, spawn.Y),
                 EncodeMoveAction(spawn.FacingRight, spawn.ActionName, spawn.PortableChairItemId ?? 0),
                 spawn.PortableChairItemId ?? 0,
-                spawn.TemporaryStats);
+                spawn.TemporaryStats,
+                spawn.Level,
+                spawn.GuildName,
+                spawn.JobId);
             return true;
         }
 
@@ -3023,7 +3086,10 @@ namespace HaCreator.MapSimulator.Effects
         Vector2 Position,
         byte MoveAction,
         int PortableChairItemId,
-        RemoteUserTemporaryStatSnapshot TemporaryStats);
+        RemoteUserTemporaryStatSnapshot TemporaryStats,
+        int? Level,
+        string GuildName,
+        int? JobId);
 
     internal readonly record struct WeddingRemoteMovePacket(
         int CharacterId,

@@ -146,6 +146,9 @@ namespace HaCreator.MapSimulator.Effects
         public string LastDecodedPacketTrailingPayloadHex => _lastDecodedPacketTrailingPayloadHex;
         public bool IsClearResultActive => _resultEffect == DojoResultEffect.Clear;
         public bool IsTimeOverResultActive => _resultEffect == DojoResultEffect.TimeOver;
+        public int NextFloorMapId => ResolveNextFloorMapId();
+        public string NextFloorPortalName => ResolveNextFloorPortalName() ?? string.Empty;
+        public int ExitMapId => ResolveExitMapId();
         public static bool TryInferClockPacketType(byte[] payload, out int packetType, out string reason)
         {
             packetType = -1;
@@ -182,7 +185,7 @@ namespace HaCreator.MapSimulator.Effects
                 return true;
             }
 
-            if (TryResolveAmbiguousTransferPacketType(candidates, out packetType, out reason))
+            if (TryResolveAmbiguousTransferPacketType(payload, candidates, -1, null, -1, out packetType, out reason))
             {
                 return true;
             }
@@ -205,6 +208,16 @@ namespace HaCreator.MapSimulator.Effects
         }
         public static bool TryInferPacketType(byte[] payload, out int packetType, out string reason)
         {
+            return TryInferPacketType(payload, -1, null, -1, out packetType, out reason);
+        }
+        public static bool TryInferPacketType(
+            byte[] payload,
+            int clearMapIdHint,
+            string clearPortalNameHint,
+            int exitMapIdHint,
+            out int packetType,
+            out string reason)
+        {
             List<(int PacketType, string Summary)> candidates = CollectPacketPayloadCandidates(payload);
             if (candidates.Count == 1)
             {
@@ -213,7 +226,7 @@ namespace HaCreator.MapSimulator.Effects
                 return true;
             }
 
-            if (TryResolveAmbiguousTransferPacketType(candidates, out packetType, out reason))
+            if (TryResolveAmbiguousTransferPacketType(payload, candidates, clearMapIdHint, clearPortalNameHint, exitMapIdHint, out packetType, out reason))
             {
                 return true;
             }
@@ -226,10 +239,23 @@ namespace HaCreator.MapSimulator.Effects
         }
         public static string DescribePacketPayloadCandidates(byte[] payload)
         {
+            return DescribePacketPayloadCandidates(payload, -1, null, -1);
+        }
+        public static string DescribePacketPayloadCandidates(
+            byte[] payload,
+            int clearMapIdHint,
+            string clearPortalNameHint,
+            int exitMapIdHint)
+        {
             List<(int PacketType, string Summary)> candidates = CollectPacketPayloadCandidates(payload);
             if (candidates.Count == 0)
             {
                 return "unknown";
+            }
+
+            if (TryResolveAmbiguousTransferPacketType(payload, candidates, clearMapIdHint, clearPortalNameHint, exitMapIdHint, out int packetType, out string reason))
+            {
+                return $"{DescribePacketType(packetType)}({reason})";
             }
 
             return string.Join(" | ", candidates.Select(static candidate => candidate.Summary));
@@ -344,7 +370,7 @@ namespace HaCreator.MapSimulator.Effects
                     && _bossHpPercent.Value <= 0f
                     && _resultEffect == DojoResultEffect.None)
                 {
-                    ShowClearResult(Environment.TickCount, ResolveNextFloorMapId());
+                    ShowClearResultForNextFloor(Environment.TickCount);
                 }
             }
             else
@@ -978,7 +1004,11 @@ namespace HaCreator.MapSimulator.Effects
             return global::HaCreator.Program.WzManager == null || HasMapImage(mapId);
         }
         private static bool TryResolveAmbiguousTransferPacketType(
+            byte[] payload,
             IReadOnlyList<(int PacketType, string Summary)> candidates,
+            int clearMapIdHint,
+            string clearPortalNameHint,
+            int exitMapIdHint,
             out int packetType,
             out string reason)
         {
@@ -994,6 +1024,38 @@ namespace HaCreator.MapSimulator.Effects
             if (!hasClear || !hasTimeOver)
             {
                 return false;
+            }
+
+            if (TryParseTransferPacketPayload(
+                    payload,
+                    allowPortalName: true,
+                    out int transferMapId,
+                    out string portalName,
+                    out _,
+                    out _,
+                    out _))
+            {
+                bool matchesClearMap = clearMapIdHint > 0 && transferMapId == clearMapIdHint;
+                bool matchesExitMap = exitMapIdHint > 0 && transferMapId == exitMapIdHint;
+                bool matchesClearPortal = !string.IsNullOrWhiteSpace(portalName)
+                    && !string.IsNullOrWhiteSpace(clearPortalNameHint)
+                    && string.Equals(portalName, clearPortalNameHint, StringComparison.OrdinalIgnoreCase);
+
+                if (matchesClearPortal || (matchesClearMap && !matchesExitMap))
+                {
+                    packetType = PacketTypeClear;
+                    reason = matchesClearPortal
+                        ? $"clear(transfer target matched next-floor portal {portalName})"
+                        : $"clear(transfer target matched next-floor map {transferMapId})";
+                    return true;
+                }
+
+                if (matchesExitMap && !matchesClearMap)
+                {
+                    packetType = PacketTypeTimeOver;
+                    reason = $"timeover(transfer target matched exit map {transferMapId})";
+                    return true;
+                }
             }
 
             // IDA coverage for v95 Dojo exposes OnClock + Update ownership but no dedicated time-over packet handler.

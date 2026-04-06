@@ -66,6 +66,16 @@ namespace HaCreator.MapSimulator.Managers
         /// <param name="name">The registered sound name</param>
         public void PlaySound(string name)
         {
+            PlaySound(name, 1f);
+        }
+
+        /// <summary>
+        /// Plays a registered sound effect with an additional per-call volume scale.
+        /// </summary>
+        /// <param name="name">The registered sound name</param>
+        /// <param name="volumeScale">Per-call volume multiplier clamped to 0.0-1.0</param>
+        public void PlaySound(string name, float volumeScale)
+        {
             if (_disposed) return;
             if (!_focusActive) return;
 
@@ -85,7 +95,8 @@ namespace HaCreator.MapSimulator.Managers
 
             try
             {
-                var oneShot = new OneShotSound(soundSource, name, _volume, OnSoundCompleted);
+                float resolvedVolume = Math.Max(0f, Math.Min(1f, _volume * Math.Max(0f, volumeScale)));
+                var oneShot = new OneShotSound(soundSource, name, resolvedVolume, OnSoundCompleted);
 
                 lock (_lock)
                 {

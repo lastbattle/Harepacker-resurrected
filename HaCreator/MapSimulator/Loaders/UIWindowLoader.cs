@@ -402,6 +402,8 @@ namespace HaCreator.MapSimulator.Loaders
             IDXObject signboardLayer = LoadWindowCanvasLayerWithOffset(titleProperty, "signboard", device, out Point signboardOffset);
             IDXObject idFieldLayer = LoadWindowCanvasLayerWithOffset(titleProperty, "ID", device, out Point idFieldOffset);
             IDXObject passwordFieldLayer = LoadWindowCanvasLayerWithOffset(titleProperty, "PW", device, out Point passwordFieldOffset);
+            IReadOnlyList<IReadOnlyList<CharacterSelectWindow.AnimationFrame>> effectFrameSets =
+                LoadCharacterSelectAnimationFrameSets(titleProperty?["effect"] as WzSubProperty, device);
 
 
             if (frame == null)
@@ -423,6 +425,8 @@ namespace HaCreator.MapSimulator.Loaders
 
             UIObject passwordLostButton = LoadButton(titleProperty, "BtPasswdLost", btClickSound, btOverSound, device);
             UIObject softKeyboardButton = LoadButton(titleProperty, "BtSoftkeyboard", btClickSound, btOverSound, device);
+            Texture2D saveIdUncheckedTexture = LoadCanvasTexture(titleProperty?["check"] as WzSubProperty, "0", device);
+            Texture2D saveIdCheckedTexture = LoadCanvasTexture(titleProperty?["check"] as WzSubProperty, "1", device);
 
 
 
@@ -506,6 +510,7 @@ namespace HaCreator.MapSimulator.Loaders
                 idFieldOffset,
                 passwordFieldLayer,
                 passwordFieldOffset,
+                effectFrameSets,
                 loginButton,
                 guestLoginButton,
                 newButton,
@@ -515,8 +520,8 @@ namespace HaCreator.MapSimulator.Loaders
                 idLostButton,
                 passwordLostButton,
                 softKeyboardButton,
-                saveIdUncheckedTexture: null,
-                saveIdCheckedTexture: null)
+                saveIdUncheckedTexture,
+                saveIdCheckedTexture)
             {
                 Position = new Point(
                     Math.Max(0, (screenWidth / 2) - 400),
@@ -1269,6 +1274,10 @@ namespace HaCreator.MapSimulator.Loaders
                                  ?? LoadButton(loginNoticeProperty, "BtYes", btClickSound, btOverSound, device);
             UIObject noButton = LoadButton(utilDlgProperty, "BtNo", btClickSound, btOverSound, device)
                                 ?? LoadButton(loginNoticeProperty, "BtNo", btClickSound, btOverSound, device);
+            UIObject questionYesButton = LoadButton(loginNoticeProperty, "BtYes1", btClickSound, btOverSound, device)
+                                         ?? yesButton;
+            UIObject questionNoButton = LoadButton(loginNoticeProperty, "BtNo1", btClickSound, btOverSound, device)
+                                        ?? noButton;
             UIObject acceptButton = LoadButton(loginNoticeProperty, "BtAccept", btClickSound, btOverSound, device)
                                     ?? okButton;
             UIObject nowButton = LoadButton(loginNoticeProperty, "BtNow", btClickSound, btOverSound, device);
@@ -1283,8 +1292,8 @@ namespace HaCreator.MapSimulator.Loaders
                 okButton,
                 yesButton,
                 noButton,
-                yesButton,
-                noButton,
+                questionYesButton,
+                questionNoButton,
                 acceptButton,
                 nowButton,
                 laterButton,
@@ -1742,6 +1751,10 @@ namespace HaCreator.MapSimulator.Loaders
             RegisterMemoMailboxWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
                 new Point(x + (cascade * 7), y + (cascade * 4)));
             RegisterQuestTimerWindows(manager, device);
+            RegisterPacketOwnedRewardResultNoticeWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
+                new Point(x + (cascade * 6), y + (cascade * 2)));
+            RegisterRandomMesoBagWindow(manager, uiWindow1Image, basicImage, soundUIImage, device,
+                new Point(x + (cascade * 7), y + (cascade * 2)));
             RegisterQuestDeliveryWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
                 new Point(x + (cascade * 6), y + (cascade * 3)));
             RegisterQuestRewardRaiseWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
@@ -1939,6 +1952,8 @@ namespace HaCreator.MapSimulator.Loaders
 
             const int ClientWorldSelectOwnerWidth = 0x234;
             const int ClientWorldSelectOwnerHeight = 0xB1;
+            const int ClientWorldSelectOwnerOffsetX = -10;
+            const int ClientWorldSelectOwnerOffsetY = -10;
 
             WzSubProperty loginWorldSelectProperty = loginImage?["WorldSelect"] as WzSubProperty;
             WzSubProperty channelProperty = uiWindow2Image?["Channel"] as WzSubProperty
@@ -1983,8 +1998,8 @@ namespace HaCreator.MapSimulator.Loaders
             WorldSelectWindow worldSelectWindow = CreateWorldSelectWindow(loginWorldSelectProperty, clickSound, overSound, device, worldBadges);
 
             worldSelectWindow.Position = new Point(
-                Math.Max(24, (screenWidth / 2) - (ClientWorldSelectOwnerWidth / 2)),
-                Math.Max(24, (screenHeight / 2) - (ClientWorldSelectOwnerHeight / 2)));
+                Math.Max(24, ((screenWidth / 2) - (ClientWorldSelectOwnerWidth / 2)) + ClientWorldSelectOwnerOffsetX),
+                Math.Max(24, ((screenHeight / 2) - (ClientWorldSelectOwnerHeight / 2)) + ClientWorldSelectOwnerOffsetY));
 
             manager.RegisterCustomWindow(worldSelectWindow);
 
@@ -2149,6 +2164,20 @@ namespace HaCreator.MapSimulator.Loaders
 
             }
 
+            List<UIObject> emptyWorldButtons = new List<UIObject>();
+            UIObject emptySlotTemplate = LoadButton(worldButtonProperty, "e", clickSound, overSound, device);
+            for (int i = 0; i < 36 - worldButtons.Count; i++)
+            {
+                UIObject emptyButton = LoadButton(worldButtonProperty, "e", clickSound, overSound, device)
+                    ?? (i == 0 ? emptySlotTemplate : null);
+                if (emptyButton == null)
+                {
+                    break;
+                }
+
+                emptyButton.SetEnabled(false);
+                emptyWorldButtons.Add(emptyButton);
+            }
 
 
             return new WorldSelectWindow(
@@ -2157,6 +2186,7 @@ namespace HaCreator.MapSimulator.Loaders
                 overlayOffset,
                 null,
                 worldButtons,
+                emptyWorldButtons,
                 LoadButton(loginWorldSelectProperty, "BtViewChoice", clickSound, overSound, device),
                 LoadButton(loginWorldSelectProperty, "BtViewAll", clickSound, overSound, device));
 
@@ -2434,22 +2464,50 @@ namespace HaCreator.MapSimulator.Loaders
                 categoryWindow = categoryBaseWindow as AdminShopWishListCategoryUI;
             }
 
-            UIWindowBase window = CreateAdminShopWishListWindow(uiWindow2Image, basicImage, soundUIImage, device, position);
-            if (window is AdminShopWishListUI wishListWindow && categoryWindow != null)
+            AdminShopWishListSearchResultUI searchResultWindow = manager.GetWindow(MapSimulatorWindowNames.AdminShopWishListSearchResult) as AdminShopWishListSearchResultUI;
+            if (searchResultWindow == null)
             {
-                wishListWindow.ShowCategoryAddOnRequested = owner =>
+                UIWindowBase searchResultBaseWindow = CreateAdminShopWishListSearchResultWindow(uiWindow2Image, basicImage, soundUIImage, device, position);
+                manager.RegisterCustomWindow(searchResultBaseWindow);
+                searchResultWindow = searchResultBaseWindow as AdminShopWishListSearchResultUI;
+            }
+
+            UIWindowBase window = CreateAdminShopWishListWindow(uiWindow2Image, basicImage, soundUIImage, device, position);
+            if (window is AdminShopWishListUI wishListWindow)
+            {
+                if (categoryWindow != null)
                 {
-                    categoryWindow.ShowFor(owner);
-                    manager.BringToFront(categoryWindow);
-                };
-                wishListWindow.HideCategoryAddOnRequested = () =>
-                {
-                    if (categoryWindow.IsVisible)
+                    wishListWindow.ShowCategoryAddOnRequested = owner =>
                     {
-                        categoryWindow.Hide();
-                    }
-                };
-                wishListWindow.IsCategoryAddOnVisible = () => categoryWindow.IsVisible;
+                        categoryWindow.ShowFor(owner);
+                        manager.BringToFront(categoryWindow);
+                    };
+                    wishListWindow.HideCategoryAddOnRequested = () =>
+                    {
+                        if (categoryWindow.IsVisible)
+                        {
+                            categoryWindow.Hide();
+                        }
+                    };
+                    wishListWindow.IsCategoryAddOnVisible = () => categoryWindow.IsVisible;
+                }
+
+                if (searchResultWindow != null)
+                {
+                    wishListWindow.ShowSearchResultAddOnRequested = (owner, results) =>
+                    {
+                        searchResultWindow.ShowFor(owner, results);
+                        manager.BringToFront(searchResultWindow);
+                    };
+                    wishListWindow.HideSearchResultAddOnRequested = () =>
+                    {
+                        if (searchResultWindow.IsVisible)
+                        {
+                            searchResultWindow.Hide();
+                        }
+                    };
+                    wishListWindow.IsSearchResultAddOnVisible = () => searchResultWindow.IsVisible;
+                }
             }
 
             manager.RegisterCustomWindow(window);
@@ -2786,6 +2844,46 @@ namespace HaCreator.MapSimulator.Loaders
             if (questDeliveryWindow != null)
             {
                 manager.RegisterCustomWindow(questDeliveryWindow);
+            }
+        }
+
+        private static void RegisterPacketOwnedRewardResultNoticeWindow(
+            UIWindowManager manager,
+            WzImage uiWindow2Image,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            Point position)
+        {
+            if (manager.GetWindow(MapSimulatorWindowNames.PacketOwnedRewardResultNotice) != null)
+            {
+                return;
+            }
+
+            UIWindowBase window = CreatePacketOwnedRewardResultNoticeWindow(uiWindow2Image, basicImage, soundUIImage, device, position);
+            if (window != null)
+            {
+                manager.RegisterCustomWindow(window);
+            }
+        }
+
+        private static void RegisterRandomMesoBagWindow(
+            UIWindowManager manager,
+            WzImage uiWindowImage,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            Point position)
+        {
+            if (manager.GetWindow(MapSimulatorWindowNames.RandomMesoBag) != null)
+            {
+                return;
+            }
+
+            UIWindowBase window = CreateRandomMesoBagWindow(uiWindowImage, basicImage, soundUIImage, device, position);
+            if (window != null)
+            {
+                manager.RegisterCustomWindow(window);
             }
         }
 
@@ -4004,8 +4102,8 @@ namespace HaCreator.MapSimulator.Loaders
                     position);
             }
 
-            WzCanvasProperty background = monsterBookProperty?["backgrnd"] as WzCanvasProperty
-                ?? bookProperty?["backgrnd"] as WzCanvasProperty;
+            WzCanvasProperty background = bookProperty?["backgrnd"] as WzCanvasProperty
+                ?? monsterBookProperty?["backgrnd"] as WzCanvasProperty;
             if (background == null)
             {
                 return CreatePlaceholderUtilityWindow(
@@ -4075,12 +4173,12 @@ namespace HaCreator.MapSimulator.Loaders
                 LoadCanvasTexture(contextMenuProperty, "c", device),
                 LoadCanvasTexture(contextMenuProperty, "s", device));
 
-            UIObject prevButton = LoadButton(monsterBookProperty, "arrowLeft", btClickSound, btOverSound, device)
-                ?? LoadButton(bookProperty, "BtPrev", btClickSound, btOverSound, device);
-            UIObject nextButton = LoadButton(monsterBookProperty, "arrowRight", btClickSound, btOverSound, device)
-                ?? LoadButton(bookProperty, "BtNext", btClickSound, btOverSound, device);
-            UIObject closeButton = LoadButton(monsterBookProperty, "BtClose", btClickSound, btOverSound, device)
-                ?? LoadButton(bookProperty, "BtClose", btClickSound, btOverSound, device);
+            UIObject prevButton = LoadButton(bookProperty, "BtPrev", btClickSound, btOverSound, device)
+                ?? LoadButton(monsterBookProperty, "arrowLeft", btClickSound, btOverSound, device);
+            UIObject nextButton = LoadButton(bookProperty, "BtNext", btClickSound, btOverSound, device)
+                ?? LoadButton(monsterBookProperty, "arrowRight", btClickSound, btOverSound, device);
+            UIObject closeButton = LoadButton(bookProperty, "BtClose", btClickSound, btOverSound, device)
+                ?? LoadButton(monsterBookProperty, "BtClose", btClickSound, btOverSound, device);
             UIObject searchButton = LoadButton(monsterBookProperty, "BtSearch", btClickSound, btOverSound, device);
             UIObject registerButton = LoadButton(contextMenuProperty, "BtRegister", btClickSound, btOverSound, device);
             UIObject releaseButton = LoadButton(contextMenuProperty, "BtRelease", btClickSound, btOverSound, device);
@@ -5455,6 +5553,24 @@ namespace HaCreator.MapSimulator.Loaders
             {
                 Position = position
             };
+
+            WzSubProperty vScrollProperty = basicImage?["VScr"] as WzSubProperty;
+            if (vScrollProperty != null)
+            {
+                WzSubProperty enabledProperty = vScrollProperty["enabled"] as WzSubProperty;
+                WzSubProperty disabledProperty = vScrollProperty["disabled"] as WzSubProperty;
+                window.SetScrollBarTextures(
+                    LoadCanvasTexture(enabledProperty, "prev0", device),
+                    LoadCanvasTexture(enabledProperty, "prev1", device),
+                    LoadCanvasTexture(enabledProperty, "next0", device),
+                    LoadCanvasTexture(enabledProperty, "next1", device),
+                    LoadCanvasTexture(enabledProperty, "base", device),
+                    LoadCanvasTexture(enabledProperty, "thumb0", device),
+                    LoadCanvasTexture(enabledProperty, "thumb1", device),
+                    LoadCanvasTexture(disabledProperty, "prev", device),
+                    LoadCanvasTexture(disabledProperty, "next", device),
+                    LoadCanvasTexture(disabledProperty, "base", device));
+            }
 
 
             UIObject closeButton = CreateUserInfoCloseButton(basicImage, clickSound, overSound, device, frameTexture.Width);
@@ -7152,9 +7268,14 @@ namespace HaCreator.MapSimulator.Loaders
                 slotTexture,
                 statusIcons,
                 LoadCanvasTexture(calendarProperty, "today", device),
-                LoadCanvasTexture(calendarBackgroundProperty, "backgrnd", device),
-                LoadCanvasTexture(calendarBackgroundProperty, "backgrnd2", device),
-                LoadCanvasTexture(calendarBackgroundProperty, "backgrnd3", device),
+                new[]
+                {
+                    LoadCanvasTexture(calendarBackgroundProperty, "backgrnd", device),
+                    LoadCanvasTexture(calendarBackgroundProperty, "backgrnd2", device),
+                    LoadCanvasTexture(calendarBackgroundProperty, "backgrnd3", device)
+                },
+                null,
+                null,
                 LoadIndexedCanvasTextureList(calendarProperty?["number"] as WzSubProperty, "normal", device).ToArray(),
                 LoadIndexedCanvasTextureList(calendarProperty?["number"] as WzSubProperty, "select", device).ToArray())
             {
@@ -7592,6 +7713,103 @@ namespace HaCreator.MapSimulator.Loaders
 
         }
 
+        private static UIWindowBase CreatePacketOwnedRewardResultNoticeWindow(
+            WzImage uiWindow2Image,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            Point position)
+        {
+            WzSubProperty utilDialogProperty = uiWindow2Image?["UtilDlgEx"] as WzSubProperty;
+            Texture2D frameTexture = LoadCanvasTexture(utilDialogProperty, "notice", device);
+            if (frameTexture == null)
+            {
+                return CreatePlaceholderUtilityWindow(
+                    basicImage,
+                    soundUIImage,
+                    device,
+                    MapSimulatorWindowNames.PacketOwnedRewardResultNotice,
+                    "Reward Result",
+                    "Fallback owner for packet-owned mesos and meso-sack result notices.",
+                    position);
+            }
+
+            PacketOwnedRewardNoticeWindow window = new(new DXObject(0, 0, frameTexture, 0))
+            {
+                Position = position
+            };
+
+            WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
+            WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
+            UIObject okButton = LoadButton(utilDialogProperty, "BtOK", btClickSound, btOverSound, device);
+            UIObject closeButton = LoadButton(utilDialogProperty, "BtClose", btClickSound, btOverSound, device);
+            if (closeButton == null)
+            {
+                WzSubProperty basicCloseButton = basicImage?["BtClose"] as WzSubProperty;
+                if (basicCloseButton != null)
+                {
+                    try
+                    {
+                        closeButton = new UIObject(basicCloseButton, btClickSound, btOverSound, false, Point.Zero, device)
+                        {
+                            X = Math.Max(8, frameTexture.Width - 24),
+                            Y = 8
+                        };
+                    }
+                    catch
+                    {
+                        closeButton = null;
+                    }
+                }
+            }
+
+            window.InitializeButtons(okButton, closeButton);
+            return window;
+        }
+
+        private static UIWindowBase CreateRandomMesoBagWindow(
+            WzImage uiWindowImage,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            Point position)
+        {
+            WzSubProperty sourceProperty = uiWindowImage?["RandomMesoBag"] as WzSubProperty;
+            Dictionary<int, IDXObject> backgrounds = new();
+            for (int rank = 1; rank <= 4; rank++)
+            {
+                Texture2D backgroundTexture = LoadCanvasTexture(sourceProperty, $"Back{rank}", device);
+                if (backgroundTexture != null)
+                {
+                    backgrounds[rank] = new DXObject(0, 0, backgroundTexture, 0);
+                }
+            }
+
+            if (backgrounds.Count == 0)
+            {
+                return CreatePlaceholderUtilityWindow(
+                    basicImage,
+                    soundUIImage,
+                    device,
+                    MapSimulatorWindowNames.RandomMesoBag,
+                    "Random Meso Sack",
+                    "Fallback owner for packet-authored random meso sack results.",
+                    position);
+            }
+
+            RandomMesoBagWindow window = new(backgrounds)
+            {
+                Position = position
+            };
+
+            WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
+            WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
+            UIObject okButton = LoadButton(sourceProperty, "BtOk", btClickSound, btOverSound, device)
+                ?? LoadButton(sourceProperty, "BtOK", btClickSound, btOverSound, device);
+            window.InitializeButtons(okButton);
+            return window;
+        }
+
         private static UIWindowBase CreateQuestRewardRaiseWindow(
             WzImage uiWindow1Image,
             WzImage uiWindow2Image,
@@ -7724,6 +7942,64 @@ namespace HaCreator.MapSimulator.Loaders
                 Position = position
             };
 
+
+            return window;
+        }
+
+        private static UIWindowBase CreateAdminShopWishListSearchResultWindow(
+            WzImage uiWindow2Image,
+            WzImage basicImage,
+            WzImage soundUIImage,
+            GraphicsDevice device,
+            Point position)
+        {
+            WzImage uiWindowImage = global::HaCreator.Program.FindImage("ui", "UIWindow.img");
+            WzSubProperty itemSearchProperty = uiWindowImage?["itemSearch"] as WzSubProperty;
+            if (itemSearchProperty == null)
+            {
+                return CreatePlaceholderUtilityWindow(
+                    basicImage,
+                    soundUIImage,
+                    device,
+                    MapSimulatorWindowNames.AdminShopWishListSearchResult,
+                    "Wish List Search Result",
+                    "Fallback search-result add-on because UIWindow.img/itemSearch assets were unavailable.",
+                    position);
+            }
+
+            Texture2D backgroundTexture = LoadCanvasTexture(itemSearchProperty, "resultback", device);
+            if (backgroundTexture == null)
+            {
+                return CreatePlaceholderUtilityWindow(
+                    basicImage,
+                    soundUIImage,
+                    device,
+                    MapSimulatorWindowNames.AdminShopWishListSearchResult,
+                    "Wish List Search Result",
+                    "Fallback search-result add-on because the itemSearch result surface could not be loaded.",
+                    position);
+            }
+
+            WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
+            WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
+            UIObject closeButton = LoadButton(basicImage, "BtHide", btClickSound, btOverSound, device);
+            UIObject previousButton = LoadButton(itemSearchProperty, "BtLeft", btClickSound, btOverSound, device);
+            UIObject nextButton = LoadButton(itemSearchProperty, "BtRight", btClickSound, btOverSound, device);
+            UIObject registerButton = LoadButton(itemSearchProperty, "BtRegist", btClickSound, btOverSound, device);
+            Texture2D iconPlaceholderTexture = LoadCanvasTexture(itemSearchProperty, "icon0", device);
+
+            AdminShopWishListSearchResultUI window = new AdminShopWishListSearchResultUI(
+                new DXObject(0, 0, backgroundTexture, 0),
+                backgroundTexture,
+                iconPlaceholderTexture,
+                closeButton,
+                previousButton,
+                nextButton,
+                registerButton,
+                device)
+            {
+                Position = position
+            };
 
             return window;
         }
@@ -8091,6 +8367,18 @@ namespace HaCreator.MapSimulator.Loaders
             if (inventory.GetItemCount(InventoryType.USE, 2040760) <= 0)
             {
                 inventory.AddItem(InventoryType.USE, 2040760, null, 1); // Vega-enabled 10% scroll family
+            }
+
+
+            if (inventory.GetItemCount(InventoryType.USE, 2047204) <= 0)
+            {
+                inventory.AddItem(InventoryType.USE, 2047204, null, 1); // Tablet for Armor for Diligence
+            }
+
+
+            if (inventory.GetItemCount(InventoryType.USE, 2047304) <= 0)
+            {
+                inventory.AddItem(InventoryType.USE, 2047304, null, 1); // Tablet for Accessory for Diligence
             }
 
 

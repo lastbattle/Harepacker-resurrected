@@ -40,8 +40,11 @@ namespace HaCreator.MapSimulator.Managers
         public const short OutboundNewCharacterOpcode = 22;
         public const short OutboundNewCharacterSaleOpcode = 23;
         public const short OutboundDeleteCharacterOpcode = 24;
+        private const int RecentPacketCapacity = 8;
 
         private readonly ConcurrentQueue<LoginPacketInboxMessage> _pendingMessages = new();
+        private readonly ConcurrentDictionary<int, LoginPacketType> _opcodeMappings = new();
+        private readonly Queue<string> _recentPackets = new();
         private readonly object _sync = new();
 
         private TcpListener _listener;
@@ -99,6 +102,66 @@ namespace HaCreator.MapSimulator.Managers
         public int ReceivedCount { get; private set; }
         public int SentCount { get; private set; }
         public string LastStatus { get; private set; } = "Login official-session bridge inactive.";
+
+        public bool TryConfigurePacketMapping(int opcode, LoginPacketType packetType, out string status)
+        {
+            if (opcode <= 0)
+            {
+                status = "Login opcode mappings require a positive opcode.";
+                return false;
+            }
+
+            _opcodeMappings[opcode] = packetType;
+            status = $"Mapped login opcode {opcode} to {packetType}.";
+            LastStatus = status;
+            return true;
+        }
+
+        public bool RemovePacketMapping(int opcode, out string status)
+        {
+            if (_opcodeMappings.TryRemove(opcode, out LoginPacketType packetType))
+            {
+                status = $"Removed login opcode {opcode} mapping for {packetType}.";
+                LastStatus = status;
+                return true;
+            }
+
+            status = $"Login opcode {opcode} is not currently mapped.";
+            return false;
+        }
+
+        public void ClearPacketMappings()
+        {
+            _opcodeMappings.Clear();
+            LastStatus = "Cleared login official-session opcode mappings.";
+        }
+
+        public string DescribePacketMappings()
+        {
+            if (_opcodeMappings.IsEmpty)
+            {
+                return "none";
+            }
+
+            return string.Join(
+                ", ",
+                _opcodeMappings
+                    .OrderBy(entry => entry.Key)
+                    .Select(entry => $"{entry.Key}->{entry.Value}"));
+        }
+
+        public string DescribeRecentPackets()
+        {
+            lock (_sync)
+            {
+                if (_recentPackets.Count == 0)
+                {
+                    return "none";
+                }
+
+                return string.Join(" | ", _recentPackets);
+            }
+        }
 
         public void Start(int listenPort, string remoteHost, int remotePort)
         {
@@ -206,6 +269,48 @@ namespace HaCreator.MapSimulator.Managers
         public bool TryDequeue(out LoginPacketInboxMessage message)
         {
             return _pendingMessages.TryDequeue(out message);
+        }
+
+        public bool TryMapInboundPacket(byte[] rawPacket, string source, out LoginPacketInboxMessage message)
+        {
+            message = null;
+            if (rawPacket == null || rawPacket.Length < sizeof(ushort))
+            {
+                return false;
+            }
+
+            int opcode = BitConverter.ToUInt16(rawPacket, 0);
+            if (_opcodeMappings.TryGetValue(opcode, out LoginPacketType mappedPacketType))
+            {
+                byte[] payloadBytes = rawPacket.Length > sizeof(ushort)
+                    ? rawPacket[sizeof(ushort)..]
+                    : Array.Empty<byte>();
+                string[] arguments = new[] { $"payloadhex={Convert.ToHexString(payloadBytes)}" };
+                message = new LoginPacketInboxMessage(
+                    mappedPacketType,
+                    string.IsNullOrWhiteSpace(source) ? "official-session" : source,
+                    $"{mappedPacketType} payloadhex={Convert.ToHexString(payloadBytes)}",
+                    arguments);
+                RecordRecentPacket(opcode, rawPacket, mappedPacketType, "configured");
+                LastStatus = $"Queued login packet {mappedPacketType} from live session opcode {opcode}.";
+                return true;
+            }
+
+            if (!LoginPacketInboxManager.TryDecodeOpcodeFramedPacket(rawPacket, out LoginPacketType packetType, out string[] fallbackArguments))
+            {
+                RecordRecentPacket(opcode, rawPacket, packetType: null, "unmapped");
+                LastStatus = $"Ignored unmapped login opcode {opcode}; configure /loginpacket session map <opcode> <packet> to route it.";
+                return false;
+            }
+
+            message = new LoginPacketInboxMessage(
+                packetType,
+                string.IsNullOrWhiteSpace(source) ? "official-session" : source,
+                $"{packetType} payloadhex={Convert.ToHexString(rawPacket.Length > sizeof(ushort) ? rawPacket[sizeof(ushort)..] : Array.Empty<byte>())}",
+                fallbackArguments);
+            RecordRecentPacket(opcode, rawPacket, packetType, "direct");
+            LastStatus = $"Queued login packet {packetType} from live session opcode {opcode}.";
+            return true;
         }
 
         public bool TrySendCheckDuplicateIdRequest(string characterName, out string status)
@@ -411,18 +516,13 @@ namespace HaCreator.MapSimulator.Managers
 
                 pair.ClientSession.SendPacket((byte[])raw.Clone());
 
-                if (!LoginPacketInboxManager.TryDecodeOpcodeFramedPacket(raw, out LoginPacketType packetType, out string[] arguments))
+                if (!TryMapInboundPacket(raw, $"official-session:{pair.RemoteEndpoint}", out LoginPacketInboxMessage message))
                 {
                     return;
                 }
 
-                _pendingMessages.Enqueue(new LoginPacketInboxMessage(
-                    packetType,
-                    $"official-session:{pair.RemoteEndpoint}",
-                    $"{packetType} payloadhex={Convert.ToHexString(raw.Length > sizeof(ushort) ? raw[sizeof(ushort)..] : Array.Empty<byte>())}",
-                    arguments));
+                _pendingMessages.Enqueue(message);
                 ReceivedCount++;
-                LastStatus = $"Queued login packet {packetType} from live session {pair.RemoteEndpoint}.";
             }
             catch (Exception ex)
             {
@@ -517,6 +617,22 @@ namespace HaCreator.MapSimulator.Managers
             {
                 while (_pendingMessages.TryDequeue(out _))
                 {
+                }
+            }
+        }
+
+        private void RecordRecentPacket(int opcode, byte[] rawPacket, LoginPacketType? packetType, string detail)
+        {
+            string summary = packetType.HasValue
+                ? $"{opcode}->{packetType.Value}[{detail}]:{Convert.ToHexString(rawPacket ?? Array.Empty<byte>())}"
+                : $"{opcode}:{detail}:{Convert.ToHexString(rawPacket ?? Array.Empty<byte>())}";
+
+            lock (_sync)
+            {
+                _recentPackets.Enqueue(summary);
+                while (_recentPackets.Count > RecentPacketCapacity)
+                {
+                    _recentPackets.Dequeue();
                 }
             }
         }

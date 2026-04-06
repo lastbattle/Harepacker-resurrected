@@ -606,6 +606,7 @@ namespace HaCreator.MapSimulator.Pools
         private Action<DropPickupAttemptResult, int, bool> _onPickupFailed;
         private Func<DropItem, DropPickupFailureReason> _pickupAvailabilityEvaluator;
         private Func<DropItem, DropPickupFailureReason> _petPickupAvailabilityEvaluator;
+        private Func<DropPickupActorKind, int, bool, string> _pickupActorNameResolver;
         private Action<DropItem, int, string> _onRemotePlayerPickedUp;
         private Action<DropItem, int, string> _onRemotePetPickedUp;
         private Action<DropItem, int, string> _onRemoteOtherPickedUp;
@@ -639,6 +640,7 @@ namespace HaCreator.MapSimulator.Pools
         public void SetOnPickupFailed(Action<DropPickupAttemptResult, int, bool> callback) => _onPickupFailed = callback;
         public void SetPickupAvailabilityEvaluator(Func<DropItem, DropPickupFailureReason> callback) => _pickupAvailabilityEvaluator = callback;
         public void SetPetPickupAvailabilityEvaluator(Func<DropItem, DropPickupFailureReason> callback) => _petPickupAvailabilityEvaluator = callback;
+        public void SetPickupActorNameResolver(Func<DropPickupActorKind, int, bool, string> callback) => _pickupActorNameResolver = callback;
         public void SetGroundLevelLookup(Func<float, float, float> getGroundY) => _getGroundY = getGroundY;
         public void SetSourcePositionResolver(Func<int, Vector2?> resolver) => _sourcePositionResolver = resolver;
         public void SetPartyPickupMembershipEvaluator(Func<int, int, bool> evaluator) => _partyPickupMembershipEvaluator = evaluator;
@@ -2063,6 +2065,9 @@ namespace HaCreator.MapSimulator.Pools
                 return false;
             }
 
+            actorName = string.IsNullOrWhiteSpace(actorName)
+                ? _pickupActorNameResolver?.Invoke(actorKind, pickerId, pickedByPet)
+                : actorName;
             drop.StartPickup(currentTime, pickupTargetPosition, pickupDurationMs);
             RecordRecentPickupItem(drop, pickerId, pickedByPet, currentTime, actorKind, actorName);
             _onDropPickedUp?.Invoke(drop);

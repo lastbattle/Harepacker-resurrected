@@ -506,14 +506,15 @@ namespace HaCreator.MapSimulator.UI
                 return commonCrc;
             }
 
-            uint combined = commonCrc;
-            combined ^= ComputeClientCrc32(GetIntValue(infoProperty["reqLEV"]));
-            combined ^= ComputeClientCrc32(GetIntValue(infoProperty["price"]));
-            combined ^= ComputeClientCrc32(ReadDoubleValue(infoProperty["unitPrice"]));
-            combined ^= ComputeClientCrc32(GetIntValue(infoProperty["slotMax"]));
-            combined ^= ComputeClientCrc32(GetIntValue(infoProperty["max"]));
-            combined ^= ComputeClientCrc32(ComposeBundleItemFlagMask(infoProperty));
-            return combined;
+            uint headerCrc = ComputeClientCrc32(GetIntValue(infoProperty["reqLEV"]))
+                | ComputeClientCrc32(GetIntValue(infoProperty["price"]))
+                | ComputeClientCrc32(ReadDoubleValue(infoProperty["unitPrice"]));
+            uint limitCrc = ComputeClientCrc32(GetIntValue(infoProperty["slotMax"]))
+                | ComputeClientCrc32(GetIntValue(infoProperty["max"]));
+            return commonCrc
+                ^ headerCrc
+                ^ limitCrc
+                ^ ComputeClientCrc32(ComposeBundleItemFlagMask(infoProperty));
         }
 
         private static int ComposeBundleItemFlagMask(WzSubProperty infoProperty)
@@ -1081,7 +1082,10 @@ namespace HaCreator.MapSimulator.UI
             int returnMapRecordId = GetIntValue(property);
             if (returnMapRecordId > 0)
             {
-                effectLines.Add($"Uses return-map record #{returnMapRecordId.ToString(CultureInfo.InvariantCulture)}");
+                string questLabel = ResolveQuestTooltipLabel(returnMapRecordId);
+                effectLines.Add(string.Equals(questLabel, $"Quest #{returnMapRecordId.ToString(CultureInfo.InvariantCulture)}", StringComparison.Ordinal)
+                    ? $"Uses return-map record #{returnMapRecordId.ToString(CultureInfo.InvariantCulture)}"
+                    : $"Uses return-map record: {questLabel}");
             }
         }
 
@@ -1114,8 +1118,28 @@ namespace HaCreator.MapSimulator.UI
 
             AppendSkillBookMetadataLines(metadataLines, infoProperty);
             AppendRequiredMapMetadataLines(metadataLines, infoProperty);
+            AppendStateChangeItemMetadataLines(metadataLines, infoProperty);
+            AppendItemPeriodMetadataLines(metadataLines, infoProperty);
             AppendCreateMetadataLines(metadataLines, infoProperty);
             AppendReplaceMetadataLines(metadataLines, infoProperty);
+        }
+
+        private static void AppendStateChangeItemMetadataLines(List<string> metadataLines, WzSubProperty infoProperty)
+        {
+            int stateChangeItemId = GetIntOrStringValue(infoProperty?["stateChangeItem"]);
+            if (stateChangeItemId > 0)
+            {
+                metadataLines.Add($"Linked Cash Effect: {ResolveTooltipItemLabel(stateChangeItemId)}");
+            }
+        }
+
+        private static void AppendItemPeriodMetadataLines(List<string> metadataLines, WzSubProperty infoProperty)
+        {
+            int itemPeriodHours = GetIntOrStringValue(infoProperty?["period"]);
+            if (itemPeriodHours > 0)
+            {
+                metadataLines.Add($"Item expires after {FormatHourDuration(itemPeriodHours)}");
+            }
         }
 
         private static void AppendSkillBookMetadataLines(List<string> metadataLines, WzSubProperty infoProperty)
@@ -1275,6 +1299,12 @@ namespace HaCreator.MapSimulator.UI
             if (replacementPeriodMinutes > 0)
             {
                 metadataLines.Add($"Replacement lasts {FormatMinuteDuration(replacementPeriodMinutes)}");
+            }
+
+            string replacementMessage = (replaceProperty["msg"] as WzStringProperty)?.Value?.Trim();
+            if (!string.IsNullOrWhiteSpace(replacementMessage))
+            {
+                metadataLines.Add($"Replacement note: {replacementMessage}");
             }
         }
 
@@ -1448,7 +1478,11 @@ namespace HaCreator.MapSimulator.UI
                 string chanceSuffix = probability > 0
                     ? $" ({probability.ToString(CultureInfo.InvariantCulture)}%)"
                     : string.Empty;
-                lines.Add($"Reward: {itemLabel} x{count.ToString(CultureInfo.InvariantCulture)}{chanceSuffix}");
+                int periodMinutes = GetIntOrStringValue(entry["period"]);
+                string periodSuffix = periodMinutes > 0
+                    ? $", expires after {FormatMinuteDuration(periodMinutes)}"
+                    : string.Empty;
+                lines.Add($"Reward: {itemLabel} x{count.ToString(CultureInfo.InvariantCulture)}{chanceSuffix}{periodSuffix}");
             }
 
             int remaining = entries.Count - visibleCount;
@@ -1587,6 +1621,13 @@ namespace HaCreator.MapSimulator.UI
             return lines;
         }
 
+        public static IReadOnlyList<string> BuildReturnMapRecordEffectLinesForTests(WzImageProperty property)
+        {
+            List<string> lines = new();
+            AppendReturnMapRecordEffectLine(lines, property);
+            return lines;
+        }
+
         private static string ResolveSkillName(int skillId)
         {
             if (global::HaCreator.Program.InfoManager?.SkillNameCache == null)
@@ -1644,6 +1685,20 @@ namespace HaCreator.MapSimulator.UI
             return minutes == 1
                 ? "1 minute"
                 : $"{minutes.ToString(CultureInfo.InvariantCulture)} minutes";
+        }
+
+        private static string FormatHourDuration(int hours)
+        {
+            TimeSpan duration = TimeSpan.FromHours(hours);
+            if (duration.TotalDays >= 1d && Math.Abs(duration.TotalDays - Math.Round(duration.TotalDays)) < 0.0001d)
+            {
+                int wholeDays = Math.Max(1, (int)Math.Round(duration.TotalDays));
+                return FormatDayCount(wholeDays);
+            }
+
+            return hours == 1
+                ? "1 hour"
+                : $"{hours.ToString(CultureInfo.InvariantCulture)} hours";
         }
 
         private static string FormatSignedValue(int value)

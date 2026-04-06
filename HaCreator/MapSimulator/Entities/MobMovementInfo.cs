@@ -626,6 +626,49 @@ namespace HaCreator.MapSimulator.Entities
         }
 
         /// <summary>
+        /// Mirrors the packet-owned CMovePath::DiscardByInterrupt landing branch used by CMob::OnMove.
+        /// The simulator does not replay remote mob move paths yet, but attack move headers still need
+        /// to clear pending steering and optionally snap airborne ground mobs back onto a foothold.
+        /// </summary>
+        public void ApplyPacketMoveInterrupt(bool notForceLandingWhenDiscard)
+        {
+            _pendingDirection = MobMoveDirection.None;
+            _framesSinceDirectionChange = 0;
+
+            if (notForceLandingWhenDiscard || MoveType == MobMoveType.Fly)
+            {
+                return;
+            }
+
+            VelocityX = 0f;
+
+            if (JumpState == MobJumpState.None && CurrentFoothold != null)
+            {
+                Y = CalculateYOnFoothold(CurrentFoothold, X);
+                VelocityY = 0f;
+                CurrentAction = MobAction.Stand;
+                return;
+            }
+
+            if (_allFootholds == null)
+            {
+                return;
+            }
+
+            FootholdLine belowFoothold = FindBelow(X, Y - Math.Min(VelocityY, 0f) - 2f);
+            if (belowFoothold == null)
+            {
+                return;
+            }
+
+            Y = CalculateYOnFoothold(belowFoothold, X);
+            CurrentFoothold = belowFoothold;
+            JumpState = MobJumpState.None;
+            VelocityY = 0f;
+            CurrentAction = MobAction.Stand;
+        }
+
+        /// <summary>
         /// Check if movement is stopped
         /// </summary>
         public bool IsStopped => _isStopped;

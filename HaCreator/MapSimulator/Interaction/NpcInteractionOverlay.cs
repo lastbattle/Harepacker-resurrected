@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Text;
 using HaSharedLibrary.Util;
+using MapleLib.WzLib;
+using MapleLib.WzLib.WzProperties;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
@@ -31,6 +33,13 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly SD.Graphics _measureGraphics;
         private readonly SD.Font _fallbackFont;
         private readonly float _fallbackLineHeight;
+        private bool _packetQuestResultVisualAssetsLoaded;
+        private Texture2D _packetQuestResultTopTexture;
+        private Texture2D _packetQuestResultCenterTexture;
+        private Texture2D _packetQuestResultBottomTexture;
+        private UtilDialogButtonTextures _packetQuestResultPrevButtonTextures;
+        private UtilDialogButtonTextures _packetQuestResultNextButtonTextures;
+        private UtilDialogButtonTextures _packetQuestResultOkButtonTextures;
 
         private SpriteFont _font;
         private string _npcName = "NPC";
@@ -80,6 +89,18 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
+        private readonly struct UtilDialogButtonTextures
+        {
+            public UtilDialogButtonTextures(Texture2D normal, Texture2D disabled)
+            {
+                Normal = normal;
+                Disabled = disabled;
+            }
+
+            public Texture2D Normal { get; }
+            public Texture2D Disabled { get; }
+        }
+
         public NpcInteractionOverlay(GraphicsDevice device)
         {
             _pixel = new Texture2D(device, 1, 1);
@@ -107,6 +128,7 @@ namespace HaCreator.MapSimulator.Interaction
             ClearTextTextureCache();
             _npcName = string.IsNullOrWhiteSpace(state?.NpcName) ? "NPC" : state.NpcName;
             _presentationStyle = state?.PresentationStyle ?? NpcInteractionPresentationStyle.Default;
+            EnsurePacketQuestResultVisualAssetsLoaded();
             _entries.Clear();
 
             if (state?.Entries != null)
@@ -391,18 +413,25 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             Rectangle windowRect = GetWindowRectangle(renderWidth, renderHeight);
-            DrawPanel(spriteBatch, windowRect, ResolveWindowFillColor(), ResolveWindowBorderColor());
-
-            Rectangle titleBar = new Rectangle(windowRect.X, windowRect.Y, windowRect.Width, 38);
-            spriteBatch.Draw(_pixel, titleBar, ResolveTitleFillColor());
-
-            DrawText(spriteBatch, _npcName, new Vector2(windowRect.X + Padding, windowRect.Y + 10), Color.White);
-
-            if (NpcInteractionPresentationProfile.ShouldDrawCloseButton(_presentationStyle))
+            if (ShouldUsePacketQuestResultWindowArt())
             {
-                Rectangle closeRect = GetCloseButtonRectangle(windowRect);
-                DrawPanel(spriteBatch, closeRect, new Color(130, 51, 51, 255), new Color(255, 220, 220));
-                DrawCenteredText(spriteBatch, "X", closeRect, Color.White);
+                DrawPacketQuestResultWindow(spriteBatch, windowRect);
+            }
+            else
+            {
+                DrawPanel(spriteBatch, windowRect, ResolveWindowFillColor(), ResolveWindowBorderColor());
+
+                Rectangle titleBar = new Rectangle(windowRect.X, windowRect.Y, windowRect.Width, 38);
+                spriteBatch.Draw(_pixel, titleBar, ResolveTitleFillColor());
+
+                DrawText(spriteBatch, _npcName, new Vector2(windowRect.X + Padding, windowRect.Y + 10), Color.White);
+
+                if (NpcInteractionPresentationProfile.ShouldDrawCloseButton(_presentationStyle))
+                {
+                    Rectangle closeRect = GetCloseButtonRectangle(windowRect);
+                    DrawPanel(spriteBatch, closeRect, new Color(130, 51, 51, 255), new Color(255, 220, 220));
+                    DrawCenteredText(spriteBatch, "X", closeRect, Color.White);
+                }
             }
 
             Rectangle entryListRect = GetEntryListRectangle(windowRect);
@@ -412,11 +441,7 @@ namespace HaCreator.MapSimulator.Interaction
                 DrawEntryList(spriteBatch, entryListRect);
             }
 
-            Rectangle textRect = new Rectangle(
-                ShouldDrawEntryList() ? entryListRect.Right + Padding : windowRect.X + Padding,
-                windowRect.Y + 54,
-                ShouldDrawEntryList() ? windowRect.Width - EntryListWidth - (Padding * 3) : windowRect.Width - (Padding * 2),
-                windowRect.Height - 116);
+            Rectangle textRect = GetTextRectangle(windowRect, entryListRect);
 
             if (NpcInteractionPresentationProfile.ShouldDrawEntryHeader(_presentationStyle))
             {
@@ -429,7 +454,7 @@ namespace HaCreator.MapSimulator.Interaction
                 textRect.Y + (NpcInteractionPresentationProfile.ShouldDrawEntryHeader(_presentationStyle) ? 38 : 0),
                 textRect.Width,
                 textRect.Height - (NpcInteractionPresentationProfile.ShouldDrawEntryHeader(_presentationStyle) ? 38 : 0) - GetInputPanelHeight(inputRequest));
-            DrawWrappedText(spriteBatch, GetCurrentPageText(), bodyRect, new Color(246, 244, 238));
+            DrawWrappedText(spriteBatch, GetCurrentPageText(), bodyRect, ResolveBodyTextColor());
             DrawInputPanel(spriteBatch, bodyRect, inputRequest);
             if (NpcInteractionPresentationProfile.ShouldDrawPageIndicator(_presentationStyle))
             {
@@ -447,8 +472,18 @@ namespace HaCreator.MapSimulator.Interaction
                 DrawButton(spriteBatch, choiceRects[i], choices[i].Label, true);
             }
 
-            DrawButton(spriteBatch, prevRect, "Prev", _currentPage > 0 || _pageContextStack.Count > 0);
-            DrawButton(spriteBatch, nextRect, _currentPage < GetCurrentPages().Count - 1 ? "Next" : "Close", true);
+            DrawNavigationButton(
+                spriteBatch,
+                prevRect,
+                GetPrevButtonText(),
+                _currentPage > 0 || _pageContextStack.Count > 0,
+                ResolvePrevButtonTextures());
+            DrawNavigationButton(
+                spriteBatch,
+                nextRect,
+                GetNextButtonText(),
+                true,
+                ResolveNextButtonTextures());
 
             string primaryButtonText = GetPrimaryButtonText();
             if (NpcInteractionPresentationProfile.ShouldDrawPrimaryButton(_presentationStyle, primaryButtonText))
@@ -528,9 +563,55 @@ namespace HaCreator.MapSimulator.Interaction
             return NpcInteractionPresentationProfile.ShouldDrawEntryList(_presentationStyle, _entries.Count);
         }
 
+        private bool ShouldUsePacketQuestResultWindowArt()
+        {
+            return _presentationStyle == NpcInteractionPresentationStyle.PacketQuestResultUtilDialog
+                && _packetQuestResultTopTexture != null
+                && _packetQuestResultCenterTexture != null
+                && _packetQuestResultBottomTexture != null;
+        }
+
+        private void EnsurePacketQuestResultVisualAssetsLoaded()
+        {
+            if (_packetQuestResultVisualAssetsLoaded)
+            {
+                return;
+            }
+
+            _packetQuestResultVisualAssetsLoaded = true;
+            WzImage uiWindow2Image = global::HaCreator.Program.FindImage("UI", "UIWindow2.img");
+            WzImage uiWindow1Image = global::HaCreator.Program.FindImage("UI", "UIWindow.img");
+            EnsureParsed(uiWindow2Image);
+            EnsureParsed(uiWindow1Image);
+
+            _packetQuestResultTopTexture = LoadCanvasTexture(ResolveProperty(uiWindow2Image, "UtilDlgEx/t") as WzCanvasProperty)
+                ?? LoadCanvasTexture(ResolveProperty(uiWindow1Image, "UtilDlgEx/t") as WzCanvasProperty);
+            _packetQuestResultCenterTexture = LoadCanvasTexture(ResolveProperty(uiWindow2Image, "UtilDlgEx/c") as WzCanvasProperty)
+                ?? LoadCanvasTexture(ResolveProperty(uiWindow1Image, "UtilDlgEx/c") as WzCanvasProperty);
+            _packetQuestResultBottomTexture = LoadCanvasTexture(ResolveProperty(uiWindow2Image, "UtilDlgEx/s") as WzCanvasProperty)
+                ?? LoadCanvasTexture(ResolveProperty(uiWindow1Image, "UtilDlgEx/s") as WzCanvasProperty);
+            _packetQuestResultPrevButtonTextures = LoadButtonTextures(uiWindow2Image, uiWindow1Image, "BtPrev");
+            _packetQuestResultNextButtonTextures = LoadButtonTextures(uiWindow2Image, uiWindow1Image, "BtNext");
+            _packetQuestResultOkButtonTextures = LoadButtonTextures(uiWindow2Image, uiWindow1Image, "BtOK");
+        }
+
+        private UtilDialogButtonTextures LoadButtonTextures(WzImage primaryImage, WzImage fallbackImage, string buttonPath)
+        {
+            Texture2D normal = LoadCanvasTexture(ResolveProperty(primaryImage, $"UtilDlgEx/{buttonPath}/normal/0") as WzCanvasProperty)
+                ?? LoadCanvasTexture(ResolveProperty(primaryImage, $"UtilDlgEx/{buttonPath}/normal") as WzCanvasProperty)
+                ?? LoadCanvasTexture(ResolveProperty(fallbackImage, $"UtilDlgEx/{buttonPath}/normal/0") as WzCanvasProperty)
+                ?? LoadCanvasTexture(ResolveProperty(fallbackImage, $"UtilDlgEx/{buttonPath}/normal") as WzCanvasProperty);
+            Texture2D disabled = LoadCanvasTexture(ResolveProperty(primaryImage, $"UtilDlgEx/{buttonPath}/disabled/0") as WzCanvasProperty)
+                ?? LoadCanvasTexture(ResolveProperty(primaryImage, $"UtilDlgEx/{buttonPath}/disabled") as WzCanvasProperty)
+                ?? LoadCanvasTexture(ResolveProperty(fallbackImage, $"UtilDlgEx/{buttonPath}/disabled/0") as WzCanvasProperty)
+                ?? LoadCanvasTexture(ResolveProperty(fallbackImage, $"UtilDlgEx/{buttonPath}/disabled") as WzCanvasProperty);
+            return new UtilDialogButtonTextures(normal, disabled);
+        }
+
         private Color ResolveWindowFillColor()
         {
             return _presentationStyle == NpcInteractionPresentationStyle.PacketScriptUtilDialog
+                || _presentationStyle == NpcInteractionPresentationStyle.PacketQuestResultUtilDialog
                 ? new Color(35, 31, 28, 236)
                 : new Color(18, 25, 39, 235);
         }
@@ -538,6 +619,7 @@ namespace HaCreator.MapSimulator.Interaction
         private Color ResolveWindowBorderColor()
         {
             return _presentationStyle == NpcInteractionPresentationStyle.PacketScriptUtilDialog
+                || _presentationStyle == NpcInteractionPresentationStyle.PacketQuestResultUtilDialog
                 ? new Color(212, 181, 120)
                 : new Color(235, 218, 170);
         }
@@ -545,8 +627,34 @@ namespace HaCreator.MapSimulator.Interaction
         private Color ResolveTitleFillColor()
         {
             return _presentationStyle == NpcInteractionPresentationStyle.PacketScriptUtilDialog
+                || _presentationStyle == NpcInteractionPresentationStyle.PacketQuestResultUtilDialog
                 ? new Color(92, 66, 37, 255)
                 : new Color(53, 79, 117, 255);
+        }
+
+        private Color ResolveBodyTextColor()
+        {
+            return _presentationStyle == NpcInteractionPresentationStyle.PacketQuestResultUtilDialog
+                ? new Color(63, 42, 21)
+                : new Color(246, 244, 238);
+        }
+
+        private Rectangle GetTextRectangle(Rectangle windowRect, Rectangle entryListRect)
+        {
+            if (_presentationStyle == NpcInteractionPresentationStyle.PacketQuestResultUtilDialog)
+            {
+                return new Rectangle(
+                    windowRect.X + 34,
+                    windowRect.Y + 24,
+                    windowRect.Width - 68,
+                    windowRect.Height - 90);
+            }
+
+            return new Rectangle(
+                ShouldDrawEntryList() ? entryListRect.Right + Padding : windowRect.X + Padding,
+                windowRect.Y + 54,
+                ShouldDrawEntryList() ? windowRect.Width - EntryListWidth - (Padding * 3) : windowRect.Width - (Padding * 2),
+                windowRect.Height - 116);
         }
 
         private static int GetInputPanelHeight(NpcInteractionInputRequest inputRequest)
@@ -698,6 +806,34 @@ namespace HaCreator.MapSimulator.Interaction
             spriteBatch.Draw(_pixel, new Rectangle(rect.Right - 1, rect.Y, 1, rect.Height), border);
         }
 
+        private void DrawPacketQuestResultWindow(SpriteBatch spriteBatch, Rectangle rect)
+        {
+            if (!ShouldUsePacketQuestResultWindowArt())
+            {
+                DrawPanel(spriteBatch, rect, ResolveWindowFillColor(), ResolveWindowBorderColor());
+                return;
+            }
+
+            int topHeight = _packetQuestResultTopTexture.Height;
+            int centerHeight = _packetQuestResultCenterTexture.Height;
+            int bottomHeight = _packetQuestResultBottomTexture.Height;
+            int centerY = rect.Y + topHeight;
+            int remainingHeight = Math.Max(0, rect.Height - topHeight - bottomHeight);
+
+            spriteBatch.Draw(_packetQuestResultTopTexture, new Vector2(rect.X, rect.Y), Color.White);
+            while (remainingHeight > 0)
+            {
+                int drawHeight = Math.Min(centerHeight, remainingHeight);
+                Rectangle destination = new(rect.X, centerY, rect.Width, drawHeight);
+                Rectangle source = new(0, 0, _packetQuestResultCenterTexture.Width, drawHeight);
+                spriteBatch.Draw(_packetQuestResultCenterTexture, destination, source, Color.White);
+                centerY += drawHeight;
+                remainingHeight -= drawHeight;
+            }
+
+            spriteBatch.Draw(_packetQuestResultBottomTexture, new Vector2(rect.X, rect.Bottom - bottomHeight), Color.White);
+        }
+
         private void DrawButton(SpriteBatch spriteBatch, Rectangle rect, string label, bool enabled)
         {
             Color fill = enabled ? new Color(71, 104, 149, 255) : new Color(70, 70, 70, 200);
@@ -705,6 +841,23 @@ namespace HaCreator.MapSimulator.Interaction
 
             DrawPanel(spriteBatch, rect, fill, border);
             DrawCenteredText(spriteBatch, label, rect, Color.White);
+        }
+
+        private void DrawNavigationButton(
+            SpriteBatch spriteBatch,
+            Rectangle rect,
+            string label,
+            bool enabled,
+            UtilDialogButtonTextures textures)
+        {
+            Texture2D texture = enabled ? textures.Normal : textures.Disabled ?? textures.Normal;
+            if (_presentationStyle == NpcInteractionPresentationStyle.PacketQuestResultUtilDialog && texture != null)
+            {
+                spriteBatch.Draw(texture, new Vector2(rect.X, rect.Y), Color.White);
+                return;
+            }
+
+            DrawButton(spriteBatch, rect, label, enabled);
         }
 
         private void DrawEntryList(SpriteBatch spriteBatch, Rectangle entryListRect)
@@ -1011,11 +1164,23 @@ namespace HaCreator.MapSimulator.Interaction
             };
         }
 
-        private static Rectangle GetWindowRectangle(int renderWidth, int renderHeight)
+        private Rectangle GetWindowRectangle(int renderWidth, int renderHeight)
         {
-            int x = (renderWidth - WindowWidth) / 2;
-            int y = Math.Max(32, renderHeight - WindowHeight - 140);
-            return new Rectangle(x, y, WindowWidth, WindowHeight);
+            int windowWidth = WindowWidth;
+            int windowHeight = WindowHeight;
+            if (_presentationStyle == NpcInteractionPresentationStyle.PacketQuestResultUtilDialog)
+            {
+                windowWidth = _packetQuestResultTopTexture?.Width ?? PacketQuestResultUtilDialogLayout.DefaultWindowWidth;
+                windowHeight = ShouldUsePacketQuestResultWindowArt()
+                    ? (_packetQuestResultTopTexture.Height
+                       + (_packetQuestResultCenterTexture.Height * PacketQuestResultUtilDialogLayout.DefaultCenterRepeatCount)
+                       + _packetQuestResultBottomTexture.Height)
+                    : PacketQuestResultUtilDialogLayout.DefaultWindowHeight;
+            }
+
+            int x = (renderWidth - windowWidth) / 2;
+            int y = Math.Max(32, renderHeight - windowHeight - 140);
+            return new Rectangle(x, y, windowWidth, windowHeight);
         }
 
         private static Rectangle GetEntryListRectangle(Rectangle windowRect)
@@ -1040,23 +1205,117 @@ namespace HaCreator.MapSimulator.Interaction
             return new Rectangle(windowRect.Right - CloseButtonSize - 10, windowRect.Y + 8, CloseButtonSize, CloseButtonSize);
         }
 
-        private static Rectangle GetPrevButtonRectangle(Rectangle windowRect)
+        private Rectangle GetPrevButtonRectangle(Rectangle windowRect)
         {
-            int y = windowRect.Bottom - ButtonHeight - 18;
-            int x = windowRect.Right - (ButtonWidth * 2) - ButtonGap - Padding;
-            return new Rectangle(x, y, ButtonWidth, ButtonHeight);
+            if (_presentationStyle == NpcInteractionPresentationStyle.PacketQuestResultUtilDialog)
+            {
+                Texture2D nextTexture = ResolveNextButtonTextures().Normal;
+                Texture2D prevTexture = ResolvePrevButtonTextures().Normal;
+                int nextWidth = nextTexture?.Width ?? ButtonWidth;
+                int nextHeight = nextTexture?.Height ?? ButtonHeight;
+                int prevWidth = prevTexture?.Width ?? ButtonWidth;
+                int prevHeight = prevTexture?.Height ?? ButtonHeight;
+                int buttonY = windowRect.Bottom - Math.Max(nextHeight, prevHeight) - 18;
+                int buttonX = windowRect.Right - nextWidth - prevWidth - ButtonGap - 24;
+                return new Rectangle(buttonX, buttonY, prevWidth, prevHeight);
+            }
+
+            int defaultButtonY = windowRect.Bottom - ButtonHeight - 18;
+            int defaultButtonX = windowRect.Right - (ButtonWidth * 2) - ButtonGap - Padding;
+            return new Rectangle(defaultButtonX, defaultButtonY, ButtonWidth, ButtonHeight);
         }
 
-        private static Rectangle GetNextButtonRectangle(Rectangle windowRect)
+        private Rectangle GetNextButtonRectangle(Rectangle windowRect)
         {
             Rectangle prevRect = GetPrevButtonRectangle(windowRect);
+            if (_presentationStyle == NpcInteractionPresentationStyle.PacketQuestResultUtilDialog)
+            {
+                Texture2D nextTexture = ResolveNextButtonTextures().Normal;
+                int width = nextTexture?.Width ?? ButtonWidth;
+                int height = nextTexture?.Height ?? ButtonHeight;
+                return new Rectangle(prevRect.Right + ButtonGap, prevRect.Y, width, height);
+            }
+
             return new Rectangle(prevRect.Right + ButtonGap, prevRect.Y, ButtonWidth, ButtonHeight);
         }
 
-        private static Rectangle GetPrimaryButtonRectangle(Rectangle windowRect)
+        private Rectangle GetPrimaryButtonRectangle(Rectangle windowRect)
         {
             Rectangle prevRect = GetPrevButtonRectangle(windowRect);
             return new Rectangle(windowRect.X + Padding, prevRect.Y, ButtonWidth + 12, ButtonHeight);
+        }
+
+        private string GetPrevButtonText()
+        {
+            return _presentationStyle == NpcInteractionPresentationStyle.PacketQuestResultUtilDialog ? string.Empty : "Prev";
+        }
+
+        private string GetNextButtonText()
+        {
+            if (_presentationStyle == NpcInteractionPresentationStyle.PacketQuestResultUtilDialog)
+            {
+                return PacketQuestResultUtilDialogLayout.ResolveNextButtonText(_currentPage < GetCurrentPages().Count - 1);
+            }
+
+            return _currentPage < GetCurrentPages().Count - 1 ? "Next" : "Close";
+        }
+
+        private UtilDialogButtonTextures ResolvePrevButtonTextures()
+        {
+            return _packetQuestResultPrevButtonTextures;
+        }
+
+        private UtilDialogButtonTextures ResolveNextButtonTextures()
+        {
+            return _presentationStyle == NpcInteractionPresentationStyle.PacketQuestResultUtilDialog
+                   && _currentPage >= GetCurrentPages().Count - 1
+                ? _packetQuestResultOkButtonTextures
+                : _packetQuestResultNextButtonTextures;
+        }
+
+        private static void EnsureParsed(WzImage image)
+        {
+            if (image != null && !image.Parsed)
+            {
+                image.ParseImage();
+            }
+        }
+
+        private static WzImageProperty ResolveProperty(WzObject root, string propertyPath)
+        {
+            if (root == null || string.IsNullOrWhiteSpace(propertyPath))
+            {
+                return root as WzImageProperty;
+            }
+
+            WzObject current = root;
+            foreach (string segment in propertyPath.Split(new[] { '/', '\\' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                current = current switch
+                {
+                    WzImage image => image[segment],
+                    WzImageProperty property => property[segment],
+                    _ => null
+                };
+                if (current == null)
+                {
+                    break;
+                }
+            }
+
+            return current as WzImageProperty;
+        }
+
+        private Texture2D LoadCanvasTexture(WzCanvasProperty canvas)
+        {
+            try
+            {
+                return canvas?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(_pixel.GraphicsDevice);
+            }
+            catch
+            {
+                return null;
+            }
         }
 
         private static Rectangle[] GetChoiceButtonRectangles(Rectangle windowRect, int count)

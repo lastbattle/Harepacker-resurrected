@@ -17,7 +17,8 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D _pixel;
         private readonly Texture2D _separatorLine;
         private UIObject _premiumButton;
-        private UIObject _normalButton;
+        private UIObject _declineButton;
+        private UIObject _defaultButton;
         private KeyboardState _previousKeyboardState;
         private Func<ReviveOwnerSnapshot> _snapshotProvider;
         private Func<string> _premiumHandler;
@@ -49,10 +50,11 @@ namespace HaCreator.MapSimulator.UI
             _feedbackHandler = feedbackHandler;
         }
 
-        internal void InitializeButtons(UIObject premiumButton, UIObject normalButton)
+        internal void InitializeButtons(UIObject premiumButton, UIObject declineButton, UIObject defaultButton)
         {
             _premiumButton = premiumButton;
-            _normalButton = normalButton;
+            _declineButton = declineButton;
+            _defaultButton = defaultButton;
 
             if (_premiumButton != null)
             {
@@ -60,10 +62,16 @@ namespace HaCreator.MapSimulator.UI
                 _premiumButton.ButtonClickReleased += _ => ShowFeedback(_premiumHandler?.Invoke());
             }
 
-            if (_normalButton != null)
+            if (_declineButton != null)
             {
-                AddButton(_normalButton);
-                _normalButton.ButtonClickReleased += _ => ShowFeedback(_normalHandler?.Invoke());
+                AddButton(_declineButton);
+                _declineButton.ButtonClickReleased += _ => ShowFeedback(_normalHandler?.Invoke());
+            }
+
+            if (_defaultButton != null && !ReferenceEquals(_defaultButton, _declineButton))
+            {
+                AddButton(_defaultButton);
+                _defaultButton.ButtonClickReleased += _ => ShowFeedback(_normalHandler?.Invoke());
             }
 
             RefreshLayout();
@@ -153,13 +161,23 @@ namespace HaCreator.MapSimulator.UI
                 _premiumButton.SetEnabled(_snapshot.IsOpen && _snapshot.HasPremiumChoice);
             }
 
-            if (_normalButton != null)
+            if (_declineButton != null)
             {
-                _normalButton.X = _snapshot.HasPremiumChoice ? 246 : 208;
-                _normalButton.Y = 145;
-                _normalButton.SetVisible(_snapshot.IsOpen);
-                _normalButton.ButtonVisible = _snapshot.IsOpen;
-                _normalButton.SetEnabled(_snapshot.IsOpen);
+                _declineButton.X = 246;
+                _declineButton.Y = 145;
+                _declineButton.SetVisible(_snapshot.IsOpen && _snapshot.HasPremiumChoice);
+                _declineButton.ButtonVisible = _snapshot.IsOpen && _snapshot.HasPremiumChoice;
+                _declineButton.SetEnabled(_snapshot.IsOpen && _snapshot.HasPremiumChoice);
+            }
+
+            if (_defaultButton != null)
+            {
+                // CUIRevive::OnCreate switches to a separate single-button path for the default-only owner.
+                _defaultButton.X = 170;
+                _defaultButton.Y = 145;
+                _defaultButton.SetVisible(_snapshot.IsOpen && !_snapshot.HasPremiumChoice);
+                _defaultButton.ButtonVisible = _snapshot.IsOpen && !_snapshot.HasPremiumChoice;
+                _defaultButton.SetEnabled(_snapshot.IsOpen && !_snapshot.HasPremiumChoice);
             }
         }
 

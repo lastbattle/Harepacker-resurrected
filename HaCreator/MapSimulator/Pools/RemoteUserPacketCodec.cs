@@ -130,11 +130,14 @@ namespace HaCreator.MapSimulator.Pools
         int? MechanicMode,
         bool HasDarkAura,
         bool HasBlueAura,
-        bool HasYellowAura)
+        bool HasYellowAura,
+        bool HasBlessingArmor)
     {
         public const int DarkAuraSkillId = 32001003;
         public const int BlueAuraSkillId = 32101002;
         public const int YellowAuraSkillId = 32101003;
+        public const int PaladinBlessingArmorSkillId = 1220013;
+        public const int BishopBlessingArmorSkillId = 2311009;
 
         public bool HasAnyKnownState =>
             Speed.HasValue
@@ -149,7 +152,8 @@ namespace HaCreator.MapSimulator.Pools
             || MechanicMode.HasValue
             || HasDarkAura
             || HasBlueAura
-            || HasYellowAura;
+            || HasYellowAura
+            || HasBlessingArmor;
 
         public bool IsHiddenLikeClient => HasDarkSight || HasWindWalk || GhostId.HasValue;
 
@@ -158,6 +162,16 @@ namespace HaCreator.MapSimulator.Pools
             : HasBlueAura ? BlueAuraSkillId
             : HasDarkAura ? DarkAuraSkillId
             : null;
+
+        public int? ResolveBlessingArmorSkillId(int jobId) =>
+            !HasBlessingArmor
+                ? null
+                : jobId switch
+                {
+                    >= 1220 and <= 1222 => PaladinBlessingArmorSkillId,
+                    >= 2310 and <= 2312 => BishopBlessingArmorSkillId,
+                    _ => BishopBlessingArmorSkillId
+                };
     }
 
     public readonly record struct RemoteUserLeaveFieldPacket(int CharacterId);
@@ -959,6 +973,11 @@ namespace HaCreator.MapSimulator.Pools
                         int itemId = reader.RemainingLength >= sizeof(int)
                             ? reader.ReadInt32()
                             : 4300000;
+                        if (itemId <= 0)
+                        {
+                            itemId = 4300000;
+                        }
+
                         EnsureRelationshipRecordAddConsumed(ref reader, packetType);
 
                         packet = new RemoteUserRelationshipRecordPacket(
@@ -1558,6 +1577,7 @@ namespace HaCreator.MapSimulator.Pools
             bool hasDarkAura = false;
             bool hasBlueAura = false;
             bool hasYellowAura = false;
+            bool hasBlessingArmor = false;
             int weaponChargeMetadataOffset = -1;
 
             try
@@ -1765,6 +1785,11 @@ namespace HaCreator.MapSimulator.Pools
                     reader.ReadInt32();
                 }
 
+                if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.BlessingArmor))
+                {
+                    hasBlessingArmor = true;
+                }
+
                 if (!chargeSkillId.HasValue
                     && weaponChargeMetadataOffset >= 0
                     && weaponChargeMetadataOffset <= rawPayload.Length - sizeof(int)
@@ -1805,7 +1830,8 @@ namespace HaCreator.MapSimulator.Pools
                 mechanicMode,
                 hasDarkAura,
                 hasBlueAura,
-                hasYellowAura);
+                hasYellowAura,
+                hasBlessingArmor);
         }
 
         private static bool IsTemporaryStatActive(int[] maskWords, RemoteTemporaryStatMaskBit bit)
@@ -1853,7 +1879,8 @@ namespace HaCreator.MapSimulator.Pools
                 IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.Mechanic) ? knownState.MechanicMode : null,
                 knownState.HasDarkAura && IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.DarkAura),
                 knownState.HasBlueAura && IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.BlueAura),
-                knownState.HasYellowAura && IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.YellowAura));
+                knownState.HasYellowAura && IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.YellowAura),
+                knownState.HasBlessingArmor && IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.BlessingArmor));
 
             return snapshot with
             {

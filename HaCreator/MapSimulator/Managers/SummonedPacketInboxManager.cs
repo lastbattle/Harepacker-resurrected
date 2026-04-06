@@ -196,6 +196,33 @@ namespace HaCreator.MapSimulator.Managers
                 : $"packet {packetType}";
         }
 
+        public static bool TryDecodeOpcodeFramedPacket(byte[] rawPacket, out int packetType, out byte[] payload, out string error)
+        {
+            packetType = 0;
+            payload = Array.Empty<byte>();
+            error = "Summoned raw packet is missing.";
+            if (rawPacket == null || rawPacket.Length < sizeof(ushort))
+            {
+                return false;
+            }
+
+            packetType = rawPacket[0] | (rawPacket[1] << 8);
+            if (!Enum.IsDefined(typeof(SummonedPacketType), packetType))
+            {
+                error = $"Unsupported summoned packet opcode {packetType}.";
+                return false;
+            }
+
+            payload = new byte[rawPacket.Length - sizeof(ushort)];
+            if (payload.Length > 0)
+            {
+                Buffer.BlockCopy(rawPacket, sizeof(ushort), payload, 0, payload.Length);
+            }
+
+            error = null;
+            return true;
+        }
+
         public void Dispose()
         {
             lock (_listenerLock)

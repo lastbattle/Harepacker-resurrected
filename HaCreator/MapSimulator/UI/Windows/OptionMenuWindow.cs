@@ -68,9 +68,25 @@ namespace HaCreator.MapSimulator.UI
             InputAction.Interact,
             InputAction.Skill1,
             InputAction.Skill2,
+            InputAction.Skill3,
+            InputAction.Skill4,
+            InputAction.QuickSlot1,
+            InputAction.QuickSlot2,
             InputAction.ToggleInventory,
+            InputAction.ToggleMinimap,
+            InputAction.ToggleChat,
+            InputAction.ToggleQuickSlot,
+            InputAction.ToggleKeyConfig,
             InputAction.Escape,
         };
+
+        private const int JoypadSummaryTop = 72;
+        private const int JoypadSummaryHeight = 40;
+        private const int JoypadRowsTop = 116;
+        private const int JoypadRowPitch = 20;
+        private const int JoypadFooterReserve = 52;
+        private const int JoypadScrollTrackWidth = 12;
+        private const int JoypadScrollTrackMargin = 8;
 
         private readonly struct PageLayer
         {
@@ -207,6 +223,9 @@ namespace HaCreator.MapSimulator.UI
         private bool _previousLeftMouseDown;
         private bool _previousRightMouseDown;
         private int _activeJoypadSliderRowIndex = -1;
+        private int _joypadScrollOffset;
+        private int _previousMouseWheelValue;
+        private bool _draggingJoypadScrollKnob;
 
         public OptionMenuWindow(IDXObject frame, string windowName, Texture2D checkTexture, Texture2D highlightTexture, Texture2D[] scrollTextures)
             : base(frame)
@@ -342,9 +361,22 @@ namespace HaCreator.MapSimulator.UI
             bool rightClick = mouseState.RightButton == ButtonState.Pressed;
             bool leftPressedThisFrame = leftClick && !_previousLeftMouseDown;
             bool rightPressedThisFrame = rightClick && !_previousRightMouseDown;
+            int mouseWheelDelta = mouseState.ScrollWheelValue - _previousMouseWheelValue;
+            _previousMouseWheelValue = mouseState.ScrollWheelValue;
+            if (_mode == OptionMenuMode.Joypad && IsVisible)
+            {
+                if (TryHandleJoypadScrollInput(mouseState, leftClick, leftPressedThisFrame, mouseWheelDelta, mouseCursor))
+                {
+                    _previousLeftMouseDown = leftClick;
+                    _previousRightMouseDown = rightClick;
+                    return true;
+                }
+            }
+
             if (!IsVisible || (!leftClick && !rightClick))
             {
                 _activeJoypadSliderRowIndex = -1;
+                _draggingJoypadScrollKnob = false;
                 _previousLeftMouseDown = leftClick;
                 _previousRightMouseDown = rightClick;
                 return false;
@@ -384,7 +416,10 @@ namespace HaCreator.MapSimulator.UI
                     return true;
                 }
 
-                for (int i = 0; i < _joypadRows.Count; i++)
+                int firstVisibleRow = _joypadScrollOffset;
+                int visibleRowCount = GetJoypadVisibleRowCount();
+                int lastVisibleExclusive = Math.Min(_joypadRows.Count, firstVisibleRow + visibleRowCount);
+                for (int i = firstVisibleRow; i < lastVisibleExclusive; i++)
                 {
                     Rectangle rowBounds = GetJoypadRowBounds(i);
                     if (!rowBounds.Contains(mouseState.X, mouseState.Y))
@@ -532,6 +567,7 @@ namespace HaCreator.MapSimulator.UI
             if (_mode == OptionMenuMode.Joypad)
             {
                 DrawJoypadRows(sprite);
+                DrawJoypadScrollBar(sprite);
             }
             else
             {
@@ -614,8 +650,19 @@ namespace HaCreator.MapSimulator.UI
 
         private Rectangle GetJoypadRowBounds(int index)
         {
+            int visibleIndex = index - _joypadScrollOffset;
+            if (visibleIndex < 0 || visibleIndex >= GetJoypadVisibleRowCount())
+            {
+                return Rectangle.Empty;
+            }
+
             int width = Math.Max(220, (CurrentFrame?.Width ?? 283) - 30);
-            return new Rectangle(Position.X + 12, Position.Y + 116 + (index * 20), width, 18);
+            if (GetMaxJoypadScrollOffset() > 0)
+            {
+                width -= JoypadScrollTrackWidth + JoypadScrollTrackMargin + 2;
+            }
+
+            return new Rectangle(Position.X + 12, Position.Y + JoypadRowsTop + (visibleIndex * JoypadRowPitch), width, 18);
         }
 
         private void DrawJoypadRows(SpriteBatch sprite)
@@ -630,7 +677,10 @@ namespace HaCreator.MapSimulator.UI
 
             DrawJoypadSummary(sprite, input, session);
 
-            for (int i = 0; i < _joypadRows.Count; i++)
+            int firstVisibleRow = _joypadScrollOffset;
+            int visibleRowCount = GetJoypadVisibleRowCount();
+            int lastVisibleExclusive = Math.Min(_joypadRows.Count, firstVisibleRow + visibleRowCount);
+            for (int i = firstVisibleRow; i < lastVisibleExclusive; i++)
             {
                 Rectangle bounds = GetJoypadRowBounds(i);
                 bool selected = _selectedJoypadRowIndex == i;
@@ -756,7 +806,15 @@ namespace HaCreator.MapSimulator.UI
             AddJoypadBindingRow(InputAction.Interact, "Interact", "Cycles the talk or portal pad button from the shared utility set.");
             AddJoypadBindingRow(InputAction.Skill1, "Skill 1", "Cycles the primary shoulder or face button for the first skill slot.");
             AddJoypadBindingRow(InputAction.Skill2, "Skill 2", "Cycles the secondary shoulder or face button for the second skill slot.");
+            AddJoypadBindingRow(InputAction.Skill3, "Skill 3", "Cycles the tertiary trigger binding for the next staged skill slot.");
+            AddJoypadBindingRow(InputAction.Skill4, "Skill 4", "Cycles the fourth staged skill trigger from the same shared utility family.");
+            AddJoypadBindingRow(InputAction.QuickSlot1, "Quick Slot 1", "Cycles the first staged quick-slot button without exposing directional inputs.");
+            AddJoypadBindingRow(InputAction.QuickSlot2, "Quick Slot 2", "Cycles the second staged quick-slot button from the same utility-button family.");
             AddJoypadBindingRow(InputAction.ToggleInventory, "Inventory", "Cycles the utility menu pad button while keeping movement inputs reserved.");
+            AddJoypadBindingRow(InputAction.ToggleMinimap, "Minimap", "Cycles the minimap toggle pad button without exposing the stick directions.");
+            AddJoypadBindingRow(InputAction.ToggleChat, "Chat", "Cycles the chat-focus pad button from the non-directional client utility family.");
+            AddJoypadBindingRow(InputAction.ToggleQuickSlot, "Quick Slot UI", "Cycles the quick-slot-bar toggle while still keeping movement reserved.");
+            AddJoypadBindingRow(InputAction.ToggleKeyConfig, "Key Config", "Cycles the key-setting shortcut from the same staged utility set.");
             AddJoypadBindingRow(InputAction.Escape, "Escape", "Cycles the system or cancel pad button while keeping movement inputs reserved.");
         }
 
@@ -1063,6 +1121,8 @@ namespace HaCreator.MapSimulator.UI
             _selectedJoypadRowIndex = _joypadRows.Count > 0 ? 0 : -1;
             _armedJoypadBindingAction = null;
             _activeJoypadSliderRowIndex = -1;
+            _joypadScrollOffset = 0;
+            _draggingJoypadScrollKnob = false;
             foreach (List<OptionRow> rows in _rows.Values)
             {
                 if (rows == null)
@@ -1092,6 +1152,7 @@ namespace HaCreator.MapSimulator.UI
             MouseState mouseState = Mouse.GetState();
             _previousLeftMouseDown = mouseState.LeftButton == ButtonState.Pressed;
             _previousRightMouseDown = mouseState.RightButton == ButtonState.Pressed;
+            _previousMouseWheelValue = mouseState.ScrollWheelValue;
         }
 
         private void CommitAndHide()
@@ -1305,6 +1366,7 @@ namespace HaCreator.MapSimulator.UI
             if (moveUp)
             {
                 _selectedJoypadRowIndex = (_selectedJoypadRowIndex - 1 + _joypadRows.Count) % _joypadRows.Count;
+                EnsureJoypadRowVisible(_selectedJoypadRowIndex);
                 _statusMessage = BuildJoypadSelectionStatus(_joypadRows[_selectedJoypadRowIndex], session);
                 return;
             }
@@ -1312,6 +1374,7 @@ namespace HaCreator.MapSimulator.UI
             if (moveDown)
             {
                 _selectedJoypadRowIndex = (_selectedJoypadRowIndex + 1) % _joypadRows.Count;
+                EnsureJoypadRowVisible(_selectedJoypadRowIndex);
                 _statusMessage = BuildJoypadSelectionStatus(_joypadRows[_selectedJoypadRowIndex], session);
                 return;
             }
@@ -1772,6 +1835,168 @@ namespace HaCreator.MapSimulator.UI
             else
             {
                 sprite.Draw(_highlightTexture, knob, new Color(255, 228, 151));
+            }
+        }
+
+        private int GetJoypadVisibleRowCount()
+        {
+            int frameHeight = CurrentFrame?.Height ?? 468;
+            int availableHeight = Math.Max(JoypadRowPitch, frameHeight - JoypadRowsTop - JoypadFooterReserve);
+            return Math.Max(1, availableHeight / JoypadRowPitch);
+        }
+
+        private int GetMaxJoypadScrollOffset()
+        {
+            return Math.Max(0, _joypadRows.Count - GetJoypadVisibleRowCount());
+        }
+
+        private void SetJoypadScrollOffset(int offset)
+        {
+            _joypadScrollOffset = Math.Clamp(offset, 0, GetMaxJoypadScrollOffset());
+        }
+
+        private void EnsureJoypadRowVisible(int rowIndex)
+        {
+            if (rowIndex < 0 || _joypadRows.Count == 0)
+            {
+                return;
+            }
+
+            int visibleRowCount = GetJoypadVisibleRowCount();
+            if (rowIndex < _joypadScrollOffset)
+            {
+                SetJoypadScrollOffset(rowIndex);
+            }
+            else if (rowIndex >= _joypadScrollOffset + visibleRowCount)
+            {
+                SetJoypadScrollOffset(rowIndex - visibleRowCount + 1);
+            }
+        }
+
+        private Rectangle GetJoypadScrollTrackBounds()
+        {
+            if (GetMaxJoypadScrollOffset() <= 0)
+            {
+                return Rectangle.Empty;
+            }
+
+            int height = GetJoypadVisibleRowCount() * JoypadRowPitch - 2;
+            int x = Position.X + (CurrentFrame?.Width ?? 283) - JoypadScrollTrackWidth - JoypadScrollTrackMargin;
+            int y = Position.Y + JoypadRowsTop + 1;
+            return new Rectangle(x, y, JoypadScrollTrackWidth, height);
+        }
+
+        private Rectangle GetJoypadScrollKnobBounds(Rectangle trackBounds)
+        {
+            if (trackBounds == Rectangle.Empty)
+            {
+                return Rectangle.Empty;
+            }
+
+            int maxOffset = Math.Max(1, GetMaxJoypadScrollOffset());
+            Texture2D knobTexture = _scrollTextures != null && _scrollTextures.Length > 0
+                ? _scrollTextures[0]
+                : null;
+            int knobHeight = Math.Max(11, knobTexture?.Height ?? 11);
+            knobHeight = Math.Min(trackBounds.Height, knobHeight);
+            float ratio = maxOffset <= 0 ? 0f : _joypadScrollOffset / (float)maxOffset;
+            int travel = Math.Max(0, trackBounds.Height - knobHeight);
+            int y = trackBounds.Y + (int)Math.Round(travel * ratio, MidpointRounding.AwayFromZero);
+            int width = Math.Max(trackBounds.Width, knobTexture?.Width ?? trackBounds.Width);
+            int x = trackBounds.X - ((width - trackBounds.Width) / 2);
+            return new Rectangle(x, y, width, knobHeight);
+        }
+
+        private bool TryHandleJoypadScrollInput(MouseState mouseState, bool leftClick, bool leftPressedThisFrame, int mouseWheelDelta, MouseCursorItem mouseCursor)
+        {
+            Rectangle trackBounds = GetJoypadScrollTrackBounds();
+            Rectangle knobBounds = GetJoypadScrollKnobBounds(trackBounds);
+            Rectangle contentBounds = new Rectangle(
+                Position.X + 12,
+                Position.Y + JoypadRowsTop,
+                Math.Max(220, (CurrentFrame?.Width ?? 283) - 30),
+                GetJoypadVisibleRowCount() * JoypadRowPitch);
+
+            if (!leftClick)
+            {
+                _draggingJoypadScrollKnob = false;
+            }
+
+            if (mouseWheelDelta != 0 && (contentBounds.Contains(mouseState.X, mouseState.Y) || trackBounds.Contains(mouseState.X, mouseState.Y)))
+            {
+                int direction = Math.Sign(mouseWheelDelta);
+                SetJoypadScrollOffset(_joypadScrollOffset - direction);
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+                return true;
+            }
+
+            if (trackBounds == Rectangle.Empty)
+            {
+                return false;
+            }
+
+            if (leftPressedThisFrame && knobBounds.Contains(mouseState.X, mouseState.Y))
+            {
+                _draggingJoypadScrollKnob = true;
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+                return true;
+            }
+
+            if (leftPressedThisFrame && trackBounds.Contains(mouseState.X, mouseState.Y))
+            {
+                MoveJoypadScrollToMouse(trackBounds, mouseState.Y);
+                _draggingJoypadScrollKnob = true;
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+                return true;
+            }
+
+            if (_draggingJoypadScrollKnob && leftClick)
+            {
+                MoveJoypadScrollToMouse(trackBounds, mouseState.Y);
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+                return true;
+            }
+
+            return false;
+        }
+
+        private void MoveJoypadScrollToMouse(Rectangle trackBounds, int mouseY)
+        {
+            int maxOffset = GetMaxJoypadScrollOffset();
+            if (trackBounds == Rectangle.Empty || maxOffset <= 0)
+            {
+                return;
+            }
+
+            Rectangle knobBounds = GetJoypadScrollKnobBounds(trackBounds);
+            int knobHeight = Math.Max(1, knobBounds.Height);
+            int minY = trackBounds.Y;
+            int maxY = trackBounds.Bottom - knobHeight;
+            int clampedY = Math.Clamp(mouseY - (knobHeight / 2), minY, maxY);
+            float ratio = maxY <= minY ? 0f : (clampedY - minY) / (float)(maxY - minY);
+            SetJoypadScrollOffset((int)Math.Round(ratio * maxOffset, MidpointRounding.AwayFromZero));
+        }
+
+        private void DrawJoypadScrollBar(SpriteBatch sprite)
+        {
+            Rectangle trackBounds = GetJoypadScrollTrackBounds();
+            if (trackBounds == Rectangle.Empty)
+            {
+                return;
+            }
+
+            sprite.Draw(_highlightTexture, trackBounds, new Color(18, 26, 42, 210));
+            Rectangle knobBounds = GetJoypadScrollKnobBounds(trackBounds);
+            Texture2D knobTexture = _scrollTextures != null && _scrollTextures.Length > 0
+                ? _scrollTextures[0]
+                : null;
+            if (knobTexture != null)
+            {
+                sprite.Draw(knobTexture, knobBounds, Color.White);
+            }
+            else
+            {
+                sprite.Draw(_highlightTexture, knobBounds, new Color(255, 228, 151));
             }
         }
 

@@ -53,6 +53,30 @@ namespace HaCreator.MapSimulator.Interaction
                 : error ?? "Packet-owned guild UI payload could not be decoded.";
         }
 
+        internal string ApplyClientGuildResultPayload(byte[] payload)
+        {
+            if (payload == null)
+            {
+                return "Client guild-result payload is missing.";
+            }
+
+            return SocialListPacketCodec.TryParseClientGuildResult(payload, out SocialListClientGuildResultPacket packet, out string error)
+                ? ApplyClientGuildResultDelta(packet)
+                : error ?? "Client guild-result payload could not be decoded.";
+        }
+
+        internal string ApplyClientAllianceResultPayload(byte[] payload)
+        {
+            if (payload == null)
+            {
+                return "Client alliance-result payload is missing.";
+            }
+
+            return SocialListPacketCodec.TryParseClientAllianceResult(payload, out SocialListClientAllianceResultPacket packet, out string error)
+                ? ApplyClientAllianceResultDelta(packet)
+                : error ?? "Client alliance-result payload could not be decoded.";
+        }
+
         internal string ApplyPacketOwnedRosterDelta(SocialListTab tab, SocialListRosterPacket packet)
         {
             return packet.Kind switch
@@ -89,6 +113,26 @@ namespace HaCreator.MapSimulator.Interaction
         internal string ApplyPacketOwnedGuildUiDelta(SocialListGuildUiPacket packet)
         {
             return SetPacketGuildUiContext(packet.HasGuildMembership, packet.GuildName, packet.GuildLevel);
+        }
+
+        internal string ApplyClientGuildResultDelta(SocialListClientGuildResultPacket packet)
+        {
+            return packet.Kind switch
+            {
+                SocialListClientGuildResultKind.RankTitles => SetPacketGuildRankTitles(packet.RankTitles, packet.GuildId),
+                SocialListClientGuildResultKind.Notice => SetPacketGuildNoticeText(packet.Notice, packet.GuildId),
+                _ => $"Unsupported client guild-result subtype {(byte)packet.Kind}."
+            };
+        }
+
+        internal string ApplyClientAllianceResultDelta(SocialListClientAllianceResultPacket packet)
+        {
+            return packet.Kind switch
+            {
+                SocialListClientAllianceResultKind.RankTitles => SetPacketAllianceRankTitles(packet.RankTitles, packet.AllianceId),
+                SocialListClientAllianceResultKind.Notice => SetPacketAllianceNoticeText(packet.Notice, packet.AllianceId),
+                _ => $"Unsupported client alliance-result subtype {(byte)packet.Kind}."
+            };
         }
 
         private string ApplyPacketOwnedRosterReplace(SocialListTab tab, SocialListRosterPacket packet)

@@ -32,6 +32,7 @@ namespace HaCreator.MapSimulator.Fields
             var resolvedTags = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             var retiredTags = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             AddIfAvailable(trimmedScriptName, availableTagSet, resolvedTags);
+            AddQuestScriptAliasCandidates(trimmedScriptName, availableTagSet, resolvedTags);
 
             if (TryParseTrailingStage(trimmedScriptName, out string scriptBaseName, out int stage))
             {
@@ -65,12 +66,35 @@ namespace HaCreator.MapSimulator.Fields
                 retiredTags.Count == 0 ? Array.Empty<string>() : new List<string>(retiredTags));
         }
 
+        public static bool TryResolvePublishedTagMutation(
+            string scriptName,
+            IEnumerable<string> availableTags,
+            out PublishedTagMutation mutation)
+        {
+            mutation = ResolvePublishedTagMutation(scriptName, availableTags);
+            return mutation.TagsToEnable.Count > 0 || mutation.TagsToDisable.Count > 0;
+        }
+
         private static void AddIfAvailable(string candidateTag, ISet<string> availableTags, ISet<string> resolvedTags)
         {
             if (!string.IsNullOrWhiteSpace(candidateTag) && availableTags.Contains(candidateTag))
             {
                 resolvedTags.Add(candidateTag);
             }
+        }
+
+        private static void AddQuestScriptAliasCandidates(
+            string scriptName,
+            ISet<string> availableTags,
+            ISet<string> resolvedTags)
+        {
+            if (!TryParseQuestScriptAlias(scriptName, out string questScriptBaseName, out string questIdTag))
+            {
+                return;
+            }
+
+            AddIfAvailable(questScriptBaseName, availableTags, resolvedTags);
+            AddIfAvailable(questIdTag, availableTags, resolvedTags);
         }
 
         private static void AddSiblingStageTags(
@@ -159,6 +183,46 @@ namespace HaCreator.MapSimulator.Fields
 
             scriptBaseName = scriptName[..separatorIndex];
             return !string.IsNullOrWhiteSpace(scriptBaseName);
+        }
+
+        private static bool TryParseQuestScriptAlias(
+            string scriptName,
+            out string questScriptBaseName,
+            out string questIdTag)
+        {
+            questScriptBaseName = null;
+            questIdTag = null;
+            if (string.IsNullOrWhiteSpace(scriptName)
+                || scriptName.Length < 4
+                || scriptName[0] is not ('q' or 'Q'))
+            {
+                return false;
+            }
+
+            int suffixIndex = scriptName.Length - 1;
+            char suffix = char.ToLowerInvariant(scriptName[suffixIndex]);
+            if (suffix != 's' && suffix != 'e')
+            {
+                return false;
+            }
+
+            string questId = scriptName[1..suffixIndex];
+            if (string.IsNullOrWhiteSpace(questId))
+            {
+                return false;
+            }
+
+            for (int i = 0; i < questId.Length; i++)
+            {
+                if (!char.IsDigit(questId[i]))
+                {
+                    return false;
+                }
+            }
+
+            questScriptBaseName = scriptName[..suffixIndex];
+            questIdTag = questId;
+            return true;
         }
 
         private static string ToCamelCase(string value)

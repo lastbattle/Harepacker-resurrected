@@ -346,6 +346,7 @@ namespace HaCreator.MapSimulator
         private void ApplyPacketOwnedFootholdInfo(IReadOnlyList<PacketFieldUtilityFootholdEntry> entries)
         {
             _packetFieldUtilityFootholdEntries.Clear();
+            _packetFieldUtilityFootholdNamesBySerial.Clear();
             if (entries != null)
             {
                 _packetFieldUtilityFootholdEntries.AddRange(entries);
@@ -493,9 +494,11 @@ namespace HaCreator.MapSimulator
 
         private IReadOnlyList<PacketFieldUtilityFootholdEntry> BuildPacketOwnedFootholdSnapshot()
         {
-            if (_packetFieldUtilityFootholdEntries.Count > 0)
+            if (_dynamicFootholds == null || _dynamicFootholds.PlatformCount == 0)
             {
-                return _packetFieldUtilityFootholdEntries.ToArray();
+                return _packetFieldUtilityFootholdEntries.Count == 0
+                    ? Array.Empty<PacketFieldUtilityFootholdEntry>()
+                    : _packetFieldUtilityFootholdEntries.ToArray();
             }
 
             List<PacketFieldUtilityFootholdEntry> entries = new();
@@ -523,7 +526,14 @@ namespace HaCreator.MapSimulator
                         !platform.MovingRight)));
             }
 
-            return entries;
+            if (entries.Count > 0)
+            {
+                return entries;
+            }
+
+            return _packetFieldUtilityFootholdEntries.Count == 0
+                ? Array.Empty<PacketFieldUtilityFootholdEntry>()
+                : _packetFieldUtilityFootholdEntries.ToArray();
         }
 
         private string ResolvePacketOwnedDynamicPlatformSnapshotName(int platformId)

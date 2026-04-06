@@ -133,6 +133,12 @@ namespace HaCreator.MapSimulator.Fields
         private const string PartyRaidBossGaugeFillClientAsset = "UI/UIWindow.img/DualMobGauge/gauge";
         private const string PartyRaidBossGaugeIconClientAsset = "UI/UIWindow.img/DualMobGauge/Mob/9700036";
         private const string PartyRaidBossPointBoardClientAsset = "UI/UIWindow.img/PartyRace/Stage/backgrd";
+        private const string PartyRaidElapsedTimeAtBossLiteral = "PRaid_ElapssedTimeAtBoss";
+        private const string PartyRaidTeamLiteral = "PRaid_Team";
+        private const string PartyRaidRedStageLiteral = "Red_Stage";
+        private const string PartyRaidBlueStageLiteral = "Blue_Stage";
+        private const string PartyRaidRedTeamLiteral = "Red Team";
+        private const string PartyRaidBlueTeamLiteral = "Blue Team";
         private static readonly ClientStringPoolEvidence PartyRaidPointStringPoolEvidence = new(
             PartyRaidPointStringId,
             0x8E,
@@ -492,6 +498,17 @@ namespace HaCreator.MapSimulator.Fields
                 return false;
             }
 
+            if (MatchesAlias(key, PartyRaidTeamLiteral))
+            {
+                if (TryParseTeamColor(value, out PartyRaidTeamColor teamColor))
+                {
+                    SetTeamColor(teamColor);
+                    return true;
+                }
+
+                return false;
+            }
+
             if (MatchesAlias(key, "outcome", "result"))
             {
                 if (TryParseOutcome(value, out PartyRaidResultOutcome outcome))
@@ -506,6 +523,24 @@ namespace HaCreator.MapSimulator.Fields
             if (!TryParseNonNegative(value, out int parsedValue))
             {
                 return false;
+            }
+
+            if (MatchesAlias(key, PartyRaidElapsedTimeAtBossLiteral))
+            {
+                OnClock(2, parsedValue, Environment.TickCount);
+                return true;
+            }
+
+            if (MatchesAlias(key, PartyRaidRedStageLiteral))
+            {
+                SetAbsoluteStage(PartyRaidTeamColor.Red, parsedValue);
+                return true;
+            }
+
+            if (MatchesAlias(key, PartyRaidBlueStageLiteral))
+            {
+                SetAbsoluteStage(PartyRaidTeamColor.Blue, parsedValue);
+                return true;
             }
 
             if (MatchesAlias(key, "redDamage", "red", "damage_r", "partyraid_red")
@@ -653,12 +688,19 @@ namespace HaCreator.MapSimulator.Fields
             return true;
         }
 
-        internal bool TryApplyFieldSpecificPair(string key, string value, PacketFieldSpecificDataOwnerHint ownerHint, out string appliedOwner)
+        internal bool TryApplyFieldSpecificPair(string key, string value, PacketFieldSpecificDataOwnerHint ownerHint, int currentTimeMs, out string appliedOwner)
         {
             appliedOwner = null;
             if (string.IsNullOrWhiteSpace(key))
             {
                 return false;
+            }
+
+            if (ownerHint is PacketFieldSpecificDataOwnerHint.None or PacketFieldSpecificDataOwnerHint.Field
+                && TryApplyRecoveredFieldLiteral(key, value, currentTimeMs))
+            {
+                appliedOwner = "field";
+                return true;
             }
 
             bool applied = ownerHint switch
@@ -1412,6 +1454,18 @@ namespace HaCreator.MapSimulator.Fields
         private string DescribeOtherStageStatus() => _otherStage != _mineStage ? $" (other {_otherStage})" : string.Empty;
         private string DescribeBatteryStatus() => _batteryCharge > 0 ? $", battery {_batteryCharge}/{Math.Max(1, _batteryCapacity)}" : string.Empty;
         private static string FormatTimer(int remainingSeconds) { int clamped = Math.Max(0, remainingSeconds); return string.Format(CultureInfo.InvariantCulture, "{0:D2}:{1:D2}", clamped / 60, clamped % 60); }
+        private void SetAbsoluteStage(PartyRaidTeamColor stageOwner, int stage)
+        {
+            int clampedStage = ClampStage(stage);
+            if (_teamColor == stageOwner)
+            {
+                _mineStage = clampedStage;
+                return;
+            }
+
+            _otherStage = clampedStage;
+        }
+
         internal int GetMineStateX() => StateMineStageBaseX + ((ClampStage(_mineStage) - 1) * StateStageStepX);
         internal int GetOtherStateX() => StateOtherStageBaseX + ((ClampStage(_otherStage) - 1) * StateStageStepX);
         internal int GetMineStateY() => StateMineY;
@@ -1430,6 +1484,44 @@ namespace HaCreator.MapSimulator.Fields
         private bool TryApplyFieldOwnedPair(string key, string value) => OnFieldSetVariable(key, value);
         private bool TryApplyPartyOwnedPair(string key, string value) => OnPartyValue(key, value);
         private bool TryApplySessionOwnedPair(string key, string value) => OnSessionValue(key, value);
+        private bool TryApplyRecoveredFieldLiteral(string key, string value, int currentTimeMs)
+        {
+            if (MatchesAlias(key, PartyRaidTeamLiteral))
+            {
+                if (!TryParseTeamColor(value, out PartyRaidTeamColor teamColor))
+                {
+                    return false;
+                }
+
+                SetTeamColor(teamColor);
+                return true;
+            }
+
+            if (!TryParseNonNegative(value, out int parsedValue))
+            {
+                return false;
+            }
+
+            if (MatchesAlias(key, PartyRaidElapsedTimeAtBossLiteral))
+            {
+                OnClock(2, parsedValue, currentTimeMs);
+                return true;
+            }
+
+            if (MatchesAlias(key, PartyRaidRedStageLiteral))
+            {
+                SetAbsoluteStage(PartyRaidTeamColor.Red, parsedValue);
+                return true;
+            }
+
+            if (MatchesAlias(key, PartyRaidBlueStageLiteral))
+            {
+                SetAbsoluteStage(PartyRaidTeamColor.Blue, parsedValue);
+                return true;
+            }
+
+            return false;
+        }
 
         private bool TryApplyUnknownOwnedPair(string key, string value, out string appliedOwner)
         {
@@ -1669,6 +1761,8 @@ namespace HaCreator.MapSimulator.Fields
             if (StartsWithPartyRaidScript(text, "PRaid_W_")) { teamColor = PartyRaidTeamColor.Red; return true; }
             if (string.Equals(text, "blue", StringComparison.OrdinalIgnoreCase)) { teamColor = PartyRaidTeamColor.Blue; return true; }
             if (string.Equals(text, "red", StringComparison.OrdinalIgnoreCase)) { teamColor = PartyRaidTeamColor.Red; return true; }
+            if (string.Equals(text, PartyRaidBlueTeamLiteral, StringComparison.OrdinalIgnoreCase)) { teamColor = PartyRaidTeamColor.Blue; return true; }
+            if (string.Equals(text, PartyRaidRedTeamLiteral, StringComparison.OrdinalIgnoreCase)) { teamColor = PartyRaidTeamColor.Red; return true; }
             if (string.Equals(text, "1", StringComparison.OrdinalIgnoreCase)) { teamColor = PartyRaidTeamColor.Blue; return true; }
             if (string.Equals(text, "0", StringComparison.OrdinalIgnoreCase)) { teamColor = PartyRaidTeamColor.Red; return true; }
             teamColor = PartyRaidTeamColor.Red;

@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using HaCreator.MapSimulator.Character.Skills;
 
 namespace HaCreator.MapSimulator.Character
 {
@@ -384,6 +385,55 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return Array.Empty<int>();
+        }
+
+        public static SkillAnimation ResolvePlaybackAnimation(
+            IReadOnlyDictionary<string, SkillAnimation> actionAnimations,
+            string resolvedActionName,
+            string playerActionName,
+            string rawActionName = null)
+        {
+            if (actionAnimations == null
+                || string.IsNullOrWhiteSpace(resolvedActionName)
+                || !actionAnimations.TryGetValue(resolvedActionName, out SkillAnimation baseAnimation)
+                || baseAnimation?.Frames == null
+                || baseAnimation.Frames.Count == 0)
+            {
+                return null;
+            }
+
+            IReadOnlyList<int> frameRemap = ResolveClientFrameRemap(
+                playerActionName,
+                rawActionName,
+                resolvedActionName,
+                baseAnimation.Frames.Count);
+            if (frameRemap == null || frameRemap.Count == 0)
+            {
+                return baseAnimation;
+            }
+
+            var remappedFrames = new List<SkillFrame>(frameRemap.Count);
+            foreach (int requestedIndex in frameRemap)
+            {
+                int frameIndex = Math.Clamp(requestedIndex, 0, baseAnimation.Frames.Count - 1);
+                remappedFrames.Add(baseAnimation.Frames[frameIndex]);
+            }
+
+            if (remappedFrames.Count == 0)
+            {
+                return baseAnimation;
+            }
+
+            var remappedAnimation = new SkillAnimation
+            {
+                Name = baseAnimation.Name,
+                Frames = remappedFrames,
+                Loop = baseAnimation.Loop,
+                Origin = baseAnimation.Origin,
+                ZOrder = baseAnimation.ZOrder
+            };
+            remappedAnimation.CalculateDuration();
+            return remappedAnimation;
         }
 
         private static bool ShouldPreferActionSpecificAliasCandidates(string playerActionName)

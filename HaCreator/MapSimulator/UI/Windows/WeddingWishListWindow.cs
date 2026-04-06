@@ -241,7 +241,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void HandleKeyboard(KeyboardState keyboardState)
         {
-            if (Pressed(keyboardState, Keys.Escape))
+            if (_snapshot.Mode != WeddingWishListDialogMode.Input && Pressed(keyboardState, Keys.Escape))
             {
                 ShowFeedback(_closeHandler?.Invoke());
                 return;
@@ -327,9 +327,7 @@ namespace HaCreator.MapSimulator.UI
                         break;
 
                     case WeddingWishListDialogMode.Input:
-                        ShowFeedback(_snapshot.ActivePane == WeddingWishListSelectionPane.WishList
-                            ? _confirmHandler?.Invoke()
-                            : _enterSelectedHandler?.Invoke());
+                        ShowFeedback(_enterSelectedHandler?.Invoke());
                         break;
                 }
             }

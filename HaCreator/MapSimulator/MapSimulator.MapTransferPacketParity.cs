@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.UI;
 using Microsoft.Xna.Framework;
@@ -11,6 +12,8 @@ namespace HaCreator.MapSimulator
 {
     public partial class MapSimulator
     {
+        private string _lastAuthoritativeMapTransferBootstrapSummary = "Authoritative map-transfer bootstrap idle.";
+
         private sealed class PendingOfficialMapTransferRequest
         {
             public CharacterBuild Build { get; init; }
@@ -126,6 +129,52 @@ namespace HaCreator.MapSimulator
                     : response.FailureMessage ?? $"map transfer result {response.PacketResultCode}";
                 _mapTransferOfficialSessionBridge.RecordDispatchResult(message.Source, success: true, detail);
             }
+        }
+
+        private void UpdatePacketOwnedMapTransferBootstrapFromSetField(PacketSetFieldPacket packet)
+        {
+            if (!packet.HasCharacterData)
+            {
+                _lastAuthoritativeMapTransferBootstrapSummary = "Skipped map-transfer bootstrap because the latest SetField branch did not carry CharacterData.";
+                return;
+            }
+
+            if ((packet.CharacterDataFlags & MapTransferAuthoritativeBootstrapDecoder.CharacterDataMapTransferFlag) == 0)
+            {
+                _lastAuthoritativeMapTransferBootstrapSummary =
+                    $"Skipped map-transfer bootstrap because CharacterData dbcharFlag 0x{packet.CharacterDataFlags.ToString("X", CultureInfo.InvariantCulture)} did not include the client-owned 0x1000 map-transfer arrays.";
+                return;
+            }
+
+            CharacterBuild build = GetActiveMapTransferCharacterBuild();
+            if (build == null)
+            {
+                _lastAuthoritativeMapTransferBootstrapSummary = "Skipped map-transfer bootstrap because no active player or selected login-roster character is available.";
+                return;
+            }
+
+            byte[] trailingPayload = packet.TrailingPayload ?? Array.Empty<byte>();
+            if (!MapTransferAuthoritativeBootstrapDecoder.TryFindBootstrapBooks(
+                    trailingPayload,
+                    IsPlausibleAuthoritativeMapTransferMapId,
+                    out int[] regularFields,
+                    out int[] continentFields,
+                    out int matchedOffset))
+            {
+                _lastAuthoritativeMapTransferBootstrapSummary =
+                    $"CharacterData dbcharFlag 0x{packet.CharacterDataFlags.ToString("X", CultureInfo.InvariantCulture)} exposed the client-owned map-transfer branch, but no authoritative 5+10 slot array could be recovered from the remaining {trailingPayload.Length.ToString(CultureInfo.InvariantCulture)} byte payload tail.";
+                return;
+            }
+
+            _mapTransferRuntime.ApplyAuthoritativeBootstrap(build, regularFields, continentFields);
+            RefreshMapTransferWindow();
+            _lastAuthoritativeMapTransferBootstrapSummary =
+                $"Hydrated authoritative map-transfer books for {build.Name ?? "Character"} from CharacterData dbcharFlag 0x{packet.CharacterDataFlags.ToString("X", CultureInfo.InvariantCulture)} at payload offset {matchedOffset.ToString(CultureInfo.InvariantCulture)}.";
+        }
+
+        private bool IsPlausibleAuthoritativeMapTransferMapId(int mapId)
+        {
+            return mapId > 0 && ResolveMapTransferDestinationMapInfo(mapId) != null;
         }
 
         private string DescribeMapTransferOfficialSessionBridgeStatus()

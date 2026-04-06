@@ -42,7 +42,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         {
             "attack1",
             "attack",
-            "attack0"
+            "attack0",
+            "attackTriangle"
         };
 
         private static readonly string[] SupplementalSummonAnimationBranches =
@@ -334,6 +335,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 skill.SpecialNormalAttackInState = GetInt(infoNode, "specialNormalAttack") == 1;
                 skill.RedirectsDamageToMp = GetInt(infoNode, "switchDamtoMP") == 1;
                 skill.HasInvincibleMetadata = GetInt(infoNode, "invincible") == 1;
+                skill.HasDispelMetadata = GetInt(infoNode, "dispell") == 1;
                 skill.UsesEnergyChargeRuntime = GetInt(infoNode, "energyCharge") == 1;
                 skill.HasChargingSkillMetadata = GetInt(infoNode, "chargingSkill") == 1;
                 skill.FullChargeEffectName = GetString(infoNode, "fullChargeEffect");

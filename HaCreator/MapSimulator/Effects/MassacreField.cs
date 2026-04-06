@@ -135,16 +135,16 @@ namespace HaCreator.MapSimulator.Effects
         private const int ResultScoreX = 258;
         private const int ResultScoreY = 168;
         private const string TimerboardSourcePath = "UI/UIWindow(.2).img/*[258x61 timerboard canvas]";
-        private const string TimerDigitSourcePath = "UI/UIWindow2.img/MonsterKilling/Count/number";
-        private const string CountDigitSourcePath = "UI/UIWindow2.img/MonsterKilling/Count/number2";
-        private const string CountBoardPath = "UI/UIWindow2.img/MonsterKilling/Count/backgrd0";
-        private const string CountBoardSkillPath = "UI/UIWindow2.img/MonsterKilling/Count/backgrd1";
-        private const string GaugeRootPath = "UI/UIWindow2.img/MonsterKilling/Gauge";
-        private const string ResultBoardPath = "UI/UIWindow2.img/MonsterKilling/Result/backgrd";
-        private const string ResultOverlayPath = "UI/UIWindow2.img/MonsterKilling/Result/backgrd2";
-        private const string ResultRateDigitPath = "UI/UIWindow2.img/MonsterKilling/Result/number";
-        private const string ResultScoreDigitPath = "UI/UIWindow2.img/MonsterKilling/Result/number2";
-        private const string ResultRankPath = "UI/UIWindow2.img/MonsterKilling/Result/Rank";
+        private const string TimerDigitSourcePath = "UI/UIWindow(.2).img/MonsterKilling/Count/number";
+        private const string CountDigitSourcePath = "UI/UIWindow(.2).img/MonsterKilling/Count/number2";
+        private const string CountBoardPath = "UI/UIWindow(.2).img/MonsterKilling/Count/backgrd0";
+        private const string CountBoardSkillPath = "UI/UIWindow(.2).img/MonsterKilling/Count/backgrd1";
+        private const string GaugeRootPath = "UI/UIWindow(.2).img/MonsterKilling/Gauge";
+        private const string ResultBoardPath = "UI/UIWindow(.2).img/MonsterKilling/Result/backgrd";
+        private const string ResultOverlayPath = "UI/UIWindow(.2).img/MonsterKilling/Result/backgrd2";
+        private const string ResultRateDigitPath = "UI/UIWindow(.2).img/MonsterKilling/Result/number";
+        private const string ResultScoreDigitPath = "UI/UIWindow(.2).img/MonsterKilling/Result/number2";
+        private const string ResultRankPath = "UI/UIWindow(.2).img/MonsterKilling/Result/Rank";
         private const string ResultEffectRootPath = "Map/Effect.img/killing/yeti{0..4}";
         private static readonly StringPoolEntryEvidence TimerboardSourceEvidence = new(
             TimerboardSourceStringPoolId,
@@ -211,8 +211,6 @@ namespace HaCreator.MapSimulator.Effects
         private int _keyAnimationStageStart = int.MinValue;
         private bool _disableSkill;
         private readonly List<MassacreCountEffect> _countEffects = new();
-        private string _countEffectBannerText;
-        private int _countEffectBannerUntilMs = int.MinValue;
         private int _countEffectPresentationStartTick = int.MinValue;
         private int _countEffectPresentationStage;
         private GraphicsDevice _device;
@@ -382,13 +380,12 @@ namespace HaCreator.MapSimulator.Effects
                     _countEffects.Sort(static (left, right) => left.Threshold.CompareTo(right.Threshold));
                 }
                 _currentGauge = Math.Clamp(_currentGauge, 0, _maxGauge);
-                    _displayGauge = Math.Clamp(_displayGauge, 0f, _maxGauge);
-                    if (_disableSkill)
-                    {
-                        _keyAnimationStage = -1;
-                        _keyAnimationStageStart = int.MinValue;
-                        _skillCount = 0;
-                    }
+                _displayGauge = Math.Clamp(_displayGauge, 0f, _maxGauge);
+                if (_disableSkill)
+                {
+                    _keyAnimationStage = -1;
+                    _keyAnimationStageStart = int.MinValue;
+                }
                 return;
             }
         }
@@ -426,8 +423,6 @@ namespace HaCreator.MapSimulator.Effects
             _clearEffectStartTime = int.MinValue;
             _keyAnimationStage = -1;
             _keyAnimationStageStart = int.MinValue;
-            _countEffectBannerText = null;
-            _countEffectBannerUntilMs = int.MinValue;
             _countEffectPresentationStartTick = int.MinValue;
             _countEffectPresentationStage = 0;
             _bonusPresentationStartTick = int.MinValue;
@@ -580,7 +575,7 @@ namespace HaCreator.MapSimulator.Effects
             EnsureAssetsLoaded();
             Viewport viewport = spriteBatch.GraphicsDevice.Viewport;
             DrawTimerboard(spriteBatch, pixelTexture, font, viewport);
-            DrawGaugeHud(spriteBatch, pixelTexture, font, viewport);
+            DrawGaugeHud(spriteBatch, pixelTexture, viewport);
             DrawCountBoard(spriteBatch, font);
             DrawKeyAnimation(spriteBatch, pixelTexture, font);
             DrawCountEffectPresentation(spriteBatch, font, viewport, Environment.TickCount);
@@ -691,7 +686,7 @@ namespace HaCreator.MapSimulator.Effects
             _missCount = Math.Max(0, miss);
             _coolCount = Math.Max(0, cool);
 
-            int nextSkillCount = _disableSkill ? 0 : Math.Max(0, skill);
+            int nextSkillCount = Math.Max(0, skill);
             int previousSkillCount = _skillCount;
             _skillCount = nextSkillCount;
 
@@ -787,7 +782,7 @@ namespace HaCreator.MapSimulator.Effects
                 DrawDigitString(spriteBatch, font, secondText, new Vector2(bounds.X + TimerSecondTextX, bounds.Y + TimerTextY), timeColor);
             }
         }
-        private void DrawGaugeHud(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font, Viewport viewport)
+        private void DrawGaugeHud(SpriteBatch spriteBatch, Texture2D pixelTexture, Viewport viewport)
         {
             int gaugeX = viewport.Width / 2 + GaugeOffsetX;
             Rectangle fillBounds = new(gaugeX + GaugeFillOffsetX, GaugeY + GaugeFillOffsetY, GaugeFillWidth, GaugeFillHeight);
@@ -800,7 +795,7 @@ namespace HaCreator.MapSimulator.Effects
                 Rectangle fallbackBounds = new(gaugeX, GaugeY, GaugeWidth + (GaugeFillOffsetX * 2), GaugeHeight + GaugeFillOffsetY);
                 spriteBatch.Draw(pixelTexture, fallbackBounds, new Color(25, 18, 16, 224));
             }
-            int fillWidth = Math.Clamp((int)MathF.Round(fillBounds.Width * GaugeProgress), 0, fillBounds.Width);
+            int fillWidth = GetGaugeFillWidth();
             if (fillWidth > 0)
             {
                 Texture2D gaugeFillTexture = _gaugePixelTexture ?? pixelTexture;
@@ -817,36 +812,6 @@ namespace HaCreator.MapSimulator.Effects
             else if (_gaugeTextTexture != null)
             {
                 spriteBatch.Draw(_gaugeTextTexture, new Vector2(gaugeX, GaugeY + GaugeLabelOffsetY), Color.White);
-            }
-            if (font == null)
-            {
-                return;
-            }
-            string gaugeText = $"{_currentGauge}/{_maxGauge}";
-            string statusText = _comboCount > 1 ? $"{_comboCount}x combo" : $"{_killCount} kills";
-            Color statusColor = _comboCount >= 10 ? Color.Gold : _comboCount >= 5 ? Color.Orange : new Color(238, 220, 191);
-            string nextThresholdText = GetNextCountEffectThreshold() is int threshold
-                ? $"next {threshold}"
-                : null;
-            Vector2 gaugeTextPos = new(gaugeX + 180, GaugeY + 14);
-            spriteBatch.DrawString(font, gaugeText, gaugeTextPos + Vector2.One, Color.Black);
-            spriteBatch.DrawString(font, gaugeText, gaugeTextPos, Color.White);
-            Vector2 infoPos = new(gaugeX + 10, GaugeY + 18);
-            spriteBatch.DrawString(font, statusText, infoPos + Vector2.One, Color.Black);
-            spriteBatch.DrawString(font, statusText, infoPos, statusColor);
-            if (!string.IsNullOrWhiteSpace(nextThresholdText))
-            {
-                Vector2 nextThresholdSize = font.MeasureString(nextThresholdText);
-                Vector2 nextPos = new(gaugeX + GaugeWidth - nextThresholdSize.X, GaugeY + 18);
-                spriteBatch.DrawString(font, nextThresholdText, nextPos + Vector2.One, Color.Black);
-                spriteBatch.DrawString(font, nextThresholdText, nextPos, new Color(214, 197, 166));
-            }
-            if (!string.IsNullOrWhiteSpace(_countEffectBannerText) && Environment.TickCount < _countEffectBannerUntilMs)
-            {
-                Vector2 bannerSize = font.MeasureString(_countEffectBannerText);
-                Vector2 bannerPos = new((viewport.Width - bannerSize.X) / 2f, GaugeY + 34);
-                spriteBatch.DrawString(font, _countEffectBannerText, bannerPos + Vector2.One, Color.Black);
-                spriteBatch.DrawString(font, _countEffectBannerText, bannerPos, new Color(255, 223, 132));
             }
         }
         private void DrawCountBoard(SpriteBatch spriteBatch, SpriteFont font)
@@ -969,9 +934,6 @@ namespace HaCreator.MapSimulator.Effects
                 {
                     continue;
                 }
-                string effectText = _countEffects[i].RequiresSkillUse ? " skill" : " buff";
-                _countEffectBannerText = $"{_countEffects[i].Threshold} kills{effectText}";
-                _countEffectBannerUntilMs = currentTimeMs + 1800;
                 TriggerCountEffectPresentation(i + 1, currentTimeMs);
                 return;
             }
@@ -1040,7 +1002,7 @@ namespace HaCreator.MapSimulator.Effects
             {
                 return;
             }
-            WzImage uiWindow = null;
+            List<WzImage> uiImages = new();
             foreach (string imageName in UiImageNames)
             {
                 WzImage uiImage = global::HaCreator.Program.FindImage("UI", imageName);
@@ -1048,25 +1010,26 @@ namespace HaCreator.MapSimulator.Effects
                 {
                     continue;
                 }
-                uiWindow ??= uiImage;
-                _timerboardSourceTexture ??= LoadCanvasTexture(FindTimerboardSourceCanvas(uiImage));
+                uiImages.Add(uiImage);
             }
+
+            _timerboardSourceTexture = LoadCanvasTexture(FindTimerboardSourceCanvas(uiImages));
             WzImage effectImage = global::HaCreator.Program.FindImage("Map", "Effect.img")
                 ?? global::HaCreator.Program.FindImage("Map", "effect.img");
-            WzImageProperty monsterKilling = uiWindow?["MonsterKilling"];
-            WzImageProperty count = monsterKilling?["Count"];
-            WzImageProperty gauge = monsterKilling?["Gauge"];
-            WzImageProperty result = monsterKilling?["Result"];
-            LoadDigitTextures(count?["number"], _timerDigits);
+            WzImageProperty count = FindFirstUiProperty(uiImages, "MonsterKilling/Count");
+            WzImageProperty gauge = FindFirstUiProperty(uiImages, "MonsterKilling/Gauge");
+            WzImageProperty result = FindFirstUiProperty(uiImages, "MonsterKilling/Result");
+
+            LoadDigitTextures(FindFirstUiProperty(uiImages, "MonsterKilling/Count/number"), _timerDigits);
             // CField_Massacre::Init resolves StringPool 0x1513 into the count-board bitmap digits.
-            LoadDigitTextures(count?["number2"], _countDigits);
-            _countBoardTexture = LoadCanvasTexture(count?["backgrd0"] as WzCanvasProperty);
-            _countBoardSkillTexture = LoadCanvasTexture(count?["backgrd1"] as WzCanvasProperty);
+            LoadDigitTextures(FindFirstUiProperty(uiImages, "MonsterKilling/Count/number2"), _countDigits);
+            _countBoardTexture = LoadCanvasTexture(FindFirstUiProperty(uiImages, "MonsterKilling/Count/backgrd0") as WzCanvasProperty);
+            _countBoardSkillTexture = LoadCanvasTexture(FindFirstUiProperty(uiImages, "MonsterKilling/Count/backgrd1") as WzCanvasProperty);
             // CField_Massacre::Init maps StringPool ids 0x1519/0x151A and 0x1516-0x1518/0x151B
             // onto the normal and danger gauge layers recovered from MonsterKilling/Gauge.
-            _gaugeBackgroundTexture = LoadCanvasTexture(gauge?["backgrd"] as WzCanvasProperty);
-            _gaugeTextTexture = LoadCanvasTexture(gauge?["text"] as WzCanvasProperty);
-            _gaugePixelTexture = LoadCanvasTexture(gauge?["pixel"] as WzCanvasProperty);
+            _gaugeBackgroundTexture = LoadCanvasTexture(FindFirstUiProperty(uiImages, "MonsterKilling/Gauge/backgrd") as WzCanvasProperty);
+            _gaugeTextTexture = LoadCanvasTexture(FindFirstUiProperty(uiImages, "MonsterKilling/Gauge/text") as WzCanvasProperty);
+            _gaugePixelTexture = LoadCanvasTexture(FindFirstUiProperty(uiImages, "MonsterKilling/Gauge/pixel") as WzCanvasProperty);
             _dangerFrames = LoadAnimationFrames(gauge?["danger"]);
             _dangerIconFrames = LoadAnimationFrames(gauge?["iconD"]);
             _dangerTextFrames = LoadAnimationFrames(gauge?["textD"]);
@@ -1074,12 +1037,12 @@ namespace HaCreator.MapSimulator.Effects
             _keyOpenFrames = LoadAnimationFrames(count?["keyBackgrd"]?["open"]);
             _keyLoopFrames = LoadAnimationFrames(count?["keyBackgrd"]?["ing"]);
             _keyCloseFrames = LoadAnimationFrames(count?["keyBackgrd"]?["close"]);
-            _resultBoardTexture = LoadCanvasTexture(result?["backgrd"] as WzCanvasProperty);
+            _resultBoardTexture = LoadCanvasTexture(FindFirstUiProperty(uiImages, "MonsterKilling/Result/backgrd") as WzCanvasProperty);
             _resultBoardPulseFrames = LoadAnimationFrames(result?["backgrd2"]);
             // CField_MassacreResult::Init constructs the small and big CBitmapNumber helpers from
             // StringPool ids 0x151E and 0x151F, which resolve onto Result/number and Result/number2.
-            LoadDigitTextures(result?["number"], _resultRateDigits);
-            LoadDigitTextures(result?["number2"], _resultDigits, out _resultPlusTexture);
+            LoadDigitTextures(FindFirstUiProperty(uiImages, "MonsterKilling/Result/number"), _resultRateDigits);
+            LoadDigitTextures(FindFirstUiProperty(uiImages, "MonsterKilling/Result/number2"), _resultDigits, out _resultPlusTexture);
             // CField_MassacreResult::OnMassacreResult resolves rank-specific layer ids 0x1520-0x1524
             // onto Result/Rank/{a,b,c,d,s} before drawing the repeated result board overlay.
             LoadRankTextures(result?["Rank"]);
@@ -1353,20 +1316,118 @@ namespace HaCreator.MapSimulator.Effects
             }
             return frames.Count > 0 ? frames : null;
         }
-        private static WzCanvasProperty FindTimerboardSourceCanvas(WzImage image)
+        private static WzCanvasProperty FindTimerboardSourceCanvas(IEnumerable<WzImage> images)
         {
-            foreach (WzImageProperty property in EnumeratePropertiesDepthFirst(image))
+            if (images == null)
             {
-                if (property is not WzCanvasProperty canvas)
+                return null;
+            }
+
+            foreach (WzImage image in images)
+            {
+                WzCanvasProperty preferredCanvas = FindTimerboardSourceCanvas(image, "MapleEvent");
+                if (preferredCanvas != null)
+                {
+                    return preferredCanvas;
+                }
+
+                preferredCanvas = FindTimerboardSourceCanvas(image, "MonsterKilling");
+                if (preferredCanvas != null)
+                {
+                    return preferredCanvas;
+                }
+            }
+
+            foreach (WzImage image in images)
+            {
+                WzCanvasProperty fallbackCanvas = FindTimerboardSourceCanvas(image, null);
+                if (fallbackCanvas != null)
+                {
+                    return fallbackCanvas;
+                }
+            }
+
+            return null;
+        }
+
+        private static WzCanvasProperty FindTimerboardSourceCanvas(WzImage image, string preferredRootName)
+        {
+            if (image?.WzProperties == null)
+            {
+                return null;
+            }
+
+            IEnumerable<WzImageProperty> roots = string.IsNullOrWhiteSpace(preferredRootName)
+                ? image.WzProperties
+                : image.WzProperties.Where(property => string.Equals(property?.Name, preferredRootName, StringComparison.OrdinalIgnoreCase));
+
+            foreach (WzImageProperty root in roots)
+            {
+                if (root is WzCanvasProperty rootCanvas
+                    && TryMatchCanvasSize(rootCanvas, TimerboardWidth, TimerboardHeight))
+                {
+                    return rootCanvas;
+                }
+
+                if (root is not IPropertyContainer rootContainer)
                 {
                     continue;
                 }
-                if (TryMatchCanvasSize(canvas, TimerboardWidth, TimerboardHeight))
+
+                foreach (WzImageProperty property in EnumeratePropertiesDepthFirst(rootContainer))
                 {
-                    return canvas;
+                    if (property is not WzCanvasProperty canvas)
+                    {
+                        continue;
+                    }
+
+                    if (TryMatchCanvasSize(canvas, TimerboardWidth, TimerboardHeight))
+                    {
+                        return canvas;
+                    }
                 }
             }
+
             return null;
+        }
+
+        private static WzImageProperty FindFirstUiProperty(IEnumerable<WzImage> images, string relativePath)
+        {
+            if (images == null || string.IsNullOrWhiteSpace(relativePath))
+            {
+                return null;
+            }
+
+            foreach (WzImage image in images)
+            {
+                WzImageProperty property = ResolvePropertyPath(image, relativePath);
+                if (property != null)
+                {
+                    return property;
+                }
+            }
+
+            return null;
+        }
+
+        private static WzImageProperty ResolvePropertyPath(WzImage image, string relativePath)
+        {
+            if (image?.WzProperties == null || string.IsNullOrWhiteSpace(relativePath))
+            {
+                return null;
+            }
+
+            WzImageProperty current = null;
+            foreach (string segment in relativePath.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries))
+            {
+                current = current == null ? image[segment] : current[segment];
+                if (current == null)
+                {
+                    return null;
+                }
+            }
+
+            return current;
         }
         private static bool TryMatchCanvasSize(WzCanvasProperty canvas, int width, int height)
         {
@@ -1524,6 +1585,10 @@ namespace HaCreator.MapSimulator.Effects
             }
             float depletion = 1f - Math.Clamp(_currentGauge / (float)_maxGauge, 0f, 1f);
             return depletion >= DangerDepletionThreshold;
+        }
+        private int GetGaugeFillWidth()
+        {
+            return Math.Clamp((int)MathF.Round(GaugeFillWidth * GaugeProgress), 0, GaugeFillWidth);
         }
         private char ComputeResultRank()
         {

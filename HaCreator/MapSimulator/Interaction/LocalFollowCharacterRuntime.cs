@@ -1,4 +1,5 @@
 using Microsoft.Xna.Framework;
+using Microsoft.Xna.Framework.Input;
 using System;
 using System.Collections.Generic;
 
@@ -71,6 +72,12 @@ namespace HaCreator.MapSimulator.Interaction
         public int AttachedPassengerId => _attachedPassengerId;
         public int IncomingRequesterId => _incomingRequesterId;
         public string LastStatusMessage => _lastStatusMessage;
+
+        public static bool IsAttachedReleaseKeyPressed(KeyboardState currentKeyboardState, KeyboardState previousKeyboardState)
+        {
+            return IsKeyPressed(currentKeyboardState, previousKeyboardState, Keys.Left)
+                || IsKeyPressed(currentKeyboardState, previousKeyboardState, Keys.Right);
+        }
 
         public bool TrySendOutgoingRequest(
             LocalFollowUserSnapshot localUser,
@@ -380,6 +387,12 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
+            if (_attachedDriverId > 0)
+            {
+                message = "Local follow request was rejected because the local player is already following another character.";
+                return false;
+            }
+
             if (localUser.IsImmovable)
             {
                 message = "Local follow request was rejected because the local player is immovable.";
@@ -423,6 +436,11 @@ namespace HaCreator.MapSimulator.Interaction
 
             message = null;
             return true;
+        }
+
+        private static bool IsKeyPressed(KeyboardState currentKeyboardState, KeyboardState previousKeyboardState, Keys key)
+        {
+            return currentKeyboardState.IsKeyDown(key) && previousKeyboardState.IsKeyUp(key);
         }
 
         private static bool TryValidateRemoteFollowActor(

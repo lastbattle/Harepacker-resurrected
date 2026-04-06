@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.Linq;
 
 namespace HaCreator.MapSimulator.Interaction
 {
@@ -16,6 +17,16 @@ namespace HaCreator.MapSimulator.Interaction
         public int LastChairCorrectionRequestOpcode { get; private set; } = -1;
         public ushort LastChairCorrectionSeatToken { get; private set; }
         public byte[] LastChairCorrectionPayload { get; private set; } = Array.Empty<byte>();
+        public bool PetConsumeExclusiveRequestSent { get; private set; }
+        public int LastPetConsumeRequestTick { get; private set; } = int.MinValue;
+        public int LastPetConsumeRequestOpcode { get; private set; } = -1;
+        public ulong LastPetConsumePetSerial { get; private set; }
+        public ushort LastPetConsumeSlot { get; private set; }
+        public int LastPetConsumeItemId { get; private set; }
+        public bool LastPetConsumeBuffSkill { get; private set; }
+        public int LastPetConsumeRequestIndex { get; private set; } = -1;
+        public byte[] LastPetConsumePayload { get; private set; } = Array.Empty<byte>();
+        private readonly int[] _petConsumeExclusiveRequestTicks = CreatePetConsumeExclusiveRequestTicks();
         public bool HasRadioCreateLayerLeftContextValue { get; private set; }
         public bool RadioCreateLayerLeftContextValue { get; private set; }
         public bool HasPersistedApspState =>
@@ -223,6 +234,74 @@ namespace HaCreator.MapSimulator.Interaction
             LastChairSitResultTick = currentTick;
         }
 
+        public bool TryEmitPetItemUseRequest(
+            int currentTick,
+            int currentHp,
+            ulong petSerial,
+            ushort slot,
+            int itemId,
+            bool consumeMp,
+            bool buffSkill,
+            int requestIndex,
+            out PacketOwnedLocalUtilityOutboundRequest request)
+        {
+            request = default!;
+            if (currentHp <= 0
+                || petSerial == 0
+                || slot == 0
+                || itemId <= 0
+                || requestIndex < 0
+                || requestIndex >= _petConsumeExclusiveRequestTicks.Length
+                || PetConsumeExclusiveRequestSent)
+            {
+                return false;
+            }
+
+            int lastRequestTick = _petConsumeExclusiveRequestTicks[requestIndex];
+            if (lastRequestTick != int.MinValue
+                && unchecked(currentTick - lastRequestTick) < PacketOwnedLocalUtilityOutboundRequest.PetItemUseRequestThrottleMs)
+            {
+                return false;
+            }
+
+            request = PacketOwnedLocalUtilityOutboundRequest.CreatePetItemUseRequest(
+                petSerial,
+                slot,
+                itemId,
+                consumeMp,
+                buffSkill,
+                requestIndex,
+                currentTick);
+            PetConsumeExclusiveRequestSent = true;
+            _petConsumeExclusiveRequestTicks[requestIndex] = currentTick;
+            LastPetConsumeRequestTick = currentTick;
+            LastPetConsumeRequestOpcode = request.Opcode;
+            LastPetConsumePetSerial = petSerial;
+            LastPetConsumeSlot = slot;
+            LastPetConsumeItemId = itemId;
+            LastPetConsumeBuffSkill = buffSkill;
+            LastPetConsumeRequestIndex = requestIndex;
+            LastPetConsumePayload = request.Payload as byte[] ?? request.Payload.ToArray();
+            return true;
+        }
+
+        public void AcknowledgePetItemUseRequest()
+        {
+            PetConsumeExclusiveRequestSent = false;
+        }
+
+        public string DescribePetConsumeContext(int currentTick)
+        {
+            string exclusiveSentText = PetConsumeExclusiveRequestSent.ToString().ToLowerInvariant();
+            string requestAge = LastPetConsumeRequestTick == int.MinValue
+                ? "idle"
+                : $"{Math.Max(0, unchecked(currentTick - LastPetConsumeRequestTick))} ms";
+            string outpacketText = LastPetConsumeRequestTick == int.MinValue || LastPetConsumeRequestOpcode < 0
+                ? "idle"
+                : $"{LastPetConsumeRequestOpcode}[{BitConverter.ToString(LastPetConsumePayload).Replace("-", string.Empty)}] age={requestAge}";
+            return $"Pet auto-consume exclSent={exclusiveSentText}, requestIndex={LastPetConsumeRequestIndex}, slot={LastPetConsumeSlot}, item={LastPetConsumeItemId}, petSerial={LastPetConsumePetSerial}, outpacket={outpacketText}.";
+        }
+
         public bool TryEmitChairGetUpRequest(int currentTick, int currentHp, int timeIntervalMs, out PacketOwnedLocalUtilityOutboundRequest request)
         {
             request = default!;
@@ -274,6 +353,16 @@ namespace HaCreator.MapSimulator.Interaction
             LastChairCorrectionRequestOpcode = -1;
             LastChairCorrectionSeatToken = 0;
             LastChairCorrectionPayload = Array.Empty<byte>();
+            PetConsumeExclusiveRequestSent = false;
+            LastPetConsumeRequestTick = int.MinValue;
+            LastPetConsumeRequestOpcode = -1;
+            LastPetConsumePetSerial = 0;
+            LastPetConsumeSlot = 0;
+            LastPetConsumeItemId = 0;
+            LastPetConsumeBuffSkill = false;
+            LastPetConsumeRequestIndex = -1;
+            LastPetConsumePayload = Array.Empty<byte>();
+            Array.Fill(_petConsumeExclusiveRequestTicks, int.MinValue);
         }
 
         private static int NormalizeCharacterId(int characterId)
@@ -290,6 +379,13 @@ namespace HaCreator.MapSimulator.Interaction
         {
             return contextToken > 0 ? contextToken : NormalizeCharacterId(fallbackCharacterId);
         }
+
+        private static int[] CreatePetConsumeExclusiveRequestTicks()
+        {
+            int[] ticks = new int[3];
+            Array.Fill(ticks, int.MinValue);
+            return ticks;
+        }
     }
 
     internal sealed record PacketOwnedLocalUtilityOutboundRequest(
@@ -299,6 +395,8 @@ namespace HaCreator.MapSimulator.Interaction
     {
         public const int ChairGetUpOpcode = 45;
         public const ushort ChairGetUpSeatToken = 0xFFFF;
+        public const int PetItemUseRequestOpcode = 203;
+        public const int PetItemUseRequestThrottleMs = 200;
 
         public static PacketOwnedLocalUtilityOutboundRequest CreateChairGetUp()
         {
@@ -315,6 +413,46 @@ namespace HaCreator.MapSimulator.Interaction
                 0xFF,
                 0xFF
             };
+        }
+
+        public static PacketOwnedLocalUtilityOutboundRequest CreatePetItemUseRequest(
+            ulong petSerial,
+            ushort slot,
+            int itemId,
+            bool consumeMp,
+            bool buffSkill,
+            int requestIndex,
+            int updateTime)
+        {
+            return new PacketOwnedLocalUtilityOutboundRequest(
+                PetItemUseRequestOpcode,
+                slot,
+                Array.AsReadOnly(CreatePetItemUseRequestPayload(
+                    petSerial,
+                    slot,
+                    itemId,
+                    consumeMp,
+                    buffSkill,
+                    requestIndex,
+                    updateTime)));
+        }
+
+        public static byte[] CreatePetItemUseRequestPayload(
+            ulong petSerial,
+            ushort slot,
+            int itemId,
+            bool consumeMp,
+            bool buffSkill,
+            int requestIndex,
+            int updateTime)
+        {
+            var payload = new byte[19];
+            Buffer.BlockCopy(BitConverter.GetBytes(petSerial), 0, payload, 0, sizeof(ulong));
+            payload[8] = buffSkill ? (byte)1 : (byte)0;
+            Buffer.BlockCopy(BitConverter.GetBytes(updateTime), 0, payload, 9, sizeof(int));
+            Buffer.BlockCopy(BitConverter.GetBytes(slot), 0, payload, 13, sizeof(ushort));
+            Buffer.BlockCopy(BitConverter.GetBytes(itemId), 0, payload, 15, sizeof(int));
+            return payload;
         }
     }
 }

@@ -80,6 +80,7 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Color WarningColor = new(170, 78, 54);
         private static readonly Color PageRuleColor = new(167, 143, 107);
         private static readonly Color PageShadowColor = new(243, 235, 217);
+        private static readonly Color SearchSelectionColor = new(113, 147, 191, 92);
 
         private readonly Texture2D _pixel;
         private readonly GraphicsDevice _graphicsDevice;
@@ -132,6 +133,7 @@ namespace HaCreator.MapSimulator.UI
         private string _searchQuery = string.Empty;
         private string _compositionText = string.Empty;
         private int _searchCursorPosition;
+        private int _searchSelectionAnchor = -1;
         private int _compositionInsertionIndex = -1;
         private int _compositionCursorPosition = -1;
         private int _caretBlinkTick;
@@ -150,6 +152,7 @@ namespace HaCreator.MapSimulator.UI
 
         public override string WindowName => MapSimulatorWindowNames.BookCollection;
         public override bool CapturesKeyboardInput => IsVisible && _searchMode;
+        public Action ClientCloseRequested { get; set; }
         public Action OpenRequested { get; set; }
         public Action ClosingRequested { get; set; }
         public Action CloseRequested { get; set; }
@@ -166,6 +169,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            DeleteSearchSelectionIfAny();
             _compositionText = state?.Text ?? string.Empty;
             _compositionInsertionIndex = Math.Clamp(_searchCursorPosition, 0, _searchQuery.Length);
             _compositionCursorPosition = Math.Clamp(state?.CursorPosition ?? -1, -1, _compositionText.Length);
@@ -179,6 +183,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            DeleteSearchSelectionIfAny();
             _compositionText = text ?? string.Empty;
             _compositionInsertionIndex = Math.Clamp(_searchCursorPosition, 0, _searchQuery.Length);
             _compositionCursorPosition = _compositionText.Length;
@@ -196,6 +201,7 @@ namespace HaCreator.MapSimulator.UI
         public override void HandleCommittedText(string text)
         {
             if (!CapturesKeyboardInput || string.IsNullOrEmpty(text)) return;
+            DeleteSearchSelectionIfAny();
             int insertionIndex = Math.Clamp(_compositionInsertionIndex >= 0 ? _compositionInsertionIndex : _searchCursorPosition, 0, _searchQuery.Length);
             ClearCompositionText();
             string updatedText = _searchQuery.Insert(insertionIndex, text);
@@ -317,7 +323,18 @@ namespace HaCreator.MapSimulator.UI
         }
 
         protected override void OnCloseButtonClicked(UIObject sender) => CloseBook();
-        public void CloseBook() => HideBook(notifyCloseRequested: true);
+        public void CloseBook()
+        {
+            if (ClientCloseRequested != null)
+            {
+                ClientCloseRequested.Invoke();
+                return;
+            }
+
+            HideBook(notifyCloseRequested: true);
+        }
+
+        public void DestroyBook() => HideBook(notifyCloseRequested: false);
         public override void Hide() => HideBook(notifyCloseRequested: true);
         private bool UsesCollectionLayout => _collectionSnapshotProvider != null;
 
@@ -530,6 +547,7 @@ namespace HaCreator.MapSimulator.UI
 
             _searchMode = true;
             _searchCursorPosition = _searchQuery.Length;
+            ClearSearchSelection();
             _caretBlinkTick = Environment.TickCount;
             ClearCompositionText();
             RefreshSearchMatches(false, true);
@@ -539,6 +557,7 @@ namespace HaCreator.MapSimulator.UI
         {
             _searchMode = false;
             _searchCursorPosition = Math.Clamp(_searchCursorPosition, 0, _searchQuery.Length);
+            ClearSearchSelection();
             ClearCompositionText();
             ResetSearchKeyRepeatState();
         }
@@ -577,13 +596,44 @@ namespace HaCreator.MapSimulator.UI
                 else
                 {
                     bool ctrl = keyboard.IsKeyDown(Keys.LeftControl) || keyboard.IsKeyDown(Keys.RightControl);
-                    if (ctrl && WasPressed(keyboard, Keys.V))
+                    bool shift = keyboard.IsKeyDown(Keys.LeftShift) || keyboard.IsKeyDown(Keys.RightShift);
+                    bool imeCandidateListActive = _candidateListState.HasCandidates;
+                    if (ctrl && WasPressed(keyboard, Keys.A))
+                    {
+                        SelectAllSearchText();
+                    }
+                    else if (ctrl && WasPressed(keyboard, Keys.C))
+                    {
+                        CopySelectedSearchText(cutSelection: false);
+                    }
+                    else if (ctrl && WasPressed(keyboard, Keys.X))
+                    {
+                        CopySelectedSearchText(cutSelection: true);
+                    }
+                    else if (ctrl && WasPressed(keyboard, Keys.V))
                     {
                         HandleSearchClipboardPaste();
                     }
+                    else if (WasPressed(keyboard, Keys.Insert))
+                    {
+                        if (shift)
+                        {
+                            HandleSearchClipboardPaste();
+                        }
+                        else if (ctrl)
+                        {
+                            CopySelectedSearchText(cutSelection: false);
+                        }
+                    }
+
                     if (WasPressedOrRepeated(keyboard, Keys.Back, tickCount))
                     {
-                        if (ctrl)
+                        if (HasSearchSelection)
+                        {
+                            DeleteSearchSelectionIfAny();
+                            OnSearchQueryChanged();
+                        }
+                        else if (ctrl)
                         {
                             DeletePreviousSearchWord();
                         }
@@ -596,7 +646,12 @@ namespace HaCreator.MapSimulator.UI
                     }
                     if (WasPressedOrRepeated(keyboard, Keys.Delete, tickCount))
                     {
-                        if (ctrl)
+                        if (HasSearchSelection)
+                        {
+                            DeleteSearchSelectionIfAny();
+                            OnSearchQueryChanged();
+                        }
+                        else if (ctrl)
                         {
                             DeleteNextSearchWord();
                         }
@@ -609,30 +664,35 @@ namespace HaCreator.MapSimulator.UI
                     }
                     if (WasPressedOrRepeated(keyboard, Keys.Left, tickCount))
                     {
-                        _searchCursorPosition = ctrl
+                        int nextCursorPosition = ctrl
                             ? FindPreviousSearchWordBoundary()
                             : SkillMacroNameRules.GetPreviousCaretStop(_searchQuery, _searchCursorPosition);
+                        MoveSearchCaret(nextCursorPosition, shift);
                         _caretBlinkTick = Environment.TickCount;
                     }
                     if (WasPressedOrRepeated(keyboard, Keys.Right, tickCount))
                     {
-                        _searchCursorPosition = ctrl
+                        int nextCursorPosition = ctrl
                             ? FindNextSearchWordBoundary()
                             : SkillMacroNameRules.GetNextCaretStop(_searchQuery, _searchCursorPosition);
+                        MoveSearchCaret(nextCursorPosition, shift);
                         _caretBlinkTick = Environment.TickCount;
                     }
                     if (WasPressed(keyboard, Keys.Home))
                     {
-                        _searchCursorPosition = 0;
+                        MoveSearchCaret(0, shift);
                         _caretBlinkTick = Environment.TickCount;
                     }
                     if (WasPressed(keyboard, Keys.End))
                     {
-                        _searchCursorPosition = _searchQuery.Length;
+                        MoveSearchCaret(_searchQuery.Length, shift);
                         _caretBlinkTick = Environment.TickCount;
                     }
-                    if ((WasPressed(keyboard, Keys.Enter) || WasPressedOrRepeated(keyboard, Keys.Down, tickCount)) && _searchMatches.Count > 0) ApplySearchMatch((_selectedSearchMatchIndex + 1 + _searchMatches.Count) % _searchMatches.Count);
-                    if (WasPressedOrRepeated(keyboard, Keys.Up, tickCount) && _searchMatches.Count > 0) ApplySearchMatch((_selectedSearchMatchIndex - 1 + _searchMatches.Count) % _searchMatches.Count);
+                    if (!imeCandidateListActive)
+                    {
+                        if ((WasPressed(keyboard, Keys.Enter) || WasPressedOrRepeated(keyboard, Keys.Down, tickCount)) && _searchMatches.Count > 0) ApplySearchMatch((_selectedSearchMatchIndex + 1 + _searchMatches.Count) % _searchMatches.Count);
+                        if (WasPressedOrRepeated(keyboard, Keys.Up, tickCount) && _searchMatches.Count > 0) ApplySearchMatch((_selectedSearchMatchIndex - 1 + _searchMatches.Count) % _searchMatches.Count);
+                    }
                 }
             }
             else if (_contextMenuVisible && WasPressed(keyboard, Keys.Escape))
@@ -659,7 +719,7 @@ namespace HaCreator.MapSimulator.UI
                 if (!UsesCollectionLayout && OffsetBounds(SearchBoxBounds, InfoPageOrigin).Contains(point))
                 {
                     EnterSearchMode();
-                    _searchCursorPosition = ResolveSearchCursorFromMouse(point.X);
+                    MoveSearchCaret(ResolveSearchCursorFromMouse(point.X), false);
                     _caretBlinkTick = Environment.TickCount;
                     ClearCompositionText();
                     _previousMouseState = mouse;
@@ -816,6 +876,17 @@ namespace HaCreator.MapSimulator.UI
             else
             {
                 SearchInputVisualState searchVisual = BuildSearchInputVisualState();
+                if (searchVisual.VisibleSelectionLength > 0)
+                {
+                    string selectionPrefix = searchVisual.VisibleSelectionStart <= 0
+                        ? string.Empty
+                        : searchVisual.VisibleText[..searchVisual.VisibleSelectionStart];
+                    string selectionText = searchVisual.VisibleText.Substring(searchVisual.VisibleSelectionStart, searchVisual.VisibleSelectionLength);
+                    int selectionX = bounds.X + 3 + (int)Math.Round(MeasureRenderedText(selectionPrefix, 0.42f, preferClientText: true).X);
+                    int selectionWidth = Math.Max(1, (int)Math.Round(MeasureRenderedText(selectionText, 0.42f, preferClientText: true).X));
+                    sprite.Draw(_pixel, new Rectangle(selectionX, bounds.Y + 2, selectionWidth, Math.Max(11, bounds.Height - 4)), SearchSelectionColor);
+                }
+
                 DrawTrimmedString(sprite, searchVisual.VisibleText, new Vector2(bounds.X + 3, bounds.Y + 2), ValueColor, 0.42f, bounds.Width - 6, preferClientText: true);
                 if (searchVisual.VisibleCompositionLength > 0)
                 {
@@ -1012,7 +1083,7 @@ namespace HaCreator.MapSimulator.UI
             if (page == null)
             {
                 DrawTextLine(sprite, "No entry", new Vector2(pageBounds.X + 12, pageBounds.Y + 18), GetBookStyle(0), pageBounds.Width - 24, HorizontalAlignment.Center);
-                DrawTextLine(sprite, "The collection ledger has no authored rows for this page.", new Vector2(pageBounds.X + 12, pageBounds.Y + 42), GetBookStyle(10), pageBounds.Width - 24, HorizontalAlignment.Center);
+                DrawTextLine(sprite, "No ledger rows", new Vector2(pageBounds.X + 12, pageBounds.Y + 42), GetBookStyle(10), pageBounds.Width - 24, HorizontalAlignment.Center);
                 return;
             }
 
@@ -1134,9 +1205,9 @@ namespace HaCreator.MapSimulator.UI
             Right
         }
 
-        private static BookTextStyle GetBookStyle(int index)
+        private BookTextStyle GetBookStyle(int index)
         {
-            return index switch
+            BookTextStyle style = index switch
             {
                 0 => new BookTextStyle(TitleColor, Color.White, 0.60f, true),
                 1 => new BookTextStyle(TitleColor, PageShadowColor, 0.56f, true),
@@ -1152,9 +1223,21 @@ namespace HaCreator.MapSimulator.UI
                 11 => new BookTextStyle(new Color(81, 76, 66), PageShadowColor, 0.40f, false),
                 _ => new BookTextStyle(ValueColor, PageShadowColor, 0.42f, false)
             };
+
+            CollectionBookClientTextStyleSnapshot snapshotStyle = ResolveCollectionTextStyle(index);
+            if (snapshotStyle == null)
+            {
+                return style;
+            }
+
+            return new BookTextStyle(
+                ConvertArgbToColor(snapshotStyle.ArgbColor),
+                style.ShadowColor,
+                style.Scale,
+                style.Shadow);
         }
 
-        private static BookTextStyle GetEntryStyle(CollectionBookEntryTone tone)
+        private BookTextStyle GetEntryStyle(CollectionBookEntryTone tone)
         {
             return tone switch
             {
@@ -1188,6 +1271,40 @@ namespace HaCreator.MapSimulator.UI
             }
 
             DrawRenderedString(sprite, trimmed, position, style.Color, style.Scale, preferClientText: true);
+        }
+
+        private CollectionBookClientTextStyleSnapshot ResolveCollectionTextStyle(int index)
+        {
+            if (!UsesCollectionLayout)
+            {
+                return null;
+            }
+
+            IReadOnlyList<CollectionBookClientTextStyleSnapshot> styles = _collectionSnapshot?.TextStyleMatrix;
+            if (styles == null)
+            {
+                return null;
+            }
+
+            for (int i = 0; i < styles.Count; i++)
+            {
+                CollectionBookClientTextStyleSnapshot style = styles[i];
+                if (style != null && style.Index == index)
+                {
+                    return style;
+                }
+            }
+
+            return null;
+        }
+
+        private static Color ConvertArgbToColor(int argb)
+        {
+            return new Color(
+                (byte)((argb >> 16) & 0xFF),
+                (byte)((argb >> 8) & 0xFF),
+                (byte)(argb & 0xFF),
+                (byte)((argb >> 24) & 0xFF));
         }
 
         private void DrawOverviewSlots(SpriteBatch sprite)
@@ -1246,6 +1363,7 @@ namespace HaCreator.MapSimulator.UI
             _searchQuery = string.Empty;
             _compositionText = string.Empty;
             _searchCursorPosition = 0;
+            _searchSelectionAnchor = -1;
             _compositionInsertionIndex = -1;
             _compositionCursorPosition = -1;
             _caretBlinkTick = 0;
@@ -1721,14 +1839,14 @@ namespace HaCreator.MapSimulator.UI
             float bestDistance = float.MaxValue;
             int bestCursor = searchVisual.VisibleStart;
 
-            for (int i = 0; i <= searchVisual.VisibleText.Length; i++)
+            foreach (int relativeCaretStop in EnumerateSearchCaretStops(searchVisual.VisibleText))
             {
-                string prefix = i == 0 ? string.Empty : searchVisual.VisibleText[..i];
+                string prefix = relativeCaretStop == 0 ? string.Empty : searchVisual.VisibleText[..relativeCaretStop];
                 float distance = Math.Abs(MeasureRenderedText(prefix, 0.42f, preferClientText: true).X - localX);
                 if (distance < bestDistance)
                 {
                     bestDistance = distance;
-                    bestCursor = searchVisual.VisibleStart + i;
+                    bestCursor = searchVisual.VisibleStart + relativeCaretStop;
                 }
             }
 
@@ -1737,10 +1855,10 @@ namespace HaCreator.MapSimulator.UI
 
         private SearchInputVisualState BuildSearchInputVisualState()
         {
-            (string displayText, int caretIndex, int compositionStart, int compositionLength) = BuildDisplayedSearchText();
+            (string displayText, int caretIndex, int selectionStart, int selectionLength, int compositionStart, int compositionLength) = BuildDisplayedSearchText();
             if (_font == null || string.IsNullOrEmpty(displayText))
             {
-                return new SearchInputVisualState(string.Empty, 0, 0, 0, 0);
+                return new SearchInputVisualState(string.Empty, 0, 0, -1, 0, -1, 0);
             }
 
             float maxWidth = SearchBoxBounds.Width - 6;
@@ -1754,29 +1872,46 @@ namespace HaCreator.MapSimulator.UI
                     break;
                 }
 
-                visibleStart++;
+                visibleStart = SkillMacroNameRules.GetNextCaretStop(displayText, visibleStart);
             }
 
-            int visibleLength = Math.Max(0, Math.Min(displayText.Length - visibleStart, Math.Max(1, clampedCaretIndex - visibleStart)));
-            while (visibleStart + visibleLength < displayText.Length)
+            int visibleEnd = displayText.Length;
+            while (visibleEnd > clampedCaretIndex)
             {
-                string candidate = displayText.Substring(visibleStart, visibleLength + 1);
-                if (MeasureRenderedText(candidate, 0.42f, preferClientText: true).X > maxWidth)
+                if (MeasureRenderedText(displayText[visibleStart..visibleEnd], 0.42f, preferClientText: true).X <= maxWidth)
                 {
                     break;
                 }
 
-                visibleLength++;
+                visibleEnd = SkillMacroNameRules.GetPreviousCaretStop(displayText, visibleEnd);
             }
 
-            string visibleText = displayText.Substring(visibleStart, Math.Max(0, visibleLength));
+            if (visibleEnd < clampedCaretIndex)
+            {
+                visibleEnd = clampedCaretIndex;
+            }
+
+            string visibleText = displayText[visibleStart..visibleEnd];
             int visibleCaretIndex = Math.Clamp(clampedCaretIndex - visibleStart, 0, visibleText.Length);
-            int visibleCompositionStart = 0;
+            int visibleSelectionStart = -1;
+            int visibleSelectionLength = 0;
+            if (selectionStart >= 0 && selectionLength > 0)
+            {
+                int selectionEnd = selectionStart + selectionLength;
+                int overlapStart = Math.Max(selectionStart, visibleStart);
+                int overlapEnd = Math.Min(selectionEnd, visibleEnd);
+                if (overlapEnd > overlapStart)
+                {
+                    visibleSelectionStart = overlapStart - visibleStart;
+                    visibleSelectionLength = overlapEnd - overlapStart;
+                }
+            }
+
+            int visibleCompositionStart = -1;
             int visibleCompositionLength = 0;
             if (compositionLength > 0)
             {
                 int compositionEnd = compositionStart + compositionLength;
-                int visibleEnd = visibleStart + visibleText.Length;
                 int overlapStart = Math.Max(compositionStart, visibleStart);
                 int overlapEnd = Math.Min(compositionEnd, visibleEnd);
                 if (overlapEnd > overlapStart)
@@ -1786,14 +1921,14 @@ namespace HaCreator.MapSimulator.UI
                 }
             }
 
-            return new SearchInputVisualState(visibleText, visibleStart, visibleCaretIndex, visibleCompositionStart, visibleCompositionLength);
+            return new SearchInputVisualState(visibleText, visibleStart, visibleCaretIndex, visibleSelectionStart, visibleSelectionLength, visibleCompositionStart, visibleCompositionLength);
         }
 
-        private (string DisplayText, int CaretIndex, int CompositionStart, int CompositionLength) BuildDisplayedSearchText()
+        private (string DisplayText, int CaretIndex, int SelectionStart, int SelectionLength, int CompositionStart, int CompositionLength) BuildDisplayedSearchText()
         {
             if (string.IsNullOrEmpty(_compositionText))
             {
-                return (_searchQuery, Math.Clamp(_searchCursorPosition, 0, _searchQuery.Length), -1, 0);
+                return (_searchQuery, Math.Clamp(_searchCursorPosition, 0, _searchQuery.Length), GetSearchSelectionStart(), GetSearchSelectionLength(), -1, 0);
             }
 
             int insertionIndex = Math.Clamp(_compositionInsertionIndex >= 0 ? _compositionInsertionIndex : _searchCursorPosition, 0, _searchQuery.Length);
@@ -1801,7 +1936,7 @@ namespace HaCreator.MapSimulator.UI
             int compositionCaret = _compositionCursorPosition >= 0
                 ? Math.Clamp(_compositionCursorPosition, 0, _compositionText.Length)
                 : _compositionText.Length;
-            return (displayText, insertionIndex + compositionCaret, insertionIndex, _compositionText.Length);
+            return (displayText, insertionIndex + compositionCaret, -1, 0, insertionIndex, _compositionText.Length);
         }
 
         private static int ScoreSearchMatch(MonsterBookCardSnapshot card, string query)
@@ -1873,11 +2008,13 @@ namespace HaCreator.MapSimulator.UI
 
         private readonly struct SearchInputVisualState
         {
-            public SearchInputVisualState(string visibleText, int visibleStart, int visibleCaretIndex, int visibleCompositionStart, int visibleCompositionLength)
+            public SearchInputVisualState(string visibleText, int visibleStart, int visibleCaretIndex, int visibleSelectionStart, int visibleSelectionLength, int visibleCompositionStart, int visibleCompositionLength)
             {
                 VisibleText = visibleText;
                 VisibleStart = visibleStart;
                 VisibleCaretIndex = visibleCaretIndex;
+                VisibleSelectionStart = visibleSelectionStart;
+                VisibleSelectionLength = visibleSelectionLength;
                 VisibleCompositionStart = visibleCompositionStart;
                 VisibleCompositionLength = visibleCompositionLength;
             }
@@ -1885,6 +2022,8 @@ namespace HaCreator.MapSimulator.UI
             public string VisibleText { get; }
             public int VisibleStart { get; }
             public int VisibleCaretIndex { get; }
+            public int VisibleSelectionStart { get; }
+            public int VisibleSelectionLength { get; }
             public int VisibleCompositionStart { get; }
             public int VisibleCompositionLength { get; }
         }
@@ -1910,6 +2049,7 @@ namespace HaCreator.MapSimulator.UI
                     return;
                 }
 
+                DeleteSearchSelectionIfAny();
                 int insertionIndex = Math.Clamp(_searchCursorPosition, 0, _searchQuery.Length);
                 string updatedText = _searchQuery.Insert(insertionIndex, normalized);
                 if (updatedText.Length > MaxSearchLength)
@@ -1924,6 +2064,125 @@ namespace HaCreator.MapSimulator.UI
             catch
             {
                 // Ignore clipboard failures so local search remains usable without OS clipboard access.
+            }
+        }
+
+        private bool HasSearchSelection => GetSearchSelectionLength() > 0;
+
+        private int GetSearchSelectionStart()
+        {
+            if (_searchSelectionAnchor < 0)
+            {
+                return -1;
+            }
+
+            int anchor = Math.Clamp(_searchSelectionAnchor, 0, _searchQuery.Length);
+            int cursor = Math.Clamp(_searchCursorPosition, 0, _searchQuery.Length);
+            return Math.Min(anchor, cursor);
+        }
+
+        private int GetSearchSelectionLength()
+        {
+            if (_searchSelectionAnchor < 0)
+            {
+                return 0;
+            }
+
+            int anchor = Math.Clamp(_searchSelectionAnchor, 0, _searchQuery.Length);
+            int cursor = Math.Clamp(_searchCursorPosition, 0, _searchQuery.Length);
+            return Math.Abs(cursor - anchor);
+        }
+
+        private void ClearSearchSelection() => _searchSelectionAnchor = -1;
+
+        private void MoveSearchCaret(int targetPosition, bool extendSelection)
+        {
+            int clampedPosition = Math.Clamp(targetPosition, 0, _searchQuery.Length);
+            if (extendSelection)
+            {
+                _searchSelectionAnchor = _searchSelectionAnchor >= 0
+                    ? Math.Clamp(_searchSelectionAnchor, 0, _searchQuery.Length)
+                    : Math.Clamp(_searchCursorPosition, 0, _searchQuery.Length);
+            }
+            else
+            {
+                ClearSearchSelection();
+            }
+
+            _searchCursorPosition = clampedPosition;
+        }
+
+        private bool DeleteSearchSelectionIfAny()
+        {
+            int selectionStart = GetSearchSelectionStart();
+            int selectionLength = GetSearchSelectionLength();
+            if (selectionStart < 0 || selectionLength <= 0)
+            {
+                return false;
+            }
+
+            _searchQuery = _searchQuery.Remove(selectionStart, selectionLength);
+            _searchCursorPosition = selectionStart;
+            ClearSearchSelection();
+            return true;
+        }
+
+        private void SelectAllSearchText()
+        {
+            if (string.IsNullOrEmpty(_searchQuery))
+            {
+                ClearSearchSelection();
+                _searchCursorPosition = 0;
+                return;
+            }
+
+            _searchSelectionAnchor = 0;
+            _searchCursorPosition = _searchQuery.Length;
+            _caretBlinkTick = Environment.TickCount;
+        }
+
+        private void CopySelectedSearchText(bool cutSelection)
+        {
+            int selectionStart = GetSearchSelectionStart();
+            int selectionLength = GetSearchSelectionLength();
+            if (selectionStart < 0 || selectionLength <= 0)
+            {
+                return;
+            }
+
+            try
+            {
+                System.Windows.Forms.Clipboard.SetText(_searchQuery.Substring(selectionStart, selectionLength));
+            }
+            catch
+            {
+                return;
+            }
+
+            if (!cutSelection)
+            {
+                return;
+            }
+
+            DeleteSearchSelectionIfAny();
+            OnSearchQueryChanged();
+        }
+
+        private static IEnumerable<int> EnumerateSearchCaretStops(string text)
+        {
+            yield return 0;
+
+            int length = text?.Length ?? 0;
+            int cursor = 0;
+            while (cursor < length)
+            {
+                cursor = SkillMacroNameRules.GetNextCaretStop(text, cursor);
+                if (cursor <= 0 || cursor > length)
+                {
+                    break;
+                }
+
+                yield return cursor;
             }
         }
 

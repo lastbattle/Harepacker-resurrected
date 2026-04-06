@@ -82,7 +82,7 @@ namespace HaCreator.MapSimulator
             switch (employeeAction.ToLowerInvariant())
             {
                 case "status":
-                    return ChatCommandHandler.CommandResult.Info(runtime.DescribeStatus());
+                    return ChatCommandHandler.CommandResult.Info($"{runtime.DescribeStatus()}{Environment.NewLine}{_packetOwnedEmployeePoolDispatcher.DescribeStatus()}");
 
                 case "template":
                     if (args.Length <= actionIndex + 2)
@@ -168,7 +168,14 @@ namespace HaCreator.MapSimulator
                         return ChatCommandHandler.CommandResult.Error(packetParseError);
                     }
 
-                    return runtime.TryApplyEmployeeEnterFieldPacket(packetBytes, out string packetMessage)
+                    bool packetApplied = _packetOwnedEmployeePoolDispatcher.TryApplyPacket(
+                        SocialRoomEmployeeOfficialSessionBridgeManager.EmployeeEnterFieldOpcode,
+                        packetBytes,
+                        kind,
+                        currTickCount,
+                        out string packetMessage)
+                        && runtime.TryApplyEmployeeEnterFieldPacket(packetBytes, out packetMessage);
+                    return packetApplied
                         ? ChatCommandHandler.CommandResult.Ok(packetMessage)
                         : ChatCommandHandler.CommandResult.Error(packetMessage);
 
@@ -205,7 +212,7 @@ namespace HaCreator.MapSimulator
             {
                 case "status":
                     return ChatCommandHandler.CommandResult.Info(
-                        $"{runtime.DescribeStatus()}{Environment.NewLine}{_socialRoomEmployeeOfficialSessionBridge.LastStatus}");
+                        $"{runtime.DescribeStatus()}{Environment.NewLine}{_packetOwnedEmployeePoolDispatcher.DescribeStatus()}{Environment.NewLine}{_socialRoomEmployeeOfficialSessionBridge.LastStatus}");
 
                 case "discover":
                     if (args.Length <= actionIndex + 3
@@ -2183,7 +2190,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "engage",
                 "Inspect or drive the dedicated engagement proposal dialog seam",
-                "/engage [open <partnerName> [ringItemId] [message...]|open <proposerName> <partnerName> [ringItemId] [message...]|incoming <proposerName> [ringItemId] [sealItemId] [message...]|incomingrequest <proposerName> [sealItemId] [message...]|inbox [status|start [port]|stop]|accept|dismiss|invitation [neat|sweet|premium]|wishlist [receive|give|input] [groom|bride]|clear|status]",
+                "/engage [open <partnerName> [ringItemId] [message...]|open <proposerName> <partnerName> [ringItemId] [message...]|incoming <proposerName> [ringItemId] [sealItemId] [message...]|incomingrequest <proposerName> [sealItemId] [message...]|inbox [status|start [port]|stop]|accept|withdraw|dismiss|invitation [neat|sweet|premium]|wishlist [receive|give|input] [groom|bride]|clear|status]",
                 args =>
                 {
                     _engagementProposalController.UpdateLocalContext(_playerManager?.Player?.Build);
@@ -2270,12 +2277,23 @@ namespace HaCreator.MapSimulator
 
                         case "accept":
                             string acceptMessage = _engagementProposalController.Accept(uiWindowManager);
-                            if (string.Equals(acceptMessage, "No engagement proposal is active.", StringComparison.Ordinal))
+                            if (string.Equals(acceptMessage, "No engagement proposal is active.", StringComparison.Ordinal)
+                                || acceptMessage.Contains("does not accept the proposal", StringComparison.Ordinal))
                             {
                                 return ChatCommandHandler.CommandResult.Error(acceptMessage);
                             }
 
                             return ChatCommandHandler.CommandResult.Ok(acceptMessage);
+
+                        case "withdraw":
+                            string withdrawMessage = _engagementProposalController.Withdraw(uiWindowManager);
+                            if (string.Equals(withdrawMessage, "No engagement proposal is active.", StringComparison.Ordinal)
+                                || withdrawMessage.Contains("Only the requester-owned engagement wait dialog", StringComparison.Ordinal))
+                            {
+                                return ChatCommandHandler.CommandResult.Error(withdrawMessage);
+                            }
+
+                            return ChatCommandHandler.CommandResult.Ok(withdrawMessage);
 
                         case "dismiss":
                             return ChatCommandHandler.CommandResult.Ok(_engagementProposalController.Dismiss(uiWindowManager));
@@ -2354,7 +2372,7 @@ namespace HaCreator.MapSimulator
                             return ChatCommandHandler.CommandResult.Ok(_engagementProposalController.Clear(uiWindowManager));
 
                         default:
-                            return ChatCommandHandler.CommandResult.Error("Usage: /engage [open <partnerName> [ringItemId] [message...]|open <proposerName> <partnerName> [ringItemId] [message...]|incoming <proposerName> [ringItemId] [sealItemId] [message...]|incomingrequest <proposerName> [sealItemId] [message...]|inbox [status|start [port]|stop]|accept|dismiss|invitation [neat|sweet|premium]|wishlist [receive|give|input] [groom|bride]|clear|status]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /engage [open <partnerName> [ringItemId] [message...]|open <proposerName> <partnerName> [ringItemId] [message...]|incoming <proposerName> [ringItemId] [sealItemId] [message...]|incomingrequest <proposerName> [sealItemId] [message...]|inbox [status|start [port]|stop]|accept|withdraw|dismiss|invitation [neat|sweet|premium]|wishlist [receive|give|input] [groom|bride]|clear|status]");
                     }
                 });
 
@@ -2998,8 +3016,8 @@ namespace HaCreator.MapSimulator
 
             _chat.CommandHandler.RegisterCommand(
                 "transport",
-                "Inspect or drive the transit/voyage transport packet inbox",
-                "/transport [status|packet [start <value>|move <value>|end <value>|state <state> <value>]|packetraw <hex>|raw <164|165> <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]]",
+                "Inspect or drive the transit/voyage transport packet inbox and official-session bridge",
+                "/transport [status|packet [start <value>|move <value>|end <value>|state <state> <value>]|packetraw <hex>|raw <164|165> <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]]",
                 args =>
                 {
                     bool transportActive = IsTransitVoyageWrapperMap(_mapBoard?.MapInfo) && _transportField.HasRouteConfiguration;
@@ -3156,7 +3174,7 @@ namespace HaCreator.MapSimulator
 
 
 
-                    return ChatCommandHandler.CommandResult.Error("Usage: /transport [status|packet [start <value>|move <value>|end <value>|state <state> <value>]|packetraw <hex>|raw <164|165> <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]]");
+                    return ChatCommandHandler.CommandResult.Error("Usage: /transport [status|packet [start <value>|move <value>|end <value>|state <state> <value>]|packetraw <hex>|raw <164|165> <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|history [count]|clearhistory|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]]");
 
                 });
 
@@ -4104,6 +4122,259 @@ namespace HaCreator.MapSimulator
 
 
             _chat.CommandHandler.RegisterCommand(
+                "snowball",
+                "Inspect or drive the SnowBall minigame packet, chat, and touch flow",
+                "/snowball [status|state <state> <team0Hp> <team1Hp> <team0Pos> <team0Speed> <team1Pos> <team1Speed> [damageSnowBall damageSnowMan0 damageSnowMan1]|hit <target> <damage> <delay>|msg <team> <type>|touch|raw <type> <hex>|raw packetraw <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|request [peek|clear]]",
+                args =>
+                {
+                    SnowBallField field = _specialFieldRuntime.Minigames.SnowBall;
+                    if (!field.IsActive && field.State == SnowBallField.GameState.NotStarted)
+                    {
+                        return ChatCommandHandler.CommandResult.Error("SnowBall runtime is only active on SnowBall maps");
+                    }
+
+                    if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
+                    {
+                        return ChatCommandHandler.CommandResult.Info(
+                            $"{field.DescribeStatus()}{Environment.NewLine}{_snowBallPacketInbox.LastStatus}{Environment.NewLine}{_snowBallOfficialSessionBridge.DescribeStatus()}");
+                    }
+
+                    switch (args[0].ToLowerInvariant())
+                    {
+                        case "state":
+                            if (args.Length < 8
+                                || !int.TryParse(args[1], out int newState)
+                                || !int.TryParse(args[2], out int team0SnowManHp)
+                                || !int.TryParse(args[3], out int team1SnowManHp)
+                                || !int.TryParse(args[4], out int team0Pos)
+                                || !int.TryParse(args[5], out int team0SpeedDegree)
+                                || !int.TryParse(args[6], out int team1Pos)
+                                || !int.TryParse(args[7], out int team1SpeedDegree))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /snowball state <state> <team0Hp> <team1Hp> <team0Pos> <team0Speed> <team1Pos> <team1Speed> [damageSnowBall damageSnowMan0 damageSnowMan1]");
+                            }
+
+                            int? damageSnowBall = null;
+                            int? damageSnowMan0 = null;
+                            int? damageSnowMan1 = null;
+                            if (args.Length >= 11)
+                            {
+                                if (!int.TryParse(args[8], out int parsedDamageSnowBall)
+                                    || !int.TryParse(args[9], out int parsedDamageSnowMan0)
+                                    || !int.TryParse(args[10], out int parsedDamageSnowMan1))
+                                {
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /snowball state <state> <team0Hp> <team1Hp> <team0Pos> <team0Speed> <team1Pos> <team1Speed> [damageSnowBall damageSnowMan0 damageSnowMan1]");
+                                }
+
+                                damageSnowBall = parsedDamageSnowBall;
+                                damageSnowMan0 = parsedDamageSnowMan0;
+                                damageSnowMan1 = parsedDamageSnowMan1;
+                            }
+
+                            field.OnSnowBallState(
+                                newState,
+                                team0SnowManHp,
+                                team1SnowManHp,
+                                team0Pos,
+                                team0SpeedDegree,
+                                team1Pos,
+                                team1SpeedDegree,
+                                damageSnowBall,
+                                damageSnowMan0,
+                                damageSnowMan1);
+                            return ChatCommandHandler.CommandResult.Ok(field.DescribeStatus());
+
+                        case "hit":
+                            if (args.Length < 4
+                                || !int.TryParse(args[1], out int hitTarget)
+                                || !int.TryParse(args[2], out int hitDamage)
+                                || !int.TryParse(args[3], out int hitDelay))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /snowball hit <target> <damage> <delay>");
+                            }
+
+                            field.OnSnowBallHit(hitTarget, hitDamage, hitDelay);
+                            return ChatCommandHandler.CommandResult.Ok(field.DescribeStatus());
+
+                        case "msg":
+                            if (args.Length < 3
+                                || !int.TryParse(args[1], out int messageTeam)
+                                || !int.TryParse(args[2], out int messageType))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /snowball msg <team> <type>");
+                            }
+
+                            field.OnSnowBallMsg(messageTeam, messageType);
+                            return ChatCommandHandler.CommandResult.Ok(field.DescribeStatus());
+
+                        case "touch":
+                            field.OnSnowBallTouch();
+                            return ChatCommandHandler.CommandResult.Ok(field.DescribeStatus());
+
+                        case "raw":
+                            if (args.Length < 3)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /snowball raw <type> <hex> | /snowball raw packetraw <hex>");
+                            }
+
+                            if (!SnowBallPacketInboxManager.TryParsePacketLine(
+                                    string.Join(' ', args.Skip(1)),
+                                    out int packetType,
+                                    out byte[] payload,
+                                    out bool ignoredPacket,
+                                    out string parseMessage))
+                            {
+                                return ignoredPacket
+                                    ? ChatCommandHandler.CommandResult.Info(parseMessage ?? "Ignored SnowBall outbound echo packet.")
+                                    : ChatCommandHandler.CommandResult.Error(parseMessage ?? "Usage: /snowball raw <type> <hex> | /snowball raw packetraw <hex>");
+                            }
+
+                            if (!field.TryApplyPacket(packetType, payload, currTickCount, out string packetError))
+                            {
+                                return ChatCommandHandler.CommandResult.Error(packetError ?? "Failed to apply SnowBall packet.");
+                            }
+
+                            return ChatCommandHandler.CommandResult.Ok(field.DescribeStatus());
+
+                        case "inbox":
+                            if (args.Length == 1 || string.Equals(args[1], "status", StringComparison.OrdinalIgnoreCase))
+                            {
+                                return ChatCommandHandler.CommandResult.Info(
+                                    $"{field.DescribeStatus()}{Environment.NewLine}{_snowBallPacketInbox.LastStatus}{Environment.NewLine}{_snowBallOfficialSessionBridge.DescribeStatus()}");
+                            }
+
+                            if (string.Equals(args[1], "start", StringComparison.OrdinalIgnoreCase))
+                            {
+                                int port = SnowBallPacketInboxManager.DefaultPort;
+                                if (args.Length >= 3 && (!int.TryParse(args[2], out port) || port <= 0))
+                                {
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /snowball inbox start [port]");
+                                }
+
+                                _snowBallPacketInbox.Start(port);
+                                return ChatCommandHandler.CommandResult.Ok(_snowBallPacketInbox.LastStatus);
+                            }
+
+                            if (string.Equals(args[1], "stop", StringComparison.OrdinalIgnoreCase))
+                            {
+                                _snowBallPacketInbox.Stop();
+                                return ChatCommandHandler.CommandResult.Ok(_snowBallPacketInbox.LastStatus);
+                            }
+
+                            return ChatCommandHandler.CommandResult.Error("Usage: /snowball inbox [status|start [port]|stop]");
+
+                        case "session":
+                            if (args.Length == 1 || string.Equals(args[1], "status", StringComparison.OrdinalIgnoreCase))
+                            {
+                                return ChatCommandHandler.CommandResult.Info(
+                                    $"{field.DescribeStatus()}{Environment.NewLine}{_snowBallOfficialSessionBridge.DescribeStatus()}");
+                            }
+
+                            if (string.Equals(args[1], "discover", StringComparison.OrdinalIgnoreCase))
+                            {
+                                if (args.Length < 3
+                                    || !int.TryParse(args[2], out int discoverRemotePort)
+                                    || discoverRemotePort <= 0)
+                                {
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /snowball session discover <remotePort> [processName|pid] [localPort]");
+                                }
+
+                                string processSelector = args.Length >= 4 ? args[3] : null;
+                                int? localPortFilter = null;
+                                if (args.Length >= 5)
+                                {
+                                    if (!int.TryParse(args[4], out int parsedLocalPort) || parsedLocalPort <= 0)
+                                    {
+                                        return ChatCommandHandler.CommandResult.Error("Usage: /snowball session discover <remotePort> [processName|pid] [localPort]");
+                                    }
+
+                                    localPortFilter = parsedLocalPort;
+                                }
+
+                                return ChatCommandHandler.CommandResult.Info(
+                                    _snowBallOfficialSessionBridge.DescribeDiscoveredSessions(discoverRemotePort, processSelector, localPortFilter));
+                            }
+
+                            if (string.Equals(args[1], "start", StringComparison.OrdinalIgnoreCase))
+                            {
+                                if (args.Length < 5
+                                    || !int.TryParse(args[2], out int listenPort)
+                                    || listenPort <= 0
+                                    || !int.TryParse(args[4], out int remotePort)
+                                    || remotePort <= 0)
+                                {
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /snowball session start <listenPort> <serverHost> <serverPort>");
+                                }
+
+                                return _snowBallOfficialSessionBridge.TryStart(listenPort, args[3], remotePort, out string startStatus)
+                                    ? ChatCommandHandler.CommandResult.Ok(startStatus)
+                                    : ChatCommandHandler.CommandResult.Error(startStatus);
+                            }
+
+                            if (string.Equals(args[1], "startauto", StringComparison.OrdinalIgnoreCase))
+                            {
+                                if (args.Length < 4
+                                    || !int.TryParse(args[2], out int autoListenPort)
+                                    || autoListenPort <= 0
+                                    || !int.TryParse(args[3], out int autoRemotePort)
+                                    || autoRemotePort <= 0)
+                                {
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /snowball session startauto <listenPort> <remotePort> [processName|pid] [localPort]");
+                                }
+
+                                string processSelector = args.Length >= 5 ? args[4] : null;
+                                int? localPortFilter = null;
+                                if (args.Length >= 6)
+                                {
+                                    if (!int.TryParse(args[5], out int parsedLocalPort) || parsedLocalPort <= 0)
+                                    {
+                                        return ChatCommandHandler.CommandResult.Error("Usage: /snowball session startauto <listenPort> <remotePort> [processName|pid] [localPort]");
+                                    }
+
+                                    localPortFilter = parsedLocalPort;
+                                }
+
+                                return _snowBallOfficialSessionBridge.TryStartFromDiscovery(autoListenPort, autoRemotePort, processSelector, localPortFilter, out string startStatus)
+                                    ? ChatCommandHandler.CommandResult.Ok(startStatus)
+                                    : ChatCommandHandler.CommandResult.Error(startStatus);
+                            }
+
+                            if (string.Equals(args[1], "stop", StringComparison.OrdinalIgnoreCase))
+                            {
+                                _snowBallOfficialSessionBridge.Stop();
+                                return ChatCommandHandler.CommandResult.Ok(_snowBallOfficialSessionBridge.LastStatus);
+                            }
+
+                            return ChatCommandHandler.CommandResult.Error("Usage: /snowball session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]");
+
+                        case "request":
+                            if (args.Length == 1 || string.Equals(args[1], "peek", StringComparison.OrdinalIgnoreCase))
+                            {
+                                if (!field.TryPeekTouchPacketRequest(out SnowBallField.TouchPacketRequest request))
+                                {
+                                    return ChatCommandHandler.CommandResult.Info("No pending SnowBall touch request.");
+                                }
+
+                                return ChatCommandHandler.CommandResult.Info(
+                                    $"Pending SnowBall touch request: team={request.Team}, requestedAt={request.TickCount}, sequence={request.Sequence}");
+                            }
+
+                            if (string.Equals(args[1], "clear", StringComparison.OrdinalIgnoreCase))
+                            {
+                                field.ClearPendingTouchPacketRequests();
+                                return ChatCommandHandler.CommandResult.Ok("Cleared pending SnowBall touch requests.");
+                            }
+
+                            return ChatCommandHandler.CommandResult.Error("Usage: /snowball request [peek|clear]");
+
+                        default:
+                            return ChatCommandHandler.CommandResult.Error("Usage: /snowball [status|state <state> <team0Hp> <team1Hp> <team0Pos> <team0Speed> <team1Pos> <team1Speed> [damageSnowBall damageSnowMan0 damageSnowMan1]|hit <target> <damage> <delay>|msg <team> <type>|touch|raw <type> <hex>|raw packetraw <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]|request [peek|clear]]");
+                    }
+                });
+
+
+
+            _chat.CommandHandler.RegisterCommand(
                 "ariantarena",
                 "Inspect or drive the Ariant Arena ranking, result HUD, and remote actor overlay",
                 "/ariantarena [score <name> <score>|packet <name> <score> [<name> <score> ...]|raw <type> <hex>|actor <add|avatar|move|remove|clear|status> ...|inbox [status|start [port]|stop]|remove <name>|result|clear]",
@@ -4495,9 +4766,27 @@ namespace HaCreator.MapSimulator
 
                 "Inspect or drive the Monster Carnival HUD state",
 
-                "/mcarnival [status|tab <mob|skill|guardian>|enter <team> <personalCP> <personalTotal> <myCP> <myTotal> <enemyCP> <enemyTotal>|cp <personalCP> <personalTotal> <team0CP> <team0Total> <team1CP> <team1Total>|cpdelta <personalDelta> <personalTotalDelta> <team0Delta> <team0TotalDelta> <team1Delta> <team1TotalDelta>|request <index> [message]|requestok <mob|skill|guardian> <index> [message]|requestfail <reason>|result <code>|death <team> <name> <remainingRevives>|spells <mobIndex> <count>|raw <type> <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]]",
+                "/mcarnival [status|tab <mob|skill|guardian>|enter <team> <personalCP> <personalTotal> <myCP> <myTotal> <enemyCP> <enemyTotal>|cp <personalCP> <personalTotal> <team0CP> <team0Total> <team1CP> <team1Total>|cpdelta <personalDelta> <personalTotalDelta> <team0Delta> <team0TotalDelta> <team1Delta> <team1TotalDelta>|request <index> [message]|requestok <mob|skill|guardian> <index> [message]|requestfail <reason>|result <code>|death <team> <name> <remainingRevives>|spells <mobIndex> <count>|raw <type> <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|map <opcode> <enter|personalcp|teamcp|requestresult|requestfailure|processfordeath|memberout|gameresult>|unmap <opcode>|clearmap|recent|stop]]",
                 args =>
                 {
+                    static bool TryParseMonsterCarnivalSessionPacketType(string text, out int packetType)
+                    {
+                        packetType = text?.Trim().ToLowerInvariant() switch
+                        {
+                            "enter" => 346,
+                            "personalcp" or "personal" => 347,
+                            "teamcp" or "team" => 348,
+                            "requestresult" or "requestok" => 349,
+                            "requestfailure" or "requestfail" or "fail" => 350,
+                            "processfordeath" or "death" => 351,
+                            "memberout" or "showmemberoutmessage" => 352,
+                            "gameresult" or "result" => 353,
+                            _ => -1
+                        };
+
+                        return packetType >= 346;
+                    }
+
                     MonsterCarnivalField field = _specialFieldRuntime.Minigames.MonsterCarnival;
                     if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
                     {
@@ -4864,7 +5153,47 @@ namespace HaCreator.MapSimulator
                                 return ChatCommandHandler.CommandResult.Ok(_monsterCarnivalOfficialSessionBridge.LastStatus);
                             }
 
-                            return ChatCommandHandler.CommandResult.Error("Usage: /mcarnival session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]");
+                            if (string.Equals(args[1], "map", StringComparison.OrdinalIgnoreCase))
+                            {
+                                if (args.Length < 4
+                                    || !int.TryParse(args[2], out int opcode)
+                                    || opcode <= 0
+                                    || !TryParseMonsterCarnivalSessionPacketType(args[3], out int packetType))
+                                {
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /mcarnival session map <opcode> <enter|personalcp|teamcp|requestresult|requestfailure|processfordeath|memberout|gameresult>");
+                                }
+
+                                return _monsterCarnivalOfficialSessionBridge.TryConfigurePacketMapping(opcode, packetType, out string mapStatus)
+                                    ? ChatCommandHandler.CommandResult.Ok(mapStatus)
+                                    : ChatCommandHandler.CommandResult.Error(mapStatus);
+                            }
+
+                            if (string.Equals(args[1], "unmap", StringComparison.OrdinalIgnoreCase))
+                            {
+                                if (args.Length < 3
+                                    || !int.TryParse(args[2], out int opcode)
+                                    || opcode <= 0)
+                                {
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /mcarnival session unmap <opcode>");
+                                }
+
+                                return _monsterCarnivalOfficialSessionBridge.RemovePacketMapping(opcode, out string unmapStatus)
+                                    ? ChatCommandHandler.CommandResult.Ok(unmapStatus)
+                                    : ChatCommandHandler.CommandResult.Error(unmapStatus);
+                            }
+
+                            if (string.Equals(args[1], "clearmap", StringComparison.OrdinalIgnoreCase))
+                            {
+                                _monsterCarnivalOfficialSessionBridge.ClearPacketMappings();
+                                return ChatCommandHandler.CommandResult.Ok(_monsterCarnivalOfficialSessionBridge.LastStatus);
+                            }
+
+                            if (string.Equals(args[1], "recent", StringComparison.OrdinalIgnoreCase))
+                            {
+                                return ChatCommandHandler.CommandResult.Info(_monsterCarnivalOfficialSessionBridge.DescribeRecentPackets());
+                            }
+
+                            return ChatCommandHandler.CommandResult.Error("Usage: /mcarnival session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|map <opcode> <enter|personalcp|teamcp|requestresult|requestfailure|processfordeath|memberout|gameresult>|unmap <opcode>|clearmap|recent|stop]");
 
 
 
@@ -7570,13 +7899,13 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "localoverlay",
                 "Inspect or drive packet-authored local overlays, damage-meter timing, and field-hazard notices",
-                "/localoverlay [status|clear [fade|balloon|damagemeter|hazard|all]|fade <fadeInMs> <holdMs> <fadeOutMs> [alpha]|balloon avatar <width> <lifetimeSec> <text>|balloon world <x> <y> <width> <lifetimeSec> <text>|damagemeter <seconds>|damagemeterclear|hazard <damage> [message]|hazardclear|packet <fade|balloon|damagemeter|hpdec> [payloadhex=..|payloadb64=..]|packetraw <fade|balloon|damagemeter|hpdec> <hex>|inbox [status|start [port]|stop|packet <fade|balloon> [payloadhex=..|payloadb64=..]|packetraw <fade|balloon> <hex>]]",
+                "/localoverlay [status|clear [fade|balloon|damagemeter|hazard|all]|fade <fadeInMs> <holdMs> <fadeOutMs> [alpha]|balloon avatar <width> <lifetimeSec> <text>|balloon world <x> <y> <width> <lifetimeSec> <text>|damagemeter <seconds>|damagemeterclear|hazard <damage> [message]|hazardclear|packet <fade|balloon|damagemeter|hpdec> [payloadhex=..|payloadb64=..]|packetraw <fade|balloon|damagemeter|hpdec> <hex>]",
                 HandlePacketOwnedLocalOverlayCommand);
             _chat.CommandHandler.RegisterCommand(
                 "localoverlaypacket",
-                "Inspect or inject packet-owned field fade and balloon payloads through the loopback inbox",
-                "/localoverlaypacket [status|start [port]|stop|packet <fade|balloon> [payloadhex=..|payloadb64=..]|packetraw <fade|balloon> <hex>]",
-                HandlePacketOwnedLocalOverlayInboxCommand);
+                "Inspect or inject packet-owned field fade and balloon payloads directly",
+                "/localoverlaypacket [status|packet <fade|balloon> [payloadhex=..|payloadb64=..]|packetraw <fade|balloon> <hex>]",
+                HandlePacketOwnedLocalOverlayPacketAliasCommand);
             _chat.CommandHandler.RegisterCommand(
                 "combopacket",
                 "Inspect or drive packet-owned combo counter and combo-command HUD parity",
@@ -7592,7 +7921,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "expedition",
                 "Inspect or drive the dedicated expedition intermediary owner discovered in the client",
-                "/expedition [status|open|search|clear|local clear|get|modified|invite|response|notice|master|removed|start|register] ...",
+                "/expedition [status|open|search|clear|start|register|get|modified|invite|response|notice|master|removed|payload|packetraw|inbox|bridge] ...",
                 HandleExpeditionIntermediaryCommand);
 
             _chat.CommandHandler.RegisterCommand(
@@ -7613,6 +7942,11 @@ namespace HaCreator.MapSimulator
                 "Inspect or inject packet-owned local utility and event dispatch payloads through the loopback inbox",
                 "/localutilitypacket [status|start [port]|stop|packet <sitresult|questresult|openui|openuiwithoption|commodity|notice|chat|buffzone|eventsound|minigamesound|skillguide|antimacro|apspevent|follow|followfail|directionmode|standalone|damagemeter|hpdec|skillcooltime|193|231|242|243|246|247|250|251|252|262|263|264|265|266|267|270|273|274|275|276|1011|1012|1013|1014|classcompetition|questguide|deliveryquest> [payloadhex=..|payloadb64=..]|packetraw <type> [hex]|packetclientraw <hex>]",
                 HandlePacketOwnedUtilityCommand);
+            _chat.CommandHandler.RegisterCommand(
+                "npcutility",
+                "Inspect or drive packet-owned NPC shop, store-bank, and battle-record owners",
+                "/npcutility [status|packet <364|365|369|370|420|421|422|423> [payloadhex=..|payloadb64=..]|packetraw <364|365|369|370|420|421|422|423> <hex>|shop [status|show|buy <itemId> [quantity]|sell <itemId> [quantity]|recharge <itemId> [targetQuantity]|close]|storebank [status|show|getall|close]|battlerecord [status|show|page <summary|dot|packets>|close]]",
+                HandlePacketOwnedNpcUtilityCommand);
 
 
             _chat.CommandHandler.RegisterCommand(
@@ -7738,15 +8072,20 @@ namespace HaCreator.MapSimulator
                         case "result":
                             if (args.Length < 2)
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /mapletv result <success|busy|offline|fail>");
+                                return ChatCommandHandler.CommandResult.Error("Usage: /mapletv result <sent|wrongname|queue|fail>");
                             }
 
 
                             MapleTvSendResultKind? resultKind = args[1].ToLowerInvariant() switch
                             {
-                                "success" => MapleTvSendResultKind.Success,
-                                "busy" => MapleTvSendResultKind.Busy,
-                                "offline" => MapleTvSendResultKind.RecipientOffline,
+                                "sent" => MapleTvSendResultKind.Sent,
+                                "success" => MapleTvSendResultKind.Sent,
+                                "wrongname" => MapleTvSendResultKind.WrongUserName,
+                                "wrong-user-name" => MapleTvSendResultKind.WrongUserName,
+                                "offline" => MapleTvSendResultKind.WrongUserName,
+                                "queue" => MapleTvSendResultKind.QueueTooLong,
+                                "queue-too-long" => MapleTvSendResultKind.QueueTooLong,
+                                "busy" => MapleTvSendResultKind.QueueTooLong,
                                 "fail" => MapleTvSendResultKind.Failed,
                                 "failed" => MapleTvSendResultKind.Failed,
                                 _ => null
@@ -7755,7 +8094,7 @@ namespace HaCreator.MapSimulator
 
                             if (resultKind == null)
                             {
-                                return ChatCommandHandler.CommandResult.Error("Result must be one of: success, busy, offline, fail");
+                                return ChatCommandHandler.CommandResult.Error("Result must be one of: sent, wrongname, queue, fail");
                             }
 
 
@@ -7891,7 +8230,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "chair",
                 "Activate or clear an owned portable chair",
-                "/chair <itemId|clear>",
+                "/chair <itemId|clear|pair <characterId|clear>>",
                 args =>
                 {
                     if (_playerManager?.Player == null || _playerManager.Loader == null)
@@ -7903,15 +8242,44 @@ namespace HaCreator.MapSimulator
                     if (args.Length == 0)
                     {
                         PortableChair activeChair = _playerManager.Player.Build?.ActivePortableChair;
+                        int? preferredPairCharacterId = _remoteUserPool?.LocalPortableChairPreferredPairCharacterId;
+                        string preferredPairText = preferredPairCharacterId.HasValue
+                            ? $" Preferred pair: {preferredPairCharacterId.Value}."
+                            : string.Empty;
                         return activeChair != null
-                            ? ChatCommandHandler.CommandResult.Info($"Active chair: {activeChair.Name} ({activeChair.ItemId})")
-                            : ChatCommandHandler.CommandResult.Info("No portable chair is active");
+                            ? ChatCommandHandler.CommandResult.Info($"Active chair: {activeChair.Name} ({activeChair.ItemId}).{preferredPairText}")
+                            : ChatCommandHandler.CommandResult.Info($"No portable chair is active.{preferredPairText}");
+                    }
+
+
+                    if (string.Equals(args[0], "pair", StringComparison.OrdinalIgnoreCase))
+                    {
+                        if (_remoteUserPool == null || args.Length < 2)
+                        {
+                            return ChatCommandHandler.CommandResult.Error("Usage: /chair pair <characterId|clear>");
+                        }
+
+                        if (string.Equals(args[1], "clear", StringComparison.OrdinalIgnoreCase))
+                        {
+                            _remoteUserPool.ClearLocalPortableChairPairPreference();
+                            return ChatCommandHandler.CommandResult.Ok("Cleared the preferred couple-chair partner.");
+                        }
+
+                        if (!int.TryParse(args[1], out int pairCharacterId) || pairCharacterId <= 0)
+                        {
+                            return ChatCommandHandler.CommandResult.Error($"Invalid pair character ID: {args[1]}");
+                        }
+
+                        return _remoteUserPool.TrySetLocalPortableChairPairPreference(_playerManager.Player, pairCharacterId, out string pairMessage)
+                            ? ChatCommandHandler.CommandResult.Ok(pairMessage)
+                            : ChatCommandHandler.CommandResult.Error(pairMessage);
                     }
 
 
                     if (string.Equals(args[0], "clear", StringComparison.OrdinalIgnoreCase))
                     {
                         _playerManager.Player.ClearPortableChair();
+                        _remoteUserPool?.ClearLocalPortableChairPairPreference();
                         return ChatCommandHandler.CommandResult.Ok("Portable chair cleared.");
                     }
 
@@ -8599,7 +8967,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "fieldstate",
                 "Inspect or drive packet-authored field help, quest timers, field-specific data, and object-state flips",
-                "/fieldstate [status|wrapperstatus|desc <index>|questtime <questId> <seconds>|questclear|objectstate <tag> <on|off|0|1>|fieldspecific <payloadhex=..|payloadb64=..>|wrappervalue <huntingadballoon|escortresult> <key> <value>|packet <149|162|166|167|169|174|178> [payloadhex=..|payloadb64=..]|packetraw <149|162|166|167|169|174|178> [hex]]",
+                "/fieldstate [status|wrapperstatus|desc <index>|questtime <questId> <seconds>|questclear|objectstate <tag> <on|off|0|1>|fieldspecific <payloadhex=..|payloadb64=..>|wrappervalue <huntingadballoon|escortresult> <key> <value>|packet <149|162|166|167|169|174|178|334|335|336|337> [payloadhex=..|payloadb64=..]|packetraw <149|162|166|167|169|174|178|334|335|336|337> [hex]|packetclientraw <hex>]",
                 args =>
                 {
                     _packetFieldStateRuntime.Initialize(GraphicsDevice, _mapBoard?.MapInfo);
@@ -8739,9 +9107,9 @@ namespace HaCreator.MapSimulator
 
                             if (args.Length < 2 ||
                                 !int.TryParse(args[1], out int fieldPacketType) ||
-                                (fieldPacketType != 149 && fieldPacketType != 162 && fieldPacketType != 166 && fieldPacketType != 167 && fieldPacketType != 169 && fieldPacketType != 174 && fieldPacketType != 178))
+                                !PacketFieldIngressRouter.IsSupportedFieldScopedPacketType(fieldPacketType))
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /fieldstate packet <149|162|166|167|169|174|178> [payloadhex=..|payloadb64=..]");
+                                return ChatCommandHandler.CommandResult.Error("Usage: /fieldstate packet <149|162|166|167|169|174|178|334|335|336|337> [payloadhex=..|payloadb64=..]");
                             }
 
 
@@ -8751,13 +9119,13 @@ namespace HaCreator.MapSimulator
                             {
                                 if (args.Length < 3 || !TryParseBinaryPayloadArgument(args[2], out fieldPacketPayload, out fieldPacketPayloadError))
                                 {
-                                    return ChatCommandHandler.CommandResult.Error(fieldPacketPayloadError ?? "Usage: /fieldstate packet <149|162|166|167|169|174|178> [payloadhex=..|payloadb64=..]");
+                                    return ChatCommandHandler.CommandResult.Error(fieldPacketPayloadError ?? "Usage: /fieldstate packet <149|162|166|167|169|174|178|334|335|336|337> [payloadhex=..|payloadb64=..]");
                                 }
                             }
 
 
 
-                            return TryApplyPacketOwnedFieldStatePacket(fieldPacketType, fieldPacketPayload, out string fieldPacketMessage)
+                            return TryApplyPacketOwnedFieldScopedPacket(fieldPacketType, fieldPacketPayload, out string fieldPacketMessage)
 
                                 ? ChatCommandHandler.CommandResult.Ok(fieldPacketMessage)
 
@@ -8769,9 +9137,9 @@ namespace HaCreator.MapSimulator
 
                             if (args.Length < 2 ||
                                 !int.TryParse(args[1], out int rawFieldPacketType) ||
-                                (rawFieldPacketType != 149 && rawFieldPacketType != 162 && rawFieldPacketType != 166 && rawFieldPacketType != 167 && rawFieldPacketType != 169 && rawFieldPacketType != 174 && rawFieldPacketType != 178))
+                                !PacketFieldIngressRouter.IsSupportedFieldScopedPacketType(rawFieldPacketType))
                             {
-                                return ChatCommandHandler.CommandResult.Error("Usage: /fieldstate packetraw <149|162|166|167|169|174|178> [hex]");
+                                return ChatCommandHandler.CommandResult.Error("Usage: /fieldstate packetraw <149|162|166|167|169|174|178|334|335|336|337> [hex]");
                             }
 
 
@@ -8780,35 +9148,53 @@ namespace HaCreator.MapSimulator
                             {
                                 if (args.Length < 3 || !TryDecodeHexBytes(string.Join(string.Empty, args.Skip(2)), out rawFieldPayload))
                                 {
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /fieldstate packetraw <149|162|166|167|169|174|178> [hex]");
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /fieldstate packetraw <149|162|166|167|169|174|178|334|335|336|337> [hex]");
                                 }
                             }
 
 
 
-                            return TryApplyPacketOwnedFieldStatePacket(rawFieldPacketType, rawFieldPayload, out string rawFieldMessage)
+                            return TryApplyPacketOwnedFieldScopedPacket(rawFieldPacketType, rawFieldPayload, out string rawFieldMessage)
 
                                 ? ChatCommandHandler.CommandResult.Ok(rawFieldMessage)
 
                                 : ChatCommandHandler.CommandResult.Error(rawFieldMessage);
 
+                        case "packetclientraw":
+
+                            if (args.Length < 2 || !TryDecodeHexBytes(string.Join(string.Empty, args.Skip(1)), out byte[] rawFieldPacket))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /fieldstate packetclientraw <hex>");
+                            }
+
+                            if (!PacketFieldIngressRouter.TryDecodeClientOpcodePacket(rawFieldPacket, out int framedFieldPacketType, out byte[] framedFieldPayload, out string framedFieldError))
+                            {
+                                return ChatCommandHandler.CommandResult.Error(framedFieldError ?? "Usage: /fieldstate packetclientraw <hex>");
+                            }
+
+                            return TryApplyPacketOwnedFieldScopedPacket(framedFieldPacketType, framedFieldPayload, out string framedFieldMessage)
+
+                                ? ChatCommandHandler.CommandResult.Ok($"Applied field-scoped client opcode {framedFieldPacketType}. {framedFieldMessage}")
+
+                                : ChatCommandHandler.CommandResult.Error(framedFieldMessage);
+
 
 
                         default:
-                            return ChatCommandHandler.CommandResult.Error("Usage: /fieldstate [status|wrapperstatus|desc <index>|questtime <questId> <seconds>|questclear|objectstate <tag> <on|off|0|1>|fieldspecific <payloadhex=..|payloadb64=..>|wrappervalue <huntingadballoon|escortresult> <key> <value>|packet <149|162|166|167|169|174|178> [payloadhex=..|payloadb64=..]|packetraw <149|162|166|167|169|174|178> [hex]]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /fieldstate [status|wrapperstatus|desc <index>|questtime <questId> <seconds>|questclear|objectstate <tag> <on|off|0|1>|fieldspecific <payloadhex=..|payloadb64=..>|wrappervalue <huntingadballoon|escortresult> <key> <value>|packet <149|162|166|167|169|174|178|334|335|336|337> [payloadhex=..|payloadb64=..]|packetraw <149|162|166|167|169|174|178|334|335|336|337> [hex]|packetclientraw <hex>]");
                     }
                 });
 
             _chat.CommandHandler.RegisterCommand(
                 "scriptmsg",
                 "Inspect or drive packet-authored CScriptMan script-message dialogs",
-                "/scriptmsg [status|clear|transport <status|start [port]|stop>|say <npcId> <text>|sayimage <npcId> <imagePath[,imagePath...]>|yesno <npcId> <text>|menu <npcId> <text>|quiz <npcId> <default> <min> <max> <prompt>|speedquiz <npcId> <defaultText> <prompt> [option1,option2,...]|avatar <npcId> <prompt> <itemId[,itemId...]>|mavatar <npcId> <prompt> <itemId[,itemId...]>|pet <npcId> <prompt> <itemId[,itemId...]>|petall <npcId> <prompt> <itemId[,itemId...]>|slidemenu <npcId> <skin> <prompt> <option1,option2,...>|text <npcId> <minLen> <maxLen> <defaultText> <prompt>|number <npcId> <default> <min> <max> <prompt>|box <npcId> <columns> <lines> <defaultText> <prompt>|packet <payloadhex=..|payloadb64=..>|packetraw <hex>]",
+                "/scriptmsg [status|clear|transport <status|start [port]|stop>|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop>|say <npcId> <text>|sayimage <npcId> <imagePath[,imagePath...]>|yesno <npcId> <text>|menu <npcId> <text>|quiz <npcId> <default> <min> <max> <prompt>|speedquiz <npcId> <defaultText> <prompt> [option1,option2,...]|avatar <npcId> <prompt> <itemId[,itemId...]>|mavatar <npcId> <prompt> <itemId[,itemId...]>|pet <npcId> <prompt> <itemId[,itemId...]>|petall <npcId> <prompt> <itemId[,itemId...]>|slidemenu <npcId> <skin> <prompt> <option1,option2,...>|text <npcId> <minLen> <maxLen> <defaultText> <prompt>|number <npcId> <default> <min> <max> <prompt>|box <npcId> <columns> <lines> <defaultText> <prompt>|packet <payloadhex=..|payloadb64=..>|packetraw <hex>]",
                 args =>
                 {
                     if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
                     {
                         return ChatCommandHandler.CommandResult.Info(
-                            $"{_packetScriptMessageRuntime.DescribeStatus()}{Environment.NewLine}{_packetScriptReplyTransport.LastStatus}");
+                            $"{_packetScriptMessageRuntime.DescribeStatus()}{Environment.NewLine}{_packetScriptReplyTransport.LastStatus}{Environment.NewLine}{DescribePacketScriptOfficialSessionBridgeStatus()}");
                     }
 
 
@@ -8847,6 +9233,9 @@ namespace HaCreator.MapSimulator
                             }
 
                             return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg transport <status|start [port]|stop>");
+
+                        case "session":
+                            return HandlePacketOwnedScriptSessionCommand(args.Skip(1).ToArray());
 
 
 
@@ -9196,7 +9585,7 @@ namespace HaCreator.MapSimulator
 
 
                         default:
-                            return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg [status|clear|transport <status|start [port]|stop>|say <npcId> <text>|sayimage <npcId> <imagePath[,imagePath...]>|yesno <npcId> <text>|menu <npcId> <text>|quiz <npcId> <default> <min> <max> <prompt>|speedquiz <npcId> <defaultText> <prompt> [option1,option2,...]|avatar <npcId> <prompt> <itemId[,itemId...]>|mavatar <npcId> <prompt> <itemId[,itemId...]>|pet <npcId> <prompt> <itemId[,itemId...]>|petall <npcId> <prompt> <itemId[,itemId...]>|slidemenu <npcId> <skin> <prompt> <option1,option2,...>|text <npcId> <minLen> <maxLen> <defaultText> <prompt>|number <npcId> <default> <min> <max> <prompt>|box <npcId> <columns> <lines> <defaultText> <prompt>|packet <payloadhex=..|payloadb64=..>|packetraw <hex>]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /scriptmsg [status|clear|transport <status|start [port]|stop>|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop>|say <npcId> <text>|sayimage <npcId> <imagePath[,imagePath...]>|yesno <npcId> <text>|menu <npcId> <text>|quiz <npcId> <default> <min> <max> <prompt>|speedquiz <npcId> <defaultText> <prompt> [option1,option2,...]|avatar <npcId> <prompt> <itemId[,itemId...]>|mavatar <npcId> <prompt> <itemId[,itemId...]>|pet <npcId> <prompt> <itemId[,itemId...]>|petall <npcId> <prompt> <itemId[,itemId...]>|slidemenu <npcId> <skin> <prompt> <option1,option2,...>|text <npcId> <minLen> <maxLen> <defaultText> <prompt>|number <npcId> <default> <min> <max> <prompt>|box <npcId> <columns> <lines> <defaultText> <prompt>|packet <payloadhex=..|payloadb64=..>|packetraw <hex>]");
                     }
                 });
 
@@ -9860,7 +10249,8 @@ namespace HaCreator.MapSimulator
             _socialListRuntime.UpdateLocalContext(_playerManager?.Player?.Build, GetCurrentMapTransferDisplayName(), 1);
             if (args.Length == 0)
             {
-                return ChatCommandHandler.CommandResult.Info(_socialListRuntime.DescribeExpeditionStatus());
+                return ChatCommandHandler.CommandResult.Info(
+                    $"{_socialListRuntime.DescribeExpeditionStatus()}{Environment.NewLine}{DescribeExpeditionIntermediaryPacketInboxStatus()}{Environment.NewLine}{DescribeExpeditionIntermediaryOfficialSessionBridgeStatus()}");
             }
 
             int index = 0;
@@ -9880,7 +10270,20 @@ namespace HaCreator.MapSimulator
             switch (action)
             {
                 case "status":
-                    return ChatCommandHandler.CommandResult.Info(_socialListRuntime.DescribeExpeditionStatus());
+                    return ChatCommandHandler.CommandResult.Info(
+                        $"{_socialListRuntime.DescribeExpeditionStatus()}{Environment.NewLine}{DescribeExpeditionIntermediaryPacketInboxStatus()}{Environment.NewLine}{DescribeExpeditionIntermediaryOfficialSessionBridgeStatus()}");
+
+                case "payload":
+                    return HandleExpeditionPayloadCommand(args, index + 1, packetOwned);
+
+                case "packetraw":
+                    return HandleExpeditionRawPacketCommand(args, index + 1, packetOwned);
+
+                case "inbox":
+                    return HandleExpeditionInboxCommand(args, index + 1);
+
+                case "bridge":
+                    return HandleExpeditionBridgeCommand(args, index + 1);
 
                 case "open":
                 case "search":
@@ -10064,7 +10467,7 @@ namespace HaCreator.MapSimulator
 
                 default:
                     return ChatCommandHandler.CommandResult.Error(
-                        "Usage: /expedition [packet|local] [status|open|search|clear|start [title=Name]|register [title=Name]|get [title=Name] [master=n] [parties=party~name~role~level~map~channel~online~local;...]|modified [party=n] [members=name~role~level~map~channel~online~local;...] [master=n]|invite [name=Leader] [level=n] [job=n] [pq=n]|response [name=Leader] [result=accept|decline|busy|changed|blocked|unavailable|fail6|promptopen|n]|notice [kind=joined|left|removed] [name=Member]|master [party=n]|removed [kind=leave|disband|removed]]");
+                        "Usage: /expedition [packet|local] [status|open|search|clear|start [title=Name]|register [title=Name]|get [title=Name] [master=n] [parties=party~name~role~level~map~channel~online~local;...]|modified [party=n] [members=name~role~level~map~channel~online~local;...] [master=n]|invite [name=Leader] [level=n] [job=n] [pq=n]|response [name=Leader] [result=accept|decline|busy|changed|blocked|unavailable|fail6|promptopen|n]|notice [kind=joined|left|removed] [name=Member]|master [party=n]|removed [kind=leave|disband|removed]|payload <payloadhex=..|payloadb64=..>|packetraw <hex> [opcode=n]|inbox [status|start [port]|stop]|bridge [status|start <listenPort> <remoteHost> <remotePort> <opcode>|discover <remotePort> <opcode> [listenPort] [process=selector] [localPort=n]|stop]]");
             }
         }
 

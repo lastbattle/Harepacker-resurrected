@@ -492,6 +492,7 @@ namespace HaCreator.MapSimulator
 
             RegisterStatusBarPopupUtilityWindows(uiStatus2BarImage, uiBasicImage, soundUIImage);
             RegisterPacketOwnedAntiMacroWindows();
+            RegisterPacketOwnedLogoutGiftWindow();
 
 
             // Set fonts on UI windows after all tasks complete
@@ -837,6 +838,8 @@ namespace HaCreator.MapSimulator
                 statusBarChatUI.WhisperTargetPickerRequested = () => _chat.OpenWhisperTargetPicker(Environment.TickCount);
                 statusBarChatUI.WhisperTargetPickerCandidateRequested = target => _chat.SelectWhisperTargetPickerCandidate(target, Environment.TickCount);
                 statusBarChatUI.WhisperTargetPickerSelectionDeltaRequested = delta => _chat.OffsetWhisperTargetPickerSelection(delta);
+                statusBarChatUI.WhisperTargetPickerConfirmRequested = () => _chat.ConfirmWhisperTargetPicker(Environment.TickCount);
+                statusBarChatUI.WhisperTargetPickerCancelRequested = () => _chat.CancelActiveWhisperTargetPicker();
             }
 
 
@@ -868,10 +871,10 @@ namespace HaCreator.MapSimulator
             {
                 bookCollectionWindow.CharacterBuild = _playerManager?.Player?.Build ?? _loginCharacterRoster.SelectedEntry?.Build;
                 bookCollectionWindow.SetFont(_fontDebugValues);
-                // The dedicated book owner should stay on the Monster Book runtime path.
-                bookCollectionWindow.SetCollectionSnapshotProvider(null);
+                bookCollectionWindow.SetCollectionSnapshotProvider(BuildActiveCollectionBookSnapshot);
                 bookCollectionWindow.SetMonsterBookSnapshotProvider(BuildActiveMonsterBookSnapshot);
                 bookCollectionWindow.SetMonsterBookRegistrationHandler(ApplyActiveMonsterBookRegistration);
+                bookCollectionWindow.ClientCloseRequested = HandleBookCollectionCloseRequested;
                 bookCollectionWindow.OpenRequested = HandleBookCollectionOpened;
                 bookCollectionWindow.ClosingRequested = HandleBookCollectionClosing;
                 bookCollectionWindow.CloseRequested = HandleBookCollectionClosed;
@@ -1608,6 +1611,8 @@ namespace HaCreator.MapSimulator
 
             ReplaceQuestGatedMapObjects(questGatedMapObjects);
 
+
+            RegisterPacketOwnedLogoutGiftWindow();
 
 
             // Set fonts on UI windows after all tasks complete

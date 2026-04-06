@@ -109,6 +109,7 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Regex AvoidabilityBonusRegex = new Regex(@"(?:Avoidability|Avoid)\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex SpeedBonusRegex = new Regex(@"Speed\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex JumpBonusRegex = new Regex(@"Jump\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex HandsBonusRegex = new Regex(@"(?:Diligence|Hands|Craft)\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly IReadOnlyDictionary<int, EnhancementConsumableDefinition> ConsumableDefinitions =
             new Dictionary<int, EnhancementConsumableDefinition>
             {
@@ -831,6 +832,7 @@ namespace HaCreator.MapSimulator.UI
             ApplyAvoidabilityBonus(selectedPart, state, statDeltaProfile.Avoidability * multiplier);
             ApplySpeedBonus(selectedPart, state, statDeltaProfile.Speed * multiplier);
             ApplyJumpBonus(selectedPart, state, statDeltaProfile.Jump * multiplier);
+            ApplyHandsBonus(selectedPart, state, statDeltaProfile.Hands * multiplier);
         }
 
         private void ApplyWeaponAttackBonus(CharacterPart selectedPart, UpgradeState state, int amount)
@@ -1040,6 +1042,21 @@ namespace HaCreator.MapSimulator.UI
             if (selectedPart != null)
             {
                 selectedPart.BonusJump += amount;
+            }
+        }
+
+        private void ApplyHandsBonus(CharacterPart selectedPart, UpgradeState state, int amount)
+        {
+            if (_characterBuild == null || state == null || amount == 0)
+            {
+                return;
+            }
+
+            state.HandsBonus += amount;
+            _characterBuild.Hands += amount;
+            if (selectedPart != null)
+            {
+                selectedPart.BonusHands += amount;
             }
         }
 
@@ -2025,6 +2042,7 @@ namespace HaCreator.MapSimulator.UI
                 _characterBuild.Avoidability = Math.Max(0, _characterBuild.Avoidability - state.AvoidabilityBonus);
                 _characterBuild.Speed = Math.Max(0f, _characterBuild.Speed - state.SpeedBonus);
                 _characterBuild.JumpPower = Math.Max(0f, _characterBuild.JumpPower - state.JumpBonus);
+                _characterBuild.Hands = Math.Max(0, _characterBuild.Hands - state.HandsBonus);
             }
 
             if (selectedPart != null)
@@ -2043,6 +2061,7 @@ namespace HaCreator.MapSimulator.UI
                 selectedPart.BonusAvoidability = Math.Max(0, selectedPart.BonusAvoidability - state.AvoidabilityBonus);
                 selectedPart.BonusSpeed = Math.Max(0, selectedPart.BonusSpeed - state.SpeedBonus);
                 selectedPart.BonusJump = Math.Max(0, selectedPart.BonusJump - state.JumpBonus);
+                selectedPart.BonusHands = Math.Max(0, selectedPart.BonusHands - state.HandsBonus);
             }
         }
 
@@ -2735,8 +2754,7 @@ namespace HaCreator.MapSimulator.UI
         {
             profile = default;
             string itemName = ResolveCachedItemNameOrFallback(itemId);
-            if (string.IsNullOrWhiteSpace(itemName) ||
-                itemName.IndexOf("scroll", StringComparison.OrdinalIgnoreCase) < 0)
+            if (!IsEnhancementConsumableName(itemName))
             {
                 return false;
             }
@@ -2749,6 +2767,17 @@ namespace HaCreator.MapSimulator.UI
 
             profile = new EnhancementScrollProfile(successRate, destroyChance, statDeltaProfile);
             return profile.IsValid;
+        }
+
+        private static bool IsEnhancementConsumableName(string itemName)
+        {
+            if (string.IsNullOrWhiteSpace(itemName))
+            {
+                return false;
+            }
+
+            return itemName.IndexOf("scroll", StringComparison.OrdinalIgnoreCase) >= 0 ||
+                   itemName.IndexOf("tablet", StringComparison.OrdinalIgnoreCase) >= 0;
         }
 
         private static bool TryResolveWzEnhancementScrollData(
@@ -2958,6 +2987,7 @@ namespace HaCreator.MapSimulator.UI
             public int AvoidabilityBonus { get; set; }
             public int SpeedBonus { get; set; }
             public int JumpBonus { get; set; }
+            public int HandsBonus { get; set; }
             public bool HasPotential { get; set; }
             public PotentialTier PotentialTier { get; set; }
             public int PotentialLineCount { get; set; }
@@ -3097,7 +3127,8 @@ namespace HaCreator.MapSimulator.UI
                 int accuracy,
                 int avoidability,
                 int speed,
-                int jump)
+                int jump,
+                int hands)
             {
                 WeaponAttack = weaponAttack;
                 MagicAttack = magicAttack;
@@ -3113,6 +3144,7 @@ namespace HaCreator.MapSimulator.UI
                 Avoidability = avoidability;
                 Speed = speed;
                 Jump = jump;
+                Hands = hands;
             }
 
             public int WeaponAttack { get; }
@@ -3129,6 +3161,7 @@ namespace HaCreator.MapSimulator.UI
             public int Avoidability { get; }
             public int Speed { get; }
             public int Jump { get; }
+            public int Hands { get; }
             public bool IsEmpty => WeaponAttack == 0 &&
                                    MagicAttack == 0 &&
                                    WeaponDefense == 0 &&
@@ -3142,7 +3175,8 @@ namespace HaCreator.MapSimulator.UI
                                    Accuracy == 0 &&
                                    Avoidability == 0 &&
                                    Speed == 0 &&
-                                   Jump == 0;
+                                   Jump == 0 &&
+                                   Hands == 0;
         }
 
         private readonly struct EnhancementScrollProfile
@@ -3181,7 +3215,8 @@ namespace HaCreator.MapSimulator.UI
                 ResolveStatBonus(info, "incACC", description, AccuracyBonusRegex),
                 ResolveStatBonus(info, "incEVA", description, AvoidabilityBonusRegex),
                 ResolveStatBonus(info, "incSpeed", description, SpeedBonusRegex),
-                ResolveStatBonus(info, "incJump", description, JumpBonusRegex));
+                ResolveStatBonus(info, "incJump", description, JumpBonusRegex),
+                ResolveStatBonus(info, "incCraft", description, HandsBonusRegex));
         }
 
         private static int ResolveStatBonus(WzSubProperty info, string infoKey, string description, Regex descriptionRegex)
@@ -3230,6 +3265,7 @@ namespace HaCreator.MapSimulator.UI
             AppendAuthoredStatSegment(segments, "Avoidability", statDeltaProfile.Avoidability * multiplier);
             AppendAuthoredStatSegment(segments, "Speed", statDeltaProfile.Speed * multiplier);
             AppendAuthoredStatSegment(segments, "Jump", statDeltaProfile.Jump * multiplier);
+            AppendAuthoredStatSegment(segments, "Hands", statDeltaProfile.Hands * multiplier);
             return segments.Count > 0
                 ? $" ({string.Join(", ", segments)})"
                 : string.Empty;
@@ -3511,6 +3547,20 @@ namespace HaCreator.MapSimulator.UI
                 targetSlots.Add(EquipSlot.Shield);
             }
 
+            if (normalized.IndexOf("accessory", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                targetSlots.Add(EquipSlot.FaceAccessory);
+                targetSlots.Add(EquipSlot.EyeAccessory);
+                targetSlots.Add(EquipSlot.Earrings);
+                targetSlots.Add(EquipSlot.Ring1);
+                targetSlots.Add(EquipSlot.Ring2);
+                targetSlots.Add(EquipSlot.Ring3);
+                targetSlots.Add(EquipSlot.Ring4);
+                targetSlots.Add(EquipSlot.Pendant);
+                targetSlots.Add(EquipSlot.Pendant2);
+                targetSlots.Add(EquipSlot.Belt);
+            }
+
             if (normalized.IndexOf("ring", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 targetSlots.Add(EquipSlot.Ring1);
@@ -3550,9 +3600,21 @@ namespace HaCreator.MapSimulator.UI
                 targetSlots.Add(EquipSlot.Cap);
             }
 
+            if (normalized.IndexOf("armor", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                targetSlots.Add(EquipSlot.Cap);
+                targetSlots.Add(EquipSlot.Coat);
+                targetSlots.Add(EquipSlot.Pants);
+                targetSlots.Add(EquipSlot.Longcoat);
+                targetSlots.Add(EquipSlot.Glove);
+                targetSlots.Add(EquipSlot.Shoes);
+                targetSlots.Add(EquipSlot.Cape);
+                targetSlots.Add(EquipSlot.Shield);
+            }
+
             string[] weaponKeywords =
             {
-                "sword", "axe", "blunt", "dagger", "spear", "pole arm", "bow",
+                "weapon", "sword", "axe", "blunt", "dagger", "spear", "pole arm", "bow",
                 "crossbow", "staff", "wand", "claw", "knuckle", "gun"
             };
             if (weaponKeywords.Any(keyword => normalized.IndexOf(keyword, StringComparison.OrdinalIgnoreCase) >= 0))

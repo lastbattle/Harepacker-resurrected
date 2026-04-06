@@ -31,6 +31,8 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly Queue<SocialEntryState> _guildInviteSeeds = new();
         private readonly Queue<SocialEntryState> _allianceInviteSeeds = new();
         private readonly Queue<SocialEntryState> _blacklistSeeds = new();
+        private readonly List<string> _friendGroups = new();
+        private readonly Dictionary<string, string> _friendGroupByName = new(StringComparer.OrdinalIgnoreCase);
         private readonly Dictionary<SocialListTab, bool> _packetOwnedRosterByTab = new();
         private readonly Dictionary<SocialListTab, string> _lastPacketSyncSummaryByTab = new();
         private readonly Dictionary<SocialListTab, string> _lastPendingRequestByTab = new();
@@ -48,6 +50,7 @@ namespace HaCreator.MapSimulator.Interaction
         private int _channel = 1;
         private bool _friendOnlineOnly;
         private bool _hasGuildMembership;
+        private int _nextFriendGroupNumber = 1;
         private SocialListTab _currentTab = SocialListTab.Friend;
 
         internal SocialListRuntime()
@@ -406,7 +409,7 @@ namespace HaCreator.MapSimulator.Interaction
             return actionKey switch
             {
                 "Friend.AddFriend" => AddFriend(),
-                "Friend.AddGroup" => "Friend-group folders are visible in the WZ shell, but packet-backed group editing still remains out of scope.",
+                "Friend.AddGroup" => AddFriendGroup(),
                 "Friend.Party" => InviteFriendToParty(),
                 "Friend.Chat" => SendFriendChat(),
                 "Friend.Whisper" => WhisperSelected("friend"),
@@ -579,6 +582,14 @@ namespace HaCreator.MapSimulator.Interaction
 
             _blacklistSeeds.Enqueue(new SocialEntryState("MapleMegaphone", "Blacklisted", "Megaphone spam", "Channel 1", 1, true, false, true));
             _blacklistSeeds.Enqueue(new SocialEntryState("TradeFlood", "Blacklisted", "Bot advertising", "Channel 2", 2, true, false, true));
+
+            _friendGroups.Add("Party Quest");
+            _friendGroups.Add("Bossing");
+            _nextFriendGroupNumber = 3;
+            _friendGroupByName["Rondo"] = "Party Quest";
+            _friendGroupByName["Rin"] = "Party Quest";
+            _friendGroupByName["Aria"] = "Bossing";
+            _friendGroupByName["Noel"] = "Bossing";
 
             _selectedIndexByTab[SocialListTab.Friend] = 0;
             _selectedIndexByTab[SocialListTab.Party] = 0;
@@ -765,7 +776,7 @@ namespace HaCreator.MapSimulator.Interaction
                     case SocialListTab.Friend:
                         destination.Add("Friend tab mirrors the client's list shell.");
                         destination.Add(BuildOwnershipSummary(SocialListTab.Friend));
-                        destination.Add($"{visibleEntryCount} visible friend entries.");
+                        destination.Add($"{visibleEntryCount} visible friend entries across {_friendGroups.Count} local group folder{(_friendGroups.Count == 1 ? string.Empty : "s")}.");
                         return;
                     case SocialListTab.Party:
                         destination.Add("Party tab owns leader, member, and location summaries.");
@@ -794,7 +805,13 @@ namespace HaCreator.MapSimulator.Interaction
 
             destination.Add(selectedEntry.IsLocalPlayer ? $"{selectedEntry.Name} (You)" : selectedEntry.Name);
             destination.Add($"{selectedEntry.PrimaryText}  {selectedEntry.SecondaryText}".Trim());
-            destination.Add($"{selectedEntry.LocationSummary}  CH {selectedEntry.Channel}  {GetOwnershipBadge(_currentTab)}".Trim());
+            string thirdLine = $"{selectedEntry.LocationSummary}  CH {selectedEntry.Channel}  {GetOwnershipBadge(_currentTab)}".Trim();
+            if (_currentTab == SocialListTab.Friend && TryGetFriendGroupLabel(selectedEntry.Name, out string friendGroupLabel))
+            {
+                thirdLine = $"{selectedEntry.LocationSummary}  Group {friendGroupLabel}  CH {selectedEntry.Channel}  {GetOwnershipBadge(_currentTab)}".Trim();
+            }
+
+            destination.Add(thirdLine);
         }
 
         private void PopulateEnabledActions(SocialEntryState selectedEntry, List<string> destination)
@@ -975,7 +992,14 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Select a friend entry before using group whisper.";
             }
 
-            return $"Group whisper queued for {selectedFriend.Name}. Dedicated friend-group membership still remains packet-driven.";
+            if (!TryGetFriendGroupLabel(selectedFriend.Name, out string friendGroupLabel))
+            {
+                return $"{selectedFriend.Name} is not in a local friend group yet. Use Add Group first.";
+            }
+
+            string message = $"[Friend Group:{friendGroupLabel}] {_playerName}: regroup around {selectedFriend.LocationSummary}.";
+            NotifySocialChatObserved(message);
+            return message;
         }
 
         private string ModifyFriendMemo()
@@ -987,6 +1011,25 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return $"Friend note for {selectedFriend.Name} updated to \"Seen in {_locationSummary}\".";
+        }
+
+        private string AddFriendGroup()
+        {
+            SocialEntryState selectedFriend = GetSelectedEntry(SocialListTab.Friend);
+            if (selectedFriend == null || selectedFriend.IsLocalPlayer)
+            {
+                return "Select a non-local friend entry before adding or assigning a friend group.";
+            }
+
+            if (TryGetFriendGroupLabel(selectedFriend.Name, out string existingGroupLabel))
+            {
+                return $"{selectedFriend.Name} already belongs to the local friend group \"{existingGroupLabel}\".";
+            }
+
+            string groupName = $"FriendGroup {_nextFriendGroupNumber++}";
+            _friendGroups.Add(groupName);
+            _friendGroupByName[selectedFriend.Name] = groupName;
+            return $"{selectedFriend.Name} now belongs to the local friend group \"{groupName}\".";
         }
 
         private string InviteFriendToParty()
@@ -1496,6 +1539,18 @@ namespace HaCreator.MapSimulator.Interaction
             IReadOnlyList<SocialEntryState> entries = GetFilteredEntries(tab);
             _selectedIndexByTab[tab] = entries.Count > 0 ? Math.Clamp(GetSelectedIndex(tab, entries.Count), 0, entries.Count - 1) : -1;
             EnsureSelectionVisible(tab, entries.Count);
+        }
+
+        private bool TryGetFriendGroupLabel(string friendName, out string groupLabel)
+        {
+            groupLabel = null;
+            if (string.IsNullOrWhiteSpace(friendName))
+            {
+                return false;
+            }
+
+            return _friendGroupByName.TryGetValue(friendName.Trim(), out groupLabel)
+                   && !string.IsNullOrWhiteSpace(groupLabel);
         }
 
         private SocialEntryState DequeueNextUnique(Queue<SocialEntryState> queue, SocialListTab tab)

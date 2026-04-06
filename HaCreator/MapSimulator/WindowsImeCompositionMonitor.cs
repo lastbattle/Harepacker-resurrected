@@ -263,8 +263,58 @@ namespace HaCreator.MapSimulator
                 return ImeCandidateListState.Empty;
             }
 
+            ImeCandidateWindowForm windowForm = GetCandidateWindowForm(inputContext, listIndex);
             bool vertical = _lastCompositionState.CursorPosition >= 0;
-            return ImeCandidateListInterop.DecodeCandidateList(buffer, vertical, listIndex);
+            return ImeCandidateListInterop.DecodeCandidateList(buffer, vertical, listIndex, windowForm);
+        }
+
+        private static ImeCandidateWindowForm GetCandidateWindowForm(IntPtr inputContext, int listIndex)
+        {
+            CANDIDATEFORM candidateForm = new()
+            {
+                dwIndex = (uint)listIndex
+            };
+
+            if (!ImmGetCandidateWindow(inputContext, (uint)listIndex, ref candidateForm))
+            {
+                return ImeCandidateWindowForm.Empty;
+            }
+
+            int areaWidth = Math.Max(0, candidateForm.rcArea.right - candidateForm.rcArea.left);
+            int areaHeight = Math.Max(0, candidateForm.rcArea.bottom - candidateForm.rcArea.top);
+            return new ImeCandidateWindowForm(
+                candidateForm.dwStyle,
+                candidateForm.ptCurrentPos.x,
+                candidateForm.ptCurrentPos.y,
+                candidateForm.rcArea.left,
+                candidateForm.rcArea.top,
+                areaWidth,
+                areaHeight);
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct POINT
+        {
+            public int x;
+            public int y;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct RECT
+        {
+            public int left;
+            public int top;
+            public int right;
+            public int bottom;
+        }
+
+        [StructLayout(LayoutKind.Sequential)]
+        private struct CANDIDATEFORM
+        {
+            public uint dwIndex;
+            public uint dwStyle;
+            public POINT ptCurrentPos;
+            public RECT rcArea;
         }
 
         [DllImport("imm32.dll")]
@@ -278,5 +328,9 @@ namespace HaCreator.MapSimulator
 
         [DllImport("imm32.dll", CharSet = CharSet.Unicode)]
         private static extern uint ImmGetCandidateListW(IntPtr inputContext, uint deIndex, [Out] byte[] candidateList, uint bufferLength);
+
+        [DllImport("imm32.dll")]
+        [return: MarshalAs(UnmanagedType.Bool)]
+        private static extern bool ImmGetCandidateWindow(IntPtr inputContext, uint deIndex, ref CANDIDATEFORM candidateForm);
     }
 }

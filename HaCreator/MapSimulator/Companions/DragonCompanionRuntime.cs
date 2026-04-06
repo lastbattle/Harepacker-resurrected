@@ -5,6 +5,7 @@ using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Character.Skills;
 using HaCreator.MapSimulator.Core;
 using HaCreator.MapSimulator.Fields;
+using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Physics;
 using HaSharedLibrary.Render.DX;
 using HaSharedLibrary.Util;
@@ -110,7 +111,6 @@ namespace HaCreator.MapSimulator.Companions
         private int _activeVerticalCheckCount;
         private DragonQuestInfoState _questInfoPreviewState = DragonQuestInfoState.Hidden;
 
-        private const float AlphaFadeRate = 5.5f;
         private const float GroundSideOffset = 42f;
         private const float GroundVerticalOffset = -12f;
         private const float LadderSideOffset = 34f;
@@ -141,6 +141,8 @@ namespace HaCreator.MapSimulator.Companions
         private const float PassiveVerticalHoldDistance = 5f;
         private const float QuestInfoHorizontalOffset = 20f;
         private const float QuestInfoVerticalGap = 15f;
+        private const int DragonBlinkEffectStringPoolId = 0x0B6B;
+        private const int DragonFuryEffectStringPoolId = 0x15DA;
 
         public DragonCompanionRuntime(GraphicsDevice device)
         {
@@ -229,8 +231,8 @@ namespace HaCreator.MapSimulator.Companions
                 SetCurrentAction(baseActionName, currentTime, preserveStartTimeWhenUnchanged: true);
             }
 
-            _alpha = Approach(_alpha, _isSuppressed ? 0f : 1f, deltaSeconds * AlphaFadeRate);
-            UpdateAuxiliaryLayers(owner, currentTime, deltaSeconds);
+            _alpha = ResolveClientLayerAlpha(!_isSuppressed);
+            UpdateAuxiliaryLayers(owner, currentTime);
         }
 
         public void Draw(
@@ -631,6 +633,11 @@ namespace HaCreator.MapSimulator.Companions
                 return false;
             }
 
+            return ShouldHideDragonActionLayerForMountItemId(mountItemId);
+        }
+
+        internal static bool ShouldHideDragonActionLayerForMountItemId(int mountItemId)
+        {
             return HiddenDragonMountIds.Contains(mountItemId);
         }
 
@@ -987,16 +994,6 @@ namespace HaCreator.MapSimulator.Companions
             return new Vector2(bodyOrigin.X + side * horizontalOffset, bodyOrigin.Y + LadderVerticalOffset);
         }
 
-        private static float Approach(float current, float target, float maxStep)
-        {
-            if (current < target)
-            {
-                return Math.Min(current + maxStep, target);
-            }
-
-            return Math.Max(current - maxStep, target);
-        }
-
         private static Rectangle ResolveFrameBounds(WzCanvasProperty canvas, IDXObject texture)
         {
             WzVectorProperty lt = canvas["lt"] as WzVectorProperty;
@@ -1063,14 +1060,17 @@ namespace HaCreator.MapSimulator.Companions
             return MathHelper.Lerp(startAlpha, endAlpha, progress) / 255f;
         }
 
-        private void UpdateAuxiliaryLayers(PlayerCharacter owner, int currentTime, float deltaSeconds)
+        internal static float ResolveClientLayerAlpha(bool shouldShow)
+        {
+            return shouldShow ? 1f : 0f;
+        }
+
+        private void UpdateAuxiliaryLayers(PlayerCharacter owner, int currentTime)
         {
             EnsureAuxiliaryAnimationsLoaded();
 
             bool shouldShowFury = ShouldShowDragonFury(owner);
-            _dragonFuryAlpha = shouldShowFury
-                ? Approach(_dragonFuryAlpha, _alpha, deltaSeconds * AlphaFadeRate * 1.5f)
-                : Approach(_dragonFuryAlpha, 0f, deltaSeconds * AlphaFadeRate * 1.5f);
+            _dragonFuryAlpha = ResolveClientLayerAlpha(shouldShowFury);
             UpdateQuestInfoLayer(owner, currentTime);
         }
 
@@ -1141,8 +1141,14 @@ namespace HaCreator.MapSimulator.Companions
 
         private void EnsureAuxiliaryAnimationsLoaded()
         {
-            _dragonFuryAnimation ??= LoadEffectAnimation("BasicEff.img", "dragonFury", loop: true);
-            _dragonBlinkAnimation ??= LoadEffectAnimation("BasicEff.img", "dragonBlink", loop: false);
+            _dragonFuryAnimation ??= LoadEffectAnimationFromStringPool(
+                DragonFuryEffectStringPoolId,
+                fallbackEffectUol: "Effect/BasicEff.img/dragonFury",
+                loop: true);
+            _dragonBlinkAnimation ??= LoadEffectAnimationFromStringPool(
+                DragonBlinkEffectStringPoolId,
+                fallbackEffectUol: "Effect/BasicEff.img/dragonBlink",
+                loop: false);
         }
 
         private void UpdateQuestInfoLayer(PlayerCharacter owner, int currentTime)
@@ -1150,7 +1156,7 @@ namespace HaCreator.MapSimulator.Companions
             if (!TryResolveQuestInfoAnimation(out LayerAnimationSequence animation)
                 || !ShouldShowQuestInfo(owner))
             {
-                _questInfoAlpha = 0f;
+                _questInfoAlpha = ResolveClientLayerAlpha(false);
                 return;
             }
 
@@ -1160,7 +1166,7 @@ namespace HaCreator.MapSimulator.Companions
                 _questInfoAnimationStartTime = currentTime;
             }
 
-            _questInfoAlpha = 1f;
+            _questInfoAlpha = ResolveClientLayerAlpha(true);
         }
 
         private void DrawQuestInfoLayer(
@@ -1194,9 +1200,20 @@ namespace HaCreator.MapSimulator.Companions
                 anchor);
         }
 
-        private SkillAnimation LoadEffectAnimation(string imageName, string propertyPath, bool loop)
+        private SkillAnimation LoadEffectAnimationFromStringPool(int stringPoolId, string fallbackEffectUol, bool loop)
         {
-            WzImage image = global::HaCreator.Program.FindImage("Effect", imageName);
+            string effectUol = MapleStoryStringPool.GetOrFallback(stringPoolId, fallbackEffectUol);
+            return LoadEffectAnimation(effectUol, loop);
+        }
+
+        private SkillAnimation LoadEffectAnimation(string effectUol, bool loop)
+        {
+            if (!TryResolveWzAssetUol(effectUol, defaultCategory: "Effect", out string category, out string imageName, out string propertyPath))
+            {
+                return null;
+            }
+
+            WzImage image = global::HaCreator.Program.FindImage(category, imageName);
             if (image == null)
             {
                 return null;
@@ -1219,24 +1236,69 @@ namespace HaCreator.MapSimulator.Companions
             return animation;
         }
 
+        internal static bool TryResolveWzAssetUol(
+            string uol,
+            string defaultCategory,
+            out string category,
+            out string imageName,
+            out string propertyPath)
+        {
+            category = defaultCategory;
+            imageName = null;
+            propertyPath = null;
+
+            if (string.IsNullOrWhiteSpace(uol))
+            {
+                return false;
+            }
+
+            string normalized = uol.Replace('\\', '/').Trim('/');
+            string[] segments = normalized.Split(new[] { '/' }, StringSplitOptions.RemoveEmptyEntries);
+            if (segments.Length == 0)
+            {
+                return false;
+            }
+
+            int imageIndex = Array.FindIndex(segments, segment => segment.EndsWith(".img", StringComparison.OrdinalIgnoreCase));
+            if (imageIndex < 0)
+            {
+                return false;
+            }
+
+            if (imageIndex > 0)
+            {
+                category = segments[0];
+            }
+
+            imageName = segments[imageIndex];
+            propertyPath = string.Join("/", segments.Skip(imageIndex + 1));
+            return !string.IsNullOrWhiteSpace(imageName) && !string.IsNullOrWhiteSpace(propertyPath);
+        }
+
         internal static bool ShouldHideAuxiliaryLayerForAction(string actionName)
         {
             return IsExplicitDragonAction(actionName);
         }
 
+        internal static bool ShouldShowAuxiliaryLayer(bool isSuppressed, float actionLayerAlpha, bool hasMountedVehicle, string currentActionName)
+        {
+            if (isSuppressed || actionLayerAlpha <= 0.01f || hasMountedVehicle)
+            {
+                return false;
+            }
+
+            return !ShouldHideAuxiliaryLayerForAction(currentActionName);
+        }
+
         private bool ShouldShowDragonFury(PlayerCharacter owner)
         {
-            if (_dragonFuryAnimation == null || _isSuppressed || _alpha <= 0.01f)
+            if (_dragonFuryAnimation == null
+                || !ShouldShowAuxiliaryLayer(_isSuppressed, _alpha, HasMountedVehicle(owner), _currentActionName))
             {
                 return false;
             }
 
-            if (HasMountedVehicle(owner))
-            {
-                return false;
-            }
-
-            return !ShouldHideAuxiliaryLayerForAction(_currentActionName);
+            return true;
         }
 
         private void DrawLayerAnimationSequence(
@@ -1331,26 +1393,36 @@ namespace HaCreator.MapSimulator.Companions
                 return animation != null;
             }
 
-            string effectPath = questState switch
-            {
-                (int)DragonQuestInfoState.PreStart => "QuestAlert",
-                (int)DragonQuestInfoState.RewardReady => "QuestAlert2",
-                (int)DragonQuestInfoState.Active => "QuestAlert3",
-                _ => null
-            };
-            if (string.IsNullOrWhiteSpace(effectPath))
+            string effectUol = ResolveQuestInfoEffectUol((DragonQuestInfoState)questState);
+            if (string.IsNullOrWhiteSpace(effectUol))
             {
                 return false;
             }
 
-            animation = LoadLayerAnimationSequence("BasicEff.img", effectPath);
+            animation = LoadLayerAnimationSequence(effectUol);
             _questInfoAnimationCache[questState] = animation;
             return animation?.HasFrames == true;
         }
 
-        private LayerAnimationSequence LoadLayerAnimationSequence(string imageName, string propertyPath)
+        private static string ResolveQuestInfoEffectUol(DragonQuestInfoState questState)
         {
-            WzImage image = global::HaCreator.Program.FindImage("Effect", imageName);
+            return questState switch
+            {
+                DragonQuestInfoState.PreStart => "Effect/BasicEff.img/QuestAlert",
+                DragonQuestInfoState.RewardReady => "Effect/BasicEff.img/QuestAlert2",
+                DragonQuestInfoState.Active => "Effect/BasicEff.img/QuestAlert3",
+                _ => null
+            };
+        }
+
+        private LayerAnimationSequence LoadLayerAnimationSequence(string effectUol)
+        {
+            if (!TryResolveWzAssetUol(effectUol, defaultCategory: "Effect", out string category, out string imageName, out string propertyPath))
+            {
+                return null;
+            }
+
+            WzImage image = global::HaCreator.Program.FindImage(category, imageName);
             if (image == null)
             {
                 return null;
@@ -1428,23 +1500,13 @@ namespace HaCreator.MapSimulator.Companions
                 return false;
             }
 
-            if (HasMountedVehicle(owner))
-            {
-                return false;
-            }
-
-            if (ShouldHideAuxiliaryLayerForAction(_currentActionName))
-            {
-                return false;
-            }
-
             MapInfo mapInfo = _currentMapInfoProvider?.Invoke();
             if (!string.IsNullOrWhiteSpace(FieldInteractionRestrictionEvaluator.GetQuestAlertRestrictionMessage(mapInfo?.fieldLimit ?? 0)))
             {
                 return false;
             }
 
-            return true;
+            return ShouldShowAuxiliaryLayer(_isSuppressed, _alpha, HasMountedVehicle(owner), _currentActionName);
         }
 
         private void TriggerBlink(PlayerCharacter owner, int currentTime)

@@ -91,6 +91,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             public int SkillId { get; init; }
             public int ExecuteTime { get; init; }
             public Point LiveWorldPosition { get; init; }
+            public string ActionName { get; init; }
+            public int? RawActionCode { get; init; }
             public int? AttackActionType { get; init; }
             public int? ActionSpeed { get; init; }
             public int RepeatCount { get; set; }
@@ -306,6 +308,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         private const string InvincibleBuffLabel = "Invincible";
         private const string CriticalRateBuffLabel = "CriticalRate";
         private const string DamageReductionBuffLabel = "DamageReduction";
+        private const string DamRBuffLabel = "DamR";
         private const string TransformBuffLabel = "Transform";
         private const string ExperienceBuffLabel = "ExperienceRate";
         private const string DropRateBuffLabel = "DropRate";
@@ -380,6 +383,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 [DarkSightBuffLabel] = CreateTemporaryStatPresentation(DarkSightBuffLabel, "Dark Sight", null, ResolveClientSecondaryStatSortOrder("DarkSight", 110), 110),
                 [BoosterBuffLabel] = CreateTemporaryStatPresentation(BoosterBuffLabel, "Booster", null, ResolveClientSecondaryStatSortOrder("Booster", 120), 120),
                 [DamageReductionBuffLabel] = CreateTemporaryStatPresentation(DamageReductionBuffLabel, "Damage Reduction", null, ResolveClientSecondaryStatSortOrder("PowerGuard", 130), 130),
+                [DamRBuffLabel] = CreateTemporaryStatPresentation(DamRBuffLabel, "Damage Reduction", null, ResolveClientSecondaryStatSortOrder("DamR", 330), 330),
                 [MaxHpBuffLabel] = CreateTemporaryStatPresentation(MaxHpBuffLabel, "Max HP", null, ResolveClientSecondaryStatSortOrder("MaxHP", 140), 310),
                 [MaxMpBuffLabel] = CreateTemporaryStatPresentation(MaxMpBuffLabel, "Max MP", null, ResolveClientSecondaryStatSortOrder("MaxMP", 150), 311),
                 [InvincibleBuffLabel] = CreateTemporaryStatPresentation(InvincibleBuffLabel, "Invincible", null, ResolveClientSecondaryStatSortOrder("Invincible", 160), 160),
@@ -511,8 +515,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 ["criticalDamageMin"] = new[] { CriticalDamageBuffLabel },
                 ["criticaldamageMax"] = new[] { CriticalDamageBuffLabel },
                 ["criticalDamageMax"] = new[] { CriticalDamageBuffLabel },
-                ["damR"] = new[] { DamageReductionBuffLabel },
-                ["indieDamR"] = new[] { DamageReductionBuffLabel },
+                ["damR"] = new[] { DamRBuffLabel },
+                ["indieDamR"] = new[] { DamRBuffLabel },
                 ["indieAllStat"] = new[] { AllStatsBuffLabel },
                 ["asrR"] = new[] { DebuffResistanceBuffLabel },
                 ["indieAsrR"] = new[] { DebuffResistanceBuffLabel },
@@ -1453,6 +1457,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 skillId,
                 currentTime,
                 rawActionCode: null,
+                preferredTargetPositionOverride: null,
                 out skill,
                 out level,
                 out _,
@@ -1463,6 +1468,27 @@ namespace HaCreator.MapSimulator.Character.Skills
             int skillId,
             int currentTime,
             int? rawActionCode,
+            out SkillData skill,
+            out int level,
+            out string resolvedActionName,
+            out string errorMessage)
+        {
+            return TryApplyPacketOwnedMeleeAttack(
+                skillId,
+                currentTime,
+                rawActionCode,
+                preferredTargetPositionOverride: null,
+                out skill,
+                out level,
+                out resolvedActionName,
+                out errorMessage);
+        }
+
+        public bool TryApplyPacketOwnedMeleeAttack(
+            int skillId,
+            int currentTime,
+            int? rawActionCode,
+            Vector2? preferredTargetPositionOverride,
             out SkillData skill,
             out int level,
             out string resolvedActionName,
@@ -1506,7 +1532,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                 _player?.CurrentActionName,
                 candidate => _player?.CanRenderAction(candidate) == true);
             TriggerSkillAnimation(skill, currentTime, resolvedActionName);
-            ProcessMeleeAttack(skill, level, currentTime, _player.FacingRight, queueFollowUps: false);
+            ProcessMeleeAttack(
+                skill,
+                level,
+                currentTime,
+                _player.FacingRight,
+                queueFollowUps: false,
+                preferredTargetPosition: preferredTargetPositionOverride);
             return true;
         }
 
@@ -3068,8 +3100,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 if (currentActionMountItemId > 0)
                 {
                     mountPart = GetLoadedTamingMobPart(currentActionMountItemId);
-                    isActive = mountPart?.Slot == EquipSlot.TamingMob
-                               && CharacterAssembler.SupportsTamingMobAction(mountPart, currentActionName);
+                    isActive = SupportsClientOwnedVehicleMountedStateForCurrentAction(mountPart, currentActionName);
                 }
 
                 if (!isActive)
@@ -3133,19 +3164,22 @@ namespace HaCreator.MapSimulator.Character.Skills
             int activeSkillMountItemId,
             int equippedMountItemId)
         {
+            int activeOwnerMountItemId = NormalizeClientOwnedVehicleCurrentActionMountItemId(activeSkillMountItemId);
+            int equippedOwnerMountItemId = NormalizeClientOwnedVehicleCurrentActionMountItemId(equippedMountItemId);
+
             if (string.IsNullOrWhiteSpace(actionName))
             {
-                return 0;
+                return activeOwnerMountItemId > 0
+                    ? activeOwnerMountItemId
+                    : equippedOwnerMountItemId;
             }
 
-            int activeOwnerMountItemId = NormalizeClientOwnedVehicleCurrentActionMountItemId(activeSkillMountItemId);
             if (activeOwnerMountItemId > 0
                 && IsClientOwnedVehicleCurrentActionOwnedByMount(actionName, activeOwnerMountItemId))
             {
                 return activeOwnerMountItemId;
             }
 
-            int equippedOwnerMountItemId = NormalizeClientOwnedVehicleCurrentActionMountItemId(equippedMountItemId);
             if (equippedOwnerMountItemId > 0
                 && IsClientOwnedVehicleCurrentActionOwnedByMount(actionName, equippedOwnerMountItemId))
             {
@@ -3169,6 +3203,27 @@ namespace HaCreator.MapSimulator.Character.Skills
             return mountItemId == BATTLESHIP_TAMING_MOB_ID || mountItemId == MECHANIC_TAMING_MOB_ID
                 ? mountItemId
                 : 0;
+        }
+
+        internal static bool SupportsClientOwnedVehicleMountedStateForCurrentAction(
+            CharacterPart mountPart,
+            string actionName)
+        {
+            if (mountPart?.Slot != EquipSlot.TamingMob)
+            {
+                return false;
+            }
+
+            if (CharacterAssembler.SupportsTamingMobAction(mountPart, actionName))
+            {
+                return true;
+            }
+
+            // Client-owned vehicle ownership is established before this seam. Preserve the
+            // canonical mount owner through blank current-action ticks instead of dropping the
+            // mounted state solely because no visible action name was published for that frame.
+            return string.IsNullOrWhiteSpace(actionName)
+                   && NormalizeClientOwnedVehicleCurrentActionMountItemId(mountPart.ItemId) > 0;
         }
 
         private static bool IsClientOwnedVehicleCurrentActionOwnedByMount(string actionName, int mountItemId)
@@ -4946,8 +5001,18 @@ namespace HaCreator.MapSimulator.Character.Skills
         internal static (string ActionName, int? RawActionCode) ResolveQueuedMovingShootEntryAction(
             SkillData skill,
             string currentActionName,
-            int? currentRawActionCode)
+            int? currentRawActionCode,
+            Func<int, int> nextCandidateIndex = null)
         {
+            var mappedSkillCandidates = EnumerateQueuedMovingShootEntryMappedSkillActionCandidates(skill).ToArray();
+            if (mappedSkillCandidates.Length > 0)
+            {
+                int candidateIndex = ResolveQueuedMovingShootEntryCandidateIndex(
+                    mappedSkillCandidates.Length,
+                    nextCandidateIndex);
+                return mappedSkillCandidates[candidateIndex];
+            }
+
             string fallbackActionName = currentActionName;
             int? fallbackRawActionCode = currentRawActionCode;
 
@@ -4972,6 +5037,78 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return (fallbackActionName, fallbackRawActionCode);
+        }
+
+        private static int ResolveQueuedMovingShootEntryCandidateIndex(int candidateCount, Func<int, int> nextCandidateIndex)
+        {
+            if (candidateCount <= 1)
+            {
+                return 0;
+            }
+
+            int requestedIndex = (nextCandidateIndex ?? Random.Next)(candidateCount);
+            if (requestedIndex < 0)
+            {
+                return 0;
+            }
+
+            return requestedIndex >= candidateCount
+                ? candidateCount - 1
+                : requestedIndex;
+        }
+
+        internal static IEnumerable<(string ActionName, int? RawActionCode)> EnumerateQueuedMovingShootEntryMappedSkillActionCandidates(
+            SkillData skill)
+        {
+            if (UsesClientRandomShootAttackActionTable(skill))
+            {
+                yield break;
+            }
+
+            var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            foreach (string actionName in EnumerateQueuedMovingShootEntrySkillActionCandidates(skill))
+            {
+                foreach (string lookupActionName in CharacterPart.GetActionLookupStrings(actionName))
+                {
+                    if (string.IsNullOrWhiteSpace(lookupActionName)
+                        || !yielded.Add(lookupActionName)
+                        || !CharacterPart.TryGetClientRawActionCode(lookupActionName, out int rawActionCode))
+                    {
+                        continue;
+                    }
+
+                    yield return (lookupActionName, rawActionCode);
+                }
+            }
+        }
+
+        internal static bool UsesClientRandomShootAttackActionTable(SkillData skill)
+        {
+            // `get_random_shoot_attack_action(...)` ignores appointed `action/*` rows for
+            // client skill type 3 and falls back to the shared shoot-action table instead.
+            return skill?.ClientInfoType == 3;
+        }
+
+        private static IEnumerable<string> EnumerateQueuedMovingShootEntrySkillActionCandidates(SkillData skill)
+        {
+            var yielded = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+            if (skill?.ActionNames != null)
+            {
+                foreach (string actionName in skill.ActionNames)
+                {
+                    if (!string.IsNullOrWhiteSpace(actionName) && yielded.Add(actionName))
+                    {
+                        yield return actionName;
+                    }
+                }
+            }
+
+            if (!string.IsNullOrWhiteSpace(skill?.ActionName) && yielded.Add(skill.ActionName))
+            {
+                yield return skill.ActionName;
+            }
         }
 
         internal static IEnumerable<string> EnumerateQueuedMovingShootEntryActionCandidates(
@@ -6609,7 +6746,12 @@ namespace HaCreator.MapSimulator.Character.Skills
                     _lastDeferredMovingShootExecution.AttackActionType)
                 || !MatchesDeferredMovingShootExecutionMetadata(
                     pending.ActionSpeed,
-                    _lastDeferredMovingShootExecution.ActionSpeed))
+                    _lastDeferredMovingShootExecution.ActionSpeed)
+                || !MatchesDeferredMovingShootActionOwner(
+                    pending.ActionName,
+                    pending.RawActionCode,
+                    _lastDeferredMovingShootExecution.ActionName,
+                    _lastDeferredMovingShootExecution.RawActionCode))
             {
                 return false;
             }
@@ -6658,6 +6800,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 SkillId = pending.Skill?.SkillId ?? 0,
                 ExecuteTime = currentTime,
                 LiveWorldPosition = ResolveDeferredMovingShootLiveWorldPosition(),
+                ActionName = pending.ActionName,
+                RawActionCode = pending.RawActionCode,
                 AttackActionType = pending.AttackActionType,
                 ActionSpeed = pending.ActionSpeed,
                 RepeatCount = 0,
@@ -6673,6 +6817,36 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
 
             return queuedValue.Value == previousValue.Value;
+        }
+
+        internal static bool MatchesDeferredMovingShootActionOwner(
+            string queuedActionName,
+            int? queuedRawActionCode,
+            string previousActionName,
+            int? previousRawActionCode)
+        {
+            string normalizedQueuedOwner = NormalizeDeferredMovingShootActionOwnerName(queuedActionName, queuedRawActionCode);
+            string normalizedPreviousOwner = NormalizeDeferredMovingShootActionOwnerName(previousActionName, previousRawActionCode);
+            if (string.IsNullOrWhiteSpace(normalizedQueuedOwner) || string.IsNullOrWhiteSpace(normalizedPreviousOwner))
+            {
+                return true;
+            }
+
+            return string.Equals(normalizedQueuedOwner, normalizedPreviousOwner, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static string NormalizeDeferredMovingShootActionOwnerName(string actionName, int? rawActionCode)
+        {
+            if (rawActionCode.HasValue
+                && CharacterPart.TryGetActionStringFromCode(rawActionCode.Value, out string mappedActionName)
+                && !string.IsNullOrWhiteSpace(mappedActionName))
+            {
+                return mappedActionName;
+            }
+
+            return string.IsNullOrWhiteSpace(actionName)
+                ? null
+                : actionName.Trim();
         }
 
         private static int ResolveMovingShootAntiRepeatCountLimit(DeferredSkillPayload pending)
@@ -6748,9 +6922,10 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         internal static bool ShouldRefreshQueuedProjectileFireTimeOrigin(ActiveProjectile projectile, SkillData skill)
         {
-            return projectile?.IsQueuedFinalAttack == true
+            return projectile != null
+                   && (projectile.IsQueuedFinalAttack || projectile.IsQueuedSparkAttack)
                    && skill?.IsAttack == true
-                   && skill.AttackType == SkillAttackType.Ranged;
+                   && RequiresClientShootAttackValidation(skill);
         }
 
         internal static void ApplyQueuedProjectileFireTimeOrigin(ActiveProjectile projectile, Vector2 refreshedOrigin)
@@ -10886,6 +11061,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 ? resolvedTargetMobIds[0]
                 : 0;
             summon.PendingManualAttackTargetMobIds = resolvedTargetMobIds;
+            summon.PendingManualAttackConfirmedTargetMobIds = Array.Empty<int>();
             summon.PendingManualAttackFollowUpAt = resolvedTargetMobIds.Length > 1
                 ? followUpExecuteTime
                 : int.MinValue;
@@ -10902,6 +11078,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             summon.PendingManualAttackRequestedAt = int.MinValue;
             summon.PendingManualAttackPrimaryTargetMobId = 0;
             summon.PendingManualAttackTargetMobIds = Array.Empty<int>();
+            summon.PendingManualAttackConfirmedTargetMobIds = Array.Empty<int>();
             summon.PendingManualAttackFollowUpAt = int.MinValue;
         }
 
@@ -14248,22 +14425,23 @@ namespace HaCreator.MapSimulator.Character.Skills
             foreach (var buff in _buffs)
             {
                 IReadOnlyList<BuffTemporaryStatPresentation> temporaryStats = GetBuffTemporaryStatPresentation(buff);
-                BuffTemporaryStatPresentation primaryTemporaryStat = ResolvePrimaryTemporaryStat(temporaryStats);
-                BuffIconCatalogEntry supplementalBuffIconEntry = ResolveSupplementalBuffIconEntry(buff, primaryTemporaryStat);
-                bool preferTemporaryStatIcon = primaryTemporaryStat != null && !string.IsNullOrWhiteSpace(primaryTemporaryStat.IconKey)
+                BuffTemporaryStatPresentation familyOwnerTemporaryStat = ResolveFamilyOwnerTemporaryStat(temporaryStats);
+                BuffTemporaryStatPresentation trayLaneTemporaryStat = ResolvePrimaryTemporaryStat(temporaryStats);
+                BuffIconCatalogEntry supplementalBuffIconEntry = ResolveSupplementalBuffIconEntry(buff, trayLaneTemporaryStat);
+                bool preferTemporaryStatIcon = trayLaneTemporaryStat != null && !string.IsNullOrWhiteSpace(trayLaneTemporaryStat.IconKey)
                     || supplementalBuffIconEntry != null;
                 entries.Add(new StatusBarBuffEntry
                 {
                     SkillId = buff.SkillId,
                     SkillName = buff.SkillData?.Name ?? buff.SkillId.ToString(),
                     Description = buff.SkillData?.Description ?? string.Empty,
-                    IconKey = ResolveBuffIconKey(temporaryStats, supplementalBuffIconEntry),
+                    IconKey = ResolveBuffIconKey(trayLaneTemporaryStat, supplementalBuffIconEntry),
                     IconTexture = preferTemporaryStatIcon ? null : buff.SkillData?.IconTexture,
                     StartTime = buff.StartTime,
                     DurationMs = buff.Duration,
                     RemainingMs = buff.GetRemainingTime(currentTime),
-                    SortOrder = ResolveStatusBarBuffSortOrder(temporaryStats, primaryTemporaryStat, supplementalBuffIconEntry),
-                    FamilyDisplayName = ResolveBuffFamilyDisplayName(primaryTemporaryStat, supplementalBuffIconEntry),
+                    SortOrder = ResolveStatusBarBuffSortOrder(temporaryStats, trayLaneTemporaryStat, supplementalBuffIconEntry),
+                    FamilyDisplayName = ResolveBuffFamilyDisplayName(familyOwnerTemporaryStat, supplementalBuffIconEntry),
                     TemporaryStatLabels = temporaryStats.Select(stat => stat.Label).ToArray(),
                     TemporaryStatDisplayNames = temporaryStats.Select(stat => stat.DisplayName).ToArray()
                 });
@@ -14386,6 +14564,10 @@ namespace HaCreator.MapSimulator.Character.Skills
                     temporaryStats,
                     levelData.CriticalDamageMin > 0 || levelData.CriticalDamageMax > 0,
                     CriticalDamageBuffLabel);
+                TrackIfMissing(
+                    temporaryStats,
+                    levelData.DamageReductionRate > 0 && HasAuthoredTemporaryStatProperty(levelData, "damR", "indieDamR"),
+                    DamRBuffLabel);
                 TrackIfMissing(temporaryStats, levelData.DamageReductionRate > 0, DamageReductionBuffLabel);
                 TrackIfMissing(temporaryStats, levelData.AllStat > 0 || HasAllPrimaryStatBonus(levelData), AllStatsBuffLabel);
                 TrackIfMissing(
@@ -14497,6 +14679,24 @@ namespace HaCreator.MapSimulator.Character.Skills
             return primaryTemporaryStat ?? temporaryStats[0];
         }
 
+        private static BuffTemporaryStatPresentation ResolveFamilyOwnerTemporaryStat(IReadOnlyList<BuffTemporaryStatPresentation> temporaryStats)
+        {
+            if (temporaryStats == null || temporaryStats.Count == 0)
+            {
+                return null;
+            }
+
+            for (int i = 0; i < temporaryStats.Count; i++)
+            {
+                if (temporaryStats[i] != null)
+                {
+                    return temporaryStats[i];
+                }
+            }
+
+            return null;
+        }
+
         private static int ResolveStatusBarBuffSortOrder(
             IReadOnlyList<BuffTemporaryStatPresentation> temporaryStats,
             BuffTemporaryStatPresentation primaryTemporaryStat,
@@ -14563,10 +14763,9 @@ namespace HaCreator.MapSimulator.Character.Skills
         }
 
         private static string ResolveBuffIconKey(
-            IReadOnlyList<BuffTemporaryStatPresentation> temporaryStats,
+            BuffTemporaryStatPresentation primaryTemporaryStat,
             BuffIconCatalogEntry supplementalBuffIconEntry = null)
         {
-            BuffTemporaryStatPresentation primaryTemporaryStat = ResolvePrimaryTemporaryStat(temporaryStats);
             if (primaryTemporaryStat == null)
             {
                 return supplementalBuffIconEntry?.IconKey ?? GenericBuffIconKey;
@@ -14959,6 +15158,36 @@ namespace HaCreator.MapSimulator.Character.Skills
                 && authoredOrder.TryGetValue(presentation.Label, out int order)
                 ? order
                 : int.MaxValue;
+        }
+
+        private static bool HasAuthoredTemporaryStatProperty(SkillLevelData levelData, params string[] propertyNames)
+        {
+            if (levelData?.AuthoredPropertyOrder == null
+                || levelData.AuthoredPropertyOrder.Count == 0
+                || propertyNames == null
+                || propertyNames.Length == 0)
+            {
+                return false;
+            }
+
+            for (int i = 0; i < propertyNames.Length; i++)
+            {
+                string propertyName = propertyNames[i];
+                if (string.IsNullOrWhiteSpace(propertyName))
+                {
+                    continue;
+                }
+
+                for (int j = 0; j < levelData.AuthoredPropertyOrder.Count; j++)
+                {
+                    if (string.Equals(levelData.AuthoredPropertyOrder[j], propertyName, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
         }
 
         #endregion
@@ -16454,6 +16683,76 @@ namespace HaCreator.MapSimulator.Character.Skills
             return TryResolvePendingSg88ManualAttackRequestBookkeeping(summon, requestedAt, currentTime);
         }
 
+        public bool TryResolvePendingSg88ManualAttackPacket(
+            int summonObjectId,
+            IReadOnlyList<int> packetTargetMobIds,
+            int currentTime)
+        {
+            ActiveSummon summon = _summons.FirstOrDefault(candidate =>
+                candidate?.ObjectId == summonObjectId
+                && candidate.SkillId == SG88_SKILL_ID
+                && candidate.AssistType == SummonAssistType.ManualAttack
+                && !candidate.IsPendingRemoval);
+            if (summon == null || !summon.PendingManualAttackRequest)
+            {
+                return false;
+            }
+
+            bool shouldResolve = TryAdvancePendingSg88ManualAttackPacketConfirmation(
+                summon,
+                packetTargetMobIds,
+                out int[] confirmedTargetMobIds);
+            summon.PendingManualAttackConfirmedTargetMobIds = confirmedTargetMobIds;
+            if (!shouldResolve)
+            {
+                return false;
+            }
+
+            summon.LastManualAttackResolvedTime = currentTime;
+            ClearPendingSg88ManualAttackRequestBookkeeping(summon);
+            return true;
+        }
+
+        internal static bool TryAdvancePendingSg88ManualAttackPacketConfirmation(
+            ActiveSummon summon,
+            IReadOnlyList<int> packetTargetMobIds,
+            out int[] confirmedTargetMobIds)
+        {
+            confirmedTargetMobIds = Array.Empty<int>();
+            if (summon == null || !summon.PendingManualAttackRequest)
+            {
+                return false;
+            }
+
+            int[] expectedTargetMobIds = summon.PendingManualAttackTargetMobIds?
+                .Where(static mobId => mobId > 0)
+                .Distinct()
+                .ToArray() ?? Array.Empty<int>();
+            if (expectedTargetMobIds.Length == 0)
+            {
+                return false;
+            }
+
+            HashSet<int> confirmedTargetSet = new(
+                summon.PendingManualAttackConfirmedTargetMobIds?
+                    .Where(static mobId => mobId > 0)
+                    .Distinct()
+                    ?? Enumerable.Empty<int>());
+
+            foreach (int mobId in packetTargetMobIds ?? Array.Empty<int>())
+            {
+                if (mobId > 0 && Array.IndexOf(expectedTargetMobIds, mobId) >= 0)
+                {
+                    confirmedTargetSet.Add(mobId);
+                }
+            }
+
+            confirmedTargetMobIds = expectedTargetMobIds
+                .Where(confirmedTargetSet.Contains)
+                .ToArray();
+            return confirmedTargetMobIds.Length == expectedTargetMobIds.Length;
+        }
+
         private void UpdateSg88ManualAttackBookkeepingAfterBatch(QueuedSummonAttack queuedAttack, int currentTime)
         {
             if (queuedAttack == null
@@ -16924,7 +17223,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static int? GetSkillAnimationDuration(SkillAnimation animation)
         {
-            if (animation?.Frames.Count <= 0)
+            if (animation?.Frames == null || animation.Frames.Count <= 0)
             {
                 return null;
             }

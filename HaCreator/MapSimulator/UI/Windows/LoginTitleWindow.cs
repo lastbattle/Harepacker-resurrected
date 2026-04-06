@@ -45,6 +45,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Point _idFieldOffset;
         private readonly IDXObject _passwordFieldLayer;
         private readonly Point _passwordFieldOffset;
+        private readonly IReadOnlyList<IReadOnlyList<CharacterSelectWindow.AnimationFrame>> _effectFrameSets;
         private readonly UIObject _loginButton;
         private readonly UIObject _guestLoginButton;
         private readonly UIObject _newButton;
@@ -83,6 +84,7 @@ namespace HaCreator.MapSimulator.UI
             Point idFieldOffset,
             IDXObject passwordFieldLayer,
             Point passwordFieldOffset,
+            IReadOnlyList<IReadOnlyList<CharacterSelectWindow.AnimationFrame>> effectFrameSets,
             UIObject loginButton,
             UIObject guestLoginButton,
             UIObject newButton,
@@ -106,6 +108,7 @@ namespace HaCreator.MapSimulator.UI
             _idFieldOffset = idFieldOffset;
             _passwordFieldLayer = passwordFieldLayer;
             _passwordFieldOffset = passwordFieldOffset;
+            _effectFrameSets = effectFrameSets ?? Array.Empty<IReadOnlyList<CharacterSelectWindow.AnimationFrame>>();
             _loginButton = loginButton;
             _guestLoginButton = guestLoginButton;
             _newButton = newButton;
@@ -190,6 +193,7 @@ namespace HaCreator.MapSimulator.UI
             Point idFieldOffset,
             IDXObject passwordFieldLayer,
             Point passwordFieldOffset,
+            IReadOnlyList<IReadOnlyList<CharacterSelectWindow.AnimationFrame>> effectFrameSets,
             UIObject loginButton,
             UIObject guestLoginButton,
             UIObject newButton,
@@ -210,6 +214,7 @@ namespace HaCreator.MapSimulator.UI
                 idFieldOffset,
                 passwordFieldLayer,
                 passwordFieldOffset,
+                effectFrameSets,
                 loginButton,
                 guestLoginButton,
                 newButton,
@@ -356,6 +361,7 @@ namespace HaCreator.MapSimulator.UI
         {
             DrawLayer(sprite, skeletonMeshRenderer, gameTime, _dollsLayer, _dollsOffset, centerX, centerY, drawReflectionInfo, renderParameters, TickCount);
             DrawLayer(sprite, skeletonMeshRenderer, gameTime, _titleLayer, _titleOffset, centerX, centerY, drawReflectionInfo, renderParameters, TickCount);
+            DrawEffectLayers(sprite, TickCount);
             DrawLayer(sprite, skeletonMeshRenderer, gameTime, _signboardLayer, _signboardOffset, centerX, centerY, drawReflectionInfo, renderParameters, TickCount);
             DrawLayer(sprite, skeletonMeshRenderer, gameTime, _idFieldLayer, _idFieldOffset, centerX, centerY, drawReflectionInfo, renderParameters, TickCount);
             DrawLayer(sprite, skeletonMeshRenderer, gameTime, _passwordFieldLayer, _passwordFieldOffset, centerX, centerY, drawReflectionInfo, renderParameters, TickCount);
@@ -455,6 +461,61 @@ namespace HaCreator.MapSimulator.UI
             float x = Position.X + button.X + ((button.CanvasSnapshotWidth - size.X) / 2f);
             float y = Position.Y + button.Y + ((button.CanvasSnapshotHeight - size.Y) / 2f) - 1f;
             SelectorWindowDrawing.DrawShadowedText(sprite, _font, text, new Vector2(x, y), Color.White);
+        }
+
+        private void DrawEffectLayers(SpriteBatch sprite, int tickCount)
+        {
+            if (_effectFrameSets == null || _effectFrameSets.Count == 0)
+            {
+                return;
+            }
+
+            for (int i = 0; i < _effectFrameSets.Count; i++)
+            {
+                CharacterSelectWindow.AnimationFrame frame = ResolveAnimationFrame(_effectFrameSets[i], tickCount);
+                if (frame.Texture == null)
+                {
+                    continue;
+                }
+
+                Vector2 drawPosition = new(Position.X + frame.Offset.X, Position.Y + frame.Offset.Y);
+                sprite.Draw(frame.Texture, drawPosition, Color.White);
+            }
+        }
+
+        private static CharacterSelectWindow.AnimationFrame ResolveAnimationFrame(
+            IReadOnlyList<CharacterSelectWindow.AnimationFrame> frames,
+            int tickCount)
+        {
+            if (frames == null || frames.Count == 0)
+            {
+                return default;
+            }
+
+            int totalDuration = 0;
+            for (int i = 0; i < frames.Count; i++)
+            {
+                totalDuration += Math.Max(1, frames[i].Delay);
+            }
+
+            if (totalDuration <= 0)
+            {
+                return frames[^1];
+            }
+
+            int animationTick = Math.Max(0, tickCount) % totalDuration;
+            for (int i = 0; i < frames.Count; i++)
+            {
+                int frameDuration = Math.Max(1, frames[i].Delay);
+                if (animationTick < frameDuration)
+                {
+                    return frames[i];
+                }
+
+                animationTick -= frameDuration;
+            }
+
+            return frames[^1];
         }
 
         private void DrawFieldValue(SpriteBatch sprite, Rectangle bounds, string text, bool focused, int tickCount)

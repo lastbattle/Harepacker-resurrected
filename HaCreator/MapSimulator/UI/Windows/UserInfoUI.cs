@@ -263,6 +263,7 @@ namespace HaCreator.MapSimulator.UI
         public Func<UserInfoActionContext, bool> MarriedBadgeProvider { get; set; }
         public Func<string> LocalActionLocationSummaryProvider { get; set; }
         public Func<int> LocalActionChannelProvider { get; set; }
+        public Func<UserInfoInspectionTarget, UserInfoInspectionTarget> InspectionTargetResolver { get; set; }
 
         public override CharacterBuild CharacterBuild
         {
@@ -2614,7 +2615,7 @@ namespace HaCreator.MapSimulator.UI
 
         private ItemMakerProgressionSnapshot GetCollectionSnapshot()
         {
-            CharacterBuild activeBuild = _inspectionTarget?.Build ?? _characterBuild;
+            CharacterBuild activeBuild = GetDisplayedBuild();
             if (!ReferenceEquals(_snapshotCacheBuild, activeBuild))
             {
                 RefreshSnapshotCaches();
@@ -2625,7 +2626,7 @@ namespace HaCreator.MapSimulator.UI
 
         private RankDeltaSnapshot GetRankDeltaSnapshot()
         {
-            CharacterBuild activeBuild = _inspectionTarget?.Build ?? _characterBuild;
+            CharacterBuild activeBuild = GetDisplayedBuild();
             if (!ReferenceEquals(_snapshotCacheBuild, activeBuild))
             {
                 RefreshSnapshotCaches();
@@ -2636,7 +2637,7 @@ namespace HaCreator.MapSimulator.UI
 
         private void RefreshSnapshotCaches()
         {
-            CharacterBuild activeBuild = _inspectionTarget?.Build ?? _characterBuild;
+            CharacterBuild activeBuild = GetDisplayedBuild();
             _snapshotCacheBuild = activeBuild;
             _currentCollectionSnapshot = _collectionSnapshotProvider?.Invoke(activeBuild) ?? ItemMakerProgressionSnapshot.Default;
             _currentMonsterBookSnapshot = _monsterBookSnapshotProvider?.Invoke(activeBuild) ?? new MonsterBookSnapshot();
@@ -2716,27 +2717,28 @@ namespace HaCreator.MapSimulator.UI
 
         private bool IsRemoteInspectionActive()
         {
-            return _inspectionTarget?.Build != null;
+            return GetResolvedInspectionTarget()?.Build != null;
         }
 
         private CharacterBuild GetDisplayedBuild()
         {
-            return _inspectionTarget?.Build ?? _characterBuild;
+            return GetResolvedInspectionTarget()?.Build ?? _characterBuild;
         }
 
         private UserInfoActionContext BuildCurrentActionContext()
         {
-            CharacterBuild build = _inspectionTarget?.Build ?? _characterBuild;
+            UserInfoInspectionTarget inspectionTarget = GetResolvedInspectionTarget();
+            CharacterBuild build = inspectionTarget?.Build ?? _characterBuild;
             string locationSummary = IsRemoteInspectionActive()
-                ? _inspectionTarget?.LocationSummary ?? string.Empty
+                ? inspectionTarget?.LocationSummary ?? string.Empty
                 : LocalActionLocationSummaryProvider?.Invoke() ?? string.Empty;
             int channel = IsRemoteInspectionActive()
-                ? (_inspectionTarget?.Channel ?? 0)
+                ? (inspectionTarget?.Channel ?? 0)
                 : Math.Max(1, LocalActionChannelProvider?.Invoke() ?? 1);
             return new UserInfoActionContext(
                 IsRemoteInspectionActive(),
-                _inspectionTarget?.CharacterId ?? build?.Id ?? 0,
-                _inspectionTarget?.Name ?? build?.Name ?? string.Empty,
+                inspectionTarget?.CharacterId ?? build?.Id ?? 0,
+                inspectionTarget?.Name ?? build?.Name ?? string.Empty,
                 build,
                 locationSummary,
                 channel);
@@ -2749,13 +2751,37 @@ namespace HaCreator.MapSimulator.UI
                 return null;
             }
 
-            string location = string.IsNullOrWhiteSpace(_inspectionTarget.LocationSummary)
+            UserInfoInspectionTarget inspectionTarget = GetResolvedInspectionTarget();
+            string location = string.IsNullOrWhiteSpace(inspectionTarget?.LocationSummary)
                 ? "Location unknown"
-                : _inspectionTarget.LocationSummary;
-            string channelText = _inspectionTarget.Channel > 0
-                ? $"CH {_inspectionTarget.Channel}"
+                : inspectionTarget.LocationSummary;
+            string channelText = inspectionTarget?.Channel > 0
+                ? $"CH {inspectionTarget.Channel}"
                 : "CH ?";
-            return $"{_inspectionTarget.Name}  {channelText}  {location}";
+            return $"{inspectionTarget?.Name}  {channelText}  {location}";
+        }
+
+        private UserInfoInspectionTarget GetResolvedInspectionTarget()
+        {
+            if (_inspectionTarget?.Build == null)
+            {
+                return null;
+            }
+
+            UserInfoInspectionTarget resolved = InspectionTargetResolver?.Invoke(_inspectionTarget);
+            if (resolved?.Build == null)
+            {
+                return _inspectionTarget;
+            }
+
+            return new UserInfoInspectionTarget
+            {
+                Build = resolved.Build ?? _inspectionTarget.Build,
+                CharacterId = resolved.CharacterId > 0 ? resolved.CharacterId : _inspectionTarget.CharacterId,
+                Name = !string.IsNullOrWhiteSpace(resolved.Name) ? resolved.Name : _inspectionTarget.Name,
+                LocationSummary = !string.IsNullOrWhiteSpace(resolved.LocationSummary) ? resolved.LocationSummary : _inspectionTarget.LocationSummary,
+                Channel = resolved.Channel > 0 ? resolved.Channel : _inspectionTarget.Channel
+            };
         }
 
         private static string FormatRankDelta(int currentRank, int? previousRank)

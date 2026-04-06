@@ -30,11 +30,19 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D _slotTexture;
         private readonly Texture2D[] _statusIcons;
         private readonly Texture2D _todayTexture;
-        private readonly Texture2D _calendarBackgroundTexture;
+        private readonly Texture2D[] _calendarBackgroundTextures;
         private readonly Texture2D _calendarOverlayTexture;
         private readonly Texture2D _calendarGridTexture;
         private readonly Texture2D[] _calendarNumberTextures;
         private readonly Texture2D[] _calendarSelectedNumberTextures;
+        private UIObject _allButton;
+        private UIObject _startButton;
+        private UIObject _inProgressButton;
+        private UIObject _clearButton;
+        private UIObject _upcomingButton;
+        private UIObject _calendarButton;
+        private UIObject _previousButton;
+        private UIObject _nextButton;
         private SpriteFont _font;
         private Func<EventWindowSnapshot> _snapshotProvider;
         private EventWindowSnapshot _currentSnapshot = new();
@@ -67,7 +75,7 @@ namespace HaCreator.MapSimulator.UI
             Texture2D slotTexture,
             Texture2D[] statusIcons,
             Texture2D todayTexture,
-            Texture2D calendarBackgroundTexture,
+            Texture2D[] calendarBackgroundTextures,
             Texture2D calendarOverlayTexture,
             Texture2D calendarGridTexture,
             Texture2D[] calendarNumberTextures,
@@ -80,7 +88,7 @@ namespace HaCreator.MapSimulator.UI
             _slotTexture = slotTexture;
             _statusIcons = statusIcons ?? Array.Empty<Texture2D>();
             _todayTexture = todayTexture;
-            _calendarBackgroundTexture = calendarBackgroundTexture;
+            _calendarBackgroundTextures = calendarBackgroundTextures ?? Array.Empty<Texture2D>();
             _calendarOverlayTexture = calendarOverlayTexture;
             _calendarGridTexture = calendarGridTexture;
             _calendarNumberTextures = calendarNumberTextures ?? Array.Empty<Texture2D>();
@@ -139,6 +147,15 @@ namespace HaCreator.MapSimulator.UI
             UIObject nextButton,
             UIObject closeButton)
         {
+            _allButton = allButton;
+            _startButton = startButton;
+            _inProgressButton = inProgressButton;
+            _clearButton = clearButton;
+            _upcomingButton = upcomingButton;
+            _calendarButton = calendarButton;
+            _previousButton = previousButton;
+            _nextButton = nextButton;
+
             BindActionButton(allButton, () => SetFilter(null, showCalendar: false));
             BindActionButton(startButton, () => SetFilter(EventEntryStatus.Start, showCalendar: false));
             BindActionButton(inProgressButton, () => SetFilter(EventEntryStatus.InProgress, showCalendar: false));
@@ -229,6 +246,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             EventWindowSnapshot snapshot = RefreshSnapshot();
+            SyncButtonStates(snapshot);
             if (_autoDismissTick != int.MinValue && unchecked(TickCount - _autoDismissTick) >= 0)
             {
                 Hide();
@@ -321,7 +339,7 @@ namespace HaCreator.MapSimulator.UI
             BuildCalendarEntryCounts(entries);
 
             Rectangle calendarBounds = GetCalendarBounds(snapshot);
-            Texture2D baseTexture = _calendarBackgroundTexture ?? _normalRowTexture ?? _selectedRowTexture;
+            Texture2D baseTexture = ResolveCalendarBackgroundTexture() ?? _normalRowTexture ?? _selectedRowTexture;
             if (baseTexture != null)
             {
                 sprite.Draw(baseTexture, new Vector2(calendarBounds.X, calendarBounds.Y), Color.White);
@@ -466,8 +484,9 @@ namespace HaCreator.MapSimulator.UI
         private Rectangle GetCalendarBounds(EventWindowSnapshot snapshot)
         {
             int frameWidth = CurrentFrame?.Width ?? 323;
-            int width = _calendarBackgroundTexture?.Width ?? 157;
-            int height = _calendarBackgroundTexture?.Height ?? 205;
+            Texture2D background = ResolveCalendarBackgroundTexture();
+            int width = background?.Width ?? 157;
+            int height = background?.Height ?? 205;
             int x = Position.X + Math.Max(16, (frameWidth - width) / 2);
             int y = Position.Y + GetContentTop(snapshot) + 22;
             return new Rectangle(x, y, width, height);
@@ -528,6 +547,94 @@ namespace HaCreator.MapSimulator.UI
         private void DisableAutoDismiss()
         {
             _autoDismissTick = int.MinValue;
+        }
+
+        private void SyncButtonStates(EventWindowSnapshot snapshot)
+        {
+            SetToggleButtonState(_allButton, !_showCalendar && !_filter.HasValue);
+            SetToggleButtonState(_startButton, !_showCalendar && _filter == EventEntryStatus.Start);
+            SetToggleButtonState(_inProgressButton, !_showCalendar && _filter == EventEntryStatus.InProgress);
+            SetToggleButtonState(_clearButton, !_showCalendar && _filter == EventEntryStatus.Clear);
+            SetToggleButtonState(_upcomingButton, !_showCalendar && _filter == EventEntryStatus.Upcoming);
+            SetToggleButtonState(_calendarButton, _showCalendar);
+
+            if (_showCalendar)
+            {
+                DateTime minimumMonth = ResolveMinimumCalendarMonth(snapshot);
+                DateTime maximumMonth = ResolveMaximumCalendarMonth(snapshot);
+                _previousButton?.SetEnabled(_calendarMonth > minimumMonth);
+                _nextButton?.SetEnabled(_calendarMonth < maximumMonth);
+                return;
+            }
+
+            _previousButton?.SetEnabled(_pageIndex > 0);
+            _nextButton?.SetEnabled(((_pageIndex + 1) * GetRowsPerPage()) < GetFilteredEntries(snapshot).Count);
+        }
+
+        private static void SetToggleButtonState(UIObject button, bool active)
+        {
+            if (button == null)
+            {
+                return;
+            }
+
+            if (!button.IsEnabled)
+            {
+                return;
+            }
+
+            button.SetButtonState(active ? UIObjectState.Pressed : UIObjectState.Normal);
+        }
+
+        private Texture2D ResolveCalendarBackgroundTexture()
+        {
+            if (_calendarBackgroundTextures.Length == 0)
+            {
+                return null;
+            }
+
+            int variant = ProgressionUtilityParityRules.ResolveCalendarBackgroundVariant(_calendarMonth);
+            if ((uint)variant < (uint)_calendarBackgroundTextures.Length && _calendarBackgroundTextures[variant] != null)
+            {
+                return _calendarBackgroundTextures[variant];
+            }
+
+            return _calendarBackgroundTextures[0];
+        }
+
+        private static DateTime ResolveMinimumCalendarMonth(EventWindowSnapshot snapshot)
+        {
+            return ResolveCalendarBoundaryMonth(snapshot, seekMaximum: false);
+        }
+
+        private static DateTime ResolveMaximumCalendarMonth(EventWindowSnapshot snapshot)
+        {
+            return ResolveCalendarBoundaryMonth(snapshot, seekMaximum: true);
+        }
+
+        private static DateTime ResolveCalendarBoundaryMonth(EventWindowSnapshot snapshot, bool seekMaximum)
+        {
+            IReadOnlyList<EventEntrySnapshot> entries = snapshot?.Entries ?? Array.Empty<EventEntrySnapshot>();
+            DateTime resolved = DateTime.MinValue;
+            for (int i = 0; i < entries.Count; i++)
+            {
+                DateTime date = entries[i].ScheduledAt.Date;
+                if (date.Year <= 1)
+                {
+                    continue;
+                }
+
+                DateTime month = new(date.Year, date.Month, 1);
+                if (resolved == DateTime.MinValue
+                    || (seekMaximum ? month > resolved : month < resolved))
+                {
+                    resolved = month;
+                }
+            }
+
+            return resolved == DateTime.MinValue
+                ? new DateTime(DateTime.Today.Year, DateTime.Today.Month, 1)
+                : resolved;
         }
 
         private DateTime? ResolveCalendarDate(int mouseX, int mouseY)

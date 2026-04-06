@@ -5,6 +5,15 @@ using System.Net;
 
 namespace HaCreator.MapSimulator.Managers
 {
+    public enum LoginSelectCharacterSuccessBranch
+    {
+        None = 0,
+        DirectResult0 = 1,
+        AlternateAuthenticatedResult12Response11 = 2,
+        AlternateAuthenticatedResult12Response13 = 3,
+        AlternateResult23 = 4,
+    }
+
     public sealed class LoginSelectCharacterResultProfile
     {
         public byte ResultCode { get; init; }
@@ -18,6 +27,15 @@ namespace HaCreator.MapSimulator.Managers
 
         public bool IsSuccess =>
             LoginSelectCharacterResultCodec.IsSuccess(ResultCode, ResponseCode);
+
+        public LoginSelectCharacterSuccessBranch SuccessBranch =>
+            LoginSelectCharacterResultCodec.ResolveSuccessBranch(ResultCode, ResponseCode);
+
+        public bool UsesDirectSuccessBranch => SuccessBranch == LoginSelectCharacterSuccessBranch.DirectResult0;
+        public bool UsesAlternateAuthenticatedBranch =>
+            SuccessBranch is LoginSelectCharacterSuccessBranch.AlternateAuthenticatedResult12Response11 or
+                             LoginSelectCharacterSuccessBranch.AlternateAuthenticatedResult12Response13;
+        public bool UsesAlternateSuccessBranch => SuccessBranch == LoginSelectCharacterSuccessBranch.AlternateResult23;
 
         public bool HasCompleteConnectPayload =>
             ServerAddress != null &&
@@ -147,8 +165,36 @@ namespace HaCreator.MapSimulator.Managers
                    (resultCode == 12 && (responseCode == 11 || responseCode == 13));
         }
 
+        public static LoginSelectCharacterSuccessBranch ResolveSuccessBranch(byte resultCode, byte responseCode)
+        {
+            if (resultCode == 0)
+            {
+                return LoginSelectCharacterSuccessBranch.DirectResult0;
+            }
+
+            if (resultCode == 23)
+            {
+                return LoginSelectCharacterSuccessBranch.AlternateResult23;
+            }
+
+            if (resultCode == 12)
+            {
+                return responseCode switch
+                {
+                    11 => LoginSelectCharacterSuccessBranch.AlternateAuthenticatedResult12Response11,
+                    13 => LoginSelectCharacterSuccessBranch.AlternateAuthenticatedResult12Response13,
+                    _ => LoginSelectCharacterSuccessBranch.None,
+                };
+            }
+
+            return LoginSelectCharacterSuccessBranch.None;
+        }
+
         public static bool RequiresWebsiteHandoff(byte resultCode)
         {
+            // Client evidence: CLogin::OnSelectCharacterResult (0x5dea80)
+            // routes result 14 through CLoginUtilDlg::YesNo2(27) and result 15
+            // through CLoginUtilDlg::YesNo2(26) before opening StringPool URL 0xB6C.
             return resultCode is 14 or 15;
         }
 

@@ -24,7 +24,12 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal readonly record struct MessengerChatPacket(string ContactName, string Message);
 
-    internal readonly record struct MessengerClientChatPacket(string ContactName, string Message, bool IsWhisper);
+    internal readonly record struct MessengerClientChatPacket(
+        string ContactName,
+        string Message,
+        bool IsWhisper,
+        bool IsActivityPulse,
+        bool ActivityEnabled);
 
     internal readonly record struct MessengerMemberInfoPacket(
         string ContactName,
@@ -66,6 +71,8 @@ namespace HaCreator.MapSimulator.Interaction
         int Channel,
         LoginAvatarLook AvatarLook)
     {
+        public bool ClearSlot => State == 0;
+        public bool PreserveSlot => State == 1;
         public bool Present => State >= 2;
         public bool IsOnline => Present;
     }
@@ -354,27 +361,52 @@ namespace HaCreator.MapSimulator.Interaction
                 }
 
                 int separatorIndex = chatText.IndexOf(ChatSeparator, StringComparison.Ordinal);
-                if (separatorIndex <= 0 || separatorIndex >= chatText.Length - ChatSeparator.Length)
+                if (separatorIndex > 0 && separatorIndex < chatText.Length - ChatSeparator.Length)
                 {
-                    error = "Messenger client chat packet is missing the MapleStory 'name : message' separator.";
+                    string contactName = chatText[..separatorIndex].Trim();
+                    string message = chatText[(separatorIndex + ChatSeparator.Length)..].Trim();
+                    if (string.IsNullOrWhiteSpace(contactName))
+                    {
+                        error = "Messenger client chat packet speaker name is empty.";
+                        return false;
+                    }
+
+                    if (string.IsNullOrWhiteSpace(message))
+                    {
+                        error = "Messenger client chat packet message is empty.";
+                        return false;
+                    }
+
+                    packet = new MessengerClientChatPacket(contactName, message, IsWhisper: false, IsActivityPulse: false, ActivityEnabled: false);
+                    return true;
+                }
+
+                if (chatText.Length < 2)
+                {
+                    error = "Messenger client chat packet is missing both the MapleStory 'name : message' separator and the activity marker.";
                     return false;
                 }
 
-                string contactName = chatText[..separatorIndex].Trim();
-                string message = chatText[(separatorIndex + ChatSeparator.Length)..].Trim();
-                if (string.IsNullOrWhiteSpace(contactName))
+                string activityName = chatText[..^1].Trim();
+                char activityMarker = chatText[^1];
+                if (string.IsNullOrWhiteSpace(activityName))
                 {
                     error = "Messenger client chat packet speaker name is empty.";
                     return false;
                 }
 
-                if (string.IsNullOrWhiteSpace(message))
+                if (activityMarker is not '0' and not '1')
                 {
-                    error = "Messenger client chat packet message is empty.";
+                    error = "Messenger client chat packet activity marker must be '0' or '1' when no room-chat text is present.";
                     return false;
                 }
 
-                packet = new MessengerClientChatPacket(contactName, message, IsWhisper: false);
+                packet = new MessengerClientChatPacket(
+                    activityName,
+                    string.Empty,
+                    IsWhisper: false,
+                    IsActivityPulse: true,
+                    ActivityEnabled: activityMarker != '0');
                 return true;
             }
             catch (InvalidOperationException ex)

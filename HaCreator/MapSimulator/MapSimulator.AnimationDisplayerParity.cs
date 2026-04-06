@@ -18,6 +18,7 @@ namespace HaCreator.MapSimulator
         private const string AnimationDisplayerGenericUserStateEffectUol = "Effect/OnUserEff.img/character";
         private const string AnimationDisplayerQuestDeliveryEffectBaseUol = "Effect/OnUserEff.img/itemEffect/quest";
         private const int AnimationDisplayerQuestDeliveryFallbackEffectItemId = 2430071;
+        private const int AnimationDisplayerNewYearSoundStringPoolId = 0x125C;
         private const int AnimationDisplayerUserStateOffsetY = -70;
         private const int AnimationDisplayerTransientLayerWidth = 800;
         private const int AnimationDisplayerTransientLayerHeight = 600;
@@ -729,6 +730,13 @@ namespace HaCreator.MapSimulator
         internal static string[] BuildAnimationDisplayerNewYearSoundCandidates(string weatherPath)
         {
             var candidates = new List<string>();
+            foreach (string soundKey in EnumerateAnimationDisplayerNewYearSoundKeys(weatherPath))
+            {
+                AddAnimationDisplayerNewYearSoundCandidate(
+                    candidates,
+                    BuildAnimationDisplayerNewYearSoundDescriptor(soundKey));
+            }
+
             AddAnimationDisplayerNewYearSoundCandidate(candidates, "Field/newyear");
             AddAnimationDisplayerNewYearSoundCandidate(candidates, "Field/weather/newyear");
             AddAnimationDisplayerNewYearSoundCandidate(candidates, "Game/newyear");
@@ -777,11 +785,88 @@ namespace HaCreator.MapSimulator
             return candidates.ToArray();
         }
 
+        internal static string BuildAnimationDisplayerNewYearSoundDescriptor(string soundKey)
+        {
+            if (string.IsNullOrWhiteSpace(soundKey))
+            {
+                return null;
+            }
+
+            string compositeFormat = MapleStoryStringPool.GetCompositeFormatOrFallback(
+                AnimationDisplayerNewYearSoundStringPoolId,
+                "Sound/Field.img/{0}",
+                maxPlaceholderCount: 1,
+                out _);
+            string formatted = string.Format(CultureInfo.InvariantCulture, compositeFormat, soundKey.Trim());
+            return NormalizeAnimationDisplayerSoundDescriptor(formatted);
+        }
+
+        internal static string NormalizeAnimationDisplayerSoundDescriptor(string descriptor)
+        {
+            string normalized = NormalizeAnimationDisplayerPath(descriptor);
+            if (string.IsNullOrWhiteSpace(normalized))
+            {
+                return null;
+            }
+
+            if (normalized.StartsWith("Sound/", StringComparison.OrdinalIgnoreCase))
+            {
+                normalized = normalized["Sound/".Length..];
+            }
+
+            string[] segments = normalized.Split('/');
+            if (segments.Length == 0)
+            {
+                return null;
+            }
+
+            if (segments[0].EndsWith(".img", StringComparison.OrdinalIgnoreCase))
+            {
+                segments[0] = NormalizeAnimationDisplayerImageNameSegment(segments[0]);
+            }
+
+            return NormalizeAnimationDisplayerPath(string.Join("/", segments));
+        }
+
         private static string NormalizeAnimationDisplayerPath(string value)
         {
             return string.IsNullOrWhiteSpace(value)
                 ? null
                 : value.Trim().Replace('\\', '/').Trim('/');
+        }
+
+        private static IEnumerable<string> EnumerateAnimationDisplayerNewYearSoundKeys(string weatherPath)
+        {
+            string normalizedWeatherPath = NormalizeAnimationDisplayerPath(weatherPath);
+            if (string.IsNullOrWhiteSpace(normalizedWeatherPath))
+            {
+                yield return "newyear";
+                yield break;
+            }
+
+            string normalizedSoundDescriptor = NormalizeAnimationDisplayerSoundDescriptor(normalizedWeatherPath);
+            if (!string.IsNullOrWhiteSpace(normalizedSoundDescriptor))
+            {
+                string[] directSegments = normalizedSoundDescriptor.Split('/');
+                if (directSegments.Length >= 2)
+                {
+                    yield return string.Join("/", directSegments, 1, directSegments.Length - 1);
+                }
+            }
+
+            string[] segments = normalizedWeatherPath.Split('/');
+            int weatherSegmentIndex = Array.FindIndex(
+                segments,
+                segment => string.Equals(segment, "weather", StringComparison.OrdinalIgnoreCase));
+            if (weatherSegmentIndex >= 0 && weatherSegmentIndex < segments.Length - 1)
+            {
+                yield return string.Join("/", segments, weatherSegmentIndex + 1, segments.Length - weatherSegmentIndex - 1);
+            }
+
+            if (segments.Length > 0)
+            {
+                yield return segments[^1];
+            }
         }
 
         private static string NormalizeAnimationDisplayerImageNameSegment(string value)

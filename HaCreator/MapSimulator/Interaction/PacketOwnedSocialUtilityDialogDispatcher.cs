@@ -150,6 +150,7 @@ namespace HaCreator.MapSimulator.Interaction
         private int _arrivalNoticeCount;
         private int _deliveryCount;
         private int _removalCount;
+        private int _currentDialogMode = -1;
         private string _lastAlarmSender = string.Empty;
 
         internal PacketOwnedParcelDialogRuntime(MemoMailboxManager memoMailbox)
@@ -184,6 +185,7 @@ namespace HaCreator.MapSimulator.Interaction
                 case 26:
                     _openCount++;
                     IsOpen = true;
+                    _currentDialogMode = 1;
                     _memoMailbox.SetActiveTab(ParcelDialogTab.QuickSend);
                     StatusMessage = "CParcelDlg packet 26 opened the packet-owned quick-delivery owner.";
                     message = StatusMessage;
@@ -195,8 +197,20 @@ namespace HaCreator.MapSimulator.Interaction
                     _noticeCount++;
                     if (LastSubtype == 18)
                     {
-                        _memoMailbox.ResetDraftState();
-                        StatusMessage = "CParcelDlg result 18 reset the send-info branch on the packet-owned parcel owner.";
+                        switch (_currentDialogMode)
+                        {
+                            case 0:
+                                _memoMailbox.ResetDraftState();
+                                StatusMessage = "CParcelDlg result 18 reset the send-info branch on the packet-owned parcel owner.";
+                                break;
+                            case 1:
+                                IsOpen = false;
+                                StatusMessage = "CParcelDlg result 18 closed the packet-owned quick-delivery owner.";
+                                break;
+                            default:
+                                StatusMessage = "CParcelDlg result 18 completed without mutating the active packet-owned parcel mode.";
+                                break;
+                        }
                     }
                     else
                     {
@@ -266,6 +280,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             _openCount++;
             IsOpen = true;
+            _currentDialogMode = modeTwoOpen ? 2 : 0;
             _memoMailbox.ReplacePacketOwnedParcelSession(session.ReceiveEntries, ParcelDialogTab.Receive, out string sessionMessage);
             if (session.ArrivalNoticeEntries.Count > 0)
             {

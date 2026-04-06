@@ -442,6 +442,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool ReflectsIncomingDamage { get; set; }
         public bool RedirectsDamageToMp { get; set; }
         public bool HasInvincibleMetadata { get; set; }
+        public bool HasDispelMetadata { get; set; }
         public bool UsesEnergyChargeRuntime { get; set; }
         public bool HasChargingSkillMetadata { get; set; }
         public string FullChargeEffectName { get; set; }
@@ -1308,6 +1309,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int PendingManualAttackRequestedAt { get; set; } = int.MinValue;
         public int PendingManualAttackPrimaryTargetMobId { get; set; }
         public int[] PendingManualAttackTargetMobIds { get; set; } = Array.Empty<int>();
+        public int[] PendingManualAttackConfirmedTargetMobIds { get; set; } = Array.Empty<int>();
         public int PendingManualAttackFollowUpAt { get; set; } = int.MinValue;
         public int LastManualAttackResolvedTime { get; set; } = int.MinValue;
         public int NextSupportTime { get; set; }

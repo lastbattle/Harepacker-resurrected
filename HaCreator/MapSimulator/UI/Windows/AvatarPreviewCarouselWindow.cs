@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Managers;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
@@ -25,6 +26,18 @@ namespace HaCreator.MapSimulator.UI
         private const int ClientNameTagMinimumWidth = 58;
         private const int ClientNameTagHorizontalPadding = 18;
         private const int NameTagTextInsetY = 2;
+        private const int AvatarNameFontFaceStringPoolId = 0x1A25;
+        private const string AvatarNameFontPathEnvironmentVariable = "MAPSIM_LOGIN_AVATAR_NAME_FONT_PATH";
+        private const string AvatarNameFontFaceEnvironmentVariable = "MAPSIM_LOGIN_AVATAR_NAME_FONT_FACE";
+        private static readonly string[] AvatarNameFontFamilyCandidates =
+        {
+            "DotumChe",
+            "Dotum",
+            "GulimChe",
+            "Gulim",
+            "Tahoma",
+            "Arial"
+        };
 
         private readonly List<UIObject> _cardButtons = new();
         private readonly List<LoginCharacterRosterEntry> _entries = new();
@@ -74,7 +87,16 @@ namespace HaCreator.MapSimulator.UI
             GraphicsDevice graphicsDevice = frame?.Texture?.GraphicsDevice;
             if (graphicsDevice != null)
             {
-                _nameTagTextRasterizer = new ClientTextRasterizer(graphicsDevice, basePointSize: 12f);
+                string requestedFontFamily = MapleStoryStringPool.GetOrFallback(AvatarNameFontFaceStringPoolId, "Arial");
+                string resolvedFontFamily = ClientTextRasterizer.ResolvePreferredFontFamily(
+                    requestedFontFamily,
+                    AvatarNameFontPathEnvironmentVariable,
+                    AvatarNameFontFaceEnvironmentVariable,
+                    AvatarNameFontFamilyCandidates);
+                _nameTagTextRasterizer = new ClientTextRasterizer(
+                    graphicsDevice,
+                    resolvedFontFamily,
+                    basePointSize: 12f);
             }
 
             int slotIndex = 0;

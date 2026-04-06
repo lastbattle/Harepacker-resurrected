@@ -10,9 +10,9 @@ namespace HaCreator.MapSimulator.Interaction
 {
     internal enum MapleTvSendResultKind
     {
-        Success,
-        Busy,
-        RecipientOffline,
+        Sent,
+        WrongUserName,
+        QueueTooLong,
         Failed
     }
 
@@ -152,6 +152,7 @@ namespace HaCreator.MapSimulator.Interaction
                 TotalWaitMs = totalWaitMs,
                 CanPublish = _draftLines.Any(line => !string.IsNullOrWhiteSpace(line)),
                 CanClear = _showMessage || _queueExists,
+                CanToggleReceiver = GetCurrentAudienceMode() == MapleTvAudienceMode.Flexible,
                 MirrorsToChat = _itemProfile?.MirrorsToChat ?? false
             };
         }
@@ -391,9 +392,9 @@ namespace HaCreator.MapSimulator.Interaction
         {
             MapleTvSendResultDefinition definition = result switch
             {
-                MapleTvSendResultKind.Success => ResolveSendResultDefinition(1),
-                MapleTvSendResultKind.Busy => ResolveSendResultDefinition(2),
-                MapleTvSendResultKind.RecipientOffline => ResolveSendResultDefinition(3),
+                MapleTvSendResultKind.Sent => ResolveSendResultDefinition(1),
+                MapleTvSendResultKind.WrongUserName => ResolveSendResultDefinition(2),
+                MapleTvSendResultKind.QueueTooLong => ResolveSendResultDefinition(3),
                 _ => new MapleTvSendResultDefinition(-1, -1, "failed")
             };
 
@@ -741,9 +742,9 @@ namespace HaCreator.MapSimulator.Interaction
         {
             return resultCode switch
             {
-                1 => new MapleTvSendResultDefinition(1, 0xF9E, "success"),
-                2 => new MapleTvSendResultDefinition(2, 0xFA0, "busy"),
-                3 => new MapleTvSendResultDefinition(3, 0xF9F, "recipient-offline"),
+                1 => new MapleTvSendResultDefinition(1, 0xF9E, "sent"),
+                2 => new MapleTvSendResultDefinition(2, 0xFA0, "wrong-user-name"),
+                3 => new MapleTvSendResultDefinition(3, 0xF9F, "queue-too-long"),
                 _ => new MapleTvSendResultDefinition(resultCode, -1, "failed")
             };
         }
@@ -808,6 +809,7 @@ namespace HaCreator.MapSimulator.Interaction
         public int TotalWaitMs { get; init; }
         public bool CanPublish { get; init; }
         public bool CanClear { get; init; }
+        public bool CanToggleReceiver { get; init; }
         public bool MirrorsToChat { get; init; }
     }
 

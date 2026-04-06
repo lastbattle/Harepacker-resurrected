@@ -15,6 +15,7 @@ namespace HaCreator.MapSimulator.Character
         Poison,
         Slow,
         Freeze,
+        StopMotion,
         Curse,
         PainMark,
         Banish,
@@ -144,6 +145,7 @@ namespace HaCreator.MapSimulator.Character
 
             bool movementLocked = HasStatus(PlayerMobStatusEffect.Stun) ||
                                   HasStatus(PlayerMobStatusEffect.Freeze) ||
+                                  HasStatus(PlayerMobStatusEffect.StopMotion) ||
                                   HasStatus(PlayerMobStatusEffect.Banish);
             bool seduced = HasStatus(PlayerMobStatusEffect.Attract);
             bool banished = HasStatus(PlayerMobStatusEffect.Banish);
@@ -301,7 +303,10 @@ namespace HaCreator.MapSimulator.Character
                     ApplyStatus(PlayerMobStatusEffect.StopPotion, runtimeData.DurationMs, currentTime, 1);
                     return true;
                 case 136:
-                    ApplyStatus(PlayerMobStatusEffect.Fear, runtimeData.DurationMs, currentTime, ResolveFearDirection(sourceX));
+                    ApplyStatus(PlayerMobStatusEffect.StopMotion, runtimeData.DurationMs, currentTime, 1);
+                    return true;
+                case 137:
+                    ApplyStatus(PlayerMobStatusEffect.Fear, runtimeData.DurationMs, currentTime, ResolveValue(runtimeData, 50));
                     return true;
                 case 172:
                 case 173:
@@ -376,6 +381,28 @@ namespace HaCreator.MapSimulator.Character
         public bool HasStatusEffect(PlayerMobStatusEffect effect)
         {
             return HasStatus(effect);
+        }
+
+        public bool TryGetFearVisualState(int currentTime, out float intensity, out int remainingDurationMs)
+        {
+            RemoveExpiredEffects(currentTime);
+
+            intensity = 0f;
+            remainingDurationMs = 0;
+            if (!_entries.TryGetValue(PlayerMobStatusEffect.Fear, out PlayerMobStatusEntry entry))
+            {
+                return false;
+            }
+
+            remainingDurationMs = Math.Max(0, entry.ExpirationTime - currentTime);
+            if (remainingDurationMs <= 0)
+            {
+                return false;
+            }
+
+            int fearPercent = entry.Value > 0 ? entry.Value : 50;
+            intensity = Math.Clamp(fearPercent / 100f, 0.1f, 0.95f);
+            return true;
         }
 
         public int ClearStatuses(IEnumerable<PlayerMobStatusEffect> effects)
@@ -474,10 +501,7 @@ namespace HaCreator.MapSimulator.Character
         {
             if (!_entries.TryGetValue(PlayerMobStatusEffect.Attract, out PlayerMobStatusEntry entry))
             {
-                if (!_entries.TryGetValue(PlayerMobStatusEffect.Fear, out entry))
-                {
-                    return 0;
-                }
+                return 0;
             }
 
             return entry.Value switch
@@ -534,13 +558,6 @@ namespace HaCreator.MapSimulator.Character
 
             return _player.FacingRight ? 1 : -1;
         }
-
-        private int ResolveFearDirection(float sourceX)
-        {
-            int towardSource = ResolveSeduceDirection(sourceX);
-            return -towardSource;
-        }
-
         private void RemoveExpiredEffects(int currentTime)
         {
             if (_entries.Count == 0)

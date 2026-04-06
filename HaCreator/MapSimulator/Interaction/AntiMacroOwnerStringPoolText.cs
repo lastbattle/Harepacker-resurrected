@@ -112,13 +112,29 @@ namespace HaCreator.MapSimulator.Interaction
 
         public static bool TryResolve(int stringPoolId, out string text)
         {
+            if (MapleStoryStringPool.TryGet(stringPoolId, out text))
+            {
+                return true;
+            }
+
             if (AttemptMessageStringPoolId == stringPoolId)
             {
                 text = AttemptMessageFallback;
                 return true;
             }
 
-            return MapleStoryStringPool.TryGet(stringPoolId, out text);
+            return false;
+        }
+
+        public static string GetRecoveredDecodedFallback(int stringPoolId, string fallbackText = null)
+        {
+            if (RecoveredEntries.TryGetValue(stringPoolId, out StringPoolEntryEvidence evidence)
+                && !string.IsNullOrWhiteSpace(evidence.DecodedText))
+            {
+                return evidence.DecodedText;
+            }
+
+            return fallbackText ?? string.Empty;
         }
 
         public static bool TryGetEvidence(int stringPoolId, out string rawHex, out byte seed, out string clientSource)
@@ -139,7 +155,46 @@ namespace HaCreator.MapSimulator.Interaction
 
         public static string GetResolvedOrFallback(int stringPoolId, string fallbackText, bool appendFallbackSuffix = false)
         {
-            return MapleStoryStringPool.GetOrFallback(stringPoolId, fallbackText, appendFallbackSuffix);
+            return MapleStoryStringPool.GetOrFallback(
+                stringPoolId,
+                GetRecoveredDecodedFallback(stringPoolId, fallbackText),
+                appendFallbackSuffix);
+        }
+
+        public static string FormatUserBranchText(int stringPoolId, string fallbackFormat, string userName)
+        {
+            string resolvedName = string.IsNullOrWhiteSpace(userName) ? "Unknown" : userName.Trim();
+            string format = MapleStoryStringPool.GetCompositeFormatOrFallback(
+                stringPoolId,
+                fallbackFormat,
+                1,
+                out _);
+
+            string formatted;
+            try
+            {
+                formatted = string.Format(CultureInfo.InvariantCulture, format, resolvedName);
+            }
+            catch
+            {
+                formatted = fallbackFormat?
+                    .Replace("%s", resolvedName, StringComparison.Ordinal)
+                    ?? string.Empty;
+            }
+
+            return NormalizeClientOwnedText(formatted);
+        }
+
+        public static string NormalizeClientOwnedText(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return string.Empty;
+            }
+
+            return text
+                .Replace('_', ' ')
+                .Trim();
         }
 
     }

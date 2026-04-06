@@ -654,22 +654,20 @@ namespace HaCreator.MapSimulator.Interaction
                 return layout;
             }
 
-            FamilyMemberState topBranchSibling = GetChildren(_familyHeadId)
-                .Select(GetMember)
-                .FirstOrDefault(member => member != null && member.Id != GetTopPathChildId(focus.Id));
-            if (topBranchSibling != null)
+            IReadOnlyList<int> upperPath = BuildUpperPathMemberIds(focus);
+            if (upperPath.Count > 0)
             {
-                layout[1] = topBranchSibling.Id;
+                layout[1] = upperPath[0];
             }
 
-            FamilyMemberState parent = focus.ParentId.HasValue ? GetMember(focus.ParentId.Value) : null;
-            if (parent != null)
+            if (upperPath.Count > 1)
             {
-                layout[2] = parent.Id;
+                layout[2] = upperPath[1];
             }
 
             layout[3] = focus.Id;
 
+            FamilyMemberState parent = focus.ParentId.HasValue ? GetMember(focus.ParentId.Value) : null;
             FamilyMemberState sibling = parent == null
                 ? GetChildren(_familyHeadId).Select(GetMember).FirstOrDefault(member => member != null && member.Id != focus.Id)
                 : GetChildren(parent.Id).Select(GetMember).FirstOrDefault(member => member != null && member.Id != focus.Id);
@@ -693,6 +691,35 @@ namespace HaCreator.MapSimulator.Interaction
             LayoutGrandchildren(layout, children.ElementAtOrDefault(1), 9, 10);
 
             return layout;
+        }
+
+        private IReadOnlyList<int> BuildUpperPathMemberIds(FamilyMemberState focus)
+        {
+            if (focus == null)
+            {
+                return Array.Empty<int>();
+            }
+
+            List<int> path = new();
+            FamilyMemberState current = focus.ParentId.HasValue ? GetMember(focus.ParentId.Value) : null;
+            while (current != null && current.Id != _familyHeadId)
+            {
+                path.Add(current.Id);
+                current = current.ParentId.HasValue ? GetMember(current.ParentId.Value) : null;
+            }
+
+            if (path.Count == 0)
+            {
+                return Array.Empty<int>();
+            }
+
+            path.Reverse();
+            if (path.Count <= 2)
+            {
+                return path;
+            }
+
+            return path.Skip(path.Count - 2).ToArray();
         }
 
         private void LayoutGrandchildren(Dictionary<int, int> layout, FamilyMemberState member, int leftSlot, int rightSlot)
@@ -1214,6 +1241,13 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal sealed class FamilyChartTextResources
     {
+        internal const int EmptyBranchPlaceholderStringPoolId = 0x11FD;
+        internal const int NoSelectionTitleStringPoolId = 0x1200;
+        internal const int JuniorEntryPlaceholderStringPoolId = 0x1201;
+        internal const int SharedTitleFormatStringPoolId = 0x1202;
+        internal const int SeniorCountFormatStringPoolId = 0x1203;
+        internal const int JuniorCountFormatStringPoolId = 0x1204;
+
         public string NoSelectionTitle { get; init; } = string.Empty;
         public string SharedTitleFormat { get; init; } = "{0}";
         public string JuniorEntryPlaceholder { get; init; } = string.Empty;
@@ -1225,12 +1259,30 @@ namespace HaCreator.MapSimulator.Interaction
         {
             return new FamilyChartTextResources
             {
-                NoSelectionTitle = "Family",
-                SharedTitleFormat = "{0}",
-                JuniorEntryPlaceholder = "Junior Entry",
-                EmptyBranchPlaceholder = "Empty Branch",
-                JuniorCountFormat = "{0} junior member(s)",
-                GrandchildCountFormat = "{0} grandchild member(s)"
+                NoSelectionTitle = MapleStoryStringPool.GetOrFallback(
+                    NoSelectionTitleStringPoolId,
+                    "Family"),
+                SharedTitleFormat = MapleStoryStringPool.GetCompositeFormatOrFallback(
+                    SharedTitleFormatStringPoolId,
+                    "{0}",
+                    1,
+                    out _),
+                JuniorEntryPlaceholder = MapleStoryStringPool.GetOrFallback(
+                    JuniorEntryPlaceholderStringPoolId,
+                    "Junior Entry"),
+                EmptyBranchPlaceholder = MapleStoryStringPool.GetOrFallback(
+                    EmptyBranchPlaceholderStringPoolId,
+                    "Empty Branch"),
+                JuniorCountFormat = MapleStoryStringPool.GetCompositeFormatOrFallback(
+                    SeniorCountFormatStringPoolId,
+                    "{0} junior member(s)",
+                    1,
+                    out _),
+                GrandchildCountFormat = MapleStoryStringPool.GetCompositeFormatOrFallback(
+                    JuniorCountFormatStringPoolId,
+                    "{0} grandchild member(s)",
+                    1,
+                    out _)
             };
         }
 

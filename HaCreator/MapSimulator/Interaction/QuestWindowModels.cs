@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using MapleLib.WzLib.WzStructure.Data.QuestStructure;
 
 namespace HaCreator.MapSimulator.Interaction
@@ -52,6 +53,8 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal sealed class QuestWindowDetailState
     {
+        public const int MateNameHeaderQuestId = 4451;
+
         public int QuestId { get; init; }
         public string Title { get; init; } = string.Empty;
         public string HeaderNoteText { get; init; } = string.Empty;
@@ -127,6 +130,7 @@ namespace HaCreator.MapSimulator.Interaction
         public int ItemId { get; init; }
         public string Label { get; init; } = string.Empty;
         public string DetailText { get; init; } = string.Empty;
+        public InventoryType InventoryType { get; init; } = InventoryType.NONE;
     }
 
     internal enum QuestRewardRaiseWindowMode
@@ -163,6 +167,7 @@ namespace HaCreator.MapSimulator.Interaction
             new Dictionary<int, IReadOnlyList<int>>();
         public int HiddenItemCount { get; init; }
         public string FallbackNpcName { get; init; } = string.Empty;
+        public bool HasPacketOwnedMapResults { get; init; }
     }
 
     internal sealed class QuestDeliveryEntrySnapshot

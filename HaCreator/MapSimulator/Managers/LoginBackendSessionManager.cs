@@ -72,6 +72,11 @@ namespace HaCreator.MapSimulator.Managers
             return ReevaluateExtraCharacterEntitlement();
         }
 
+        public LoginExtraCharInfoResultProfile SnapshotExtraCharInfoResult()
+        {
+            return CloneExtraCharInfoProfile(_lastExtraCharInfoResultProfile);
+        }
+
         public bool ConsumeExtraCharacterEntitlement(int? accountId = null)
         {
             int resolvedAccountId = accountId.HasValue && accountId.Value > 0

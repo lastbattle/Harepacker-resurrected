@@ -4,6 +4,7 @@ using System.Collections.Concurrent;
 using System.IO;
 using System.Net;
 using System.Net.Sockets;
+using System.Text;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -41,6 +42,8 @@ namespace HaCreator.MapSimulator.Managers
     public sealed class EngagementProposalInboxManager : IDisposable
     {
         public const int DefaultPort = 18487;
+        public const string DefaultHost = "127.0.0.1";
+        private const string RequestCommand = "request";
 
         private readonly ConcurrentQueue<EngagementProposalInboxMessage> _pendingMessages = new();
         private readonly object _listenerLock = new();
@@ -107,6 +110,52 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
+        internal static string BuildRequestLine(EngagementProposalInboxDispatch dispatch)
+        {
+            ArgumentNullException.ThrowIfNull(dispatch.RequestPayload);
+
+            StringBuilder builder = new();
+            builder.Append(RequestCommand);
+            builder.Append(' ');
+            builder.Append(string.IsNullOrWhiteSpace(dispatch.ProposerName) ? "Player" : dispatch.ProposerName.Trim());
+            builder.Append(' ');
+            builder.Append(string.IsNullOrWhiteSpace(dispatch.PartnerName) ? "Partner" : dispatch.PartnerName.Trim());
+            builder.Append(' ');
+            builder.Append("payloadhex=");
+            builder.Append(Convert.ToHexString(dispatch.RequestPayload));
+
+            if (dispatch.SealItemId > 0)
+            {
+                builder.Append(' ');
+                builder.Append(dispatch.SealItemId);
+            }
+
+            if (!string.IsNullOrWhiteSpace(dispatch.CustomMessage))
+            {
+                builder.Append(' ');
+                builder.Append(dispatch.CustomMessage.Trim());
+            }
+
+            return builder.ToString();
+        }
+
+        internal static void SendRequest(
+            string host,
+            int port,
+            EngagementProposalInboxDispatch dispatch)
+        {
+            string resolvedHost = string.IsNullOrWhiteSpace(host) ? DefaultHost : host.Trim();
+            int resolvedPort = port > 0 ? port : DefaultPort;
+            string line = BuildRequestLine(dispatch);
+
+            using TcpClient client = new();
+            client.Connect(resolvedHost, resolvedPort);
+            using NetworkStream stream = client.GetStream();
+            using StreamWriter writer = new(stream, Encoding.UTF8, leaveOpen: false);
+            writer.WriteLine(line);
+            writer.Flush();
+        }
+
         public static bool TryParseLine(string text, out EngagementProposalInboxMessage message, out string error)
         {
             message = null;
@@ -125,7 +174,7 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             string[] tokens = trimmed.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
-            if (tokens.Length < 4 || !string.Equals(tokens[0], "request", StringComparison.OrdinalIgnoreCase))
+            if (tokens.Length < 4 || !string.Equals(tokens[0], RequestCommand, StringComparison.OrdinalIgnoreCase))
             {
                 error = "Engagement inbox line must be: request <proposerName> <partnerName> <payloadhex=..|payloadb64=..> [sealItemId] [message...]";
                 return false;

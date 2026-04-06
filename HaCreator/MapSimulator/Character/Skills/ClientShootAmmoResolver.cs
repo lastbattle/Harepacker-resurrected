@@ -135,7 +135,7 @@ public static class ClientShootAmmoResolver
             return null;
         }
 
-        int refreshedUseSlotIndex = queuedSelection.UseSlotIndex;
+        int refreshedUseSlotIndex = -1;
         if (queuedSelection.UseItemId > 0
             && IsCompatibleBulletItem(weaponCode, weaponItemId, queuedSelection.UseItemId))
         {
@@ -146,7 +146,7 @@ public static class ClientShootAmmoResolver
             }
         }
 
-        int refreshedCashSlotIndex = queuedSelection.CashSlotIndex;
+        int refreshedCashSlotIndex = -1;
         if (queuedSelection.CashItemId > 0
             && IsCompatibleCashBulletItem(weaponCode, weaponItemId, queuedSelection.CashItemId))
         {

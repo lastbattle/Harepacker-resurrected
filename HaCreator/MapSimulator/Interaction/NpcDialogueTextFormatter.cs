@@ -18,18 +18,18 @@ namespace HaCreator.MapSimulator.Interaction
         private static readonly Regex InlineSelectionRegex = new(@"#L(?<id>-?\d+)#(?<text>.*?)#l", RegexOptions.Compiled | RegexOptions.IgnoreCase | RegexOptions.Singleline);
         private static readonly Regex SelectionRegex = new(@"#L\d+#", RegexOptions.Compiled);
         private static readonly Regex ItemCountRegex = new(@"#c(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        private static readonly Regex NpcRegex = new(@"#p(\d+):?#", RegexOptions.Compiled);
-        private static readonly Regex ItemNameRegex = new(@"#t(\d+):?#", RegexOptions.Compiled);
+        private static readonly Regex NpcRegex = new(@"#p(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex ItemNameRegex = new(@"#t(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex MobNameRegex = new(@"#o(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        private static readonly Regex QuestNameRegex = new(@"#q(\d+):?#", RegexOptions.Compiled);
+        private static readonly Regex QuestNameRegex = new(@"#q(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex QuestReferenceNameRegex = new(@"#y(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex QuestStateRegex = new(@"#u(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        private static readonly Regex SkillNameRegex = new(@"#s(\d+):?#", RegexOptions.Compiled);
-        private static readonly Regex MapNameRegex = new(@"#m(\d+):?#", RegexOptions.Compiled);
+        private static readonly Regex SkillNameRegex = new(@"#s(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
+        private static readonly Regex MapNameRegex = new(@"#m(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex SelectedMobRegex = new(@"#M(\d+):?#", RegexOptions.Compiled);
         private static readonly Regex QuestAmountRegex = new(@"#a(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex QuestValueRegex = new(@"#x(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
-        private static readonly Regex ItemNameAliasRegex = new(@"#z(\d+):?#", RegexOptions.Compiled);
+        private static readonly Regex ItemNameAliasRegex = new(@"#z(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex ItemIconRegex = new(@"#(?:i|v)\d+:?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex RewardCategoryRegex = new(@"#W[^#\s]*#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex PluralSuffixRegex = new(@"#s(?!\d)", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -87,11 +87,37 @@ namespace HaCreator.MapSimulator.Interaction
             return Format(preservedIcons, context);
         }
 
+        public static string FormatPreservingQuestDetailMarkers(string text, NpcDialogueFormattingContext context = null)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return string.Empty;
+            }
+
+            string preservedMarkers = RewardCategoryRegex.Replace(
+                text,
+                match => BuildQuestSurfaceMarker(match.Value.TrimStart('#', 'W', 'w').TrimEnd('#')));
+            preservedMarkers = ItemIconRegex.Replace(
+                preservedMarkers,
+                match => int.TryParse(match.Value.TrimStart('#', 'i', 'I', 'v', 'V').TrimEnd('#', ':'), out int itemId) && itemId > 0
+                    ? BuildItemIconMarker(itemId)
+                    : string.Empty);
+            return Format(preservedMarkers, context);
+        }
+
         public static string BuildItemIconMarker(int itemId)
         {
             return itemId > 0
                 ? $"{{{{ITEMICON:{itemId}}}}}"
                 : string.Empty;
+        }
+
+        public static string BuildQuestSurfaceMarker(string surfaceKey)
+        {
+            string normalizedKey = surfaceKey?.Trim();
+            return string.IsNullOrWhiteSpace(normalizedKey)
+                ? string.Empty
+                : $"{{{{QUESTSURFACE:{normalizedKey}}}}}";
         }
 
         public static IReadOnlyList<NpcInteractionPage> FormatPages(IReadOnlyList<NpcInteractionPage> pages, NpcDialogueFormattingContext context)

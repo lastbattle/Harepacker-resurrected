@@ -784,7 +784,6 @@ namespace HaCreator.MapSimulator.Interaction
                     ? $"NPC template: {_npcTemplateId.ToString(CultureInfo.InvariantCulture)} | Slot count: {_slotCount.ToString(CultureInfo.InvariantCulture)} | Money: {_money.ToString(CultureInfo.InvariantCulture)} | Flags: 0x{_dbcharFlagMask.ToString("X", CultureInfo.InvariantCulture)}"
                     : "No decoded SetStoreBankDlg payload is staged.",
                 BuildDecodedInventorySummary(),
-                BuildDecodedItemPreview(),
                 HasPendingGetAllRequest
                     ? (_pendingGetAllFee > 0
                         ? $"Pending get-all modal: {_pendingGetAllPassingDay.ToString(CultureInfo.InvariantCulture)} passing day(s), fee {_pendingGetAllFee.ToString(CultureInfo.InvariantCulture)} (StringPool 0xDC4)."
@@ -795,6 +794,7 @@ namespace HaCreator.MapSimulator.Interaction
                     : "No shipment prompt is currently staged."
             };
 
+            lines.AddRange(BuildDecodedItemPreviewLines());
             lines.AddRange(_recentNotes);
             return lines;
         }
@@ -1025,14 +1025,18 @@ namespace HaCreator.MapSimulator.Interaction
             return segments.Count > 0 ? string.Join(", ", segments) : "no type counts";
         }
 
-        private string BuildDecodedItemPreview()
+        private IReadOnlyList<string> BuildDecodedItemPreviewLines()
         {
             if (_decodedItems.Count == 0)
             {
-                return "Decoded item rows: none surfaced in the staged payload.";
+                return new[]
+                {
+                    "Decoded item rows: none surfaced in the staged payload."
+                };
             }
 
-            List<string> preview = new();
+            List<string> lines = new();
+            lines.Add($"Decoded item rows: {_decodedItems.Count.ToString(CultureInfo.InvariantCulture)} row(s) staged from SetStoreBankDlg.");
             foreach (InventoryType inventoryType in new[]
                      {
                          InventoryType.EQUIP,
@@ -1054,8 +1058,8 @@ namespace HaCreator.MapSimulator.Interaction
                     string quantitySuffix = item.Quantity > 1
                         ? $" x{item.Quantity.ToString(CultureInfo.InvariantCulture)}"
                         : string.Empty;
-                    names.Add($"{item.ItemName}{quantitySuffix}{BuildDecodedItemMarker(item)}");
-                    if (names.Count >= 3)
+                    names.Add($"{item.ItemName}{quantitySuffix}{BuildDecodedItemMarker(item)}{BuildDecodedItemSerialMarker(item)}");
+                    if (names.Count >= 4)
                     {
                         break;
                     }
@@ -1063,13 +1067,16 @@ namespace HaCreator.MapSimulator.Interaction
 
                 if (names.Count > 0)
                 {
-                    preview.Add($"{inventoryType}:{string.Join(", ", names)}");
+                    lines.Add($"{inventoryType}: {string.Join(", ", names)}");
                 }
             }
 
-            return preview.Count > 0
-                ? $"Decoded item rows: {string.Join(" | ", preview)}"
-                : $"Decoded item rows: {_decodedItems.Count.ToString(CultureInfo.InvariantCulture)} row(s) decoded, but none mapped into supported inventory previews.";
+            return lines.Count > 1
+                ? lines
+                : new[]
+                {
+                    $"Decoded item rows: {_decodedItems.Count.ToString(CultureInfo.InvariantCulture)} row(s) decoded, but none mapped into supported inventory previews."
+                };
         }
 
         private string BuildShipmentPromptSummary()
@@ -1101,6 +1108,18 @@ namespace HaCreator.MapSimulator.Interaction
             return markers.Count > 0
                 ? $" [{string.Join("/", markers)}]"
                 : string.Empty;
+        }
+
+        private static string BuildDecodedItemSerialMarker(StoreBankItemEntry item)
+        {
+            if (item.ItemSerialNumber <= 0 && item.CashSerialNumber <= 0)
+            {
+                return string.Empty;
+            }
+
+            return item.CashSerialNumber > 0
+                ? $" (itemSN {item.ItemSerialNumber.ToString(CultureInfo.InvariantCulture)}, cashSN {item.CashSerialNumber.ToString(CultureInfo.InvariantCulture)})"
+                : $" (itemSN {item.ItemSerialNumber.ToString(CultureInfo.InvariantCulture)})";
         }
 
         private string DescribePacket()
@@ -1379,7 +1398,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 case 420:
                     _packetCount420++;
-                    StatusMessage = "CField routed packet 420 through the battle-record owner family, but the v95 `CBattleRecordMan::OnPacket` decompile has no 420 branch, so the manager state stayed unchanged.";
+                    StatusMessage = "CBattleRecordMan::OnPacket ignored packet 420 because the v95 decompile only dispatches 421 and 422.";
                     break;
 
                 case 421:
@@ -1415,7 +1434,7 @@ namespace HaCreator.MapSimulator.Interaction
 
                 case 423:
                     _packetCount423++;
-                    StatusMessage = "CField routed packet 423 through the battle-record owner family, but the v95 `CBattleRecordMan::OnPacket` decompile has no 423 branch, so the manager state stayed unchanged.";
+                    StatusMessage = "CBattleRecordMan::OnPacket ignored packet 423 because the v95 decompile only dispatches 421 and 422.";
                     break;
 
                 default:

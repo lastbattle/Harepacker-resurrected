@@ -22,6 +22,7 @@ namespace HaCreator.MapSimulator.UI
         public const string CashShopStage = "CashShopStage";
         public const string AdminShopWishList = "AdminShopWishList";
         public const string AdminShopWishListCategory = "AdminShopWishListCategory";
+        public const string AdminShopWishListSearchResult = "AdminShopWishListSearchResult";
         public const string CashAvatarPreview = "CashAvatarPreview";
         public const string CashShopLocker = "CashShopLocker";
         public const string CashShopInventory = "CashShopInventory";
@@ -91,6 +92,8 @@ namespace HaCreator.MapSimulator.UI
         public const string MemoSend = "MemoSend";
         public const string MemoGet = "MemoGet";
         public const string RepairDurability = "RepairDurability";
+        public const string PacketOwnedRewardResultNotice = "PacketOwnedRewardResultNotice";
+        public const string RandomMesoBag = "RandomMesoBag";
         public const string QuestDelivery = "QuestDelivery";
         public const string QuestTimer = "QuestTimer";
         public const string QuestTimerAction = "QuestTimerAction";

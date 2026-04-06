@@ -33,6 +33,11 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal sealed class WeddingWishListRuntime
     {
+        private const int MaxWishListEntryCount = 10;
+        private const int ConfirmWishListInputStringPoolId = 0x1097;
+        private const int WishListAlreadyRequestedStringPoolId = 0x1098;
+        private const int WishListFullStringPoolId = 0x10BE;
+
         private static readonly InventoryType[] TabInventoryTypes =
         {
             InventoryType.EQUIP,
@@ -67,6 +72,8 @@ namespace HaCreator.MapSimulator.Interaction
         private int _selectedInventoryIndex;
         private int _selectedWishIndex;
         private int _selectedCandidateIndex;
+        private bool _hasPendingTransferRequest;
+        private bool _inputConfirmationArmed;
         private bool _isOpen;
         private string _statusMessage = "Wedding wish-list dialog is idle.";
         private bool _seeded;
@@ -113,6 +120,8 @@ namespace HaCreator.MapSimulator.Interaction
 
             _mode = mode;
             _isOpen = true;
+            _hasPendingTransferRequest = false;
+            _inputConfirmationArmed = false;
             _activePane = mode switch
             {
                 WeddingWishListDialogMode.Receive => WeddingWishListSelectionPane.GiftList,
@@ -134,6 +143,8 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _mode = mode == WeddingWishListDialogMode.None ? WeddingWishListDialogMode.Receive : mode;
+            _hasPendingTransferRequest = false;
+            _inputConfirmationArmed = false;
             _activePane = _mode switch
             {
                 WeddingWishListDialogMode.Receive => WeddingWishListSelectionPane.GiftList,
@@ -159,6 +170,7 @@ namespace HaCreator.MapSimulator.Interaction
             _selectedInventoryIndex = 0;
             _paneStartIndices[(WeddingWishListSelectionPane.GiftList, _selectedTabIndex)] = 0;
             _paneStartIndices[(WeddingWishListSelectionPane.Inventory, _selectedTabIndex)] = 0;
+            _hasPendingTransferRequest = false;
             ClampSelections();
             NormalizeViewportState();
             _statusMessage = $"Selected {ResolveTabLabel(_selectedTabIndex)} tab for the wedding wish-list dialog.";
@@ -168,6 +180,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal string SetActivePane(WeddingWishListSelectionPane pane)
         {
             _activePane = pane;
+            _inputConfirmationArmed = false;
             ClampSelections();
             EnsureSelectionVisible(pane);
             _statusMessage = $"Focused {ResolvePaneLabel(pane)} in the wedding wish-list dialog.";
@@ -193,6 +206,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _activePane = pane;
+            _inputConfirmationArmed = false;
             ClampSelections();
             EnsureSelectionVisible(pane);
             _statusMessage = $"Selected {ResolvePaneLabel(pane)} entry {Math.Max(0, index) + 1}.";
@@ -217,6 +231,7 @@ namespace HaCreator.MapSimulator.Interaction
                     break;
             }
 
+            _inputConfirmationArmed = false;
             ClampSelections();
             EnsureSelectionVisible(_activePane);
             _statusMessage = $"Moved selection in {ResolvePaneLabel(_activePane)}.";
@@ -257,6 +272,11 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Wedding wish-list Put is only available in give mode.";
             }
 
+            if (_hasPendingTransferRequest)
+            {
+                return GetTransferPendingText();
+            }
+
             InventorySlotData source = GetSelectedInventoryEntry();
             if (source == null)
             {
@@ -271,9 +291,10 @@ namespace HaCreator.MapSimulator.Interaction
 
             InventorySlotData gifted = CloneForDialog(source, type, 1);
             _giftListByTab[_selectedTabIndex].Add(gifted);
+            _hasPendingTransferRequest = true;
             RefreshCandidateEntries();
             ClampSelections();
-            _statusMessage = $"Moved {ResolveItemLabel(gifted)} into the wedding gift list.";
+            _statusMessage = $"Moved {ResolveItemLabel(gifted)} into the wedding gift list and marked the request pending until the dialog refreshes.";
             return _statusMessage;
         }
 
@@ -282,6 +303,11 @@ namespace HaCreator.MapSimulator.Interaction
             if (_mode != WeddingWishListDialogMode.Receive)
             {
                 return "Wedding wish-list Get is only available in receive mode.";
+            }
+
+            if (_hasPendingTransferRequest)
+            {
+                return GetTransferPendingText();
             }
 
             List<InventorySlotData> giftList = GetGiftListForSelectedTab();
@@ -301,9 +327,10 @@ namespace HaCreator.MapSimulator.Interaction
 
             _inventory.AddItem(type, CloneForDialog(selected, type, 1));
             giftList.RemoveAt(_selectedGiftIndex);
+            _hasPendingTransferRequest = true;
             RefreshCandidateEntries();
             ClampSelections();
-            _statusMessage = $"Claimed {ResolveItemLabel(selected)} from the wedding gift list.";
+            _statusMessage = $"Claimed {ResolveItemLabel(selected)} from the wedding gift list and marked the request pending until the dialog refreshes.";
             return _statusMessage;
         }
 
@@ -322,12 +349,18 @@ namespace HaCreator.MapSimulator.Interaction
                 return "No candidate item is available to insert into the wedding wish list.";
             }
 
+            if (_wishListEntries.Count >= MaxWishListEntryCount)
+            {
+                return GetWishListFullText();
+            }
+
             if (_wishListEntries.Any(entry => entry.ItemId == selected.ItemId))
             {
                 return $"{ResolveItemLabel(selected)} is already present in the wedding wish list.";
             }
 
             _wishListEntries.Add(CloneForDialog(selected, ResolveInventoryTypeForSlot(selected), 1));
+            _inputConfirmationArmed = false;
             ClampSelections();
             _statusMessage = $"Inserted {ResolveItemLabel(selected)} into the wedding wish list.";
             return _statusMessage;
@@ -349,6 +382,7 @@ namespace HaCreator.MapSimulator.Interaction
             _candidateQuery += value;
             RefreshCandidateEntries();
             _selectedCandidateIndex = 0;
+            _inputConfirmationArmed = false;
             ClampSelections();
             EnsureSelectionVisible(WeddingWishListSelectionPane.Candidate);
             _statusMessage = $"Filtered candidate items by \"{_candidateQuery}\".";
@@ -365,6 +399,7 @@ namespace HaCreator.MapSimulator.Interaction
             _candidateQuery = _candidateQuery[..^1];
             RefreshCandidateEntries();
             _selectedCandidateIndex = 0;
+            _inputConfirmationArmed = false;
             ClampSelections();
             EnsureSelectionVisible(WeddingWishListSelectionPane.Candidate);
             _statusMessage = string.IsNullOrEmpty(_candidateQuery)
@@ -387,6 +422,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             InventorySlotData removed = _wishListEntries[_selectedWishIndex];
             _wishListEntries.RemoveAt(_selectedWishIndex);
+            _inputConfirmationArmed = false;
             ClampSelections();
             _statusMessage = $"Removed {ResolveItemLabel(removed)} from the wedding wish list.";
             return _statusMessage;
@@ -406,7 +442,20 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Wedding wish-list dialog is not open.";
             }
 
+            if (_mode != WeddingWishListDialogMode.Input)
+            {
+                return "Wedding wish-list OK is only available in input mode.";
+            }
+
+            if (!_inputConfirmationArmed)
+            {
+                _inputConfirmationArmed = true;
+                _statusMessage = GetInputConfirmPromptText();
+                return _statusMessage;
+            }
+
             _isOpen = false;
+            _inputConfirmationArmed = false;
             _statusMessage = $"Confirmed {_wishListEntries.Count} wedding wish-list item(s) through the dedicated OK/SetRet owner path. Downstream packet or script handoff is still not modeled.";
             return _statusMessage;
         }
@@ -424,6 +473,8 @@ namespace HaCreator.MapSimulator.Interaction
             _selectedWishIndex = 0;
             _selectedCandidateIndex = 0;
             _candidateQuery = string.Empty;
+            _hasPendingTransferRequest = false;
+            _inputConfirmationArmed = false;
             _paneStartIndices.Clear();
             _statusMessage = "Cleared wedding wish-list dialog state.";
             return _statusMessage;
@@ -855,6 +906,30 @@ namespace HaCreator.MapSimulator.Interaction
                 4 => "Cash",
                 _ => "Equip"
             };
+        }
+
+        private static string GetInputConfirmPromptText()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                ConfirmWishListInputStringPoolId,
+                "Do you want to register this wish list now?",
+                appendFallbackSuffix: true);
+        }
+
+        private static string GetTransferPendingText()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                WishListAlreadyRequestedStringPoolId,
+                "A wedding wish-list transfer request is already pending.",
+                appendFallbackSuffix: true);
+        }
+
+        private static string GetWishListFullText()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                WishListFullStringPoolId,
+                "Your wish list is full.",
+                appendFallbackSuffix: true);
         }
     }
 

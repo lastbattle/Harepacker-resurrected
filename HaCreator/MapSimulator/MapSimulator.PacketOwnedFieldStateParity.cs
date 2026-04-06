@@ -8,6 +8,22 @@ namespace HaCreator.MapSimulator
 {
     public partial class MapSimulator
     {
+        private bool TryApplyPacketOwnedFieldScopedPacket(int packetType, byte[] payload, out string message)
+        {
+            if (TryParsePacketReactorPoolKind(packetType, out _))
+            {
+                return TryApplyPacketOwnedReactorPoolPacket(packetType, payload, out message);
+            }
+
+            if (PacketFieldIngressRouter.IsSupportedFieldStatePacketType(packetType))
+            {
+                return TryApplyPacketOwnedFieldStatePacket(packetType, payload, out message);
+            }
+
+            message = $"Unsupported field-scoped packet type {packetType}.";
+            return false;
+        }
+
         private bool TryApplyPacketOwnedFieldStatePacket(int packetType, byte[] payload, out string message)
         {
             if (TryApplyClientOwnedWrapperPacket(packetType, payload, currTickCount, out message))
@@ -95,7 +111,7 @@ namespace HaCreator.MapSimulator
 
             if (ShouldRouteFieldSpecificPairToPartyRaid(ownerHint) &&
                 _specialFieldRuntime.PartyRaid.IsActive &&
-                _specialFieldRuntime.PartyRaid.TryApplyFieldSpecificPair(key, value, ownerHint, out string partyRaidOwner))
+                _specialFieldRuntime.PartyRaid.TryApplyFieldSpecificPair(key, value, ownerHint, currentTick, out string partyRaidOwner))
             {
                 target = string.IsNullOrWhiteSpace(partyRaidOwner)
                     ? "PartyRaidField"
@@ -125,6 +141,7 @@ namespace HaCreator.MapSimulator
         private static bool ShouldRouteFieldSpecificPairToPartyRaid(PacketFieldSpecificDataOwnerHint ownerHint)
         {
             return ownerHint is PacketFieldSpecificDataOwnerHint.None
+                or PacketFieldSpecificDataOwnerHint.Field
                 or PacketFieldSpecificDataOwnerHint.Party
                 or PacketFieldSpecificDataOwnerHint.Session;
         }

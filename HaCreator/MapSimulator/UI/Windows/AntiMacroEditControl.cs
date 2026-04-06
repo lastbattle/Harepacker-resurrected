@@ -15,6 +15,8 @@ namespace HaCreator.MapSimulator.UI
         private readonly record struct VisualStyle(
             bool DrawChrome,
             Color TextColor,
+            Color SelectedTextColor,
+            Color SelectionBackgroundColor,
             Color CompositionColor,
             Color CompositionUnderlineColor,
             Color CaretColor,
@@ -32,6 +34,8 @@ namespace HaCreator.MapSimulator.UI
         private static readonly VisualStyle DefaultVisualStyle = new(
             DrawChrome: true,
             TextColor: InputTextColor,
+            SelectedTextColor: Color.White,
+            SelectionBackgroundColor: new Color(49, 106, 197, 190),
             CompositionColor: InputCompositionColor,
             CompositionUnderlineColor: InputCompositionUnderlineColor,
             CaretColor: InputCaretColor,
@@ -42,6 +46,8 @@ namespace HaCreator.MapSimulator.UI
         private static readonly VisualStyle ClientAntiMacroVisualStyle = new(
             DrawChrome: false,
             TextColor: Color.Black,
+            SelectedTextColor: Color.White,
+            SelectionBackgroundColor: new Color(49, 106, 197, 190),
             CompositionColor: new Color(74, 74, 74),
             CompositionUnderlineColor: new Color(74, 74, 74),
             CaretColor: new Color(32, 32, 32),
@@ -56,12 +62,20 @@ namespace HaCreator.MapSimulator.UI
                 string visibleText,
                 int visibleStart,
                 int visibleCaretIndex,
+                int visibleSelectionStart,
+                int visibleSelectionLength,
                 int visibleCompositionStart,
                 int visibleCompositionLength)
             {
                 VisibleText = visibleText ?? string.Empty;
                 VisibleStart = Math.Max(0, visibleStart);
                 VisibleCaretIndex = Math.Clamp(visibleCaretIndex, 0, VisibleText.Length);
+                VisibleSelectionStart = visibleSelectionStart < 0
+                    ? -1
+                    : Math.Clamp(visibleSelectionStart, 0, VisibleText.Length);
+                VisibleSelectionLength = VisibleSelectionStart < 0
+                    ? 0
+                    : Math.Clamp(visibleSelectionLength, 0, VisibleText.Length - VisibleSelectionStart);
                 VisibleCompositionStart = visibleCompositionStart < 0
                     ? -1
                     : Math.Clamp(visibleCompositionStart, 0, VisibleText.Length);
@@ -73,6 +87,8 @@ namespace HaCreator.MapSimulator.UI
             public string VisibleText { get; }
             public int VisibleStart { get; }
             public int VisibleCaretIndex { get; }
+            public int VisibleSelectionStart { get; }
+            public int VisibleSelectionLength { get; }
             public int VisibleCompositionStart { get; }
             public int VisibleCompositionLength { get; }
 
@@ -105,7 +121,9 @@ namespace HaCreator.MapSimulator.UI
         private int _caretIndex;
         private int _compositionCaretIndex = -1;
         private int _compositionInsertionIndex = -1;
+        private int _selectionAnchorIndex = -1;
         private int _caretBlinkTick;
+        private bool _mouseSelecting;
         private VisualStyle _visualStyle = DefaultVisualStyle;
 
         public AntiMacroEditControl(Texture2D pixelTexture, Point inputOrigin, int width, int height, int maxLength)
@@ -122,6 +140,7 @@ namespace HaCreator.MapSimulator.UI
         public int ControlId => ClientControlId;
         public int FontStringPoolId => ClientFontStringPoolId;
         public bool HasFocus { get; private set; }
+        public bool IsSelectingWithMouse => _mouseSelecting;
         public string Text => _inputText;
 
         public void SetFont(SpriteFont font)
@@ -153,6 +172,7 @@ namespace HaCreator.MapSimulator.UI
             _inputText = string.Empty;
             _caretIndex = 0;
             ActivateByOwner();
+            ClearSelection();
             ClearCompositionText();
         }
 
@@ -162,6 +182,8 @@ namespace HaCreator.MapSimulator.UI
             _caretIndex = 0;
             _caretBlinkTick = Environment.TickCount;
             HasFocus = false;
+            ClearSelection();
+            _mouseSelecting = false;
             ClearCompositionText();
         }
 
@@ -171,6 +193,8 @@ namespace HaCreator.MapSimulator.UI
             _caretBlinkTick = Environment.TickCount;
             if (!focused)
             {
+                ClearSelection();
+                _mouseSelecting = false;
                 ClearCompositionText();
             }
         }
@@ -179,14 +203,40 @@ namespace HaCreator.MapSimulator.UI
         {
             HasFocus = true;
             _caretBlinkTick = Environment.TickCount;
+            _mouseSelecting = false;
         }
 
         public void FocusAtMouseX(int mouseX, Rectangle ownerBounds)
         {
+            BeginSelectionAtMouseX(mouseX, ownerBounds);
+            EndMouseSelection();
+        }
+
+        public void BeginSelectionAtMouseX(int mouseX, Rectangle ownerBounds)
+        {
             HasFocus = true;
             ClearCompositionText();
+            int resolvedCaretIndex = ResolveCaretIndexFromMouseX(mouseX, ownerBounds);
+            _caretIndex = resolvedCaretIndex;
+            _selectionAnchorIndex = resolvedCaretIndex;
+            _mouseSelecting = true;
+            _caretBlinkTick = Environment.TickCount;
+        }
+
+        public void UpdateSelectionAtMouseX(int mouseX, Rectangle ownerBounds)
+        {
+            if (!_mouseSelecting)
+            {
+                return;
+            }
+
             _caretIndex = ResolveCaretIndexFromMouseX(mouseX, ownerBounds);
             _caretBlinkTick = Environment.TickCount;
+        }
+
+        public void EndMouseSelection()
+        {
+            _mouseSelecting = false;
         }
 
         public void HandleCommittedText(string text, bool capturesKeyboardInput)
@@ -197,6 +247,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             ClearCompositionText();
+            DeleteSelectionIfAny();
             foreach (char character in text)
             {
                 if (GetTextElementCount(_inputText) >= _maxLength)
@@ -238,6 +289,7 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            DeleteSelectionIfAny();
             _compositionInsertionIndex = Math.Clamp(_caretIndex, 0, _inputText.Length);
             int compositionTextElementCount = GetTextElementCount(sanitized);
             _compositionText = compositionTextElementCount > availableLength
@@ -275,6 +327,12 @@ namespace HaCreator.MapSimulator.UI
             }
 
             bool ctrlHeld = keyboardState.IsKeyDown(Keys.LeftControl) || keyboardState.IsKeyDown(Keys.RightControl);
+            bool shiftHeld = keyboardState.IsKeyDown(Keys.LeftShift) || keyboardState.IsKeyDown(Keys.RightShift);
+
+            if (ctrlHeld && Pressed(keyboardState, previousKeyboardState, Keys.A))
+            {
+                SelectAll();
+            }
 
             if (ctrlHeld && Pressed(keyboardState, previousKeyboardState, Keys.V))
             {
@@ -286,6 +344,9 @@ namespace HaCreator.MapSimulator.UI
                 if (_compositionText.Length > 0)
                 {
                     ClearCompositionText();
+                }
+                else if (DeleteSelectionIfAny())
+                {
                 }
                 else if (_caretIndex > 0)
                 {
@@ -301,6 +362,9 @@ namespace HaCreator.MapSimulator.UI
                 {
                     ClearCompositionText();
                 }
+                else if (DeleteSelectionIfAny())
+                {
+                }
                 else if (_caretIndex < _inputText.Length)
                 {
                     RemoveCharacterAtCaret();
@@ -312,28 +376,28 @@ namespace HaCreator.MapSimulator.UI
             if (Pressed(keyboardState, previousKeyboardState, Keys.Left))
             {
                 ClearCompositionText();
-                _caretIndex = GetPreviousCaretStop(_inputText, _caretIndex);
+                MoveCaret(GetPreviousCaretStop(_inputText, _caretIndex), shiftHeld);
                 _caretBlinkTick = Environment.TickCount;
             }
 
             if (Pressed(keyboardState, previousKeyboardState, Keys.Right))
             {
                 ClearCompositionText();
-                _caretIndex = GetNextCaretStop(_inputText, _caretIndex);
+                MoveCaret(GetNextCaretStop(_inputText, _caretIndex), shiftHeld);
                 _caretBlinkTick = Environment.TickCount;
             }
 
             if (Pressed(keyboardState, previousKeyboardState, Keys.Home))
             {
                 ClearCompositionText();
-                _caretIndex = 0;
+                MoveCaret(0, shiftHeld);
                 _caretBlinkTick = Environment.TickCount;
             }
 
             if (Pressed(keyboardState, previousKeyboardState, Keys.End))
             {
                 ClearCompositionText();
-                _caretIndex = _inputText.Length;
+                MoveCaret(_inputText.Length, shiftHeld);
                 _caretBlinkTick = Environment.TickCount;
             }
         }
@@ -341,6 +405,66 @@ namespace HaCreator.MapSimulator.UI
         public bool CanSubmitAnswer(int remainingSeconds)
         {
             return !string.IsNullOrWhiteSpace(_inputText) && remainingSeconds > 0;
+        }
+
+        public bool TryInsertCharacter(char character)
+        {
+            if (char.IsControl(character) || GetTextElementCount(_inputText) >= _maxLength)
+            {
+                return false;
+            }
+
+            ClearCompositionText();
+            DeleteSelectionIfAny();
+            InsertCharacter(character);
+            return true;
+        }
+
+        public bool TryReplaceCharacterBeforeCaret(char character)
+        {
+            if (char.IsControl(character))
+            {
+                return false;
+            }
+
+            ClearCompositionText();
+            if (DeleteSelectionIfAny())
+            {
+                return TryInsertCharacter(character);
+            }
+
+            int currentCaret = Math.Clamp(_caretIndex, 0, _inputText.Length);
+            int previousCaret = GetPreviousCaretStop(_inputText, currentCaret);
+            if (previousCaret >= currentCaret)
+            {
+                return false;
+            }
+
+            _inputText = _inputText.Remove(previousCaret, currentCaret - previousCaret);
+            _inputText = _inputText.Insert(previousCaret, character.ToString());
+            _caretIndex = previousCaret + character.ToString().Length;
+            ClearSelection();
+            _caretBlinkTick = Environment.TickCount;
+            return true;
+        }
+
+        public bool TryBackspace()
+        {
+            ClearCompositionText();
+            if (DeleteSelectionIfAny())
+            {
+                _caretBlinkTick = Environment.TickCount;
+                return true;
+            }
+
+            if (_caretIndex <= 0)
+            {
+                return false;
+            }
+
+            RemoveCharacterBeforeCaret();
+            _caretBlinkTick = Environment.TickCount;
+            return true;
         }
 
         public void Draw(SpriteBatch sprite, Rectangle ownerBounds, bool drawChrome)
@@ -362,23 +486,33 @@ namespace HaCreator.MapSimulator.UI
             InputVisualState visualState = BuildInputVisualState(Math.Max(1, inputBounds.Width - 4));
             if (!string.IsNullOrEmpty(visualState.VisibleText))
             {
-                if (visualState.VisibleCommittedPrefix.Length > 0)
+                DrawSelection(sprite, inputBounds, textPosition, visualState);
+
+                if (visualState.VisibleSelectionLength > 0)
+                {
+                    DrawTextRun(sprite, visualState.VisibleText[..visualState.VisibleSelectionStart], textPosition, _visualStyle.TextColor);
+                    Vector2 selectionPosition = textPosition + new Vector2(MeasureTextWidth(visualState.VisibleText[..visualState.VisibleSelectionStart]), 0f);
+                    DrawTextRun(sprite, visualState.VisibleText.Substring(visualState.VisibleSelectionStart, visualState.VisibleSelectionLength), selectionPosition, _visualStyle.SelectedTextColor);
+                    Vector2 suffixPosition = selectionPosition + new Vector2(MeasureTextWidth(visualState.VisibleText.Substring(visualState.VisibleSelectionStart, visualState.VisibleSelectionLength)), 0f);
+                    DrawTextRun(sprite, visualState.VisibleText[(visualState.VisibleSelectionStart + visualState.VisibleSelectionLength)..], suffixPosition, _visualStyle.TextColor);
+                }
+                else if (visualState.VisibleCommittedPrefix.Length > 0)
                 {
                     sprite.DrawString(_font, visualState.VisibleCommittedPrefix, textPosition, _visualStyle.TextColor);
                 }
 
-                float committedPrefixWidth = MeasureTextWidth(visualState.VisibleCommittedPrefix);
-                Vector2 compositionPosition = textPosition + new Vector2(committedPrefixWidth, 0f);
                 if (visualState.VisibleComposition.Length > 0)
                 {
+                    float committedPrefixWidth = MeasureTextWidth(visualState.VisibleCommittedPrefix);
+                    Vector2 compositionPosition = textPosition + new Vector2(committedPrefixWidth, 0f);
                     sprite.DrawString(_font, visualState.VisibleComposition, compositionPosition, _visualStyle.CompositionColor);
                     DrawCompositionUnderline(sprite, compositionPosition, visualState.VisibleComposition, inputBounds);
-                }
 
-                if (visualState.VisibleCommittedSuffix.Length > 0)
-                {
-                    Vector2 suffixPosition = compositionPosition + new Vector2(MeasureTextWidth(visualState.VisibleComposition), 0f);
-                    sprite.DrawString(_font, visualState.VisibleCommittedSuffix, suffixPosition, _visualStyle.TextColor);
+                    if (visualState.VisibleCommittedSuffix.Length > 0)
+                    {
+                        Vector2 suffixPosition = compositionPosition + new Vector2(MeasureTextWidth(visualState.VisibleComposition), 0f);
+                        sprite.DrawString(_font, visualState.VisibleCommittedSuffix, suffixPosition, _visualStyle.TextColor);
+                    }
                 }
             }
 
@@ -440,6 +574,13 @@ namespace HaCreator.MapSimulator.UI
 
         private string BuildVisibleInputText()
         {
+            if (_compositionText.Length == 0 && HasSelection)
+            {
+                int selectionStart = GetSelectionStart();
+                int selectionLength = GetSelectionLength();
+                return _inputText.Remove(selectionStart, selectionLength);
+            }
+
             if (_compositionText.Length == 0)
             {
                 return _inputText;
@@ -466,6 +607,7 @@ namespace HaCreator.MapSimulator.UI
             int insertionIndex = Math.Clamp(_caretIndex, 0, _inputText.Length);
             _inputText = _inputText.Insert(insertionIndex, character.ToString());
             _caretIndex = insertionIndex + 1;
+            ClearSelection();
             _caretBlinkTick = Environment.TickCount;
         }
 
@@ -480,6 +622,7 @@ namespace HaCreator.MapSimulator.UI
 
             _inputText = _inputText.Remove(previousCaret, currentCaret - previousCaret);
             _caretIndex = previousCaret;
+            ClearSelection();
         }
 
         private void RemoveCharacterAtCaret()
@@ -492,6 +635,34 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _inputText = _inputText.Remove(currentCaret, nextCaret - currentCaret);
+            ClearSelection();
+        }
+
+        private void DrawSelection(SpriteBatch sprite, Rectangle inputBounds, Vector2 textPosition, InputVisualState visualState)
+        {
+            if (visualState.VisibleSelectionLength <= 0)
+            {
+                return;
+            }
+
+            string prefix = visualState.VisibleText[..visualState.VisibleSelectionStart];
+            string selectedText = visualState.VisibleText.Substring(visualState.VisibleSelectionStart, visualState.VisibleSelectionLength);
+            int selectionX = (int)Math.Floor(textPosition.X + MeasureTextWidth(prefix));
+            int selectionWidth = Math.Max(1, (int)Math.Ceiling(MeasureTextWidth(selectedText)));
+            Rectangle selectionBounds = new(
+                selectionX,
+                inputBounds.Y + 1,
+                selectionWidth,
+                Math.Max(1, inputBounds.Height - 2));
+            sprite.Draw(_pixelTexture, selectionBounds, _visualStyle.SelectionBackgroundColor);
+        }
+
+        private void DrawTextRun(SpriteBatch sprite, string text, Vector2 position, Color color)
+        {
+            if (!string.IsNullOrEmpty(text))
+            {
+                sprite.DrawString(_font, text, position, color);
+            }
         }
 
         private void PasteClipboardText()
@@ -579,11 +750,17 @@ namespace HaCreator.MapSimulator.UI
             string displayText = BuildVisibleInputText();
             if (string.IsNullOrEmpty(displayText))
             {
-                return new InputVisualState(string.Empty, 0, 0, -1, 0);
+                return new InputVisualState(string.Empty, 0, 0, -1, 0, -1, 0);
             }
 
             int caretIndex = ResolveDisplayCaretIndex();
             int clampedCaretIndex = Math.Clamp(caretIndex, 0, displayText.Length);
+            int selectionStart = -1;
+            if (_compositionText.Length == 0 && HasSelection)
+            {
+                selectionStart = GetSelectionStart();
+            }
+
             int compositionStart = -1;
             int compositionLength = 0;
             if (_compositionText.Length > 0)
@@ -621,6 +798,15 @@ namespace HaCreator.MapSimulator.UI
 
             string visibleText = displayText[visibleStart..visibleEnd];
             int visibleCaretIndex = clampedCaretIndex - visibleStart;
+            int visibleSelectionStart = -1;
+            int visibleSelectionLength = 0;
+            if (selectionStart >= 0)
+            {
+                int clampedVisibleSelectionStart = Math.Clamp(selectionStart - visibleStart, 0, visibleText.Length);
+                visibleSelectionStart = clampedVisibleSelectionStart;
+                visibleSelectionLength = visibleSelectionStart < visibleText.Length ? visibleText.Length - visibleSelectionStart : 0;
+            }
+
             int visibleCompositionStart = -1;
             int visibleCompositionLength = 0;
             if (compositionStart >= 0)
@@ -639,6 +825,8 @@ namespace HaCreator.MapSimulator.UI
                 visibleText,
                 visibleStart,
                 visibleCaretIndex,
+                visibleSelectionStart,
+                visibleSelectionLength,
                 visibleCompositionStart,
                 visibleCompositionLength);
         }
@@ -653,7 +841,7 @@ namespace HaCreator.MapSimulator.UI
 
             Rectangle inputBounds = GetBounds(ownerBounds);
             InputVisualState visualState = BuildInputVisualState(Math.Max(1, inputBounds.Width - 4));
-            float relativeX = mouseX - (inputBounds.X + 2);
+            float relativeX = mouseX - (inputBounds.X + _visualStyle.TextPadding.X);
             if (relativeX <= 0f)
             {
                 return visualState.VisibleStart;
@@ -681,6 +869,11 @@ namespace HaCreator.MapSimulator.UI
 
         private int ResolveDisplayCaretIndex()
         {
+            if (_compositionText.Length == 0 && HasSelection)
+            {
+                return GetSelectionStart();
+            }
+
             if (_compositionText.Length == 0)
             {
                 return Math.Clamp(_caretIndex, 0, _inputText.Length);
@@ -691,6 +884,81 @@ namespace HaCreator.MapSimulator.UI
                 ? Math.Clamp(_compositionCaretIndex, 0, _compositionText.Length)
                 : _compositionText.Length;
             return insertionIndex + compositionCaret;
+        }
+
+        private bool HasSelection => _selectionAnchorIndex >= 0 && _selectionAnchorIndex != _caretIndex;
+
+        private int GetSelectionStart()
+        {
+            return Math.Min(Math.Clamp(_selectionAnchorIndex, 0, _inputText.Length), Math.Clamp(_caretIndex, 0, _inputText.Length));
+        }
+
+        private int GetSelectionEnd()
+        {
+            return Math.Max(Math.Clamp(_selectionAnchorIndex, 0, _inputText.Length), Math.Clamp(_caretIndex, 0, _inputText.Length));
+        }
+
+        private int GetSelectionLength()
+        {
+            return Math.Max(0, GetSelectionEnd() - GetSelectionStart());
+        }
+
+        private void ClearSelection()
+        {
+            _selectionAnchorIndex = -1;
+        }
+
+        private void SelectAll()
+        {
+            if (string.IsNullOrEmpty(_inputText))
+            {
+                ClearSelection();
+                return;
+            }
+
+            _selectionAnchorIndex = 0;
+            _caretIndex = _inputText.Length;
+            _caretBlinkTick = Environment.TickCount;
+        }
+
+        private void MoveCaret(int newCaretIndex, bool extendSelection)
+        {
+            int resolvedCaretIndex = Math.Clamp(newCaretIndex, 0, _inputText.Length);
+            if (extendSelection)
+            {
+                if (_selectionAnchorIndex < 0)
+                {
+                    _selectionAnchorIndex = Math.Clamp(_caretIndex, 0, _inputText.Length);
+                }
+            }
+            else
+            {
+                ClearSelection();
+            }
+
+            _caretIndex = resolvedCaretIndex;
+        }
+
+        private bool DeleteSelectionIfAny()
+        {
+            if (!HasSelection)
+            {
+                return false;
+            }
+
+            int selectionStart = GetSelectionStart();
+            int selectionLength = GetSelectionLength();
+            if (selectionLength <= 0)
+            {
+                ClearSelection();
+                return false;
+            }
+
+            _inputText = _inputText.Remove(selectionStart, selectionLength);
+            _caretIndex = selectionStart;
+            ClearSelection();
+            _caretBlinkTick = Environment.TickCount;
+            return true;
         }
 
         private static int GetTextElementCount(string value)

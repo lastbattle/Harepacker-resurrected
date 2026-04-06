@@ -10,7 +10,7 @@ using System.Collections.Generic;
 
 namespace HaCreator.MapSimulator.UI
 {
-    internal sealed class AntiMacroChallengeWindow : UIWindowBase
+    internal sealed class AntiMacroChallengeWindow : UIWindowBase, ISoftKeyboardHost
     {
         private const int FallbackWindowWidth = 265;
         private const int FallbackWindowHeight = 250;
@@ -88,6 +88,7 @@ namespace HaCreator.MapSimulator.UI
         private MouseState _previousMouseState;
         private int _answerCount;
         private int _expiresAt = int.MinValue;
+        private bool _softKeyboardActive;
 
         public AntiMacroChallengeWindow(string windowName, bool adminVariant, GraphicsDevice graphicsDevice)
             : base(new DXObject(0, 0, CreateFallbackFrameTexture(graphicsDevice), 0))
@@ -105,6 +106,11 @@ namespace HaCreator.MapSimulator.UI
         public override string WindowName => _windowName;
         public override bool SupportsDragging => false;
         public override bool CapturesKeyboardInput => IsVisible && _editControl.HasFocus;
+        bool ISoftKeyboardHost.WantsSoftKeyboard => IsVisible && _editControl.HasFocus && _softKeyboardActive;
+        SoftKeyboardKeyboardType ISoftKeyboardHost.SoftKeyboardKeyboardType => SoftKeyboardKeyboardType.AlphaNumeric;
+        int ISoftKeyboardHost.SoftKeyboardTextLength => _editControl.Text?.Length ?? 0;
+        int ISoftKeyboardHost.SoftKeyboardMaxLength => InputMaxLength;
+        bool ISoftKeyboardHost.CanSubmitSoftKeyboard => CanSubmitAnswer();
 
         public event Action<string> SubmitRequested;
 
@@ -125,12 +131,14 @@ namespace HaCreator.MapSimulator.UI
         {
             base.Hide();
             _editControl.SetFocus(false);
+            _softKeyboardActive = false;
         }
 
         public override void Show()
         {
             base.Show();
             _editControl.ActivateByOwner();
+            _softKeyboardActive = false;
         }
 
         public void ConfigureVisualAssets(
@@ -201,6 +209,7 @@ namespace HaCreator.MapSimulator.UI
             _answerCount = Math.Max(0, answerCount);
             _statusText = statusText ?? string.Empty;
             _editControl.Reset();
+            _softKeyboardActive = false;
             _previousMouseState = Mouse.GetState();
             _submitButton?.SetEnabled(false);
         }
@@ -248,19 +257,32 @@ namespace HaCreator.MapSimulator.UI
             }
 
             bool leftJustPressed = mouseState.LeftButton == ButtonState.Pressed && _previousMouseState.LeftButton == ButtonState.Released;
+            bool leftHeld = mouseState.LeftButton == ButtonState.Pressed;
+            bool leftJustReleased = mouseState.LeftButton == ButtonState.Released && _previousMouseState.LeftButton == ButtonState.Pressed;
             Rectangle ownerBounds = GetWindowBounds();
             if (leftJustPressed)
             {
                 Rectangle inputBounds = _editControl.GetBounds(ownerBounds);
                 if (inputBounds.Contains(mouseState.Position))
                 {
-                    _editControl.FocusAtMouseX(mouseState.X, ownerBounds);
+                    _editControl.BeginSelectionAtMouseX(mouseState.X, ownerBounds);
+                    _softKeyboardActive = true;
                     mouseCursor?.SetMouseCursorMovedToClickableItem();
                 }
                 else if (!ContainsPoint(mouseState.X, mouseState.Y))
                 {
                     _editControl.SetFocus(false);
+                    _softKeyboardActive = false;
                 }
+            }
+            else if (leftHeld && _editControl.IsSelectingWithMouse)
+            {
+                _editControl.UpdateSelectionAtMouseX(mouseState.X, ownerBounds);
+            }
+
+            if (leftJustReleased)
+            {
+                _editControl.EndMouseSelection();
             }
 
             bool handled = base.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState, mouseCursor, renderWidth, renderHeight);
@@ -322,6 +344,80 @@ namespace HaCreator.MapSimulator.UI
         public override void ClearImeCandidateList()
         {
             _editControl.ClearImeCandidateList();
+        }
+
+        Rectangle ISoftKeyboardHost.GetSoftKeyboardAnchorBounds() => _editControl.GetBounds(GetWindowBounds());
+
+        bool ISoftKeyboardHost.TryInsertSoftKeyboardCharacter(char character, out string errorMessage)
+        {
+            errorMessage = string.Empty;
+            if (!_editControl.HasFocus)
+            {
+                errorMessage = "The anti-macro answer field is not focused.";
+                return false;
+            }
+
+            if (!_editControl.TryInsertCharacter(character))
+            {
+                errorMessage = "The anti-macro answer field is full.";
+                return false;
+            }
+
+            return true;
+        }
+
+        bool ISoftKeyboardHost.TryReplaceLastSoftKeyboardCharacter(char character, out string errorMessage)
+        {
+            errorMessage = string.Empty;
+            if (!_editControl.HasFocus)
+            {
+                errorMessage = "The anti-macro answer field is not focused.";
+                return false;
+            }
+
+            if (!_editControl.TryReplaceCharacterBeforeCaret(character))
+            {
+                errorMessage = "That key cannot replace the current anti-macro answer character.";
+                return false;
+            }
+
+            return true;
+        }
+
+        bool ISoftKeyboardHost.TryBackspaceSoftKeyboard(out string errorMessage)
+        {
+            errorMessage = string.Empty;
+            if (!_editControl.HasFocus)
+            {
+                errorMessage = "The anti-macro answer field is not focused.";
+                return false;
+            }
+
+            if (!_editControl.TryBackspace())
+            {
+                errorMessage = "The anti-macro answer field is already empty.";
+                return false;
+            }
+
+            return true;
+        }
+
+        bool ISoftKeyboardHost.TrySubmitSoftKeyboard(out string errorMessage)
+        {
+            errorMessage = string.Empty;
+            if (!CanSubmitAnswer())
+            {
+                errorMessage = "The anti-macro answer cannot be submitted yet.";
+                return false;
+            }
+
+            SubmitRequested?.Invoke(_editControl.Text);
+            return true;
+        }
+
+        void ISoftKeyboardHost.OnSoftKeyboardClosed()
+        {
+            _softKeyboardActive = false;
         }
 
         private void DrawChallengeTexture(SpriteBatch sprite, Rectangle bounds)
@@ -441,7 +537,7 @@ namespace HaCreator.MapSimulator.UI
             return (remainingMs + 999) / 1000;
         }
 
-        private Rectangle GetWindowBounds()
+        private new Rectangle GetWindowBounds()
         {
             Point size = ActiveFrameSize;
             return new Rectangle(Position.X, Position.Y, size.X, size.Y);

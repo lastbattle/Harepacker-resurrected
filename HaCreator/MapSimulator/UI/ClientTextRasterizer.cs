@@ -199,13 +199,15 @@ namespace HaCreator.MapSimulator.UI
             string requestedFamily = null,
             string fontPathEnvironmentVariable = null,
             string fontFaceEnvironmentVariable = null,
-            IEnumerable<string> preferredPrivateFontFamilyCandidates = null)
+            IEnumerable<string> preferredPrivateFontFamilyCandidates = null,
+            bool preferEmbeddedPrivateFontSources = false)
         {
             return ResolveFontFamily(
                 requestedFamily,
                 fontPathEnvironmentVariable,
                 fontFaceEnvironmentVariable,
-                preferredPrivateFontFamilyCandidates);
+                preferredPrivateFontFamilyCandidates,
+                preferEmbeddedPrivateFontSources);
         }
 
         internal static SD.Font CreateClientFont(
@@ -214,13 +216,15 @@ namespace HaCreator.MapSimulator.UI
             string requestedFamily = null,
             string fontPathEnvironmentVariable = null,
             string fontFaceEnvironmentVariable = null,
-            IEnumerable<string> preferredPrivateFontFamilyCandidates = null)
+            IEnumerable<string> preferredPrivateFontFamilyCandidates = null,
+            bool preferEmbeddedPrivateFontSources = false)
         {
             string resolvedFamily = ResolvePreferredFontFamily(
                 requestedFamily,
                 fontPathEnvironmentVariable,
                 fontFaceEnvironmentVariable,
-                preferredPrivateFontFamilyCandidates);
+                preferredPrivateFontFamilyCandidates,
+                preferEmbeddedPrivateFontSources);
             float normalizedSize = pixelSize <= 0f ? 12f : pixelSize;
 
             try
@@ -456,7 +460,8 @@ namespace HaCreator.MapSimulator.UI
             string requestedFamily,
             string fontPathEnvironmentVariable,
             string fontFaceEnvironmentVariable,
-            IEnumerable<string> preferredPrivateFontFamilyCandidates)
+            IEnumerable<string> preferredPrivateFontFamilyCandidates,
+            bool preferEmbeddedPrivateFontSources)
         {
             if (TryResolveConfiguredFontFamily(
                     fontPathEnvironmentVariable,
@@ -472,7 +477,10 @@ namespace HaCreator.MapSimulator.UI
                 return configuredFamily;
             }
 
-            if (TryResolveDefaultPrivateFontFamily(out string privateFontFamily))
+            if (TryResolveDefaultPrivateFontFamily(
+                    preferredPrivateFontFamilyCandidates,
+                    preferEmbeddedPrivateFontSources,
+                    out string privateFontFamily))
             {
                 return privateFontFamily;
             }
@@ -605,27 +613,72 @@ namespace HaCreator.MapSimulator.UI
             return SD.FontFamily.GenericSansSerif.Name;
         }
 
-        private static bool TryResolveDefaultPrivateFontFamily(out string fontFamilyName)
+        private static bool TryResolveDefaultPrivateFontFamily(
+            IEnumerable<string> preferredFamilyNames,
+            bool preferEmbeddedPrivateFontSources,
+            out string fontFamilyName)
         {
             fontFamilyName = null;
+            IReadOnlyList<string> familyCandidates = BuildPreferredPrivateFontFamilyCandidates(preferredFamilyNames);
 
-            foreach (string candidatePath in EnumerateDefaultPrivateFontCandidatePaths())
+            IEnumerable<string> preferredSourcePaths = preferEmbeddedPrivateFontSources
+                ? EnumerateMapleEmbeddedFontContainerPaths()
+                : EnumerateDefaultPrivateFontCandidatePaths();
+            foreach (string candidatePath in preferredSourcePaths)
             {
-                if (TryRegisterPrivateFontSource(candidatePath, DefaultPrivateFontFamilyCandidates, out fontFamilyName))
+                if (TryRegisterPrivateFontSource(candidatePath, familyCandidates, out fontFamilyName))
                 {
                     return !string.IsNullOrWhiteSpace(fontFamilyName);
                 }
             }
 
-            foreach (string candidatePath in EnumerateMapleEmbeddedFontContainerPaths())
+            IEnumerable<string> fallbackSourcePaths = preferEmbeddedPrivateFontSources
+                ? EnumerateDefaultPrivateFontCandidatePaths()
+                : EnumerateMapleEmbeddedFontContainerPaths();
+            foreach (string candidatePath in fallbackSourcePaths)
             {
-                if (TryRegisterPrivateFontSource(candidatePath, DefaultPrivateFontFamilyCandidates, out fontFamilyName))
+                if (TryRegisterPrivateFontSource(candidatePath, familyCandidates, out fontFamilyName))
                 {
                     return !string.IsNullOrWhiteSpace(fontFamilyName);
                 }
             }
 
             return false;
+        }
+
+        private static IReadOnlyList<string> BuildPreferredPrivateFontFamilyCandidates(IEnumerable<string> preferredFamilyNames)
+        {
+            HashSet<string> seenFamilyNames = new(StringComparer.OrdinalIgnoreCase);
+            List<string> familyNames = new();
+
+            void AddFamilyName(string familyName)
+            {
+                if (string.IsNullOrWhiteSpace(familyName))
+                {
+                    return;
+                }
+
+                string trimmedFamilyName = familyName.Trim();
+                if (seenFamilyNames.Add(trimmedFamilyName))
+                {
+                    familyNames.Add(trimmedFamilyName);
+                }
+            }
+
+            if (preferredFamilyNames != null)
+            {
+                foreach (string familyName in preferredFamilyNames)
+                {
+                    AddFamilyName(familyName);
+                }
+            }
+
+            foreach (string familyName in DefaultPrivateFontFamilyCandidates)
+            {
+                AddFamilyName(familyName);
+            }
+
+            return familyNames;
         }
 
         private static bool TryResolveFontPath(string candidatePath, out string resolvedFontPath)

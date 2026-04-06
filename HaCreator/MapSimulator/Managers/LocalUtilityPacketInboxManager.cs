@@ -85,6 +85,7 @@ namespace HaCreator.MapSimulator.Managers
         public const int ExJablinApplyPacketType = 272;
         public const int AskApspEventClientPacketType = 273;
         public const int SkillCooltimeSetPacketType = 276;
+        public const int LogoutGiftClientPacketType = 432;
         public const int FuncKeyMapInitPacketType = 398;
         public const int PetConsumeItemInitPacketType = 399;
         public const int PetConsumeMpItemInitPacketType = 400;
@@ -452,6 +453,13 @@ namespace HaCreator.MapSimulator.Managers
                 return true;
             }
 
+            if (token.Equals("logoutgift", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("onlogoutgift", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = LogoutGiftClientPacketType;
+                return true;
+            }
+
             if (token.Equals("mapletvset", StringComparison.OrdinalIgnoreCase)
                 || token.Equals("mapletvmessage", StringComparison.OrdinalIgnoreCase))
             {
@@ -732,6 +740,7 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == RandomMesobagFailedPacketType
                 || packetType == RadioSchedulePacketType
                 || packetType == RadioScheduleClientPacketType
+                || packetType == LogoutGiftClientPacketType
                 || packetType == AntiMacroResultPacketType
                 || packetType == InitialQuizTimerRuntime.PacketType
                 || packetType == OpenSkillGuideClientPacketType
@@ -882,6 +891,7 @@ namespace HaCreator.MapSimulator.Managers
                 AskApspEventPacketType => "AskAPSPEvent(1008)",
                 FollowCharacterFailedPacketType => "FollowCharacterFailed(1009)",
                 RadioSchedulePacketType => "RadioSchedule(1010)",
+                LogoutGiftClientPacketType => "OnLogoutGift(432)",
                 AntiMacroResultPacketType => "AntiMacroResult(1011)",
                 InitialQuizTimerRuntime.PacketType => "InitialQuizStart(43)",
                 FollowCharacterPacketType => "FollowCharacter(1012)",

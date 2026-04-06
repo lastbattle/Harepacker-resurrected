@@ -105,11 +105,11 @@ namespace HaCreator.MapSimulator.UI
                         FormatClientString(InventoryFullScreenStringPoolId, "Your inventory is full."),
                         string.Empty);
                 case DropPickupFailureReason.OwnershipRestricted:
-                    return new PickupNoticeMessagePair("You may not loot this item yet.", "You may not loot this item yet.");
+                    return FormatCantPickupGeneric();
                 case DropPickupFailureReason.PetPickupBlocked:
                     return FormatPetPickupBlocked(itemName, sourceName, pickedByPet);
                 case DropPickupFailureReason.FieldRestricted:
-                    return new PickupNoticeMessagePair("You cannot loot drops in this map.", "You cannot loot drops in this map.");
+                    return FormatCantPickupGeneric();
                 case DropPickupFailureReason.Unavailable:
                     return FormatUnavailable(dropType, itemName, quantity, mesoAmount, recentPickup, recentActorName);
                 default:
@@ -154,16 +154,16 @@ namespace HaCreator.MapSimulator.UI
             return actorKind switch
             {
                 DropPickupActorKind.Pet => new PickupNoticeMessagePair(
-                    "A pet picked up the drop.",
+                    FormatRemoteScreenMessage(sourceName, "A pet"),
                     $"{FormatActorLabel(sourceName, "A pet")} picked up {dropLabel}."),
                 DropPickupActorKind.Mob => new PickupNoticeMessagePair(
-                    "A monster picked up the drop.",
+                    FormatRemoteScreenMessage(sourceName, "A monster"),
                     $"{FormatActorLabel(sourceName, "A monster")} picked up {dropLabel}."),
                 DropPickupActorKind.Player => new PickupNoticeMessagePair(
-                    "Another player picked up the drop.",
+                    FormatRemoteScreenMessage(sourceName, "Another player"),
                     $"{FormatActorLabel(sourceName, "Another player")} picked up {dropLabel}."),
                 _ => new PickupNoticeMessagePair(
-                    "Another character picked up the drop.",
+                    FormatRemoteScreenMessage(sourceName, "Another character"),
                     $"{FormatActorLabel(sourceName, "Another character")} picked up {dropLabel}.")
             };
         }
@@ -194,12 +194,17 @@ namespace HaCreator.MapSimulator.UI
         {
             if (recentPickup == null)
             {
-                return new PickupNoticeMessagePair(
-                    FormatClientString(CantPickupScreenStringPoolId, "You cannot acquire any items."),
-                    FormatClientString(CantPickupChatStringPoolId, "You cannot acquire any items because the game file has been damaged. Please try again after reinstalling the game."));
+                return FormatCantPickupGeneric();
             }
 
             return FormatRemotePickup(recentPickup.ActorKind, dropType, recentActorName, itemName, quantity, mesoAmount);
+        }
+
+        private static PickupNoticeMessagePair FormatCantPickupGeneric()
+        {
+            return new PickupNoticeMessagePair(
+                FormatClientString(CantPickupScreenStringPoolId, "You cannot acquire any items."),
+                FormatClientString(CantPickupChatStringPoolId, "You cannot acquire any items because the game file has been damaged. Please try again after reinstalling the game."));
         }
 
         private static string FormatClientString(int stringPoolId, string fallbackFormat, params object[] args)
@@ -213,6 +218,11 @@ namespace HaCreator.MapSimulator.UI
         private static string FormatActorLabel(string actorName, string fallback)
         {
             return string.IsNullOrWhiteSpace(actorName) ? fallback : actorName;
+        }
+
+        private static string FormatRemoteScreenMessage(string actorName, string fallback)
+        {
+            return $"{FormatActorLabel(actorName, fallback)} picked up the drop.";
         }
 
         private static string FormatDropLabel(DropType dropType, string itemName, int quantity, int mesoAmount)

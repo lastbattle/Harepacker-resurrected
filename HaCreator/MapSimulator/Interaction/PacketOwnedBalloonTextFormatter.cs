@@ -15,6 +15,9 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal static class PacketOwnedBalloonTextFormatter
     {
+        private const string ItemIconMarkerPrefix = "{{ITEMICON:";
+        private const string ItemIconMarkerSuffix = "}}";
+
         private static readonly Regex ItemCountRegex = new(@"#c(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex PlayerNameRegex = new(@"#h\d*#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
         private static readonly Regex NpcRegex = new(@"#p(\d+):?#", RegexOptions.Compiled | RegexOptions.IgnoreCase);
@@ -61,7 +64,7 @@ namespace HaCreator.MapSimulator.Interaction
             formatted = SelectedMobRegex.Replace(formatted, static match => ResolveSelectedMobText(match.Groups[1].Value));
             formatted = QuestAmountRegex.Replace(formatted, static match => ResolveQuestAmountText(match.Groups[1].Value));
             formatted = QuestValueRegex.Replace(formatted, static match => ResolveQuestValueText(match.Groups[1].Value));
-            formatted = ItemIconRegex.Replace(formatted, static match => ResolveItemIconMarkerText(match.Groups[1].Value));
+            formatted = ItemIconRegex.Replace(formatted, static match => BuildItemIconMarker(match.Groups[1].Value));
             formatted = RewardCategoryRegex.Replace(formatted, string.Empty);
             formatted = ClientPromptTagRegex.Replace(formatted, string.Empty);
             formatted = PluralSuffixRegex.Replace(formatted, "s");
@@ -114,10 +117,11 @@ namespace HaCreator.MapSimulator.Interaction
                 : $"Item #{itemIdText}";
         }
 
-        private static string ResolveItemIconMarkerText(string itemIdText)
+        private static string BuildItemIconMarker(string itemIdText)
         {
-            string itemName = ResolveItemName(itemIdText);
-            return $"[{itemName}]";
+            return int.TryParse(itemIdText, out int itemId) && itemId > 0
+                ? $"{ItemIconMarkerPrefix}{itemId}{ItemIconMarkerSuffix}"
+                : string.Empty;
         }
 
         private static string ResolveQuestName(string questIdText)

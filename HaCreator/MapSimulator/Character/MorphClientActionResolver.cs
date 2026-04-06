@@ -204,11 +204,30 @@ namespace HaCreator.MapSimulator.Character
             }
 
             bool prefersArcherAliases = PrefersArcherAttackAliases(actionName);
+            bool prefersGenericRangedFallback = PrefersGenericRangedFallbackAliases(actionName);
+
+            IEnumerable<string> primaryAuthoredAliases = prefersArcherAliases
+                ? ArcherMorphAuthoredAttackAliases
+                : PirateMorphAuthoredAttackAliases;
+            IEnumerable<string> secondaryAuthoredAliases = prefersArcherAliases
+                ? PirateMorphAuthoredAttackAliases
+                : ArcherMorphAuthoredAttackAliases;
+
+            if (prefersGenericRangedFallback)
+            {
+                foreach (string genericAlias in EnumerateGenericAttackAliases(morphPart, actionName))
+                {
+                    if (yielded.Add(genericAlias))
+                    {
+                        yield return genericAlias;
+                    }
+                }
+            }
 
             foreach (string authoredAlias in EnumeratePreferredAuthoredAttackAliases(
                          morphPart,
                          actionName,
-                         prefersArcherAliases ? ArcherMorphAuthoredAttackAliases : PirateMorphAuthoredAttackAliases))
+                         primaryAuthoredAliases))
             {
                 if (yielded.Add(authoredAlias))
                 {
@@ -230,7 +249,7 @@ namespace HaCreator.MapSimulator.Character
             foreach (string authoredAlias in EnumeratePreferredAuthoredAttackAliases(
                          morphPart,
                          actionName,
-                         prefersArcherAliases ? PirateMorphAuthoredAttackAliases : ArcherMorphAuthoredAttackAliases))
+                         secondaryAuthoredAliases))
             {
                 if (yielded.Add(authoredAlias))
                 {
@@ -396,6 +415,19 @@ namespace HaCreator.MapSimulator.Character
                    || actionName.IndexOf("rain", StringComparison.OrdinalIgnoreCase) >= 0
                    || actionName.IndexOf("break", StringComparison.OrdinalIgnoreCase) >= 0
                    || actionName.IndexOf("eruption", StringComparison.OrdinalIgnoreCase) >= 0;
+        }
+
+        private static bool PrefersGenericRangedFallbackAliases(string actionName)
+        {
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            // CAvatar::MoveAction2RawAction still promotes attackable morph move-action 18
+            // to raw action 42 (`paralyze`), while Morph/*.img commonly only publishes
+            // generic `shoot*` surfaces for that non-authored ranged request.
+            return string.Equals(actionName, "paralyze", StringComparison.OrdinalIgnoreCase);
         }
 
         private static IEnumerable<string> EnumerateGenericAttackAliases(CharacterPart morphPart, string actionName)
@@ -800,6 +832,7 @@ namespace HaCreator.MapSimulator.Character
                    || actionName.IndexOf("rain", StringComparison.OrdinalIgnoreCase) >= 0
                    || actionName.IndexOf("break", StringComparison.OrdinalIgnoreCase) >= 0
                    || string.Equals(actionName, "shoot6", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "paralyze", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(actionName, "arrowEruption", StringComparison.OrdinalIgnoreCase);
         }
     }

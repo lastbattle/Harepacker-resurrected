@@ -63,6 +63,7 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal sealed class QuestRuntimeManager
     {
+        private static readonly DateTime QuestDeliveryWorthlessOpenEndDateUtc = new(2079, 1, 1, 0, 0, 0, DateTimeKind.Utc);
         private const int DragonNpcId = 1013000;
         private const int MateNameHeaderQuestId = 4451;
         private const int DragonQuestIdSkipMin = 1200;
@@ -572,12 +573,12 @@ namespace HaCreator.MapSimulator.Interaction
 
             string rewardText = BuildRewardText(definition);
             string hintText = BuildHintText(definition, state, startIssues, completionIssues);
-            string headerNoteText = BuildQuestMateNameHeaderText(definition.QuestId);
+            string headerNoteText = BuildHeaderNoteText(definition, state, build);
             int remainingTimeSeconds = state == QuestStateType.Started && definition.TimeLimitSeconds > 0
                 ? GetRemainingTimeSeconds(definition, progress)
                 : 0;
 
-            string npcText = BuildNpcText(definition);
+            string npcText = BuildLevelLimitText(definition);
             List<QuestLogLineSnapshot> requirementLines = BuildDetailRequirementLines(definition, state, build);
             List<QuestLogLineSnapshot> rewardLines = BuildRewardLines(definition);
             QuestDeliveryMetadata deliveryMetadata = ResolveDeliveryMetadata(definition, state, startIssues, completionIssues);
@@ -679,7 +680,7 @@ namespace HaCreator.MapSimulator.Interaction
             var appendedQuestIds = new HashSet<int>();
             var previousQuestByQuestId = BuildDeliveryPreviousQuestMap();
             var seriesQuestIds = new HashSet<int>(previousQuestByQuestId.Keys.Concat(previousQuestByQuestId.Values));
-            var packetWorthyQuestIds = BuildPacketWorthyQuestDeliveryQuestIds(preferredQuestId, build);
+            var packetWorthyQuestIds = BuildPacketWorthyQuestDeliveryQuestIds(preferredQuestId, build, previousQuestByQuestId);
 
             foreach (QuestDefinition definition in _definitions.Values.OrderBy(definition => definition.QuestId))
             {
@@ -782,17 +783,97 @@ namespace HaCreator.MapSimulator.Interaction
                 .ToArray();
         }
 
-        private HashSet<int> BuildPacketWorthyQuestDeliveryQuestIds(int preferredQuestId, CharacterBuild build)
+        private HashSet<int> BuildPacketWorthyQuestDeliveryQuestIds(
+            int preferredQuestId,
+            CharacterBuild build,
+            IReadOnlyDictionary<int, int> previousQuestByQuestId)
         {
             var packetWorthyQuestIds = new HashSet<int>();
-            AppendQuestIds(packetWorthyQuestIds, BuildQuestLogSnapshot(QuestLogTabType.Available, build, showAllLevels: true));
             AppendQuestIds(packetWorthyQuestIds, BuildQuestLogSnapshot(QuestLogTabType.InProgress, build, showAllLevels: true));
+
+            QuestLogSnapshot availableSnapshot = BuildQuestLogSnapshot(QuestLogTabType.Available, build, showAllLevels: true);
+            if (availableSnapshot?.Entries != null)
+            {
+                for (int i = 0; i < availableSnapshot.Entries.Count; i++)
+                {
+                    int questId = availableSnapshot.Entries[i]?.QuestId ?? 0;
+                    if (questId <= 0)
+                    {
+                        continue;
+                    }
+
+                    if (HasCompletedQuestDeliverySeriesPrelude(questId, previousQuestByQuestId) ||
+                        !_definitions.TryGetValue(questId, out QuestDefinition definition) ||
+                        !IsQuestDeliveryWorthlessForClientParity(
+                            definition.QuestId,
+                            preferredQuestId,
+                            Math.Max(0, build?.Level ?? 0),
+                            definition.MinLevel,
+                            definition.StartAvailableUntil))
+                    {
+                        packetWorthyQuestIds.Add(questId);
+                    }
+                }
+            }
+
             if (preferredQuestId > 0)
             {
                 packetWorthyQuestIds.Add(preferredQuestId);
             }
 
             return packetWorthyQuestIds;
+        }
+
+        private bool HasCompletedQuestDeliverySeriesPrelude(int questId, IReadOnlyDictionary<int, int> previousQuestByQuestId)
+        {
+            if (questId <= 0 || previousQuestByQuestId == null || previousQuestByQuestId.Count == 0)
+            {
+                return false;
+            }
+
+            bool hasCompletedPrelude = false;
+            var visited = new HashSet<int>();
+            int currentQuestId = questId;
+            while (previousQuestByQuestId.TryGetValue(currentQuestId, out int previousQuestId) &&
+                   previousQuestId > 0 &&
+                   visited.Add(previousQuestId))
+            {
+                if (GetQuestState(previousQuestId) != QuestStateType.Completed)
+                {
+                    return false;
+                }
+
+                hasCompletedPrelude = true;
+                currentQuestId = previousQuestId;
+            }
+
+            return hasCompletedPrelude;
+        }
+
+        private static bool IsQuestDeliveryWorthlessForClientParity(
+            int questId,
+            int preferredQuestId,
+            int buildLevel,
+            int? minLevel,
+            DateTime? availableUntil)
+        {
+            if (questId <= 0 ||
+                questId == preferredQuestId ||
+                !minLevel.HasValue ||
+                buildLevel < (minLevel.Value + 10))
+            {
+                return false;
+            }
+
+            if (!availableUntil.HasValue)
+            {
+                return true;
+            }
+
+            DateTime normalizedUntil = availableUntil.Value.Kind == DateTimeKind.Utc
+                ? availableUntil.Value
+                : availableUntil.Value.ToUniversalTime();
+            return normalizedUntil.Date >= QuestDeliveryWorthlessOpenEndDateUtc.Date;
         }
 
         private static void AppendQuestIds(HashSet<int> questIds, QuestLogSnapshot snapshot)
@@ -1029,7 +1110,9 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             List<int> visibleItemIds = new();
+            Dictionary<int, IReadOnlyList<int>> visibleItemMapIds = new();
             int hiddenItemCount = 0;
+            int currentMapId = Math.Max(0, _currentMapIdProvider?.Invoke() ?? 0);
             for (int i = 0; i < definition.EndItemRequirements.Count; i++)
             {
                 QuestItemRequirement requirement = definition.EndItemRequirements[i];
@@ -1047,6 +1130,10 @@ namespace HaCreator.MapSimulator.Interaction
                 if (!visibleItemIds.Contains(requirement.ItemId))
                 {
                     visibleItemIds.Add(requirement.ItemId);
+                    if (currentMapId > 0)
+                    {
+                        visibleItemMapIds[requirement.ItemId] = new[] { currentMapId };
+                    }
                 }
             }
 
@@ -1059,6 +1146,7 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 QuestId = questId,
                 VisibleItemIds = visibleItemIds,
+                VisibleItemMapIds = visibleItemMapIds,
                 HiddenItemCount = hiddenItemCount,
                 FallbackNpcName = ResolveNpcName(definition.EndNpcId ?? definition.StartNpcId ?? 0)
             };
@@ -4105,6 +4193,13 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
+            long consumedMesoAmount = 0;
+            if (!TryApplyConsumedActionMeso(actions.MesoReward, out consumedMesoAmount, out failureMessage))
+            {
+                RestoreConsumedActionItems(consumedItems);
+                return false;
+            }
+
             var grantedInventoryItems = new List<QuestRewardItem>();
             var grantedItemMessages = new List<string>();
             for (int i = 0; i < resolvedGrantedItems.Count; i++)
@@ -4114,6 +4209,7 @@ namespace HaCreator.MapSimulator.Interaction
                 if (!addedToInventory)
                 {
                     RestoreConsumedActionItems(consumedItems);
+                    RestoreConsumedActionMeso(consumedMesoAmount);
                     RollBackGrantedRewardItems(grantedInventoryItems);
                     failureMessage = itemFailureMessage;
                     return false;
@@ -4141,6 +4237,11 @@ namespace HaCreator.MapSimulator.Interaction
                 messages.Add(itemMessage);
             }
 
+            if (consumedMesoAmount > 0)
+            {
+                messages.Add($"Meso -{consumedMesoAmount.ToString("N0", CultureInfo.InvariantCulture)}");
+            }
+
             ApplyBuffItemReward(actions, messages);
 
             if (build != null && actions.ExpReward != 0)
@@ -4156,14 +4257,6 @@ namespace HaCreator.MapSimulator.Interaction
                 {
                     _addMeso?.Invoke(mesoDelta);
                     messages.Add($"Meso +{mesoDelta.ToString("N0", CultureInfo.InvariantCulture)}");
-                }
-                else
-                {
-                    long mesoCost = Math.Abs(mesoDelta);
-                    bool consumed = _consumeMeso?.Invoke(mesoCost) == true;
-                    messages.Add(consumed
-                        ? $"Meso -{mesoCost.ToString("N0", CultureInfo.InvariantCulture)}"
-                        : $"Meso -{mesoCost.ToString("N0", CultureInfo.InvariantCulture)} (meso runtime unavailable)");
                 }
             }
 
@@ -4229,6 +4322,31 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
+        private bool TryApplyConsumedActionMeso(int mesoRewardDelta, out long consumedMesoAmount, out string failureMessage)
+        {
+            consumedMesoAmount = 0;
+            failureMessage = null;
+            if (mesoRewardDelta >= 0)
+            {
+                return true;
+            }
+
+            long requiredMeso = Math.Abs((long)mesoRewardDelta);
+            if (requiredMeso <= 0)
+            {
+                return true;
+            }
+
+            if (GetCurrentMesoCount() < requiredMeso || _consumeMeso == null || !_consumeMeso(requiredMeso))
+            {
+                failureMessage = $"Need {requiredMeso.ToString("N0", CultureInfo.InvariantCulture)} meso to continue this quest action.";
+                return false;
+            }
+
+            consumedMesoAmount = requiredMeso;
+            return true;
+        }
+
         private bool TryApplyConsumedActionItems(
             IReadOnlyList<QuestRewardItem> rewards,
             ICollection<QuestConsumedItemMutation> consumedItems,
@@ -4286,6 +4404,16 @@ namespace HaCreator.MapSimulator.Interaction
 
                 _consumeInventoryItem(grantedItem.ItemId, grantedItem.Count);
             }
+        }
+
+        private void RestoreConsumedActionMeso(long mesoAmount)
+        {
+            if (mesoAmount <= 0)
+            {
+                return;
+            }
+
+            _addMeso?.Invoke(mesoAmount);
         }
 
         private void RestoreConsumedActionItems(IReadOnlyList<QuestConsumedItemMutation> consumedItems)
@@ -4464,12 +4592,53 @@ namespace HaCreator.MapSimulator.Interaction
                 : QuestStateType.Not_Started;
         }
 
-        private string BuildQuestMateNameHeaderText(int questId)
+        private string BuildHeaderNoteText(QuestDefinition definition, QuestStateType state, CharacterBuild build)
         {
-            return questId == MateNameHeaderQuestId &&
-                   TryGetPacketOwnedQuestMateName(questId, out string mateName)
-                ? mateName
-                : string.Empty;
+            if (definition == null)
+            {
+                return string.Empty;
+            }
+
+            if (definition.QuestId == MateNameHeaderQuestId &&
+                TryGetPacketOwnedQuestMateName(definition.QuestId, out string mateName))
+            {
+                return mateName;
+            }
+
+            if (state != QuestStateType.Completed &&
+                definition.MaxLevel.HasValue &&
+                build != null &&
+                build.Level > definition.MaxLevel.Value)
+            {
+                return MapleStoryStringPool.GetOrFallback(6641, "Low Level Quest");
+            }
+
+            return string.Empty;
+        }
+
+        private static string BuildLevelLimitText(QuestDefinition definition)
+        {
+            if (definition == null)
+            {
+                return string.Empty;
+            }
+
+            if (definition.MinLevel.HasValue && definition.MaxLevel.HasValue)
+            {
+                return $"Level {definition.MinLevel.Value}-{definition.MaxLevel.Value}";
+            }
+
+            if (definition.MinLevel.HasValue)
+            {
+                return $"Level {definition.MinLevel.Value}+";
+            }
+
+            if (definition.MaxLevel.HasValue)
+            {
+                return $"Level up to {definition.MaxLevel.Value}";
+            }
+
+            return string.Empty;
         }
 
         private void AdjustTrackedItemCount(int itemId, int delta)
@@ -5630,7 +5799,10 @@ namespace HaCreator.MapSimulator.Interaction
                 WzImageProperty child = property.WzProperties[i];
                 if (int.TryParse(child.Name, out int pageIndex) && pageIndex < 200)
                 {
-                    yield return child;
+                    foreach (WzImageProperty nestedContainer in EnumerateConversationMetadataContainers(child))
+                    {
+                        yield return nestedContainer;
+                    }
                 }
             }
         }
@@ -6023,9 +6195,11 @@ namespace HaCreator.MapSimulator.Interaction
             return propertyName.Equals("yes", StringComparison.OrdinalIgnoreCase) ||
                    propertyName.Equals("no", StringComparison.OrdinalIgnoreCase) ||
                    propertyName.Equals("ask", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("answer", StringComparison.OrdinalIgnoreCase) ||
                    propertyName.Equals("stop", StringComparison.OrdinalIgnoreCase) ||
                    propertyName.Equals("lost", StringComparison.OrdinalIgnoreCase) ||
                    propertyName.Equals("info", StringComparison.OrdinalIgnoreCase) ||
+                   propertyName.Equals("illustration", StringComparison.OrdinalIgnoreCase) ||
                    propertyName.Equals("npc", StringComparison.OrdinalIgnoreCase) ||
                    propertyName.Equals("job", StringComparison.OrdinalIgnoreCase) ||
                    propertyName.Equals("quest", StringComparison.OrdinalIgnoreCase);

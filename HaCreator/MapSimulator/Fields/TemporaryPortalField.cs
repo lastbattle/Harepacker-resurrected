@@ -611,6 +611,7 @@ namespace HaCreator.MapSimulator.Fields
                 _remoteOpenGates.Remove(key);
             }
 
+            SyncRemoteOpenGateVisuals();
             return true;
         }
 

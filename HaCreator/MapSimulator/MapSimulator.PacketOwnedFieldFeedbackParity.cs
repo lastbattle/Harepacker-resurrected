@@ -23,20 +23,35 @@ namespace HaCreator.MapSimulator
         private readonly Dictionary<string, List<IDXObject>> _packetFieldFeedbackAnimationCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly List<PacketOwnedUiAnimation> _packetFieldFeedbackUiAnimations = new();
         private IReadOnlyList<PacketFieldSwindleWarningEntry> _packetFieldSwindleWarnings;
+        private const int PacketOwnedSummonEffectStringPoolId = 0x663;
+        private const int PacketOwnedScreenEffectStringPoolId = 0x9ED;
         private static readonly string[] PacketOwnedScreenEffectImageNames =
         {
             "BasicEff.img",
             "CharacterEff.img",
             "Direction.img",
             "Direction1.img",
+            "Direction100.img",
             "Direction2.img",
             "Direction3.img",
             "Direction4.img",
             "Direction5.img",
             "Direction6.img",
             "Direction7.img",
+            "Direction_Vampire.img",
+            "ItemEff.img",
+            "MobEff.img",
             "OnUserEff.img",
+            "PetEff.img",
+            "PvPEff.img",
+            "SetEff.img",
+            "SetItemInfoEff.img",
+            "SkillName1.img",
+            "SkillName2.img",
+            "SkillName3.img",
+            "SkillName4.img",
             "Summon.img"
+            ,"Tomb.img"
         };
         private static readonly string[] PacketOwnedRewardRouletteLayerPaths =
         {
@@ -332,7 +347,10 @@ namespace HaCreator.MapSimulator
         private List<IDXObject> ResolvePacketOwnedSummonEffectFrames(byte effectId)
         {
             WzImage summonImage = Program.FindImage("Effect", "Summon.img");
-            List<IDXObject> frames = LoadPacketOwnedAnimationFrames(ResolvePacketOwnedPropertyPath(summonImage, effectId.ToString(CultureInfo.InvariantCulture)));
+            List<IDXObject> frames = LoadPacketOwnedAnimationFrames(
+                ResolvePacketOwnedPropertyPath(
+                    summonImage,
+                    ResolvePacketOwnedSummonEffectPropertyPath(effectId)));
             if (frames?.Count > 0)
             {
                 return frames;
@@ -386,13 +404,21 @@ namespace HaCreator.MapSimulator
                 normalized = normalized["effect/".Length..];
             }
 
+            if (TryResolvePacketOwnedEffectUol(
+                PacketOwnedScreenEffectStringPoolId,
+                "Effect/MapEff.img/{0}",
+                normalized,
+                out (string ImageName, string PropertyPath) clientCandidate))
+            {
+                yield return clientCandidate;
+            }
+
             int imageSeparator = normalized.IndexOf(".img/", StringComparison.OrdinalIgnoreCase);
             if (imageSeparator >= 0)
             {
                 string imageName = normalized[..(imageSeparator + 4)];
                 string propertyPath = normalized[(imageSeparator + 5)..];
                 yield return (imageName, propertyPath);
-                yield break;
             }
 
             string[] variants =
@@ -501,6 +527,87 @@ namespace HaCreator.MapSimulator
             }
 
             return current as WzImageProperty;
+        }
+
+        private static string ResolvePacketOwnedSummonEffectPropertyPath(byte effectId)
+        {
+            return TryResolvePacketOwnedEffectUol(
+                PacketOwnedSummonEffectStringPoolId,
+                "Effect/Summon.img/{0}",
+                effectId.ToString(CultureInfo.InvariantCulture),
+                out (string ImageName, string PropertyPath) candidate)
+                ? candidate.PropertyPath
+                : effectId.ToString(CultureInfo.InvariantCulture);
+        }
+
+        private static bool TryResolvePacketOwnedEffectUol(
+            int stringPoolId,
+            string fallbackFormat,
+            string argument,
+            out (string ImageName, string PropertyPath) candidate)
+        {
+            candidate = default;
+            if (string.IsNullOrWhiteSpace(argument))
+            {
+                return false;
+            }
+
+            string uol = FormatPacketOwnedEffectUol(stringPoolId, fallbackFormat, argument);
+            if (string.IsNullOrWhiteSpace(uol))
+            {
+                return false;
+            }
+
+            return TryParsePacketOwnedEffectUol(uol, out candidate);
+        }
+
+        private static string FormatPacketOwnedEffectUol(int stringPoolId, string fallbackFormat, string argument)
+        {
+            bool usedResolvedText;
+            string format = MapleStoryStringPool.GetCompositeFormatOrFallback(
+                stringPoolId,
+                fallbackFormat,
+                maxPlaceholderCount: 1,
+                out usedResolvedText);
+            try
+            {
+                return string.Format(CultureInfo.InvariantCulture, format, argument);
+            }
+            catch (FormatException)
+            {
+                return string.Format(CultureInfo.InvariantCulture, fallbackFormat, argument);
+            }
+        }
+
+        private static bool TryParsePacketOwnedEffectUol(string uol, out (string ImageName, string PropertyPath) candidate)
+        {
+            candidate = default;
+            if (string.IsNullOrWhiteSpace(uol))
+            {
+                return false;
+            }
+
+            string normalized = uol.Trim().Replace('\\', '/').Trim('/');
+            if (normalized.StartsWith("Effect/", StringComparison.OrdinalIgnoreCase))
+            {
+                normalized = normalized["Effect/".Length..];
+            }
+
+            int imageSeparator = normalized.IndexOf(".img/", StringComparison.OrdinalIgnoreCase);
+            if (imageSeparator < 0 || imageSeparator + 5 > normalized.Length)
+            {
+                return false;
+            }
+
+            string imageName = normalized[..(imageSeparator + 4)];
+            string propertyPath = normalized[(imageSeparator + 5)..];
+            if (string.IsNullOrWhiteSpace(imageName) || string.IsNullOrWhiteSpace(propertyPath))
+            {
+                return false;
+            }
+
+            candidate = (imageName, propertyPath);
+            return true;
         }
 
         private IReadOnlyList<PacketFieldSwindleWarningEntry> GetPacketOwnedSwindleWarningEntries()
@@ -624,6 +731,22 @@ namespace HaCreator.MapSimulator
                 .ToArray();
         }
 
+        internal static string GetPacketOwnedSummonEffectUolForTest(byte effectId)
+        {
+            return FormatPacketOwnedEffectUol(
+                PacketOwnedSummonEffectStringPoolId,
+                "Effect/Summon.img/{0}",
+                effectId.ToString(CultureInfo.InvariantCulture));
+        }
+
+        internal static string GetPacketOwnedScreenEffectUolForTest(string descriptor)
+        {
+            return FormatPacketOwnedEffectUol(
+                PacketOwnedScreenEffectStringPoolId,
+                "Effect/MapEff.img/{0}",
+                descriptor?.Replace('\\', '/').Trim().Trim('/') ?? string.Empty);
+        }
+
         internal static bool ShouldUsePacketOwnedNpcSummonFallback(byte effectId)
         {
             return PacketOwnedNpcSummonFallbackEffectIds.Contains(effectId);
@@ -647,44 +770,30 @@ namespace HaCreator.MapSimulator
             int rewardPartIndex,
             int rewardLevelIndex)
         {
-            foreach (string propertyPath in EnumeratePacketOwnedRewardRouletteLayerSourcePaths(
-                PacketOwnedRewardRouletteLayerPaths[0],
-                rewardJobIndex))
+            (string LayerPath, int RequestedIndex)[] layerRequests =
             {
-                yield return propertyPath;
-            }
+                (PacketOwnedRewardRouletteLayerPaths[0], rewardJobIndex),
+                (PacketOwnedRewardRouletteLayerPaths[1], rewardPartIndex),
+                (PacketOwnedRewardRouletteLayerPaths[2], rewardLevelIndex)
+            };
 
-            foreach (string propertyPath in EnumeratePacketOwnedRewardRouletteLayerSourcePaths(
-                PacketOwnedRewardRouletteLayerPaths[1],
-                rewardPartIndex))
+            foreach ((string layerPath, int requestedIndex) in layerRequests)
             {
-                yield return propertyPath;
-            }
+                if (string.IsNullOrWhiteSpace(layerPath) || requestedIndex < 0)
+                {
+                    continue;
+                }
 
-            foreach (string propertyPath in EnumeratePacketOwnedRewardRouletteLayerSourcePaths(
-                PacketOwnedRewardRouletteLayerPaths[2],
-                rewardLevelIndex))
-            {
-                yield return propertyPath;
-            }
-        }
-
-        private static IEnumerable<string> EnumeratePacketOwnedRewardRouletteLayerSourcePaths(
-            string layerPath,
-            int requestedIndex)
-        {
-            if (string.IsNullOrWhiteSpace(layerPath))
-            {
-                yield break;
-            }
-
-            if (requestedIndex >= 0)
-            {
                 yield return $"{layerPath}/{requestedIndex.ToString(CultureInfo.InvariantCulture)}";
             }
 
-            if (requestedIndex != 0)
+            foreach ((string layerPath, int requestedIndex) in layerRequests)
             {
+                if (string.IsNullOrWhiteSpace(layerPath) || requestedIndex == 0)
+                {
+                    continue;
+                }
+
                 yield return $"{layerPath}/0";
             }
         }

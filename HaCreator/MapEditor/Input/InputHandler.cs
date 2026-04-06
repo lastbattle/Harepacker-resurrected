@@ -416,7 +416,14 @@ namespace HaCreator.MapEditor.Input
                             List<ISerializable> items;
                             try
                             {
-                                items = selectedBoard.SerializationManager.DeserializeList((string)Clipboard.GetData(SerializationManager.HaClipboardData));
+                                if (!Clipboard.TryGetData<string>(SerializationManager.HaClipboardData, out string clipboardData)
+                                    || string.IsNullOrEmpty(clipboardData))
+                                {
+                                    MessageBox.Show("Clipboard data is unavailable or invalid.", "Error", MessageBoxButtons.OK, MessageBoxIcon.Error);
+                                    return;
+                                }
+
+                                items = selectedBoard.SerializationManager.DeserializeList(clipboardData);
                             }
                             catch (SerializationException de)
                             {

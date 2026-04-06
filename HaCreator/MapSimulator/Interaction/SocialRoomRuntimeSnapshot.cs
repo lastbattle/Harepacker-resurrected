@@ -115,6 +115,14 @@ namespace HaCreator.MapSimulator.Interaction
         public int MaximumLength { get; set; }
     }
 
+    public sealed class EntrustedShopNoticeSnapshot
+    {
+        public string OwnerName { get; set; }
+        public string Title { get; set; }
+        public string Text { get; set; }
+        public int StringPoolId { get; set; } = -1;
+    }
+
     public sealed class EntrustedShopChildDialogSnapshot
     {
         public bool IsOpen { get; set; }
@@ -130,6 +138,8 @@ namespace HaCreator.MapSimulator.Interaction
         public bool CanSecondaryAction { get; set; }
         public int SelectedIndex { get; set; } = -1;
         public List<EntrustedShopChildDialogEntrySnapshot> Entries { get; set; } = new();
+        public EntrustedShopBlacklistPromptRequest BlacklistPromptRequest { get; set; }
+        public EntrustedShopNoticeSnapshot BlacklistNotice { get; set; }
     }
 
     public sealed class SocialRoomOccupantSnapshot

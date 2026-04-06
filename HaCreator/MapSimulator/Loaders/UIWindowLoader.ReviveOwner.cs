@@ -44,8 +44,10 @@ namespace HaCreator.MapSimulator.Loaders
             WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
 
             UIObject premiumButton = LoadButton(utilDialogProperty, "BtYes", btClickSound, btOverSound, device);
-            UIObject normalButton = LoadButton(utilDialogProperty, "BtNo", btClickSound, btOverSound, device)
+            UIObject declineButton = LoadButton(utilDialogProperty, "BtNo", btClickSound, btOverSound, device)
                 ?? LoadButton(utilDialogProperty, "BtOK", btClickSound, btOverSound, device);
+            UIObject defaultButton = LoadButton(utilDialogProperty, "BtOK", btClickSound, btOverSound, device)
+                ?? declineButton;
 
             ReviveConfirmationWindow window = new(
                 new DXObject(0, 0, frameTexture, 0),
@@ -55,7 +57,7 @@ namespace HaCreator.MapSimulator.Loaders
                 Position = position
             };
 
-            window.InitializeButtons(premiumButton, normalButton);
+            window.InitializeButtons(premiumButton, declineButton, defaultButton);
             return window;
         }
     }

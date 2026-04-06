@@ -193,6 +193,11 @@ namespace HaCreator.MapSimulator.Fields
                 return "Skills cannot be used while the Snowball minigame owns basic attacks.";
             }
 
+            if (IsGuildBossBasicActionMap(mapInfo))
+            {
+                return "Skills cannot be used while the Guild Boss field owns basic attacks.";
+            }
+
             return mapInfo.fieldType switch
             {
                 _ => null
@@ -429,6 +434,17 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return FindAdditionalFieldProperty(mapInfo, "coconut") != null;
+        }
+
+        private static bool IsGuildBossBasicActionMap(MapInfo mapInfo)
+        {
+            if (mapInfo?.fieldType == FieldType.FIELDTYPE_GUILDBOSS)
+            {
+                return true;
+            }
+
+            return FindAdditionalFieldProperty(mapInfo, "pulley") != null
+                   || FindAdditionalFieldProperty(mapInfo, "healer") != null;
         }
     }
 }

@@ -10,6 +10,8 @@ namespace HaCreator.MapSimulator
     public partial class MapSimulator
     {
         private readonly ReviveOwnerRuntime _reviveOwnerRuntime = new();
+        private ReviveOwnerTransferRequest? _pendingReviveOwnerTransferRequest;
+        private int _pendingReviveOwnerTransferTick = int.MinValue;
 
         private void WireReviveConfirmationWindow()
         {
@@ -42,6 +44,11 @@ namespace HaCreator.MapSimulator
 
         private void HandlePlayerDeathOpenReviveOwner(PlayerCharacter player)
         {
+            if (player == null || _reviveOwnerRuntime.IsOpen)
+            {
+                return;
+            }
+
             int currentTick = Environment.TickCount;
             Vector2 spawnPoint = _playerManager?.GetSpawnPoint() ?? new Vector2(player?.DeathX ?? 0f, player?.DeathY ?? 0f);
             Vector2 deathPoint = new(player?.DeathX ?? spawnPoint.X, player?.DeathY ?? spawnPoint.Y);
@@ -72,14 +79,19 @@ namespace HaCreator.MapSimulator
                     uiWindowManager?.HideWindow(MapSimulatorWindowNames.Revive);
                 }
 
+                _pendingReviveOwnerTransferRequest = null;
+                _pendingReviveOwnerTransferTick = int.MinValue;
                 return;
             }
 
             ReviveOwnerResolution resolution = _reviveOwnerRuntime.Update(currentTick);
             if (resolution.Handled)
             {
-                ApplyReviveOwnerResolution(resolution, currentTick);
+                QueueReviveOwnerTransfer(resolution, currentTick);
+                ShowUtilityFeedbackMessage(resolution.Summary);
             }
+
+            ApplyPendingReviveOwnerTransfer(currentTick);
         }
 
         private bool TryHandleReviveShortcut(KeyboardState keyboardState)
@@ -92,6 +104,12 @@ namespace HaCreator.MapSimulator
             if (!_reviveOwnerRuntime.IsOpen)
             {
                 HandlePlayerDeathOpenReviveOwner(_playerManager.Player);
+                return true;
+            }
+
+            if (_pendingReviveOwnerTransferRequest.HasValue)
+            {
+                return true;
             }
 
             bool premiumRequested = keyboardState.IsKeyDown(Keys.LeftShift) || keyboardState.IsKeyDown(Keys.RightShift);
@@ -112,15 +130,30 @@ namespace HaCreator.MapSimulator
                 return "Revive owner is not active.";
             }
 
-            ApplyReviveOwnerResolution(resolution, currentTick);
+            QueueReviveOwnerTransfer(resolution, currentTick);
             return resolution.Summary;
         }
 
-        private void ApplyReviveOwnerResolution(ReviveOwnerResolution resolution, int currentTick)
+        private void QueueReviveOwnerTransfer(ReviveOwnerResolution resolution, int currentTick)
         {
             uiWindowManager?.HideWindow(MapSimulatorWindowNames.Revive);
+            _pendingReviveOwnerTransferRequest = ReviveOwnerRuntime.CreateTransferRequest(resolution);
+            _pendingReviveOwnerTransferTick = currentTick;
+        }
 
-            if (resolution.Premium && _playerManager?.Player != null)
+        private void ApplyPendingReviveOwnerTransfer(int currentTick)
+        {
+            if (!_pendingReviveOwnerTransferRequest.HasValue
+                || unchecked(currentTick - _pendingReviveOwnerTransferTick) <= 0)
+            {
+                return;
+            }
+
+            ReviveOwnerTransferRequest request = _pendingReviveOwnerTransferRequest.Value;
+            _pendingReviveOwnerTransferRequest = null;
+            _pendingReviveOwnerTransferTick = int.MinValue;
+
+            if (request.Premium && _playerManager?.Player != null)
             {
                 _playerManager.RespawnAt(_playerManager.Player.DeathX, _playerManager.Player.DeathY);
                 return;

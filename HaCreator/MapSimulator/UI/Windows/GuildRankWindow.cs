@@ -63,6 +63,20 @@ namespace HaCreator.MapSimulator.UI
             _closeHandler = closeHandler;
         }
 
+        internal void SetScrollBarTextures(
+            Texture2D prevNormal,
+            Texture2D prevPressed,
+            Texture2D nextNormal,
+            Texture2D nextPressed,
+            Texture2D trackEnabled,
+            Texture2D thumbNormal,
+            Texture2D thumbPressed,
+            Texture2D prevDisabled,
+            Texture2D nextDisabled,
+            Texture2D trackDisabled)
+        {
+        }
+
         public override void SetFont(SpriteFont font)
         {
             base.SetFont(font);

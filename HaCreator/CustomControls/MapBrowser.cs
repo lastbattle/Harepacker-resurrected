@@ -226,7 +226,6 @@ namespace HaCreator.CustomControls
                 command = new SQLiteCommand(sql_select, connection);
                 SQLiteDataReader reader = command.ExecuteReader();
 
-                int i = 0;
                 while (reader.Read()) {
                     string OpenedMapName = (string)reader["OpenedMapName"];
                     //Debug.WriteLine("Entry [" + i + "] Name: '" + OpenedMapName + "'");

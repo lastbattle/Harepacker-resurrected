@@ -110,6 +110,9 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            var liveMob = _mobPool.GetMob(decodedPacket.MobId);
+            liveMob?.MovementInfo?.ApplyPacketMoveInterrupt(decodedPacket.NotForceLandingWhenDiscard);
+
             if (!decodedPacket.NextAttackPossible)
             {
                 _mobAttackSystem.SetNextAttackPacketOverrides(decodedPacket.MobId, decodedPacket.AttackId, currentTime);

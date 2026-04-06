@@ -36,15 +36,24 @@ namespace HaCreator.MapSimulator.Interaction
             int onlineCount = guildRoster.Count(entry => entry.IsOnline);
             int totalCount = guildRoster.Count();
 
-            return
+            List<GuildRankingSeedEntry> rankingEntries =
             [
                 new GuildRankingSeedEntry(
                     string.IsNullOrWhiteSpace(guildName) ? "No Guild" : guildName,
                     string.IsNullOrWhiteSpace(masterName) ? "Guild Master" : masterName,
+                    null,
                     $"Lv. {Math.Max(1, ResolveEffectiveGuildLevel())}",
                     $"{onlineCount}/{Math.Max(onlineCount, totalCount)} online",
                     _guildNoticeText)
             ];
+
+            IReadOnlyList<GuildRankingSeedEntry> packetOwnedRivals = GetPacketGuildRankingEntries(guildName);
+            if (packetOwnedRivals.Count > 0)
+            {
+                rankingEntries.AddRange(packetOwnedRivals);
+            }
+
+            return rankingEntries;
         }
 
         internal string ApplyGuildCreateAgreementAcceptance(GuildCreateAgreementAcceptance acceptance)

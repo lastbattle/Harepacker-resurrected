@@ -25,7 +25,7 @@ namespace HaCreator.MapSimulator
             }
         }
 
-        internal static ImeCandidateListState DecodeCandidateList(byte[] buffer, bool vertical, int listIndex)
+        internal static ImeCandidateListState DecodeCandidateList(byte[] buffer, bool vertical, int listIndex, ImeCandidateWindowForm windowForm = null)
         {
             if (buffer == null || buffer.Length < 24)
             {
@@ -72,7 +72,7 @@ namespace HaCreator.MapSimulator
             }
 
             return candidates.Count > 0
-                ? new ImeCandidateListState(candidates, pageStart, pageSize, selection, vertical, listIndex)
+                ? new ImeCandidateListState(candidates, pageStart, pageSize, selection, vertical, listIndex, windowForm)
                 : ImeCandidateListState.Empty;
         }
     }

@@ -1,9 +1,53 @@
 using System;
+using System.Collections.Generic;
 
 namespace HaCreator.MapSimulator.Interaction
 {
     internal static partial class MapleStoryStringPool
     {
+        private static readonly IReadOnlyDictionary<int, string> OverrideEntries = new Dictionary<int, string>
+        {
+            [0x1A15] = "%d",
+            // Recovered from MapleStory.exe v95 StringPool::GetString. The generated table
+            // in this workspace uses the decoded storage order, not the client key lookup,
+            // so direct index resolution for these MapleTV result ids is incorrect.
+            [0x0F9E] = "The message was successfully sent.",
+            [0x0F9F] = "The waiting line is longer than an hour. \r\nPlease try using it at a later time.",
+            [0x0FA0] = "You've entered the wrong user name.",
+            // Recovered from MapleStory.exe v95 StringPool::ms_aString via StringPool::GetString
+            // using ms_aKey (0xB98830). These anti-macro ids are still null in the generated
+            // table for this workspace, but `CWvsContext::OnAntiMacroResult` and
+            // `CWvsContext::ShowAntiMacroNotice` use them directly for the packet-owned
+            // anti-macro controller and notice owner.
+            [0x0C84] = "The user cannot be found.",
+            [0x0C85] = "You cannot use it on a user that isn't in the middle of attack.",
+            [0x0C86] = "This user has already been tested before.",
+            [0x0C87] = "This user is currently going through the Lie Detector Test.",
+            [0x0C88] = "Thank you for cooperating with the Lie Detector Test. You'll be rewarded 5000 mesos for not botting.",
+            [0x0C89] = "The Lie Detector Test confirms that you have been botting. Repeated failure of the test will result in game restrictions.",
+            [0x0C8D] = "%s have used the Lie Detector Test.",
+            [0x0C8E] = "%s_The screenshot has been saved. You have been notified of macro-assisted program monitoring.",
+            [0x0C8F] = "%s_The screenshot has been saved. The Lie Detector has been activated.",
+            [0x0C90] = "%s_You have passed the Lie Detector Test.",
+            [0x0C91] = "%s_The screenshot has been saved. It appears that you may be using a macro-assisted program.",
+            [0x0C98] = "The user has failed the Lie Detector Test. You'll be rewarded 7000 mesos from the user.",
+            [0x0C99] = "You have succesfully passed the Lie Detector Test. Thank you for participating!",
+            [0x0C9A] = "You will be sanctioned for using a macro-assisted program.",
+            [0x1A65] = "Thank you for your cooperation.",
+            // Recovered from MapleStory.exe v95 StringPool::ms_aString via StringPool::GetString
+            // using ms_aKey (0xB98830). These ids are radio-owner literals that were still null
+            // in the generated table for this workspace, but the simulator now needs the exact
+            // client text and path templates for CRadioManager parity.
+            [0x14CF] = "[%s]'s broadcasting will begin. Please turn up the volume.",
+            [0x14D0] = "[%s]'s broadcasting has ended.",
+            [0x1501] = "Sound/Radio.img/%s",
+            [0x1502] = "Sound/Radio.img/%s/track",
+            // Recovered from MapleStory.exe v95 dragon-layer owners. `CDragon::CreateEffect`
+            // resolves these ids through StringPool before loading the layer from Effect/BasicEff.
+            [0x0B6B] = "Effect/BasicEff.img/dragonBlink",
+            [0x15DA] = "Effect/BasicEff.img/dragonFury",
+        };
+
         public static int Count => Entries.Length;
 
         public static bool Contains(int stringPoolId)
@@ -13,10 +57,18 @@ namespace HaCreator.MapSimulator.Interaction
 
         public static bool TryGet(int stringPoolId, out string text)
         {
+            if (OverrideEntries.TryGetValue(stringPoolId, out text))
+            {
+                return true;
+            }
+
             if (Contains(stringPoolId))
             {
                 text = Entries[stringPoolId];
-                return true;
+                if (!string.IsNullOrWhiteSpace(text))
+                {
+                    return true;
+                }
             }
 
             text = null;

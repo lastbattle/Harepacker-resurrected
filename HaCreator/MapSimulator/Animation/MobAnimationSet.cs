@@ -112,13 +112,11 @@ namespace HaCreator.MapSimulator.Animation
         /// <returns>Hit effect frames, or null if not available</returns>
         public List<IDXObject> GetAttackHitEffect(string attackAction)
         {
-            string key = attackAction?.ToLower() ?? "";
-            if (_attackHitEffects.TryGetValue(key, out var frames))
-                return frames;
-
-            // Fallback to attack1's hit effect if specific attack hit not found
-            if (key != "attack1" && _attackHitEffects.TryGetValue("attack1", out frames))
-                return frames;
+            foreach (string key in EnumerateCompatibleAttackKeys(attackAction))
+            {
+                if (_attackHitEffects.TryGetValue(key, out var frames))
+                    return frames;
+            }
 
             return null;
         }
@@ -149,12 +147,11 @@ namespace HaCreator.MapSimulator.Animation
         /// </summary>
         public List<IDXObject> GetAttackProjectileEffect(string attackAction)
         {
-            string key = attackAction?.ToLower() ?? "";
-            if (_attackProjectileEffects.TryGetValue(key, out var frames))
-                return frames;
-
-            if (key != "attack1" && _attackProjectileEffects.TryGetValue("attack1", out frames))
-                return frames;
+            foreach (string key in EnumerateCompatibleAttackKeys(attackAction))
+            {
+                if (_attackProjectileEffects.TryGetValue(key, out var frames))
+                    return frames;
+            }
 
             return null;
         }
@@ -170,12 +167,11 @@ namespace HaCreator.MapSimulator.Animation
 
         public List<IDXObject> GetAttackEffect(string attackAction)
         {
-            string key = attackAction?.ToLower() ?? "";
-            if (_attackEffects.TryGetValue(key, out var frames))
-                return frames;
-
-            if (key != "attack1" && _attackEffects.TryGetValue("attack1", out frames))
-                return frames;
+            foreach (string key in EnumerateCompatibleAttackKeys(attackAction))
+            {
+                if (_attackEffects.TryGetValue(key, out var frames))
+                    return frames;
+            }
 
             return null;
         }
@@ -191,12 +187,11 @@ namespace HaCreator.MapSimulator.Animation
 
         public List<IDXObject> GetAttackWarningEffect(string attackAction)
         {
-            string key = attackAction?.ToLower() ?? "";
-            if (_attackWarningEffects.TryGetValue(key, out var frames))
-                return frames;
-
-            if (key != "attack1" && _attackWarningEffects.TryGetValue("attack1", out frames))
-                return frames;
+            foreach (string key in EnumerateCompatibleAttackKeys(attackAction))
+            {
+                if (_attackWarningEffects.TryGetValue(key, out var frames))
+                    return frames;
+            }
 
             return null;
         }
@@ -218,12 +213,11 @@ namespace HaCreator.MapSimulator.Animation
 
         public IReadOnlyList<AttackEffectNode> GetAttackExtraEffects(string attackAction)
         {
-            string key = attackAction?.ToLower() ?? "";
-            if (_attackExtraEffects.TryGetValue(key, out var effects))
-                return effects;
-
-            if (key != "attack1" && _attackExtraEffects.TryGetValue("attack1", out effects))
-                return effects;
+            foreach (string key in EnumerateCompatibleAttackKeys(attackAction))
+            {
+                if (_attackExtraEffects.TryGetValue(key, out var effects))
+                    return effects;
+            }
 
             return null;
         }
@@ -238,14 +232,64 @@ namespace HaCreator.MapSimulator.Animation
 
         public AttackInfoMetadata GetAttackInfoMetadata(string attackAction)
         {
-            string key = attackAction?.ToLower() ?? "";
-            if (_attackMetadata.TryGetValue(key, out var metadata))
-                return metadata;
-
-            if (key != "attack1" && _attackMetadata.TryGetValue("attack1", out metadata))
-                return metadata;
+            foreach (string key in EnumerateCompatibleAttackKeys(attackAction))
+            {
+                if (_attackMetadata.TryGetValue(key, out var metadata))
+                    return metadata;
+            }
 
             return null;
+        }
+
+        private static IEnumerable<string> EnumerateCompatibleAttackKeys(string attackAction)
+        {
+            string key = attackAction?.ToLowerInvariant() ?? string.Empty;
+            if (key.Length == 0)
+            {
+                yield break;
+            }
+
+            yield return key;
+
+            if (TryResolveAlternateAttackKey(key, out string alternateKey))
+            {
+                yield return alternateKey;
+            }
+
+            if (!string.Equals(key, "attack1", System.StringComparison.Ordinal))
+            {
+                yield return "attack1";
+            }
+
+            if (!string.Equals(key, "skill1", System.StringComparison.Ordinal))
+            {
+                yield return "skill1";
+            }
+        }
+
+        private static bool TryResolveAlternateAttackKey(string key, out string alternateKey)
+        {
+            alternateKey = null;
+            if (key.StartsWith("attack", System.StringComparison.Ordinal))
+            {
+                string suffix = key["attack".Length..];
+                if (suffix.Length > 0)
+                {
+                    alternateKey = $"skill{suffix}";
+                    return true;
+                }
+            }
+            else if (key.StartsWith("skill", System.StringComparison.Ordinal))
+            {
+                string suffix = key["skill".Length..];
+                if (suffix.Length > 0)
+                {
+                    alternateKey = $"attack{suffix}";
+                    return true;
+                }
+            }
+
+            return false;
         }
 
         public void SetAngerGaugeAnimation(int stage, List<IDXObject> frames)

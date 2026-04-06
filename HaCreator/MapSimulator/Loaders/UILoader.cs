@@ -619,6 +619,15 @@ namespace HaCreator.MapSimulator.Loaders
                     chatUI.SetWhisperPickerTextures(
                         LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["list5"] as WzCanvasProperty, device),
                         LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["list4"] as WzCanvasProperty, device));
+                    chatUI.SetWhisperPickerDialogTextures(
+                        LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["t"] as WzCanvasProperty, device),
+                        LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["c"] as WzCanvasProperty, device),
+                        LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["s"] as WzCanvasProperty, device),
+                        LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["bar"] as WzCanvasProperty, device),
+                        LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["BtPrev"]?["normal"]?["0"] as WzCanvasProperty, device),
+                        LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["BtNext"]?["normal"]?["0"] as WzCanvasProperty, device),
+                        LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["BtOK"]?["normal"]?["0"] as WzCanvasProperty, device),
+                        LoadCanvasTexture(uiWindow2DialogImage?["UtilDlgEx"]?["BtClose"]?["normal"]?["0"] as WzCanvasProperty, device));
                     Vector2 chatTargetLabelPos = ResolveCanvasPosition(chatFrameAnchorOrigin, subProperty_chatTarget?["all"] as WzCanvasProperty).ToVector2();
                     Vector2 chatEnterPos = ResolveCanvasPosition(chatFrameAnchorOrigin, chatEnterCanvas).ToVector2();
                     Rectangle chatEnterBounds = ResolveCanvasBounds(chatFrameAnchorOrigin, chatEnterCanvas);
@@ -1741,6 +1750,45 @@ namespace HaCreator.MapSimulator.Loaders
                 : fallbackOffset;
         }
 
+        private static int ResolveUiButtonSnapshotWidth(WzSubProperty buttonProperty)
+        {
+            if (buttonProperty == null)
+            {
+                return 0;
+            }
+
+            int maxWidth = 0;
+            foreach (string stateName in new[] { "normal", "disabled", "pressed", "mouseOver" })
+            {
+                if (buttonProperty[stateName] is not WzSubProperty stateProperty)
+                {
+                    continue;
+                }
+
+                foreach (WzImageProperty frameProperty in stateProperty.WzProperties)
+                {
+                    if (frameProperty is WzCanvasProperty canvasProperty)
+                    {
+                        maxWidth = Math.Max(maxWidth, canvasProperty.GetLinkedWzCanvasBitmap()?.Width ?? 0);
+                    }
+                }
+            }
+
+            return maxWidth;
+        }
+
+        internal static int ResolveCollapsedMinimapButtonReserveWidthForTesting(
+            int minimizeButtonWidth,
+            int maximizeButtonWidth,
+            int mapButtonWidth,
+            int rightInset)
+        {
+            return Math.Max(0, minimizeButtonWidth)
+                + Math.Max(0, maximizeButtonWidth)
+                + Math.Max(0, mapButtonWidth)
+                + Math.Max(0, rightInset);
+        }
+
         private static bool TryFindEmbeddedBitmapOffset(
             System.Drawing.Bitmap container,
             System.Drawing.Bitmap content,
@@ -2013,6 +2061,26 @@ namespace HaCreator.MapSimulator.Loaders
             mapNameMarkStackPanel.AddRenderable(haUITextMapNameStreetName);
             collapsedMapNameStackPanel.AddRenderable(collapsedTitleText);
             fullMiniMapStackPanel.AddRenderable(mapNameMarkStackPanel);
+
+            WzSubProperty collapsedMapButtonProperty = minimapFrameProperty["BtMap"] as WzSubProperty;
+            WzSubProperty collapsedMinimizeButtonProperty = bBigBang
+                ? minimapFrameProperty["BtMin"] as WzSubProperty
+                : uiBasicImage["BtMin"] as WzSubProperty;
+            WzSubProperty collapsedMaximizeButtonProperty = bBigBang
+                ? minimapFrameProperty["BtMax"] as WzSubProperty
+                : uiBasicImage["BtMax"] as WzSubProperty;
+            int collapsedButtonReserveWidth = ResolveCollapsedMinimapButtonReserveWidthForTesting(
+                ResolveUiButtonSnapshotWidth(collapsedMinimizeButtonProperty),
+                ResolveUiButtonSnapshotWidth(collapsedMaximizeButtonProperty),
+                ResolveUiButtonSnapshotWidth(collapsedMapButtonProperty),
+                rightInset: 8);
+            if (collapsedButtonReserveWidth > 0)
+            {
+                collapsedMapNameStackPanel.AddRenderable(new HaUIImage(new HaUIInfo()
+                {
+                    Bitmap = new System.Drawing.Bitmap(collapsedButtonReserveWidth, 1)
+                }));
+            }
 
             WzSubProperty collapsedBarProperty = minimapFrameProperty["Min"] as WzSubProperty;
             System.Drawing.Bitmap collapsedBarLeft = ((WzCanvasProperty)collapsedBarProperty?["w"])?.GetLinkedWzCanvasBitmap();

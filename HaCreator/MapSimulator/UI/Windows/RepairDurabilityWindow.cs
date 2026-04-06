@@ -82,6 +82,18 @@ namespace HaCreator.MapSimulator.UI
             public IReadOnlyList<TooltipValueSegment> ValueSegments { get; }
         }
 
+        private readonly struct TooltipSection
+        {
+            public TooltipSection(string text, Color color)
+            {
+                Text = text ?? string.Empty;
+                Color = color;
+            }
+
+            public string Text { get; }
+            public Color Color { get; }
+        }
+
         private const int RowLeft = 11;
         private const int RowTop = 109;
         private const int RowWidth = 199;
@@ -100,7 +112,7 @@ namespace HaCreator.MapSimulator.UI
         private const int RepairFeeValueY = 83;
         private const int NpcNameX = 72;
         private const int NpcNameY = 53;
-        private const int NpcPreviewX = 39;
+        private const int NpcPreviewX = 57;
         private const int NpcPreviewY = 92;
         private const int StatusTextX = 14;
         private const int StatusTextY = 303;
@@ -614,7 +626,9 @@ namespace HaCreator.MapSimulator.UI
             int textWidth = tooltipWidth - (TooltipPadding * 2) - TooltipIconSize - TooltipIconGap;
 
             string[] wrappedTitle = WrapTooltipText(title, tooltipWidth - (TooltipPadding * 2));
-            List<string[]> wrappedSections = WrapTooltipSections(lines, textWidth);
+            List<(string[] Lines, Color Color, float Height)> wrappedSections = WrapTooltipSections(
+                lines.Where(line => !string.IsNullOrWhiteSpace(line)).Select(line => new TooltipSection(line, Color.White)),
+                textWidth);
 
             float titleHeight = MeasureLinesHeight(wrappedTitle);
             float cashLabelHeight = metadata.IsCashItem ? _cashLabelTexture?.Height ?? 0f : 0f;
@@ -712,9 +726,9 @@ namespace HaCreator.MapSimulator.UI
             List<Texture2D> jobBadges = BuildTooltipJobBadges(part.RequiredJobMask);
             float jobBadgeHeight = jobBadges.Count > 0 ? 13f : 0f;
 
-            List<string> footerLines = BuildEquipTooltipFooterLines(entry, part, metadata);
-            List<string[]> wrappedFooterSections = WrapTooltipSections(
-                footerLines,
+            IReadOnlyList<TooltipSection> footerSections = BuildEquipTooltipFooterSections(entry, part);
+            List<(string[] Lines, Color Color, float Height)> wrappedFooterSections = WrapTooltipSections(
+                footerSections,
                 ResolveTooltipWidth() - (TooltipPadding * 2));
             float footerHeight = MeasureWrappedSectionHeight(wrappedFooterSections);
 
@@ -919,63 +933,75 @@ namespace HaCreator.MapSimulator.UI
             return rows;
         }
 
-        private List<string> BuildEquipTooltipFooterLines(RepairEntry entry, CharacterPart part, InventoryItemTooltipMetadata metadata)
+        private IReadOnlyList<TooltipSection> BuildEquipTooltipFooterSections(RepairEntry entry, CharacterPart part)
         {
-            List<string> lines = new();
+            List<TooltipSection> sections = new();
             if (!string.IsNullOrWhiteSpace(entry.SlotLabel))
             {
-                lines.Add($"Slot: {entry.SlotLabel}");
+                sections.Add(new TooltipSection($"Slot: {entry.SlotLabel}", Color.White));
             }
 
-            lines.Add($"Repair Fee: {entry.RepairCost.ToString("N0", CultureInfo.InvariantCulture)} mesos");
+            sections.Add(new TooltipSection(
+                $"Repair Fee: {entry.RepairCost.ToString("N0", CultureInfo.InvariantCulture)} mesos",
+                new Color(255, 232, 176)));
 
             if (!string.IsNullOrWhiteSpace(entry.AvailabilityText))
             {
-                lines.Add(entry.AvailabilityText);
+                sections.Add(new TooltipSection(
+                    entry.AvailabilityText,
+                    string.Equals(entry.AvailabilityText, "Repairable", StringComparison.OrdinalIgnoreCase)
+                        ? new Color(176, 255, 176)
+                        : new Color(255, 186, 186)));
             }
 
-            if (part.IsTradeBlocked || metadata.IsTradeBlocked)
+            if (entry.IsHiddenSlot)
             {
-                lines.Add("Untradeable");
+                sections.Add(new TooltipSection("Hidden equipped item is being repaired from its underlying slot.", new Color(181, 224, 255)));
             }
 
-            if (part.IsOneOfAKind || metadata.IsOneOfAKind)
+            string summaryLine = BuildEquipmentSummaryLine(part);
+            if (!string.IsNullOrWhiteSpace(summaryLine))
             {
-                lines.Add("One of a kind");
+                sections.Add(new TooltipSection(summaryLine, new Color(181, 224, 255)));
             }
 
-            if (part.IsNotForSale || metadata.IsNotForSale)
+            string requirementLine = BuildEquipmentRequirementLine(part);
+            if (!string.IsNullOrWhiteSpace(requirementLine))
             {
-                lines.Add("Not for sale");
+                sections.Add(new TooltipSection(requirementLine, Color.White));
             }
 
-            if (part.ExpirationDateUtc.HasValue)
+            string detailedRequirementLine = BuildDetailedRequirementLine(part);
+            if (!string.IsNullOrWhiteSpace(detailedRequirementLine))
             {
-                lines.Add($"Expires {part.ExpirationDateUtc.Value.ToLocalTime():yyyy-MM-dd HH:mm}");
+                sections.Add(new TooltipSection(detailedRequirementLine, new Color(255, 232, 176)));
             }
 
-            if (!string.IsNullOrWhiteSpace(part.PotentialTierText))
+            string metadataLine = BuildAdditionalEquipmentMetadataLine(part);
+            if (!string.IsNullOrWhiteSpace(metadataLine))
             {
-                lines.Add(part.PotentialTierText);
+                sections.Add(new TooltipSection(metadataLine, new Color(255, 214, 156)));
             }
 
-            if (part.PotentialLines != null)
+            AppendPotentialTooltipSections(sections, part);
+
+            string expirationLine = BuildExpirationLine(part);
+            if (!string.IsNullOrWhiteSpace(expirationLine))
             {
-                for (int i = 0; i < part.PotentialLines.Count; i++)
-                {
-                    if (!string.IsNullOrWhiteSpace(part.PotentialLines[i]))
-                    {
-                        lines.Add(part.PotentialLines[i]);
-                    }
-                }
+                sections.Add(new TooltipSection(expirationLine, new Color(255, 214, 156)));
             }
 
-            if (!string.IsNullOrWhiteSpace(part.Description))
+            string eligibilityLine = BuildEquipmentEligibilityLine(part);
+            if (!string.IsNullOrWhiteSpace(eligibilityLine))
             {
-                lines.Add(part.Description);
+                sections.Add(new TooltipSection(
+                    eligibilityLine,
+                    eligibilityLine.StartsWith("Can equip", StringComparison.Ordinal)
+                        ? new Color(176, 255, 176)
+                        : new Color(255, 186, 186)));
             }
 
-            return lines;
+            return sections;
         }
 
         private void AppendTooltipInfoRow(List<TooltipInfoRow> rows, string fallbackLabel, Texture2D labelTexture, int value, Color valueColor, bool prefixPlus)
@@ -1740,26 +1766,31 @@ namespace HaCreator.MapSimulator.UI
                 : (nonEmptyLineCount * _font.LineSpacing) - 2f;
         }
 
-        private List<string[]> WrapTooltipSections(IEnumerable<string> lines, int width)
+        private List<(string[] Lines, Color Color, float Height)> WrapTooltipSections(IEnumerable<TooltipSection> sections, int width)
         {
-            var wrappedSections = new List<string[]>();
-            if (lines == null)
+            List<(string[] Lines, Color Color, float Height)> wrappedSections = new();
+            if (sections == null)
             {
                 return wrappedSections;
             }
 
-            foreach (string line in lines)
+            foreach (TooltipSection section in sections)
             {
-                if (!string.IsNullOrWhiteSpace(line))
+                if (!string.IsNullOrWhiteSpace(section.Text))
                 {
-                    wrappedSections.Add(WrapTooltipText(line, width));
+                    string[] wrappedLines = WrapTooltipText(section.Text, width);
+                    float height = MeasureLinesHeight(wrappedLines);
+                    if (height > 0f)
+                    {
+                        wrappedSections.Add((wrappedLines, section.Color, height));
+                    }
                 }
             }
 
             return wrappedSections;
         }
 
-        private float MeasureWrappedSectionHeight(IReadOnlyList<string[]> wrappedSections)
+        private float MeasureWrappedSectionHeight(IReadOnlyList<(string[] Lines, Color Color, float Height)> wrappedSections)
         {
             if (wrappedSections == null || wrappedSections.Count == 0)
             {
@@ -1769,7 +1800,7 @@ namespace HaCreator.MapSimulator.UI
             float height = 0f;
             for (int i = 0; i < wrappedSections.Count; i++)
             {
-                float sectionHeight = MeasureLinesHeight(wrappedSections[i]);
+                float sectionHeight = wrappedSections[i].Height;
                 if (sectionHeight <= 0f)
                 {
                     continue;
@@ -1786,7 +1817,7 @@ namespace HaCreator.MapSimulator.UI
             return height;
         }
 
-        private void DrawWrappedSections(SpriteBatch sprite, int x, float y, IReadOnlyList<string[]> wrappedSections)
+        private void DrawWrappedSections(SpriteBatch sprite, int x, float y, IReadOnlyList<(string[] Lines, Color Color, float Height)> wrappedSections)
         {
             if (wrappedSections == null)
             {
@@ -1796,14 +1827,14 @@ namespace HaCreator.MapSimulator.UI
             float currentY = y;
             for (int i = 0; i < wrappedSections.Count; i++)
             {
-                string[] section = wrappedSections[i];
-                float sectionHeight = MeasureLinesHeight(section);
+                (string[] Lines, Color Color, float Height) section = wrappedSections[i];
+                float sectionHeight = section.Height;
                 if (sectionHeight <= 0f)
                 {
                     continue;
                 }
 
-                DrawTooltipLines(sprite, section, x, currentY, i == 0 ? new Color(181, 224, 255) : Color.White);
+                DrawTooltipLines(sprite, section.Lines, x, currentY, section.Color);
                 currentY += sectionHeight + TooltipSectionGap;
             }
         }
@@ -1853,6 +1884,332 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return lines.Count > 0 ? lines.ToArray() : new[] { text };
+        }
+
+        private static string BuildEquipmentSummaryLine(CharacterPart part)
+        {
+            List<string> segments = new();
+            if (part == null)
+            {
+                return string.Empty;
+            }
+
+            if (part.ItemId > 0)
+            {
+                segments.Add($"Item ID: {part.ItemId}");
+            }
+
+            if (!string.IsNullOrWhiteSpace(part.ItemCategory))
+            {
+                segments.Add(part.ItemCategory);
+            }
+
+            AppendStatSegment(segments, "STR", part.BonusSTR);
+            AppendStatSegment(segments, "DEX", part.BonusDEX);
+            AppendStatSegment(segments, "INT", part.BonusINT);
+            AppendStatSegment(segments, "LUK", part.BonusLUK);
+            AppendStatSegment(segments, "HP", part.BonusHP);
+            AppendStatSegment(segments, "MP", part.BonusMP);
+            AppendStatSegment(segments, "ATT", part.BonusWeaponAttack);
+            AppendStatSegment(segments, "M.ATT", part.BonusMagicAttack);
+            AppendStatSegment(segments, "DEF", part.BonusWeaponDefense);
+            AppendStatSegment(segments, "M.DEF", part.BonusMagicDefense);
+            AppendStatSegment(segments, "ACC", part.BonusAccuracy);
+            AppendStatSegment(segments, "AVOID", part.BonusAvoidability);
+            AppendStatSegment(segments, "Hands", part.BonusHands);
+            AppendStatSegment(segments, "Speed", part.BonusSpeed);
+            AppendStatSegment(segments, "Jump", part.BonusJump);
+
+            int upgradeSlots = ResolveTooltipUpgradeSlotCount(part);
+            if (upgradeSlots > 0)
+            {
+                segments.Add(part.TotalUpgradeSlotCount.HasValue && part.TotalUpgradeSlotCount.Value > 0
+                    ? $"Slots {upgradeSlots}/{part.TotalUpgradeSlotCount.Value}"
+                    : $"Slots {upgradeSlots}");
+            }
+
+            if (part is WeaponPart weapon && weapon.AttackSpeed > 0)
+            {
+                segments.Add($"Speed {weapon.AttackSpeed}");
+            }
+
+            return string.Join("  ", segments);
+        }
+
+        private static string BuildEquipmentRequirementLine(CharacterPart part)
+        {
+            List<string> segments = new();
+            if (part == null)
+            {
+                return string.Empty;
+            }
+
+            if (part.RequiredLevel > 0)
+            {
+                segments.Add($"Req Lv {part.RequiredLevel}");
+            }
+
+            AppendRequirementSegment(segments, "STR", part.RequiredSTR);
+            AppendRequirementSegment(segments, "DEX", part.RequiredDEX);
+            AppendRequirementSegment(segments, "INT", part.RequiredINT);
+            AppendRequirementSegment(segments, "LUK", part.RequiredLUK);
+
+            if (part.RequiredFame > 0)
+            {
+                segments.Add($"Req Fame {part.RequiredFame}");
+            }
+
+            return string.Join("  ", segments);
+        }
+
+        private static string BuildDetailedRequirementLine(CharacterPart part)
+        {
+            if (part == null)
+            {
+                return string.Empty;
+            }
+
+            string requiredJobs = ResolveRequiredJobNames(part.RequiredJobMask);
+            return string.IsNullOrWhiteSpace(requiredJobs)
+                ? string.Empty
+                : $"Req Job {requiredJobs}";
+        }
+
+        private string BuildEquipmentEligibilityLine(CharacterPart part)
+        {
+            if (part == null || CharacterBuild == null)
+            {
+                return string.Empty;
+            }
+
+            if (MeetsEquipRequirements(part, CharacterBuild))
+            {
+                return "Can equip";
+            }
+
+            List<string> failures = new();
+            if (part.RequiredLevel > 0 && CharacterBuild.Level < part.RequiredLevel)
+            {
+                failures.Add($"Lv {part.RequiredLevel}");
+            }
+
+            if (part.RequiredSTR > 0 && CharacterBuild.TotalSTR < part.RequiredSTR)
+            {
+                failures.Add($"STR {part.RequiredSTR}");
+            }
+
+            if (part.RequiredDEX > 0 && CharacterBuild.TotalDEX < part.RequiredDEX)
+            {
+                failures.Add($"DEX {part.RequiredDEX}");
+            }
+
+            if (part.RequiredINT > 0 && CharacterBuild.TotalINT < part.RequiredINT)
+            {
+                failures.Add($"INT {part.RequiredINT}");
+            }
+
+            if (part.RequiredLUK > 0 && CharacterBuild.TotalLUK < part.RequiredLUK)
+            {
+                failures.Add($"LUK {part.RequiredLUK}");
+            }
+
+            if (part.RequiredFame > 0 && CharacterBuild.Fame < part.RequiredFame)
+            {
+                failures.Add($"Fame {part.RequiredFame}");
+            }
+
+            if (part.RequiredJobMask != 0 && !MatchesRequiredJobMask(part.RequiredJobMask, CharacterBuild.Job))
+            {
+                string requiredJobs = ResolveRequiredJobNames(part.RequiredJobMask);
+                failures.Add(string.IsNullOrWhiteSpace(requiredJobs) ? "job" : requiredJobs);
+            }
+
+            return failures.Count == 0
+                ? "Cannot equip"
+                : $"Cannot equip: {string.Join(", ", failures)}";
+        }
+
+        private static string BuildAdditionalEquipmentMetadataLine(CharacterPart part)
+        {
+            if (part == null)
+            {
+                return string.Empty;
+            }
+
+            List<string> segments = new();
+            if (part.TradeAvailable > 0)
+            {
+                segments.Add($"Trade available {part.TradeAvailable} time{(part.TradeAvailable == 1 ? string.Empty : "s")}");
+            }
+
+            if (part.IsTradeBlocked)
+            {
+                segments.Add("Untradeable");
+            }
+
+            if (part.IsEquipTradeBlocked)
+            {
+                segments.Add("Untradeable after equip");
+            }
+
+            if (part.IsOneOfAKind)
+            {
+                segments.Add("One-of-a-kind item");
+            }
+
+            if (part.IsUniqueEquipItem)
+            {
+                segments.Add("Can only be equipped once");
+            }
+
+            if (part.IsNotForSale)
+            {
+                segments.Add("Not for sale");
+            }
+
+            if (part.IsAccountSharable)
+            {
+                segments.Add("Account-sharable");
+            }
+
+            if (part.HasAccountShareTag)
+            {
+                segments.Add("Account-share tagged");
+            }
+
+            if (part.IsNoMoveToLocker)
+            {
+                segments.Add("Cannot be moved to storage");
+            }
+
+            if (part.KnockbackRate > 0)
+            {
+                segments.Add($"Knockback resistance {part.KnockbackRate}%");
+            }
+
+            if (part.IsTimeLimited)
+            {
+                segments.Add("Time-limited item");
+            }
+
+            if (part.Durability.HasValue)
+            {
+                segments.Add(part.MaxDurability.HasValue && part.MaxDurability.Value > 0
+                    ? $"Durability {Math.Max(0, part.Durability.Value)}/{part.MaxDurability.Value}"
+                    : $"Durability {Math.Max(0, part.Durability.Value)}");
+            }
+
+            return string.Join("  ", segments);
+        }
+
+        private static void AppendPotentialTooltipSections(List<TooltipSection> sections, CharacterPart part)
+        {
+            if (sections == null || part == null)
+            {
+                return;
+            }
+
+            if (!string.IsNullOrWhiteSpace(part.PotentialTierText))
+            {
+                sections.Add(new TooltipSection(part.PotentialTierText, new Color(214, 190, 255)));
+            }
+
+            if (part.PotentialLines == null)
+            {
+                return;
+            }
+
+            for (int i = 0; i < part.PotentialLines.Count; i++)
+            {
+                if (!string.IsNullOrWhiteSpace(part.PotentialLines[i]))
+                {
+                    sections.Add(new TooltipSection(part.PotentialLines[i], new Color(236, 224, 255)));
+                }
+            }
+        }
+
+        private static string BuildExpirationLine(CharacterPart part)
+        {
+            return !part?.ExpirationDateUtc.HasValue ?? true
+                ? string.Empty
+                : $"Expires {part.ExpirationDateUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)}";
+        }
+
+        private static bool MeetsEquipRequirements(CharacterPart part, CharacterBuild build)
+        {
+            if (part == null || build == null)
+            {
+                return false;
+            }
+
+            return (part.RequiredLevel <= 0 || build.Level >= part.RequiredLevel)
+                   && (part.RequiredSTR <= 0 || build.TotalSTR >= part.RequiredSTR)
+                   && (part.RequiredDEX <= 0 || build.TotalDEX >= part.RequiredDEX)
+                   && (part.RequiredINT <= 0 || build.TotalINT >= part.RequiredINT)
+                   && (part.RequiredLUK <= 0 || build.TotalLUK >= part.RequiredLUK)
+                   && (part.RequiredFame <= 0 || build.Fame >= part.RequiredFame)
+                   && (part.RequiredJobMask == 0 || MatchesRequiredJobMask(part.RequiredJobMask, build.Job));
+        }
+
+        private static bool MatchesRequiredJobMask(int requiredJobMask, int jobId)
+        {
+            if (requiredJobMask == 0)
+            {
+                return true;
+            }
+
+            int jobGroup = Math.Abs(jobId) / 100;
+            return jobGroup switch
+            {
+                0 => (requiredJobMask & 1) != 0,
+                1 => (requiredJobMask & 2) != 0,
+                2 => (requiredJobMask & 4) != 0,
+                3 => (requiredJobMask & 8) != 0,
+                4 => (requiredJobMask & 16) != 0,
+                5 => (requiredJobMask & 32) != 0,
+                _ => false
+            };
+        }
+
+        private static string ResolveRequiredJobNames(int requiredJobMask)
+        {
+            if (requiredJobMask == 0)
+            {
+                return string.Empty;
+            }
+
+            List<string> jobNames = new();
+            AppendRequiredJobName(jobNames, requiredJobMask, 1, "Beginner");
+            AppendRequiredJobName(jobNames, requiredJobMask, 2, "Warrior");
+            AppendRequiredJobName(jobNames, requiredJobMask, 4, "Magician");
+            AppendRequiredJobName(jobNames, requiredJobMask, 8, "Bowman");
+            AppendRequiredJobName(jobNames, requiredJobMask, 16, "Thief");
+            AppendRequiredJobName(jobNames, requiredJobMask, 32, "Pirate");
+            return string.Join("/", jobNames);
+        }
+
+        private static void AppendRequiredJobName(List<string> jobNames, int requiredJobMask, int maskBit, string jobName)
+        {
+            if ((requiredJobMask & maskBit) != 0)
+            {
+                jobNames.Add(jobName);
+            }
+        }
+
+        private static void AppendStatSegment(List<string> segments, string label, int value)
+        {
+            if (value > 0)
+            {
+                segments.Add($"{label} +{value}");
+            }
+        }
+
+        private static void AppendRequirementSegment(List<string> segments, string label, int value)
+        {
+            if (value > 0)
+            {
+                segments.Add($"{label} {value}");
+            }
         }
 
         private static string ResolveDisplayText(params string[] candidates)

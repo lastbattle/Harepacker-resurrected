@@ -9,6 +9,7 @@ using System.Buffers.Binary;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Text;
 
 namespace HaCreator.MapSimulator.Interaction
 {
@@ -379,7 +380,16 @@ namespace HaCreator.MapSimulator.Interaction
             public bool ReturnOnClose { get; }
         }
 
-        private readonly record struct PacketOwnedTradeItem(byte SlotType, long SerialNumber, int ItemId, int Quantity, InventoryType InventoryType);
+        private readonly record struct PacketOwnedTradeItem(
+            byte SlotType,
+            long SerialNumber,
+            int ItemId,
+            int Quantity,
+            InventoryType InventoryType,
+            bool HasCashSerialNumber,
+            long CashSerialNumber,
+            string Title);
+        private readonly record struct MiniRoomBaseEnterResultPayload(int RoomType, int ResultCode, int MaxUsers, int MyPosition, int OccupantCount);
         private readonly record struct OmokMoveHistoryEntry(int X, int Y, int StoneValue, int SeatIndex);
         private readonly record struct TradeVerificationEntry(int ItemId, uint Checksum);
 
@@ -1094,9 +1104,19 @@ namespace HaCreator.MapSimulator.Interaction
 
         public SocialRoomFieldActorSnapshot GetFieldActorSnapshot(DateTime utcNow)
         {
+            return GetFieldActorSnapshot(utcNow, null);
+        }
+
+        internal SocialRoomFieldActorSnapshot GetFieldActorSnapshot(DateTime utcNow, SocialRoomEmployeePoolEntryState pooledEmployeeOverride)
+        {
             RefreshTimedState(utcNow);
 
-            bool hasPooledEmployee = TryGetVisibleEmployeePoolEntry(out SocialRoomEmployeePoolEntryState pooledEmployee);
+            SocialRoomEmployeePoolEntryState pooledEmployee = pooledEmployeeOverride;
+            bool hasPooledEmployee = pooledEmployee != null && pooledEmployee.IsVisible;
+            if (!hasPooledEmployee)
+            {
+                hasPooledEmployee = TryGetVisibleEmployeePoolEntry(out pooledEmployee);
+            }
             if (_employeeHasPacketData
                 && !hasPooledEmployee
                 && (Kind == SocialRoomKind.PersonalShop || Kind == SocialRoomKind.EntrustedShop))
@@ -1109,7 +1129,7 @@ namespace HaCreator.MapSimulator.Interaction
                 int templateId = hasPooledEmployee ? pooledEmployee.TemplateId : _employeeTemplateId;
                 bool usesCashEmployee = templateId > 0;
                 string headline = ResolveEmployeeDisplayHeadline("Hired Merchant");
-                string detail = $"{ResolveEmployeeDisplayOwnerName()} | {RoomState}";
+                string detail = $"{ResolveEmployeeDisplayOwnerName(pooledEmployee)} | {RoomState}";
                 return new SocialRoomFieldActorSnapshot(
                     Kind,
                     usesCashEmployee ? SocialRoomFieldActorTemplate.CashEmployee : SocialRoomFieldActorTemplate.Merchant,
@@ -1164,7 +1184,7 @@ namespace HaCreator.MapSimulator.Interaction
             int entrustedTemplateId = hasPooledEmployee ? pooledEmployee.TemplateId : _employeeTemplateId;
             bool usesCashEmployeeForEntrusted = entrustedTemplateId > 0;
             string entrustedHeadline = ResolveEmployeeDisplayHeadline("Entrusted Shop");
-            string entrustedDetail = $"{ResolveEmployeeDisplayOwnerName()} | {RoomState} | {permitStatus}";
+            string entrustedDetail = $"{ResolveEmployeeDisplayOwnerName(pooledEmployee)} | {RoomState} | {permitStatus}";
             return new SocialRoomFieldActorSnapshot(
                 Kind,
                 usesCashEmployeeForEntrusted ? SocialRoomFieldActorTemplate.CashEmployee : SocialRoomFieldActorTemplate.Merchant,
@@ -1898,7 +1918,15 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            if (!TryDecodePacketOwnedItemBody(payload.Slice(1), slotType, out long serialNumber, out int itemId, out int quantity))
+            if (!TryDecodePacketOwnedItemBody(
+                payload.Slice(1),
+                slotType,
+                out long serialNumber,
+                out int itemId,
+                out int quantity,
+                out bool hasCashSerialNumber,
+                out long cashSerialNumber,
+                out string title))
             {
                 error = "Trading-room item payload did not contain a recognizable MapleStory item row.";
                 return false;
@@ -1911,120 +1939,191 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            item = new PacketOwnedTradeItem(slotType, serialNumber, itemId, quantity, inventoryType);
+            item = new PacketOwnedTradeItem(
+                slotType,
+                serialNumber,
+                itemId,
+                quantity,
+                inventoryType,
+                hasCashSerialNumber,
+                cashSerialNumber,
+                title);
             return true;
         }
 
-        private static bool TryDecodePacketOwnedItemBody(ReadOnlySpan<byte> payload, byte slotType, out long serialNumber, out int itemId, out int quantity)
+        private static bool TryDecodePacketOwnedItemBody(
+            ReadOnlySpan<byte> payload,
+            byte slotType,
+            out long serialNumber,
+            out int itemId,
+            out int quantity,
+            out bool hasCashSerialNumber,
+            out long cashSerialNumber,
+            out string title)
         {
             serialNumber = 0;
             itemId = 0;
             quantity = 1;
-            if (payload.Length < sizeof(long) + sizeof(int))
+            hasCashSerialNumber = false;
+            cashSerialNumber = 0;
+            title = string.Empty;
+
+            using MemoryStream stream = new MemoryStream(payload.ToArray(), writable: false);
+            using BinaryReader reader = new BinaryReader(stream, Encoding.ASCII, leaveOpen: false);
+            if (stream.Length - stream.Position < sizeof(int) + sizeof(byte) + sizeof(long))
             {
                 return false;
             }
 
-            serialNumber = BinaryPrimitives.ReadInt64LittleEndian(payload);
-            int preferredItemIdOffset = sizeof(long);
-            int candidateItemId = BinaryPrimitives.ReadInt32LittleEndian(payload.Slice(preferredItemIdOffset, sizeof(int)));
-            if (candidateItemId > 0 && InventoryItemMetadataResolver.ResolveInventoryType(candidateItemId) != InventoryType.NONE)
-            {
-                itemId = candidateItemId;
-                quantity = slotType == 2 && payload.Length >= preferredItemIdOffset + sizeof(int) + sizeof(short)
-                    ? Math.Max(1, (int)BinaryPrimitives.ReadInt16LittleEndian(payload.Slice(preferredItemIdOffset + sizeof(int), sizeof(short))))
-                    : 1;
-                return true;
-            }
-
-            if (!TryFindPacketOwnedItemId(payload, out itemId, out int itemIdOffset))
+            itemId = reader.ReadInt32();
+            if (itemId <= 0 || InventoryItemMetadataResolver.ResolveInventoryType(itemId) == InventoryType.NONE)
             {
                 return false;
             }
 
-            quantity = slotType == 2
-                ? ResolvePacketOwnedTradeQuantity(payload, itemIdOffset)
-                : 1;
-            return itemId > 0;
-        }
-
-        private static bool TryFindPacketOwnedItemId(ReadOnlySpan<byte> payload, out int itemId, out int itemIdOffset)
-        {
-            itemId = 0;
-            itemIdOffset = -1;
-
-            foreach (int offset in EnumerateLikelyPacketItemIdOffsets(payload.Length))
+            hasCashSerialNumber = reader.ReadByte() != 0;
+            if (hasCashSerialNumber)
             {
-                if (offset < 0 || offset + sizeof(int) > payload.Length)
+                if (stream.Length - stream.Position < sizeof(long))
                 {
-                    continue;
+                    return false;
                 }
 
-                int candidate = BinaryPrimitives.ReadInt32LittleEndian(payload.Slice(offset, sizeof(int)));
-                if (candidate <= 0 || InventoryItemMetadataResolver.ResolveInventoryType(candidate) == InventoryType.NONE)
-                {
-                    continue;
-                }
-
-                itemId = candidate;
-                itemIdOffset = offset;
-                return true;
+                cashSerialNumber = reader.ReadInt64();
             }
 
-            return false;
-        }
-
-        private static IEnumerable<int> EnumerateLikelyPacketItemIdOffsets(int payloadLength)
-        {
-            int[] preferredOffsets = { 8, 4, 12, 0, 16, 20, 24, 28, 32 };
-            foreach (int offset in preferredOffsets)
+            if (stream.Length - stream.Position < sizeof(long))
             {
-                if (offset + sizeof(int) <= payloadLength)
-                {
-                    yield return offset;
-                }
+                return false;
             }
 
-            for (int offset = 0; offset + sizeof(int) <= payloadLength && offset <= 40; offset++)
+            serialNumber = reader.ReadInt64();
+            return slotType switch
             {
-                if (!preferredOffsets.Contains(offset))
-                {
-                    yield return offset;
-                }
-            }
-        }
-
-        private static int ResolvePacketOwnedTradeQuantity(ReadOnlySpan<byte> payload, int itemIdOffset)
-        {
-            int[] candidateOffsets =
-            {
-                itemIdOffset + sizeof(int),
-                itemIdOffset + sizeof(int) + 1,
-                itemIdOffset + sizeof(int) + sizeof(short),
-                itemIdOffset - sizeof(short),
+                1 => TryDecodePacketOwnedEquipBody(reader, hasCashSerialNumber, out title),
+                2 => TryDecodePacketOwnedBundleBody(reader, itemId, out quantity, out title),
+                3 => TryDecodePacketOwnedPetBody(reader, out title),
+                _ => false
             };
-
-            foreach (int offset in candidateOffsets)
-            {
-                if (offset < 0 || offset + sizeof(short) > payload.Length)
-                {
-                    continue;
-                }
-
-                short quantity = BinaryPrimitives.ReadInt16LittleEndian(payload.Slice(offset, sizeof(short)));
-                if (quantity > 0 && quantity <= short.MaxValue)
-                {
-                    return quantity;
-                }
-            }
-
-            return 1;
         }
 
         private static string BuildTradingRoomPacketItemDetail(string ownerLabel, int slotIndex, PacketOwnedTradeItem item)
         {
             string serialText = item.SerialNumber > 0 ? $" | Serial {item.SerialNumber}" : string.Empty;
-            return $"{ownerLabel} offer | Packet slot {slotIndex} | {item.InventoryType}{serialText}";
+            string cashText = item.HasCashSerialNumber && item.CashSerialNumber > 0
+                ? $" | CashSN {item.CashSerialNumber}"
+                : string.Empty;
+            string titleText = string.IsNullOrWhiteSpace(item.Title)
+                ? string.Empty
+                : $" | Title {item.Title}";
+            return $"{ownerLabel} offer | Packet slot {slotIndex} | {item.InventoryType}{serialText}{cashText}{titleText}";
+        }
+
+        private static bool TryDecodePacketOwnedEquipBody(BinaryReader reader, bool hasCashSerialNumber, out string title)
+        {
+            title = string.Empty;
+            Stream stream = reader.BaseStream;
+            const int equipStatsByteLength = (sizeof(byte) * 2) + (sizeof(short) * 15);
+            if (stream.Length - stream.Position < equipStatsByteLength)
+            {
+                return false;
+            }
+
+            stream.Position += equipStatsByteLength;
+            if (!TryReadTradePacketMapleString(reader, out title))
+            {
+                return false;
+            }
+
+            const int tailLength = sizeof(short) + (sizeof(byte) * 2) + (sizeof(int) * 3) + (sizeof(byte) * 2) + (sizeof(short) * 5);
+            if (stream.Length - stream.Position < tailLength + sizeof(long) + sizeof(int))
+            {
+                return false;
+            }
+
+            stream.Position += tailLength;
+            if (!hasCashSerialNumber)
+            {
+                if (stream.Length - stream.Position < sizeof(long))
+                {
+                    return false;
+                }
+
+                stream.Position += sizeof(long);
+            }
+
+            stream.Position += sizeof(long) + sizeof(int);
+            return true;
+        }
+
+        private static bool TryDecodePacketOwnedBundleBody(BinaryReader reader, int itemId, out int quantity, out string title)
+        {
+            quantity = 1;
+            title = string.Empty;
+            Stream stream = reader.BaseStream;
+            if (stream.Length - stream.Position < sizeof(ushort))
+            {
+                return false;
+            }
+
+            quantity = Math.Max(1, (int)reader.ReadUInt16());
+            if (!TryReadTradePacketMapleString(reader, out title))
+            {
+                return false;
+            }
+
+            if (stream.Length - stream.Position < sizeof(short))
+            {
+                return false;
+            }
+
+            _ = reader.ReadInt16();
+            if (itemId / 10000 is 207 or 233)
+            {
+                if (stream.Length - stream.Position < sizeof(long))
+                {
+                    return false;
+                }
+
+                _ = reader.ReadInt64();
+            }
+
+            return true;
+        }
+
+        private static bool TryDecodePacketOwnedPetBody(BinaryReader reader, out string title)
+        {
+            title = string.Empty;
+            Stream stream = reader.BaseStream;
+            const int petNameLength = 13;
+            const int petTailLength = sizeof(byte) + sizeof(short) + sizeof(byte) + sizeof(long) + sizeof(short) + sizeof(ushort) + sizeof(int) + sizeof(short);
+            if (stream.Length - stream.Position < petNameLength + petTailLength)
+            {
+                return false;
+            }
+
+            title = Encoding.ASCII.GetString(reader.ReadBytes(petNameLength)).TrimEnd('\0', ' ');
+            stream.Position += petTailLength;
+            return true;
+        }
+
+        private static bool TryReadTradePacketMapleString(BinaryReader reader, out string value)
+        {
+            value = string.Empty;
+            Stream stream = reader.BaseStream;
+            if (stream.Length - stream.Position < sizeof(short))
+            {
+                return false;
+            }
+
+            short length = reader.ReadInt16();
+            if (length < 0 || stream.Length - stream.Position < length)
+            {
+                return false;
+            }
+
+            value = Encoding.ASCII.GetString(reader.ReadBytes(length)).TrimEnd('\0', ' ');
+            return true;
         }
 
         private string ResolveTradeOwnerName(int traderIndex)
@@ -2095,40 +2194,160 @@ namespace HaCreator.MapSimulator.Interaction
 
         private bool TryApplyMiniRoomBaseEnterResultPacket(PacketReader reader, out string message)
         {
+            switch (Kind)
+            {
+                case SocialRoomKind.PersonalShop:
+                    return TryApplyPersonalShopEnterResultPacket(reader, out message);
+                case SocialRoomKind.EntrustedShop:
+                    return TryApplyEntrustedShopEnterResultPacket(reader, out message);
+                default:
+                    if (!TryDecodeMiniRoomBaseEnterResultPayload(reader, out MiniRoomBaseEnterResultPayload payload, out message))
+                    {
+                        return false;
+                    }
+
+                    ApplyGenericMiniRoomBaseEnterResultStatus(payload);
+                    message = StatusMessage;
+                    return true;
+            }
+        }
+
+        private bool TryApplyPersonalShopEnterResultPacket(PacketReader reader, out string message)
+        {
+            string title = reader.ReadMapleString();
+            int itemMaxCount = reader.ReadByte();
+            if (!TryDecodeMiniRoomBaseEnterResultPayload(reader, out MiniRoomBaseEnterResultPayload payload, out message))
+            {
+                return false;
+            }
+
+            RoomTitle = string.IsNullOrWhiteSpace(title) ? RoomTitle : title.Trim();
+            EnsureMerchantPacketNotes();
+            _notes[0] = $"CPersonalShopDlg::OnEnterResult refreshed the room title to '{RoomTitle}' with client item cap {Math.Max(0, itemMaxCount)}.";
+            if (payload.RoomType <= 0)
+            {
+                RoomState = "Enter result";
+                StatusMessage = $"CPersonalShopDlg::OnEnterResult refreshed title '{RoomTitle}' and item cap {Math.Max(0, itemMaxCount)}, then followed the shared client result branch for room type {payload.RoomType}. {ResolveMiniRoomEnterResultStatusMessage(payload.ResultCode)}";
+            }
+            else
+            {
+                RoomState = "Visitor update";
+                ModeName = payload.MyPosition == 0 ? "Open shop" : "Browsing";
+                StatusMessage = $"CPersonalShopDlg::OnEnterResult refreshed title '{RoomTitle}', item cap {Math.Max(0, itemMaxCount)}, and synchronized {payload.OccupantCount} occupant entr{(payload.OccupantCount == 1 ? "y" : "ies")} for {ResolveMiniRoomTypeLabel(payload.RoomType)}. Local seat {Math.Max(0, payload.MyPosition)} with client max-users {Math.Max(0, payload.MaxUsers)}.";
+            }
+
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        private bool TryApplyEntrustedShopEnterResultPacket(PacketReader reader, out string message)
+        {
+            int chatCount = reader.ReadShort();
+            List<SocialRoomChatEntry> decodedChatEntries = new();
+            for (int i = 0; i < Math.Max(0, chatCount); i++)
+            {
+                decodedChatEntries.Add(new SocialRoomChatEntry(reader.ReadMapleString(), SocialRoomChatTone.Neutral));
+                reader.ReadByte();
+            }
+
+            string employerName = NormalizeName(reader.ReadMapleString());
+            int branchStart = reader.Position;
+            MiniRoomBaseEnterResultPayload ownerPayload = default;
+            string ownerPayloadError = null;
+            string ownerDecodeError = null;
+            bool decodedOwnerLedger = TryDecodeEntrustedShopOwnerEnterLedger(reader, out int permitData, out bool soldDialogVisible, out List<SocialRoomSoldItemEntry> soldItems, out long totalReceived, out ownerDecodeError)
+                && TryDecodeMiniRoomBaseEnterResultPayload(reader, out ownerPayload, out ownerPayloadError);
+
+            MiniRoomBaseEnterResultPayload payload;
+            if (decodedOwnerLedger)
+            {
+                payload = ownerPayload;
+            }
+            else
+            {
+                reader.Reset(branchStart);
+                if (!TryDecodeMiniRoomBaseEnterResultPayload(reader, out payload, out message))
+                {
+                    message = ownerDecodeError ?? ownerPayloadError ?? message;
+                    return false;
+                }
+
+                permitData = 0;
+                soldDialogVisible = false;
+                soldItems = null;
+                totalReceived = 0;
+            }
+
+            if (!string.IsNullOrWhiteSpace(employerName))
+            {
+                OwnerName = employerName;
+            }
+
+            _chatEntries.Clear();
+            foreach (SocialRoomChatEntry entry in decodedChatEntries)
+            {
+                AddMiniRoomChatEntry(entry.Text, entry.Tone);
+            }
+
+            if (decodedOwnerLedger)
+            {
+                _soldItems.Clear();
+                _soldItems.AddRange(soldItems);
+            }
+
+            string title = reader.ReadMapleString();
+            int itemMaxCount = reader.ReadByte();
+            RoomTitle = string.IsNullOrWhiteSpace(title) ? RoomTitle : title.Trim();
+
+            EnsureMerchantPacketNotes();
+            _notes[0] = decodedChatEntries.Count > 0
+                ? $"Entrusted-shop enter-result restored {decodedChatEntries.Count} packet-owned chat entr{(decodedChatEntries.Count == 1 ? "y" : "ies")}."
+                : "Entrusted-shop enter-result restored an empty packet-owned chat history.";
+            _notes[1] = string.IsNullOrWhiteSpace(employerName)
+                ? $"Entrusted-shop enter-result refreshed title '{RoomTitle}'."
+                : $"Entrusted-shop employer '{employerName}' refreshed title '{RoomTitle}'.";
+            if (decodedOwnerLedger)
+            {
+                _notes[2] = _soldItems.Count > 0
+                    ? $"Entrusted-shop owner ledger restored {_soldItems.Count} sold entr{(_soldItems.Count == 1 ? "y" : "ies")} with total received {Math.Max(0L, totalReceived):N0} meso."
+                    : $"Entrusted-shop owner ledger restored an empty sold list with total received {Math.Max(0L, totalReceived):N0} meso.";
+                _notes[3] = $"Entrusted-shop owner enter-result kept permit field {permitData} and {(soldDialogVisible ? "opened" : "suppressed")} the sold-item dialog.";
+            }
+            else
+            {
+                _notes[2] = "Entrusted-shop visitor enter-result did not include the owner-only sold ledger preamble.";
+                _notes[3] = $"Entrusted-shop enter-result refreshed the client item cap to {Math.Max(0, itemMaxCount)}.";
+            }
+
+            if (payload.RoomType <= 0)
+            {
+                RoomState = "Enter result";
+                StatusMessage = decodedOwnerLedger
+                    ? $"CEntrustedShopDlg::OnEnterResult restored employer '{OwnerName}', title '{RoomTitle}', {_soldItems.Count} sold entr{(_soldItems.Count == 1 ? "y" : "ies")}, and {decodedChatEntries.Count} chat entr{(decodedChatEntries.Count == 1 ? "y" : "ies")} before following the shared client result branch for room type {payload.RoomType}. {ResolveMiniRoomEnterResultStatusMessage(payload.ResultCode)}"
+                    : $"CEntrustedShopDlg::OnEnterResult restored employer '{OwnerName}', title '{RoomTitle}', and {decodedChatEntries.Count} chat entr{(decodedChatEntries.Count == 1 ? "y" : "ies")} before following the shared client result branch for room type {payload.RoomType}. {ResolveMiniRoomEnterResultStatusMessage(payload.ResultCode)}";
+            }
+            else
+            {
+                RoomState = "Ledger review";
+                ModeName = decodedOwnerLedger ? "Ledger review" : "Open shop";
+                StatusMessage = decodedOwnerLedger
+                    ? $"CEntrustedShopDlg::OnEnterResult restored employer '{OwnerName}', title '{RoomTitle}', {_soldItems.Count} sold entr{(_soldItems.Count == 1 ? "y" : "ies")}, total received {Math.Max(0L, totalReceived):N0} meso, and synchronized {payload.OccupantCount} occupant entr{(payload.OccupantCount == 1 ? "y" : "ies")} for {ResolveMiniRoomTypeLabel(payload.RoomType)}. Local seat {Math.Max(0, payload.MyPosition)} with client max-users {Math.Max(0, payload.MaxUsers)}."
+                    : $"CEntrustedShopDlg::OnEnterResult restored employer '{OwnerName}', title '{RoomTitle}', and synchronized {payload.OccupantCount} occupant entr{(payload.OccupantCount == 1 ? "y" : "ies")} for {ResolveMiniRoomTypeLabel(payload.RoomType)}. Local seat {Math.Max(0, payload.MyPosition)} with client max-users {Math.Max(0, payload.MaxUsers)}.";
+            }
+
+            PersistState();
+            message = StatusMessage;
+            return true;
+        }
+
+        private bool TryDecodeMiniRoomBaseEnterResultPayload(PacketReader reader, out MiniRoomBaseEnterResultPayload payload, out string message)
+        {
             int roomType = reader.ReadByte();
             if (roomType <= 0)
             {
-                int resultCode = reader.ReadByte();
-                RoomState = "Enter result";
-                StatusMessage = resultCode switch
-                {
-                    1 => "Mini-room enter result code 1 followed the client notice branch for StringPool id 0x199.",
-                    2 => "Mini-room enter result code 2 followed the client notice branch for StringPool id 0x19A.",
-                    3 => "Mini-room enter result code 3 followed the client notice branch for StringPool id 0x19B.",
-                    4 => "Mini-room enter result code 4 followed the client notice branch for StringPool id 0x19C.",
-                    5 => "Mini-room enter result code 5 followed the client notice branch for StringPool id 0x19D.",
-                    6 => "Mini-room enter result code 6 followed the client notice branch for StringPool id 0x19E.",
-                    7 => "Mini-room enter result code 7 followed the client notice branch for StringPool id 0x19F.",
-                    9 => "Mini-room enter result code 9 followed the client notice branch for StringPool id 0x1A1.",
-                    10 => "Mini-room enter result code 10 followed the client notice branch for StringPool id 0xDB5.",
-                    11 => "Mini-room enter result code 11 followed the client notice branch for StringPool id 0x1C1.",
-                    12 => "Mini-room enter result code 12 followed the client notice branch for StringPool id 0x14A2.",
-                    13 => "Mini-room enter result code 13 followed the client notice branch for StringPool id 0x1A0.",
-                    14 => "Mini-room enter result code 14 followed the client notice branch for StringPool id 0x1C1.",
-                    15 => "Mini-room enter result code 15 followed the client notice branch for StringPool id 0x1C2.",
-                    16 => "Mini-room enter result code 16 followed the client notice branch for StringPool id 0x1C3.",
-                    17 => "Mini-room enter result code 17 followed the client notice branch for StringPool id 0x1BB.",
-                    18 => "Mini-room enter result code 18 followed the client notice branch for StringPool id 0xDAE.",
-                    19 => "Mini-room enter result code 19 followed the client notice branch for StringPool id 0x1E7.",
-                    20 => "Mini-room enter result code 20 followed the client notice branch for StringPool id 0x19F.",
-                    21 => "Mini-room enter result code 21 followed the client notice branch for StringPool id 0x1C0.",
-                    22 => "Mini-room enter result code 22 followed the client notice branch for StringPool id 0x1A68.",
-                    24 => "Mini-room enter result code 24 followed the client notice branch for StringPool id 0x14DB.",
-                    25 => "Mini-room enter result code 25 followed the client notice branch for StringPool id 0x116.",
-                    _ => $"Mini-room enter result code {resultCode} reached the shared enter-result seam without a named client notice branch."
-                };
-                PersistState();
-                message = StatusMessage;
+                payload = new MiniRoomBaseEnterResultPayload(roomType, reader.ReadByte(), 0, 0, 0);
+                message = null;
                 return true;
             }
 
@@ -2157,6 +2376,7 @@ namespace HaCreator.MapSimulator.Interaction
 
                 if (!TryReadPacketOwnedAvatarLook(reader, out LoginAvatarLook avatarLook, out string error))
                 {
+                    payload = default;
                     message = error;
                     return false;
                 }
@@ -2167,10 +2387,104 @@ namespace HaCreator.MapSimulator.Interaction
                 occupantCount++;
             }
 
-            RoomState = Kind == SocialRoomKind.MiniRoom ? "Enter result" : "Visitor update";
-            StatusMessage = $"Mini-room enter-result synchronized {occupantCount} occupant entr{(occupantCount == 1 ? "y" : "ies")} for {ResolveMiniRoomTypeLabel(roomType)}. Local seat {Math.Max(0, myPosition)} with client max-users {Math.Max(0, maxUsers)}.";
+            payload = new MiniRoomBaseEnterResultPayload(roomType, 0, maxUsers, myPosition, occupantCount);
+            message = null;
+            return true;
+        }
+
+        private void ApplyGenericMiniRoomBaseEnterResultStatus(MiniRoomBaseEnterResultPayload payload)
+        {
+            if (payload.RoomType <= 0)
+            {
+                RoomState = "Enter result";
+                StatusMessage = ResolveMiniRoomEnterResultStatusMessage(payload.ResultCode);
+            }
+            else
+            {
+                RoomState = Kind == SocialRoomKind.MiniRoom ? "Enter result" : "Visitor update";
+                StatusMessage = $"Mini-room enter-result synchronized {payload.OccupantCount} occupant entr{(payload.OccupantCount == 1 ? "y" : "ies")} for {ResolveMiniRoomTypeLabel(payload.RoomType)}. Local seat {Math.Max(0, payload.MyPosition)} with client max-users {Math.Max(0, payload.MaxUsers)}.";
+            }
+
             PersistState();
-            message = StatusMessage;
+        }
+
+        private string ResolveMiniRoomEnterResultStatusMessage(int resultCode)
+        {
+            return resultCode switch
+            {
+                1 => "Mini-room enter result code 1 followed the client notice branch for StringPool id 0x199.",
+                2 => "Mini-room enter result code 2 followed the client notice branch for StringPool id 0x19A.",
+                3 => "Mini-room enter result code 3 followed the client notice branch for StringPool id 0x19B.",
+                4 => "Mini-room enter result code 4 followed the client notice branch for StringPool id 0x19C.",
+                5 => "Mini-room enter result code 5 followed the client notice branch for StringPool id 0x19D.",
+                6 => "Mini-room enter result code 6 followed the client notice branch for StringPool id 0x19E.",
+                7 => "Mini-room enter result code 7 followed the client notice branch for StringPool id 0x19F.",
+                9 => "Mini-room enter result code 9 followed the client notice branch for StringPool id 0x1A1.",
+                10 => "Mini-room enter result code 10 followed the client notice branch for StringPool id 0xDB5.",
+                11 => "Mini-room enter result code 11 followed the client notice branch for StringPool id 0x1C1.",
+                12 => "Mini-room enter result code 12 followed the client notice branch for StringPool id 0x14A2.",
+                13 => "Mini-room enter result code 13 followed the client notice branch for StringPool id 0x1A0.",
+                14 => "Mini-room enter result code 14 followed the client notice branch for StringPool id 0x1C1.",
+                15 => "Mini-room enter result code 15 followed the client notice branch for StringPool id 0x1C2.",
+                16 => "Mini-room enter result code 16 followed the client notice branch for StringPool id 0x1C3.",
+                17 => "Mini-room enter result code 17 followed the client notice branch for StringPool id 0x1BB.",
+                18 => "Mini-room enter result code 18 followed the client notice branch for StringPool id 0xDAE.",
+                19 => "Mini-room enter result code 19 followed the client notice branch for StringPool id 0x1E7.",
+                20 => "Mini-room enter result code 20 followed the client notice branch for StringPool id 0x19F.",
+                21 => "Mini-room enter result code 21 followed the client notice branch for StringPool id 0x1C0.",
+                22 => "Mini-room enter result code 22 followed the client notice branch for StringPool id 0x1A68.",
+                24 => "Mini-room enter result code 24 followed the client notice branch for StringPool id 0x14DB.",
+                25 => "Mini-room enter result code 25 followed the client notice branch for StringPool id 0x116.",
+                _ => $"Mini-room enter result code {resultCode} reached the shared enter-result seam without a named client notice branch."
+            };
+        }
+
+        private bool TryDecodeEntrustedShopOwnerEnterLedger(
+            PacketReader reader,
+            out int permitData,
+            out bool soldDialogVisible,
+            out List<SocialRoomSoldItemEntry> soldItems,
+            out long totalReceived,
+            out string message)
+        {
+            permitData = reader.ReadInt();
+            soldDialogVisible = reader.ReadByte() != 0;
+            if (!TryDecodeEntrustedSoldItemList(reader, out soldItems, out totalReceived, out message))
+            {
+                return false;
+            }
+
+            message = null;
+            return true;
+        }
+
+        private bool TryDecodeEntrustedSoldItemList(PacketReader reader, out List<SocialRoomSoldItemEntry> soldItems, out long totalReceived, out string message)
+        {
+            soldItems = new List<SocialRoomSoldItemEntry>();
+            int count = reader.ReadByte();
+            for (int i = 0; i < count; i++)
+            {
+                int itemId = reader.ReadInt();
+                int quantitySold = Math.Max((short) 1, reader.ReadShort());
+                int grossMeso = Math.Max(0, reader.ReadInt());
+                string buyerName = NormalizeName(reader.ReadMapleString());
+                int taxMeso = GetPersonalShopTax(grossMeso);
+                int netMeso = Math.Max(0, grossMeso - taxMeso);
+                soldItems.Add(new SocialRoomSoldItemEntry(
+                    itemId,
+                    ResolveItemName(itemId),
+                    buyerName,
+                    quantitySold,
+                    1,
+                    grossMeso,
+                    grossMeso,
+                    taxMeso,
+                    netMeso,
+                    i));
+            }
+
+            totalReceived = Math.Max(0L, reader.ReadLong());
+            message = null;
             return true;
         }
 
@@ -5303,12 +5617,18 @@ namespace HaCreator.MapSimulator.Interaction
             return string.IsNullOrWhiteSpace(headline) ? fallbackHeadline : headline;
         }
 
-        private string ResolveEmployeeDisplayOwnerName()
+        private string ResolveEmployeeDisplayOwnerName(SocialRoomEmployeePoolEntryState pooledEmployee = null)
         {
-            if (TryGetVisibleEmployeePoolEntry(out SocialRoomEmployeePoolEntryState pooledEmployee)
-                && !string.IsNullOrWhiteSpace(pooledEmployee.NameTag))
+            if (pooledEmployee != null && !string.IsNullOrWhiteSpace(pooledEmployee.NameTag))
             {
                 return pooledEmployee.NameTag;
+            }
+
+            if (pooledEmployee == null
+                && TryGetVisibleEmployeePoolEntry(out SocialRoomEmployeePoolEntryState visiblePooledEmployee)
+                && !string.IsNullOrWhiteSpace(visiblePooledEmployee.NameTag))
+            {
+                return visiblePooledEmployee.NameTag;
             }
 
             if (_employeeHasPacketData && !string.IsNullOrWhiteSpace(_employeePacketNameTag))

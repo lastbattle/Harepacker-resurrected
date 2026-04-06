@@ -12,6 +12,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.IO;
 using System.Linq;
+using System.Net;
 using System.Text;
 
 namespace HaCreator.MapSimulator.Fields
@@ -1783,7 +1784,7 @@ namespace HaCreator.MapSimulator.Fields
                     definition.Value.FallbackFormat,
                     normalizedName,
                     entry.Name);
-                return FormatStringPoolMessage(definition.Value, fallback);
+                return FormatStringPoolMessage(definition.Value, fallback, normalizedName, entry.Name);
             }
 
             string fallbackMessage = entry.Tab switch
@@ -1795,7 +1796,7 @@ namespace HaCreator.MapSimulator.Fields
             };
 
             return definition.HasValue
-                ? FormatStringPoolMessage(definition.Value, fallbackMessage)
+                ? $"{fallbackMessage} {BuildStringPoolSuffix(definition.Value.StringPoolId)}"
                 : fallbackMessage;
         }
 
@@ -1999,6 +2000,7 @@ namespace HaCreator.MapSimulator.Fields
             string text = args == null || args.Length == 0
                 ? format
                 : string.Format(CultureInfo.InvariantCulture, format, args);
+            text = NormalizeClientOwnedStatusText(text);
             return $"{text} {BuildStringPoolSuffix(definition.StringPoolId)}";
         }
 
@@ -2027,6 +2029,16 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return format;
+        }
+
+        private static string NormalizeClientOwnedStatusText(string text)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return string.Empty;
+            }
+
+            return WebUtility.UrlDecode(text)?.Trim() ?? text.Trim();
         }
 
         private static string BuildStringPoolSuffix(int primaryStringPoolId, params int[] relatedStringPoolIds)

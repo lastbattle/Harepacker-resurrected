@@ -470,7 +470,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private static int GetAnimationDuration(SkillAnimation animation)
         {
-            if (animation?.Frames.Count <= 0)
+            if (animation?.Frames == null || animation.Frames.Count <= 0)
             {
                 return 0;
             }

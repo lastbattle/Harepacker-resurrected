@@ -1127,7 +1127,12 @@ namespace HaCreator.MapSimulator.Fields
                 SnowBallMessageArgumentPattern.TeamOnly => new object[] { teamName },
                 _ => Array.Empty<object>()
             };
-            return string.Format(CultureInfo.InvariantCulture, template.FallbackFormat, args);
+            string format = MapleStoryStringPool.GetCompositeFormatOrFallback(
+                template.StringPoolId,
+                template.FallbackFormat,
+                args.Length,
+                out _);
+            return string.Format(CultureInfo.InvariantCulture, format, args);
         }
         private static string GetSnowBallTeamName(int? team)
         {

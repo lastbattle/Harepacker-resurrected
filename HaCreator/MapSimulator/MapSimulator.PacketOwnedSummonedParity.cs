@@ -2,6 +2,7 @@ using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.Pools;
 using Microsoft.Xna.Framework;
 using System;
+using System.Net;
 using System.Linq;
 
 namespace HaCreator.MapSimulator
@@ -9,15 +10,25 @@ namespace HaCreator.MapSimulator
     public partial class MapSimulator
     {
         private readonly SummonedPacketInboxManager _summonedPacketInbox = new();
+        private readonly SummonedOfficialSessionBridgeManager _summonedOfficialSessionBridge = new();
         private bool _summonedPacketInboxEnabled = EnablePacketConnectionsByDefault;
         private int _summonedPacketInboxConfiguredPort = SummonedPacketInboxManager.DefaultPort;
+        private bool _summonedOfficialSessionBridgeEnabled;
+        private bool _summonedOfficialSessionBridgeUseDiscovery;
+        private int _summonedOfficialSessionBridgeConfiguredListenPort = SummonedOfficialSessionBridgeManager.DefaultListenPort;
+        private string _summonedOfficialSessionBridgeConfiguredRemoteHost = "127.0.0.1";
+        private int _summonedOfficialSessionBridgeConfiguredRemotePort;
+        private string _summonedOfficialSessionBridgeConfiguredProcessSelector;
+        private int? _summonedOfficialSessionBridgeConfiguredLocalPort;
+        private const int SummonedOfficialSessionBridgeDiscoveryRefreshIntervalMs = 2000;
+        private int _nextSummonedOfficialSessionBridgeDiscoveryRefreshAt;
 
         private void RegisterSummonedPacketChatCommand()
         {
             _chat.CommandHandler.RegisterCommand(
                 "summonedpacket",
                 "Inspect or drive packet-owned summoned-pool traffic",
-                "/summonedpacket [status|packet <create|remove|move|attack|skill|hit|0x116-0x11B> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|inbox [status|start [port]|stop]]",
+                "/summonedpacket [status|packet <create|remove|move|attack|skill|hit|0x116-0x11B> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]]",
                 HandlePacketOwnedSummonedCommand);
         }
 
@@ -54,6 +65,107 @@ namespace HaCreator.MapSimulator
             }
         }
 
+        private void EnsureSummonedOfficialSessionBridgeState(bool shouldRun)
+        {
+            if (!shouldRun || !_summonedOfficialSessionBridgeEnabled)
+            {
+                if (_summonedOfficialSessionBridge.IsRunning)
+                {
+                    _summonedOfficialSessionBridge.Stop();
+                }
+
+                return;
+            }
+
+            if (_summonedOfficialSessionBridgeConfiguredListenPort <= 0
+                || _summonedOfficialSessionBridgeConfiguredListenPort > ushort.MaxValue)
+            {
+                if (_summonedOfficialSessionBridge.IsRunning)
+                {
+                    _summonedOfficialSessionBridge.Stop();
+                }
+
+                _summonedOfficialSessionBridgeEnabled = false;
+                _summonedOfficialSessionBridgeConfiguredListenPort = SummonedOfficialSessionBridgeManager.DefaultListenPort;
+                return;
+            }
+
+            if (_summonedOfficialSessionBridgeUseDiscovery)
+            {
+                if (_summonedOfficialSessionBridgeConfiguredRemotePort <= 0
+                    || _summonedOfficialSessionBridgeConfiguredRemotePort > ushort.MaxValue)
+                {
+                    if (_summonedOfficialSessionBridge.IsRunning)
+                    {
+                        _summonedOfficialSessionBridge.Stop();
+                    }
+
+                    return;
+                }
+
+                _summonedOfficialSessionBridge.TryRefreshFromDiscovery(
+                    _summonedOfficialSessionBridgeConfiguredListenPort,
+                    _summonedOfficialSessionBridgeConfiguredRemotePort,
+                    _summonedOfficialSessionBridgeConfiguredProcessSelector,
+                    _summonedOfficialSessionBridgeConfiguredLocalPort,
+                    out _);
+                return;
+            }
+
+            if (_summonedOfficialSessionBridgeConfiguredRemotePort <= 0
+                || _summonedOfficialSessionBridgeConfiguredRemotePort > ushort.MaxValue
+                || string.IsNullOrWhiteSpace(_summonedOfficialSessionBridgeConfiguredRemoteHost))
+            {
+                if (_summonedOfficialSessionBridge.IsRunning)
+                {
+                    _summonedOfficialSessionBridge.Stop();
+                }
+
+                return;
+            }
+
+            if (_summonedOfficialSessionBridge.IsRunning
+                && _summonedOfficialSessionBridge.ListenPort == _summonedOfficialSessionBridgeConfiguredListenPort
+                && string.Equals(_summonedOfficialSessionBridge.RemoteHost, _summonedOfficialSessionBridgeConfiguredRemoteHost, StringComparison.OrdinalIgnoreCase)
+                && _summonedOfficialSessionBridge.RemotePort == _summonedOfficialSessionBridgeConfiguredRemotePort)
+            {
+                return;
+            }
+
+            if (_summonedOfficialSessionBridge.TryStart(
+                    _summonedOfficialSessionBridgeConfiguredListenPort,
+                    _summonedOfficialSessionBridgeConfiguredRemoteHost,
+                    _summonedOfficialSessionBridgeConfiguredRemotePort,
+                    out string status))
+            {
+                _chat?.AddSystemMessage(status, currTickCount);
+            }
+            else
+            {
+                _chat?.AddErrorMessage(status, currTickCount);
+            }
+        }
+
+        private void RefreshSummonedOfficialSessionBridgeDiscovery(int currentTickCount)
+        {
+            if (!_summonedOfficialSessionBridgeEnabled
+                || !_summonedOfficialSessionBridgeUseDiscovery
+                || _summonedOfficialSessionBridgeConfiguredRemotePort <= 0
+                || currentTickCount < _nextSummonedOfficialSessionBridgeDiscoveryRefreshAt)
+            {
+                return;
+            }
+
+            _nextSummonedOfficialSessionBridgeDiscoveryRefreshAt =
+                currentTickCount + SummonedOfficialSessionBridgeDiscoveryRefreshIntervalMs;
+            _summonedOfficialSessionBridge.TryRefreshFromDiscovery(
+                _summonedOfficialSessionBridgeConfiguredListenPort,
+                _summonedOfficialSessionBridgeConfiguredRemotePort,
+                _summonedOfficialSessionBridgeConfiguredProcessSelector,
+                _summonedOfficialSessionBridgeConfiguredLocalPort,
+                out _);
+        }
+
         private void DrainSummonedPacketInbox()
         {
             while (_summonedPacketInbox.TryDequeue(out SummonedPacketInboxMessage message))
@@ -79,6 +191,31 @@ namespace HaCreator.MapSimulator
             }
         }
 
+        private void DrainSummonedOfficialSessionBridge()
+        {
+            while (_summonedOfficialSessionBridge.TryDequeue(out SummonedPacketInboxMessage message))
+            {
+                if (message == null)
+                {
+                    continue;
+                }
+
+                bool applied = TryApplyPacketOwnedSummonedPacket(message.PacketType, message.Payload, currTickCount, out string detail);
+                _summonedOfficialSessionBridge.RecordDispatchResult(message.Source, applied, detail);
+                if (!string.IsNullOrWhiteSpace(detail))
+                {
+                    if (applied)
+                    {
+                        _chat?.AddSystemMessage(detail, currTickCount);
+                    }
+                    else
+                    {
+                        _chat?.AddErrorMessage(detail, currTickCount);
+                    }
+                }
+            }
+        }
+
         private string DescribeSummonedPacketInboxStatus()
         {
             string enabledText = _summonedPacketInboxEnabled ? "enabled" : "disabled";
@@ -86,6 +223,24 @@ namespace HaCreator.MapSimulator
                 ? $"listening on 127.0.0.1:{_summonedPacketInbox.Port}"
                 : $"configured for 127.0.0.1:{_summonedPacketInboxConfiguredPort}";
             return $"Summoned packet inbox {enabledText}, {listeningText}, received {_summonedPacketInbox.ReceivedCount} packet(s).";
+        }
+
+        private string DescribeSummonedOfficialSessionBridgeStatus()
+        {
+            string enabledText = _summonedOfficialSessionBridgeEnabled ? "enabled" : "disabled";
+            string modeText = _summonedOfficialSessionBridgeUseDiscovery ? "auto-discovery" : "direct proxy";
+            string configuredTarget = _summonedOfficialSessionBridgeUseDiscovery
+                ? _summonedOfficialSessionBridgeConfiguredLocalPort.HasValue
+                    ? $"discover remote port {_summonedOfficialSessionBridgeConfiguredRemotePort} with local port {_summonedOfficialSessionBridgeConfiguredLocalPort.Value}"
+                    : $"discover remote port {_summonedOfficialSessionBridgeConfiguredRemotePort}"
+                : $"{_summonedOfficialSessionBridgeConfiguredRemoteHost}:{_summonedOfficialSessionBridgeConfiguredRemotePort}";
+            string processText = string.IsNullOrWhiteSpace(_summonedOfficialSessionBridgeConfiguredProcessSelector)
+                ? string.Empty
+                : $" for {_summonedOfficialSessionBridgeConfiguredProcessSelector}";
+            string listeningText = _summonedOfficialSessionBridge.IsRunning
+                ? $"listening on 127.0.0.1:{_summonedOfficialSessionBridge.ListenPort}"
+                : $"configured for 127.0.0.1:{_summonedOfficialSessionBridgeConfiguredListenPort}";
+            return $"Summoned packet session bridge {enabledText}, {modeText}, {listeningText}, target {configuredTarget}{processText}. {_summonedOfficialSessionBridge.DescribeStatus()}";
         }
 
         private bool TryApplyPacketOwnedSummonedPacket(int packetType, byte[] payload, int currentTime, out string message)
@@ -117,11 +272,75 @@ namespace HaCreator.MapSimulator
             return requestClientSkillCancel(expiration.SkillId, expiration.CurrentTime);
         }
 
+        internal static int RouteLocalPacketOwnedSummonExpiryBatchToClientCancel(
+            PacketOwnedSummonTimerExpiration[] expirations,
+            Action<int, int> primeLocalNaturalExpirySummon,
+            Func<int, int, bool> requestClientSkillCancel)
+        {
+            if (expirations == null
+                || expirations.Length == 0
+                || requestClientSkillCancel == null)
+            {
+                return 0;
+            }
+
+            int routedCount = 0;
+            bool[] shouldRouteCancel = new bool[expirations.Length];
+            foreach (PacketOwnedSummonTimerExpiration expiration in expirations)
+            {
+                if (!expiration.OwnerIsLocal || expiration.SkillId <= 0)
+                {
+                    continue;
+                }
+
+                primeLocalNaturalExpirySummon?.Invoke(expiration.SummonedObjectId, expiration.CurrentTime);
+            }
+
+            for (int i = 0; i < expirations.Length; i++)
+            {
+                PacketOwnedSummonTimerExpiration expiration = expirations[i];
+                if (!expiration.OwnerIsLocal || expiration.SkillId <= 0)
+                {
+                    continue;
+                }
+
+                bool alreadyQueued = false;
+                for (int priorIndex = 0; priorIndex < i; priorIndex++)
+                {
+                    if (!shouldRouteCancel[priorIndex])
+                    {
+                        continue;
+                    }
+
+                    PacketOwnedSummonTimerExpiration priorExpiration = expirations[priorIndex];
+                    if (priorExpiration.SkillId == expiration.SkillId
+                        && priorExpiration.CurrentTime == expiration.CurrentTime)
+                    {
+                        alreadyQueued = true;
+                        break;
+                    }
+                }
+
+                if (alreadyQueued)
+                {
+                    continue;
+                }
+
+                shouldRouteCancel[i] = true;
+                if (requestClientSkillCancel(expiration.SkillId, expiration.CurrentTime))
+                {
+                    routedCount++;
+                }
+            }
+
+            return routedCount;
+        }
+
         private ChatCommandHandler.CommandResult HandlePacketOwnedSummonedCommand(string[] args)
         {
             if (args == null || args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
             {
-                return ChatCommandHandler.CommandResult.Info($"{_summonedPool.DescribeStatus()} {DescribeSummonedPacketInboxStatus()} {_summonedPacketInbox.LastStatus}");
+                return ChatCommandHandler.CommandResult.Info($"{_summonedPool.DescribeStatus()} {DescribeSummonedPacketInboxStatus()} {_summonedPacketInbox.LastStatus} {DescribeSummonedOfficialSessionBridgeStatus()}");
             }
 
             if (string.Equals(args[0], "inbox", StringComparison.OrdinalIgnoreCase))
@@ -155,10 +374,20 @@ namespace HaCreator.MapSimulator
                 return ChatCommandHandler.CommandResult.Error("Usage: /summonedpacket inbox [status|start [port]|stop]");
             }
 
+            if (string.Equals(args[0], "session", StringComparison.OrdinalIgnoreCase))
+            {
+                return HandlePacketOwnedSummonedSessionCommand(args.Skip(1).ToArray());
+            }
+
             bool rawHex = string.Equals(args[0], "packetraw", StringComparison.OrdinalIgnoreCase);
+            if (string.Equals(args[0], "packetclientraw", StringComparison.OrdinalIgnoreCase))
+            {
+                return HandlePacketOwnedSummonedClientPacketRawCommand(args);
+            }
+
             if (!rawHex && !string.Equals(args[0], "packet", StringComparison.OrdinalIgnoreCase))
             {
-                return ChatCommandHandler.CommandResult.Error("Usage: /summonedpacket [status|packet <type> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|inbox [status|start [port]|stop]]");
+                return ChatCommandHandler.CommandResult.Error("Usage: /summonedpacket [status|packet <type> [payloadhex=..|payloadb64=..]|packetraw <type> <hex>|packetclientraw <hex>|inbox [status|start [port]|stop]|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]]");
             }
 
             if (args.Length < 2 || !SummonedPacketInboxManager.TryParsePacketType(args[1], out int packetType))
@@ -182,6 +411,134 @@ namespace HaCreator.MapSimulator
             return TryApplyPacketOwnedSummonedPacket(packetType, payload, currTickCount, out string result)
                 ? ChatCommandHandler.CommandResult.Ok(result)
                 : ChatCommandHandler.CommandResult.Error(result);
+        }
+
+        private ChatCommandHandler.CommandResult HandlePacketOwnedSummonedClientPacketRawCommand(string[] args)
+        {
+            if (args.Length < 2 || !TryDecodeHexBytes(string.Join(string.Empty, args.Skip(1)), out byte[] rawPacket))
+            {
+                return ChatCommandHandler.CommandResult.Error("Usage: /summonedpacket packetclientraw <hex>");
+            }
+
+            if (!SummonedPacketInboxManager.TryDecodeOpcodeFramedPacket(rawPacket, out int packetType, out byte[] payload, out string decodeError))
+            {
+                return ChatCommandHandler.CommandResult.Error(decodeError ?? "Usage: /summonedpacket packetclientraw <hex>");
+            }
+
+            bool applied = TryApplyPacketOwnedSummonedPacket(packetType, payload, currTickCount, out string message);
+            return applied
+                ? ChatCommandHandler.CommandResult.Ok($"Applied summoned client opcode {packetType}. {message}")
+                : ChatCommandHandler.CommandResult.Error(message);
+        }
+
+        private ChatCommandHandler.CommandResult HandlePacketOwnedSummonedSessionCommand(string[] args)
+        {
+            if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
+            {
+                return ChatCommandHandler.CommandResult.Info(DescribeSummonedOfficialSessionBridgeStatus());
+            }
+
+            if (string.Equals(args[0], "discover", StringComparison.OrdinalIgnoreCase))
+            {
+                if (args.Length < 2
+                    || !int.TryParse(args[1], out int discoverRemotePort)
+                    || discoverRemotePort <= 0)
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /summonedpacket session discover <remotePort> [processName|pid] [localPort]");
+                }
+
+                string processSelector = args.Length >= 3 ? args[2] : null;
+                int? localPortFilter = null;
+                if (args.Length >= 4)
+                {
+                    if (!int.TryParse(args[3], out int parsedLocalPort) || parsedLocalPort <= 0)
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /summonedpacket session discover <remotePort> [processName|pid] [localPort]");
+                    }
+
+                    localPortFilter = parsedLocalPort;
+                }
+
+                return ChatCommandHandler.CommandResult.Info(
+                    _summonedOfficialSessionBridge.DescribeDiscoveredSessions(discoverRemotePort, processSelector, localPortFilter));
+            }
+
+            if (string.Equals(args[0], "start", StringComparison.OrdinalIgnoreCase))
+            {
+                if (args.Length < 4
+                    || !int.TryParse(args[1], out int listenPort)
+                    || listenPort <= 0
+                    || !int.TryParse(args[3], out int remotePort)
+                    || remotePort <= 0)
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /summonedpacket session start <listenPort> <serverHost> <serverPort>");
+                }
+
+                _summonedOfficialSessionBridgeEnabled = true;
+                _summonedOfficialSessionBridgeUseDiscovery = false;
+                _summonedOfficialSessionBridgeConfiguredListenPort = listenPort;
+                _summonedOfficialSessionBridgeConfiguredRemoteHost = args[2];
+                _summonedOfficialSessionBridgeConfiguredRemotePort = remotePort;
+                _summonedOfficialSessionBridgeConfiguredProcessSelector = null;
+                _summonedOfficialSessionBridgeConfiguredLocalPort = null;
+                EnsureSummonedOfficialSessionBridgeState(shouldRun: true);
+                return ChatCommandHandler.CommandResult.Ok(DescribeSummonedOfficialSessionBridgeStatus());
+            }
+
+            if (string.Equals(args[0], "startauto", StringComparison.OrdinalIgnoreCase))
+            {
+                if (args.Length < 3
+                    || !int.TryParse(args[1], out int autoListenPort)
+                    || autoListenPort <= 0
+                    || !int.TryParse(args[2], out int autoRemotePort)
+                    || autoRemotePort <= 0)
+                {
+                    return ChatCommandHandler.CommandResult.Error("Usage: /summonedpacket session startauto <listenPort> <remotePort> [processName|pid] [localPort]");
+                }
+
+                string processSelector = args.Length >= 4 ? args[3] : null;
+                int? localPortFilter = null;
+                if (args.Length >= 5)
+                {
+                    if (!int.TryParse(args[4], out int parsedLocalPort) || parsedLocalPort <= 0)
+                    {
+                        return ChatCommandHandler.CommandResult.Error("Usage: /summonedpacket session startauto <listenPort> <remotePort> [processName|pid] [localPort]");
+                    }
+
+                    localPortFilter = parsedLocalPort;
+                }
+
+                _summonedOfficialSessionBridgeEnabled = true;
+                _summonedOfficialSessionBridgeUseDiscovery = true;
+                _summonedOfficialSessionBridgeConfiguredListenPort = autoListenPort;
+                _summonedOfficialSessionBridgeConfiguredRemotePort = autoRemotePort;
+                _summonedOfficialSessionBridgeConfiguredRemoteHost = IPAddress.Loopback.ToString();
+                _summonedOfficialSessionBridgeConfiguredProcessSelector = processSelector;
+                _summonedOfficialSessionBridgeConfiguredLocalPort = localPortFilter;
+                _nextSummonedOfficialSessionBridgeDiscoveryRefreshAt = 0;
+
+                return _summonedOfficialSessionBridge.TryRefreshFromDiscovery(
+                    autoListenPort,
+                    autoRemotePort,
+                    processSelector,
+                    localPortFilter,
+                    out string startStatus)
+                    ? ChatCommandHandler.CommandResult.Ok($"{startStatus} {DescribeSummonedOfficialSessionBridgeStatus()}")
+                    : ChatCommandHandler.CommandResult.Error(startStatus);
+            }
+
+            if (string.Equals(args[0], "stop", StringComparison.OrdinalIgnoreCase))
+            {
+                _summonedOfficialSessionBridgeEnabled = false;
+                _summonedOfficialSessionBridgeUseDiscovery = false;
+                _summonedOfficialSessionBridgeConfiguredRemotePort = 0;
+                _summonedOfficialSessionBridgeConfiguredProcessSelector = null;
+                _summonedOfficialSessionBridgeConfiguredLocalPort = null;
+                _summonedOfficialSessionBridge.Stop();
+                return ChatCommandHandler.CommandResult.Ok(DescribeSummonedOfficialSessionBridgeStatus());
+            }
+
+            return ChatCommandHandler.CommandResult.Error("Usage: /summonedpacket session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]");
         }
     }
 }

@@ -5,6 +5,8 @@ namespace HaCreator.MapSimulator.Entities
 {
     public static class SpecialMobInteractionRules
     {
+        public const int InvalidEncounterTargetPriority = -1;
+
         public static bool ShouldDisableAutoRespawn(MobData mobData)
         {
             if (mobData == null)
@@ -38,6 +40,29 @@ namespace HaCreator.MapSimulator.Entities
             }
 
             return mobData?.DamagedByMob == true || mobData?.Escort > 0;
+        }
+
+        public static int ResolveEncounterTargetPriority(int? sourceTeam, int? targetTeam)
+        {
+            int? normalizedSourceTeam = NormalizeEncounterTeam(sourceTeam);
+            int? normalizedTargetTeam = NormalizeEncounterTeam(targetTeam);
+            if (normalizedSourceTeam.HasValue &&
+                normalizedTargetTeam.HasValue &&
+                normalizedSourceTeam.Value == normalizedTargetTeam.Value)
+            {
+                return InvalidEncounterTargetPriority;
+            }
+
+            return normalizedSourceTeam.HasValue && normalizedTargetTeam.HasValue
+                ? 0
+                : 1;
+        }
+
+        private static int? NormalizeEncounterTeam(int? team)
+        {
+            return team.HasValue && team.Value >= 0
+                ? team.Value
+                : null;
         }
     }
 }

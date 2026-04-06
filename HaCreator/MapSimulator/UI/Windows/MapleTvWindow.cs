@@ -201,7 +201,12 @@ namespace HaCreator.MapSimulator.UI
             if (!snapshot.IsShowingMessage)
             {
                 MapleTvAnimationFrame idleFrame = SelectFrame(_visualAssets.OffFrames.Count > 0 ? _visualAssets.OffFrames : _visualAssets.BasicFrames, tickCount);
-                Point idleOverlayOrigin = ResolveTopAnchoredFrameOrigin(renderWidth, WorldOverlayTopMargin, idleFrame, 240, 90);
+                Point idleOverlayOrigin = ResolveTopAnchoredCompositeOrigin(
+                    renderWidth,
+                    WorldOverlayTopMargin,
+                    240,
+                    90,
+                    idleFrame);
                 DrawAnimationFrame(sprite, idleFrame, idleOverlayOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
                 return;
             }
@@ -211,8 +216,14 @@ namespace HaCreator.MapSimulator.UI
                 _visualAssets.OnFrames.Count > 0 ? _visualAssets.OnFrames : _visualAssets.BasicFrames,
                 tickCount);
             MapleTvAnimationFrame chatFrame = SelectFrame(_visualAssets.GetChatFrames(snapshot.ResolvedMediaIndex), tickCount);
-            MapleTvAnimationFrame anchorFrame = mediaFrame ?? onFrame ?? chatFrame;
-            Point overlayOrigin = ResolveTopAnchoredFrameOrigin(renderWidth, WorldOverlayTopMargin, anchorFrame, 240, 180);
+            Point overlayOrigin = ResolveTopAnchoredCompositeOrigin(
+                renderWidth,
+                WorldOverlayTopMargin,
+                240,
+                180,
+                mediaFrame,
+                onFrame,
+                chatFrame);
             DrawAnimationFrame(sprite, mediaFrame, overlayOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
             DrawAnimationFrame(sprite, onFrame, overlayOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
             DrawAnimationFrame(sprite, chatFrame, overlayOrigin, drawReflectionInfo, skeletonMeshRenderer, gameTime);
@@ -498,20 +509,54 @@ namespace HaCreator.MapSimulator.UI
                 : new Point(origin.X + frame.Offset.X, origin.Y + frame.Offset.Y);
         }
 
-        internal static Point ResolveTopAnchoredFrameOrigin(
+        internal static Point ResolveTopAnchoredCompositeOrigin(
             int renderWidth,
             int topMargin,
-            MapleTvAnimationFrame frame,
             int fallbackWidth,
-            int fallbackHeight)
+            int fallbackHeight,
+            params MapleTvAnimationFrame[] frames)
         {
-            int width = Math.Max(1, frame?.Width ?? fallbackWidth);
-            int height = Math.Max(1, frame?.Height ?? fallbackHeight);
-            Point offset = frame?.Offset ?? new Point(0, -height);
-            int desiredLeft = Math.Max(0, (renderWidth - width) / 2);
+            Rectangle compositeBounds = ResolveCompositeBounds(fallbackWidth, fallbackHeight, frames);
+            int desiredLeft = Math.Max(0, (renderWidth - compositeBounds.Width) / 2);
             int desiredTop = Math.Max(0, topMargin);
 
-            return new Point(desiredLeft - offset.X, desiredTop - offset.Y);
+            return new Point(desiredLeft - compositeBounds.X, desiredTop - compositeBounds.Y);
+        }
+
+        private static Rectangle ResolveCompositeBounds(
+            int fallbackWidth,
+            int fallbackHeight,
+            params MapleTvAnimationFrame[] frames)
+        {
+            MapleTvAnimationFrame firstFrame = frames?.FirstOrDefault(frame => frame != null);
+            if (firstFrame == null)
+            {
+                return new Rectangle(0, -Math.Max(1, fallbackHeight), Math.Max(1, fallbackWidth), Math.Max(1, fallbackHeight));
+            }
+
+            int minLeft = int.MaxValue;
+            int minTop = int.MaxValue;
+            int maxRight = int.MinValue;
+            int maxBottom = int.MinValue;
+
+            foreach (MapleTvAnimationFrame frame in frames)
+            {
+                if (frame == null)
+                {
+                    continue;
+                }
+
+                minLeft = Math.Min(minLeft, frame.Offset.X);
+                minTop = Math.Min(minTop, frame.Offset.Y);
+                maxRight = Math.Max(maxRight, frame.Offset.X + Math.Max(1, frame.Width));
+                maxBottom = Math.Max(maxBottom, frame.Offset.Y + Math.Max(1, frame.Height));
+            }
+
+            return new Rectangle(
+                minLeft,
+                minTop,
+                Math.Max(1, maxRight - minLeft),
+                Math.Max(1, maxBottom - minTop));
         }
 
         private void DrawChatText(

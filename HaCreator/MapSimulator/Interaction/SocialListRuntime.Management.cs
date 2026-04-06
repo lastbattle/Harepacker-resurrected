@@ -302,6 +302,68 @@ namespace HaCreator.MapSimulator.Interaction
                 : $"Alliance rank title {_allianceSelectedRankIndex + 1} saved as \"{committedValue}\".";
         }
 
+        internal string SetPacketGuildRankTitles(IReadOnlyList<string> rankTitles, int guildId)
+        {
+            if (rankTitles == null || rankTitles.Count == 0)
+            {
+                return "Client guild-result rank-title payload did not include any titles.";
+            }
+
+            _guildRankTitles.Clear();
+            for (int i = 0; i < rankTitles.Count; i++)
+            {
+                _guildRankTitles.Add(string.IsNullOrWhiteSpace(rankTitles[i]) ? $"Rank {i + 1}" : rankTitles[i].Trim());
+            }
+
+            _guildManageSelectedRankIndex = Math.Clamp(_guildManageSelectedRankIndex, 0, Math.Max(0, _guildRankTitles.Count - 1));
+            _lastPacketSyncSummaryByTab[SocialListTab.Guild] =
+                $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.RankTitles}) refreshed {_guildRankTitles.Count} guild rank titles"
+                + (guildId > 0 ? $" for guild {guildId}." : ".");
+            return $"Guild rank titles now follow the client OnGuildResult({(byte)SocialListClientGuildResultKind.RankTitles}) payload.";
+        }
+
+        internal string SetPacketGuildNoticeText(string notice, int guildId)
+        {
+            _guildNoticeText = string.IsNullOrWhiteSpace(notice) ? string.Empty : notice.Trim();
+            _lastPacketSyncSummaryByTab[SocialListTab.Guild] =
+                $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.Notice}) refreshed guild notice text"
+                + (guildId > 0 ? $" for guild {guildId}." : ".");
+            return string.IsNullOrWhiteSpace(_guildNoticeText)
+                ? $"Guild notice cleared from client OnGuildResult({(byte)SocialListClientGuildResultKind.Notice})."
+                : $"Guild notice now follows the client OnGuildResult({(byte)SocialListClientGuildResultKind.Notice}) payload.";
+        }
+
+        internal string SetPacketAllianceRankTitles(IReadOnlyList<string> rankTitles, int allianceId)
+        {
+            if (rankTitles == null || rankTitles.Count == 0)
+            {
+                return "Client alliance-result rank-title payload did not include any titles.";
+            }
+
+            _allianceRankTitles.Clear();
+            for (int i = 0; i < rankTitles.Count; i++)
+            {
+                _allianceRankTitles.Add(string.IsNullOrWhiteSpace(rankTitles[i]) ? $"Rank {i + 1}" : rankTitles[i].Trim());
+            }
+
+            _allianceSelectedRankIndex = Math.Clamp(_allianceSelectedRankIndex, 0, Math.Max(0, _allianceRankTitles.Count - 1));
+            _lastPacketSyncSummaryByTab[SocialListTab.Alliance] =
+                $"Client OnAllianceResult({(byte)SocialListClientAllianceResultKind.RankTitles}) refreshed {_allianceRankTitles.Count} alliance rank titles"
+                + (allianceId > 0 ? $" for alliance {allianceId}." : ".");
+            return $"Alliance rank titles now follow the client OnAllianceResult({(byte)SocialListClientAllianceResultKind.RankTitles}) payload.";
+        }
+
+        internal string SetPacketAllianceNoticeText(string notice, int allianceId)
+        {
+            _allianceNoticeText = string.IsNullOrWhiteSpace(notice) ? string.Empty : notice.Trim();
+            _lastPacketSyncSummaryByTab[SocialListTab.Alliance] =
+                $"Client OnAllianceResult({(byte)SocialListClientAllianceResultKind.Notice}) refreshed alliance notice text"
+                + (allianceId > 0 ? $" for alliance {allianceId}." : ".");
+            return string.IsNullOrWhiteSpace(_allianceNoticeText)
+                ? $"Alliance notice cleared from client OnAllianceResult({(byte)SocialListClientAllianceResultKind.Notice})."
+                : $"Alliance notice now follows the client OnAllianceResult({(byte)SocialListClientAllianceResultKind.Notice}) payload.";
+        }
+
         internal string CancelAllianceEdit()
         {
             if (!_allianceEditorEditing)

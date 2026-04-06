@@ -196,6 +196,9 @@ namespace HaCreator.MapSimulator.UI
         public Action<AdminShopWishListUI> ShowCategoryAddOnRequested { get; set; }
         public Action HideCategoryAddOnRequested { get; set; }
         public Func<bool> IsCategoryAddOnVisible { get; set; }
+        public Action<AdminShopWishListUI, IReadOnlyList<AdminShopDialogUI.WishlistSearchResult>> ShowSearchResultAddOnRequested { get; set; }
+        public Action HideSearchResultAddOnRequested { get; set; }
+        public Func<bool> IsSearchResultAddOnVisible { get; set; }
 
         public IReadOnlyList<AdminShopDialogUI.WishlistCategoryNode> GetWishlistCategoryTree()
         {
@@ -247,6 +250,45 @@ namespace HaCreator.MapSimulator.UI
             return _sourceDialog?.GetWishlistCategoryLabel(categoryKey) ?? "All";
         }
 
+        public string GetWishlistSearchQuery()
+        {
+            return _searchQuery;
+        }
+
+        public string GetSelectedWishlistPriceRangeLabel()
+        {
+            return GetSelectedPriceRangeLabel();
+        }
+
+        public string GetStatusMessage()
+        {
+            return _statusMessage;
+        }
+
+        public void OnSearchResultAddOnClosed(string message)
+        {
+            if (!string.IsNullOrWhiteSpace(message))
+            {
+                _statusMessage = message;
+            }
+
+            UpdatePopupButtons();
+        }
+
+        public bool TryApplySearchResult(AdminShopDialogUI.WishlistSearchResult result, out string message)
+        {
+            message = "Wish-list result selection is unavailable.";
+            if (result == null)
+            {
+                _statusMessage = message;
+                return false;
+            }
+
+            bool applied = _sourceDialog?.TryApplyWishlistSearchResult(result.EntryKey, _selectedCategoryKey, out message) == true;
+            _statusMessage = message;
+            return applied;
+        }
+
         public void ShowFor(AdminShopDialogUI sourceDialog)
         {
             _sourceDialog = sourceDialog;
@@ -266,6 +308,7 @@ namespace HaCreator.MapSimulator.UI
             _popupMode = PopupMode.None;
             _statusMessage = $"CUIAdminShopWishList::OnCreate focused the search edit for {sourceDialog?.GetWishlistServiceName() ?? "cash-service"} browsing.";
             HideCategoryAddOnRequested?.Invoke();
+            HideSearchResultAddOnRequested?.Invoke();
             PositionRelativeToSource(sourceDialog);
             Show();
         }
@@ -282,6 +325,7 @@ namespace HaCreator.MapSimulator.UI
         public override void Hide()
         {
             HideCategoryAddOnRequested?.Invoke();
+            HideSearchResultAddOnRequested?.Invoke();
             base.Hide();
             _compositionText = string.Empty;
             _popupMode = PopupMode.None;
@@ -554,6 +598,11 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            if (IsSearchResultAddOnOpen())
+            {
+                return;
+            }
+
             if (WasPressed(keyboardState, Keys.Escape))
             {
                 if (_popupMode == PopupMode.Results)
@@ -650,6 +699,22 @@ namespace HaCreator.MapSimulator.UI
             _selectedResultIndex = 0;
             _resultScrollOffset = 0;
             _compositionText = string.Empty;
+            if (_searchResults.Count == 0)
+            {
+                HideSearchResultAddOnRequested?.Invoke();
+                _popupMode = PopupMode.None;
+                UpdatePopupButtons();
+                return;
+            }
+
+            if (ShowSearchResultAddOnRequested != null)
+            {
+                ShowSearchResultAddOnRequested(this, _searchResults);
+                _popupMode = PopupMode.None;
+                UpdatePopupButtons();
+                return;
+            }
+
             _popupMode = _searchResults.Count > 0 ? PopupMode.Results : PopupMode.None;
             UpdatePopupButtons();
         }
@@ -665,6 +730,11 @@ namespace HaCreator.MapSimulator.UI
             if (_popupMode == PopupMode.Results)
             {
                 ClosePopup("Wish-list results closed.");
+            }
+
+            if (IsSearchResultAddOnOpen())
+            {
+                CloseSearchResultAddOn();
             }
 
             EnsureCategoryPathExpanded(_selectedCategoryKey);
@@ -893,6 +963,16 @@ namespace HaCreator.MapSimulator.UI
             return _popupMode == PopupMode.Category;
         }
 
+        private bool IsSearchResultAddOnOpen()
+        {
+            if (IsSearchResultAddOnVisible != null)
+            {
+                return IsSearchResultAddOnVisible();
+            }
+
+            return false;
+        }
+
         private void CloseCategoryAddOn()
         {
             if (HideCategoryAddOnRequested != null)
@@ -908,6 +988,22 @@ namespace HaCreator.MapSimulator.UI
                 _popupMode = PopupMode.None;
                 _statusMessage = "ToggleAddOn closed the wish-list category add-on.";
                 UpdatePopupButtons();
+            }
+        }
+
+        private void CloseSearchResultAddOn()
+        {
+            if (HideSearchResultAddOnRequested != null)
+            {
+                HideSearchResultAddOnRequested();
+                _statusMessage = "Wish-list results closed.";
+                UpdatePopupButtons();
+                return;
+            }
+
+            if (_popupMode == PopupMode.Results)
+            {
+                ClosePopup("Wish-list results closed.");
             }
         }
 

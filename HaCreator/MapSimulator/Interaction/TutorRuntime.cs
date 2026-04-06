@@ -103,6 +103,12 @@ namespace HaCreator.MapSimulator.Interaction
             return skillId == CygnusTutorSkillId ? CygnusTutorObjectId : AranTutorObjectId;
         }
 
+        internal static int ResolveClientTutorSkillIdForJob(int jobId)
+        {
+            int jobFamily = Math.Max(0, jobId) / 1000;
+            return jobFamily == 1 ? CygnusTutorSkillId : AranTutorSkillId;
+        }
+
         internal bool RequiresCharacterRebind(int runtimeCharacterId)
         {
             return runtimeCharacterId > 0
@@ -132,6 +138,25 @@ namespace HaCreator.MapSimulator.Interaction
             StatusMessage = BoundCharacterId > 0
                 ? $"Tutor runtime reset for runtime character {BoundCharacterId}."
                 : "Tutor runtime reset.";
+        }
+
+        internal void ResetActiveTutorForRuntimeCharacter(int runtimeCharacterId, int currentTick)
+        {
+            bool hadActor = IsActive || ActiveSummonObjectId > 0 || MessageKind != TutorMessageKind.None;
+            BindRuntimeCharacter(runtimeCharacterId);
+            IsActive = false;
+            ActiveSkillId = 0;
+            ActiveSummonObjectId = 0;
+            ActiveActorHeight = 0;
+            LastHireTick = int.MinValue;
+            ClearMessage();
+            StatusMessage = hadActor
+                ? BoundCharacterId > 0
+                    ? $"Tutor actor reset for runtime character {BoundCharacterId}; registered variants preserved: {DescribeActiveTutorVariants()}."
+                    : $"Tutor actor reset; registered variants preserved: {DescribeActiveTutorVariants()}."
+                : BoundCharacterId > 0
+                    ? $"Tutor actor already idle for runtime character {BoundCharacterId}; registered variants preserved: {DescribeActiveTutorVariants()}."
+                    : $"Tutor actor already idle; registered variants preserved: {DescribeActiveTutorVariants()}.";
         }
 
         internal void ApplyHireRequest(int requestedSkillId, int actorHeight, int currentTick, int runtimeCharacterId)

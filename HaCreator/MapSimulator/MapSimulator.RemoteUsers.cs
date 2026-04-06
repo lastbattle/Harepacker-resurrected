@@ -2,6 +2,7 @@ using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Character.Skills;
 using HaCreator.MapSimulator.Effects;
 using HaCreator.MapSimulator.Fields;
+using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.Pools;
 using HaCreator.MapSimulator.UI;
@@ -16,7 +17,12 @@ namespace HaCreator.MapSimulator
 {
     public partial class MapSimulator
     {
+        private const string RemoteUserCommandUsage =
+            "/remoteuser <status|clear|clone|avatar|move|action|chair|mount|effect|helper|team|follow|prepare|preparedclear|visible|inspect|remove|packet|packetraw|inbox> ...";
+        private const string RemoteUserPacketTokenUsage =
+            "<-1101|-1102|-1103|-1104|-1105|-1106|-1107|-1108|179|180|181|182|183|184|210|211|212|213|214|215|223|225|226|coupleadd|coupleremove|friendadd|friendremove|marriageadd|marriageremove|newyearadd|newyearremove|enter|leave|move|state|helper|team|follow|chair|mount|prepare|preparedclear|pickup|melee|effect|avatarmodified|tempset|tempreset>";
         private readonly RemoteUserPacketInboxManager _remoteUserPacketInbox = new();
+        private readonly PacketOwnedRelationshipRecordRuntime _packetOwnedRelationshipRecordRuntime = new();
 
         private void RememberRemoteTownPortalOwnerFieldObservation(
             uint ownerCharacterId,
@@ -49,7 +55,7 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "remoteuser",
                 "Create or mutate shared remote user actors",
-                "/remoteuser <status|clear|clone|avatar|move|action|chair|mount|effect|helper|team|follow|prepare|preparedclear|visible|inspect|remove|packet|packetraw|inbox> ...",
+                RemoteUserCommandUsage,
                 args => HandleRemoteUserCommand(args, currTickCount));
         }
 
@@ -57,12 +63,13 @@ namespace HaCreator.MapSimulator
         {
             if (args == null || args.Length == 0)
             {
-                return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser <status|clear|clone|avatar|move|action|chair|mount|effect|helper|team|follow|prepare|preparedclear|visible|inspect|remove|packet|packetraw|inbox> ...");
+                return ChatCommandHandler.CommandResult.Error($"Usage: {RemoteUserCommandUsage}");
             }
 
             return args[0].ToLowerInvariant() switch
             {
-                "status" => ChatCommandHandler.CommandResult.Info(_remoteUserPool.DescribeStatus()),
+                "status" => ChatCommandHandler.CommandResult.Info(
+                    $"{_remoteUserPool.DescribeStatus()}{Environment.NewLine}{_packetOwnedRelationshipRecordRuntime.DescribeStatus()}"),
                 "clear" => HandleRemoteUserClearCommand(),
                 "clone" => HandleRemoteUserCloneCommand(args),
                 "avatar" => HandleRemoteUserAvatarCommand(args),
@@ -82,7 +89,7 @@ namespace HaCreator.MapSimulator
                 "packet" => HandleRemoteUserPacketCommand(args, currentTime),
                 "packetraw" => HandleRemoteUserPacketRawCommand(args, currentTime),
                 "inbox" => HandleRemoteUserInboxCommand(args),
-                _ => ChatCommandHandler.CommandResult.Error("Usage: /remoteuser <status|clear|clone|avatar|move|action|chair|mount|effect|helper|team|follow|prepare|preparedclear|visible|inspect|remove|packet|packetraw|inbox> ...")
+                _ => ChatCommandHandler.CommandResult.Error($"Usage: {RemoteUserCommandUsage}")
             };
         }
 
@@ -106,6 +113,7 @@ namespace HaCreator.MapSimulator
             }
 
             _remoteUserPool.Clear();
+            _packetOwnedRelationshipRecordRuntime.Clear();
             _animationEffects.ClearUserStates();
             return ChatCommandHandler.CommandResult.Ok("Remote user pool cleared.");
         }
@@ -613,7 +621,7 @@ namespace HaCreator.MapSimulator
         {
             if (args.Length < 3 || !TryParseRemoteUserPacketType(args[1], out int packetType))
             {
-                return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser packet <179|180|181|182|183|184|210|211|212|213|214|215|223|225|226|enter|leave|move|state|helper|team|follow|chair|mount|prepare|preparedclear|melee|effect|avatarmodified|tempset|tempreset> [followCharacterId] <payloadhex=..|payloadb64=..>");
+                return ChatCommandHandler.CommandResult.Error($"Usage: /remoteuser packet {RemoteUserPacketTokenUsage} [followCharacterId] <payloadhex=..|payloadb64=..>");
             }
 
             int? followCharacterId = null;
@@ -643,7 +651,7 @@ namespace HaCreator.MapSimulator
         {
             if (args.Length < 3 || !TryParseRemoteUserPacketType(args[1], out int packetType))
             {
-                return ChatCommandHandler.CommandResult.Error("Usage: /remoteuser packetraw <179|180|181|182|183|184|210|211|212|213|214|215|223|225|226|enter|leave|move|state|helper|team|follow|chair|mount|prepare|preparedclear|melee|effect|avatarmodified|tempset|tempreset> [followCharacterId] <hex>");
+                return ChatCommandHandler.CommandResult.Error($"Usage: /remoteuser packetraw {RemoteUserPacketTokenUsage} [followCharacterId] <hex>");
             }
 
             int? followCharacterId = null;
@@ -715,59 +723,27 @@ namespace HaCreator.MapSimulator
         {
             while (_remoteUserPacketInbox.TryDequeue(out RemoteUserPacketInboxMessage message))
             {
-                bool applied = TryApplyRemoteUserPacket(message.PacketType, message.Payload, currentTime, out string result);
+                bool applied = TryApplyRemoteUserPacket(message.PacketType, message.Payload, currentTime, out string result, sourceTag: message.Source);
                 _remoteUserPacketInbox.RecordDispatchResult(message, applied, result);
             }
         }
 
-        private bool TryApplyRemoteUserPacket(int packetType, byte[] payload, int currentTime, out string result, int? followCharacterId = null)
+        private bool TryApplyRemoteUserPacket(int packetType, byte[] payload, int currentTime, out string result, int? followCharacterId = null, string sourceTag = null)
         {
             result = null;
+            if (_packetOwnedRelationshipRecordRuntime.IsRelationshipRecordPacket(packetType))
+            {
+                return _packetOwnedRelationshipRecordRuntime.TryApplyPacket(
+                    packetType,
+                    payload,
+                    _remoteUserPool,
+                    currentTime,
+                    sourceTag,
+                    out result);
+            }
+
             switch ((RemoteUserPacketType)packetType)
             {
-                case RemoteUserPacketType.UserCoupleRecordAdd:
-                case RemoteUserPacketType.UserFriendRecordAdd:
-                case RemoteUserPacketType.UserMarriageRecordAdd:
-                case RemoteUserPacketType.UserNewYearCardRecordAdd:
-                    if (!RemoteUserPacketCodec.TryParseRelationshipRecordAdd(
-                            packetType,
-                            payload,
-                            out RemoteUserRelationshipRecordPacket relationshipRecordAddPacket,
-                            out string relationshipRecordAddError))
-                    {
-                        result = relationshipRecordAddError;
-                        return false;
-                    }
-
-                    bool relationshipRecordAdded = _remoteUserPool.TryApplyRelationshipRecordAdd(
-                        relationshipRecordAddPacket,
-                        currentTime,
-                        out string relationshipRecordAddMessage);
-                    result = relationshipRecordAdded
-                        ? relationshipRecordAddMessage
-                        : relationshipRecordAddMessage;
-                    return relationshipRecordAdded;
-
-                case RemoteUserPacketType.UserCoupleRecordRemove:
-                case RemoteUserPacketType.UserFriendRecordRemove:
-                case RemoteUserPacketType.UserMarriageRecordRemove:
-                case RemoteUserPacketType.UserNewYearCardRecordRemove:
-                    if (!RemoteUserPacketCodec.TryParseRelationshipRecordRemove(
-                            packetType,
-                            payload,
-                            out RemoteUserRelationshipRecordRemovePacket relationshipRecordRemovePacket,
-                            out string relationshipRecordRemoveError))
-                    {
-                        result = relationshipRecordRemoveError;
-                        return false;
-                    }
-
-                    bool relationshipRecordRemoved = _remoteUserPool.TryApplyRelationshipRecordRemove(
-                        relationshipRecordRemovePacket,
-                        out string relationshipRecordRemoveMessage);
-                    result = relationshipRecordRemoveMessage;
-                    return relationshipRecordRemoved;
-
                 case RemoteUserPacketType.UserEnterField:
                     if (!RemoteUserPacketCodec.TryParseEnterField(payload, out RemoteUserEnterFieldPacket enterPacket, out string enterError))
                     {
@@ -1076,6 +1052,7 @@ namespace HaCreator.MapSimulator
                         meleePacket.ActionCode,
                         meleePacket.MasteryPercent,
                         meleePacket.ChargeSkillId,
+                        meleePacket.PreparedSkillReleaseFollowUpValue,
                         meleePacket.FacingRight,
                         currentTime,
                         out string meleeMessage);

@@ -14,6 +14,7 @@ namespace HaCreator.MapSimulator.Interaction
     internal readonly record struct GuildRankingSeedEntry(
         string GuildName,
         string MasterName,
+        int? Points,
         string LevelRange,
         string MemberSummary,
         string Notice,

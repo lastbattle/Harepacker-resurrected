@@ -32,6 +32,12 @@ namespace HaCreator.MapSimulator.UI
     /// </summary>
     public class SkillMacroUI : UIWindowBase
     {
+        private const uint CandidateWindowStyleRect = 0x0001;
+        private const uint CandidateWindowStylePoint = 0x0002;
+        private const uint CandidateWindowStyleForcePosition = 0x0020;
+        private const uint CandidateWindowStyleCandidatePosition = 0x0040;
+        private const uint CandidateWindowStyleExclude = 0x0080;
+
         private enum MacroDragMode
         {
             None,
@@ -2310,7 +2316,7 @@ namespace HaCreator.MapSimulator.UI
 
             width = Math.Max(64, Math.Min(viewportWidth, width));
             height = Math.Max(4, Math.Min(viewportHeight, height));
-            Point origin = ResolveCandidateWindowOrigin();
+            Point origin = ResolveCandidateWindowOrigin(viewport, width, height);
 
             int x = Math.Clamp(origin.X, 0, Math.Max(0, viewportWidth - width));
             int y = origin.Y;
@@ -2366,8 +2372,13 @@ namespace HaCreator.MapSimulator.UI
                 : -1;
         }
 
-        private Point ResolveCandidateWindowOrigin()
+        private Point ResolveCandidateWindowOrigin(Viewport viewport, int width, int height)
         {
+            if (TryResolveCandidateWindowOriginFromWindowForm(viewport, width, height, out Point windowFormOrigin))
+            {
+                return windowFormOrigin;
+            }
+
             Rectangle bounds = GetNameFieldBounds();
             bool useClauseAnchor = ShouldUseCompositionClauseAnchor();
             string prefix = useClauseAnchor
@@ -2382,6 +2393,56 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return new Point(x, bounds.Y + _font.LineSpacing + 1);
+        }
+
+        private bool TryResolveCandidateWindowOriginFromWindowForm(Viewport viewport, int width, int height, out Point origin)
+        {
+            ImeCandidateWindowForm windowForm = _candidateListState?.WindowForm;
+            if (windowForm == null || !windowForm.HasPlacementData)
+            {
+                origin = Point.Zero;
+                return false;
+            }
+
+            int viewportWidth = Math.Max(1, Math.Min(viewport.Width, SkillMacroImeCandidateWindowLayout.ClientViewportWidth));
+            int viewportHeight = Math.Max(1, Math.Min(viewport.Height, SkillMacroImeCandidateWindowLayout.ClientViewportHeight));
+            uint style = windowForm.Style;
+
+            int x = windowForm.CurrentX;
+            int y = windowForm.CurrentY;
+
+            if ((style & CandidateWindowStyleExclude) != 0 && windowForm.AreaWidth > 0 && windowForm.AreaHeight > 0)
+            {
+                x = windowForm.CurrentX;
+                y = windowForm.AreaY + windowForm.AreaHeight + 1;
+                if (y + height > viewportHeight)
+                {
+                    y = windowForm.AreaY - height - 1;
+                }
+            }
+            else if ((style & (CandidateWindowStyleForcePosition | CandidateWindowStyleCandidatePosition | CandidateWindowStylePoint)) != 0)
+            {
+                y = windowForm.CurrentY + 1;
+            }
+            else if ((style & CandidateWindowStyleRect) != 0 && windowForm.AreaWidth > 0 && windowForm.AreaHeight > 0)
+            {
+                x = windowForm.AreaX;
+                y = windowForm.AreaY + windowForm.AreaHeight + 1;
+                if (y + height > viewportHeight)
+                {
+                    y = windowForm.AreaY - height - 1;
+                }
+            }
+            else
+            {
+                origin = Point.Zero;
+                return false;
+            }
+
+            x = Math.Clamp(x, 0, Math.Max(0, viewportWidth - width));
+            y = Math.Clamp(y, 0, Math.Max(0, viewportHeight - height));
+            origin = new Point(x, y);
+            return true;
         }
 
         private string ResolveCompositionAnchorPrefix()

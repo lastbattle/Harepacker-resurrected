@@ -291,11 +291,11 @@ namespace HaCreator.MapSimulator.UI
             }
             else if (WasPressed(keyboardState, Keys.Home))
             {
-                SelectCategoryByRowIndex(0, false);
+                SelectCategoryByRowIndex(0, activateCategory: false, closeOnLeaf: false);
             }
             else if (WasPressed(keyboardState, Keys.End))
             {
-                SelectCategoryByRowIndex(_categoryRows.Count - 1, false);
+                SelectCategoryByRowIndex(_categoryRows.Count - 1, activateCategory: false, closeOnLeaf: false);
             }
             else if (WasPressed(keyboardState, Keys.Left))
             {
@@ -303,16 +303,16 @@ namespace HaCreator.MapSimulator.UI
             }
             else if (WasPressed(keyboardState, Keys.Right) || WasPressed(keyboardState, Keys.Enter))
             {
-                ActivateSelectedCategory(closeOnLeaf: WasPressed(keyboardState, Keys.Enter));
+                ActivateSelectedCategory(closeOnLeaf: WasPressed(keyboardState, Keys.Enter), preferredChildCategoryKey: _selectedCategoryKey);
             }
         }
 
         private void SelectVisibleCategory(int rowIndex)
         {
-            SelectCategoryByRowIndex(_scrollOffset + rowIndex, true);
+            SelectCategoryByRowIndex(_scrollOffset + rowIndex, activateCategory: true, closeOnLeaf: true);
         }
 
-        private void SelectCategoryByRowIndex(int rowIndex, bool activateCategory)
+        private void SelectCategoryByRowIndex(int rowIndex, bool activateCategory, bool closeOnLeaf)
         {
             if (_categoryRows.Count == 0)
             {
@@ -326,24 +326,25 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            string previousCategoryKey = _selectedCategoryKey;
             _selectedCategoryKey = string.IsNullOrWhiteSpace(categoryNode.Key) ? "all" : categoryNode.Key;
             EnsureSelectedCategoryVisible();
             _owner?.SyncCategoryAddOnState(_selectedCategoryKey, Array.Empty<string>(), $"Wish-list category staged {GetSelectedCategoryLabel()}.");
 
             if (activateCategory)
             {
-                ActivateSelectedCategory(closeOnLeaf: false);
+                ActivateSelectedCategory(closeOnLeaf, previousCategoryKey);
             }
         }
 
-        private void ActivateSelectedCategory(bool closeOnLeaf)
+        private void ActivateSelectedCategory(bool closeOnLeaf, string preferredChildCategoryKey)
         {
             AdminShopDialogUI.WishlistCategoryNode selectedNode = FindNode(_categoryTree, _selectedCategoryKey);
             if (selectedNode?.Children?.Count > 0 && !IsShowingChildStage)
             {
                 _activeParentCategoryKey = selectedNode.Key;
                 RefreshCategoryRows();
-                _selectedCategoryKey = selectedNode.Children[0].Key;
+                _selectedCategoryKey = ResolveInitialChildSelection(selectedNode, preferredChildCategoryKey);
                 EnsureSelectedCategoryVisible();
                 _owner?.SyncCategoryAddOnState(_selectedCategoryKey, Array.Empty<string>(), $"ToggleAddOn opened {selectedNode.Label} rows.");
                 return;
@@ -368,7 +369,7 @@ namespace HaCreator.MapSimulator.UI
                 selectedIndex = 0;
             }
 
-            SelectCategoryByRowIndex(selectedIndex + delta, false);
+            SelectCategoryByRowIndex(selectedIndex + delta, activateCategory: false, closeOnLeaf: false);
         }
 
         private void ScrollCategories(int delta)
@@ -484,6 +485,47 @@ namespace HaCreator.MapSimulator.UI
         private string GetSelectedCategoryLabel()
         {
             return _owner?.ResolveWishlistCategoryLabel(_selectedCategoryKey) ?? "All";
+        }
+
+        private string ResolveInitialChildSelection(AdminShopDialogUI.WishlistCategoryNode parentNode, string preferredChildCategoryKey)
+        {
+            if (parentNode?.Children == null || parentNode.Children.Count == 0)
+            {
+                return "all";
+            }
+
+            if (TryFindCategoryPath(parentNode.Children, preferredChildCategoryKey, out List<AdminShopDialogUI.WishlistCategoryNode> existingPath)
+                && existingPath.Count > 0
+                && !string.IsNullOrWhiteSpace(existingPath[0].Key))
+            {
+                return existingPath[0].Key;
+            }
+
+            return FindFirstLeafKey(parentNode) ?? parentNode.Children[0].Key;
+        }
+
+        private static string FindFirstLeafKey(AdminShopDialogUI.WishlistCategoryNode node)
+        {
+            if (node == null)
+            {
+                return null;
+            }
+
+            if (node.Children == null || node.Children.Count == 0)
+            {
+                return node.Key;
+            }
+
+            foreach (AdminShopDialogUI.WishlistCategoryNode child in node.Children)
+            {
+                string leafKey = FindFirstLeafKey(child);
+                if (!string.IsNullOrWhiteSpace(leafKey))
+                {
+                    return leafKey;
+                }
+            }
+
+            return null;
         }
 
         private void PositionRelativeToOwner(AdminShopWishListUI owner)

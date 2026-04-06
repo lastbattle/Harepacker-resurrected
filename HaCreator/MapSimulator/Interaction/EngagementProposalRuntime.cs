@@ -14,7 +14,8 @@ namespace HaCreator.MapSimulator.Interaction
     {
         internal const int AcceptPacketType = 161;
         internal const byte RequestPayloadValue = 0;
-        internal const byte AcceptPayloadValue = 1;
+        internal const byte WithdrawPayloadValue = 1;
+        internal const byte DecisionPayloadValue = 2;
         internal const int DefaultRingItemId = 2240000;
         internal const int DefaultSealItemId = 4210000;
         internal const int RequestMessageMaxLength = 12;
@@ -27,13 +28,11 @@ namespace HaCreator.MapSimulator.Interaction
         internal const int TextBoxStringPoolId = 0x1967;
         internal const int BottomBandStringPoolId = 0x1964;
         internal const int TextCanvasStringPoolId = 0x196E;
-        internal const int AcceptButtonUolStringPoolId = 6497;
+        internal const int PrimaryButtonUolStringPoolId = 6497;
 
         private const string DefaultPlayerName = "Player";
         private const string DefaultPartnerName = "Partner";
-        private const string DefaultOutgoingDialogText = "Waiting for a reply to the engagement request.";
-        private const string DefaultIncomingDialogText = "A pre-ceremony engagement proposal is pending.";
-        private const string OutgoingEtcSlotRequirementMessage = "Requester-side engagement flow blocked: CWvsContext::SendEngagementRequest requires at least one free ETC slot before packet 161 [00] can be sent.";
+        private const string OutgoingEtcSlotRequirementMessage = "Requester-side engagement flow blocked: CWvsContext::SendEngagementRequest requires at least one free ETC slot before packet 161 [00] can be sent. ";
         private const string OutgoingGenderRequirementMessage = "Requester-side engagement flow blocked: the local client only opens the engagement request owner for a male requester. Use the explicit proposer override to simulate other owners.";
 
         private string _localCharacterName = DefaultPlayerName;
@@ -88,7 +87,7 @@ namespace HaCreator.MapSimulator.Interaction
                     DefaultSealItemId,
                     1))
             {
-                message = OutgoingEtcSlotRequirementMessage;
+                message = OutgoingEtcSlotRequirementMessage + EngagementProposalDialogText.GetEtcSlotFullText();
                 return false;
             }
 
@@ -117,7 +116,7 @@ namespace HaCreator.MapSimulator.Interaction
             _isOpen = true;
 
             ResolveItemMetadata();
-            _statusMessage = $"Sent engagement request packet 161 [00] to {_partnerName} using {_ringItemName} ({_ringItemId}).";
+            _statusMessage = $"Opened requester-side {ClientOwnerTypeName} after sending packet 161 [00] to {_partnerName} using {_ringItemName} ({_ringItemId}).";
             return _statusMessage;
         }
 
@@ -144,7 +143,7 @@ namespace HaCreator.MapSimulator.Interaction
             _isOpen = true;
 
             ResolveItemMetadata();
-            _statusMessage = $"Opened engagement proposal dialog for {_partnerName} from {_proposerName}.";
+            _statusMessage = $"Opened recipient-side engagement request prompt for {_partnerName} from {_proposerName}.";
             return _statusMessage;
         }
 
@@ -229,7 +228,7 @@ namespace HaCreator.MapSimulator.Interaction
             return true;
         }
 
-        internal bool TrySendPrimaryAction(out EngagementProposalResponse response, out string message)
+        internal bool TryInvokePrimaryAction(out EngagementProposalResponse response, out string message)
         {
             if (!_isOpen)
             {
@@ -238,20 +237,33 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            _lastPrimaryActionSent = true;
-            _isOpen = false;
             if (_mode == EngagementProposalDialogMode.OutgoingRequest)
             {
-                response = default;
-                _lastResponsePacketType = -1;
-                _lastResponsePayload = Array.Empty<byte>();
-                _acceptedProposal = null;
-                _statusMessage = $"Closed the requester-side engagement dialog through SetRet after sending the client request packet {AcceptPacketType} [00]. No recipient accept payload was emitted.";
-                message = _statusMessage;
-                return true;
+                return TryWithdrawOutgoingRequest(out response, out message);
             }
 
-            response = new EngagementProposalResponse(AcceptPacketType, new[] { AcceptPayloadValue });
+            return TryAccept(out response, out message);
+        }
+
+        internal bool TryAccept(out EngagementProposalResponse response, out string message)
+        {
+            if (!_isOpen)
+            {
+                response = default;
+                message = "No engagement proposal is active.";
+                return false;
+            }
+
+            if (_mode != EngagementProposalDialogMode.IncomingProposal)
+            {
+                response = default;
+                message = $"The requester-owned {ClientOwnerTypeName} dialog does not accept the proposal. Use /engage withdraw to mirror SetRet packet 161 [01], or /engage dismiss to close the local wait dialog without sending it.";
+                return false;
+            }
+
+            _lastPrimaryActionSent = true;
+            _isOpen = false;
+            response = new EngagementProposalResponse(AcceptPacketType, BuildIncomingDecisionPayload(true, _proposerName, _ringItemId));
             _lastResponsePacketType = response.PacketType;
             _lastResponsePayload = (byte[])response.Payload.Clone();
             _acceptedProposal = new EngagementProposalAcceptedSnapshot
@@ -268,14 +280,36 @@ namespace HaCreator.MapSimulator.Interaction
                 RequestMessage = _outgoingRequestMessage,
                 CustomMessage = _customMessage
             };
-            _statusMessage = $"Triggered the proposal dialog SetRet branch for {_proposerName} -> {_partnerName}. Sent client packet {AcceptPacketType} with payload 01 and primed the wedding handoff state.";
+            _statusMessage = $"Accepted the engagement request from {_proposerName}. Sent client packet {AcceptPacketType} [02 01] with requester {_proposerName} and ring {_ringItemId}, and primed the wedding handoff state.";
             message = _statusMessage;
             return true;
         }
 
-        internal bool TryAccept(out EngagementProposalResponse response, out string message)
+        internal bool TryWithdrawOutgoingRequest(out EngagementProposalResponse response, out string message)
         {
-            return TrySendPrimaryAction(out response, out message);
+            if (!_isOpen)
+            {
+                response = default;
+                message = "No engagement proposal is active.";
+                return false;
+            }
+
+            if (_mode != EngagementProposalDialogMode.OutgoingRequest)
+            {
+                response = default;
+                message = "Only the requester-owned engagement wait dialog can withdraw the request.";
+                return false;
+            }
+
+            _lastPrimaryActionSent = true;
+            _isOpen = false;
+            response = new EngagementProposalResponse(AcceptPacketType, new[] { WithdrawPayloadValue });
+            _lastResponsePacketType = response.PacketType;
+            _lastResponsePayload = (byte[])response.Payload.Clone();
+            _acceptedProposal = null;
+            _statusMessage = $"Triggered requester-side SetRet and sent client packet {AcceptPacketType} [01] to withdraw the pending engagement request to {_partnerName}.";
+            message = _statusMessage;
+            return true;
         }
 
         internal bool TryBuildWeddingInvitationHandoff(
@@ -333,11 +367,22 @@ namespace HaCreator.MapSimulator.Interaction
                 return "No engagement proposal is active.";
             }
 
+            if (_mode == EngagementProposalDialogMode.IncomingProposal)
+            {
+                _lastPrimaryActionSent = false;
+                _isOpen = false;
+                _lastResponsePacketType = AcceptPacketType;
+                _lastResponsePayload = BuildIncomingDecisionPayload(false, _proposerName, _ringItemId);
+                _acceptedProposal = null;
+                _statusMessage = $"Declined the engagement request from {_proposerName}. Sent client packet {AcceptPacketType} [02 00] with requester {_proposerName} and ring {_ringItemId}.";
+                return _statusMessage;
+            }
+
             _isOpen = false;
             _lastPrimaryActionSent = false;
-            _statusMessage = _mode == EngagementProposalDialogMode.OutgoingRequest
-                ? "Dismissed the requester-side engagement dialog without sending the client SetRet packet."
-                : $"Dismissed {_proposerName}'s engagement dialog without sending the client SetRet packet.";
+            _lastResponsePacketType = -1;
+            _lastResponsePayload = Array.Empty<byte>();
+            _statusMessage = "Dismissed the requester-side engagement dialog without sending the client SetRet withdraw packet.";
             return _statusMessage;
         }
 
@@ -364,6 +409,14 @@ namespace HaCreator.MapSimulator.Interaction
             string customMessage = null)
         {
             return OpenIncomingProposal(proposerName, partnerName, ringItemId, sealItemId, requestMessage, customMessage);
+        }
+
+        internal IReadOnlyList<string> GetObservedSocialMessages()
+        {
+            List<string> messages = new(2);
+            AppendObservedSocialMessage(messages, _outgoingRequestMessage);
+            AppendObservedSocialMessage(messages, _customMessage);
+            return messages;
         }
 
         internal EngagementProposalSnapshot BuildSnapshot()
@@ -396,7 +449,7 @@ namespace HaCreator.MapSimulator.Interaction
                 TextBoxStringPoolId = TextBoxStringPoolId,
                 BottomBandStringPoolId = BottomBandStringPoolId,
                 TextCanvasStringPoolId = TextCanvasStringPoolId,
-                AcceptButtonUolStringPoolId = AcceptButtonUolStringPoolId
+                AcceptButtonUolStringPoolId = PrimaryButtonUolStringPoolId
             };
         }
 
@@ -438,53 +491,12 @@ namespace HaCreator.MapSimulator.Interaction
 
         private string BuildBodyText()
         {
-            List<string> segments = new();
-
             if (_mode == EngagementProposalDialogMode.OutgoingRequest)
             {
-                segments.Add(DefaultOutgoingDialogText);
-                if (!string.IsNullOrWhiteSpace(_outgoingRequestMessage))
-                {
-                    segments.Add($"Request note: {_outgoingRequestMessage}");
-                }
-
-                segments.Add($"{_proposerName} requested an engagement with {_partnerName}.");
-                segments.Add($"{_ringItemName} ({_ringItemId}) was encoded in client packet 161 [00].");
-                if (!string.IsNullOrWhiteSpace(_ringItemDescription))
-                {
-                    segments.Add(_ringItemDescription);
-                }
-
-                return string.Join(" ", segments.Where(segment => !string.IsNullOrWhiteSpace(segment)));
+                return EngagementProposalDialogText.GetWaitForResponseText();
             }
 
-            segments.Add(DefaultIncomingDialogText);
-            if (!string.IsNullOrWhiteSpace(_outgoingRequestMessage))
-            {
-                segments.Add($"Request note: {_outgoingRequestMessage}");
-            }
-
-            if (!string.IsNullOrWhiteSpace(_customMessage))
-            {
-                segments.Add(_customMessage);
-            }
-
-            segments.Add($"{_proposerName} wants to get engaged to {_partnerName}.");
-            segments.Add($"{_ringItemName} ({_ringItemId}) is the proposal item.");
-
-            if (!string.IsNullOrWhiteSpace(_ringItemDescription))
-            {
-                segments.Add(_ringItemDescription);
-            }
-
-            segments.Add($"{_sealItemName} ({_sealItemId}) stays with the engaged couple until the wedding flow continues.");
-
-            if (!string.IsNullOrWhiteSpace(_sealItemDescription))
-            {
-                segments.Add(_sealItemDescription);
-            }
-
-            return string.Join(" ", segments.Where(segment => !string.IsNullOrWhiteSpace(segment)));
+            return EngagementProposalDialogText.FormatIncomingRequestPrompt(_proposerName);
         }
 
         private static string NormalizeRequestMessage(string requestMessage)
@@ -498,6 +510,22 @@ namespace HaCreator.MapSimulator.Interaction
             return trimmed[..RequestMessageMaxLength];
         }
 
+        private static void AppendObservedSocialMessage(ICollection<string> messages, string value)
+        {
+            if (messages == null || string.IsNullOrWhiteSpace(value))
+            {
+                return;
+            }
+
+            string normalized = value.Trim();
+            if (normalized.Length == 0 || messages.Contains(normalized))
+            {
+                return;
+            }
+
+            messages.Add(normalized);
+        }
+
         private static byte[] BuildOutgoingRequestPayload(string requestMessage, int ringItemId)
         {
             using MemoryStream stream = new();
@@ -505,6 +533,18 @@ namespace HaCreator.MapSimulator.Interaction
             writer.Write(RequestPayloadValue);
             WriteMapleString(writer, requestMessage);
             writer.Write(ringItemId);
+            writer.Flush();
+            return stream.ToArray();
+        }
+
+        private static byte[] BuildIncomingDecisionPayload(bool accepted, string requesterName, int ringItemId)
+        {
+            using MemoryStream stream = new();
+            using BinaryWriter writer = new(stream, Encoding.Default, leaveOpen: true);
+            writer.Write(DecisionPayloadValue);
+            writer.Write(accepted ? (byte)1 : (byte)0);
+            WriteMapleString(writer, NormalizeName(requesterName, DefaultPlayerName));
+            writer.Write(ringItemId > 0 ? ringItemId : DefaultRingItemId);
             writer.Flush();
             return stream.ToArray();
         }
@@ -555,6 +595,59 @@ namespace HaCreator.MapSimulator.Interaction
             catch (IOException ex)
             {
                 error = $"Failed to decode engagement request payload: {ex.Message}";
+                return false;
+            }
+        }
+
+        internal static bool TryDecodeIncomingDecisionPayload(
+            IReadOnlyList<byte> payload,
+            out bool accepted,
+            out string requesterName,
+            out int ringItemId,
+            out string error)
+        {
+            accepted = false;
+            requesterName = string.Empty;
+            ringItemId = DefaultRingItemId;
+
+            if (payload == null || payload.Count == 0)
+            {
+                error = "Engagement decision payload is empty.";
+                return false;
+            }
+
+            byte[] bytes = payload as byte[] ?? payload.ToArray();
+            try
+            {
+                using MemoryStream stream = new(bytes, writable: false);
+                using BinaryReader reader = new(stream, Encoding.Default, leaveOpen: true);
+                byte subtype = reader.ReadByte();
+                if (subtype != DecisionPayloadValue)
+                {
+                    error = $"Engagement decision payload must start with subtype {DecisionPayloadValue:00}, but decoded {subtype:00}.";
+                    return false;
+                }
+
+                accepted = reader.ReadByte() != 0;
+                requesterName = NormalizeName(ReadMapleString(reader), DefaultPlayerName);
+                ringItemId = reader.ReadInt32();
+                if (stream.Position != stream.Length)
+                {
+                    error = $"Engagement decision payload has {stream.Length - stream.Position} unexpected trailing bytes.";
+                    return false;
+                }
+
+                error = null;
+                return true;
+            }
+            catch (EndOfStreamException)
+            {
+                error = "Engagement decision payload ended before the requester and ring item id could be decoded.";
+                return false;
+            }
+            catch (IOException ex)
+            {
+                error = $"Failed to decode engagement decision payload: {ex.Message}";
                 return false;
             }
         }

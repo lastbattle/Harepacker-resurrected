@@ -77,12 +77,14 @@ namespace HaCreator.MapSimulator.Fields
         private uint _entryDialogValue;
         private bool _isVisible;
         private bool _choiceButtonsEnabled;
+        private bool _mainButtonEnabled;
+        private bool _exitButtonEnabled;
         private bool _requestSent;
         private bool _receiveCompensation;
         private int _currentNpcDisplayIndex;
         private int _lastSwitchTick;
+        private int _switchCadenceMs;
         private int _roundDeadlineTick;
-        private int _resultFadeTick;
         private int _resultExpireTick;
         private RockPaperScissorsChoice _playerChoice = RockPaperScissorsChoice.None;
         private RockPaperScissorsChoice _npcChoice = RockPaperScissorsChoice.None;
@@ -91,6 +93,8 @@ namespace HaCreator.MapSimulator.Fields
 
         public bool IsVisible => _isVisible;
         public bool ChoiceButtonsEnabled => _choiceButtonsEnabled;
+        public bool MainButtonEnabled => _mainButtonEnabled;
+        public bool ExitButtonEnabled => _exitButtonEnabled;
         public bool RequestSent => _requestSent;
         public bool ReceiveCompensation => _receiveCompensation;
         public uint EntryDialogValue => _entryDialogValue;
@@ -122,12 +126,28 @@ namespace HaCreator.MapSimulator.Fields
                 _lastSwitchTick = currentTick;
             }
 
+            if (_switchCadenceMs > 0 && _npcChoice != RockPaperScissorsChoice.None && currentTick >= _lastSwitchTick + _switchCadenceMs)
+            {
+                _currentNpcDisplayIndex = (_currentNpcDisplayIndex + 1) % ChoiceCount;
+                _lastSwitchTick = currentTick;
+                _switchCadenceMs *= 2;
+                if (_switchCadenceMs >= 720 && _currentNpcDisplayIndex == (int)_npcChoice)
+                {
+                    _switchCadenceMs = 0;
+                    ShowResult(currentTick);
+                    CurrentStatusMessage = $"RPS switching settled on {DescribeChoice(_npcChoice)} and entered ShowResult.";
+                    LastPacketSummary = $"switch-settle -> npc={DescribeChoice(_npcChoice)} + ShowResult";
+                }
+            }
+
             if (_choiceButtonsEnabled && _roundDeadlineTick > 0 && currentTick >= _roundDeadlineTick)
             {
                 _choiceButtonsEnabled = false;
                 _requestSent = false;
                 _npcChoice = RockPaperScissorsChoice.None;
                 StraightVictoryCount = -1;
+                _roundDeadlineTick = 0;
+                _switchCadenceMs = 0;
                 ShowResult(currentTick);
                 CurrentStatusMessage = "RPS round reached the 30000 ms limit and fell into the time-over result branch.";
                 LastPacketSummary = "local timeout -> ShowResult(timeover)";
@@ -135,7 +155,19 @@ namespace HaCreator.MapSimulator.Fields
 
             if (_resultExpireTick > 0 && currentTick >= _resultExpireTick && _resultType != RockPaperScissorsResultType.None)
             {
-                CurrentStatusMessage = $"{DescribeResultType(_resultType)} result remains visible until the next client packet-owned transition.";
+                _resultExpireTick = 0;
+                if (_resultType == RockPaperScissorsResultType.Draw)
+                {
+                    BeginRound(currentTick);
+                    CurrentStatusMessage = "RPS draw result expired and immediately re-armed the next live round.";
+                    LastPacketSummary = "draw-expire -> round-start switching=120 limit=30000";
+                    return;
+                }
+
+                _mainButtonType = ResolvePostResultMainButtonType();
+                _mainButtonEnabled = true;
+                _exitButtonEnabled = true;
+                CurrentStatusMessage = $"{DescribeResultType(_resultType)} result expired and restored the client-owned main/exit button state.";
                 _resultExpireTick = 0;
             }
         }
@@ -184,8 +216,8 @@ namespace HaCreator.MapSimulator.Fields
 
             Rectangle mainRect = Translate(_mainButtonRect, panelX, panelY);
             Rectangle exitRect = Translate(_exitButtonRect, panelX, panelY);
-            DrawButton(spriteBatch, pixelTexture, ResolveMainButtonTexture(), mainRect, true);
-            DrawButton(spriteBatch, pixelTexture, _exitTexture, exitRect, true);
+            DrawButton(spriteBatch, pixelTexture, ResolveMainButtonTexture(), mainRect, _mainButtonEnabled);
+            DrawButton(spriteBatch, pixelTexture, _exitTexture, exitRect, _exitButtonEnabled);
 
             Texture2D npcTexture = ResolveNpcDisplayTexture();
             if (npcTexture != null)
@@ -237,6 +269,56 @@ namespace HaCreator.MapSimulator.Fields
 
             string stateText = $"main={_mainButtonType} | streak={StraightVictoryCount} | choice={DescribeChoice(_playerChoice)} | npc={DescribeChoice(_npcChoice)}";
             DrawShadowedText(spriteBatch, font, stateText, new Vector2(panelX + 12, panelY + 82), Color.Silver, 0.78f);
+        }
+
+        public static bool TryParsePacketType(string token, out int packetType)
+        {
+            packetType = 0;
+            if (string.IsNullOrWhiteSpace(token))
+            {
+                return false;
+            }
+
+            if (int.TryParse(token, NumberStyles.Integer, CultureInfo.InvariantCulture, out packetType))
+            {
+                return IsSupportedPacketType(packetType);
+            }
+
+            switch (token.Trim().ToLowerInvariant())
+            {
+                case "open":
+                    packetType = 8;
+                    return true;
+                case "destroy":
+                case "close":
+                    packetType = 13;
+                    return true;
+                case "win":
+                    packetType = 6;
+                    return true;
+                case "lose":
+                    packetType = 7;
+                    return true;
+                case "start":
+                    packetType = 9;
+                    return true;
+                case "forceresult":
+                case "showresult":
+                    packetType = 10;
+                    return true;
+                case "result":
+                case "npcpick":
+                    packetType = 11;
+                    return true;
+                case "continue":
+                    packetType = 12;
+                    return true;
+                case "reset":
+                    packetType = 14;
+                    return true;
+                default:
+                    return false;
+            }
         }
 
         public bool TryApplyRawPacket(int packetType, byte[] payload, int currentTimeMs, out string errorMessage)
@@ -298,6 +380,12 @@ namespace HaCreator.MapSimulator.Fields
 
             if (Translate(_exitButtonRect, panelX, panelY).Contains(mousePosition))
             {
+                if (!_exitButtonEnabled)
+                {
+                    message = "RPS exit is disabled until the current client-owned transition completes.";
+                    return true;
+                }
+
                 Reset();
                 message = "Closed the local Rock-Paper-Scissors dialog preview.";
                 return true;
@@ -305,6 +393,12 @@ namespace HaCreator.MapSimulator.Fields
 
             if (Translate(_mainButtonRect, panelX, panelY).Contains(mousePosition))
             {
+                if (!_mainButtonEnabled)
+                {
+                    message = "RPS main button is disabled until the next client-owned packet transition.";
+                    return true;
+                }
+
                 int nextSubtype = _mainButtonType == RockPaperScissorsMainButtonType.Continue ? 12 : 9;
                 if (!TryApplyRawPacket(nextSubtype, Array.Empty<byte>(), Environment.TickCount, out string error))
                 {
@@ -352,13 +446,15 @@ namespace HaCreator.MapSimulator.Fields
         {
             _isVisible = false;
             _choiceButtonsEnabled = false;
+            _mainButtonEnabled = true;
+            _exitButtonEnabled = true;
             _requestSent = false;
             _receiveCompensation = false;
             _entryDialogValue = 0;
             _currentNpcDisplayIndex = 0;
             _lastSwitchTick = 0;
+            _switchCadenceMs = 0;
             _roundDeadlineTick = 0;
-            _resultFadeTick = 0;
             _resultExpireTick = 0;
             _playerChoice = RockPaperScissorsChoice.None;
             _npcChoice = RockPaperScissorsChoice.None;
@@ -399,6 +495,8 @@ namespace HaCreator.MapSimulator.Fields
             _npcChoice = RockPaperScissorsChoice.None;
             _resultType = RockPaperScissorsResultType.None;
             _choiceButtonsEnabled = false;
+            _mainButtonEnabled = true;
+            _exitButtonEnabled = true;
             _requestSent = false;
             _receiveCompensation = false;
             _mainButtonType = RockPaperScissorsMainButtonType.Start;
@@ -406,8 +504,9 @@ namespace HaCreator.MapSimulator.Fields
             LastDialogOwner = ClientDialogOwnerName;
             CurrentStatusMessage = $"{ResolveOpenNoticeText()} [StringPool 0x{OpenNoticeStringPoolId:X}]";
             LastPacketSummary = $"open (8) notice -> {ClientDialogOwnerName} entry={_entryDialogValue}";
-            _resultFadeTick = currentTimeMs + ResultFadeDelayMs;
-            _resultExpireTick = currentTimeMs + ResultExpireDelayMs;
+            _roundDeadlineTick = 0;
+            _switchCadenceMs = 0;
+            _resultExpireTick = 0;
             return true;
         }
 
@@ -436,11 +535,14 @@ namespace HaCreator.MapSimulator.Fields
                 case 7:
                 case 14:
                     _choiceButtonsEnabled = false;
+                    _mainButtonEnabled = true;
+                    _exitButtonEnabled = true;
                     _requestSent = false;
                     _npcChoice = RockPaperScissorsChoice.None;
                     _playerChoice = RockPaperScissorsChoice.None;
                     StraightVictoryCount = 0;
                     _roundDeadlineTick = 0;
+                    _switchCadenceMs = 0;
                     _resultType = RockPaperScissorsResultType.None;
                     _mainButtonType = RockPaperScissorsMainButtonType.Start;
                     CurrentStatusMessage = packetType switch
@@ -459,19 +561,15 @@ namespace HaCreator.MapSimulator.Fields
 
                 case 9:
                 case 12:
-                    _npcChoice = RockPaperScissorsChoice.None;
-                    _playerChoice = RockPaperScissorsChoice.None;
-                    _resultType = RockPaperScissorsResultType.None;
-                    _requestSent = false;
-                    _choiceButtonsEnabled = true;
-                    _lastSwitchTick = currentTimeMs;
-                    _roundDeadlineTick = currentTimeMs + RoundLimitMs;
+                    BeginRound(currentTimeMs);
                     CurrentStatusMessage = $"RPS subtype {packetType} started a live round, cleared the NPC choice, armed the 30000 ms limit, and enabled the three RPS buttons.";
                     LastPacketSummary = $"round-start ({packetType}) -> switching=120 limit=30000";
                     break;
 
                 case 10:
                     _choiceButtonsEnabled = false;
+                    _roundDeadlineTick = 0;
+                    _switchCadenceMs = 0;
                     _npcChoice = RockPaperScissorsChoice.None;
                     StraightVictoryCount = -1;
                     ShowResult(currentTimeMs);
@@ -526,8 +624,39 @@ namespace HaCreator.MapSimulator.Fields
             _choiceButtonsEnabled = false;
             _requestSent = false;
             _roundDeadlineTick = 0;
-            _resultFadeTick = currentTimeMs + ResultFadeDelayMs;
+            _mainButtonEnabled = false;
+            _exitButtonEnabled = false;
             _resultExpireTick = currentTimeMs + ResultExpireDelayMs;
+        }
+
+        private static bool IsSupportedPacketType(int packetType)
+        {
+            return packetType is 6 or 7 or 8 or 9 or 10 or 11 or 12 or 13 or 14;
+        }
+
+        private void BeginRound(int currentTimeMs)
+        {
+            _npcChoice = RockPaperScissorsChoice.None;
+            _playerChoice = RockPaperScissorsChoice.None;
+            _resultType = RockPaperScissorsResultType.None;
+            _requestSent = false;
+            _choiceButtonsEnabled = true;
+            _mainButtonEnabled = false;
+            _exitButtonEnabled = false;
+            _switchCadenceMs = ChoiceSwitchCadenceMs;
+            _lastSwitchTick = currentTimeMs;
+            _roundDeadlineTick = currentTimeMs + RoundLimitMs;
+            _resultExpireTick = 0;
+        }
+
+        private RockPaperScissorsMainButtonType ResolvePostResultMainButtonType()
+        {
+            if (StraightVictoryCount <= 0 || StraightVictoryCount >= 10)
+            {
+                return RockPaperScissorsMainButtonType.Retry;
+            }
+
+            return RockPaperScissorsMainButtonType.Continue;
         }
 
         private void EnsureAssetsLoaded()

@@ -49,6 +49,7 @@ namespace HaCreator.MapSimulator.Fields
         private const int PacketTypeUserEnterField = 179;
         private const int PacketTypeUserLeaveField = 180;
         private const int PacketTypeUserMove = 210;
+        private const int PacketTypeSetActiveEffectItem = 220;
         private const int PacketTypeSetActivePortableChair = 222;
         private const int PacketTypeAvatarModified = 223;
         private const int PacketTypeTemporaryStatSet = 225;
@@ -146,6 +147,8 @@ namespace HaCreator.MapSimulator.Fields
                         return TryApplyRemoteLeavePacket(payload, out errorMessage);
                     case PacketTypeUserMove:
                         return TryApplyRemoteMovePacket(payload, currentTimeMs, out errorMessage);
+                    case PacketTypeSetActiveEffectItem:
+                        return TryApplyRemoteActiveEffectItemPacket(payload, out errorMessage);
                     case PacketTypeSetActivePortableChair:
                         return TryApplyRemoteChairPacket(payload, out errorMessage);
                     case PacketTypeAvatarModified:
@@ -766,6 +769,23 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             return _remoteUserPool.TrySetPortableChair(chair.CharacterId, chair.ChairItemId, out errorMessage);
+        }
+
+        private bool TryApplyRemoteActiveEffectItemPacket(byte[] payload, out string errorMessage)
+        {
+            errorMessage = null;
+            if (!RemoteUserPacketCodec.TryParseActiveEffectItem(payload, out RemoteUserActiveEffectItemPacket packet, out errorMessage))
+            {
+                return false;
+            }
+
+            if (!TryGetRemoteActor(packet.CharacterId, out _))
+            {
+                errorMessage = $"Remote Ariant actor id {packet.CharacterId} does not exist.";
+                return false;
+            }
+
+            return _remoteUserPool.TryApplyActiveEffectItem(packet, out errorMessage);
         }
 
         private bool TryApplyRemoteAvatarModifiedPacket(byte[] payload, int currentTimeMs, out string errorMessage)
