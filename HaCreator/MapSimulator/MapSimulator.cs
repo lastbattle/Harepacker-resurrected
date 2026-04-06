@@ -200,6 +200,7 @@ namespace HaCreator.MapSimulator
         private SpatialGrid<PortalItem> _portalsGrid;
         private SpatialGrid<ReactorItem> _reactorsGrid;
         private const int SPATIAL_GRID_CELL_SIZE = 512; // Cell size in pixels
+        private const int SPATIAL_QUERY_MARGIN = 128; // Keep edge-adjacent static objects warm to reduce cull churn
         private bool _useSpatialPartitioning = false; // Enabled for large maps
 
 
@@ -15401,11 +15402,12 @@ namespace HaCreator.MapSimulator
 
             // Calculate view bounds in world coordinates
             Rectangle viewBounds = new Rectangle(
-                mapShiftX - centerX - viewWidth / 2,
-                mapShiftY - centerY - viewHeight / 2,
-                viewWidth * 2,  // Expand to catch objects at edges
-                viewHeight * 2
+                mapShiftX - centerX,
+                mapShiftY - centerY,
+                viewWidth,
+                viewHeight
             );
+            viewBounds.Inflate(SPATIAL_QUERY_MARGIN, SPATIAL_QUERY_MARGIN);
 
 
             // Query and mark visible map objects

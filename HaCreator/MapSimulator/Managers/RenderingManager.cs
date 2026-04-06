@@ -67,8 +67,6 @@ namespace HaCreator.MapSimulator.Managers
         private BaseDXDrawableItem[][] _mapObjectsArray;
         private BaseDXDrawableItem[] _visibleMapObjects;
         private int _visibleMapObjectsCount;
-        private bool _useVisibleRenderSets;
-
         // Entities
         private MobItem[] _mobsArray;
         private NpcItem[] _npcsArray;
@@ -208,12 +206,6 @@ namespace HaCreator.MapSimulator.Managers
             _visibleReactorsCount = visibleReactorsCount;
             _visibleTooltips = visibleTooltips;
             _visibleTooltipsCount = visibleTooltipsCount;
-            _useVisibleRenderSets = visibleMapObjects != null
-                || visibleMobs != null
-                || visibleNpcs != null
-                || visiblePortals != null
-                || visibleReactors != null
-                || visibleTooltips != null;
         }
 
         /// <summary>
@@ -269,7 +261,7 @@ namespace HaCreator.MapSimulator.Managers
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void DrawMapObjects(in RenderContext context)
         {
-            if (_useVisibleRenderSets)
+            if (_visibleMapObjects != null)
             {
                 for (int i = 0; i < _visibleMapObjectsCount; i++)
                 {
@@ -315,7 +307,7 @@ namespace HaCreator.MapSimulator.Managers
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void DrawMobs(in RenderContext context)
         {
-            if (_useVisibleRenderSets && _visibleMobs != null)
+            if (_visibleMobs != null)
             {
                 for (int i = 0; i < _visibleMobsCount; i++)
                 {
@@ -361,7 +353,7 @@ namespace HaCreator.MapSimulator.Managers
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void DrawNpcs(in RenderContext context)
         {
-            if (_useVisibleRenderSets && _visibleNpcs != null)
+            if (_visibleNpcs != null)
             {
                 for (int i = 0; i < _visibleNpcsCount; i++)
                 {
@@ -404,7 +396,7 @@ namespace HaCreator.MapSimulator.Managers
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void DrawPortals(in RenderContext context)
         {
-            if (_useVisibleRenderSets)
+            if (_visiblePortals != null)
             {
                 for (int i = 0; i < _visiblePortalsCount; i++)
                 {
@@ -444,7 +436,7 @@ namespace HaCreator.MapSimulator.Managers
         [MethodImpl(MethodImplOptions.AggressiveInlining)]
         public void DrawReactors(in RenderContext context)
         {
-            if (_useVisibleRenderSets)
+            if (_visibleReactors != null)
             {
                 for (int i = 0; i < _visibleReactorsCount; i++)
                 {
@@ -655,10 +647,10 @@ namespace HaCreator.MapSimulator.Managers
             var mapBoard = _getMapBoard();
             if (mapBoard == null) return;
 
-            TooltipItem[] tooltips = _useVisibleRenderSets && _visibleTooltips != null
+            TooltipItem[] tooltips = _visibleTooltips != null
                 ? _visibleTooltips
                 : _tooltipsArray;
-            int tooltipCount = _useVisibleRenderSets && _visibleTooltips != null
+            int tooltipCount = _visibleTooltips != null
                 ? _visibleTooltipsCount
                 : _tooltipsArray.Length;
 
