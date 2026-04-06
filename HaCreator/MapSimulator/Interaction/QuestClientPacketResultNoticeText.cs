@@ -1,6 +1,7 @@
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 
 namespace HaCreator.MapSimulator.Interaction
 {
@@ -30,19 +31,19 @@ namespace HaCreator.MapSimulator.Interaction
             switch (inventoryType)
             {
                 case InventoryType.EQUIP:
-                    label = "Eqp";
+                    label = MapleStoryStringPool.GetOrFallback(EquipInventoryCategoryStringPoolId, "Eqp");
                     stringPoolId = EquipInventoryCategoryStringPoolId;
                     return true;
                 case InventoryType.USE:
-                    label = "Use";
+                    label = MapleStoryStringPool.GetOrFallback(UseInventoryCategoryStringPoolId, "Use");
                     stringPoolId = UseInventoryCategoryStringPoolId;
                     return true;
                 case InventoryType.SETUP:
-                    label = "Setup";
+                    label = MapleStoryStringPool.GetOrFallback(SetupInventoryCategoryStringPoolId, "Setup");
                     stringPoolId = SetupInventoryCategoryStringPoolId;
                     return true;
                 case InventoryType.ETC:
-                    label = "Etc";
+                    label = MapleStoryStringPool.GetOrFallback(EtcInventoryCategoryStringPoolId, "Etc");
                     stringPoolId = EtcInventoryCategoryStringPoolId;
                     return true;
                 default:
@@ -61,6 +62,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             var labels = new List<string>();
             var seenPoolIds = new HashSet<int>();
+            string separator = MapleStoryStringPool.GetOrFallback(RewardInventorySeparatorStringPoolId, RewardInventorySeparatorText);
             foreach (int itemId in itemIds)
             {
                 InventoryType? inventoryType = InventoryTypeExtensions.GetByType((byte)(Math.Max(0, itemId) / 1000000));
@@ -74,24 +76,28 @@ namespace HaCreator.MapSimulator.Interaction
                 labels.Add(label);
             }
 
-            return string.Join(RewardInventorySeparatorText, labels);
+            return string.Join(separator, labels);
         }
 
         internal static string FormatRewardInventoryNotice(IEnumerable<int> itemIds)
         {
             string categoryText = DescribeRewardItemCategories(itemIds);
-            return string.Format(RewardInventorySummaryText, categoryText);
+            string format = MapleStoryStringPool.GetCompositeFormatOrFallback(RewardInventorySummaryStringPoolId, RewardInventorySummaryText, 1, out _);
+            return string.Format(CultureInfo.InvariantCulture, format, categoryText);
         }
 
         internal static string ApplyNegativeMesoWrap(string summaryText)
         {
-            return string.Format(RewardInventoryNegativeMesoText, summaryText ?? string.Empty);
+            string format = MapleStoryStringPool.GetCompositeFormatOrFallback(RewardInventoryNegativeMesoStringPoolId, RewardInventoryNegativeMesoText, 1, out _);
+            return string.Format(CultureInfo.InvariantCulture, format, summaryText ?? string.Empty);
         }
 
         internal static string FormatQuestExpiredNotice(string questName)
         {
+            string format = MapleStoryStringPool.GetCompositeFormatOrFallback(QuestExpiredStringPoolId, QuestExpiredNoticeText, 1, out _);
             return string.Format(
-                QuestExpiredNoticeText,
+                CultureInfo.InvariantCulture,
+                format,
                 string.IsNullOrWhiteSpace(questName) ? "Unknown" : questName);
         }
     }

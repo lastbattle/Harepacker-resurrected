@@ -1,6 +1,8 @@
 using HaCreator.MapSimulator.Pools;
+using HaCreator.MapSimulator.Interaction;
 using Microsoft.Xna.Framework;
 using System;
+using System.Globalization;
 
 namespace HaCreator.MapSimulator.UI
 {
@@ -56,15 +58,15 @@ namespace HaCreator.MapSimulator.UI
             int bonusMesoAmount = 0)
         {
             string chatMessage = pickedByPet
-                ? $"{FormatActorLabel(sourceName, "Your pet")} picked up some mesos."
+                ? FormatClientString(MesoPetChatStringPoolId, $"{FormatActorLabel(sourceName, "Your pet")} picked up some mesos.")
                 : string.Empty;
 
             string secondaryScreenMessage = bonusMesoAmount > 0
-                ? $"You have gained {bonusMesoAmount} bonus meso(s)."
+                ? FormatClientString(MesoBonusScreenStringPoolId, $"You have gained {bonusMesoAmount} bonus meso(s).", bonusMesoAmount)
                 : string.Empty;
 
             return new PickupNoticeSuccessMessages(
-                $"You have gained {Math.Max(0, amount)} meso(s).",
+                FormatClientString(MesoScreenStringPoolId, $"You have gained {Math.Max(0, amount)} meso(s).", Math.Max(0, amount)),
                 chatMessage,
                 secondaryScreenMessage,
                 Color.Yellow);
@@ -76,8 +78,8 @@ namespace HaCreator.MapSimulator.UI
             string resolvedTypeName = string.IsNullOrWhiteSpace(itemTypeName) ? "item" : itemTypeName;
 
             return quantity > 1
-                ? $"You have gained a(n) {resolvedTypeName} ({resolvedItemName}) x {quantity}."
-                : $"You have gained a(n) {resolvedTypeName} ({resolvedItemName}).";
+                ? FormatClientString(ItemMultiScreenStringPoolId, $"You have gained a(n) {resolvedTypeName} ({resolvedItemName}) x {quantity}.", resolvedTypeName, resolvedItemName, quantity)
+                : FormatClientString(ItemSingleScreenStringPoolId, $"You have gained a(n) {resolvedTypeName} ({resolvedItemName}).", resolvedTypeName, resolvedItemName);
         }
 
         public static string FormatQuestItemPickup(string itemName, string itemTypeName)
@@ -99,7 +101,9 @@ namespace HaCreator.MapSimulator.UI
             switch (reason)
             {
                 case DropPickupFailureReason.InventoryFull:
-                    return new PickupNoticeMessagePair("Your inventory is full.", string.Empty);
+                    return new PickupNoticeMessagePair(
+                        FormatClientString(InventoryFullScreenStringPoolId, "Your inventory is full."),
+                        string.Empty);
                 case DropPickupFailureReason.OwnershipRestricted:
                     return new PickupNoticeMessagePair("You may not loot this item yet.", "You may not loot this item yet.");
                 case DropPickupFailureReason.PetPickupBlocked:
@@ -109,7 +113,9 @@ namespace HaCreator.MapSimulator.UI
                 case DropPickupFailureReason.Unavailable:
                     return FormatUnavailable(dropType, itemName, quantity, mesoAmount, recentPickup, recentActorName);
                 default:
-                    return new PickupNoticeMessagePair("Unable to pick up the item.", string.Empty);
+                    return new PickupNoticeMessagePair(
+                        FormatClientString(GenericFailureScreenStringPoolId, "Unable to pick up the item."),
+                        string.Empty);
             }
         }
 
@@ -188,16 +194,20 @@ namespace HaCreator.MapSimulator.UI
         {
             if (recentPickup == null)
             {
-                return FormatRemotePickup(
-                    DropPickupActorKind.Other,
-                    dropType,
-                    null,
-                    itemName,
-                    quantity,
-                    mesoAmount);
+                return new PickupNoticeMessagePair(
+                    FormatClientString(CantPickupScreenStringPoolId, "You cannot acquire any items."),
+                    FormatClientString(CantPickupChatStringPoolId, "You cannot acquire any items because the game file has been damaged. Please try again after reinstalling the game."));
             }
 
             return FormatRemotePickup(recentPickup.ActorKind, dropType, recentActorName, itemName, quantity, mesoAmount);
+        }
+
+        private static string FormatClientString(int stringPoolId, string fallbackFormat, params object[] args)
+        {
+            string format = MapleStoryStringPool.GetCompositeFormatOrFallback(stringPoolId, fallbackFormat, args?.Length ?? 0, out _);
+            return args == null || args.Length == 0
+                ? format
+                : string.Format(CultureInfo.InvariantCulture, format, args);
         }
 
         private static string FormatActorLabel(string actorName, string fallback)

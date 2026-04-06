@@ -11,8 +11,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         public static string FormatNotice(int stringPoolId, string trackName, bool appendFallbackSuffix = false)
         {
-            string format = ResolveNoticeFormat(stringPoolId);
-            bool hasResolvedText = !string.IsNullOrWhiteSpace(format);
+            string format = MapleStoryStringPool.GetCompositeFormatOrFallback(stringPoolId, null, 1, out bool hasResolvedText);
             string displayName = string.IsNullOrWhiteSpace(trackName) ? "radio track" : trackName.Trim();
             if (hasResolvedText)
             {
@@ -33,32 +32,34 @@ namespace HaCreator.MapSimulator.Interaction
         {
             string authored = string.IsNullOrWhiteSpace(authoredTrack) ? "radio track" : authoredTrack.Trim();
             string resolved = string.IsNullOrWhiteSpace(resolvedDescriptor) ? "unresolved" : resolvedDescriptor.Trim();
-            string line = stringPoolId switch
+            bool hasResolvedText = false;
+            string line;
+            if (MapleStoryStringPool.GetCompositeFormatOrFallback(stringPoolId, null, 1, out hasResolvedText) is string format && hasResolvedText)
             {
-                TrackPathTemplateStringPoolId =>
-                    $"Track path ({FormatStringPoolId(stringPoolId)}): {Quote(authored)} => {Quote(resolved)}",
-                AudioPathTemplateStringPoolId =>
-                    $"Audio path ({FormatStringPoolId(stringPoolId)}): {Quote(authored)} => {Quote(resolved)}",
-                _ =>
-                    $"{FormatStringPoolId(stringPoolId)}: {Quote(authored)} => {Quote(resolved)}",
-            };
+                line = string.Format(format, authored);
+                line = $"{FormatStringPoolId(stringPoolId)}: {Quote(authored)} => {Quote(line)}";
+            }
+            else
+            {
+                line = stringPoolId switch
+                {
+                    TrackPathTemplateStringPoolId =>
+                        $"Track path ({FormatStringPoolId(stringPoolId)}): {Quote(authored)} => {Quote(resolved)}",
+                    AudioPathTemplateStringPoolId =>
+                        $"Audio path ({FormatStringPoolId(stringPoolId)}): {Quote(authored)} => {Quote(resolved)}",
+                    _ =>
+                        $"{FormatStringPoolId(stringPoolId)}: {Quote(authored)} => {Quote(resolved)}",
+                };
+            }
 
-            return appendFallbackSuffix
+            return appendFallbackSuffix && !hasResolvedText
                 ? $"{line} (localized client format unresolved)"
                 : line;
         }
 
-        private static string ResolveNoticeFormat(int stringPoolId)
-        {
-            // The radio branch already recovered ownership ids from the client
-            // (`CRadioManager::Play` / `Stop`), but literal localized string
-            // payloads are still not fully extracted.
-            return null;
-        }
-
         private static string FormatStringPoolId(int stringPoolId)
         {
-            return $"StringPool 0x{stringPoolId:X}";
+            return MapleStoryStringPool.FormatFallbackLabel(stringPoolId);
         }
 
         private static string Quote(string value)

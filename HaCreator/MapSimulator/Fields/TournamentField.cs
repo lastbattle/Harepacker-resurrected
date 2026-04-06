@@ -1,5 +1,6 @@
 using MapleLib.WzLib.WzStructure.Data;
 using MapleLib.WzLib.WzStructure;
+using HaCreator.MapSimulator.Interaction;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
@@ -278,7 +279,14 @@ namespace HaCreator.MapSimulator.Fields
                 ? $"notice (374) blocked-entry code={noticeCode}"
                 : $"notice (374) round-result code={noticeCode}";
             SetStatus(
-                FormatStringPoolMessage(message),
+                branch == 0
+                    ? FormatStringPoolMessage(message)
+                    : noticeCode switch
+                    {
+                        1 => FormatStringPoolMessage(message),
+                        2 => FormatStringPoolMessage(message),
+                        _ => FormatStringPoolMessage(message, noticeCode)
+                    },
                 currentTimeMs,
                 new[] { message.StringPoolId },
                 summary,
@@ -348,7 +356,9 @@ namespace HaCreator.MapSimulator.Fields
             };
 
             string fallback = message.HasValue
-                ? FormatStringPoolMessage(message.Value)
+                ? (uewCode is 8 or 16
+                    ? FormatStringPoolMessage(message.Value, uewCode)
+                    : FormatStringPoolMessage(message.Value))
                 : $"Tournament UEW packet reported code {uewCode}.";
             int[] ids = message.HasValue ? new[] { message.Value.StringPoolId } : Array.Empty<int>();
             SetStatus(fallback, currentTimeMs, ids, $"uew (377) code={uewCode}", "CUtilDlg::Notice");
@@ -403,9 +413,23 @@ namespace HaCreator.MapSimulator.Fields
             };
         }
 
-        private static string FormatStringPoolMessage(TournamentClientMessage definition)
+        private static string FormatStringPoolMessage(TournamentClientMessage definition, params object[] args)
         {
-            return $"{definition.FallbackText} [StringPool 0x{definition.StringPoolId:X}]";
+            string format = GetTournamentCompositeFormat(definition.StringPoolId, definition.FallbackText);
+            string text = args == null || args.Length == 0
+                ? format
+                : string.Format(CultureInfo.InvariantCulture, format, args);
+            return $"{text} [StringPool 0x{definition.StringPoolId:X}]";
+        }
+
+        private static string GetTournamentCompositeFormat(int stringPoolId, string fallbackText)
+        {
+            if (!MapleStoryStringPool.TryGet(stringPoolId, out string text))
+            {
+                return fallbackText;
+            }
+
+            return text.Replace("%n", "{0}", StringComparison.Ordinal);
         }
 
         private static void EnsurePacketConsumed(Stream stream, string packetLabel)

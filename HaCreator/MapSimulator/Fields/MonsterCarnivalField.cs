@@ -1,4 +1,5 @@
 using MapleLib.Helpers;
+using HaCreator.MapSimulator.Interaction;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.WzStructure;
@@ -1922,30 +1923,33 @@ namespace HaCreator.MapSimulator.Fields
 
         private string BuildProcessForDeathMessage(MonsterCarnivalTeam team, string characterName, int remainingRevives)
         {
+            int deathCp = Math.Max(0, _definition?.DeathCp ?? 0);
             MonsterCarnivalStringPoolMessage definition = remainingRevives > 0
-                ? new(0x1019, "{0} of {1} was defeated. {2} revive(s) remaining.")
-                : new(0x101A, "{0} of {1} was defeated. No revives remaining.");
-            MonsterCarnivalStringPoolMessage teamLabel = GetTeamLabelMessage(team);
+                ? new(0x1019, "[%s] has become unable to fight and [%s]team has lost %d CP.")
+                : new(0x101A, "[%s] has become unable to fight but [%s] has no CP so [%s] team did not lose any CP");
             string normalizedName = string.IsNullOrWhiteSpace(characterName) ? "A party member" : characterName.Trim();
             string teamName = FormatTeam(team);
             string fallback = remainingRevives > 0
-                ? string.Format(CultureInfo.InvariantCulture, definition.FallbackFormat, normalizedName, teamName, remainingRevives)
-                : string.Format(CultureInfo.InvariantCulture, definition.FallbackFormat, normalizedName, teamName);
-            return FormatStringPoolMessage(definition, fallback, teamLabel.StringPoolId);
+                ? string.Format(CultureInfo.InvariantCulture, "{0} of {1} was defeated. {2} CP lost.", normalizedName, teamName, deathCp)
+                : string.Format(CultureInfo.InvariantCulture, "{0} of {1} was defeated but no CP was lost.", normalizedName, teamName);
+            return remainingRevives > 0
+                ? FormatStringPoolMessage(definition, fallback, normalizedName, ResolveTeamLabel(team), deathCp)
+                : FormatStringPoolMessage(definition, fallback, normalizedName, ResolveTeamLabel(team), ResolveTeamLabel(team));
         }
 
         private string BuildMemberOutMessage(int messageType, MonsterCarnivalTeam team, string characterName)
         {
             bool changedTeams = messageType == 6;
             MonsterCarnivalStringPoolMessage definition = changedTeams
-                ? new(0x102A, "{0} and {1} changed teams.")
-                : new(0x1029, "{0} left {1}.");
-            MonsterCarnivalStringPoolMessage teamLabel = GetTeamLabelMessage(team);
+                ? new(0x102A, "Since the leader of the Team [%s] quit the Monster Carnival%2C [%s] has been appointed as the new leader of the team.")
+                : new(0x1029, "[%s] of Team [%s] has quit the Monster Carnival.");
             string normalizedName = string.IsNullOrWhiteSpace(characterName) ? "A party member" : characterName.Trim();
             string fallback = changedTeams
-                ? string.Format(CultureInfo.InvariantCulture, definition.FallbackFormat, FormatTeam(team), normalizedName)
-                : string.Format(CultureInfo.InvariantCulture, definition.FallbackFormat, normalizedName, FormatTeam(team));
-            return FormatStringPoolMessage(definition, fallback, teamLabel.StringPoolId);
+                ? string.Format(CultureInfo.InvariantCulture, "{0} became the new leader of {1}.", normalizedName, FormatTeam(team))
+                : string.Format(CultureInfo.InvariantCulture, "{0} left {1}.", normalizedName, FormatTeam(team));
+            return changedTeams
+                ? FormatStringPoolMessage(definition, fallback, ResolveTeamLabel(team), normalizedName)
+                : FormatStringPoolMessage(definition, fallback, normalizedName, ResolveTeamLabel(team));
         }
 
         private static MonsterCarnivalStringPoolMessage GetTeamLabelMessage(MonsterCarnivalTeam team)
@@ -1960,10 +1964,10 @@ namespace HaCreator.MapSimulator.Fields
             return reasonCode switch
             {
                 1 => new MonsterCarnivalStringPoolMessage(0x101B, "You do not have enough CP."),
-                2 => new MonsterCarnivalStringPoolMessage(0x101C, "You cannot use that request right now."),
-                3 => new MonsterCarnivalStringPoolMessage(0x101D, "You cannot summon any more monsters."),
-                4 => new MonsterCarnivalStringPoolMessage(0x101E, "You cannot summon any more guardians."),
-                5 => new MonsterCarnivalStringPoolMessage(0x101F, "A guardian is already active in that slot."),
+                2 => new MonsterCarnivalStringPoolMessage(0x101C, "You can no longer summon the Monster."),
+                3 => new MonsterCarnivalStringPoolMessage(0x101D, "You can no longer summon the being."),
+                4 => new MonsterCarnivalStringPoolMessage(0x101E, "This being is already summoned."),
+                5 => new MonsterCarnivalStringPoolMessage(0x101F, "This request has failed due to an unknown error."),
                 _ => null
             };
         }
@@ -1980,12 +1984,49 @@ namespace HaCreator.MapSimulator.Fields
             };
         }
 
-        private static string FormatStringPoolMessage(MonsterCarnivalStringPoolMessage definition, string fallbackText = null, params int[] relatedStringPoolIds)
+        private static string ResolveTeamLabel(MonsterCarnivalTeam team)
         {
-            string text = string.IsNullOrWhiteSpace(fallbackText)
+            MonsterCarnivalStringPoolMessage teamLabel = GetTeamLabelMessage(team);
+            return MapleStoryStringPool.GetOrFallback(teamLabel.StringPoolId, teamLabel.FallbackFormat);
+        }
+
+        private static string FormatStringPoolMessage(MonsterCarnivalStringPoolMessage definition, string fallbackText = null, params object[] args)
+        {
+            string fallback = string.IsNullOrWhiteSpace(fallbackText)
                 ? definition.FallbackFormat
                 : fallbackText.Trim();
-            return $"{text} {BuildStringPoolSuffix(definition.StringPoolId, relatedStringPoolIds)}";
+            string format = GetMonsterCarnivalCompositeFormat(definition.StringPoolId, fallback, args?.Length ?? 0);
+            string text = args == null || args.Length == 0
+                ? format
+                : string.Format(CultureInfo.InvariantCulture, format, args);
+            return $"{text} {BuildStringPoolSuffix(definition.StringPoolId)}";
+        }
+
+        private static string GetMonsterCarnivalCompositeFormat(int stringPoolId, string fallbackFormat, int maxPlaceholderCount)
+        {
+            if (!MapleStoryStringPool.TryGet(stringPoolId, out string format))
+            {
+                return fallbackFormat;
+            }
+
+            for (int tokenIndex = 0; tokenIndex < maxPlaceholderCount; tokenIndex++)
+            {
+                int markerIndex = format.IndexOf("%s", StringComparison.Ordinal);
+                if (markerIndex < 0)
+                {
+                    markerIndex = format.IndexOf("%d", StringComparison.Ordinal);
+                }
+
+                if (markerIndex < 0)
+                {
+                    break;
+                }
+
+                string replacement = $"{{{tokenIndex}}}";
+                format = format.Remove(markerIndex, 2).Insert(markerIndex, replacement);
+            }
+
+            return format;
         }
 
         private static string BuildStringPoolSuffix(int primaryStringPoolId, params int[] relatedStringPoolIds)

@@ -112,13 +112,13 @@ namespace HaCreator.MapSimulator.Interaction
 
         public static bool TryResolve(int stringPoolId, out string text)
         {
-            text = AttemptMessageStringPoolId == stringPoolId
-                ? AttemptMessageFallback
-                : RecoveredEntries.TryGetValue(stringPoolId, out StringPoolEntryEvidence evidence)
-                    ? evidence.DecodedText
-                    : null;
+            if (AttemptMessageStringPoolId == stringPoolId)
+            {
+                text = AttemptMessageFallback;
+                return true;
+            }
 
-            return text != null;
+            return MapleStoryStringPool.TryGet(stringPoolId, out text);
         }
 
         public static bool TryGetEvidence(int stringPoolId, out string rawHex, out byte seed, out string clientSource)
@@ -139,17 +139,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         public static string GetResolvedOrFallback(int stringPoolId, string fallbackText, bool appendFallbackSuffix = false)
         {
-            if (TryResolve(stringPoolId, out string resolvedText))
-            {
-                return resolvedText;
-            }
-
-            if (!appendFallbackSuffix)
-            {
-                return fallbackText;
-            }
-
-            return $"{fallbackText} (StringPool 0x{stringPoolId:X} fallback)";
+            return MapleStoryStringPool.GetOrFallback(stringPoolId, fallbackText, appendFallbackSuffix);
         }
 
     }

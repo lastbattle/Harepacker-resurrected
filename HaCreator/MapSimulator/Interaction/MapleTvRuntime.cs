@@ -778,15 +778,7 @@ namespace HaCreator.MapSimulator.Interaction
         // StringPool 0xF9E/0xFA0/0xF9F and emits them as chat-log type 12 notices.
         public static bool TryResolve(int stringPoolId, out string text)
         {
-            text = stringPoolId switch
-            {
-                0xF9E => "The MapleTV message has been sent.",
-                0xFA0 => "The MapleTV request could not be completed because the server is busy.",
-                0xF9F => "The MapleTV request could not be completed because the recipient is offline.",
-                _ => null,
-            };
-
-            return text != null;
+            return MapleStoryStringPool.TryGet(stringPoolId, out text);
         }
     }
 

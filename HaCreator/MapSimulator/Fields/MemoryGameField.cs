@@ -2434,10 +2434,8 @@ namespace HaCreator.MapSimulator.Fields
                 return $"MiniRoom game message {gameMessageCode} for {resolvedName}.";
             }
 
-
-            string text = definition.FallbackText.Contains("{0}", StringComparison.Ordinal)
-                ? string.Format(CultureInfo.InvariantCulture, definition.FallbackText, resolvedName)
-                : definition.FallbackText;
+            string format = MapleStoryStringPool.GetCompositeFormatOrFallback(definition.StringPoolId, definition.FallbackText, 1, out _);
+            string text = string.Format(CultureInfo.InvariantCulture, format, resolvedName);
             return $"{text} [StringPool 0x{definition.StringPoolId:X}]";
         }
 
@@ -2622,7 +2620,7 @@ namespace HaCreator.MapSimulator.Fields
         private static string ResolveMemoryGamePromptText(int stringPoolId, string name = null)
         {
             string resolvedName = string.IsNullOrWhiteSpace(name) ? "The other player" : name.Trim();
-            string text = stringPoolId switch
+            string fallbackText = stringPoolId switch
             {
                 MemoryGameGiveUpPromptStringPoolId => "Would you like to give up this Match Cards round?",
                 MemoryGameIncomingTiePromptStringPoolId => string.Format(CultureInfo.InvariantCulture, "{0} requested a tie. Accept it?", resolvedName),
@@ -2634,6 +2632,8 @@ namespace HaCreator.MapSimulator.Fields
                 _ => $"Match Cards prompt 0x{stringPoolId:X}."
             };
 
+            string format = MapleStoryStringPool.GetCompositeFormatOrFallback(stringPoolId, fallbackText, 1, out _);
+            string text = string.Format(CultureInfo.InvariantCulture, format, resolvedName);
             return $"{text} [StringPool 0x{stringPoolId:X}]";
         }
 

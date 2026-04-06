@@ -1,4 +1,5 @@
 using HaSharedLibrary.Util;
+using HaCreator.MapSimulator.Interaction;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using Microsoft.Xna.Framework;
@@ -691,11 +692,11 @@ namespace HaCreator.MapSimulator.Fields
             return text[..Math.Max(0, maxLength - 3)] + "...";
         }
 
-        private static string ResolveOpenNoticeText() => "Rock-Paper-Scissors challenge opened.";
+        private static string ResolveOpenNoticeText() => MapleStoryStringPool.GetOrFallback(OpenNoticeStringPoolId, "Rock-Paper-Scissors challenge opened.");
 
-        private static string ResolveWinNoticeText() => "Rock-Paper-Scissors round complete: win notice.";
+        private static string ResolveWinNoticeText() => MapleStoryStringPool.GetOrFallback(WinNoticeStringPoolId, "Rock-Paper-Scissors round complete: win notice.");
 
-        private static string ResolveLoseNoticeText() => "Rock-Paper-Scissors round complete: lose notice.";
+        private static string ResolveLoseNoticeText() => MapleStoryStringPool.GetOrFallback(LoseNoticeStringPoolId, "Rock-Paper-Scissors round complete: lose notice.");
 
         private static string DescribeChoice(RockPaperScissorsChoice choice)
         {

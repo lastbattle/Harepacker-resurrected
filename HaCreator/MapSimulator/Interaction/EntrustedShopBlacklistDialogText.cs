@@ -34,23 +34,12 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal static bool TryResolve(int stringPoolId, out string text)
         {
-            text = null;
-            return false;
+            return MapleStoryStringPool.TryGet(stringPoolId, out text);
         }
 
         private static string GetResolvedOrFallback(int stringPoolId, string fallbackText, bool appendFallbackSuffix)
         {
-            if (TryResolve(stringPoolId, out string resolvedText))
-            {
-                return resolvedText;
-            }
-
-            if (!appendFallbackSuffix)
-            {
-                return fallbackText;
-            }
-
-            return $"{fallbackText} (StringPool 0x{stringPoolId:X} fallback)";
+            return MapleStoryStringPool.GetOrFallback(stringPoolId, fallbackText, appendFallbackSuffix);
         }
     }
 }

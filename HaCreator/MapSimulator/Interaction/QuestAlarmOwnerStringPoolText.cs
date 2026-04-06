@@ -1,3 +1,5 @@
+using System.Globalization;
+
 namespace HaCreator.MapSimulator.Interaction
 {
     internal static class QuestAlarmOwnerStringPoolText
@@ -12,11 +14,8 @@ namespace HaCreator.MapSimulator.Interaction
 
         public static string FormatTitle(int count)
         {
-            string format = TryResolve(TitleFormatStringPoolId, out string resolvedFormat)
-                ? resolvedFormat
-                : TitleFormatFallback;
-
-            return string.Format(format, count);
+            string format = MapleStoryStringPool.GetCompositeFormatOrFallback(TitleFormatStringPoolId, TitleFormatFallback, 1, out _);
+            return string.Format(CultureInfo.InvariantCulture, format, count);
         }
 
         public static string FormatDeleteNotice(string questTitle, bool appendFallbackSuffix = false)
@@ -35,27 +34,12 @@ namespace HaCreator.MapSimulator.Interaction
 
         public static bool TryResolve(int stringPoolId, out string text)
         {
-            text = stringPoolId switch
-            {
-                _ => null,
-            };
-
-            return text != null;
+            return MapleStoryStringPool.TryGet(stringPoolId, out text);
         }
 
         private static string GetResolvedOrFallback(int stringPoolId, string fallbackText, bool appendFallbackSuffix)
         {
-            if (TryResolve(stringPoolId, out string resolvedText))
-            {
-                return resolvedText;
-            }
-
-            if (!appendFallbackSuffix)
-            {
-                return fallbackText;
-            }
-
-            return $"{fallbackText} (StringPool 0x{stringPoolId:X} fallback)";
+            return MapleStoryStringPool.GetOrFallback(stringPoolId, fallbackText, appendFallbackSuffix);
         }
     }
 }
