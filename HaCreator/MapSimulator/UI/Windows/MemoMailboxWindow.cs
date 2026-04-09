@@ -510,6 +510,10 @@ namespace HaCreator.MapSimulator.UI
                 Color subjectColor = memo.IsRead ? new Color(58, 68, 81) : new Color(190, 77, 35);
                 sprite.DrawString(_font, Truncate(memo.Subject, 23), new Vector2(rowBounds.X + 20, rowBounds.Y + 2), subjectColor, 0f, Vector2.Zero, 0.45f, SpriteEffects.None, 0f);
                 sprite.DrawString(_font, Truncate(memo.Sender, 14), new Vector2(rowBounds.X + 20, rowBounds.Y + 14), new Color(91, 99, 113), 0f, Vector2.Zero, 0.38f, SpriteEffects.None, 0f);
+                if (!string.IsNullOrWhiteSpace(memo.StatusText))
+                {
+                    sprite.DrawString(_font, Truncate(memo.StatusText, 14), new Vector2(rowBounds.X + 104, rowBounds.Y + 14), new Color(113, 120, 132), 0f, Vector2.Zero, 0.33f, SpriteEffects.None, 0f);
+                }
 
                 Vector2 timeSize = _font.MeasureString(memo.DeliveredAtText) * 0.34f;
                 sprite.DrawString(_font, memo.DeliveredAtText, new Vector2(rowBounds.Right - timeSize.X - 4, rowBounds.Y + 3), new Color(123, 129, 141), 0f, Vector2.Zero, 0.34f, SpriteEffects.None, 0f);
@@ -587,8 +591,12 @@ namespace HaCreator.MapSimulator.UI
             sprite.DrawString(_font, Truncate(memo.Subject, 30), new Vector2(panel.X + 4, panel.Y + 4), headingColor, 0f, Vector2.Zero, 0.43f, SpriteEffects.None, 0f);
             sprite.DrawString(_font, $"From {memo.Sender}", new Vector2(panel.X + 4, panel.Y + 20), new Color(112, 119, 131), 0f, Vector2.Zero, 0.35f, SpriteEffects.None, 0f);
             sprite.DrawString(_font, memo.DeliveredAtText, new Vector2(panel.Right - 76, panel.Y + 20), new Color(112, 119, 131), 0f, Vector2.Zero, 0.32f, SpriteEffects.None, 0f);
+            if (!string.IsNullOrWhiteSpace(memo.StatusText))
+            {
+                sprite.DrawString(_font, Truncate(memo.StatusText, 18), new Vector2(panel.X + 4, panel.Y + 32), new Color(103, 111, 123), 0f, Vector2.Zero, 0.33f, SpriteEffects.None, 0f);
+            }
 
-            float drawY = panel.Y + 34;
+            float drawY = panel.Y + 44;
             foreach (string line in WrapText(memo.Body, panel.Width - 8, 0.36f))
             {
                 sprite.DrawString(_font, line, new Vector2(panel.X + 4, drawY), bodyColor, 0f, Vector2.Zero, 0.36f, SpriteEffects.None, 0f);

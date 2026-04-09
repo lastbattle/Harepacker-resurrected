@@ -24,6 +24,8 @@ namespace HaCreator.MapSimulator.UI
         private const float TimerScale = 0.86f;
         private const int FallbackIconWidth = 18;
         private const int FallbackIconHeight = 18;
+        private const int FollowUpBadgeHorizontalPadding = 7;
+        private const int FollowUpBadgeVerticalPadding = 3;
 
         private SpriteFont _font;
         private Texture2D _pixelTexture;
@@ -188,14 +190,12 @@ namespace HaCreator.MapSimulator.UI
             string stateText = GetFollowUpStateText(runtime.LastFieldHazardFollowUpKind);
             if (!string.IsNullOrWhiteSpace(stateText))
             {
-                float stateTextWidth = MeasureTextWidth(stateText, FollowUpScale);
-                DrawTextWithShadow(
+                DrawFollowUpBadge(
                     spriteBatch,
                     stateText,
-                    new Vector2(bounds.Right - HorizontalPadding - stateTextWidth, bounds.Y + 15),
-                    GetFollowUpColor(runtime.LastFieldHazardFollowUpKind) * alpha,
-                    Color.Black * alpha,
-                    FollowUpScale);
+                    runtime.LastFieldHazardFollowUpKind,
+                    new Vector2(bounds.Right - HorizontalPadding, bounds.Y + 15),
+                    alpha);
             }
 
             string damageText = runtime.LastFieldHazardDamage > 0
@@ -380,6 +380,52 @@ namespace HaCreator.MapSimulator.UI
                 FieldHazardFollowUpKind.Throttled => new Color(255, 219, 145),
                 _ => Color.White
             };
+        }
+
+        private void DrawFollowUpBadge(
+            SpriteBatch spriteBatch,
+            string text,
+            FieldHazardFollowUpKind kind,
+            Vector2 topRight,
+            float alpha)
+        {
+            if (string.IsNullOrWhiteSpace(text) || _font == null || _pixelTexture == null)
+            {
+                return;
+            }
+
+            Vector2 textSize = ClientTextDrawing.Measure((GraphicsDevice)null, text, FollowUpScale, _font);
+            int badgeWidth = (int)Math.Ceiling(textSize.X) + (FollowUpBadgeHorizontalPadding * 2);
+            int badgeHeight = (int)Math.Ceiling(textSize.Y) + (FollowUpBadgeVerticalPadding * 2);
+            Rectangle badgeBounds = new(
+                (int)Math.Round(topRight.X) - badgeWidth,
+                (int)Math.Round(topRight.Y),
+                badgeWidth,
+                badgeHeight);
+
+            Color accent = GetFollowUpColor(kind) * alpha;
+            Color fill = new Color(
+                Math.Clamp((int)(accent.R * 0.32f), 0, 255),
+                Math.Clamp((int)(accent.G * 0.32f), 0, 255),
+                Math.Clamp((int)(accent.B * 0.32f), 0, 255),
+                Math.Clamp((int)(220 * alpha), 0, 255));
+            Color outline = new Color(accent.R, accent.G, accent.B, Math.Clamp((int)(255 * alpha), 0, 255));
+
+            spriteBatch.Draw(_pixelTexture, badgeBounds, fill);
+            spriteBatch.Draw(_pixelTexture, new Rectangle(badgeBounds.X, badgeBounds.Y, badgeBounds.Width, 1), outline);
+            spriteBatch.Draw(_pixelTexture, new Rectangle(badgeBounds.X, badgeBounds.Bottom - 1, badgeBounds.Width, 1), outline);
+            spriteBatch.Draw(_pixelTexture, new Rectangle(badgeBounds.X, badgeBounds.Y, 1, badgeBounds.Height), outline);
+            spriteBatch.Draw(_pixelTexture, new Rectangle(badgeBounds.Right - 1, badgeBounds.Y, 1, badgeBounds.Height), outline);
+
+            DrawTextWithShadow(
+                spriteBatch,
+                text,
+                new Vector2(
+                    badgeBounds.X + FollowUpBadgeHorizontalPadding,
+                    badgeBounds.Y + FollowUpBadgeVerticalPadding - 1),
+                Color.White * alpha,
+                Color.Black * alpha,
+                FollowUpScale);
         }
 
         private void DrawTextWithShadow(

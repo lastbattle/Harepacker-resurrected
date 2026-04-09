@@ -52,13 +52,15 @@ namespace HaCreator.MapSimulator.Effects
     /// </summary>
     public class WeddingField
     {
-        private const int CathedralWeddingMapId = 680000110;
-        private const int ChapelWeddingMapId = 680000210;
-        private const int CathedralNpcId = 9201011;
-        private const int ChapelNpcId = 9201002;
+        private const int WhiteWeddingAltarMapId = 680000110;
+        private const int SaintMapleAltarMapId = 680000210;
+        private const int WhiteWeddingAltarNpcId = 9201011;
+        private const int SaintMapleAltarNpcId = 9201002;
         private const int DialogDurationMs = 5000;
         private const int DialogFadeInDurationMs = 300;
-        private const string ChapelGuestBlessPromptText = "Would you like to give your blessing to the couple?";
+        // CField_Wedding::OnWeddingProgress special-cases StringPool id 0x1090 for the
+        // guest-only yes/no modal when Saint Maple Altar reaches step 2.
+        private const string GuestBlessPromptText = "Would you like to give your blessing to the couple?";
         private const string BlessEffectImageName = "BasicEff.img";
         private const string BlessEffectPath = "Wedding";
         private const string WeddingBgmPath = "BgmEvent/wedding";
@@ -92,14 +94,14 @@ namespace HaCreator.MapSimulator.Effects
 
         private static readonly Dictionary<int, Dictionary<int, string>> WeddingDialogFallbacks = new()
         {
-            [ChapelNpcId] = new Dictionary<int, string>
+            [SaintMapleAltarNpcId] = new Dictionary<int, string>
             {
                 [0] = "Dearly beloved, we are gathered here today to celebrate the marriage of these two fine, upstanding people. One can clearly see the love between you two, and it's a sight I'll never tire of. You have proved your love and received your Parent's Blessing. Do you wish to seal your love in the eternal embrace of marriage?",
                 [1] = "Very well. Guests may now Bless the couple if they choose...",
                 [3] = "By the power vested in me through the mighty Maple tree, I now pronounce you Husband and Wife. You may kiss the bride!",
                 [4] = "With the Blessing of the Maple tree, I wish both of you a long and safe marriage."
             },
-            [CathedralNpcId] = new Dictionary<int, string>
+            [WhiteWeddingAltarNpcId] = new Dictionary<int, string>
             {
                 [0] = "We are gathered here today to celebrate the union of these two love birds. I've never seen a better-looking couple in all my years of running this Chapel. So, do you want to travel the world and spend the rest of your life with your chosen spouse?",
                 [1] = "Very well! I pronounce you Husband and Wife. You may kiss the bride!",
@@ -225,8 +227,8 @@ namespace HaCreator.MapSimulator.Effects
             _currentStep = 0;
 
 
-            // Set NPC based on map (from client: 680000110 = 9201011, 680000210 = 9201002)
-            _npcId = mapId == CathedralWeddingMapId ? CathedralNpcId : ChapelNpcId;
+            // OnWeddingProgress resolves 680000110 -> 9201011 and 680000210 -> 9201002.
+            _npcId = mapId == WhiteWeddingAltarMapId ? WhiteWeddingAltarNpcId : SaintMapleAltarNpcId;
             _groomId = 0;
             _brideId = 0;
             _groomPosition = null;
@@ -1747,6 +1749,7 @@ namespace HaCreator.MapSimulator.Effects
         {
             System.Diagnostics.Debug.WriteLine("[WeddingField] OnWeddingCeremonyEnd - Starting bless effect");
             DismissCurrentDialog();
+            SetCeremonyTextOverlay(active: false);
             SetBlessEffect(true, currentTimeMs);
             SetCeremonyCardOverlay(active: true);
             SetCeremonyCelebration(active: true);
@@ -2038,13 +2041,13 @@ namespace HaCreator.MapSimulator.Effects
 
         private WeddingDialog CreateDialogForStep(int step, int currentTimeMs)
         {
-            if (_mapId == ChapelWeddingMapId && step == 2)
+            if (_mapId == SaintMapleAltarMapId && step == 2)
             {
                 if (LocalParticipantRole == WeddingParticipantRole.Guest)
                 {
                     return new WeddingDialog
                     {
-                        Message = ChapelGuestBlessPromptText,
+                        Message = GuestBlessPromptText,
                         NpcId = _npcId,
                         StartTime = currentTimeMs,
                         Duration = DialogDurationMs,
@@ -2173,7 +2176,7 @@ namespace HaCreator.MapSimulator.Effects
             }
 
 
-            return !(_mapId == ChapelWeddingMapId && _currentStep == 2);
+            return !(_mapId == SaintMapleAltarMapId && _currentStep == 2);
 
         }
 
@@ -2913,7 +2916,7 @@ namespace HaCreator.MapSimulator.Effects
 
         private bool IsPronouncementOrBlessingStep(int step)
         {
-            return _mapId == ChapelWeddingMapId
+            return _mapId == SaintMapleAltarMapId
                 ? step >= 3
                 : step >= 1;
         }

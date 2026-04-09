@@ -478,6 +478,34 @@ namespace HaCreator.MapSimulator.Managers
             };
         }
 
+        internal static bool TryDecodeClientOpcodePacket(byte[] rawPacket, out byte[] payload, out string error)
+        {
+            payload = Array.Empty<byte>();
+            error = null;
+            if (!TryDecodeOpcode(rawPacket, out int opcode, out byte[] decodedPayload))
+            {
+                error = "Memory Game client packet requires an opcode-wrapped frame.";
+                return false;
+            }
+
+            if (opcode != OutboundMiniRoomOpcode)
+            {
+                error = $"Memory Game client packet opcode must be {OutboundMiniRoomOpcode}, but was {opcode}.";
+                return false;
+            }
+
+            if (!TryClassifyMirroredClientSubtype(decodedPayload, out byte subtype))
+            {
+                error = decodedPayload.Length == 0
+                    ? "Memory Game client packet payload is empty."
+                    : $"Unsupported Memory Game client subtype {decodedPayload[0]}.";
+                return false;
+            }
+
+            payload = decodedPayload;
+            return true;
+        }
+
         private static MapleCrypto CreateCrypto(byte[] iv, short version)
         {
             return new MapleCrypto((byte[])iv.Clone(), version);

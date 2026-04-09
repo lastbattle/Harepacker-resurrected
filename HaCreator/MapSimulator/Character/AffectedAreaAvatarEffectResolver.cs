@@ -10,50 +10,36 @@ namespace HaCreator.MapSimulator.Character
             SkillData sourceSkill,
             IReadOnlyCollection<SkillData> supportSkills = null)
         {
-            foreach (SkillData skill in EnumerateEffectSourceSkills(sourceSkill, supportSkills))
-            {
-                if (skill?.AffectedEffect?.Frames?.Count > 0
-                    || skill?.AffectedSecondaryEffect?.Frames?.Count > 0)
-                {
-                    return true;
-                }
-            }
-
-            return false;
+            return ResolveAuthoredAuraOwnerSkill(sourceSkill, supportSkills) != null;
         }
 
         internal static SkillData BuildLoopingAvatarEffectSkill(
             SkillData sourceSkill,
             IReadOnlyCollection<SkillData> supportSkills = null)
         {
+            SkillData ownerSkill = ResolveAuthoredAuraOwnerSkill(sourceSkill, supportSkills);
+            if (ownerSkill == null)
+            {
+                return null;
+            }
+
             SkillAnimation overlayAnimation = null;
             SkillAnimation overlaySecondaryAnimation = null;
             SkillAnimation underFaceAnimation = null;
             SkillAnimation underFaceSecondaryAnimation = null;
 
-            foreach (SkillData skill in EnumerateEffectSourceSkills(sourceSkill, supportSkills))
-            {
-                AssignAffectedAreaAvatarEffectPlane(
-                    CreateLoopingAvatarEffect(skill?.AffectedEffect),
-                    ref overlayAnimation,
-                    ref overlaySecondaryAnimation,
-                    ref underFaceAnimation,
-                    ref underFaceSecondaryAnimation);
-                AssignAffectedAreaAvatarEffectPlane(
-                    CreateLoopingAvatarEffect(skill?.AffectedSecondaryEffect),
-                    ref overlayAnimation,
-                    ref overlaySecondaryAnimation,
-                    ref underFaceAnimation,
-                    ref underFaceSecondaryAnimation);
-            }
-
-            if (overlayAnimation == null
-                && overlaySecondaryAnimation == null
-                && underFaceAnimation == null
-                && underFaceSecondaryAnimation == null)
-            {
-                return null;
-            }
+            AssignAffectedAreaAvatarEffectPlane(
+                CreateLoopingAvatarEffect(ownerSkill.AffectedEffect),
+                ref overlayAnimation,
+                ref overlaySecondaryAnimation,
+                ref underFaceAnimation,
+                ref underFaceSecondaryAnimation);
+            AssignAffectedAreaAvatarEffectPlane(
+                CreateLoopingAvatarEffect(ownerSkill.AffectedSecondaryEffect),
+                ref overlayAnimation,
+                ref overlaySecondaryAnimation,
+                ref underFaceAnimation,
+                ref underFaceSecondaryAnimation);
 
             return new SkillData
             {
@@ -63,6 +49,22 @@ namespace HaCreator.MapSimulator.Character
                 AvatarUnderFaceEffect = underFaceAnimation,
                 AvatarUnderFaceSecondaryEffect = underFaceSecondaryAnimation
             };
+        }
+
+        internal static SkillData ResolveAuthoredAuraOwnerSkill(
+            SkillData sourceSkill,
+            IReadOnlyCollection<SkillData> supportSkills = null)
+        {
+            foreach (SkillData skill in EnumerateEffectSourceSkills(sourceSkill, supportSkills))
+            {
+                if (skill?.AffectedEffect?.Frames?.Count > 0
+                    || skill?.AffectedSecondaryEffect?.Frames?.Count > 0)
+                {
+                    return skill;
+                }
+            }
+
+            return null;
         }
 
         private static IEnumerable<SkillData> EnumerateEffectSourceSkills(

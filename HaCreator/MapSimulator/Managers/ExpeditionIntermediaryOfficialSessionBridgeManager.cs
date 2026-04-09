@@ -19,6 +19,7 @@ namespace HaCreator.MapSimulator.Managers
     public sealed class ExpeditionIntermediaryOfficialSessionBridgeManager : IDisposable
     {
         public const int DefaultListenPort = 18503;
+        public const ushort DefaultInboundResultOpcode = 64;
         private const string DefaultProcessName = "MapleStory";
 
         private readonly ConcurrentQueue<ExpeditionIntermediaryPacketInboxMessage> _pendingMessages = new();
@@ -78,6 +79,9 @@ namespace HaCreator.MapSimulator.Managers
         public bool HasAttachedClient => _activePair != null;
         public bool HasConnectedSession => _activePair?.InitCompleted == true;
         public int ReceivedCount { get; private set; }
+        public int SentCount { get; private set; }
+        public int LastSentOpcode { get; private set; } = -1;
+        public int LastSentPayloadLength { get; private set; }
         public string LastStatus { get; private set; } = "Expedition intermediary official-session bridge inactive.";
 
         public string DescribeStatus()
@@ -91,7 +95,10 @@ namespace HaCreator.MapSimulator.Managers
             string opcodeText = ExpeditionOpcode > 0
                 ? $"opcode={ExpeditionOpcode}"
                 : "opcode unset";
-            return $"Expedition intermediary official-session bridge {lifecycle}; {session}; received={ReceivedCount}; {opcodeText}. {LastStatus}";
+            string lastSent = LastSentOpcode >= 0
+                ? $"; last outbound opcode={LastSentOpcode} payload={LastSentPayloadLength} byte(s)"
+                : string.Empty;
+            return $"Expedition intermediary official-session bridge {lifecycle}; {session}; received={ReceivedCount}; sent={SentCount}; {opcodeText}{lastSent}. {LastStatus}";
         }
 
         public void Start(int listenPort, string remoteHost, int remotePort, ushort expeditionOpcode)
@@ -213,6 +220,45 @@ namespace HaCreator.MapSimulator.Managers
             LastStatus = success
                 ? $"Applied {summary} from {source}."
                 : $"Ignored {summary} from {source}.";
+        }
+
+        public bool TrySendRawPacket(byte[] rawPacket, out string status)
+        {
+            BridgePair pair = _activePair;
+            if (pair == null || !pair.InitCompleted)
+            {
+                status = "Expedition intermediary official-session bridge has no active Maple session.";
+                LastStatus = status;
+                return false;
+            }
+
+            if (rawPacket == null || rawPacket.Length < sizeof(ushort))
+            {
+                status = "Expedition intermediary outbound packet must include a 2-byte opcode.";
+                LastStatus = status;
+                return false;
+            }
+
+            try
+            {
+                byte[] clonedPacket = (byte[])rawPacket.Clone();
+                int opcode = BitConverter.ToUInt16(clonedPacket, 0);
+                int payloadLength = Math.Max(0, clonedPacket.Length - sizeof(ushort));
+                pair.ServerSession.SendPacket(clonedPacket);
+                SentCount++;
+                LastSentOpcode = opcode;
+                LastSentPayloadLength = payloadLength;
+                status = $"Injected expedition opcode {opcode} ({payloadLength} byte(s)) into live session {pair.RemoteEndpoint}.";
+                LastStatus = status;
+                return true;
+            }
+            catch (Exception ex)
+            {
+                status = $"Expedition intermediary official-session injection failed: {ex.Message}";
+                LastStatus = status;
+                ClearActivePair(pair, status);
+                return false;
+            }
         }
 
         public void Dispose()
@@ -438,6 +484,9 @@ namespace HaCreator.MapSimulator.Managers
         private void ResetInboundState()
         {
             ReceivedCount = 0;
+            SentCount = 0;
+            LastSentOpcode = -1;
+            LastSentPayloadLength = 0;
         }
 
         private static MapleCrypto CreateCrypto(byte[] iv, short version)

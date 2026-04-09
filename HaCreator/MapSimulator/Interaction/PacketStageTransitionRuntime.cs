@@ -131,7 +131,7 @@ namespace HaCreator.MapSimulator.Interaction
             int tempExperience = 0,
             int playTime = 0,
             short subJob = 0,
-            byte adminEffect = 0,
+            byte friendMax = 0,
             string linkedCharacterName = "",
             int damageSeed1 = 0,
             int damageSeed2 = 0,
@@ -178,7 +178,7 @@ namespace HaCreator.MapSimulator.Interaction
                 portalIndex,
                 playTime,
                 subJob);
-            writer.Write(adminEffect);
+            writer.Write(friendMax);
             writer.Write(!string.IsNullOrWhiteSpace(linkedCharacterName) ? (byte)1 : (byte)0);
             if (!string.IsNullOrWhiteSpace(linkedCharacterName))
             {
@@ -200,13 +200,19 @@ namespace HaCreator.MapSimulator.Interaction
             return stream.ToArray();
         }
 
-        internal static bool TryDecodeTrailingLogoutGiftConfigPayload(byte[] trailingPayload, out int[] commoditySerialNumbers, out int leadingOpaqueByteCount, out string error)
+        internal static bool TryDecodeTrailingLogoutGiftConfigPayload(
+            byte[] trailingPayload,
+            out int[] commoditySerialNumbers,
+            out byte[] leadingOpaqueBytes,
+            out int[] leadingOpaqueInt32Values,
+            out string error)
         {
             const int logoutGiftEntryCount = 3;
             const int logoutGiftConfigByteLength = logoutGiftEntryCount * sizeof(int);
 
             commoditySerialNumbers = new int[logoutGiftEntryCount];
-            leadingOpaqueByteCount = 0;
+            leadingOpaqueBytes = Array.Empty<byte>();
+            leadingOpaqueInt32Values = Array.Empty<int>();
             error = null;
             trailingPayload ??= Array.Empty<byte>();
 
@@ -218,7 +224,18 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            leadingOpaqueByteCount = trailingPayload.Length - logoutGiftConfigByteLength;
+            int leadingOpaqueByteCount = trailingPayload.Length - logoutGiftConfigByteLength;
+            if (leadingOpaqueByteCount > 0)
+            {
+                leadingOpaqueBytes = new byte[leadingOpaqueByteCount];
+                Buffer.BlockCopy(trailingPayload, 0, leadingOpaqueBytes, 0, leadingOpaqueByteCount);
+                if ((leadingOpaqueByteCount % sizeof(int)) == 0)
+                {
+                    leadingOpaqueInt32Values = new int[leadingOpaqueByteCount / sizeof(int)];
+                    Buffer.BlockCopy(leadingOpaqueBytes, 0, leadingOpaqueInt32Values, 0, leadingOpaqueByteCount);
+                }
+            }
+
             using MemoryStream stream = new(trailingPayload, leadingOpaqueByteCount, logoutGiftConfigByteLength, writable: false);
             using BinaryReader reader = new(stream);
             for (int i = 0; i < commoditySerialNumbers.Length; i++)
@@ -494,10 +511,11 @@ namespace HaCreator.MapSimulator.Interaction
                     long characterDataStart = stream.Position;
                     ulong characterDataFlags = 0;
                     PacketCharacterDataTransferHead transferHead;
-                    if (!TryDecodeCharacterDataDecodePrelude(reader, out transferHead, out characterDataFlags, out _))
+                    PacketCharacterDataSnapshot characterDataSnapshot;
+                    if (!TryDecodeCharacterDataDecodePrelude(reader, out transferHead, out characterDataSnapshot, out characterDataFlags, out _))
                     {
                         stream.Position = characterDataStart;
-                        if (!TryDecodeCharacterDataTransferHead(reader, out transferHead, out error))
+                        if (!TryDecodeCharacterDataTransferHead(reader, out transferHead, out characterDataSnapshot, out error))
                         {
                             return false;
                         }
@@ -530,6 +548,7 @@ namespace HaCreator.MapSimulator.Interaction
                         0,
                         0,
                         characterDataFlags,
+                        characterDataSnapshot,
                         transferServerFileTime,
                         remainingBytes > 0 ? reader.ReadBytes(remainingBytes) : Array.Empty<byte>(),
                         remainingBytes);
@@ -579,6 +598,7 @@ namespace HaCreator.MapSimulator.Interaction
                     chaseX,
                     chaseY,
                     0,
+                    null,
                     serverFileTime,
                     Array.Empty<byte>(),
                     0);
@@ -591,9 +611,14 @@ namespace HaCreator.MapSimulator.Interaction
             }
         }
 
-        private static bool TryDecodeCharacterDataTransferHead(BinaryReader reader, out PacketCharacterDataTransferHead head, out string error)
+        private static bool TryDecodeCharacterDataTransferHead(
+            BinaryReader reader,
+            out PacketCharacterDataTransferHead head,
+            out PacketCharacterDataSnapshot snapshot,
+            out string error)
         {
             head = default;
+            snapshot = null;
             error = null;
             long restorePosition = reader.BaseStream.Position;
             try
@@ -601,39 +626,13 @@ namespace HaCreator.MapSimulator.Interaction
                 _ = reader.ReadInt32(); // damage seed 1
                 _ = reader.ReadInt32(); // damage seed 2
                 _ = reader.ReadInt32(); // damage seed 3
-                _ = reader.ReadInt32(); // character id
-                _ = ReadMapleString(reader); // character name
-                _ = reader.ReadByte(); // gender
-                _ = reader.ReadByte(); // skin
-                _ = reader.ReadInt32(); // face
-                _ = reader.ReadInt32(); // hair
-                _ = reader.ReadByte(); // level
-                _ = reader.ReadInt16(); // job
-                _ = reader.ReadInt16(); // str
-                _ = reader.ReadInt16(); // dex
-                _ = reader.ReadInt16(); // int
-                _ = reader.ReadInt16(); // luk
-                int hp = reader.ReadInt32();
-                _ = reader.ReadInt32(); // max hp
-                _ = reader.ReadInt32(); // mp
-                _ = reader.ReadInt32(); // max mp
-                _ = reader.ReadInt16(); // ap
-                _ = reader.ReadInt16(); // sp
-                _ = reader.ReadInt32(); // exp
-                _ = reader.ReadInt16(); // fame
-                _ = reader.ReadInt32(); // temp exp
-                int fieldId = reader.ReadInt32(); // dwPosMap
-                byte portalIndex = reader.ReadByte(); // nPortal
-                _ = reader.ReadInt32(); // play time
-                _ = reader.ReadInt16(); // sub job
-                _ = reader.ReadByte(); // admin effect
-                bool hasLinkedCharacterName = reader.ReadByte() != 0;
-                if (hasLinkedCharacterName)
+                snapshot = ReadCharacterDataStatSnapshot(reader);
+                if (TryDecodeCharacterDataStatTrailer(reader, snapshot, out PacketCharacterDataSnapshot decoratedSnapshot))
                 {
-                    _ = ReadMapleString(reader);
+                    snapshot = decoratedSnapshot;
                 }
 
-                head = new PacketCharacterDataTransferHead(fieldId, portalIndex, hp);
+                head = new PacketCharacterDataTransferHead(snapshot.FieldId, snapshot.PortalIndex, snapshot.Hp);
                 return true;
             }
             catch (Exception ex) when (ex is IOException || ex is EndOfStreamException || ex is ArgumentException || ex is InvalidDataException)
@@ -651,10 +650,12 @@ namespace HaCreator.MapSimulator.Interaction
         private static bool TryDecodeCharacterDataDecodePrelude(
             BinaryReader reader,
             out PacketCharacterDataTransferHead head,
+            out PacketCharacterDataSnapshot snapshot,
             out ulong characterDataFlags,
             out int consumedBytes)
         {
             head = default;
+            snapshot = null;
             characterDataFlags = 0;
             consumedBytes = 0;
 
@@ -695,39 +696,13 @@ namespace HaCreator.MapSimulator.Interaction
                     return false;
                 }
 
-                _ = reader.ReadInt32(); // character id
-                _ = ReadMapleString(reader); // character name
-                _ = reader.ReadByte(); // gender
-                _ = reader.ReadByte(); // skin
-                _ = reader.ReadInt32(); // face
-                _ = reader.ReadInt32(); // hair
-                _ = reader.ReadByte(); // level
-                _ = reader.ReadInt16(); // job
-                _ = reader.ReadInt16(); // str
-                _ = reader.ReadInt16(); // dex
-                _ = reader.ReadInt16(); // int
-                _ = reader.ReadInt16(); // luk
-                int hp = reader.ReadInt32();
-                _ = reader.ReadInt32(); // max hp
-                _ = reader.ReadInt32(); // mp
-                _ = reader.ReadInt32(); // max mp
-                _ = reader.ReadInt16(); // ap
-                _ = reader.ReadInt16(); // sp
-                _ = reader.ReadInt32(); // exp
-                _ = reader.ReadInt16(); // fame
-                _ = reader.ReadInt32(); // temp exp
-                int fieldId = reader.ReadInt32();
-                byte portalIndex = reader.ReadByte();
-                _ = reader.ReadInt32(); // play time
-                _ = reader.ReadInt16(); // sub job
-                _ = reader.ReadByte(); // friend max
-                bool hasLinkedCharacterName = reader.ReadByte() != 0;
-                if (hasLinkedCharacterName)
+                snapshot = ReadCharacterDataStatSnapshot(reader);
+                if (TryDecodeCharacterDataStatTrailer(reader, snapshot, out PacketCharacterDataSnapshot decoratedSnapshot))
                 {
-                    _ = ReadMapleString(reader);
+                    snapshot = decoratedSnapshot;
                 }
 
-                head = new PacketCharacterDataTransferHead(fieldId, portalIndex, hp);
+                head = new PacketCharacterDataTransferHead(snapshot.FieldId, snapshot.PortalIndex, snapshot.Hp);
                 consumedBytes = checked((int)(reader.BaseStream.Position - startPosition));
                 return true;
             }
@@ -735,8 +710,96 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 reader.BaseStream.Position = startPosition;
                 head = default;
+                snapshot = null;
                 characterDataFlags = 0;
                 consumedBytes = 0;
+                return false;
+            }
+        }
+
+        private static PacketCharacterDataSnapshot ReadCharacterDataStatSnapshot(BinaryReader reader)
+        {
+            int characterId = reader.ReadInt32();
+            string characterName = ReadMapleString(reader);
+            byte gender = reader.ReadByte();
+            byte skin = reader.ReadByte();
+            int faceId = reader.ReadInt32();
+            int hairId = reader.ReadInt32();
+            byte level = reader.ReadByte();
+            short jobId = reader.ReadInt16();
+            short strength = reader.ReadInt16();
+            short dexterity = reader.ReadInt16();
+            short intelligence = reader.ReadInt16();
+            short luck = reader.ReadInt16();
+            int hp = reader.ReadInt32();
+            int maxHp = reader.ReadInt32();
+            int mp = reader.ReadInt32();
+            int maxMp = reader.ReadInt32();
+            short abilityPoints = reader.ReadInt16();
+            short skillPoints = reader.ReadInt16();
+            int experience = reader.ReadInt32();
+            short fame = reader.ReadInt16();
+            int tempExperience = reader.ReadInt32();
+            int fieldId = reader.ReadInt32();
+            byte portalIndex = reader.ReadByte();
+            int playTime = reader.ReadInt32();
+            short subJob = reader.ReadInt16();
+
+            return new PacketCharacterDataSnapshot(
+                characterId,
+                characterName,
+                gender,
+                skin,
+                faceId,
+                hairId,
+                level,
+                jobId,
+                strength,
+                dexterity,
+                intelligence,
+                luck,
+                hp,
+                maxHp,
+                mp,
+                maxMp,
+                abilityPoints,
+                skillPoints,
+                experience,
+                fame,
+                tempExperience,
+                fieldId,
+                portalIndex,
+                playTime,
+                subJob,
+                0,
+                string.Empty);
+        }
+
+        private static bool TryDecodeCharacterDataStatTrailer(
+            BinaryReader reader,
+            PacketCharacterDataSnapshot snapshot,
+            out PacketCharacterDataSnapshot decoratedSnapshot)
+        {
+            decoratedSnapshot = snapshot;
+            long startPosition = reader.BaseStream.Position;
+            try
+            {
+                byte friendMax = reader.ReadByte();
+                bool hasLinkedCharacter = reader.ReadByte() != 0;
+                string linkedCharacterName = hasLinkedCharacter
+                    ? ReadMapleString(reader)
+                    : string.Empty;
+                decoratedSnapshot = snapshot with
+                {
+                    FriendMax = friendMax,
+                    LinkedCharacterName = linkedCharacterName
+                };
+                return true;
+            }
+            catch (Exception) when (reader.BaseStream.CanSeek)
+            {
+                reader.BaseStream.Position = startPosition;
+                decoratedSnapshot = snapshot;
                 return false;
             }
         }
@@ -879,6 +942,35 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal readonly record struct PacketCharacterDataTransferHead(int FieldId, byte PortalIndex, int Hp);
 
+    internal sealed record PacketCharacterDataSnapshot(
+        int CharacterId,
+        string CharacterName,
+        byte Gender,
+        byte Skin,
+        int FaceId,
+        int HairId,
+        byte Level,
+        short JobId,
+        short Strength,
+        short Dexterity,
+        short Intelligence,
+        short Luck,
+        int Hp,
+        int MaxHp,
+        int Mp,
+        int MaxMp,
+        short AbilityPoints,
+        short SkillPoints,
+        int Experience,
+        short Fame,
+        int TempExperience,
+        int FieldId,
+        byte PortalIndex,
+        int PlayTime,
+        short SubJob,
+        byte FriendMax,
+        string LinkedCharacterName);
+
     internal readonly record struct PacketSetFieldPacket(
         IReadOnlyDictionary<uint, int> ClientOptions,
         int ChannelId,
@@ -895,6 +987,7 @@ namespace HaCreator.MapSimulator.Interaction
         int ChaseX,
         int ChaseY,
         ulong CharacterDataFlags,
+        PacketCharacterDataSnapshot CharacterDataSnapshot,
         long ServerFileTime,
         byte[] TrailingPayload,
         int TrailingBytes);

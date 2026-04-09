@@ -42,6 +42,58 @@ namespace HaCreator.MapSimulator
             }
         }
 
+        private bool TryShowRecordedProgressionUtilityWindow(string windowName, string source, bool allowVisibleReset = true)
+        {
+            if (uiWindowManager?.GetWindow(windowName) is not { } window)
+            {
+                return false;
+            }
+
+            if (!allowVisibleReset && window.IsVisible)
+            {
+                return false;
+            }
+
+            RecordProgressionUtilityOwnerLaunch(windowName, source);
+            ShowWindow(windowName, window, trackDirectionModeOwner: ShouldTrackInheritedDirectionModeOwner());
+            return true;
+        }
+
+        private void TryAutoShowEventAlarmOwner(string source)
+        {
+            TryShowRecordedProgressionUtilityWindow(
+                MapSimulatorWindowNames.Event,
+                source,
+                allowVisibleReset: false);
+        }
+
+        private void ShowRecordedUtilityWindow(string windowName, string source)
+        {
+            if (string.IsNullOrWhiteSpace(windowName))
+            {
+                return;
+            }
+
+            if ((string.Equals(windowName, MapSimulatorWindowNames.Ranking, StringComparison.Ordinal)
+                 || string.Equals(windowName, MapSimulatorWindowNames.Event, StringComparison.Ordinal))
+                && TryShowRecordedProgressionUtilityWindow(windowName, source))
+            {
+                return;
+            }
+
+            ShowWindowWithInheritedDirectionModeOwner(windowName);
+        }
+
+        private void ShowUtilityQuitDialog()
+        {
+            string body = MapleStoryStringPool.GetOrFallback(3304, "Are you sure you want to quit?");
+            ShowLoginUtilityDialog(
+                "Game Menu",
+                body,
+                LoginUtilityDialogButtonLayout.YesNo,
+                LoginUtilityDialogAction.ConfirmUtilityQuit);
+        }
+
         private RankingWindowSnapshot BuildUtilityRankingSnapshot()
         {
             RefreshRankingOwnerRuntimeState();
@@ -52,7 +104,8 @@ namespace HaCreator.MapSimulator
             int currentMapId = _mapBoard?.MapInfo?.id ?? 0;
             int readyQuestCount = questSnapshot.Entries.Count(entry => entry.IsReadyToComplete);
             int worldId = Math.Max(0, _simulatorWorldId);
-            string webSeedText = BuildRankingLandingSeed(build, worldId);
+            string landingUrl = BuildRankingLandingUrl(build, worldId, out bool usedResolvedTemplate);
+            string webSeedText = BuildRankingLandingSeed(build, worldId, out _);
             string launchSource = string.IsNullOrWhiteSpace(_lastRankingLaunchSource) ? "status-bar owner" : _lastRankingLaunchSource;
             bool hasActiveRequest = _lastRankingOpenTick != int.MinValue;
             bool requestPending = hasActiveRequest && _lastRankingNavigateTick == int.MinValue;
@@ -70,7 +123,7 @@ namespace HaCreator.MapSimulator
                 {
                     Label = "Landing Request",
                     Value = requestValue,
-                    Detail = $"CUIRanking stays a CWebWnd owner with a loading layer plus close-only dismissal. No active character build is bound, so the recovered seed shape remains {webSeedText}."
+                    Detail = $"CUIRanking stays a CWebWnd owner with a loading layer plus close-only dismissal. No active character build is bound, so NavigateUrl still resolves against {landingUrl}."
                 });
             }
             else if (requestPending)
@@ -79,7 +132,7 @@ namespace HaCreator.MapSimulator
                 {
                     Label = "Landing Request",
                     Value = requestValue,
-                    Detail = BuildRankingOwnerLifecycleDetail(build, launchSource, webSeedText)
+                    Detail = BuildRankingOwnerLifecycleDetail(build, launchSource, webSeedText, usedResolvedTemplate)
                 });
                 entries.Add(new RankingEntrySnapshot
                 {
@@ -126,16 +179,16 @@ namespace HaCreator.MapSimulator
 
             string subtitle = build == null
                 ? "UIWindow2.img/Ranking stays the owner seam while the recovered CWebWnd request shape remains unresolved."
-                : $"UIWindow2.img/Ranking stays the owner seam while the recovered CWebWnd request queues a landing seed for {build.Name}, world {worldId + 1}, then swaps from loading into simulator-local ladder context.";
+                : $"UIWindow2.img/Ranking stays the owner seam while the recovered CWebWnd request queues NavigateUrl for {build.Name}, world {worldId + 1}, then swaps from loading into simulator-local ladder context.";
 
             return new RankingWindowSnapshot
             {
                 Title = "Ranking",
                 Subtitle = subtitle,
-                StatusText = "BtRank now mirrors the client owner lifecycle more closely: loading-layer request first, navigated local world/job/popularity/combat cards second. The recovered host now resolves to gamerank.maplestory through StringPool[0xAA2], but the full live URL template, remote ladders, and packet-fed ranking pages are still outside this board.",
-                NavigationCaption = "CWebWnd landing request",
-                NavigationSeedText = webSeedText,
-                NavigationStateText = BuildRankingOwnerLifecycleDetail(build, launchSource, webSeedText),
+                StatusText = "BtRank now mirrors the client owner lifecycle more closely: loading-layer request first, navigated local world/job/popularity/combat cards second. StringPool[0xAA2] now resolves the full gamerank.maplestory NavigateUrl target, but remote ladders, returned page payloads, and packet-fed ranking pages are still outside this board.",
+                NavigationCaption = usedResolvedTemplate ? "StringPool[0xAA2] NavigateUrl" : "NavigateUrl fallback",
+                NavigationSeedText = landingUrl,
+                NavigationStateText = BuildRankingOwnerLifecycleDetail(build, launchSource, webSeedText, usedResolvedTemplate),
                 IsLoading = isLoading,
                 Entries = entries
             };
@@ -342,25 +395,45 @@ namespace HaCreator.MapSimulator
             }
         }
 
-        private string BuildRankingLandingSeed(CharacterBuild build, int worldId)
+        private string BuildRankingLandingUrl(CharacterBuild build, int worldId, out bool usedResolvedTemplate)
         {
             int characterId = build?.Id ?? 0;
-            return $"StringPool[0x{RankingStringPoolUrlTemplateId:X}](host={RankingServerHost}, world={worldId + 1}, characterId={characterId})";
+            return ProgressionUtilityParityRules.ResolveRankingLandingUrl(
+                RankingServerHost,
+                RankingStringPoolUrlTemplateId,
+                worldId + 1,
+                characterId,
+                out usedResolvedTemplate);
         }
 
-        private string BuildRankingOwnerLifecycleDetail(CharacterBuild build, string launchSource, string webSeedText)
+        private string BuildRankingLandingSeed(CharacterBuild build, int worldId, out bool usedResolvedTemplate)
         {
+            int characterId = build?.Id ?? 0;
+            return ProgressionUtilityParityRules.FormatRankingLandingSeed(
+                RankingServerHost,
+                RankingStringPoolUrlTemplateId,
+                worldId + 1,
+                characterId,
+                out usedResolvedTemplate);
+        }
+
+        private string BuildRankingOwnerLifecycleDetail(CharacterBuild build, string launchSource, string webSeedText, bool usedResolvedTemplate)
+        {
+            string resolutionText = usedResolvedTemplate
+                ? "Recovered directly from StringPool[0xAA2]."
+                : "StringPool[0xAA2] is unavailable here, so the simulator is using its fallback template.";
             if (_lastRankingOpenTick == int.MinValue)
             {
-                return $"Recovered client shape: CWebWnd::OnCreate queues a loading layer, then formats {webSeedText}. The owner has not been launched in this session yet.";
+                return $"Recovered client shape: CWebWnd::OnCreate queues a loading layer, then formats {webSeedText}. {resolutionText} The owner has not been launched in this session yet.";
             }
 
             if (_lastRankingNavigateTick == int.MinValue)
             {
-                return $"Launch source: {launchSource}. CWebWnd queued the landing request at tick {_lastRankingOpenTick.ToString(CultureInfo.InvariantCulture)} and the loading layer is still active for {build.Name}. Seed shape: {webSeedText}.";
+                string actorName = build?.Name ?? "the active character";
+                return $"Launch source: {launchSource}. CWebWnd queued the landing request at tick {_lastRankingOpenTick.ToString(CultureInfo.InvariantCulture)} and the loading layer is still active for {actorName}. {resolutionText}";
             }
 
-            return $"Launch source: {launchSource}. CWebWnd queued the landing request at tick {_lastRankingOpenTick.ToString(CultureInfo.InvariantCulture)} and switched into the navigated owner state at tick {_lastRankingNavigateTick.ToString(CultureInfo.InvariantCulture)}. Seed shape: {webSeedText}.";
+            return $"Launch source: {launchSource}. CWebWnd queued the landing request at tick {_lastRankingOpenTick.ToString(CultureInfo.InvariantCulture)} and switched into the navigated owner state at tick {_lastRankingNavigateTick.ToString(CultureInfo.InvariantCulture)}. {resolutionText}";
         }
 
         private void AppendPacketOwnedEventAlarmEntries(List<EventEntrySnapshot> entries, int currentTick)

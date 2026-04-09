@@ -283,18 +283,34 @@ namespace HaCreator.MapSimulator.Pools
                 return 0;
             }
 
-            // Blue Aura-style affected areas author their protection as linked
-            // damage-sharing metadata instead of a direct damR field.
-            bool usesPartyDamageSharing =
-                ContainsToken(skill.AffectedSkillEffect, "partyDamageSharing")
-                || (ContainsToken(skill.Description, "damage taken by party members", "damage taken by team members")
-                    && ContainsToken(skill.Description, "absorbs"));
-            if (!usesPartyDamageSharing)
+            if (skill.HasMagicStealMetadata)
+            {
+                int authoredShieldRate = levelData.X > 0 ? levelData.X : levelData.Y;
+                return Math.Clamp(authoredShieldRate, 0, 100);
+            }
+
+            string combinedText = BuildCombinedSupportText(skill, supportSkills: null);
+
+            // Blue Aura-style affected areas author the absorbed share on `y`
+            // while `x` remains the distributed-share value.
+            bool usesPartyDamageSharing = ContainsToken(skill.AffectedSkillEffect, "partyDamageSharing");
+            if (usesPartyDamageSharing)
+            {
+                int absorbedShareRate = levelData.Y > 0 ? levelData.Y : levelData.X;
+                return Math.Clamp(absorbedShareRate, 0, 100);
+            }
+
+            bool usesPartyAbsorbShield =
+                ContainsToken(combinedText, "absorbs")
+                && ContainsToken(combinedText, "damage received", "damage taken", "damage suffered")
+                && ContainsToken(combinedText, FriendlyAreaDescriptionTokens);
+            if (!usesPartyAbsorbShield)
             {
                 return 0;
             }
 
-            return Math.Clamp(levelData.X, 0, 100);
+            int absorbShieldRate = levelData.X > 0 ? levelData.X : levelData.Y;
+            return Math.Clamp(absorbShieldRate, 0, 100);
         }
 
         public static RemotePlayerAffectedAreaDisposition ResolveDisposition(SkillData skill, SkillLevelData levelData = null)
@@ -550,6 +566,12 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             if (SupportsPartyMembers(skill)
+                && HasProtectiveSupportMetadata(skill))
+            {
+                return true;
+            }
+
+            if (SupportsPartyMembers(skill)
                 && (ContainsToken(skill.Name, FriendlyAreaSupportTokens)
                     || ContainsToken(skill.Description, FriendlyAreaSupportTokens)))
             {
@@ -622,6 +644,16 @@ namespace HaCreator.MapSimulator.Pools
                    || ContainsToken(skill.Description, FriendlyAreaCleanseTokens)
                    || (ContainsToken(skill.Description, "abnormal condition", "abnormal conditions")
                        && ContainsToken(skill.Description, "remove", "removing", "dispel", "nullifies"));
+        }
+
+        private static bool HasProtectiveSupportMetadata(SkillData skill)
+        {
+            return skill != null
+                   && (skill.HasMagicStealMetadata
+                       || skill.RedirectsDamageToMp
+                       || skill.ReflectsIncomingDamage
+                       || skill.HasInvincibleMetadata
+                       || skill.HasDispelMetadata);
         }
 
         private static bool SupportsPartyMembers(SkillData skill)

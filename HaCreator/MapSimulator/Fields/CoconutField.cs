@@ -568,6 +568,7 @@ namespace HaCreator.MapSimulator.Fields
             _finishTick = 0;
             _timeRemaining = 0;
             _awaitingFinalScore = true;
+            _pendingAttackPacketRequests.Clear();
             ShowMessage("Waiting for final score packet...", _finalScoreMessageDurationMs, currentTick);
         }
         private void ResolveRoundResult(int currentTick)

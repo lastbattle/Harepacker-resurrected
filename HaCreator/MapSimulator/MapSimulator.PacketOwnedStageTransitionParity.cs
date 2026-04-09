@@ -1,6 +1,8 @@
 using HaCreator.MapEditor.Instance;
+using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.Entities;
 using HaCreator.MapSimulator.Interaction;
+using HaCreator.MapSimulator.Loaders;
 using HaCreator.MapSimulator.Managers;
 using HaCreator.MapSimulator.UI;
 using HaSharedLibrary.Render.DX;
@@ -30,6 +32,8 @@ namespace HaCreator.MapSimulator
             if (packetType == 141
                 && PacketStageTransitionRuntime.TryDecodeOfficialSetFieldPayload(payload, out PacketSetFieldPacket setFieldPacket, out _))
             {
+                UpdatePacketOwnedFollowRequestOptionFromSetField(setFieldPacket);
+                UpdatePacketOwnedAuthoritativeCharacterDataFromSetField(setFieldPacket);
                 UpdatePacketOwnedLogoutGiftConfigFromSetField(setFieldPacket);
                 UpdatePacketOwnedMapTransferBootstrapFromSetField(setFieldPacket);
             }
@@ -119,6 +123,107 @@ namespace HaCreator.MapSimulator
             }
 
             return QueueMapTransfer(request.MapId, request.PortalName, request.PortalIndex);
+        }
+
+        private void UpdatePacketOwnedAuthoritativeCharacterDataFromSetField(PacketSetFieldPacket packet)
+        {
+            PacketCharacterDataSnapshot snapshot = packet.CharacterDataSnapshot;
+            if (!packet.HasCharacterData || snapshot == null)
+            {
+                return;
+            }
+
+            CharacterBuild activeBuild = _playerManager?.Player?.Build;
+            if (activeBuild != null)
+            {
+                ApplyPacketOwnedCharacterDataSnapshot(activeBuild, snapshot);
+            }
+
+            LoginCharacterRosterEntry selectedEntry = _loginCharacterRoster.SelectedEntry;
+            if (selectedEntry?.Build == null ||
+                ReferenceEquals(selectedEntry.Build, activeBuild) ||
+                (snapshot.CharacterId > 0 && selectedEntry.Build.Id > 0 && selectedEntry.Build.Id != snapshot.CharacterId))
+            {
+                return;
+            }
+
+            ApplyPacketOwnedCharacterDataSnapshot(selectedEntry.Build, snapshot);
+        }
+
+        private void UpdatePacketOwnedFollowRequestOptionFromSetField(PacketSetFieldPacket packet)
+        {
+            if (packet.ClientOptions == null
+                || !packet.ClientOptions.TryGetValue(FollowRequestClientOptionId, out int rawValue)
+                || uiWindowManager?.GetWindow(MapSimulatorWindowNames.OptionMenu) is not OptionMenuWindow optionMenuWindow)
+            {
+                return;
+            }
+
+            optionMenuWindow.SetCommittedClientOptionValue(FollowRequestClientOptionId, rawValue != 0);
+        }
+
+        private void ApplyPacketOwnedCharacterDataSnapshot(CharacterBuild targetBuild, PacketCharacterDataSnapshot snapshot)
+        {
+            if (targetBuild == null || snapshot == null)
+            {
+                return;
+            }
+
+            targetBuild.Id = snapshot.CharacterId > 0 ? snapshot.CharacterId : targetBuild.Id;
+            if (!string.IsNullOrWhiteSpace(snapshot.CharacterName))
+            {
+                targetBuild.Name = snapshot.CharacterName;
+            }
+
+            targetBuild.Gender = ResolvePacketOwnedCharacterGender(snapshot.Gender, targetBuild.Gender);
+            targetBuild.Skin = ResolvePacketOwnedSkinColor(snapshot.Skin, targetBuild.Skin);
+            targetBuild.Level = Math.Max(1, (int)snapshot.Level);
+            targetBuild.Job = snapshot.JobId;
+            targetBuild.SubJob = snapshot.SubJob;
+            targetBuild.JobName = SkillDataLoader.GetJobName(snapshot.JobId);
+            targetBuild.Fame = Math.Max(0, (int)snapshot.Fame);
+            targetBuild.Exp = Math.Max(0L, snapshot.Experience);
+            targetBuild.HP = Math.Max(0, snapshot.Hp);
+            targetBuild.MaxHP = Math.Max(1, snapshot.MaxHp);
+            targetBuild.MP = Math.Max(0, snapshot.Mp);
+            targetBuild.MaxMP = Math.Max(0, snapshot.MaxMp);
+            targetBuild.STR = Math.Max(0, (int)snapshot.Strength);
+            targetBuild.DEX = Math.Max(0, (int)snapshot.Dexterity);
+            targetBuild.INT = Math.Max(0, (int)snapshot.Intelligence);
+            targetBuild.LUK = Math.Max(0, (int)snapshot.Luck);
+            targetBuild.AP = Math.Max(0, (int)snapshot.AbilityPoints);
+
+            CharacterLoader loader = _playerManager?.Loader;
+            if (loader == null)
+            {
+                return;
+            }
+
+            targetBuild.Body = loader.LoadBody(targetBuild.Skin) ?? targetBuild.Body;
+            targetBuild.Head = loader.LoadHead(targetBuild.Skin) ?? targetBuild.Head;
+            if (snapshot.FaceId > 0)
+            {
+                targetBuild.Face = loader.LoadFace(snapshot.FaceId) ?? targetBuild.Face;
+            }
+
+            if (snapshot.HairId > 0)
+            {
+                targetBuild.Hair = loader.LoadHair(snapshot.HairId) ?? targetBuild.Hair;
+            }
+        }
+
+        private static CharacterGender ResolvePacketOwnedCharacterGender(byte genderValue, CharacterGender fallback)
+        {
+            return Enum.IsDefined(typeof(CharacterGender), (int)genderValue)
+                ? (CharacterGender)genderValue
+                : fallback;
+        }
+
+        private static SkinColor ResolvePacketOwnedSkinColor(byte skinValue, SkinColor fallback)
+        {
+            return Enum.IsDefined(typeof(SkinColor), (int)skinValue)
+                ? (SkinColor)skinValue
+                : fallback;
         }
 
         private void RegisterPacketOwnedStageTransitionObject(BaseDXDrawableItem mapItem, ObjectInstance objInst)

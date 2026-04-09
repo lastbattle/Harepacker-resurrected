@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Managers;
+using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.UI;
 using Microsoft.Xna.Framework.Graphics;
 using System;
@@ -110,6 +111,36 @@ namespace HaCreator.MapSimulator
                 ? $"listening on 127.0.0.1:{_engagementProposalInbox.Port}"
                 : $"configured for 127.0.0.1:{_engagementProposalInboxConfiguredPort}";
             return $"Engagement proposal inbox {enabledText}, {listeningText}, received {_engagementProposalInbox.ReceivedCount} request(s).";
+        }
+
+        private string TryAutoDispatchOutgoingEngagementProposalRequest()
+        {
+            if (!_engagementProposalInboxEnabled || !_engagementProposalInbox.IsRunning)
+            {
+                return string.Empty;
+            }
+
+            if (!_engagementProposalController.TryBuildInboxDispatch(
+                    EngagementProposalRuntime.DefaultSealItemId,
+                    customMessage: null,
+                    out EngagementProposalInboxDispatch dispatch,
+                    out string dispatchMessage))
+            {
+                return $" {dispatchMessage}";
+            }
+
+            try
+            {
+                EngagementProposalInboxManager.SendRequest(
+                    EngagementProposalInboxManager.DefaultHost,
+                    _engagementProposalInbox.Port,
+                    dispatch);
+                return $" Auto-dispatched the staged engagement request through the inbox transport to 127.0.0.1:{_engagementProposalInbox.Port}.";
+            }
+            catch (Exception ex)
+            {
+                return $" Engagement inbox transport dispatch failed after opening the requester owner: {ex.Message}";
+            }
         }
 
         private ChatCommandHandler.CommandResult HandleEngagementProposalInboxCommand(string[] args)

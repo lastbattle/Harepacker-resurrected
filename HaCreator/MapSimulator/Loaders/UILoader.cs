@@ -263,13 +263,20 @@ namespace HaCreator.MapSimulator.Loaders
                         chatCoverCanvas,
                         bitmap_chatCover,
                         noticeCanvas,
-                        bitmap_notice);
+                        bitmap_notice,
+                        out Rectangle chatFrameBounds);
 
-                    int composedChatBarHeight = composedChatBar.Height;
                     Texture2D texture_chatUI = composedChatBar.ToTexture2DAndDispose(device);
+                    Point resolvedChatFramePosition = ResolveBigBangChatFramePosition(
+                        new Point(
+                            0,
+                            (int)(renderParams.RenderHeight / renderParams.RenderObjectScaling) - composedMainBar.Height),
+                        mainBarFrameOrigin,
+                        chatFrameAnchorOrigin,
+                        chatFrameBounds);
                     IDXObject dxObj_chatUI = new DXObject(
-                        UI_PADDING_PX,
-                        (int)(renderParams.RenderHeight / renderParams.RenderObjectScaling) - composedChatBarHeight - 36,
+                        resolvedChatFramePosition.X,
+                        resolvedChatFramePosition.Y,
                         texture_chatUI,
                         0);
 
@@ -1189,7 +1196,8 @@ namespace HaCreator.MapSimulator.Loaders
             WzCanvasProperty chatCoverCanvas,
             System.Drawing.Bitmap chatCover,
             WzCanvasProperty noticeCanvas,
-            System.Drawing.Bitmap notice)
+            System.Drawing.Bitmap notice,
+            out Rectangle composedBounds)
         {
             var layers = new List<(int Z, WzCanvasProperty Canvas, System.Drawing.Bitmap Bitmap)>
             {
@@ -1199,37 +1207,30 @@ namespace HaCreator.MapSimulator.Loaders
                 (GetCanvasZ(noticeCanvas), noticeCanvas, notice)
             };
 
-            int minX = 0;
-            int minY = 0;
-            int maxX = 1;
-            int maxY = 1;
-
-            foreach ((int _, WzCanvasProperty canvas, System.Drawing.Bitmap bitmap) in layers)
-            {
-                if (!TryGetRenderableCanvasLayerDimensions(canvas, bitmap, out int width, out int height))
-                {
-                    continue;
-                }
-
-                Point drawPosition = ResolveCanvasPosition(anchorOrigin, canvas);
-                minX = Math.Min(minX, drawPosition.X);
-                minY = Math.Min(minY, drawPosition.Y);
-                maxX = Math.Max(maxX, drawPosition.X + width);
-                maxY = Math.Max(maxY, drawPosition.Y + height);
-            }
-
-            var composed = new System.Drawing.Bitmap(Math.Max(1, maxX - minX), Math.Max(1, maxY - minY));
+            composedBounds = ResolveRenderableCanvasBounds(anchorOrigin, layers);
+            var composed = new System.Drawing.Bitmap(Math.Max(1, composedBounds.Width), Math.Max(1, composedBounds.Height));
             using (System.Drawing.Graphics graphics = System.Drawing.Graphics.FromImage(composed))
             {
                 graphics.Clear(System.Drawing.Color.Transparent);
                 foreach ((WzCanvasProperty canvas, System.Drawing.Bitmap bitmap) in EnumerateOrderedRenderableCanvasLayers(layers))
                 {
                     Point drawPosition = ResolveCanvasPosition(anchorOrigin, canvas);
-                    graphics.DrawImage(bitmap, drawPosition.X - minX, drawPosition.Y - minY);
+                    graphics.DrawImage(bitmap, drawPosition.X - composedBounds.X, drawPosition.Y - composedBounds.Y);
                 }
             }
 
             return composed;
+        }
+
+        internal static Point ResolveBigBangChatFramePosition(
+            Point mainBarPosition,
+            Point mainBarFrameOrigin,
+            Point chatFrameAnchorOrigin,
+            Rectangle composedChatFrameBounds)
+        {
+            return new Point(
+                mainBarPosition.X + (mainBarFrameOrigin.X - chatFrameAnchorOrigin.X) + composedChatFrameBounds.X,
+                mainBarPosition.Y + (mainBarFrameOrigin.Y - chatFrameAnchorOrigin.Y) + composedChatFrameBounds.Y);
         }
 
         private static void PositionStatusBarButton(UIObject button, WzSubProperty buttonProperty, Point anchorOrigin)
@@ -1255,6 +1256,32 @@ namespace HaCreator.MapSimulator.Loaders
 
                 yield return (canvas, bitmap);
             }
+        }
+
+        private static Rectangle ResolveRenderableCanvasBounds(
+            Point anchorOrigin,
+            IEnumerable<(int Z, WzCanvasProperty Canvas, System.Drawing.Bitmap Bitmap)> layers)
+        {
+            int minX = 0;
+            int minY = 0;
+            int maxX = 1;
+            int maxY = 1;
+
+            foreach ((int _, WzCanvasProperty canvas, System.Drawing.Bitmap bitmap) in layers)
+            {
+                if (!TryGetRenderableCanvasLayerDimensions(canvas, bitmap, out int width, out int height))
+                {
+                    continue;
+                }
+
+                Point drawPosition = ResolveCanvasPosition(anchorOrigin, canvas);
+                minX = Math.Min(minX, drawPosition.X);
+                minY = Math.Min(minY, drawPosition.Y);
+                maxX = Math.Max(maxX, drawPosition.X + width);
+                maxY = Math.Max(maxY, drawPosition.Y + height);
+            }
+
+            return new Rectangle(minX, minY, Math.Max(1, maxX - minX), Math.Max(1, maxY - minY));
         }
 
         private static bool TryGetRenderableCanvasLayerDimensions(

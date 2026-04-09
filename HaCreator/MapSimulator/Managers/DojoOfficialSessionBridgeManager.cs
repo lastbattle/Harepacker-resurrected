@@ -31,11 +31,16 @@ namespace HaCreator.MapSimulator.Managers
 
         private readonly ConcurrentQueue<DojoPacketInboxMessage> _pendingMessages = new();
         private readonly ConcurrentDictionary<int, int> _opcodeMappings = new();
+        private readonly ConcurrentDictionary<int, LearnedOpcodeEntry> _learnedOpcodeTable = new();
         private readonly Queue<string> _recentPackets = new();
         private readonly object _sync = new();
         private int _inferenceClearMapId = -1;
         private string _inferenceClearPortalName = string.Empty;
         private int _inferenceExitMapId = -1;
+        private bool _inferenceTimerRunning;
+        private bool _inferenceTimerExpired;
+        private bool _inferenceClearActive;
+        private bool _inferenceTimeOverActive;
 
         private TcpListener _listener;
         private CancellationTokenSource _listenerCancellation;
@@ -47,6 +52,27 @@ namespace HaCreator.MapSimulator.Managers
             string ProcessName,
             IPEndPoint LocalEndpoint,
             IPEndPoint RemoteEndpoint);
+
+        private sealed class LearnedOpcodeEntry
+        {
+            public LearnedOpcodeEntry(int packetType, string evidence)
+            {
+                PacketType = packetType;
+                Evidence = evidence ?? string.Empty;
+                Count = 1;
+            }
+
+            public int PacketType { get; private set; }
+            public string Evidence { get; private set; }
+            public int Count { get; private set; }
+
+            public void Update(int packetType, string evidence)
+            {
+                PacketType = packetType;
+                Evidence = evidence ?? string.Empty;
+                Count++;
+            }
+        }
 
         private sealed class BridgePair
         {
@@ -106,7 +132,7 @@ namespace HaCreator.MapSimulator.Managers
             string session = HasConnectedSession
                 ? $"connected session {_activePair?.ClientEndpoint ?? "unknown-client"} -> {_activePair?.RemoteEndpoint ?? "unknown-remote"}"
                 : "no active Maple session";
-            return $"Dojo official-session bridge {lifecycle}; {session}; received={ReceivedCount}; mappings={DescribePacketMappings()}; inference={DescribeInferenceContext()}; recent={DescribeRecentPackets()}. {LastStatus}";
+            return $"Dojo official-session bridge {lifecycle}; {session}; received={ReceivedCount}; mappings={DescribePacketMappings()}; learned={DescribeLearnedPacketTable()}; inference={DescribeInferenceContext()}; recent={DescribeRecentPackets()}. {LastStatus}";
         }
 
         public void UpdateInferenceContext(DojoField field)
@@ -118,12 +144,20 @@ namespace HaCreator.MapSimulator.Managers
                     _inferenceClearMapId = -1;
                     _inferenceClearPortalName = string.Empty;
                     _inferenceExitMapId = -1;
+                    _inferenceTimerRunning = false;
+                    _inferenceTimerExpired = false;
+                    _inferenceClearActive = false;
+                    _inferenceTimeOverActive = false;
                     return;
                 }
 
                 _inferenceClearMapId = field.NextFloorMapId;
                 _inferenceClearPortalName = field.NextFloorPortalName ?? string.Empty;
                 _inferenceExitMapId = field.ExitMapId;
+                _inferenceTimerRunning = field.HasLiveTimer;
+                _inferenceTimerExpired = field.IsTimerExpired;
+                _inferenceClearActive = field.IsClearResultActive;
+                _inferenceTimeOverActive = field.IsTimeOverResultActive;
             }
         }
 
@@ -327,6 +361,7 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             _opcodeMappings[opcode] = packetType;
+            RememberLearnedOpcode(opcode, packetType, "manual");
             status = $"Mapped Dojo opcode {opcode} to {DescribePacketType(packetType)}.";
             LastStatus = status;
             return true;
@@ -363,6 +398,20 @@ namespace HaCreator.MapSimulator.Managers
                 _opcodeMappings
                     .OrderBy(entry => entry.Key)
                     .Select(entry => $"{entry.Key}->{DescribePacketType(entry.Value)}"));
+        }
+
+        public string DescribeLearnedPacketTable()
+        {
+            if (_learnedOpcodeTable.IsEmpty)
+            {
+                return "none";
+            }
+
+            return string.Join(
+                ", ",
+                _learnedOpcodeTable
+                    .OrderBy(entry => entry.Key)
+                    .Select(entry => $"{entry.Key}->{DescribePacketType(entry.Value.PacketType)}[{entry.Value.Count}x:{entry.Value.Evidence}]"));
         }
 
         public string DescribeRecentPackets()
@@ -627,18 +676,46 @@ namespace HaCreator.MapSimulator.Managers
             int clearMapIdHint;
             string clearPortalNameHint;
             int exitMapIdHint;
+            bool timerRunning;
+            bool timerExpired;
+            bool clearActive;
+            bool timeOverActive;
             lock (_sync)
             {
                 clearMapIdHint = _inferenceClearMapId;
                 clearPortalNameHint = _inferenceClearPortalName;
                 exitMapIdHint = _inferenceExitMapId;
+                timerRunning = _inferenceTimerRunning;
+                timerExpired = _inferenceTimerExpired;
+                clearActive = _inferenceClearActive;
+                timeOverActive = _inferenceTimeOverActive;
             }
 
             if (DojoField.TryInferPacketType(payload, clearMapIdHint, clearPortalNameHint, exitMapIdHint, out packetType, out string reason))
             {
                 _opcodeMappings[opcode] = packetType;
+                RememberLearnedOpcode(opcode, packetType, $"auto:{reason}");
                 mappingReason = $"auto:{reason}";
                 LastStatus = $"Auto-mapped Dojo opcode {opcode} to {DescribePacketType(packetType)} from payload inference ({reason}).";
+                return true;
+            }
+
+            if (TryInferTransferPacketTypeFromFieldState(
+                    payload,
+                    clearMapIdHint,
+                    clearPortalNameHint,
+                    exitMapIdHint,
+                    timerRunning,
+                    timerExpired,
+                    clearActive,
+                    timeOverActive,
+                    out packetType,
+                    out string stateReason))
+            {
+                _opcodeMappings[opcode] = packetType;
+                RememberLearnedOpcode(opcode, packetType, $"state:{stateReason}");
+                mappingReason = $"state:{stateReason}";
+                LastStatus = $"Auto-mapped Dojo opcode {opcode} to {DescribePacketType(packetType)} from field-state inference ({stateReason}).";
                 return true;
             }
 
@@ -666,8 +743,143 @@ namespace HaCreator.MapSimulator.Managers
                 string exitTarget = _inferenceExitMapId > 0
                     ? _inferenceExitMapId.ToString()
                     : "unknown";
-                return $"clear={clearTarget}, exit={exitTarget}";
+                string state = _inferenceClearActive
+                    ? "clear-active"
+                    : _inferenceTimeOverActive
+                        ? "timeover-active"
+                        : _inferenceTimerExpired
+                            ? "timer-expired"
+                            : _inferenceTimerRunning
+                                ? "timer-running"
+                                : "idle";
+                return $"clear={clearTarget}, exit={exitTarget}, state={state}";
             }
+        }
+
+        private void RememberLearnedOpcode(int opcode, int packetType, string evidence)
+        {
+            _learnedOpcodeTable.AddOrUpdate(
+                opcode,
+                _ => new LearnedOpcodeEntry(packetType, evidence),
+                (_, existing) =>
+                {
+                    existing.Update(packetType, evidence);
+                    return existing;
+                });
+        }
+
+        private static bool TryInferTransferPacketTypeFromFieldState(
+            byte[] payload,
+            int clearMapIdHint,
+            string clearPortalNameHint,
+            int exitMapIdHint,
+            bool timerRunning,
+            bool timerExpired,
+            bool clearActive,
+            bool timeOverActive,
+            out int packetType,
+            out string reason)
+        {
+            packetType = -1;
+            reason = string.Empty;
+
+            string candidateSummary = DojoField.DescribeFieldSpecificPayloadCandidates(payload);
+            bool hasClearCandidate = candidateSummary.Contains("clear(", StringComparison.OrdinalIgnoreCase);
+            bool hasTimeOverCandidate = candidateSummary.Contains("timeover(", StringComparison.OrdinalIgnoreCase);
+            if (!hasClearCandidate || !hasTimeOverCandidate)
+            {
+                return false;
+            }
+
+            int transferMapId = 0;
+            string portalName = null;
+            if (!DojoField.TryInferFieldSpecificPacketType(payload, out _, out _)
+                && !TryParseTransferPayloadCompat(payload, out transferMapId, out portalName))
+            {
+                return false;
+            }
+
+            bool matchesClear = clearMapIdHint > 0 && transferMapId == clearMapIdHint;
+            bool matchesExit = exitMapIdHint > 0 && transferMapId == exitMapIdHint;
+            bool matchesPortal = !string.IsNullOrWhiteSpace(portalName)
+                && !string.IsNullOrWhiteSpace(clearPortalNameHint)
+                && string.Equals(portalName, clearPortalNameHint, StringComparison.OrdinalIgnoreCase);
+            if (matchesPortal || (matchesClear && !matchesExit))
+            {
+                packetType = DojoField.PacketTypeClear;
+                reason = $"transfer target matched clear path ({transferMapId}{FormatPortalSuffix(portalName)})";
+                return true;
+            }
+
+            if (matchesExit && !matchesClear)
+            {
+                packetType = DojoField.PacketTypeTimeOver;
+                reason = $"transfer target matched exit path ({transferMapId})";
+                return true;
+            }
+
+            if (clearActive)
+            {
+                packetType = DojoField.PacketTypeClear;
+                reason = "clear presentation already active";
+                return true;
+            }
+
+            if (timeOverActive || timerExpired)
+            {
+                packetType = DojoField.PacketTypeTimeOver;
+                reason = timeOverActive ? "time-over presentation already active" : "live Dojo timer already expired";
+                return true;
+            }
+
+            if (timerRunning)
+            {
+                packetType = DojoField.PacketTypeClear;
+                reason = transferMapId > 0
+                    ? $"live timer still running for transfer target {transferMapId}{FormatPortalSuffix(portalName)}"
+                    : "live timer still running before timeout";
+                return true;
+            }
+
+            return false;
+        }
+
+        private static bool TryParseTransferPayloadCompat(byte[] payload, out int mapId, out string portalName)
+        {
+            mapId = -1;
+            portalName = string.Empty;
+            if (payload == null || payload.Length == 0)
+            {
+                mapId = 0;
+                return true;
+            }
+
+            if (payload.Length < sizeof(int))
+            {
+                return false;
+            }
+
+            mapId = BinaryPrimitives.ReadInt32LittleEndian(payload.AsSpan(0, sizeof(int)));
+            if (payload.Length <= sizeof(int))
+            {
+                return true;
+            }
+
+            try
+            {
+                portalName = System.Text.Encoding.UTF8.GetString(payload, sizeof(int), payload.Length - sizeof(int)).TrimEnd('\0');
+            }
+            catch
+            {
+                portalName = string.Empty;
+            }
+
+            return true;
+        }
+
+        private static string FormatPortalSuffix(string portalName)
+        {
+            return string.IsNullOrWhiteSpace(portalName) ? string.Empty : $":{portalName}";
         }
 
         private static byte[] BuildRawPacket(int opcode, byte[] payload)

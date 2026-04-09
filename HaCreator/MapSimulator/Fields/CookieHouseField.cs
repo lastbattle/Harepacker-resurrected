@@ -1,5 +1,6 @@
 using HaSharedLibrary.Util;
 using HaSharedLibrary.Wz;
+using HaCreator.MapSimulator.Interaction;
 using MapleLib.Converters;
 using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
@@ -40,6 +41,7 @@ namespace HaCreator.MapSimulator.Fields
         private enum CookieBitmapRootResolutionKind
         {
             Unresolved,
+            ClientStringPoolRoot,
             WzCandidate,
             CompatibleShape,
             CompatibleDigitContainer
@@ -75,6 +77,9 @@ namespace HaCreator.MapSimulator.Fields
         private const string ClientBitmapMinusClientStringPoolSource = "StringPool::ms_aString[0x14F7]";
         private const int ClientBitmapDigitWidth = 27;
         private const int ClientBitmapDigitCount = 3;
+        private const string ClientMapAssetCategory = "Map";
+        private const string ClientMapObjectImageName = "Obj/etc.img";
+        private const string ClientMapObjectImageNameFallback = "etc.img";
         private const string FallbackBackgroundPath = "raise/backgrnd";
         private static readonly string[] BitmapNumberSignPlusNames = { "plus", "signPlus", "Plus", "SignPlus" };
         private static readonly string[] BitmapNumberSignMinusNames = { "minus", "signMinus", "Minus", "SignMinus" };
@@ -97,13 +102,13 @@ namespace HaCreator.MapSimulator.Fields
             ClientBackgroundStringPoolId,
             0x32,
             "32 C0 A6 D3 B6 A0 2E A6 EC F9 CF 38 57 BF 74 7E BD E8 B1 C6 F7 9B 1C A3 AA F2 CF 18 16 A3 77 6D BD EF A6 C0 F2 88 3E A2 A7",
-            "UI/UIWindow.img/raise/backgrnd",
+            "Map/Obj/etc.img/eventPointCount/backgrnd",
             "CField_CookieHouse::Init / MapleStory.exe ms_aString");
         private static readonly ClientStringPoolEvidence BitmapRootStringPoolEvidence = new(
             ClientBitmapRootStringPoolId,
             0x33,
             "33 56 EE 37 1C 91 FB F3 A8 5C 02 D5 DD C5 5F 54 0A 7E F9 22 5D AA C9 F6 EE 57 02 F5 9C D9 5C 47",
-            null,
+            "Map/Obj/etc.img/eventPointCount",
             "CField_CookieHouse::Init / MapleStory.exe ms_aString");
         private static readonly ClientStringPoolEvidence BitmapPlusStringPoolEvidence = new(
             ClientBitmapPlusStringPoolId,
@@ -128,6 +133,7 @@ namespace HaCreator.MapSimulator.Fields
         private SpriteBatch _hudSpriteBatch;
         private RenderTarget2D _hudRenderTarget;
         private bool _hudDirty;
+        private CookieCanvasSprite _backgroundCanvas;
         private CookieCanvasSprite _backgroundTopLeft;
         private CookieCanvasSprite _backgroundTopCenter;
         private CookieCanvasSprite _backgroundTopRight;
@@ -270,31 +276,36 @@ namespace HaCreator.MapSimulator.Fields
             _graphicsDevice = graphicsDevice;
             _hudSpriteBatch ??= new SpriteBatch(graphicsDevice);
 
-            WzImageProperty background = null;
             _backgroundSourcePath = null;
             _usesFallbackBackgroundSource = false;
-            foreach (string imageName in PreferredUiWindowImages)
+            _backgroundCanvas = default;
+            if (!TryLoadClientBackgroundCanvas())
             {
-                WzImage uiWindow = global::HaCreator.Program.FindImage("UI", imageName);
-                WzImageProperty candidate = ResolvePropertyPath(uiWindow, FallbackBackgroundPath);
-                if (candidate != null)
+                WzImageProperty background = null;
+                foreach (string imageName in PreferredUiWindowImages)
                 {
-                    background = candidate;
-                    _backgroundSourcePath = $"UI/{imageName}/{FallbackBackgroundPath}";
-                    _usesFallbackBackgroundSource = !string.Equals(imageName, PreferredUiWindowImages[0], StringComparison.OrdinalIgnoreCase);
-                    break;
+                    WzImage uiWindow = global::HaCreator.Program.FindImage("UI", imageName);
+                    WzImageProperty candidate = ResolvePropertyPath(uiWindow, FallbackBackgroundPath);
+                    if (candidate != null)
+                    {
+                        background = candidate;
+                        _backgroundSourcePath = $"UI/{imageName}/{FallbackBackgroundPath}";
+                        _usesFallbackBackgroundSource = !string.Equals(imageName, PreferredUiWindowImages[0], StringComparison.OrdinalIgnoreCase);
+                        break;
+                    }
                 }
+
+                _backgroundTopLeft = LoadCanvas(background?["top"]?["left"]);
+                _backgroundTopCenter = LoadCanvas(background?["top"]?["center"]);
+                _backgroundTopRight = LoadCanvas(background?["top"]?["right"]);
+                _backgroundCenterLeft = LoadCanvas(background?["center"]?["left"]);
+                _backgroundCenterCenter = LoadCanvas(background?["center"]?["center"]);
+                _backgroundCenterRight = LoadCanvas(background?["center"]?["right"]);
+                _backgroundBottomLeft = LoadCanvas(background?["bottom"]?["left"]);
+                _backgroundBottomCenter = LoadCanvas(background?["bottom"]?["center"]);
+                _backgroundBottomRight = LoadCanvas(background?["bottom"]?["right"]);
             }
 
-            _backgroundTopLeft = LoadCanvas(background?["top"]?["left"]);
-            _backgroundTopCenter = LoadCanvas(background?["top"]?["center"]);
-            _backgroundTopRight = LoadCanvas(background?["top"]?["right"]);
-            _backgroundCenterLeft = LoadCanvas(background?["center"]?["left"]);
-            _backgroundCenterCenter = LoadCanvas(background?["center"]?["center"]);
-            _backgroundCenterRight = LoadCanvas(background?["center"]?["right"]);
-            _backgroundBottomLeft = LoadCanvas(background?["bottom"]?["left"]);
-            _backgroundBottomCenter = LoadCanvas(background?["bottom"]?["center"]);
-            _backgroundBottomRight = LoadCanvas(background?["bottom"]?["right"]);
             TryLoadBitmapNumberStyles();
             _assetsLoaded = true;
             _hudDirty = true;
@@ -315,6 +326,11 @@ namespace HaCreator.MapSimulator.Fields
             _bitmapNumberSourcePath = null;
             _usesFallbackBitmapSource = false;
             _bitmapRootResolutionKind = CookieBitmapRootResolutionKind.Unresolved;
+            if (TryLoadClientBitmapNumberRoot())
+            {
+                return;
+            }
+
             if (TryLoadPreferredBitmapNumberRoots())
             {
                 return;
@@ -418,6 +434,37 @@ namespace HaCreator.MapSimulator.Fields
             return false;
         }
 
+        private bool TryLoadClientBackgroundCanvas()
+        {
+            if (TryResolveClientMapProperty(ResolveClientBackgroundPath(), out WzImageProperty property, out string sourcePath))
+            {
+                CookieCanvasSprite backgroundCanvas = LoadCanvas(property);
+                if (backgroundCanvas.IsLoaded)
+                {
+                    _backgroundCanvas = backgroundCanvas;
+                    _backgroundSourcePath = sourcePath;
+                    _usesFallbackBackgroundSource = false;
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private bool TryLoadClientBitmapNumberRoot()
+        {
+            if (TryResolveClientMapProperty(ResolveClientBitmapRootPath(), out WzImageProperty property, out string sourcePath)
+                && TryLoadBitmapNumberStyles(property))
+            {
+                _bitmapNumberSourcePath = sourcePath;
+                _usesFallbackBitmapSource = false;
+                _bitmapRootResolutionKind = CookieBitmapRootResolutionKind.ClientStringPoolRoot;
+                return true;
+            }
+
+            return false;
+        }
+
         private CookieCanvasSprite LoadCanvas(WzImageProperty source)
         {
             if (_graphicsDevice == null || source == null)
@@ -443,6 +490,12 @@ namespace HaCreator.MapSimulator.Fields
 
         private bool TryDrawBackground(SpriteBatch spriteBatch, Rectangle bounds)
         {
+            if (_backgroundCanvas.IsLoaded)
+            {
+                spriteBatch.Draw(_backgroundCanvas.Texture, new Vector2(bounds.Left, bounds.Top), Color.White);
+                return true;
+            }
+
             if (!_backgroundTopLeft.IsLoaded
                 || !_backgroundTopCenter.IsLoaded
                 || !_backgroundTopRight.IsLoaded
@@ -892,6 +945,103 @@ namespace HaCreator.MapSimulator.Fields
             return true;
         }
 
+        private static string ResolveClientBackgroundPath()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                ClientBackgroundStringPoolId,
+                BackgroundStringPoolEvidence.InferredDecodedValue);
+        }
+
+        private static string ResolveClientBitmapRootPath()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                ClientBitmapRootStringPoolId,
+                BitmapRootStringPoolEvidence.InferredDecodedValue);
+        }
+
+        private static bool TryResolveClientMapProperty(string resourcePath, out WzImageProperty property, out string resolvedSourcePath)
+        {
+            property = null;
+            resolvedSourcePath = null;
+            if (!TrySplitResourcePath(resourcePath, ClientMapAssetCategory, out string imageName, out string propertyPath))
+            {
+                return false;
+            }
+
+            foreach (string candidateImageName in EnumerateClientMapImageCandidates(imageName))
+            {
+                WzImage image = global::HaCreator.Program.FindImage(ClientMapAssetCategory, candidateImageName);
+                if (image == null)
+                {
+                    continue;
+                }
+
+                WzImageProperty candidate = string.IsNullOrWhiteSpace(propertyPath)
+                    ? null
+                    : ResolvePropertyPath(image, propertyPath);
+                if (candidate != null)
+                {
+                    property = candidate;
+                    resolvedSourcePath = $"{ClientMapAssetCategory}/{candidateImageName}/{propertyPath}";
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool TrySplitResourcePath(
+            string resourcePath,
+            string expectedCategory,
+            out string imageName,
+            out string propertyPath)
+        {
+            imageName = null;
+            propertyPath = null;
+            if (string.IsNullOrWhiteSpace(resourcePath) || string.IsNullOrWhiteSpace(expectedCategory))
+            {
+                return false;
+            }
+
+            string normalized = resourcePath.Replace('\\', '/').Trim();
+            string expectedPrefix = $"{expectedCategory}/";
+            if (!normalized.StartsWith(expectedPrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                return false;
+            }
+
+            string remainder = normalized.Substring(expectedPrefix.Length);
+            int imageIndex = remainder.IndexOf(".img", StringComparison.OrdinalIgnoreCase);
+            if (imageIndex < 0)
+            {
+                return false;
+            }
+
+            int imageLength = imageIndex + 4;
+            imageName = remainder.Substring(0, imageLength);
+            propertyPath = imageLength < remainder.Length
+                ? remainder.Substring(imageLength).TrimStart('/')
+                : string.Empty;
+            return !string.IsNullOrWhiteSpace(imageName);
+        }
+
+        private static IEnumerable<string> EnumerateClientMapImageCandidates(string imageName)
+        {
+            if (!string.IsNullOrWhiteSpace(imageName))
+            {
+                yield return imageName;
+            }
+
+            if (string.Equals(imageName, ClientMapObjectImageName, StringComparison.OrdinalIgnoreCase))
+            {
+                yield return ClientMapObjectImageNameFallback;
+            }
+            else if (string.Equals(imageName, ClientMapObjectImageNameFallback, StringComparison.OrdinalIgnoreCase))
+            {
+                yield return ClientMapObjectImageName;
+            }
+        }
+
         private static IEnumerable<WzImage> EnumerateUiImages()
         {
             var seenNames = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
@@ -1223,6 +1373,7 @@ namespace HaCreator.MapSimulator.Fields
 
             string sourceLabel = _bitmapRootResolutionKind switch
             {
+                CookieBitmapRootResolutionKind.ClientStringPoolRoot => "client-stringpool-root",
                 CookieBitmapRootResolutionKind.WzCandidate => "wz-candidate",
                 CookieBitmapRootResolutionKind.CompatibleShape => "compatible-shape",
                 CookieBitmapRootResolutionKind.CompatibleDigitContainer => "compatible-digit-container",
@@ -1243,6 +1394,16 @@ namespace HaCreator.MapSimulator.Fields
                 ? "decoded=unresolved"
                 : $"decoded={evidence.InferredDecodedValue}";
             return $"StringPool 0x{evidence.Id:X} seed=0x{evidence.Seed:X2} raw={evidence.RawHex} {decodedText} via {clientStringPoolSource} / {evidence.ClientSource}";
+        }
+
+        internal static string GetClientBackgroundPathForTesting()
+        {
+            return ResolveClientBackgroundPath();
+        }
+
+        internal static string GetClientBitmapRootPathForTesting()
+        {
+            return ResolveClientBitmapRootPath();
         }
     }
 }

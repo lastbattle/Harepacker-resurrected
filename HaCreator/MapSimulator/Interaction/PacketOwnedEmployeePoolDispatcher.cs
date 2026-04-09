@@ -12,6 +12,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal SocialRoomKind? ActiveKind => _activeKind;
         internal int EntryCount => _poolRuntime.EntryCount;
+        internal int PreferredEmployerId => _poolRuntime.PreferredEmployerId;
 
         internal void RestoreFromRoomSnapshot(SocialRoomRuntimeSnapshot snapshot)
         {
@@ -60,6 +61,12 @@ namespace HaCreator.MapSimulator.Interaction
 
             if (handled && IsMerchantKind(kind))
             {
+                if (SocialRoomEmployeePoolCodec.TryDecodeEmployerId(payload, out int employerId, out _)
+                    && employerId > 0)
+                {
+                    _poolRuntime.SetPreferredEmployerId(employerId);
+                }
+
                 _activeKind = kind;
             }
 
@@ -69,6 +76,11 @@ namespace HaCreator.MapSimulator.Interaction
                 : $"CEmployeePool::OnPacket ignored opcode {opcode} for {owner} at tick {tickCount}. {detail}";
             message = detail;
             return handled;
+        }
+
+        internal IReadOnlyList<SocialRoomEmployeePoolEntrySnapshot> BuildSnapshots()
+        {
+            return _poolRuntime.BuildSnapshots();
         }
 
         internal SocialRoomFieldActorSnapshot GetFieldActorSnapshot(

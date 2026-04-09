@@ -12,6 +12,7 @@ namespace HaCreator.MapSimulator
     {
         private const int EquipmentChangeResponseDelayMs = 50;
         private int _nextEquipmentChangeRequestId = 1;
+        private int _lastEquipmentExclusiveRequestSentTick = int.MinValue;
         private readonly Dictionary<int, PendingEquipmentChangeEnvelope> _pendingEquipmentChangeRequests = new();
 
         private sealed class PendingEquipmentChangeEnvelope
@@ -44,6 +45,7 @@ namespace HaCreator.MapSimulator
 
             request.RequestId = GetNextEquipmentChangeRequestId();
             request.RequestedAtTick = currTickCount;
+            _lastEquipmentExclusiveRequestSentTick = request.RequestedAtTick;
             _pendingEquipmentChangeRequests[request.RequestId] = new PendingEquipmentChangeEnvelope
             {
                 Request = request,
@@ -51,6 +53,14 @@ namespace HaCreator.MapSimulator
             };
 
             return EquipmentChangeSubmission.Accept(request.RequestId, request.RequestedAtTick);
+        }
+
+        private bool ShouldBlockEquipmentDragStart()
+        {
+            return EquipmentChangeClientParity.ShouldBlockDragStart(
+                currTickCount,
+                _lastEquipmentExclusiveRequestSentTick,
+                _pendingEquipmentChangeRequests.Count > 0);
         }
 
         private int GetNextEquipmentChangeRequestId()

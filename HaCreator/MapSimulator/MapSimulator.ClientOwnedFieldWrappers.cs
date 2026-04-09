@@ -644,6 +644,11 @@ namespace HaCreator.MapSimulator
                     $"{ownerLabel} ({weddingPhotoContract.SceneDescription}, client owner {weddingPhotoContract.SourceDescription}) on map {mapInfo.id}, returnMap {weddingPhotoContract.ReturnMapId}.{safeArea}");
             }
 
+            if (_specialFieldRuntime.PartyRaid.HasNativePartyRaidWrapperOwner)
+            {
+                activeWrappers.Add($"{_specialFieldRuntime.PartyRaid.ActiveRuntimeOwnerName} active ({_specialFieldRuntime.PartyRaid.DescribeClientWrapperContract()}) on map {mapInfo.id}.");
+            }
+
             return activeWrappers.Count == 0
                 ? "Client-owned wrappers: none of tutorial, limited-view, no-dragon, dynamic-foothold, or wedding-photo are active on this map."
                 : "Client-owned wrappers: " + string.Join(" ", activeWrappers);

@@ -167,11 +167,21 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             internal override string OwnerName => "CTradingRoomDlg::OnPacket";
-            protected override string SupportedPacketSummary => "15 put-item, 16 put-money, 17 trade, 21 exceed-limit";
+            protected override string SupportedPacketSummary => "15 put-item, 16 put-money, 17 trade, 21 exceed-limit; subtype 20 CRC stays on the OnTrade follow-up branch";
+            protected override string ForwardingSummary => "17 trade prepares the verification path and subtype 20 stays modeled as the OnTrade checksum follow-up.";
 
             protected override bool TryDispatchCore(byte[] payload, PacketReader reader, byte packetType, out string message, out bool forwarded)
             {
                 forwarded = false;
+                if (packetType == 20)
+                {
+                    bool handled = Runtime.TryApplyTradingRoomCrcPacket(reader, out string detail);
+                    message = handled
+                        ? $"{OwnerName} modeled CRC subtype 20 as the checksum follow-up reached from CTradingRoomDlg::OnTrade. {detail}"
+                        : detail;
+                    return handled;
+                }
+
                 return Runtime.TryDispatchTradingRoomPacket(payload, reader, packetType, out message);
             }
         }

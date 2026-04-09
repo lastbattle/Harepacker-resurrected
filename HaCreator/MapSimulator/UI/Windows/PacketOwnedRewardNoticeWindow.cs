@@ -11,8 +11,13 @@ namespace HaCreator.MapSimulator.UI
     internal sealed class PacketOwnedRewardNoticeWindow : UIWindowBase
     {
         private const float BodyWrapWidth = 250f;
+        private const float BodyTopY = 40f;
+        private const float BodyLeftX = 18f;
+        private const float BodyCenterX = 156f;
+        private const int CenteredButtonX = 136;
+        private const int ButtonY = 106;
 
-        private string _title = "Reward Result";
+        private string _title = string.Empty;
         private string _body = string.Empty;
         private UIObject _okButton;
 
@@ -26,7 +31,7 @@ namespace HaCreator.MapSimulator.UI
 
         public void Configure(string title, string body)
         {
-            _title = string.IsNullOrWhiteSpace(title) ? "Reward Result" : title.Trim();
+            _title = title?.Trim() ?? string.Empty;
             _body = body?.Trim() ?? string.Empty;
         }
 
@@ -35,8 +40,8 @@ namespace HaCreator.MapSimulator.UI
             _okButton = okButton;
             if (_okButton != null)
             {
-                _okButton.X = 96;
-                _okButton.Y = 106;
+                _okButton.X = CenteredButtonX;
+                _okButton.Y = ButtonY;
                 _okButton.ButtonClickReleased += _ => Hide();
                 AddButton(_okButton);
             }
@@ -65,21 +70,29 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            SelectorWindowDrawing.DrawShadowedText(
-                sprite,
-                WindowFont,
-                _title,
-                new Vector2(Position.X + 16, Position.Y + 16),
-                Color.White);
-
-            float y = Position.Y + 46f;
-            foreach (string line in WrapText(_body, BodyWrapWidth))
+            List<string> lines = new(WrapText(_body, BodyWrapWidth));
+            float y = Position.Y + BodyTopY;
+            if (!string.IsNullOrWhiteSpace(_title))
             {
                 SelectorWindowDrawing.DrawShadowedText(
                     sprite,
                     WindowFont,
+                    _title,
+                    new Vector2(Position.X + 16, Position.Y + 16),
+                    Color.White);
+                y += 6f;
+            }
+
+            foreach (string line in lines)
+            {
+                float x = string.IsNullOrWhiteSpace(_title)
+                    ? Position.X + BodyCenterX - (MeasureWindowText(null, line).X / 2f)
+                    : Position.X + BodyLeftX;
+                SelectorWindowDrawing.DrawShadowedText(
+                    sprite,
+                    WindowFont,
                     line,
-                    new Vector2(Position.X + 18, y),
+                    new Vector2(x, y),
                     new Color(232, 232, 232));
                 y += WindowLineSpacing;
             }

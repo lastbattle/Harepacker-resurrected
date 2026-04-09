@@ -102,6 +102,7 @@ namespace HaCreator.MapSimulator.UI
         private int _inventorySelectedIndex = -1;
         private int _previousScrollWheelValue;
         private KeyboardState _previousKeyboardState;
+        private MouseState _previousMouseState;
         private long _storageMeso;
         private string _statusMessage = "Select an item to deposit or withdraw.";
         private MesoEntryMode _mesoEntryMode = MesoEntryMode.None;
@@ -238,6 +239,7 @@ namespace HaCreator.MapSimulator.UI
             UpdateAccessStatusMessage();
             _previousScrollWheelValue = Mouse.GetState().ScrollWheelValue;
             _previousKeyboardState = Keyboard.GetState();
+            _previousMouseState = Mouse.GetState();
         }
 
         public override void Hide()
@@ -246,6 +248,7 @@ namespace HaCreator.MapSimulator.UI
             _storageRuntime?.EndAccessSession();
             CancelMesoEntry();
             UpdateAccessStatusMessage();
+            _previousMouseState = Mouse.GetState();
             UpdateButtonStates();
         }
 
@@ -479,6 +482,29 @@ namespace HaCreator.MapSimulator.UI
             int TickCount)
         {
             DrawHoveredSlotTooltip(sprite, renderParameters.RenderWidth, renderParameters.RenderHeight);
+        }
+
+        public override bool CheckMouseEvent(int shiftCenteredX, int shiftCenteredY, MouseState mouseState, MouseCursorItem mouseCursor, int renderWidth, int renderHeight)
+        {
+            bool handled = base.CheckMouseEvent(shiftCenteredX, shiftCenteredY, mouseState, mouseCursor, renderWidth, renderHeight);
+            if (!IsVisible)
+            {
+                _previousMouseState = mouseState;
+                return handled;
+            }
+
+            bool leftJustPressed = mouseState.LeftButton == ButtonState.Pressed && _previousMouseState.LeftButton == ButtonState.Released;
+            if (!handled && leftJustPressed && _mesoEntryMode != MesoEntryMode.None && GetEntryBounds().Contains(mouseState.Position))
+            {
+                _softKeyboardActive = true;
+                ClearCompositionText();
+                UpdateButtonStates();
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+                handled = true;
+            }
+
+            _previousMouseState = mouseState;
+            return handled;
         }
 
         private void InitializeActionButtons(
@@ -764,6 +790,7 @@ namespace HaCreator.MapSimulator.UI
             _secondaryPasswordConfirmationText ??= string.Empty;
             _softKeyboardActive = true;
             ClearCompositionText();
+            _previousMouseState = Mouse.GetState();
             UpdateButtonStates();
         }
 

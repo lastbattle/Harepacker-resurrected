@@ -179,6 +179,11 @@ namespace HaCreator.MapSimulator
                 listWindow.SetExternalAction("BtGift", () => cashShopWindow.ExecuteCashStageListAction("BtGift"));
                 listWindow.SetExternalAction("BtReserve", () => cashShopWindow.ExecuteCashStageListAction("BtReserve"));
                 listWindow.SetExternalAction("BtRemove", () => cashShopWindow.ExecuteCashStageListAction("BtRemove"));
+                listWindow.SetExternalAction("TogglePane", cashShopWindow.ToggleListOwnerPane);
+                listWindow.SetExternalAction("PageUp", () => cashShopWindow.MoveListOwnerSelectionByPage(-1));
+                listWindow.SetExternalAction("PageDown", () => cashShopWindow.MoveListOwnerSelectionByPage(1));
+                listWindow.SetExternalAction("Home", () => cashShopWindow.SelectListOwnerBoundary(false));
+                listWindow.SetExternalAction("End", () => cashShopWindow.SelectListOwnerBoundary(true));
                 listWindow.SetListStateProvider(() =>
                 {
                     AdminShopDialogUI.ListOwnerSnapshot snapshot = cashShopWindow.GetListOwnerSnapshot();

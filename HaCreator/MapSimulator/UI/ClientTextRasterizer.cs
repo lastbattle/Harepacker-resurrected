@@ -183,10 +183,17 @@ namespace HaCreator.MapSimulator.UI
         private readonly SD.Bitmap _measureBitmap = new SD.Bitmap(1, 1, SDImaging.PixelFormat.Format32bppArgb);
         private readonly SD.Graphics _measureGraphics;
 
-        public ClientTextRasterizer(GraphicsDevice graphicsDevice, string fontFamily = null, float basePointSize = 12f, SD.FontStyle fontStyle = SD.FontStyle.Regular)
+        public ClientTextRasterizer(
+            GraphicsDevice graphicsDevice,
+            string fontFamily = null,
+            float basePointSize = 12f,
+            SD.FontStyle fontStyle = SD.FontStyle.Regular,
+            bool preferEmbeddedPrivateFontSources = false)
         {
             _graphicsDevice = graphicsDevice ?? throw new ArgumentNullException(nameof(graphicsDevice));
-            _fontFamily = ResolvePreferredFontFamily(fontFamily);
+            _fontFamily = ResolvePreferredFontFamily(
+                fontFamily,
+                preferEmbeddedPrivateFontSources: preferEmbeddedPrivateFontSources);
             _basePointSize = basePointSize <= 0f ? 12f : basePointSize;
             _fontStyle = fontStyle;
 

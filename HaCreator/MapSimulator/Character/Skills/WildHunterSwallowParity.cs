@@ -8,18 +8,27 @@ namespace HaCreator.MapSimulator.Character.Skills
         public const int WriggleIntervalMs = 500;
         public const int AbsorbOutcomeTimeoutFloorMs = 800;
         public const int AbsorbOutcomeTimeoutCeilingMs = 1800;
+        public const int BufferedAbsorbOutcomeLifetimeMs = 1800;
 
         public static int GetSuspensionDurationMs()
         {
             return WriggleIntervalMs;
         }
 
-        public static int ResolveAbsorbOutcomeTimeoutMs(int actionDurationMs)
+        public static int ResolveAbsorbOutcomeTimeoutMs(int actionDurationMs, int fallbackDurationMs = 0)
         {
-            int baseDuration = actionDurationMs > 0
-                ? actionDurationMs + WriggleIntervalMs
+            int resolvedDuration = actionDurationMs > 0
+                ? actionDurationMs
+                : fallbackDurationMs;
+            int baseDuration = resolvedDuration > 0
+                ? resolvedDuration + WriggleIntervalMs
                 : WriggleIntervalMs * 2;
             return Math.Clamp(baseDuration, AbsorbOutcomeTimeoutFloorMs, AbsorbOutcomeTimeoutCeilingMs);
+        }
+
+        public static int ResolveBufferedAbsorbOutcomeLifetimeMs()
+        {
+            return BufferedAbsorbOutcomeLifetimeMs;
         }
 
         public static int AdvanceWriggleSchedule(

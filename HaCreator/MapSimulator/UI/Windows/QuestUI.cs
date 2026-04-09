@@ -1023,10 +1023,17 @@ namespace HaCreator.MapSimulator.UI
                     break;
                 }
 
+                int rowIndex = i / columnCount;
+                int absoluteRowIndex = _categoryScrollOffset + rowIndex;
                 QuestAreaFilterEntry entry = areaFilters[entryIndex];
-                Rectangle rowRect = GetCategoryCellRectangle(panelRect, i / columnCount, i % columnCount, columnCount);
+                Rectangle rowRect = GetCategoryCellRectangle(panelRect, rowIndex, i % columnCount, columnCount);
                 CategoryButtonSlot slot = _categoryButtonSlots[i];
-                slot.Assign(entry, rowRect, GetCategoryButtonRectangle(rowRect));
+                slot.Assign(
+                    entry,
+                    rowRect,
+                    GetCategoryButtonRectangle(rowRect),
+                    hasVisibleRowAbove: absoluteRowIndex > 0,
+                    hasVisibleRowBelow: absoluteRowIndex < totalRows - 1);
             }
         }
 
@@ -1237,8 +1244,7 @@ namespace HaCreator.MapSimulator.UI
                     Texture2D rowTexture = ResolveCategoryRowTexture(visibleSlots, slot);
                     if (rowTexture != null)
                     {
-                        int rowY = slot.Bounds.Y + Math.Max(0, (slot.Bounds.Height - rowTexture.Height) / 2);
-                        sprite.Draw(rowTexture, new Vector2(slot.Bounds.X, rowY), Color.White);
+                        sprite.Draw(rowTexture, new Vector2(slot.Bounds.X, slot.Bounds.Y), Color.White);
                     }
                 }
 
@@ -1454,21 +1460,17 @@ namespace HaCreator.MapSimulator.UI
                 return null;
             }
 
-            int slotIndex = FindCategorySlotIndex(visibleSlots, slot);
-            if (slotIndex < 0)
+            if (slot == null)
             {
                 return _categoryLegendSheetTextures[Math.Clamp(Math.Min(1, _categoryLegendSheetTextures.Length - 1), 0, _categoryLegendSheetTextures.Length - 1)];
             }
 
-            int textureIndex = visibleSlots.Count switch
+            int textureIndex = slot switch
             {
-                <= 1 => Math.Min(1, _categoryLegendSheetTextures.Length - 1),
-                2 => slotIndex == 0 ? 0 : Math.Min(2, _categoryLegendSheetTextures.Length - 1),
-                _ => slotIndex == 0
-                    ? 0
-                    : slotIndex == visibleSlots.Count - 1
-                        ? Math.Min(2, _categoryLegendSheetTextures.Length - 1)
-                        : Math.Min(1, _categoryLegendSheetTextures.Length - 1)
+                { HasVisibleRowAbove: false, HasVisibleRowBelow: false } => Math.Min(1, _categoryLegendSheetTextures.Length - 1),
+                { HasVisibleRowAbove: false } => 0,
+                { HasVisibleRowBelow: false } => Math.Min(2, _categoryLegendSheetTextures.Length - 1),
+                _ => Math.Min(1, _categoryLegendSheetTextures.Length - 1)
             };
 
             return _categoryLegendSheetTextures[Math.Clamp(textureIndex, 0, _categoryLegendSheetTextures.Length - 1)];
@@ -1476,13 +1478,12 @@ namespace HaCreator.MapSimulator.UI
 
         private static int GetCategoryRowTextTopOffset(IReadOnlyList<CategoryButtonSlot> visibleSlots, CategoryButtonSlot slot)
         {
-            if (visibleSlots == null || visibleSlots.Count == 0)
+            if (slot == null)
             {
                 return 4;
             }
 
-            int slotIndex = FindCategorySlotIndex(visibleSlots, slot);
-            return slotIndex == visibleSlots.Count - 1 ? 3 : 4;
+            return slot.HasVisibleRowBelow ? 4 : 3;
         }
 
         private static int FindCategorySlotIndex(IReadOnlyList<CategoryButtonSlot> visibleSlots, CategoryButtonSlot slot)
@@ -2132,12 +2133,21 @@ namespace HaCreator.MapSimulator.UI
         public QuestAreaFilterEntry Entry { get; private set; }
         public Rectangle Bounds { get; private set; }
         public Rectangle ButtonBounds { get; private set; }
+        public bool HasVisibleRowAbove { get; private set; }
+        public bool HasVisibleRowBelow { get; private set; }
 
-        public void Assign(QuestAreaFilterEntry entry, Rectangle bounds, Rectangle buttonBounds)
+        public void Assign(
+            QuestAreaFilterEntry entry,
+            Rectangle bounds,
+            Rectangle buttonBounds,
+            bool hasVisibleRowAbove,
+            bool hasVisibleRowBelow)
         {
             Entry = entry;
             Bounds = bounds;
             ButtonBounds = buttonBounds;
+            HasVisibleRowAbove = hasVisibleRowAbove;
+            HasVisibleRowBelow = hasVisibleRowBelow;
         }
 
         public void Clear()
@@ -2145,6 +2155,8 @@ namespace HaCreator.MapSimulator.UI
             Entry = null;
             Bounds = Rectangle.Empty;
             ButtonBounds = Rectangle.Empty;
+            HasVisibleRowAbove = false;
+            HasVisibleRowBelow = false;
         }
     }
 }

@@ -19,6 +19,7 @@ namespace HaCreator.MapSimulator.Interaction
         public int RequestId { get; init; }
         public int OwnerItemId { get; init; }
         public int QrData { get; set; }
+        public int MaxDropCount { get; init; } = 1;
         public Point WindowPosition { get; set; }
         public QuestRewardRaiseWindowMode WindowMode { get; init; }
         public Dictionary<int, int> SelectedItemsByGroup { get; } = new Dictionary<int, int>();

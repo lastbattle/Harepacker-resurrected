@@ -24,7 +24,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             _dialogContext = dialogContext;
             _localGuildMarkSelection = localGuildMarkSelection;
-            EnsureSeedData();
+            _entries.Clear();
 
             string guildName = string.IsNullOrWhiteSpace(dialogContext.GuildName)
                 ? (string.IsNullOrWhiteSpace(build?.GuildName) ? "Maple GM" : build.GuildName.Trim())
@@ -62,7 +62,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             UpdateLocalContext(build, dialogContext, localGuildMarkSelection);
             _pageIndex = 0;
-            _statusMessage = $"Opened the dedicated guild-ranking dialog for {_dialogContext.GuildName}. Local guild identity now follows the shared guild-management seam, while rival standings still remain simulator-seeded instead of packet-fed.";
+            _statusMessage = $"Opened the dedicated guild-ranking dialog for {_dialogContext.GuildName}. Local guild identity follows the shared guild-management seam, and rival rows now follow packet-fed OnGuildResult ranking payloads when present.";
             return _statusMessage;
         }
 
@@ -89,13 +89,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal string DescribeStatus()
         {
-            EnsureSeedData();
             return $"Guild ranking page {_pageIndex + 1}/{GetTotalPages()} with {_entries.Count} total guild entries. Active guild={_dialogContext.GuildName}, role={_dialogContext.GuildRoleLabel}. {_statusMessage}";
         }
 
         internal GuildRankSnapshot BuildSnapshot()
         {
-            EnsureSeedData();
             int totalPages = GetTotalPages();
             int startIndex = _pageIndex * PageSize;
             GuildRankEntrySnapshot[] entries = _entries
@@ -151,12 +149,10 @@ namespace HaCreator.MapSimulator.Interaction
                 GuildRankEntryState existing = FindEntry(seedEntry.GuildName);
                 if (existing == null)
                 {
-                    GuildMarkSelection markSelection = isLocalGuild
-                        ? localGuildMarkSelection
-                        : ResolveFallbackMarkSelection(i);
+                    GuildMarkSelection markSelection = ResolveMarkSelection(seedEntry, isLocalGuild, localGuildMarkSelection, i);
                     _entries.Add(new GuildRankEntryState(
                         seedEntry.GuildName.Trim(),
-                        ResolveSeedPoints(seedEntry, i),
+                        seedEntry.Points ?? ResolveSeedPoints(seedEntry, i),
                         markSelection.MarkBackground,
                         markSelection.MarkBackgroundColor,
                         markSelection.Mark,
@@ -164,14 +160,12 @@ namespace HaCreator.MapSimulator.Interaction
                     continue;
                 }
 
-                existing.Points = Math.Max(existing.Points, ResolveSeedPoints(seedEntry, i));
-                if (isLocalGuild)
-                {
-                    existing.MarkBackground = localGuildMarkSelection.MarkBackground;
-                    existing.MarkBackgroundColor = localGuildMarkSelection.MarkBackgroundColor;
-                    existing.Mark = localGuildMarkSelection.Mark;
-                    existing.MarkColor = localGuildMarkSelection.MarkColor;
-                }
+                existing.Points = Math.Max(existing.Points, seedEntry.Points ?? ResolveSeedPoints(seedEntry, i));
+                GuildMarkSelection updatedSelection = ResolveMarkSelection(seedEntry, isLocalGuild, localGuildMarkSelection, i);
+                existing.MarkBackground = updatedSelection.MarkBackground;
+                existing.MarkBackgroundColor = updatedSelection.MarkBackgroundColor;
+                existing.Mark = updatedSelection.Mark;
+                existing.MarkColor = updatedSelection.MarkColor;
             }
         }
 
@@ -181,7 +175,7 @@ namespace HaCreator.MapSimulator.Interaction
                 string.Equals(entry.GuildName, guildName, StringComparison.OrdinalIgnoreCase)) ?? default;
             if (!string.IsNullOrWhiteSpace(localSeed.GuildName))
             {
-                return ResolveSeedPoints(localSeed, 0);
+                return localSeed.Points ?? ResolveSeedPoints(localSeed, 0);
             }
 
             int rosterWeight = Math.Max(0, dialogContext.RankTitles?.Count ?? 0) * 250;
@@ -240,6 +234,33 @@ namespace HaCreator.MapSimulator.Interaction
                 : fallback;
         }
 
+        private static GuildMarkSelection ResolveMarkSelection(
+            GuildRankingSeedEntry seedEntry,
+            bool isLocalGuild,
+            GuildMarkSelection localGuildMarkSelection,
+            int seedIndex)
+        {
+            if (isLocalGuild)
+            {
+                return localGuildMarkSelection;
+            }
+
+            if (seedEntry.MarkBackground.HasValue
+                && seedEntry.MarkBackgroundColor.HasValue
+                && seedEntry.Mark.HasValue
+                && seedEntry.MarkColor.HasValue)
+            {
+                return new GuildMarkSelection(
+                    seedEntry.MarkBackground.Value,
+                    seedEntry.MarkBackgroundColor.Value,
+                    seedEntry.Mark.Value,
+                    seedEntry.MarkColor.Value,
+                    0);
+            }
+
+            return ResolveFallbackMarkSelection(seedIndex);
+        }
+
         private static GuildMarkSelection ResolveFallbackMarkSelection(int seedIndex)
         {
             GuildMarkSelection[] seedSelections =
@@ -252,30 +273,6 @@ namespace HaCreator.MapSimulator.Interaction
                 new GuildMarkSelection(1009, 16, 5006, 2, 3)
             ];
             return seedSelections[Math.Abs(seedIndex) % seedSelections.Length];
-        }
-
-        private void EnsureSeedData()
-        {
-            if (_entries.Count > 0)
-            {
-                return;
-            }
-
-            _entries.AddRange(new[]
-            {
-                new GuildRankEntryState("Maple GM", 98420, 1001, 3, 2002, 11),
-                new GuildRankEntryState("Crimson Oak", 94110, 1004, 9, 3004, 6),
-                new GuildRankEntryState("Blue Harbor", 90325, 1007, 5, 5001, 15),
-                new GuildRankEntryState("Skyline", 86880, 1010, 13, 4003, 3),
-                new GuildRankEntryState("Clocktower", 83570, 1003, 8, 9002, 9),
-                new GuildRankEntryState("Snowfall", 81145, 1009, 16, 5006, 2),
-                new GuildRankEntryState("FreeMarket", 78630, 1006, 4, 3001, 14),
-                new GuildRankEntryState("Leafre Trail", 75210, 1012, 10, 2005, 12),
-                new GuildRankEntryState("Ariant Sun", 71995, 1013, 1, 4004, 7),
-                new GuildRankEntryState("Ludi Beats", 70120, 1008, 11, 9004, 5),
-                new GuildRankEntryState("Sleepywood", 66840, 1002, 15, 2007, 1),
-                new GuildRankEntryState("New Leaf", 64555, 1011, 6, 5004, 10)
-            });
         }
 
         private sealed class GuildRankEntryState

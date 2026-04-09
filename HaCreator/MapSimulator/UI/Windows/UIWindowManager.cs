@@ -855,6 +855,17 @@ namespace HaCreator.MapSimulator.UI
                 return false;
             }
 
+            if (GetWindow(MapSimulatorWindowNames.QuestRewardRaise) is QuestRewardRaiseWindow raiseWindow
+                && raiseWindow.TryHandleInventoryDrop(
+                    mouseX,
+                    mouseY,
+                    inventoryWindow.DraggedInventoryType,
+                    inventoryWindow.DraggedSlotIndex,
+                    inventoryWindow.DraggedSlotData))
+            {
+                return true;
+            }
+
             bool handled;
             bool pending;
             IReadOnlyList<InventorySlotData> displacedSlots;
@@ -944,7 +955,15 @@ namespace HaCreator.MapSimulator.UI
             if (equipWindow.IsDraggingItem)
             {
                 if (leftJustReleased)
+                {
+                    if (TryHandleEquipmentDropToInventory(equipWindow, mouseState.X, mouseState.Y))
+                    {
+                        equipWindow.CancelEquipmentDrag();
+                        return true;
+                    }
+
                     equipWindow.OnEquipmentMouseUp(mouseState.X, mouseState.Y);
+                }
 
                 return true;
             }
@@ -1062,6 +1081,42 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return false;
+        }
+
+        private bool TryHandleEquipmentDropToInventory(EquipUI equipWindow, int mouseX, int mouseY)
+        {
+            if (equipWindow == null
+                || InventoryWindow is not InventoryUI inventoryWindow
+                || !inventoryWindow.IsVisible
+                || !inventoryWindow.ContainsPoint(mouseX, mouseY)
+                || !equipWindow.HasDraggedCharacterItem)
+            {
+                return false;
+            }
+
+            InventorySlotData previewSlot = equipWindow.DraggedCharacterSlotData;
+            if (previewSlot == null)
+            {
+                return false;
+            }
+
+            InventoryType inventoryType = InventoryItemMetadataResolver.ResolveInventoryType(previewSlot);
+            if (!inventoryWindow.CanAcceptItem(inventoryType, previewSlot.ItemId, Math.Max(1, previewSlot.Quantity), previewSlot.MaxStackSize))
+            {
+                return false;
+            }
+
+            if (!equipWindow.TryCommitDraggedCharacterRemoval(out InventorySlotData slotData))
+            {
+                return false;
+            }
+
+            if (slotData != null)
+            {
+                inventoryWindow.AddItem(inventoryType, slotData);
+            }
+
+            return true;
         }
 
         private bool IsDraggingEquipment()

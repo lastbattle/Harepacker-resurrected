@@ -108,8 +108,8 @@ namespace HaCreator.MapSimulator.UI
         private const int ItemIconY = 2;
         private const int RepairFeeLabelX = 52;
         private const int RepairFeeLabelY = 83;
-        private const int RepairFeeValueRight = 200;
-        private const int RepairFeeValueY = 83;
+        private const int RepairFeeValueRight = 214;
+        private const int RepairFeeValueY = 81;
         private const int NpcNameX = 72;
         private const int NpcNameY = 53;
         private const int NpcPreviewX = 57;
@@ -149,6 +149,8 @@ namespace HaCreator.MapSimulator.UI
         private int _selectedIndex = -1;
         private int _scrollOffset;
         private int _hoveredTooltipIndex = -1;
+        private bool _scrollBarDragging;
+        private int _scrollBarDragOffsetY;
         private int _lastNpcTemplateId;
         private string _npcName = string.Empty;
         private string _statusMessage = "Select an item to preview repair cost.";
@@ -316,6 +318,7 @@ namespace HaCreator.MapSimulator.UI
                 _selectedIndex = -1;
                 _scrollOffset = 0;
                 _hoveredTooltipIndex = -1;
+                _scrollBarDragging = false;
             }
             else
             {
@@ -345,8 +348,67 @@ namespace HaCreator.MapSimulator.UI
 
             _lastMousePosition = new Point(mouseState.X, mouseState.Y);
             int wheelDelta = mouseState.ScrollWheelValue - _previousMouseState.ScrollWheelValue;
+            bool mousePressed = mouseState.LeftButton == ButtonState.Pressed;
+            bool mouseReleased = mouseState.LeftButton == ButtonState.Released;
+            bool clicked = mouseReleased && _previousMouseState.LeftButton == ButtonState.Pressed;
+            bool pressedThisFrame = mousePressed && _previousMouseState.LeftButton == ButtonState.Released;
             Rectangle rowArea = GetRowAreaBounds();
+            Rectangle scrollTrackBounds = GetScrollTrackBounds();
             _hoveredTooltipIndex = ResolveHoveredTooltipIndex(_lastMousePosition);
+
+            if (_scrollBarDragging && (!mousePressed || GetScrollHiddenCount() <= 0))
+            {
+                _scrollBarDragging = false;
+            }
+
+            if (_scrollBarDragging)
+            {
+                UpdateScrollOffsetFromThumbTop(mouseState.Y - _scrollBarDragOffsetY);
+                _hoveredTooltipIndex = ResolveHoveredTooltipIndex(_lastMousePosition);
+                UpdateButtonStates();
+                _previousMouseState = mouseState;
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+                return true;
+            }
+
+            if (scrollTrackBounds.Contains(mouseState.X, mouseState.Y))
+            {
+                if (wheelDelta != 0 && _entries.Count > VisibleRowCount)
+                {
+                    _scrollOffset = ClampScrollOffset(_scrollOffset - Math.Sign(wheelDelta));
+                    _hoveredTooltipIndex = ResolveHoveredTooltipIndex(_lastMousePosition);
+                    UpdateButtonStates();
+                    _previousMouseState = mouseState;
+                    mouseCursor?.SetMouseCursorMovedToClickableItem();
+                    return true;
+                }
+
+                if (pressedThisFrame && GetScrollHiddenCount() > 0)
+                {
+                    Rectangle thumbBounds = GetScrollThumbBounds();
+                    if (thumbBounds.Contains(mouseState.X, mouseState.Y))
+                    {
+                        _scrollBarDragOffsetY = mouseState.Y - thumbBounds.Y;
+                    }
+                    else
+                    {
+                        int thumbHeight = ResolveScrollThumbHeight(scrollTrackBounds);
+                        UpdateScrollOffsetFromThumbTop(mouseState.Y - (thumbHeight / 2));
+                        thumbBounds = GetScrollThumbBounds();
+                        _scrollBarDragOffsetY = Math.Clamp(mouseState.Y - thumbBounds.Y, 0, Math.Max(0, thumbBounds.Height - 1));
+                    }
+
+                    _scrollBarDragging = true;
+                    _hoveredTooltipIndex = ResolveHoveredTooltipIndex(_lastMousePosition);
+                    UpdateButtonStates();
+                    _previousMouseState = mouseState;
+                    mouseCursor?.SetMouseCursorMovedToClickableItem();
+                    return true;
+                }
+
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+            }
+
             if (rowArea.Contains(mouseState.X, mouseState.Y))
             {
                 if (wheelDelta != 0 && _entries.Count > VisibleRowCount)
@@ -359,7 +421,6 @@ namespace HaCreator.MapSimulator.UI
                     return true;
                 }
 
-                bool clicked = mouseState.LeftButton == ButtonState.Released && _previousMouseState.LeftButton == ButtonState.Pressed;
                 if (clicked)
                 {
                     int row = (mouseState.Y - rowArea.Y) / RowPitch;
@@ -539,21 +600,17 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawScrollBar(SpriteBatch sprite)
         {
-            Rectangle track = new(Position.X + ScrollBarX, Position.Y + ScrollBarY, ScrollBarThumbWidth, ScrollBarHeight);
+            Rectangle track = GetScrollTrackBounds();
             sprite.Draw(_pixel, track, new Color(30, 30, 30, 60));
 
-            int hiddenCount = Math.Max(0, _entries.Count - VisibleRowCount);
+            int hiddenCount = GetScrollHiddenCount();
             if (hiddenCount <= 0)
             {
                 sprite.Draw(_pixel, track, new Color(255, 255, 255, 45));
                 return;
             }
 
-            float visibleRatio = Math.Clamp((float)VisibleRowCount / _entries.Count, 0f, 1f);
-            int thumbHeight = Math.Max(ScrollBarThumbMinHeight, (int)Math.Round(track.Height * visibleRatio));
-            int thumbTravel = Math.Max(0, track.Height - thumbHeight);
-            int thumbY = track.Y + (int)Math.Round(thumbTravel * (_scrollOffset / (float)hiddenCount));
-            sprite.Draw(_pixel, new Rectangle(track.X, thumbY, track.Width, thumbHeight), new Color(164, 206, 255, 220));
+            sprite.Draw(_pixel, GetScrollThumbBounds(), new Color(164, 206, 255, 220));
         }
 
         private void DrawHoveredItemTooltip(SpriteBatch sprite)
@@ -1484,6 +1541,59 @@ namespace HaCreator.MapSimulator.UI
         private Rectangle GetRowAreaBounds()
         {
             return new Rectangle(Position.X + RowLeft, Position.Y + RowTop, RowWidth, (VisibleRowCount * RowPitch) - (RowPitch - RowHeight));
+        }
+
+        private Rectangle GetScrollTrackBounds()
+        {
+            return new Rectangle(Position.X + ScrollBarX, Position.Y + ScrollBarY, ScrollBarThumbWidth, ScrollBarHeight);
+        }
+
+        private Rectangle GetScrollThumbBounds()
+        {
+            Rectangle track = GetScrollTrackBounds();
+            int thumbHeight = ResolveScrollThumbHeight(track);
+            int hiddenCount = GetScrollHiddenCount();
+            if (hiddenCount <= 0)
+            {
+                return track;
+            }
+
+            int thumbTravel = Math.Max(0, track.Height - thumbHeight);
+            int thumbY = track.Y + (int)Math.Round(thumbTravel * (_scrollOffset / (float)hiddenCount));
+            return new Rectangle(track.X, thumbY, track.Width, thumbHeight);
+        }
+
+        private int GetScrollHiddenCount()
+        {
+            return Math.Max(0, _entries.Count - VisibleRowCount);
+        }
+
+        private int ResolveScrollThumbHeight(Rectangle track)
+        {
+            if (_entries.Count <= 0)
+            {
+                return track.Height;
+            }
+
+            float visibleRatio = Math.Clamp((float)VisibleRowCount / _entries.Count, 0f, 1f);
+            return Math.Max(ScrollBarThumbMinHeight, (int)Math.Round(track.Height * visibleRatio));
+        }
+
+        private void UpdateScrollOffsetFromThumbTop(int thumbTop)
+        {
+            Rectangle track = GetScrollTrackBounds();
+            int hiddenCount = GetScrollHiddenCount();
+            if (hiddenCount <= 0)
+            {
+                _scrollOffset = 0;
+                return;
+            }
+
+            int thumbHeight = ResolveScrollThumbHeight(track);
+            int thumbTravel = Math.Max(1, track.Height - thumbHeight);
+            int clampedThumbTop = Math.Clamp(thumbTop, track.Y, track.Bottom - thumbHeight);
+            float ratio = (clampedThumbTop - track.Y) / (float)thumbTravel;
+            _scrollOffset = ClampScrollOffset((int)Math.Round(ratio * hiddenCount));
         }
 
         private int ResolveHoveredTooltipIndex(Point mousePosition)

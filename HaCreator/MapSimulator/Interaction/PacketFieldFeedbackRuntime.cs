@@ -1079,7 +1079,10 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            return FindSwindleSubstring(filteredMessage, keywordBytes) >= 0;
+            return FindSwindleSubstring(
+                filteredMessage,
+                keywordBytes,
+                static value => IsDbcsLeadByte(value)) >= 0;
         }
 
         private static string FilterSwindleText(string message)
@@ -1102,22 +1105,50 @@ namespace HaCreator.MapSimulator.Interaction
                 return Array.Empty<byte>();
             }
 
-            byte[] sourceBytes = SwindleEncoding.GetBytes(message);
+            return FilterSwindleBytes(
+                SwindleEncoding.GetBytes(message),
+                filteredCharacters,
+                static value => IsDbcsLeadByte(value));
+        }
+
+        private static byte[] FilterSwindleBytes(
+            ReadOnlySpan<byte> sourceBytes,
+            ReadOnlySpan<byte> filteredCharacters,
+            Func<byte, bool> isDbcsLeadByte)
+        {
+            if (sourceBytes.Length == 0)
+            {
+                return Array.Empty<byte>();
+            }
+
             byte[] filteredBytes = new byte[sourceBytes.Length];
             int count = 0;
-            foreach (byte value in sourceBytes)
+            for (int index = 0; index < sourceBytes.Length;)
             {
+                byte value = sourceBytes[index];
+                int characterLength = GetSwindleCharacterLength(sourceBytes, index, isDbcsLeadByte);
+                if (characterLength == 2)
+                {
+                    filteredBytes[count++] = value;
+                    filteredBytes[count++] = sourceBytes[index + 1];
+                    index += 2;
+                    continue;
+                }
+
                 if (value < 0x20)
                 {
+                    index++;
                     continue;
                 }
 
                 if (ContainsFilteredSwindleCharacter(value, filteredCharacters))
                 {
+                    index++;
                     continue;
                 }
 
                 filteredBytes[count++] = value;
+                index++;
             }
 
             if (count == 0)
@@ -1129,7 +1160,10 @@ namespace HaCreator.MapSimulator.Interaction
             return filteredBytes;
         }
 
-        private static int FindSwindleSubstring(byte[] filteredMessage, byte[] keywordBytes)
+        private static int FindSwindleSubstring(
+            byte[] filteredMessage,
+            byte[] keywordBytes,
+            Func<byte, bool> isDbcsLeadByte)
         {
             if (filteredMessage == null
                 || keywordBytes == null
@@ -1148,18 +1182,22 @@ namespace HaCreator.MapSimulator.Interaction
                     break;
                 }
 
-                if (MatchesSwindleKeyword(filteredMessage, start, keywordBytes))
+                if (MatchesSwindleKeyword(filteredMessage, start, keywordBytes, isDbcsLeadByte))
                 {
                     return start;
                 }
 
-                start += GetSwindleCharacterLength(filteredMessage, start);
+                start += GetSwindleCharacterLength(filteredMessage, start, isDbcsLeadByte);
             }
 
             return -1;
         }
 
-        private static bool MatchesSwindleKeyword(byte[] filteredMessage, int start, byte[] keywordBytes)
+        private static bool MatchesSwindleKeyword(
+            byte[] filteredMessage,
+            int start,
+            byte[] keywordBytes,
+            Func<byte, bool> isDbcsLeadByte)
         {
             if (start < 0
                 || filteredMessage == null
@@ -1171,13 +1209,38 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             int messageIndex = start;
-            for (int keywordIndex = 0; keywordIndex < keywordBytes.Length; keywordIndex++, messageIndex++)
+            int keywordIndex = 0;
+            while (keywordIndex < keywordBytes.Length)
             {
-                if (messageIndex >= filteredMessage.Length
-                    || !IsSwindleByteEqual(filteredMessage[messageIndex], keywordBytes[keywordIndex]))
+                if (messageIndex >= filteredMessage.Length)
                 {
                     return false;
                 }
+
+                int messageLength = GetSwindleCharacterLength(filteredMessage, messageIndex, isDbcsLeadByte);
+                int keywordLength = GetSwindleCharacterLength(keywordBytes, keywordIndex, isDbcsLeadByte);
+                if (messageLength != keywordLength
+                    || messageIndex + messageLength > filteredMessage.Length
+                    || keywordIndex + keywordLength > keywordBytes.Length)
+                {
+                    return false;
+                }
+
+                if (messageLength == 2)
+                {
+                    if (filteredMessage[messageIndex] != keywordBytes[keywordIndex]
+                        || filteredMessage[messageIndex + 1] != keywordBytes[keywordIndex + 1])
+                    {
+                        return false;
+                    }
+                }
+                else if (!IsSwindleByteEqual(filteredMessage[messageIndex], keywordBytes[keywordIndex]))
+                {
+                    return false;
+                }
+
+                messageIndex += messageLength;
+                keywordIndex += keywordLength;
             }
 
             return true;
@@ -1206,16 +1269,20 @@ namespace HaCreator.MapSimulator.Interaction
             return unchecked((byte)MbcsToLower(value));
         }
 
-        private static int GetSwindleCharacterLength(byte[] bytes, int index)
+        private static int GetSwindleCharacterLength(
+            ReadOnlySpan<byte> bytes,
+            int index,
+            Func<byte, bool> isDbcsLeadByte)
         {
-            if (bytes == null
-                || index < 0
+            if (index < 0
                 || index >= bytes.Length)
             {
                 return 1;
             }
 
-            return IsDbcsLeadByte(bytes[index]) && index + 1 < bytes.Length
+            return isDbcsLeadByte != null
+                && isDbcsLeadByte(bytes[index])
+                && index + 1 < bytes.Length
                 ? 2
                 : 1;
         }
@@ -1253,6 +1320,28 @@ namespace HaCreator.MapSimulator.Interaction
         internal static string FilterSwindleCharacterTableForTest()
         {
             return SwindleEncoding.GetString(SwindleFilteredCharacters);
+        }
+
+        internal static byte[] FilterSwindleBytesForTest(
+            byte[] sourceBytes,
+            byte[] filteredCharacters,
+            params byte[] dbcsLeadBytes)
+        {
+            return FilterSwindleBytes(
+                sourceBytes,
+                filteredCharacters ?? Array.Empty<byte>(),
+                value => Array.IndexOf(dbcsLeadBytes ?? Array.Empty<byte>(), value) >= 0);
+        }
+
+        internal static bool ContainsSwindleKeywordForTest(
+            byte[] filteredMessage,
+            byte[] keywordBytes,
+            params byte[] dbcsLeadBytes)
+        {
+            return FindSwindleSubstring(
+                filteredMessage,
+                keywordBytes,
+                value => Array.IndexOf(dbcsLeadBytes ?? Array.Empty<byte>(), value) >= 0) >= 0;
         }
 
         [DllImport("kernel32.dll")]

@@ -22,6 +22,17 @@ namespace HaCreator.MapSimulator.Fields
 
     public sealed class PartyRaidField
     {
+        public const int ClientFieldFactoryAddress = 0x53F220;
+        public const int ClientFieldType = 25;
+        public const int ClientBossFieldType = 26;
+        public const int ClientResultFieldType = 27;
+        public const int ClientInitAddress = 0x55C3D0;
+        public const int ClientBossInitAddress = 0x55C5D0;
+        public const int ClientResultInitAddress = 0x55C7B0;
+        public const string ClientOwnerName = "CField_PartyRaid";
+        public const string ClientBossOwnerName = "CField_PartyRaidBoss";
+        public const string ClientResultOwnerName = "CField_PartyRaidResult";
+
         private readonly record struct ClientStringPoolEvidence(
             int Id,
             byte Seed,
@@ -210,7 +221,11 @@ namespace HaCreator.MapSimulator.Fields
         private int _resultBottomBorder;
         private PartyRaidResultOutcome _resultOutcome;
         private string _clientOwnedBossOverlayLabel;
+        private bool _usesExternalBossOverlayOwner;
         private GraphicsDevice _graphicsDevice;
+        private SpriteBatch _bossGaugeSpriteBatch;
+        private RenderTarget2D _bossGaugeRenderTarget;
+        private bool _bossGaugeDirty;
         private CanvasSprite _fieldBoard;
         private CanvasSprite _redStateBackground;
         private CanvasSprite _blueStateBackground;
@@ -264,6 +279,11 @@ namespace HaCreator.MapSimulator.Fields
         public int ResultBonus => _resultBonus;
         public int ResultTotal => _resultTotal;
         public PartyRaidResultOutcome ResultOutcome => _resultOutcome;
+        public bool HasNativePartyRaidWrapperOwner => _isActive && !_usesExternalBossOverlayOwner && GetClientWrapperFieldType(_mode).HasValue;
+        public string ClientWrapperOwnerName => GetClientWrapperOwnerName(_mode);
+        public string ActiveRuntimeOwnerName => GetActiveRuntimeOwnerName();
+        internal bool BossGaugeCacheDirty => _bossGaugeDirty;
+        internal void ClearBossGaugeCacheDirtyForTesting() => _bossGaugeDirty = false;
         public bool HasRunningClock => _timeOverTick != int.MinValue;
         public int RemainingSeconds
         {
@@ -315,6 +335,8 @@ namespace HaCreator.MapSimulator.Fields
             _resultBonus = -1;
             _resultTotal = -1;
             _resultOutcome = InferOutcomeFromMap(mapInfo);
+            _usesExternalBossOverlayOwner = false;
+            MarkBossGaugeDirty();
 
             if (_mode == PartyRaidFieldMode.Boss && TryResolveBossGaugeCapacity(_mapId, out int gaugeCapacity))
             {
@@ -340,6 +362,8 @@ namespace HaCreator.MapSimulator.Fields
             _gaugeCapacity = DefaultGaugeCapacity;
             _teamColor = InferTeamColor(mapInfo);
             _clientOwnedBossOverlayLabel = string.IsNullOrWhiteSpace(runtimeLabel) ? null : runtimeLabel;
+            _usesExternalBossOverlayOwner = true;
+            MarkBossGaugeDirty();
 
             if (TryResolveBossGaugeCapacity(_mapId, out int gaugeCapacity))
             {
@@ -423,12 +447,30 @@ namespace HaCreator.MapSimulator.Fields
         public void SetMineStage(int stage) => _mineStage = ClampStage(stage);
         public void SetOtherStage(int stage) => _otherStage = ClampStage(stage);
         public void SetPoint(int point) => _point = Math.Max(0, point);
-        public void SetGaugeCapacity(int gaugeCapacity) => _gaugeCapacity = Math.Max(1, gaugeCapacity);
+        public void SetGaugeCapacity(int gaugeCapacity)
+        {
+            int nextGaugeCapacity = Math.Max(1, gaugeCapacity);
+            if (_gaugeCapacity == nextGaugeCapacity)
+            {
+                return;
+            }
+
+            _gaugeCapacity = nextGaugeCapacity;
+            MarkBossGaugeDirty();
+        }
 
         public void SetBossDamage(int redDamage, int blueDamage)
         {
-            _redDamage = Math.Max(0, redDamage);
-            _blueDamage = Math.Max(0, blueDamage);
+            int nextRedDamage = Math.Max(0, redDamage);
+            int nextBlueDamage = Math.Max(0, blueDamage);
+            if (_redDamage == nextRedDamage && _blueDamage == nextBlueDamage)
+            {
+                return;
+            }
+
+            _redDamage = nextRedDamage;
+            _blueDamage = nextBlueDamage;
+            MarkBossGaugeDirty();
         }
 
         public void SetTeamColor(PartyRaidTeamColor teamColor)
@@ -441,6 +483,7 @@ namespace HaCreator.MapSimulator.Fields
             _teamColor = teamColor;
             _mineAnimation = CreateLoopingAnimation();
             _otherAnimation = CreateLoopingAnimation();
+            MarkBossGaugeDirty();
         }
 
         public void SetResultValues(int point, int bonus, int total)
@@ -547,7 +590,13 @@ namespace HaCreator.MapSimulator.Fields
                 || MatchesClientLiteral(key, PartyRaidBossRedDamageStringPoolEvidence)
                 || MatchesStringPoolKey(key, PartyRaidBossRedDamageStringId))
             {
+                if (_redDamage == parsedValue)
+                {
+                    return true;
+                }
+
                 _redDamage = parsedValue;
+                MarkBossGaugeDirty();
                 return true;
             }
 
@@ -555,7 +604,13 @@ namespace HaCreator.MapSimulator.Fields
                 || MatchesClientLiteral(key, PartyRaidBossBlueDamageStringPoolEvidence)
                 || MatchesStringPoolKey(key, PartyRaidBossBlueDamageStringId))
             {
+                if (_blueDamage == parsedValue)
+                {
+                    return true;
+                }
+
                 _blueDamage = parsedValue;
+                MarkBossGaugeDirty();
                 return true;
             }
 
@@ -563,7 +618,14 @@ namespace HaCreator.MapSimulator.Fields
                 || MatchesClientLiteral(key, PartyRaidBossRedChargeStringPoolEvidence)
                 || MatchesStringPoolKey(key, HuntingAdballoonRedChargeStringId))
             {
-                _redCharge = ClampBossCharge(parsedValue);
+                int nextCharge = ClampBossCharge(parsedValue);
+                if (_redCharge == nextCharge)
+                {
+                    return true;
+                }
+
+                _redCharge = nextCharge;
+                MarkBossGaugeDirty();
                 return true;
             }
 
@@ -571,7 +633,14 @@ namespace HaCreator.MapSimulator.Fields
                 || MatchesClientLiteral(key, PartyRaidBossBlueChargeStringPoolEvidence)
                 || MatchesStringPoolKey(key, HuntingAdballoonBlueChargeStringId))
             {
-                _blueCharge = ClampBossCharge(parsedValue);
+                int nextCharge = ClampBossCharge(parsedValue);
+                if (_blueCharge == nextCharge)
+                {
+                    return true;
+                }
+
+                _blueCharge = nextCharge;
+                MarkBossGaugeDirty();
                 return true;
             }
 
@@ -608,7 +677,14 @@ namespace HaCreator.MapSimulator.Fields
 
             if (MatchesAlias(key, "gaugeCap", "maxhp", "gauge_capacity"))
             {
-                _gaugeCapacity = Math.Max(1, parsedValue);
+                int nextGaugeCapacity = Math.Max(1, parsedValue);
+                if (_gaugeCapacity == nextGaugeCapacity)
+                {
+                    return true;
+                }
+
+                _gaugeCapacity = nextGaugeCapacity;
+                MarkBossGaugeDirty();
                 return true;
             }
 
@@ -726,6 +802,47 @@ namespace HaCreator.MapSimulator.Fields
             return true;
         }
 
+        public string DescribeClientWrapperContract()
+        {
+            if (!HasNativePartyRaidWrapperOwner)
+            {
+                return null;
+            }
+
+            int? fieldType = GetClientWrapperFieldType(_mode);
+            int? initAddress = GetClientWrapperInitAddress(_mode);
+            if (!fieldType.HasValue || !initAddress.HasValue)
+            {
+                return null;
+            }
+
+            string updateEvidence = _mode switch
+            {
+                PartyRaidFieldMode.Field => $"{ClientOwnerName}::Update",
+                PartyRaidFieldMode.Boss => $"{ClientBossOwnerName}::OnFieldSetVariable / {ClientBossOwnerName}::OnPartyValue",
+                PartyRaidFieldMode.Result => $"{ClientResultOwnerName}::OnSessionValue",
+                _ => null
+            };
+            string wzEvidence = GetClientWrapperWzEvidence(_mode);
+            string wzText = string.IsNullOrWhiteSpace(wzEvidence) ? string.Empty : $", wz={wzEvidence}";
+            return $"factory=0x{ClientFieldFactoryAddress:X}, owner={GetClientWrapperOwnerName(_mode)}, fieldType={fieldType.Value}, init=0x{initAddress.Value:X}, evidence={updateEvidence}{wzText}";
+        }
+
+        public string DescribeStructuredFieldSpecificTarget(string appliedOwner)
+        {
+            if (!HasNativePartyRaidWrapperOwner)
+            {
+                return string.IsNullOrWhiteSpace(appliedOwner)
+                    ? "PartyRaidField"
+                    : $"PartyRaidField ({appliedOwner})";
+            }
+
+            string ownerName = GetClientWrapperOwnerName(_mode);
+            return string.IsNullOrWhiteSpace(appliedOwner)
+                ? ownerName
+                : $"{ownerName} ({appliedOwner})";
+        }
+
         public string DescribeStatus()
         {
             if (!_isActive)
@@ -734,11 +851,13 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             string timerText = HasRunningClock ? $", timer={FormatTimer(RemainingSeconds)}" : string.Empty;
+            string wrapperText = DescribeClientWrapperContract();
+            string wrapperPrefix = string.IsNullOrWhiteSpace(wrapperText) ? string.Empty : $"[{wrapperText}] ";
             return _mode switch
             {
-                PartyRaidFieldMode.Field => $"Party Raid field map {_mapId}: team {GetTeamLabel(_teamColor)}, stage {_mineStage}{DescribeOtherStageStatus()}, point {_point}{DescribeBatteryStatus()}{timerText}, client point key {FormatClientStringPoolLiteral(PartyRaidPointStringPoolEvidence, PartyRaidPointClientStringPoolSource)}.",
-                PartyRaidFieldMode.Boss => $"{_clientOwnedBossOverlayLabel ?? "Party Raid boss"} map {_mapId}: point {_point}, red damage {_redDamage}, blue damage {_blueDamage}, charge {_redCharge}/{_blueCharge}, gauge cap {_gaugeCapacity}, layout={DescribeBossLayoutOwnership()}, assets=[{PartyRaidBossGaugeBackgroundClientAsset}, {PartyRaidBossGaugeTextClientAsset}, {PartyRaidBossGaugeFillClientAsset}, {PartyRaidBossGaugeIconClientAsset}, {PartyRaidBossPointBoardClientAsset}], keys=[{FormatClientStringPoolLiteral(PartyRaidBossRedDamageStringPoolEvidence, PartyRaidBossRedDamageClientStringPoolSource)}, {FormatClientStringPoolLiteral(PartyRaidBossBlueDamageStringPoolEvidence, PartyRaidBossBlueDamageClientStringPoolSource)}, {FormatClientStringPoolLiteral(PartyRaidBossRedChargeStringPoolEvidence, PartyRaidBossRedChargeClientStringPoolSource)}, {FormatClientStringPoolLiteral(PartyRaidBossBlueChargeStringPoolEvidence, PartyRaidBossBlueChargeClientStringPoolSource)}]{timerText}.",
-                PartyRaidFieldMode.Result => $"Party Raid result map {_mapId}: point {_resultPoint}, bonus {_resultBonus}, total {_resultTotal}, outcome {GetOutcomeLabel(_resultOutcome)}, keys=[{FormatClientStringPoolLiteral(PartyRaidPointStringPoolEvidence, PartyRaidPointClientStringPoolSource)}, {FormatClientStringPoolLiteral(PartyRaidBonusStringPoolEvidence, PartyRaidBonusClientStringPoolSource)}, {FormatClientStringPoolLiteral(PartyRaidTotalStringPoolEvidence, PartyRaidTotalClientStringPoolSource)}]{timerText}.",
+                PartyRaidFieldMode.Field => $"{wrapperPrefix}{GetActiveRuntimeOwnerName()} map {_mapId}: team {GetTeamLabel(_teamColor)}, stage {_mineStage}{DescribeOtherStageStatus()}, point {_point}{DescribeBatteryStatus()}{timerText}, client point key {FormatClientStringPoolLiteral(PartyRaidPointStringPoolEvidence, PartyRaidPointClientStringPoolSource)}.",
+                PartyRaidFieldMode.Boss => $"{wrapperPrefix}{GetActiveRuntimeOwnerName()} map {_mapId}: point {_point}, red damage {_redDamage}, blue damage {_blueDamage}, charge {_redCharge}/{_blueCharge}, gauge cap {_gaugeCapacity}, layout={DescribeBossLayoutOwnership()}, assets=[{PartyRaidBossGaugeBackgroundClientAsset}, {PartyRaidBossGaugeTextClientAsset}, {PartyRaidBossGaugeFillClientAsset}, {PartyRaidBossGaugeIconClientAsset}, {PartyRaidBossPointBoardClientAsset}], keys=[{FormatClientStringPoolLiteral(PartyRaidBossRedDamageStringPoolEvidence, PartyRaidBossRedDamageClientStringPoolSource)}, {FormatClientStringPoolLiteral(PartyRaidBossBlueDamageStringPoolEvidence, PartyRaidBossBlueDamageClientStringPoolSource)}, {FormatClientStringPoolLiteral(PartyRaidBossRedChargeStringPoolEvidence, PartyRaidBossRedChargeClientStringPoolSource)}, {FormatClientStringPoolLiteral(PartyRaidBossBlueChargeStringPoolEvidence, PartyRaidBossBlueChargeClientStringPoolSource)}]{timerText}.",
+                PartyRaidFieldMode.Result => $"{wrapperPrefix}{GetActiveRuntimeOwnerName()} map {_mapId}: point {_resultPoint}, bonus {_resultBonus}, total {_resultTotal}, outcome {GetOutcomeLabel(_resultOutcome)}, keys=[{FormatClientStringPoolLiteral(PartyRaidPointStringPoolEvidence, PartyRaidPointClientStringPoolSource)}, {FormatClientStringPoolLiteral(PartyRaidBonusStringPoolEvidence, PartyRaidBonusClientStringPoolSource)}, {FormatClientStringPoolLiteral(PartyRaidTotalStringPoolEvidence, PartyRaidTotalClientStringPoolSource)}]{timerText}.",
                 _ => "Party Raid runtime inactive."
             };
         }
@@ -800,6 +919,7 @@ namespace HaCreator.MapSimulator.Fields
             _resultBottomBorder = 0;
             _resultOutcome = PartyRaidResultOutcome.Unknown;
             _clientOwnedBossOverlayLabel = null;
+            _usesExternalBossOverlayOwner = false;
             _lastUpdateTick = 0;
             _timerDurationSec = 0;
             _timeOverTick = int.MinValue;
@@ -810,6 +930,7 @@ namespace HaCreator.MapSimulator.Fields
             _resultEffectAnimation = default;
             _activeResultEffectFrames = null;
             _resultEffectVisibleUntil = 0;
+            _bossGaugeDirty = true;
         }
 
         private void EnsureAssetsLoaded(GraphicsDevice graphicsDevice)
@@ -952,6 +1073,88 @@ namespace HaCreator.MapSimulator.Fields
 
             return 100;
         }
+
+        private void MarkBossGaugeDirty()
+        {
+            _bossGaugeDirty = true;
+        }
+
+        private bool CanUseBossGaugeCache()
+        {
+            return _graphicsDevice != null
+                && _bossGaugeBackground.IsLoaded
+                && _bossGaugeText.IsLoaded
+                && _bossGaugeFillPixel.IsLoaded
+                && _bossGaugeMobIcon.IsLoaded;
+        }
+
+        private void EnsureBossGaugeRenderTarget()
+        {
+            if (_graphicsDevice == null)
+            {
+                return;
+            }
+
+            if (_bossGaugeSpriteBatch == null || _bossGaugeSpriteBatch.GraphicsDevice != _graphicsDevice)
+            {
+                _bossGaugeSpriteBatch?.Dispose();
+                _bossGaugeSpriteBatch = new SpriteBatch(_graphicsDevice);
+            }
+
+            if (_bossGaugeRenderTarget == null
+                || _bossGaugeRenderTarget.IsDisposed
+                || _bossGaugeRenderTarget.GraphicsDevice != _graphicsDevice
+                || _bossGaugeRenderTarget.Width != BossGaugeLayerWidth
+                || _bossGaugeRenderTarget.Height != BossGaugeLayerHeight)
+            {
+                _bossGaugeRenderTarget?.Dispose();
+                _bossGaugeRenderTarget = new RenderTarget2D(_graphicsDevice, BossGaugeLayerWidth, BossGaugeLayerHeight, false, SurfaceFormat.Color, DepthFormat.None);
+                _bossGaugeDirty = true;
+            }
+        }
+
+        private void RedrawBossGaugeLayer(Texture2D pixelTexture)
+        {
+            if (!CanUseBossGaugeCache())
+            {
+                return;
+            }
+
+            EnsureBossGaugeRenderTarget();
+            if (_bossGaugeRenderTarget == null || _bossGaugeSpriteBatch == null || !_bossGaugeDirty)
+            {
+                return;
+            }
+
+            RenderTargetBinding[] previousTargets = _graphicsDevice.GetRenderTargets();
+            _graphicsDevice.SetRenderTarget(_bossGaugeRenderTarget);
+            _graphicsDevice.Clear(Color.Transparent);
+
+            _bossGaugeSpriteBatch.Begin(SpriteSortMode.Deferred, BlendState.AlphaBlend, SamplerState.PointClamp, DepthStencilState.None, RasterizerState.CullNone);
+            DrawSpriteCopy(_bossGaugeSpriteBatch, _bossGaugeBackground, BossGaugeBackgrdX, 0);
+
+            int redRemaining = GetRemainingGaugeWidth(_redDamage);
+            int blueRemaining = GetRemainingGaugeWidth(_blueDamage);
+            for (int x = 0; x < redRemaining; x++)
+            {
+                DrawSpriteCopy(_bossGaugeSpriteBatch, _bossGaugeFillPixel, BossGaugeFillX + x, BossGaugeFillY);
+            }
+
+            for (int x = 0; x < blueRemaining; x++)
+            {
+                DrawSpriteCopy(_bossGaugeSpriteBatch, _bossGaugeFillPixel, BossGaugeFillX + BossGaugeLength - 1 - x, BossGaugeFillY);
+            }
+
+            DrawSpriteCopy(_bossGaugeSpriteBatch, _bossGaugeText, 0, BossGaugeTextY);
+            DrawBossChargeMeter(_bossGaugeSpriteBatch, pixelTexture, BossChargeOriginX, BossChargeRedY, _redCharge, new Color(217, 88, 82), alignRight: false);
+            DrawBossChargeMeter(_bossGaugeSpriteBatch, pixelTexture, BossChargeOriginX, BossChargeBlueY, _blueCharge, new Color(94, 169, 255), alignRight: true);
+            DrawSpriteCopy(_bossGaugeSpriteBatch, _bossGaugeMobIcon, BossGaugeIconX, BossGaugeIconY);
+            _bossGaugeSpriteBatch.End();
+
+            _graphicsDevice.SetRenderTargets(previousTargets);
+            _bossGaugeDirty = false;
+        }
+
         private void DrawFieldHud(SpriteBatch spriteBatch, int centerX, Texture2D pixelTexture, SpriteFont font)
         {
             CanvasSprite stateBackground = GetStateBackground();
@@ -987,43 +1190,54 @@ namespace HaCreator.MapSimulator.Fields
         private void DrawBossHud(SpriteBatch spriteBatch, Texture2D pixelTexture, SpriteFont font)
         {
             int bossGaugeBaseX = GetBossGaugeBaseX(spriteBatch.GraphicsDevice.Viewport.Width);
-            if (_bossGaugeBackground.IsLoaded)
+            if (CanUseBossGaugeCache())
             {
-                DrawSpriteCopy(spriteBatch, _bossGaugeBackground, bossGaugeBaseX + BossGaugeBackgrdX, BossGaugeHudY);
+                RedrawBossGaugeLayer(pixelTexture);
+                if (_bossGaugeRenderTarget != null)
+                {
+                    spriteBatch.Draw(_bossGaugeRenderTarget, new Vector2(bossGaugeBaseX, BossGaugeHudY), Color.White);
+                }
+            }
+            else
+            {
+                if (_bossGaugeBackground.IsLoaded)
+                {
+                    DrawSpriteCopy(spriteBatch, _bossGaugeBackground, bossGaugeBaseX + BossGaugeBackgrdX, BossGaugeHudY);
+                }
+
+                if (_bossGaugeFillPixel.IsLoaded)
+                {
+                    int redRemaining = GetRemainingGaugeWidth(_redDamage);
+                    int blueRemaining = GetRemainingGaugeWidth(_blueDamage);
+                    for (int x = 0; x < redRemaining; x++)
+                    {
+                        DrawSpriteCopy(spriteBatch, _bossGaugeFillPixel, bossGaugeBaseX + BossGaugeFillX + x, BossGaugeHudY + BossGaugeFillY);
+                    }
+
+                    for (int x = 0; x < blueRemaining; x++)
+                    {
+                        DrawSpriteCopy(spriteBatch, _bossGaugeFillPixel, bossGaugeBaseX + BossGaugeFillX + BossGaugeLength - 1 - x, BossGaugeHudY + BossGaugeFillY);
+                    }
+                }
+
+                if (_bossGaugeText.IsLoaded)
+                {
+                    DrawSpriteCopy(spriteBatch, _bossGaugeText, bossGaugeBaseX, BossGaugeHudY + BossGaugeTextY);
+                }
+
+                DrawBossChargeMeter(spriteBatch, pixelTexture, bossGaugeBaseX + BossChargeOriginX, BossGaugeHudY + BossChargeRedY, _redCharge, new Color(217, 88, 82), alignRight: false);
+                DrawBossChargeMeter(spriteBatch, pixelTexture, bossGaugeBaseX + BossChargeOriginX, BossGaugeHudY + BossChargeBlueY, _blueCharge, new Color(94, 169, 255), alignRight: true);
+
+                if (_bossGaugeMobIcon.IsLoaded)
+                {
+                    DrawSpriteCopy(spriteBatch, _bossGaugeMobIcon, bossGaugeBaseX + BossGaugeIconX, BossGaugeHudY + BossGaugeIconY);
+                }
             }
 
             if (_bossPointBoard.IsLoaded)
             {
                 DrawSpriteCopy(spriteBatch, _bossPointBoard, BossHudX, BossPointHudY);
                 DrawNumberCopy(spriteBatch, _fieldPointDigits, _point, BossHudX + BossPointDrawX, BossPointHudY + BossPointDrawY);
-            }
-
-            if (_bossGaugeFillPixel.IsLoaded)
-            {
-                int redRemaining = GetRemainingGaugeWidth(_redDamage);
-                int blueRemaining = GetRemainingGaugeWidth(_blueDamage);
-                for (int x = 0; x < redRemaining; x++)
-                {
-                    DrawSprite(spriteBatch, _bossGaugeFillPixel, bossGaugeBaseX + BossGaugeFillX + x, BossGaugeHudY + BossGaugeFillY);
-                }
-
-                for (int x = 0; x < blueRemaining; x++)
-                {
-                    DrawSprite(spriteBatch, _bossGaugeFillPixel, bossGaugeBaseX + BossGaugeFillX + BossGaugeLength - 1 - x, BossGaugeHudY + BossGaugeFillY);
-                }
-            }
-
-            if (_bossGaugeText.IsLoaded)
-            {
-                DrawSpriteCopy(spriteBatch, _bossGaugeText, bossGaugeBaseX, BossGaugeHudY + BossGaugeTextY);
-            }
-
-            DrawBossChargeMeter(spriteBatch, pixelTexture, bossGaugeBaseX + BossChargeOriginX, BossGaugeHudY + BossChargeRedY, _redCharge, new Color(217, 88, 82), alignRight: false);
-            DrawBossChargeMeter(spriteBatch, pixelTexture, bossGaugeBaseX + BossChargeOriginX, BossGaugeHudY + BossChargeBlueY, _blueCharge, new Color(94, 169, 255), alignRight: true);
-
-            if (_bossGaugeMobIcon.IsLoaded)
-            {
-                DrawSpriteCopy(spriteBatch, _bossGaugeMobIcon, bossGaugeBaseX + BossGaugeIconX, BossGaugeHudY + BossGaugeIconY);
             }
 
             if (!_bossGaugeBackground.IsLoaded && pixelTexture != null)
@@ -1480,6 +1694,46 @@ namespace HaCreator.MapSimulator.Fields
         internal static int GetBossGaugeIconMobId() => PartyRaidBossGaugeIconMobId;
         private static int ClampStage(int stage) => Math.Clamp(stage, 1, 5);
         private static string DescribeBossLayoutOwnership() => $"point:LT({BossHudX},{BossPointHudY}), gauge:CT({BossGaugeLayerLeft},{BossGaugeHudY},{BossGaugeLayerWidth}x{BossGaugeLayerHeight})";
+        private string GetActiveRuntimeOwnerName()
+        {
+            if (HasNativePartyRaidWrapperOwner)
+            {
+                return GetClientWrapperOwnerName(_mode);
+            }
+
+            return string.IsNullOrWhiteSpace(_clientOwnedBossOverlayLabel)
+                ? "Party Raid runtime"
+                : _clientOwnedBossOverlayLabel;
+        }
+
+        private static string GetClientWrapperOwnerName(PartyRaidFieldMode mode) => mode switch
+        {
+            PartyRaidFieldMode.Field => ClientOwnerName,
+            PartyRaidFieldMode.Boss => ClientBossOwnerName,
+            PartyRaidFieldMode.Result => ClientResultOwnerName,
+            _ => null
+        };
+        private static int? GetClientWrapperFieldType(PartyRaidFieldMode mode) => mode switch
+        {
+            PartyRaidFieldMode.Field => ClientFieldType,
+            PartyRaidFieldMode.Boss => ClientBossFieldType,
+            PartyRaidFieldMode.Result => ClientResultFieldType,
+            _ => null
+        };
+        private static int? GetClientWrapperInitAddress(PartyRaidFieldMode mode) => mode switch
+        {
+            PartyRaidFieldMode.Field => ClientInitAddress,
+            PartyRaidFieldMode.Boss => ClientBossInitAddress,
+            PartyRaidFieldMode.Result => ClientResultInitAddress,
+            _ => null
+        };
+        private static string GetClientWrapperWzEvidence(PartyRaidFieldMode mode) => mode switch
+        {
+            PartyRaidFieldMode.Field => "923020100:onUserEnter=PRaid_W_Enter",
+            PartyRaidFieldMode.Boss => "923020200:link=923020100->PRaid_W_Enter",
+            PartyRaidFieldMode.Result => "923020010/923020020:fieldType=27,onUserEnter=PRaid_WinEnter/PRaid_FailEnter",
+            _ => null
+        };
 
         private bool TryApplyFieldOwnedPair(string key, string value) => OnFieldSetVariable(key, value);
         private bool TryApplyPartyOwnedPair(string key, string value) => OnPartyValue(key, value);

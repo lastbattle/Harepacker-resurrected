@@ -31,6 +31,12 @@ namespace HaCreator.MapSimulator.Managers
         public string PendingPortalName { get; set; } = null;
 
         /// <summary>
+        /// Alternate target portal names for pending change when the primary handoff
+        /// comes from WZ reciprocal or map-return fallback metadata.
+        /// </summary>
+        public string[] PendingPortalNameCandidates { get; set; } = Array.Empty<string>();
+
+        /// <summary>
         /// Tick count when portal interaction cooldown expires.
         /// Prevents immediate re-entry after fast map changes.
         /// </summary>
@@ -184,12 +190,13 @@ namespace HaCreator.MapSimulator.Managers
         /// </summary>
         /// <param name="mapId">Target map ID</param>
         /// <param name="portalName">Target portal name to spawn at</param>
-        public void RequestMapChange(int mapId, string portalName = null, int portalIndex = -1)
+        public void RequestMapChange(int mapId, string portalName = null, int portalIndex = -1, string[] portalNameCandidates = null)
         {
             PendingMapChange = true;
             PendingMapId = mapId;
             PendingPortalName = portalName;
             PendingPortalIndex = portalIndex;
+            PendingPortalNameCandidates = portalNameCandidates ?? Array.Empty<string>();
         }
 
         /// <summary>
@@ -201,6 +208,7 @@ namespace HaCreator.MapSimulator.Managers
             PendingMapId = -1;
             PendingPortalName = null;
             PendingPortalIndex = -1;
+            PendingPortalNameCandidates = Array.Empty<string>();
         }
 
         /// <summary>

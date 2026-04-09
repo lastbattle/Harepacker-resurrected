@@ -2351,21 +2351,12 @@ namespace HaCreator.MapSimulator.UI
 
         public void RecalculateSkillPointsFromCurrentLevels()
         {
-            foreach (var entry in skillsByTab)
-            {
-                int remainingPoints = 0;
-                List<SkillDisplayData> skills = entry.Value;
-                for (int i = 0; i < skills.Count; i++)
-                {
-                    SkillDisplayData skill = skills[i];
-                    if (skill == null)
-                        continue;
-
-                    remainingPoints += Math.Max(0, skill.MaxLevel - skill.CurrentLevel);
-                }
-
-                skillPointsByTab[entry.Key] = remainingPoints;
-            }
+            Dictionary<int, int> resolvedPoints = SkillPointParityCalculator.CalculateRemainingPointsByTab(
+                _characterLevel,
+                skillsByTab,
+                _displaySkillRootByTab);
+            foreach (KeyValuePair<int, int> entry in resolvedPoints)
+                skillPointsByTab[entry.Key] = entry.Value;
         }
 
         /// <summary>

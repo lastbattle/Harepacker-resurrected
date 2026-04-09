@@ -81,7 +81,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly IReadOnlyList<AnimationFrame> _deleteFocusFrames;
         private readonly BalloonStyle _instructionBalloonStyle;
         private readonly OwnerCanvasFrame _eventBanner;
-        private readonly OwnerCanvasFrame _statusCharacterFrame;
+        private readonly IReadOnlyList<AnimationFrame> _statusCharacterFrames;
         private readonly Dictionary<TextRenderCacheKey, Texture2D> _textTextureCache = new();
         private readonly SD.Bitmap _measureBitmap;
         private readonly SD.Graphics _measureGraphics;
@@ -113,7 +113,7 @@ namespace HaCreator.MapSimulator.UI
             IReadOnlyList<AnimationFrame> deleteFocusFrames,
             BalloonStyle instructionBalloonStyle,
             OwnerCanvasFrame eventBanner,
-            OwnerCanvasFrame statusCharacterFrame)
+            IReadOnlyList<AnimationFrame> statusCharacterFrames)
             : base(frame)
         {
             _enterButton = enterButton;
@@ -128,7 +128,7 @@ namespace HaCreator.MapSimulator.UI
             _deleteFocusFrames = deleteFocusFrames ?? Array.Empty<AnimationFrame>();
             _instructionBalloonStyle = instructionBalloonStyle;
             _eventBanner = eventBanner;
-            _statusCharacterFrame = statusCharacterFrame;
+            _statusCharacterFrames = statusCharacterFrames ?? Array.Empty<AnimationFrame>();
             _graphicsDevice = frame?.Texture?.GraphicsDevice
                 ?? _instructionBalloonStyle.Center?.GraphicsDevice
                 ?? _eventBanner.Texture?.GraphicsDevice;
@@ -303,7 +303,7 @@ namespace HaCreator.MapSimulator.UI
             DrawAnimation(sprite, _statusBeamFrames, tickCount, true, ClientStatusBeamAnchor, false);
             DrawAnimation(sprite, _statusSparkleFrames, tickCount, true, ClientStatusSparkleAnchor, false);
             DrawAnimation(sprite, ResolveStatusScrollFrames(), tickCount, false, ClientStatusScrollPosition, true);
-            DrawOwnerCanvasFrame(sprite, _statusCharacterFrame, ClientStatusAccentPosition);
+            DrawAnimation(sprite, _statusCharacterFrames, tickCount, true, ClientStatusAccentPosition, false);
             DrawAnimation(sprite, _statusAccentFrames, tickCount, true, ClientStatusAccentPosition, false);
 
             DrawFocusedButtonAnimation(sprite, tickCount);

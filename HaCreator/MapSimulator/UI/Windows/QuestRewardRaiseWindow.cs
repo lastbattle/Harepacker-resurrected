@@ -1,6 +1,7 @@
 using HaCreator.MapSimulator.Interaction;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
+using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
@@ -28,6 +29,8 @@ namespace HaCreator.MapSimulator.UI
         private const int RowHeight = 24;
         private const int FooterTop = 210;
         private const int DragBandHeight = 20;
+        private const int PiecePreviewCaptionTop = 172;
+        private const int PiecePreviewDetailTop = 188;
 
         private readonly Texture2D _pixel;
         private readonly Texture2D _backgroundTopLeft;
@@ -48,6 +51,7 @@ namespace HaCreator.MapSimulator.UI
         private MouseState _previousMouseState;
         private QuestRewardChoicePrompt _prompt;
         private QuestRewardChoiceGroup _group;
+        private QuestRewardRaiseState _state;
         private int _groupIndex;
         private int _selectedIndex;
         private bool _suppressCancelEvent;
@@ -84,21 +88,27 @@ namespace HaCreator.MapSimulator.UI
         public override string WindowName => MapSimulatorWindowNames.QuestRewardRaise;
 
         internal event Action<int> SelectionConfirmed;
+        internal event Action PlacementConfirmed;
         internal event Action CancelRequested;
+        internal event Action<QuestRewardRaisePieceDropRequest> PieceDropRequested;
+        internal event Action<int> PieceRemovalRequested;
 
         internal void SetItemIconProvider(Func<int, Texture2D> itemIconProvider)
         {
             _itemIconProvider = itemIconProvider;
         }
 
-        internal void Configure(QuestRewardChoicePrompt prompt, int groupIndex)
+        internal void Configure(QuestRewardRaiseState state)
         {
-            _prompt = prompt;
-            _groupIndex = groupIndex;
-            _group = prompt?.Groups != null && groupIndex >= 0 && groupIndex < prompt.Groups.Count
-                ? prompt.Groups[groupIndex]
+            _state = state;
+            _prompt = state?.Prompt;
+            _groupIndex = state?.GroupIndex ?? 0;
+            _group = _prompt?.Groups != null && _groupIndex >= 0 && _groupIndex < _prompt.Groups.Count
+                ? _prompt.Groups[_groupIndex]
                 : null;
-            _selectedIndex = _group?.Options?.Count > 0 ? 0 : -1;
+            _selectedIndex = ResolveWindowMode() == QuestRewardRaiseWindowMode.PiecePlacement
+                ? Math.Clamp(_selectedIndex, 0, Math.Max(0, (_state?.PlacedPieces?.Count ?? 1) - 1))
+                : _group?.Options?.Count > 0 ? 0 : -1;
             UpdateButtonStates();
         }
 
@@ -135,27 +145,54 @@ namespace HaCreator.MapSimulator.UI
             Rectangle listBounds = GetListBounds();
             if (listBounds.Contains(mouseState.X, mouseState.Y))
             {
-                if (_group?.Options != null)
+                bool released = mouseState.LeftButton == ButtonState.Released && _previousMouseState.LeftButton == ButtonState.Pressed;
+                bool rightReleased = mouseState.RightButton == ButtonState.Released && _previousMouseState.RightButton == ButtonState.Pressed;
+                int hoverIndex = (mouseState.Y - listBounds.Y) / RowHeight;
+                if (ResolveWindowMode() == QuestRewardRaiseWindowMode.PiecePlacement)
                 {
-                    int hoverIndex = (mouseState.Y - listBounds.Y) / RowHeight;
-                    if (hoverIndex >= 0 && hoverIndex < _group.Options.Count)
+                    int placedCount = _state?.PlacedPieces?.Count ?? 0;
+                    if (hoverIndex >= 0 && hoverIndex < placedCount)
                     {
                         _selectedIndex = hoverIndex;
                         UpdateButtonStates();
                     }
-                }
 
-                bool released = mouseState.LeftButton == ButtonState.Released && _previousMouseState.LeftButton == ButtonState.Pressed;
-                if (released && _group?.Options != null)
-                {
-                    int rowIndex = (mouseState.Y - listBounds.Y) / RowHeight;
-                    if (rowIndex >= 0 && rowIndex < _group.Options.Count)
+                    if (rightReleased && hoverIndex >= 0 && hoverIndex < placedCount)
                     {
-                        _selectedIndex = rowIndex;
+                        PieceRemovalRequested?.Invoke(_state.PlacedPieces[hoverIndex].RequestId);
+                        _previousMouseState = mouseState;
+                        mouseCursor?.SetMouseCursorMovedToClickableItem();
+                        return true;
+                    }
+
+                    if (released && hoverIndex >= 0 && hoverIndex < placedCount)
+                    {
+                        _selectedIndex = hoverIndex;
                         UpdateButtonStates();
                         _previousMouseState = mouseState;
                         mouseCursor?.SetMouseCursorMovedToClickableItem();
                         return true;
+                    }
+                }
+                else
+                {
+                    if (_group?.Options != null && hoverIndex >= 0 && hoverIndex < _group.Options.Count)
+                    {
+                        _selectedIndex = hoverIndex;
+                        UpdateButtonStates();
+                    }
+
+                    if (released && _group?.Options != null)
+                    {
+                        int rowIndex = (mouseState.Y - listBounds.Y) / RowHeight;
+                        if (rowIndex >= 0 && rowIndex < _group.Options.Count)
+                        {
+                            _selectedIndex = rowIndex;
+                            UpdateButtonStates();
+                            _previousMouseState = mouseState;
+                            mouseCursor?.SetMouseCursorMovedToClickableItem();
+                            return true;
+                        }
                     }
                 }
             }
@@ -233,6 +270,35 @@ namespace HaCreator.MapSimulator.UI
             return y >= bounds.Y && y < bounds.Y + DragBandHeight;
         }
 
+        internal bool TryHandleInventoryDrop(
+            int mouseX,
+            int mouseY,
+            InventoryType sourceInventoryType,
+            int sourceSlotIndex,
+            InventorySlotData draggedSlotData)
+        {
+            if (!IsVisible
+                || ResolveWindowMode() != QuestRewardRaiseWindowMode.PiecePlacement
+                || draggedSlotData == null
+                || draggedSlotData.IsDisabled)
+            {
+                return false;
+            }
+
+            Rectangle previewBounds = new(Position.X + PreviewLeft, Position.Y + PreviewTop, PreviewSize, PreviewSize);
+            Rectangle listBounds = GetListBounds();
+            if (!previewBounds.Contains(mouseX, mouseY) && !listBounds.Contains(mouseX, mouseY))
+            {
+                return false;
+            }
+
+            PieceDropRequested?.Invoke(new QuestRewardRaisePieceDropRequest(
+                sourceInventoryType,
+                sourceSlotIndex,
+                draggedSlotData.Clone()));
+            return true;
+        }
+
         private void ConfigureButton(UIObject button, Action action)
         {
             if (button == null)
@@ -263,12 +329,25 @@ namespace HaCreator.MapSimulator.UI
         {
             if (_confirmButton != null)
             {
-                _confirmButton.SetEnabled(_selectedIndex >= 0 && _group?.Options?.Count > 0);
+                bool enabled = ResolveWindowMode() == QuestRewardRaiseWindowMode.PiecePlacement
+                    ? (_state?.PlacedPieces?.Count ?? 0) > 0
+                    : _selectedIndex >= 0 && _group?.Options?.Count > 0;
+                _confirmButton.SetEnabled(enabled);
             }
         }
 
         private void ConfirmSelection()
         {
+            if (ResolveWindowMode() == QuestRewardRaiseWindowMode.PiecePlacement)
+            {
+                if ((_state?.PlacedPieces?.Count ?? 0) > 0)
+                {
+                    PlacementConfirmed?.Invoke();
+                }
+
+                return;
+            }
+
             if (_group?.Options == null || _selectedIndex < 0 || _selectedIndex >= _group.Options.Count)
             {
                 return;
@@ -318,10 +397,14 @@ namespace HaCreator.MapSimulator.UI
         private void DrawHeader(SpriteBatch sprite)
         {
             string title = string.IsNullOrWhiteSpace(_prompt?.QuestName) ? "Quest Reward" : _prompt.QuestName;
-            string subtitle = _prompt == null
-                ? "Raise window unavailable."
-                : $"{(_prompt.CompletionPhase ? "Completion" : "Acceptance")} choice {_groupIndex + 1}/{Math.Max(1, _prompt.Groups?.Count ?? 1)}";
-            string promptText = _group?.PromptText ?? "No reward choice is active.";
+            string subtitle = ResolveWindowMode() == QuestRewardRaiseWindowMode.PiecePlacement
+                ? BuildPiecePlacementSubtitle()
+                : _prompt == null
+                    ? "Raise window unavailable."
+                    : $"{(_prompt.CompletionPhase ? "Completion" : "Acceptance")} choice {_groupIndex + 1}/{Math.Max(1, _prompt.Groups?.Count ?? 1)}";
+            string promptText = ResolveWindowMode() == QuestRewardRaiseWindowMode.PiecePlacement
+                ? BuildPiecePlacementPromptText()
+                : _group?.PromptText ?? "No reward choice is active.";
 
             DrawText(sprite, title, new Vector2(Position.X + 16, Position.Y + TitleTop), new Color(62, 39, 22), 0.58f);
             DrawText(sprite, subtitle, new Vector2(Position.X + 16, Position.Y + SubtitleTop), new Color(132, 104, 78), 0.38f);
@@ -356,7 +439,10 @@ namespace HaCreator.MapSimulator.UI
             sprite.Draw(_pixel, new Rectangle(previewBounds.Right - 1, previewBounds.Y, 1, previewBounds.Height), new Color(124, 102, 74));
 
             QuestRewardChoiceOption selectedOption = GetSelectedOption();
-            Texture2D icon = selectedOption != null ? ResolveItemIcon(selectedOption.ItemId) : null;
+            QuestRewardRaisePlacedPiece selectedPiece = GetSelectedPlacedPiece();
+            Texture2D icon = ResolveWindowMode() == QuestRewardRaiseWindowMode.PiecePlacement
+                ? ResolveItemIcon(selectedPiece?.ItemId ?? 0)
+                : selectedOption != null ? ResolveItemIcon(selectedOption.ItemId) : null;
             if (icon != null)
             {
                 float iconScale = Math.Min(1f, Math.Min((PreviewSize - 24f) / icon.Width, (PreviewSize - 24f) / icon.Height));
@@ -371,13 +457,26 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            DrawText(sprite, selectedOption?.Label ?? "Select a reward", new Vector2(Position.X + 18, Position.Y + 172), new Color(72, 50, 31), 0.34f);
-            DrawText(sprite, $"Quest #{_prompt?.QuestId ?? 0}", new Vector2(Position.X + 18, Position.Y + 188), new Color(132, 104, 78), 0.31f);
+            if (ResolveWindowMode() == QuestRewardRaiseWindowMode.PiecePlacement)
+            {
+                DrawText(sprite, selectedPiece?.Label ?? "Drop a piece", new Vector2(Position.X + 18, Position.Y + PiecePreviewCaptionTop), new Color(72, 50, 31), 0.34f);
+                DrawText(sprite, BuildPiecePreviewDetail(selectedPiece), new Vector2(Position.X + 18, Position.Y + PiecePreviewDetailTop), new Color(132, 104, 78), 0.31f);
+                return;
+            }
+
+            DrawText(sprite, selectedOption?.Label ?? "Select a reward", new Vector2(Position.X + 18, Position.Y + PiecePreviewCaptionTop), new Color(72, 50, 31), 0.34f);
+            DrawText(sprite, $"Quest #{_prompt?.QuestId ?? 0}", new Vector2(Position.X + 18, Position.Y + PiecePreviewDetailTop), new Color(132, 104, 78), 0.31f);
         }
 
         private void DrawOptions(SpriteBatch sprite)
         {
             Rectangle listBounds = GetListBounds();
+            if (ResolveWindowMode() == QuestRewardRaiseWindowMode.PiecePlacement)
+            {
+                DrawPlacedPieces(sprite, listBounds);
+                return;
+            }
+
             IReadOnlyList<QuestRewardChoiceOption> options = _group?.Options ?? Array.Empty<QuestRewardChoiceOption>();
             int visibleRows = Math.Max(1, listBounds.Height / RowHeight);
             for (int i = 0; i < visibleRows; i++)
@@ -407,13 +506,22 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawFooter(SpriteBatch sprite)
         {
-            string actionLabel = string.IsNullOrWhiteSpace(_prompt?.ActionLabel) ? "Confirm" : _prompt.ActionLabel;
-            QuestRewardChoiceOption selectedOption = GetSelectedOption();
-            string footer = _group?.Options == null || _group.Options.Count == 0
-                ? "No valid reward choices remain."
-                : string.IsNullOrWhiteSpace(selectedOption?.DetailText)
-                    ? $"Use {actionLabel} to lock in the highlighted reward."
-                    : selectedOption.DetailText;
+            string footer;
+            if (ResolveWindowMode() == QuestRewardRaiseWindowMode.PiecePlacement)
+            {
+                footer = BuildPiecePlacementFooter();
+            }
+            else
+            {
+                string actionLabel = string.IsNullOrWhiteSpace(_prompt?.ActionLabel) ? "Confirm" : _prompt.ActionLabel;
+                QuestRewardChoiceOption selectedOption = GetSelectedOption();
+                footer = _group?.Options == null || _group.Options.Count == 0
+                    ? "No valid reward choices remain."
+                    : string.IsNullOrWhiteSpace(selectedOption?.DetailText)
+                        ? $"Use {actionLabel} to lock in the highlighted reward."
+                        : selectedOption.DetailText;
+            }
+
             DrawText(sprite, footer, new Vector2(Position.X + 16, Position.Y + FooterTop), new Color(104, 86, 65), 0.32f);
         }
 
@@ -430,6 +538,16 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return _group.Options[_selectedIndex];
+        }
+
+        private QuestRewardRaisePlacedPiece GetSelectedPlacedPiece()
+        {
+            if (_state?.PlacedPieces == null || _selectedIndex < 0 || _selectedIndex >= _state.PlacedPieces.Count)
+            {
+                return null;
+            }
+
+            return _state.PlacedPieces[_selectedIndex];
         }
 
         private Texture2D ResolveItemIcon(int itemId)
@@ -547,6 +665,83 @@ namespace HaCreator.MapSimulator.UI
             return lines;
         }
 
+        private QuestRewardRaiseWindowMode ResolveWindowMode()
+        {
+            return _state?.WindowMode ?? _prompt?.OwnerContext?.WindowMode ?? QuestRewardRaiseWindowMode.Selection;
+        }
+
+        private string BuildPiecePlacementSubtitle()
+        {
+            int placedCount = _state?.PlacedPieces?.Count ?? 0;
+            int maxDropCount = Math.Max(1, _state?.MaxDropCount ?? _prompt?.OwnerContext?.MaxDropCount ?? 1);
+            int ownerItemId = Math.Max(0, _state?.OwnerItemId ?? _prompt?.OwnerContext?.OwnerItemId ?? 0);
+            return $"Piece window  {placedCount}/{maxDropCount}  owner #{ownerItemId}";
+        }
+
+        private string BuildPiecePlacementPromptText()
+        {
+            if (!string.IsNullOrWhiteSpace(_group?.PromptText))
+            {
+                return _group.PromptText;
+            }
+
+            return "Drag qualifying items from the inventory into the raise surface. Right-click a placed row to release that local PutItem request.";
+        }
+
+        private void DrawPlacedPieces(SpriteBatch sprite, Rectangle listBounds)
+        {
+            IReadOnlyList<QuestRewardRaisePlacedPiece> pieces = _state?.PlacedPieces != null
+                ? _state.PlacedPieces
+                : Array.Empty<QuestRewardRaisePlacedPiece>();
+            int maxDropCount = Math.Max(1, _state?.MaxDropCount ?? _prompt?.OwnerContext?.MaxDropCount ?? 1);
+            int visibleRows = Math.Max(1, listBounds.Height / RowHeight);
+            int totalRows = Math.Min(visibleRows, Math.Max(maxDropCount, pieces.Count == 0 ? 1 : pieces.Count));
+            for (int i = 0; i < totalRows; i++)
+            {
+                Rectangle rowBounds = new(listBounds.X, listBounds.Y + (i * RowHeight), listBounds.Width, RowHeight - 2);
+                bool selected = i == _selectedIndex && i < pieces.Count;
+                bool occupied = i < pieces.Count;
+                sprite.Draw(_pixel, rowBounds, selected ? new Color(216, 196, 165, 205) : new Color(255, 252, 246, 172));
+                sprite.Draw(_pixel, new Rectangle(rowBounds.X, rowBounds.Bottom, rowBounds.Width, 1), new Color(120, 103, 84, 70));
+
+                if (!occupied)
+                {
+                    DrawText(sprite, $"Drop piece {i + 1}", new Vector2(rowBounds.X + 8, rowBounds.Y + 4), new Color(120, 96, 74), 0.34f);
+                    DrawText(sprite, "Awaiting PutItem request", new Vector2(rowBounds.X + 8, rowBounds.Y + 13), new Color(146, 122, 98), 0.28f);
+                    continue;
+                }
+
+                QuestRewardRaisePlacedPiece piece = pieces[i];
+                Texture2D icon = ResolveItemIcon(piece.ItemId);
+                if (icon != null)
+                {
+                    float iconScale = Math.Min(1f, Math.Min(18f / icon.Width, 18f / icon.Height));
+                    sprite.Draw(icon, new Vector2(rowBounds.X + 4, rowBounds.Y + 3), null, Color.White, 0f, Vector2.Zero, iconScale, SpriteEffects.None, 0f);
+                }
+
+                DrawText(sprite, Truncate(piece.Label, 26), new Vector2(rowBounds.X + 26, rowBounds.Y + 2), new Color(66, 44, 26), 0.34f);
+                DrawText(sprite, Truncate($"Req #{piece.RequestId}  {piece.InventoryType} {piece.SlotIndex + 1}", 40), new Vector2(rowBounds.X + 26, rowBounds.Y + 11), new Color(120, 96, 74), 0.28f);
+            }
+        }
+
+        private string BuildPiecePreviewDetail(QuestRewardRaisePlacedPiece piece)
+        {
+            return piece == null
+                ? $"QR {_state?.QrData ?? _prompt?.OwnerContext?.InitialQrData ?? 0}"
+                : $"{piece.InventoryType} slot {piece.SlotIndex + 1}  req #{piece.RequestId}";
+        }
+
+        private string BuildPiecePlacementFooter()
+        {
+            int placedCount = _state?.PlacedPieces?.Count ?? 0;
+            int maxDropCount = Math.Max(1, _state?.MaxDropCount ?? _prompt?.OwnerContext?.MaxDropCount ?? 1);
+            int qrData = _state?.QrData ?? _prompt?.OwnerContext?.InitialQrData ?? 0;
+            int ownerItemId = Math.Max(0, _state?.OwnerItemId ?? _prompt?.OwnerContext?.OwnerItemId ?? 0);
+            return placedCount == 0
+                ? $"Drop inventory items into the raise surface. QR {qrData}  owner #{ownerItemId}."
+                : $"Ready to confirm {placedCount}/{maxDropCount} placed piece{(placedCount == 1 ? string.Empty : "s")}. QR {qrData}.";
+        }
+
         private string Truncate(string text, int maxLength)
         {
             if (string.IsNullOrEmpty(text) || text.Length <= maxLength)
@@ -557,4 +752,9 @@ namespace HaCreator.MapSimulator.UI
             return $"{text[..Math.Max(0, maxLength - 1)]}…";
         }
     }
+
+    internal readonly record struct QuestRewardRaisePieceDropRequest(
+        InventoryType SourceInventoryType,
+        int SourceSlotIndex,
+        InventorySlotData SlotData);
 }

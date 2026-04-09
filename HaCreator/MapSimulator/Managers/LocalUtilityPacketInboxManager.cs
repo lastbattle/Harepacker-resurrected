@@ -49,6 +49,7 @@ namespace HaCreator.MapSimulator.Managers
         public const int FollowCharacterPacketType = 1012;
         public const int SetDirectionModePacketType = 1013;
         public const int SetStandAloneModePacketType = 1014;
+        public const int FollowCharacterPromptPacketType = 1022;
         public const int FollowCharacterClientPacketType = 193;
         public const int SitResultPacketType = 231;
         public const int MesoGiveSucceededPacketType = 236;
@@ -383,6 +384,14 @@ namespace HaCreator.MapSimulator.Managers
                 || token.Equals("followcharacter", StringComparison.OrdinalIgnoreCase))
             {
                 packetType = FollowCharacterPacketType;
+                return true;
+            }
+
+            if (token.Equals("followask", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("followprompt", StringComparison.OrdinalIgnoreCase)
+                || token.Equals("followrequestprompt", StringComparison.OrdinalIgnoreCase))
+            {
+                packetType = FollowCharacterPromptPacketType;
                 return true;
             }
 
@@ -728,6 +737,7 @@ namespace HaCreator.MapSimulator.Managers
                 || packetType == FollowCharacterFailedPacketType
                 || packetType == FollowCharacterFailedClientPacketType
                 || packetType == FollowCharacterPacketType
+                || packetType == FollowCharacterPromptPacketType
                 || packetType == SetDirectionModePacketType
                 || packetType == SetStandAloneModePacketType
                 || packetType == SetDirectionModeClientPacketType
@@ -897,6 +907,7 @@ namespace HaCreator.MapSimulator.Managers
                 FollowCharacterPacketType => "FollowCharacter(1012)",
                 SetDirectionModePacketType => "SetDirectionMode(1013)",
                 SetStandAloneModePacketType => "SetStandAloneMode(1014)",
+                FollowCharacterPromptPacketType => "FollowCharacterPrompt(1022)",
                 FollowCharacterClientPacketType => "FollowCharacter(193)",
                 MesoGiveSucceededPacketType => "OnMesoGive_Succeeded(236)",
                 MesoGiveFailedPacketType => "OnMesoGive_Failed(237)",

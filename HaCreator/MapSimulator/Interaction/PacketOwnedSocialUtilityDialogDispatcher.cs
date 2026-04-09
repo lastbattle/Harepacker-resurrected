@@ -17,6 +17,10 @@ namespace HaCreator.MapSimulator.Interaction
         private readonly PacketOwnedTrunkDialogRuntime _trunkDialogRuntime;
         private readonly MessengerRuntime _messengerRuntime;
         private string _lastDispatchSummary = "Packet-owned social utility dispatcher idle.";
+        private string _lastMapleTvDispatchSummary = "CMapleTVMan::OnPacket idle.";
+        private string _lastParcelDispatchSummary = "CParcelDlg::OnPacket idle.";
+        private string _lastTrunkDispatchSummary = "CTrunkDlg::OnPacket idle.";
+        private string _lastMessengerDispatchSummary = "CUIMessenger::OnPacket idle.";
 
         internal PacketOwnedSocialUtilityDialogDispatcher(
             MapleTvRuntime mapleTvRuntime,
@@ -40,7 +44,8 @@ namespace HaCreator.MapSimulator.Interaction
             bool applied = _mapleTvRuntime.TryApplyPacket(packetType, payload, currentTick, buildResolver, out message);
             if (applied)
             {
-                _lastDispatchSummary = $"CMapleTVMan::OnPacket dispatched packet {packetType.ToString(CultureInfo.InvariantCulture)}.";
+                _lastMapleTvDispatchSummary = $"CMapleTVMan::OnPacket dispatched packet {packetType.ToString(CultureInfo.InvariantCulture)}.";
+                _lastDispatchSummary = _lastMapleTvDispatchSummary;
             }
 
             return applied;
@@ -51,7 +56,8 @@ namespace HaCreator.MapSimulator.Interaction
             bool applied = _parcelDialogRuntime.TryApplyPacket(payload, out message);
             if (applied)
             {
-                _lastDispatchSummary = $"CParcelDlg::OnPacket dispatched subtype {_parcelDialogRuntime.LastSubtype.ToString(CultureInfo.InvariantCulture)}.";
+                _lastParcelDispatchSummary = $"CParcelDlg::OnPacket dispatched subtype {_parcelDialogRuntime.LastSubtype.ToString(CultureInfo.InvariantCulture)}.";
+                _lastDispatchSummary = _lastParcelDispatchSummary;
             }
 
             return applied;
@@ -82,7 +88,8 @@ namespace HaCreator.MapSimulator.Interaction
                 out message);
             if (applied)
             {
-                _lastDispatchSummary = "CParcelDlg::OnPacket applied a packet-owned parcel delivery payload.";
+                _lastParcelDispatchSummary = "CParcelDlg::OnPacket applied a packet-owned parcel delivery payload.";
+                _lastDispatchSummary = _lastParcelDispatchSummary;
             }
 
             return applied;
@@ -93,10 +100,24 @@ namespace HaCreator.MapSimulator.Interaction
             bool applied = _trunkDialogRuntime.TryApplyPacket(payload, out message);
             if (applied)
             {
-                _lastDispatchSummary = $"CTrunkDlg::OnPacket dispatched subtype {_trunkDialogRuntime.LastSubtype.ToString(CultureInfo.InvariantCulture)}.";
+                _lastTrunkDispatchSummary = $"CTrunkDlg::OnPacket dispatched subtype {_trunkDialogRuntime.LastSubtype.ToString(CultureInfo.InvariantCulture)}.";
+                _lastDispatchSummary = _lastTrunkDispatchSummary;
             }
 
             return applied;
+        }
+
+        internal bool TryApplyMessengerDispatchSubtype(byte packetSubtype, byte[] payload, out string message)
+        {
+            byte[] resolvedPayload = payload ?? Array.Empty<byte>();
+            byte[] dispatchPayload = new byte[resolvedPayload.Length + 1];
+            dispatchPayload[0] = packetSubtype;
+            if (resolvedPayload.Length > 0)
+            {
+                Buffer.BlockCopy(resolvedPayload, 0, dispatchPayload, 1, resolvedPayload.Length);
+            }
+
+            return TryApplyMessengerDispatchPacket(dispatchPayload, out message);
         }
 
         internal bool TryApplyMessengerDispatchPacket(byte[] payload, out string message)
@@ -111,23 +132,35 @@ namespace HaCreator.MapSimulator.Interaction
             if (packetSubtype > 8)
             {
                 message = $"Messenger OnPacket subtype '{packetSubtype}' is not modeled.";
-                _lastDispatchSummary = $"CUIMessenger::OnPacket ignored unsupported subtype {packetSubtype}.";
+                _lastMessengerDispatchSummary = $"CUIMessenger::OnPacket ignored unsupported subtype {packetSubtype}.";
+                _lastDispatchSummary = _lastMessengerDispatchSummary;
                 return false;
             }
 
             message = _messengerRuntime.ApplyPacketDispatchPayload(payload);
-            _lastDispatchSummary = $"CUIMessenger::OnPacket dispatched subtype {packetSubtype}.";
+            _lastMessengerDispatchSummary = $"CUIMessenger::OnPacket dispatched subtype {packetSubtype}.";
+            _lastDispatchSummary = _lastMessengerDispatchSummary;
             return true;
+        }
+
+        internal string DescribeMapleTvStatus(int currentTick)
+        {
+            return $"{_mapleTvRuntime.DescribeStatus(currentTick)} Dispatcher: {_lastMapleTvDispatchSummary}";
         }
 
         internal string DescribeParcelStatus()
         {
-            return _parcelDialogRuntime.DescribeStatus();
+            return $"{_parcelDialogRuntime.DescribeStatus()} Dispatcher: {_lastParcelDispatchSummary}";
         }
 
         internal string DescribeTrunkStatus()
         {
-            return _trunkDialogRuntime.DescribeStatus();
+            return $"{_trunkDialogRuntime.DescribeStatus()} Dispatcher: {_lastTrunkDispatchSummary}";
+        }
+
+        internal string DescribeMessengerStatus()
+        {
+            return $"{_messengerRuntime.DescribeStatus()} Dispatcher: {_lastMessengerDispatchSummary}";
         }
 
         internal string DescribeStatus(int currentTick)
@@ -152,6 +185,7 @@ namespace HaCreator.MapSimulator.Interaction
         private int _removalCount;
         private int _currentDialogMode = -1;
         private string _lastAlarmSender = string.Empty;
+        private bool _lastAlarmWasQuickDelivery;
 
         internal PacketOwnedParcelDialogRuntime(MemoMailboxManager memoMailbox)
         {
@@ -355,9 +389,10 @@ namespace HaCreator.MapSimulator.Interaction
             _noticeCount++;
             IsOpen = true;
             _lastAlarmSender = sender ?? string.Empty;
+            _lastAlarmWasQuickDelivery = hasAttachment;
             StatusMessage = expectsSender
-                ? $"CParcelDlg packet {LastSubtype.ToString(CultureInfo.InvariantCulture)} raised a packet-owned parcel alarm from {sender} (attachment={hasAttachment})."
-                : $"CParcelDlg packet {LastSubtype.ToString(CultureInfo.InvariantCulture)} raised the packet-owned empty-sender parcel alarm branch (attachment={hasAttachment}).";
+                ? $"CParcelDlg packet {LastSubtype.ToString(CultureInfo.InvariantCulture)} raised a packet-owned {(hasAttachment ? "quick-delivery" : "standard")} parcel alarm from {sender}."
+                : $"CParcelDlg packet {LastSubtype.ToString(CultureInfo.InvariantCulture)} raised the packet-owned empty-sender {(hasAttachment ? "quick-delivery" : "standard")} parcel alarm branch.";
             message = StatusMessage;
             return true;
         }

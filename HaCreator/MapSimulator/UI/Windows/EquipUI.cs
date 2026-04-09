@@ -96,6 +96,7 @@ namespace HaCreator.MapSimulator.UI
         public Func<EquipmentChangeRequest, EquipmentChangeResult> EquipmentChangeRequested { get; set; }
         public Func<EquipmentChangeRequest, EquipmentChangeSubmission> EquipmentChangeSubmitted { get; set; }
         public Func<EquipmentChangeResolutionQuery, EquipmentChangeResult> EquipmentChangeResultRequested { get; set; }
+        public Func<bool> EquipmentDragStartBlocked { get; set; }
         public override CharacterBuild CharacterBuild
         {
             get => _characterBuild;
@@ -495,6 +496,11 @@ namespace HaCreator.MapSimulator.UI
         public void OnEquipmentMouseDown(int mouseX, int mouseY)
         {
             _lastMousePosition = new Point(mouseX, mouseY);
+            if (EquipmentDragStartBlocked?.Invoke() == true)
+            {
+                return;
+            }
+
             EquipSlot? slot = GetSlotAtPosition(mouseX, mouseY);
             if (!slot.HasValue)
                 return;

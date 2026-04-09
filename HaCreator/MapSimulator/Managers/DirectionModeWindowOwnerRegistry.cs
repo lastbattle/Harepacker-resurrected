@@ -12,6 +12,9 @@ namespace HaCreator.MapSimulator.Managers
     {
         private static readonly HashSet<string> ImplicitOwnerEligibleWindowNames = new(StringComparer.Ordinal)
         {
+            MapSimulatorWindowNames.AntiMacro,
+            MapSimulatorWindowNames.AdminAntiMacro,
+            MapSimulatorWindowNames.AntiMacroNotice,
             MapSimulatorWindowNames.CashShop,
             MapSimulatorWindowNames.CashShopStage,
             MapSimulatorWindowNames.AdminShopWishList,

@@ -9,6 +9,7 @@ namespace HaCreator.MapSimulator.Interaction
 {
     internal static class GuildMarkCatalog
     {
+        private static readonly int[] FamilyLabelStringPoolIds = [0x0D14, 0x0D15, 0x0D16, 0x0D17, 0x0D18];
         private static readonly Lazy<GuildMarkCatalogData> Catalog = new(LoadCatalog);
 
         internal static GuildMarkCatalogData GetCatalog()
@@ -53,6 +54,7 @@ namespace HaCreator.MapSimulator.Interaction
 
                 if (image["Mark"] is WzSubProperty markRoot)
                 {
+                    int familyIndex = 0;
                     foreach (WzSubProperty familyProperty in markRoot.WzProperties.OfType<WzSubProperty>())
                     {
                         List<int> markIds = [];
@@ -74,7 +76,11 @@ namespace HaCreator.MapSimulator.Interaction
                         }
 
                         markIds.Sort();
-                        families.Add(new GuildMarkFamilyInfo(markIds[0] / 1000, familyProperty.Name, markIds));
+                        families.Add(new GuildMarkFamilyInfo(
+                            markIds[0] / 1000,
+                            ResolveFamilyLabel(familyProperty.Name, familyIndex),
+                            markIds));
+                        familyIndex++;
                     }
                 }
 
@@ -96,6 +102,19 @@ namespace HaCreator.MapSimulator.Interaction
         private static bool TryParseMarkId(string text, out int value)
         {
             return int.TryParse(text?.TrimStart('0'), out value) || int.TryParse(text, out value);
+        }
+
+        private static string ResolveFamilyLabel(string wzFamilyName, int familyIndex)
+        {
+            string fallbackLabel = string.IsNullOrWhiteSpace(wzFamilyName)
+                ? $"Group {familyIndex + 1}"
+                : wzFamilyName.Trim();
+            if ((uint)familyIndex >= (uint)FamilyLabelStringPoolIds.Length)
+            {
+                return fallbackLabel;
+            }
+
+            return MapleStoryStringPool.GetOrFallback(FamilyLabelStringPoolIds[familyIndex], fallbackLabel);
         }
     }
 

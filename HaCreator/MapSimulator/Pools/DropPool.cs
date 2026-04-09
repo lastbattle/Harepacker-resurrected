@@ -162,6 +162,7 @@ namespace HaCreator.MapSimulator.Pools
         public Color GlowColor { get; set; } = Color.White;
         public bool UseLayeredMesoAnimation { get; set; }
         public int MesoAnimationLayerCount { get; set; }
+        public int MesoAnimationIconType { get; set; }
         public bool DrawOnElevatedLayer { get; set; }
 
         // Pickup state
@@ -908,6 +909,7 @@ namespace HaCreator.MapSimulator.Pools
             drop.GlowColor = Color.White;
             drop.UseLayeredMesoAnimation = false;
             drop.MesoAnimationLayerCount = 0;
+            drop.MesoAnimationIconType = 0;
             drop.DrawOnElevatedLayer = false;
             drop.AnimFrames = null;
             drop.Icon = null;
@@ -2379,9 +2381,10 @@ namespace HaCreator.MapSimulator.Pools
                 drop.Icon = frames[0];
             }
 
+            drop.MesoAnimationIconType = iconType;
             drop.UseLayeredMesoAnimation = packetControlled && frames != null && frames.Count > 1;
             drop.MesoAnimationLayerCount = drop.UseLayeredMesoAnimation
-                ? Math.Min(frames.Count, iconType + 2)
+                ? PacketOwnedMesoAnimationPresentation.ResolveLayerCount(iconType, frames.Count)
                 : 0;
         }
 

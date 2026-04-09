@@ -1,3 +1,4 @@
+using HaCreator.MapSimulator.Fields;
 using HaCreator.MapSimulator.Interaction;
 using Microsoft.Xna.Framework;
 using System;
@@ -113,9 +114,7 @@ namespace HaCreator.MapSimulator
                 _specialFieldRuntime.PartyRaid.IsActive &&
                 _specialFieldRuntime.PartyRaid.TryApplyFieldSpecificPair(key, value, ownerHint, currentTick, out string partyRaidOwner))
             {
-                target = string.IsNullOrWhiteSpace(partyRaidOwner)
-                    ? "PartyRaidField"
-                    : $"PartyRaidField ({partyRaidOwner})";
+                target = _specialFieldRuntime.PartyRaid.DescribeStructuredFieldSpecificTarget(partyRaidOwner);
                 return true;
             }
 
@@ -174,12 +173,15 @@ namespace HaCreator.MapSimulator
             return owners;
         }
 
-        private static string DescribeFieldSpecificStringPairOwners(FieldSpecificStringPairOwnerMask owners)
+        private string DescribeFieldSpecificStringPairOwners(FieldSpecificStringPairOwnerMask owners)
         {
             List<string> names = new();
             if ((owners & FieldSpecificStringPairOwnerMask.PartyRaid) != 0)
             {
-                names.Add("PartyRaidField");
+                PartyRaidField partyRaid = _specialFieldRuntime.PartyRaid;
+                names.Add(partyRaid.HasNativePartyRaidWrapperOwner
+                    ? partyRaid.ClientWrapperOwnerName
+                    : "PartyRaidField");
             }
 
             if ((owners & FieldSpecificStringPairOwnerMask.EscortResult) != 0)

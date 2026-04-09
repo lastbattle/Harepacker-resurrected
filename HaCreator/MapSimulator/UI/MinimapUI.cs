@@ -16,6 +16,7 @@ namespace HaCreator.MapSimulator.UI
     public class MinimapUI : BaseDXDrawableItem, IUIObjectEvents
     {
         internal readonly record struct ClientStateTransition(int CurrentOption, int PreviousExpandedOption, bool IsCollapsed);
+        internal readonly record struct ClientButtonVisibility(bool MinVisible, bool MaxVisible, bool BigVisible, bool SmallVisible);
 
         public enum HelperMarkerType
         {
@@ -365,11 +366,27 @@ namespace HaCreator.MapSimulator.UI
                 bool suppressLegacyPixelDot = ShouldSuppressLegacyPixelDot(playerMarker);
                 if (playerMarker != null)
                 {
-                    playerMarker.Draw(sprite, skeletonMeshRenderer, gameTime,
-                        -Position.X, -Position.Y, minimapPosX, minimapPosY,
-                        drawReflectionInfo,
-                        renderParameters,
-                        TickCount);
+                    if (_localPlayerHelperMarkerType.HasValue)
+                    {
+                        DrawMarkerWithDirectionOverlay(
+                            playerMarker,
+                            new Point(minimapPosX, minimapPosY),
+                            true,
+                            sprite,
+                            skeletonMeshRenderer,
+                            gameTime,
+                            drawReflectionInfo,
+                            renderParameters,
+                            TickCount);
+                    }
+                    else
+                    {
+                        playerMarker.Draw(sprite, skeletonMeshRenderer, gameTime,
+                            -Position.X, -Position.Y, minimapPosX, minimapPosY,
+                            drawReflectionInfo,
+                            renderParameters,
+                            TickCount);
+                    }
                 }
 
                 if (!suppressLegacyPixelDot)
@@ -423,11 +440,16 @@ namespace HaCreator.MapSimulator.UI
 
         public bool IsCollapsed => _bIsCollapsedState;
 
+        public bool IsExpandedOptionActive => !_bIsCollapsedState && NormalizeExpandedOption(_currentOption) >= ClientOptionExpanded;
+
         public void EnsureExpanded()
         {
             if (_bIsCollapsedState)
             {
-                ObjUIBtMax_ButtonClickReleased(null);
+                ApplyClientStateTransition(ResolveEnsureExpandedTransitionForTesting(
+                    _currentOption,
+                    _previousExpandedOption,
+                    _btnSmall != null && _expandedFrame != null));
             }
         }
 
@@ -435,7 +457,10 @@ namespace HaCreator.MapSimulator.UI
         {
             if (!_bIsCollapsedState)
             {
-                ObjUIBtMax_ButtonClickReleased(null);
+                ApplyClientStateTransition(ResolveEnsureCollapsedTransitionForTesting(
+                    _currentOption,
+                    _previousExpandedOption,
+                    _btnSmall != null && _expandedFrame != null));
             }
         }
 
@@ -771,15 +796,15 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            if (_btnBig != null)
-            {
-                _btnBig.SetVisible(!_bIsCollapsedState && NormalizeExpandedOption(_currentOption) == ClientOptionCompact);
-            }
+            ClientButtonVisibility buttonVisibility = ResolveButtonVisibilityForTesting(
+                _currentOption,
+                _bIsCollapsedState,
+                _btnSmall != null && _expandedFrame != null);
 
-            if (_btnSmall != null)
-            {
-                _btnSmall.SetVisible(!_bIsCollapsedState && NormalizeExpandedOption(_currentOption) >= ClientOptionExpanded);
-            }
+            _btnMin.SetVisible(buttonVisibility.MinVisible);
+            _btnMax.SetVisible(buttonVisibility.MaxVisible);
+            _btnBig?.SetVisible(buttonVisibility.BigVisible);
+            _btnSmall?.SetVisible(buttonVisibility.SmallVisible);
 
             int frameWidth = GetVisibleFrame()?.Frame0?.Width ?? Frame0?.Width ?? 0;
             int rightEdge = frameWidth - 8;
@@ -943,6 +968,100 @@ namespace HaCreator.MapSimulator.UI
                 false);
         }
 
+        internal static ClientStateTransition ResolveEnsureExpandedTransitionForTesting(
+            int currentOption,
+            int previousExpandedOption,
+            bool supportsExpandedOption)
+        {
+            static int NormalizeExpandedOptionForState(int option, bool supportsExpanded)
+            {
+                if (!supportsExpanded)
+                {
+                    return ClientOptionCompact;
+                }
+
+                return option >= ClientOptionExpanded ? ClientOptionExpanded : ClientOptionCompact;
+            }
+
+            int normalizedCurrentOption = currentOption <= ClientOptionCollapsed
+                ? ClientOptionCollapsed
+                : NormalizeExpandedOptionForState(currentOption, supportsExpandedOption);
+            int normalizedPreviousExpandedOption = previousExpandedOption > ClientOptionCollapsed
+                ? NormalizeExpandedOptionForState(previousExpandedOption, supportsExpandedOption)
+                : ClientOptionCompact;
+
+            if (normalizedCurrentOption <= ClientOptionCollapsed)
+            {
+                return new ClientStateTransition(
+                    normalizedPreviousExpandedOption,
+                    normalizedPreviousExpandedOption,
+                    false);
+            }
+
+            return new ClientStateTransition(
+                normalizedCurrentOption,
+                normalizedPreviousExpandedOption,
+                false);
+        }
+
+        internal static ClientStateTransition ResolveEnsureCollapsedTransitionForTesting(
+            int currentOption,
+            int previousExpandedOption,
+            bool supportsExpandedOption)
+        {
+            static int NormalizeExpandedOptionForState(int option, bool supportsExpanded)
+            {
+                if (!supportsExpanded)
+                {
+                    return ClientOptionCompact;
+                }
+
+                return option >= ClientOptionExpanded ? ClientOptionExpanded : ClientOptionCompact;
+            }
+
+            int normalizedCurrentOption = currentOption <= ClientOptionCollapsed
+                ? ClientOptionCollapsed
+                : NormalizeExpandedOptionForState(currentOption, supportsExpandedOption);
+            int normalizedPreviousExpandedOption = previousExpandedOption > ClientOptionCollapsed
+                ? NormalizeExpandedOptionForState(previousExpandedOption, supportsExpandedOption)
+                : ClientOptionCompact;
+            int rememberedExpandedOption = normalizedCurrentOption > ClientOptionCollapsed
+                ? normalizedCurrentOption
+                : normalizedPreviousExpandedOption;
+
+            return new ClientStateTransition(
+                ClientOptionCollapsed,
+                rememberedExpandedOption,
+                true);
+        }
+
+        internal static ClientButtonVisibility ResolveButtonVisibilityForTesting(
+            int currentOption,
+            bool isCollapsed,
+            bool supportsExpandedOption)
+        {
+            int normalizedCurrentOption = currentOption <= ClientOptionCollapsed
+                ? ClientOptionCollapsed
+                : supportsExpandedOption && currentOption >= ClientOptionExpanded
+                    ? ClientOptionExpanded
+                    : ClientOptionCompact;
+
+            if (isCollapsed || normalizedCurrentOption <= ClientOptionCollapsed)
+            {
+                return new ClientButtonVisibility(
+                    MinVisible: false,
+                    MaxVisible: true,
+                    BigVisible: false,
+                    SmallVisible: false);
+            }
+
+            return new ClientButtonVisibility(
+                MinVisible: true,
+                MaxVisible: false,
+                BigVisible: supportsExpandedOption && normalizedCurrentOption == ClientOptionCompact,
+                SmallVisible: supportsExpandedOption && normalizedCurrentOption >= ClientOptionExpanded);
+        }
+
         private void DrawNpcMarkers(
             SpriteBatch sprite,
             SkeletonMeshRenderer skeletonMeshRenderer,
@@ -1050,14 +1169,8 @@ namespace HaCreator.MapSimulator.UI
         {
             if (employee?.PreferredMarkerType is HelperMarkerType preferredMarkerType)
             {
-                if (_helperMarkers.TryGetValue(preferredMarkerType, out BaseDXDrawableItem helperMarker) && helperMarker != null)
-                {
-                    return helperMarker;
-                }
-
-                if (preferredMarkerType == HelperMarkerType.UserTrader
-                    && _helperMarkers.TryGetValue(HelperMarkerType.AnotherTrader, out helperMarker)
-                    && helperMarker != null)
+                BaseDXDrawableItem helperMarker = ResolveHelperMarker(preferredMarkerType);
+                if (helperMarker != null)
                 {
                     return helperMarker;
                 }
@@ -1069,7 +1182,7 @@ namespace HaCreator.MapSimulator.UI
         private BaseDXDrawableItem ResolveLocalPlayerMarker()
         {
             if (_localPlayerHelperMarkerType.HasValue
-                && _helperMarkers.TryGetValue(_localPlayerHelperMarkerType.Value, out BaseDXDrawableItem helperMarker)
+                && ResolveHelperMarker(_localPlayerHelperMarkerType.Value) is BaseDXDrawableItem helperMarker
                 && helperMarker != null)
             {
                 return helperMarker;
@@ -1101,7 +1214,8 @@ namespace HaCreator.MapSimulator.UI
                     continue;
 
                 Point minimapPoint = WorldToMinimap((int)trackedUser.WorldX, (int)trackedUser.WorldY);
-                if (!_helperMarkers.TryGetValue(trackedUser.MarkerType, out BaseDXDrawableItem marker) || marker == null)
+                BaseDXDrawableItem marker = ResolveHelperMarker(trackedUser.MarkerType);
+                if (marker == null)
                     continue;
 
                 Rectangle hoverBounds = DrawMarkerWithDirectionOverlay(marker, minimapPoint, trackedUser.ShowDirectionOverlay, sprite, skeletonMeshRenderer, gameTime, drawReflectionInfo, renderParameters, tickCount);
@@ -1110,6 +1224,27 @@ namespace HaCreator.MapSimulator.UI
                     AddHoverTarget(trackedUser.TooltipText, hoverBounds);
                 }
             }
+        }
+
+        private BaseDXDrawableItem ResolveHelperMarker(HelperMarkerType markerType)
+        {
+            if (_helperMarkers.TryGetValue(markerType, out BaseDXDrawableItem helperMarker) && helperMarker != null)
+            {
+                return helperMarker;
+            }
+
+            return markerType switch
+            {
+                HelperMarkerType.GuildMaster => ResolveHelperMarker(HelperMarkerType.Guild),
+                HelperMarkerType.PartyMaster => ResolveHelperMarker(HelperMarkerType.Party),
+                HelperMarkerType.UserTrader => ResolveHelperMarker(HelperMarkerType.AnotherTrader) ?? ResolveHelperMarker(HelperMarkerType.Another),
+                HelperMarkerType.AnotherTrader => ResolveHelperMarker(HelperMarkerType.Another),
+                HelperMarkerType.Match => ResolveHelperMarker(HelperMarkerType.Another),
+                HelperMarkerType.Friend => ResolveHelperMarker(HelperMarkerType.Another),
+                HelperMarkerType.Guild => ResolveHelperMarker(HelperMarkerType.Another),
+                HelperMarkerType.Party => ResolveHelperMarker(HelperMarkerType.Another),
+                _ => null
+            };
         }
 
         private void DrawEmployeeMarkers(

@@ -210,7 +210,7 @@ namespace HaCreator.MapSimulator
                 EnsureEngagementProposalInboxState(shouldRun: false);
                 EnsureStageTransitionPacketInboxState(shouldRun: false);
                 EnsureReactorPoolPacketInboxState(shouldRun: false);
-                EnsureReactorPoolOfficialSessionBridgeState(shouldRun: false);
+                EnsurePacketFieldOfficialSessionBridgeState(shouldRun: false);
                 EnsureSummonedPacketInboxState(shouldRun: false);
                 EnsureSummonedOfficialSessionBridgeState(shouldRun: false);
                 EnsureMobAttackPacketInboxState(shouldRun: false);
@@ -293,10 +293,10 @@ namespace HaCreator.MapSimulator
             EnsureStageTransitionPacketInboxState(shouldRun: _mapBoard?.MapInfo != null);
             DrainStageTransitionPacketInbox();
             EnsureReactorPoolPacketInboxState(shouldRun: _mapBoard?.MapInfo != null);
-            EnsureReactorPoolOfficialSessionBridgeState(shouldRun: _mapBoard?.MapInfo != null);
-            RefreshReactorPoolOfficialSessionBridgeDiscovery(currTickCount);
+            EnsurePacketFieldOfficialSessionBridgeState(shouldRun: _mapBoard?.MapInfo != null);
+            RefreshPacketFieldOfficialSessionBridgeDiscovery(currTickCount);
             DrainReactorPoolPacketInbox();
-            DrainReactorPoolOfficialSessionBridge();
+            DrainPacketFieldOfficialSessionBridge();
             EnsureComboCounterPacketInboxState(shouldRun: true);
             DrainComboCounterPacketInbox();
             UpdatePacketOwnedComboState(currTickCount);
@@ -1215,11 +1215,14 @@ namespace HaCreator.MapSimulator
             if (_gameState.PendingMapChange && _loadMapCallback != null)
             {
                 if (_gameState.PendingMapId == _mapBoard.MapInfo.id
-                    && (!string.IsNullOrEmpty(_gameState.PendingPortalName) || _gameState.PendingPortalIndex >= 0))
+                    && (!string.IsNullOrEmpty(_gameState.PendingPortalName)
+                        || (_gameState.PendingPortalNameCandidates?.Length ?? 0) > 0
+                        || _gameState.PendingPortalIndex >= 0))
                 {
-                    PortalInstance targetPortal = ResolvePortalByNameOrIndex(
+                    PortalInstance targetPortal = ResolvePortalByNameCandidatesOrIndex(
                         _mapBoard.BoardItems.Portals,
                         _gameState.PendingPortalName,
+                        _gameState.PendingPortalNameCandidates,
                         _gameState.PendingPortalIndex);
                     if (targetPortal != null && !_sameMapTeleportPending)
                     {
@@ -1239,6 +1242,7 @@ namespace HaCreator.MapSimulator
                     _gameState.PendingMapChange = false;
                     _gameState.PendingMapId = -1;
                     _gameState.PendingPortalName = null;
+                    _gameState.PendingPortalNameCandidates = Array.Empty<string>();
                     _gameState.PendingPortalIndex = -1;
                 }
                 else
@@ -1272,6 +1276,7 @@ namespace HaCreator.MapSimulator
                                     ShowFieldRestrictionMessage(entryRestrictionMessage);
                                     _gameState.PendingMapId = -1;
                                     _gameState.PendingPortalName = null;
+                                    _gameState.PendingPortalNameCandidates = Array.Empty<string>();
                                     _gameState.PendingPortalIndex = -1;
                                     _portalFadeState = PortalFadeState.FadingIn;
                                     _screenEffects.FadeIn(PORTAL_FADE_DURATION_MS, currTickCount);
@@ -1292,7 +1297,12 @@ namespace HaCreator.MapSimulator
                                 Debug.WriteLine($"[MapChange] UnloadMapContent took {unloadStopwatch.ElapsedMilliseconds} ms");
 
                                 Stopwatch loadContentStopwatch = Stopwatch.StartNew();
-                                LoadMapContent(result.Item1, result.Item2, _gameState.PendingPortalName, _gameState.PendingPortalIndex);
+                                LoadMapContent(
+                                    result.Item1,
+                                    result.Item2,
+                                    _gameState.PendingPortalName,
+                                    _gameState.PendingPortalIndex,
+                                    _gameState.PendingPortalNameCandidates);
                                 loadContentStopwatch.Stop();
                                 Debug.WriteLine($"[MapChange] LoadMapContent took {loadContentStopwatch.ElapsedMilliseconds} ms");
 
@@ -1327,6 +1337,7 @@ namespace HaCreator.MapSimulator
                             _gameState.PendingMapId = -1;
 
                             _gameState.PendingPortalName = null;
+                            _gameState.PendingPortalNameCandidates = Array.Empty<string>();
                             _gameState.PendingPortalIndex = -1;
 
 

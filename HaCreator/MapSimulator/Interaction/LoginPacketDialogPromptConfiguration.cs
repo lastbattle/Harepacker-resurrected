@@ -12,6 +12,7 @@ namespace HaCreator.MapSimulator
     internal sealed class LoginPacketDialogPromptConfiguration
     {
         public LoginPacketDialogOwner Owner { get; init; } = LoginPacketDialogOwner.LoginUtilityDialog;
+        public bool HasExplicitOwner { get; init; }
         public string Title { get; init; }
         public string Body { get; init; }
         public int? NoticeTextIndex { get; init; }

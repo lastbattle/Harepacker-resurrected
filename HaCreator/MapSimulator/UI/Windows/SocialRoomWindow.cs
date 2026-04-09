@@ -64,8 +64,8 @@ namespace HaCreator.MapSimulator.UI
         private readonly Dictionary<int, string> _miniRoomAvatarKeys = new Dictionary<int, string>();
         private readonly Dictionary<EntrustedShopChildDialogKind, EntrustedChildDialogVisual> _entrustedChildDialogVisuals = new Dictionary<EntrustedShopChildDialogKind, EntrustedChildDialogVisual>();
         private SpriteFont _font;
-        private Texture2D _miniRoomOmokBlackStoneTexture;
-        private Texture2D _miniRoomOmokWhiteStoneTexture;
+        private Texture2D[] _miniRoomOmokBlackStoneFrames = Array.Empty<Texture2D>();
+        private Texture2D[] _miniRoomOmokWhiteStoneFrames = Array.Empty<Texture2D>();
         private Texture2D _miniRoomOmokLastBlackStoneTexture;
         private Texture2D _miniRoomOmokLastWhiteStoneTexture;
         private int? _pressedEntrustedChildRowIndex;
@@ -150,13 +150,15 @@ namespace HaCreator.MapSimulator.UI
         }
 
         public void SetMiniRoomOmokStoneTextures(
-            Texture2D blackStoneTexture,
-            Texture2D whiteStoneTexture,
+            Texture2D[] blackStoneTextures,
+            Texture2D[] whiteStoneTextures,
             Texture2D lastBlackStoneTexture,
             Texture2D lastWhiteStoneTexture)
         {
-            _miniRoomOmokBlackStoneTexture = blackStoneTexture;
-            _miniRoomOmokWhiteStoneTexture = whiteStoneTexture;
+            _miniRoomOmokBlackStoneFrames = blackStoneTextures?.Where(texture => texture != null).ToArray() ?? Array.Empty<Texture2D>();
+            _miniRoomOmokWhiteStoneFrames = whiteStoneTextures?.Where(texture => texture != null).ToArray() ?? Array.Empty<Texture2D>();
+            Texture2D blackStoneTexture = _miniRoomOmokBlackStoneFrames.FirstOrDefault();
+            Texture2D whiteStoneTexture = _miniRoomOmokWhiteStoneFrames.FirstOrDefault();
             _miniRoomOmokLastBlackStoneTexture = lastBlackStoneTexture ?? blackStoneTexture;
             _miniRoomOmokLastWhiteStoneTexture = lastWhiteStoneTexture ?? whiteStoneTexture;
         }
@@ -342,11 +344,12 @@ namespace HaCreator.MapSimulator.UI
             DrawText(sprite, "Room State", new Vector2(statePanel.X + 12, statePanel.Y + 10), HeaderColor, 0.68f);
             DrawKeyValue(sprite, statePanel.X + 12, statePanel.Y + 36, "Capacity", $"{_runtime.Occupants.Count}/{_runtime.Capacity}");
             DrawKeyValue(sprite, statePanel.X + 12, statePanel.Y + 58, "Turn", ResolveOmokTurnSummary());
-            DrawKeyValue(sprite, statePanel.X + 12, statePanel.Y + 80, "Winner", ResolveOmokWinnerSummary());
-            DrawKeyValue(sprite, statePanel.X + 12, statePanel.Y + 102, "Mesos", $"{_runtime.MesoAmount:N0}");
+            DrawKeyValue(sprite, statePanel.X + 12, statePanel.Y + 80, "Clock", $"{_runtime.MiniRoomOmokTimeFloor}s");
+            DrawKeyValue(sprite, statePanel.X + 12, statePanel.Y + 102, "Winner", ResolveOmokWinnerSummary());
+            DrawKeyValue(sprite, statePanel.X + 12, statePanel.Y + 124, "Req", ResolveOmokRequestSummary());
 
             DrawText(sprite, "Notes", new Vector2(notePanel.X + 12, notePanel.Y + 10), HeaderColor, 0.68f);
-            float noteY = notePanel.Y + 34;
+            float noteY = notePanel.Y + 60;
             foreach (string note in _runtime.Notes)
             {
                 DrawWrapped(sprite, note, notePanel.X + 12, ref noteY, notePanel.Width - 24, MutedColor, 0.5f);
@@ -355,6 +358,8 @@ namespace HaCreator.MapSimulator.UI
                     break;
                 }
             }
+
+            DrawOmokDialogBanner(sprite, new Rectangle(notePanel.X + 10, notePanel.Y + 28, notePanel.Width - 20, 24));
 
             DrawText(sprite, "Chat", new Vector2(chatPanel.X + 12, chatPanel.Y + 10), HeaderColor, 0.68f);
             float chatY = chatPanel.Bottom - 22;
@@ -410,7 +415,12 @@ namespace HaCreator.MapSimulator.UI
 
                     bool isLastMove = x == _runtime.MiniRoomOmokLastMoveX && y == _runtime.MiniRoomOmokLastMoveY;
                     Texture2D texture = ResolveOmokStoneTexture(stoneValue, isLastMove);
-                    Rectangle stoneRect = new Rectangle(boardRect.X + (x * 19) - 11, boardRect.Y + (y * 19) - 11, 22, 22);
+                    int stoneSize = isLastMove && _runtime.MiniRoomOmokStoneAnimationTimeLeftMs > 0 ? 24 : 22;
+                    Rectangle stoneRect = new Rectangle(
+                        boardRect.X + (x * 19) - (stoneSize / 2),
+                        boardRect.Y + (y * 19) - (stoneSize / 2),
+                        stoneSize,
+                        stoneSize);
                     if (texture != null)
                     {
                         sprite.Draw(texture, stoneRect, Color.White);
@@ -427,15 +437,70 @@ namespace HaCreator.MapSimulator.UI
         {
             if (stoneValue == 1)
             {
-                return isLastMove ? _miniRoomOmokLastBlackStoneTexture ?? _miniRoomOmokBlackStoneTexture : _miniRoomOmokBlackStoneTexture;
+                if (isLastMove && _runtime.MiniRoomOmokStoneAnimationTimeLeftMs > 0 && _miniRoomOmokBlackStoneFrames.Length > 0)
+                {
+                    return ResolveAnimatedOmokStoneTexture(_miniRoomOmokBlackStoneFrames, _miniRoomOmokLastBlackStoneTexture);
+                }
+
+                return isLastMove ? _miniRoomOmokLastBlackStoneTexture ?? _miniRoomOmokBlackStoneFrames.FirstOrDefault() : _miniRoomOmokBlackStoneFrames.FirstOrDefault();
             }
 
             if (stoneValue == 2)
             {
-                return isLastMove ? _miniRoomOmokLastWhiteStoneTexture ?? _miniRoomOmokWhiteStoneTexture : _miniRoomOmokWhiteStoneTexture;
+                if (isLastMove && _runtime.MiniRoomOmokStoneAnimationTimeLeftMs > 0 && _miniRoomOmokWhiteStoneFrames.Length > 0)
+                {
+                    return ResolveAnimatedOmokStoneTexture(_miniRoomOmokWhiteStoneFrames, _miniRoomOmokLastWhiteStoneTexture);
+                }
+
+                return isLastMove ? _miniRoomOmokLastWhiteStoneTexture ?? _miniRoomOmokWhiteStoneFrames.FirstOrDefault() : _miniRoomOmokWhiteStoneFrames.FirstOrDefault();
             }
 
             return null;
+        }
+
+        private Texture2D ResolveAnimatedOmokStoneTexture(IReadOnlyList<Texture2D> frames, Texture2D fallback)
+        {
+            if (frames == null || frames.Count == 0)
+            {
+                return fallback;
+            }
+
+            float progress = 1f - MathHelper.Clamp(_runtime.MiniRoomOmokStoneAnimationTimeLeftMs / 450f, 0f, 1f);
+            int frameIndex = Math.Clamp((int)(progress * frames.Count), 0, frames.Count - 1);
+            return frames[frameIndex] ?? fallback;
+        }
+
+        private void DrawOmokDialogBanner(SpriteBatch sprite, Rectangle bannerRect)
+        {
+            if (string.IsNullOrWhiteSpace(_runtime.MiniRoomOmokDialogStatus))
+            {
+                return;
+            }
+
+            Color bannerColor = ResolveOmokDialogBannerColor();
+            sprite.Draw(_panelTexture, bannerRect, bannerColor);
+            Vector2 textPosition = new Vector2(bannerRect.X + 6, bannerRect.Y + 5);
+            DrawText(sprite, Truncate(_runtime.MiniRoomOmokDialogStatus, 78), textPosition, HeaderColor, 0.46f);
+        }
+
+        private Color ResolveOmokDialogBannerColor()
+        {
+            if (_runtime.MiniRoomOmokRetreatRequested || _runtime.MiniRoomOmokRetreatRequestSent)
+            {
+                return new Color(248, 220, 198, 232);
+            }
+
+            if (_runtime.MiniRoomOmokTieRequested || _runtime.MiniRoomOmokDrawRequestSent)
+            {
+                return new Color(240, 230, 193, 232);
+            }
+
+            if (_runtime.MiniRoomOmokWinnerIndex >= 0 || !_runtime.IsMiniRoomOmokInProgress)
+            {
+                return new Color(222, 239, 208, 232);
+            }
+
+            return new Color(227, 216, 196, 232);
         }
 
         private void DrawDefaultContents(
@@ -973,6 +1038,21 @@ namespace HaCreator.MapSimulator.UI
                 1 => "Guest",
                 _ => "None"
             };
+        }
+
+        private string ResolveOmokRequestSummary()
+        {
+            if (_runtime.MiniRoomOmokRetreatRequested || _runtime.MiniRoomOmokRetreatRequestSent)
+            {
+                return "Retreat";
+            }
+
+            if (_runtime.MiniRoomOmokTieRequested || _runtime.MiniRoomOmokDrawRequestSent)
+            {
+                return "Draw";
+            }
+
+            return "None";
         }
 
         private string GetItemPanelTitle()

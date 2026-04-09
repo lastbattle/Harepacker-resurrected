@@ -67,11 +67,12 @@ namespace HaCreator.MapSimulator.Managers
             _childOwners.Add("CCSWnd_List (275,95 412x430)");
             _childOwners.Add("CCSWnd_Best (690,157 90x358)");
             _childOwners.Add("CCSWnd_Status (254,530 545x56)");
+            _childOwners.Add("CCSWnd_OneADay (275,95 412x430)");
             _childOwners.Add("CCSWnd_ItemSearch (690,97 89x22)");
             _recentPackets.Clear();
 
             string previewFamily = ResolveCashShopPreviewFamily(build);
-            PreviewResourcePath = $"ui/CashShopPreview.img ({previewFamily})";
+            PreviewResourcePath = $"ui/CashShop.img/Base/Preview ({previewFamily}) + ui/CashShop.img/CSChar";
             string commodityText = PendingCommoditySerialNumber > 0
                 ? $"Pending commodity SN {PendingCommoditySerialNumber} is queued for GoToCommoditySN."
                 : "No pending commodity serial is queued.";

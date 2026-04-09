@@ -39,6 +39,9 @@ namespace HaCreator.MapSimulator.Interaction
         public bool MiniRoomOmokRetreatRequested { get; set; }
         public bool MiniRoomOmokRetreatRequestSent { get; set; }
         public bool MiniRoomOmokRetreatRequestSentTurn { get; set; }
+        public int MiniRoomOmokStoneAnimationTimeLeftMs { get; set; }
+        public int MiniRoomOmokDialogEffectTimeLeftMs { get; set; }
+        public string MiniRoomOmokDialogStatus { get; set; }
         public List<int> MiniRoomOmokBoard { get; set; } = new();
         public List<SocialRoomOmokMoveSnapshot> MiniRoomOmokMoveHistory { get; set; } = new();
         public int TradeLocalOfferMeso { get; set; }

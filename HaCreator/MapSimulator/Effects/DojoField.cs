@@ -149,6 +149,8 @@ namespace HaCreator.MapSimulator.Effects
         public int NextFloorMapId => ResolveNextFloorMapId();
         public string NextFloorPortalName => ResolveNextFloorPortalName() ?? string.Empty;
         public int ExitMapId => ResolveExitMapId();
+        public bool HasLiveTimer => _timeOverTick != int.MinValue && _timeOverTick > Environment.TickCount;
+        public bool IsTimerExpired => _timeOverTick != int.MinValue && _timeOverTick != 0 && _timeOverTick <= Environment.TickCount;
         public static bool TryInferClockPacketType(byte[] payload, out int packetType, out string reason)
         {
             packetType = -1;

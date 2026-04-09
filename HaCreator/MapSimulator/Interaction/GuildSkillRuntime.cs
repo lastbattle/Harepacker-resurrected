@@ -171,10 +171,11 @@ namespace HaCreator.MapSimulator.Interaction
                     CurrentEffectDescription = GetCurrentEffectDescription(skill),
                     NextEffectDescription = GetNextEffectDescription(skill),
                     ActivationCost = skill.GetGuildActivationCost(Math.Max(1, skill.CurrentLevel + 1)),
-                    RenewalCost = skill.GetGuildRenewalCost(Math.Max(1, skill.CurrentLevel)),
+                    RenewalCost = skill.CurrentLevel > 0 ? skill.GetGuildRenewalCost(skill.CurrentLevel) : 0,
                     DurationMinutes = skill.GetGuildDurationMinutes(Math.Max(1, skill.CurrentLevel)),
                     RemainingDurationMinutes = GetRemainingDurationMinutes(skill),
                     GuildPriceUnit = Math.Max(1, skill.GuildPriceUnit),
+                    GuildFundMeso = _guildFundMeso,
                     IconTexture = skill.IconTexture,
                     DisabledIconTexture = skill.IconDisabledTexture,
                     IsRecommended = _isInGuild && skill.SkillId == _recommendedSkillId,
@@ -411,7 +412,7 @@ namespace HaCreator.MapSimulator.Interaction
             if (skill.CurrentLevel > 0)
                 return skill.GetLevelDescription(skill.CurrentLevel);
 
-            return skill.GetLevelDescription(1);
+            return string.Empty;
         }
 
         private static string GetNextEffectDescription(SkillDisplayData skill)
@@ -420,7 +421,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return string.Empty;
 
             int nextLevel = skill.CurrentLevel <= 0
-                ? 2
+                ? 1
                 : skill.CurrentLevel + 1;
             if (nextLevel > skill.MaxLevel)
                 return string.Empty;
@@ -744,6 +745,7 @@ namespace HaCreator.MapSimulator.Interaction
         public int DurationMinutes { get; init; }
         public int RemainingDurationMinutes { get; init; }
         public int GuildPriceUnit { get; init; } = 1;
+        public int GuildFundMeso { get; init; }
         public Microsoft.Xna.Framework.Graphics.Texture2D IconTexture { get; init; }
         public Microsoft.Xna.Framework.Graphics.Texture2D DisabledIconTexture { get; init; }
         public bool IsRecommended { get; init; }

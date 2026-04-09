@@ -43,8 +43,16 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         internal static bool TryResolveChargeElementFromTemporaryStatPayload(ReadOnlySpan<byte> payload, out int chargeElement)
         {
+            return TryResolveChargeElementFromTemporaryStatPayload(payload, 0, out chargeElement);
+        }
+
+        internal static bool TryResolveChargeElementFromTemporaryStatPayload(
+            ReadOnlySpan<byte> payload,
+            int preferredSkillId,
+            out int chargeElement)
+        {
             chargeElement = 0;
-            return TryResolveChargeSkillIdFromTemporaryStatPayload(payload, out int chargeSkillId)
+            return TryResolveChargeSkillIdFromTemporaryStatPayload(payload, 0, preferredSkillId, out int chargeSkillId)
                 && TryGetChargeElement(chargeSkillId, out chargeElement);
         }
 
@@ -58,6 +66,15 @@ namespace HaCreator.MapSimulator.Character.Skills
             int startOffset,
             out int chargeSkillId)
         {
+            return TryResolveChargeSkillIdFromTemporaryStatPayload(payload, startOffset, 0, out chargeSkillId);
+        }
+
+        internal static bool TryResolveChargeSkillIdFromTemporaryStatPayload(
+            ReadOnlySpan<byte> payload,
+            int startOffset,
+            int preferredSkillId,
+            out int chargeSkillId)
+        {
             chargeSkillId = 0;
             if (payload.Length < sizeof(int)
                 || startOffset < 0
@@ -66,8 +83,14 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return false;
             }
 
+            int alignedStartOffset = startOffset;
+            if ((alignedStartOffset & (sizeof(int) - 1)) != 0)
+            {
+                alignedStartOffset += sizeof(int) - (alignedStartOffset & (sizeof(int) - 1));
+            }
+
             int matchedChargeSkillId = 0;
-            for (int offset = startOffset; offset <= payload.Length - sizeof(int); offset++)
+            for (int offset = alignedStartOffset; offset <= payload.Length - sizeof(int); offset += sizeof(int))
             {
                 int candidateSkillId = payload[offset]
                     | (payload[offset + 1] << 8)
@@ -80,6 +103,13 @@ namespace HaCreator.MapSimulator.Character.Skills
 
                 if (matchedChargeSkillId != 0 && matchedChargeSkillId != candidateSkillId)
                 {
+                    if (preferredSkillId > 0
+                        && (matchedChargeSkillId == preferredSkillId || candidateSkillId == preferredSkillId))
+                    {
+                        matchedChargeSkillId = preferredSkillId;
+                        continue;
+                    }
+
                     chargeSkillId = 0;
                     return false;
                 }

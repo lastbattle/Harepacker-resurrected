@@ -258,6 +258,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int Delay { get; set; } = 100;
         public Rectangle Bounds { get; set; }
         public bool Flip { get; set; }
+        public int Z { get; set; }
         public int AlphaStart { get; set; } = 255;
         public int AlphaEnd { get; set; } = 255;
     }
@@ -273,6 +274,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool Loop { get; set; } = false;
         public Point Origin { get; set; }           // Animation origin relative to caster
         public int ZOrder { get; set; } = 0;        // Draw order
+        public int? PositionCode { get; set; }      // Optional WZ `pos` anchor selection
 
         public void CalculateDuration()
         {
@@ -441,6 +443,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public bool UsesTamingMobMount { get; set; }
         public bool ReflectsIncomingDamage { get; set; }
         public bool RedirectsDamageToMp { get; set; }
+        public bool HasMagicStealMetadata { get; set; }
         public bool HasInvincibleMetadata { get; set; }
         public bool HasDispelMetadata { get; set; }
         public bool UsesEnergyChargeRuntime { get; set; }
@@ -474,10 +477,12 @@ namespace HaCreator.MapSimulator.Character.Skills
         public SkillAnimation SummonAttackAnimation { get; set; } // Summon attack sequence
         public SkillAnimation SummonHitAnimation { get; set; } // Summon hit reaction sequence
         public SkillAnimation SummonRemovalAnimation { get; set; } // Optional self-destruct / removal branch
+        public string ResolvedSummonAssetPath { get; set; }
         public List<SkillAnimation> SummonProjectileAnimations { get; set; } = new();
         public List<SkillAnimation> SummonTargetHitAnimations { get; set; } = new();
         public List<SummonImpactPresentation> SummonTargetHitPresentations { get; set; } = new();
         public Dictionary<string, SkillAnimation> SummonNamedAnimations { get; set; } = new(StringComparer.OrdinalIgnoreCase);
+        public Dictionary<string, SkillAnimation> SummonActionAnimations { get; set; } = new(StringComparer.OrdinalIgnoreCase);
         public string SummonAttackBranchName { get; set; }
         public SkillAnimation AvatarOverlayEffect { get; set; } // Avatar-bound looping overlay
         public SkillAnimation AvatarOverlaySecondaryEffect { get; set; } // Optional second overlay on the same avatar-owned plane
@@ -524,6 +529,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         public int ClientInfoType { get; set; }
         public bool AvailableInJumpingState { get; set; }
         public bool RequireHighestJump { get; set; }
+        public int[] RequiredSkillIds { get; set; } = Array.Empty<int>();
         public bool IsPassiveSkillData { get; set; }
         public int AffectedSkillId { get; set; }
         public int[] AffectedSkillIds { get; set; } = Array.Empty<int>();

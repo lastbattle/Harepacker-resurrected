@@ -113,9 +113,12 @@ namespace HaCreator.MapSimulator.UI
     public sealed class CollectionBookClientTextStyleSnapshot
     {
         public int Index { get; init; }
+        public int FontObjectStringPoolId { get; init; }
         public int FontStringPoolId { get; init; }
+        public int FontStyleStringPoolId { get; init; }
         public int FontHeight { get; init; }
         public int ArgbColor { get; init; }
+        public bool UsesStyleVariant { get; init; }
     }
 
     public sealed class CollectionBookOwnerContextSnapshot
@@ -154,7 +157,9 @@ namespace HaCreator.MapSimulator.UI
     internal static class CollectionBookSnapshotFactory
     {
         private const int EntriesPerPage = 6;
+        private const int BookFontObjectStringPoolId = 0x5AF;
         private const int BookFontFamilyStringPoolId = 0x1A25;
+        private const int BookFontStyleStringPoolId = 0x5B0;
         private const int BookTextStyleCount = 12;
         private static readonly int[] ClientBookTextStyleColorArgb =
         {
@@ -248,9 +253,12 @@ namespace HaCreator.MapSimulator.UI
                 styles[i] = new CollectionBookClientTextStyleSnapshot
                 {
                     Index = i,
+                    FontObjectStringPoolId = BookFontObjectStringPoolId,
                     FontStringPoolId = BookFontFamilyStringPoolId,
+                    FontStyleStringPoolId = (i & 1) == 1 ? BookFontStyleStringPoolId : 0,
                     FontHeight = 12,
-                    ArgbColor = ClientBookTextStyleColorArgb[i]
+                    ArgbColor = ClientBookTextStyleColorArgb[i],
+                    UsesStyleVariant = (i & 1) == 1
                 };
             }
 
@@ -263,16 +271,16 @@ namespace HaCreator.MapSimulator.UI
             return new CollectionBookPageSnapshot
             {
                 Title = "Overview",
-                Subtitle = "Live collection summary",
+                Subtitle = "Field ledger",
                 Footer = BuildCompactOverviewFooter(ownerContext),
                 Entries = new[]
                 {
                     CreateEntry("Character", BuildCompactCharacterHeadline(build), BuildCompactCharacterDetail(build), CollectionBookEntryTone.Accent),
                     CreateEntry("Target", BuildOwnerTargetValue(ownerContext), BuildCompactOwnerTargetDetail(ownerContext), ownerContext.IsRemoteTarget ? CollectionBookEntryTone.Accent : CollectionBookEntryTone.Success),
-                    CreateEntry("Monster Book", $"{monsterBook.OwnedCardTypes}/{monsterBook.TotalCardTypes}", $"{monsterBook.CompletedCardTypes} complete, {monsterBook.TotalOwnedCopies} copies", monsterBook.OwnedCardTypes > 0 ? CollectionBookEntryTone.Success : CollectionBookEntryTone.Muted),
-                    CreateEntry("Crafting", progression.SuccessfulCrafts.ToString(CultureInfo.InvariantCulture), $"Trait Craft {Math.Max(0, build?.TraitCraft ?? progression.TraitCraft)}", progression.SuccessfulCrafts > 0 ? CollectionBookEntryTone.Success : CollectionBookEntryTone.Muted),
-                    CreateEntry("Recipes", totalRecipes.ToString(CultureInfo.InvariantCulture), $"{progression.DiscoveredRecipeCount} discovered, {progression.UnlockedHiddenRecipeCount} hidden", totalRecipes > 0 ? CollectionBookEntryTone.Accent : CollectionBookEntryTone.Muted),
-                    CreateEntry("Equipment", CountCollectedEquipmentEntries(build).ToString(CultureInfo.InvariantCulture), "Displayed slot ledger entries currently populated on the active build", CountCollectedEquipmentEntries(build) > 0 ? CollectionBookEntryTone.Success : CollectionBookEntryTone.Muted),
+                    CreateEntry("Monster Book", $"{monsterBook.OwnedCardTypes}/{monsterBook.TotalCardTypes}", $"Comp {monsterBook.CompletedCardTypes}  Copies {monsterBook.TotalOwnedCopies}", monsterBook.OwnedCardTypes > 0 ? CollectionBookEntryTone.Success : CollectionBookEntryTone.Muted),
+                    CreateEntry("Crafting", progression.SuccessfulCrafts.ToString(CultureInfo.InvariantCulture), $"Craft {Math.Max(0, build?.TraitCraft ?? progression.TraitCraft)}", progression.SuccessfulCrafts > 0 ? CollectionBookEntryTone.Success : CollectionBookEntryTone.Muted),
+                    CreateEntry("Recipes", totalRecipes.ToString(CultureInfo.InvariantCulture), BuildCompactRecipeLedgerDetail(progression.DiscoveredRecipeCount, progression.UnlockedHiddenRecipeCount), totalRecipes > 0 ? CollectionBookEntryTone.Accent : CollectionBookEntryTone.Muted),
+                    CreateEntry("Equipment", CountCollectedEquipmentEntries(build).ToString(CultureInfo.InvariantCulture), "Filled slot ledger", CountCollectedEquipmentEntries(build) > 0 ? CollectionBookEntryTone.Success : CollectionBookEntryTone.Muted),
                     CreateEntry("Pocket", BuildPocketSummary(build), string.Empty, build?.IsPocketSlotAvailable == true ? CollectionBookEntryTone.Success : CollectionBookEntryTone.Warning),
                 }
             };
@@ -284,15 +292,15 @@ namespace HaCreator.MapSimulator.UI
             {
                 Title = "Crafting",
                 Subtitle = "Maker progression",
-                Footer = "Local maker store",
+                Footer = "Maker ledger",
                 Entries = new[]
                 {
                     CreateFamilyEntry(progression, ItemMakerRecipeFamily.Generic),
                     CreateFamilyEntry(progression, ItemMakerRecipeFamily.Gloves),
                     CreateFamilyEntry(progression, ItemMakerRecipeFamily.Shoes),
                     CreateFamilyEntry(progression, ItemMakerRecipeFamily.Toys),
-                    CreateEntry("Successful Crafts", progression.SuccessfulCrafts.ToString(CultureInfo.InvariantCulture), "Local maker history", progression.SuccessfulCrafts > 0 ? CollectionBookEntryTone.Success : CollectionBookEntryTone.Muted),
-                    CreateEntry("Recipe Ledger", $"{progression.DiscoveredRecipeCount} + {progression.UnlockedHiddenRecipeCount}", "Discovered plus hidden recipe pages", (progression.DiscoveredRecipeCount + progression.UnlockedHiddenRecipeCount) > 0 ? CollectionBookEntryTone.Accent : CollectionBookEntryTone.Muted),
+                    CreateEntry("Successful Crafts", progression.SuccessfulCrafts.ToString(CultureInfo.InvariantCulture), "Craft history", progression.SuccessfulCrafts > 0 ? CollectionBookEntryTone.Success : CollectionBookEntryTone.Muted),
+                    CreateEntry("Recipe Ledger", $"{progression.DiscoveredRecipeCount} + {progression.UnlockedHiddenRecipeCount}", BuildCompactRecipeLedgerDetail(progression.DiscoveredRecipeCount, progression.UnlockedHiddenRecipeCount), (progression.DiscoveredRecipeCount + progression.UnlockedHiddenRecipeCount) > 0 ? CollectionBookEntryTone.Accent : CollectionBookEntryTone.Muted),
                 }
             };
         }
@@ -303,7 +311,7 @@ namespace HaCreator.MapSimulator.UI
             return new CollectionBookPageSnapshot
             {
                 Title = "Traits",
-                Subtitle = "Personality progression",
+                Subtitle = "Trait ledger",
                 Footer = build.IsPocketSlotAvailable ? "Pocket unlocked" : "Charm 30 required",
                 Entries = new[]
                 {
@@ -328,8 +336,8 @@ namespace HaCreator.MapSimulator.UI
                 yield return new CollectionBookPageSnapshot
                 {
                     Title = pageIndex == 0 ? "Equipment" : $"Equipment {ToRoman(pageIndex + 1)}",
-                    Subtitle = "Displayed slot ledger",
-                    Footer = "Equip-window slot order",
+                    Subtitle = "Slot ledger",
+                    Footer = "Equip slot order",
                     Entries = chunk
                 };
             }
@@ -346,7 +354,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (slot == EquipSlot.Coat && displayedPart?.Slot == EquipSlot.Longcoat)
             {
-                detailParts.Add("Overall equipped");
+                detailParts.Add("Overall");
             }
             else if (slot == EquipSlot.Pocket && displayedPart == null)
             {
@@ -389,11 +397,11 @@ namespace HaCreator.MapSimulator.UI
                 yield return new CollectionBookPageSnapshot
                 {
                     Title = "Recipes",
-                    Subtitle = "Discovered recipe pages",
-                    Footer = "No local recipe pages",
+                    Subtitle = "Recipe ledger",
+                    Footer = "No recipe ledger",
                     Entries = new[]
                     {
-                        CreateEntry("Catalog", "Empty", "Discover or unlock recipes", CollectionBookEntryTone.Muted)
+                        CreateEntry("Catalog", "Empty", "Unlock recipes", CollectionBookEntryTone.Muted)
                     }
                 };
                 yield break;
@@ -404,8 +412,8 @@ namespace HaCreator.MapSimulator.UI
                 yield return new CollectionBookPageSnapshot
                 {
                     Title = pageIndex == 0 ? "Recipes" : $"Recipes {pageIndex + 1}",
-                    Subtitle = "Discovered outputs",
-                    Footer = "ItemName cache when present",
+                    Subtitle = "Recipe ledger",
+                    Footer = "Name cache",
                     Entries = chunk
                 };
             }
@@ -428,12 +436,17 @@ namespace HaCreator.MapSimulator.UI
         {
             if (entry == null)
             {
-                return "Output #0";
+                return "#0";
             }
 
             return string.IsNullOrWhiteSpace(entry.RecipeKey)
-                ? $"Output #{entry.OutputItemId}"
-                : $"{entry.RecipeKey}  Output #{entry.OutputItemId}";
+                ? $"#{entry.OutputItemId}"
+                : $"{entry.RecipeKey}  #{entry.OutputItemId}";
+        }
+
+        private static string BuildCompactRecipeLedgerDetail(int discoveredRecipeCount, int hiddenRecipeCount)
+        {
+            return $"Disc {Math.Max(0, discoveredRecipeCount)}  Hidden {Math.Max(0, hiddenRecipeCount)}";
         }
 
         private static CollectionBookEntrySnapshot CreateEntry(string label, string value, string detail, CollectionBookEntryTone tone)

@@ -330,7 +330,7 @@ namespace HaCreator.MapSimulator.UI
             Vector2 titlePosition = new Vector2(Position.X + 19, Position.Y + 5);
             string title = QuestAlarmOwnerStringPoolText.FormatTitle(snapshot.Entries.Count);
             sprite.DrawString(_font, title, titlePosition, Color.White, 0f, Vector2.Zero, HeaderScale, SpriteEffects.None, 0f);
-            DrawHeaderActions(sprite, snapshot);
+            DrawHeaderActions(sprite, snapshot, title);
 
             if (snapshot.HasAlertAnimation)
             {
@@ -770,7 +770,7 @@ namespace HaCreator.MapSimulator.UI
             DrawBorder(sprite, rowRect, borderColor);
         }
 
-        private void DrawHeaderActions(SpriteBatch sprite, QuestAlarmSnapshot snapshot)
+        private void DrawHeaderActions(SpriteBatch sprite, QuestAlarmSnapshot snapshot, string title)
         {
             if (_font == null || _isMinimized)
             {
@@ -780,7 +780,7 @@ namespace HaCreator.MapSimulator.UI
 
             string deleteAllLabel = "Delete all";
             Vector2 labelSize = _font.MeasureString(deleteAllLabel) * HeaderActionScale;
-            int x = ResolveHeaderActionRightAnchor((int)Math.Ceiling(labelSize.X));
+            int x = ResolveHeaderActionRightAnchor((int)Math.Ceiling(labelSize.X), title);
             int y = Position.Y + 7;
             _deleteAllBounds = new Rectangle(x - 2, y - 1, (int)Math.Ceiling(labelSize.X) + 4, (int)Math.Ceiling(labelSize.Y) + 2);
 
@@ -800,13 +800,13 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private int ResolveHeaderActionRightAnchor(int labelWidth)
+        private int ResolveHeaderActionRightAnchor(int labelWidth, string title)
         {
             int defaultX = Position.X + _maxTopTexture.Width - HeaderActionMargin - labelWidth;
             int titleLeft = Position.X + 19;
             int titleWidth = _font == null
                 ? 0
-                : (int)Math.Ceiling(_font.MeasureString("Quest Alarm").X * HeaderScale);
+                : (int)Math.Ceiling(_font.MeasureString(string.IsNullOrWhiteSpace(title) ? "Quest Alarm" : title).X * HeaderScale);
             int minimumX = titleLeft + titleWidth + HeaderActionSpacing;
 
             int rightBound = Position.X + _maxTopTexture.Width - HeaderActionMargin;

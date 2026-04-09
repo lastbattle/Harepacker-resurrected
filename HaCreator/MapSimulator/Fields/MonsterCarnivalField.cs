@@ -682,6 +682,9 @@ namespace HaCreator.MapSimulator.Fields
             enemyTeam.TotalCp = Math.Max(enemyTeam.CurrentCp, enemyTeamTotalCp);
 
             ShowStatus($"Entered Monster Carnival as {FormatTeam(localTeam)}.", Environment.TickCount);
+            RecordRecoveredClientOwnerAction(
+                $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"}::OnEnter refreshed the Carnival HUD state.",
+                Array.Empty<int>());
         }
 
         public void UpdateTeamCp(
@@ -703,6 +706,9 @@ namespace HaCreator.MapSimulator.Fields
             _team0.TotalCp = Math.Max(_team0.CurrentCp, team0TotalCp);
             _team1.CurrentCp = Math.Max(0, team1CurrentCp);
             _team1.TotalCp = Math.Max(_team1.CurrentCp, team1TotalCp);
+            RecordRecoveredClientOwnerAction(
+                $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"}::OnPersonalCP/OnTeamCP refreshed CP totals.",
+                Array.Empty<int>());
         }
 
         public void UpdatePersonalCp(int personalCp, int personalTotalCp)
@@ -825,11 +831,18 @@ namespace HaCreator.MapSimulator.Fields
             ApplySuccessfulRequest(entry, ownerTeamKnown ? ownerTeam : _localTeam, spendLocalCp, ownerTeamKnown);
             string successMessage = BuildRequestSuccessMessage(entry, characterName);
             ShowStatus(successMessage, tickCount);
+            RecordRecoveredClientOwnerAction(
+                $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"}::OnRequestResult accepted tab {(int)tab}, index {entryIndex}, and reset the local request timer state.",
+                Array.Empty<int>());
         }
 
         public void OnRequestFailure(int reasonCode, int tickCount)
         {
             ShowStatus(DescribeRequestFailure(reasonCode), tickCount);
+            MonsterCarnivalStringPoolMessage? definition = GetRequestFailureMessage(reasonCode);
+            RecordRecoveredClientOwnerAction(
+                $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"}::OnRequestResult rejected reason {reasonCode} and reset the local request timer state.",
+                definition.HasValue ? new[] { definition.Value.StringPoolId } : Array.Empty<int>());
         }
 
         public void OnShowGameResult(int resultCode, int tickCount)
@@ -861,6 +874,11 @@ namespace HaCreator.MapSimulator.Fields
             }
 
             ShowStatus(deathMessage, tickCount);
+            RecordRecoveredClientOwnerAction(
+                $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"}::OnProcessForDeath updated {FormatTeam(team)} death state.",
+                remainingRevives > 0
+                    ? new[] { 0x1019, GetTeamLabelMessage(team).StringPoolId }
+                    : new[] { 0x101A, GetTeamLabelMessage(team).StringPoolId });
         }
 
         public bool TryProcessMobDefeat(int spawnPointIndex, MonsterCarnivalTeam rewardedTeam, int tickCount, out string message)
@@ -950,6 +968,9 @@ namespace HaCreator.MapSimulator.Fields
 
             RegisterKnownCharacterTeam(characterName, team);
             ShowStatus(BuildMemberOutMessage(messageType, team, characterName), tickCount);
+            RecordRecoveredClientOwnerAction(
+                $"{_definition?.ClientOwnerLabel ?? "CField_MonsterCarnival"}::OnShowMemberOutMsg updated {FormatTeam(team)} member state.",
+                new[] { messageType == 6 ? 0x102A : 0x1029, GetTeamLabelMessage(team).StringPoolId });
         }
 
         public bool TryApplyPacket(MonsterCarnivalPacketType packetType, byte[] payload, int currentTimeMs, out string errorMessage)
@@ -1337,10 +1358,9 @@ namespace HaCreator.MapSimulator.Fields
         private bool TryValidateClientOwnedPacket(MonsterCarnivalPacketType packetType, out string errorMessage)
         {
             if (_definition?.IsReviveMode == true
-                && packetType != MonsterCarnivalPacketType.Enter
-                && packetType != MonsterCarnivalPacketType.GameResult)
+                && !IsRecoveredClientOwnedPacket(packetType))
             {
-                errorMessage = $"{_definition.ClientOwnerLabel} only owns packet types {(int)MonsterCarnivalPacketType.Enter} and {(int)MonsterCarnivalPacketType.GameResult} in the client; packet {(int)packetType} stays on the broader Carnival seam.";
+                errorMessage = $"{_definition.ClientOwnerLabel} only owns the recovered 346-353 family in the client. This wrapper only exposes enter, cp, request result/failure, death, and result; packet {(int)packetType} stays on the broader Carnival seam.";
                 return false;
             }
 
@@ -1351,10 +1371,9 @@ namespace HaCreator.MapSimulator.Fields
         private bool TryValidateClientOwnedRawPacket(int packetType, out string errorMessage)
         {
             if (_definition?.IsReviveMode == true
-                && packetType != (int)MonsterCarnivalRawPacketType.Enter
-                && packetType != (int)MonsterCarnivalRawPacketType.GameResult)
+                && !IsRecoveredClientOwnedRawPacket(packetType))
             {
-                errorMessage = $"{_definition.ClientOwnerLabel} only owns raw packet types {(int)MonsterCarnivalRawPacketType.Enter} and {(int)MonsterCarnivalRawPacketType.GameResult} in the client; packet {packetType} stays on the broader Carnival seam.";
+                errorMessage = $"{_definition.ClientOwnerLabel} only owns raw packet types 346-353 in the client; packet {packetType} stays on the broader Carnival seam.";
                 return false;
             }
 
@@ -1371,7 +1390,7 @@ namespace HaCreator.MapSimulator.Fields
 
             if (_definition.IsReviveMode)
             {
-                return $"{_definition.ClientOwnerLabel} only handles /mcarnival enter and result in its recovered client-owned packet seam.";
+                return $"{_definition.ClientOwnerLabel} owns the recovered 346-353 packet family; use /mcarnival raw or the explicit enter/cp/requestfail/death/memberout/result seams to drive it.";
             }
 
             if (_definition.IsWaitingRoom || _definition.IsSeason2Mode)
@@ -1396,7 +1415,7 @@ namespace HaCreator.MapSimulator.Fields
             {
                 FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM => $"{mapLabel} | Init reads monsterCarnival/mapType={_definition.MapType}",
                 FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => $"{mapLabel} | Season 2 Init reads monsterCarnival/mapType={_definition.MapType}",
-                FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => $"{mapLabel} | revive owner packets 346/353 | result ids 0x1020-0x1023",
+                FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => $"{mapLabel} | revive owner packets 346-353 | failure ids 0x101B-0x101F | result ids 0x1020-0x1023",
                 _ => $"{mapLabel} | shared Carnival packet family 346-353"
             };
         }
@@ -1412,7 +1431,7 @@ namespace HaCreator.MapSimulator.Fields
             {
                 FieldType.FIELDTYPE_MONSTERCARNIVALWAITINGROOM => $"{_definition.ClientOwnerLabel} Init->monsterCarnival/mapType={_definition.MapType} | last={BuildClientOwnerActionSummary()} | map={FormatMapIdentity(_definition)}",
                 FieldType.FIELDTYPE_MONSTERCARNIVAL_S2 => $"{_definition.ClientOwnerLabel} Init->monsterCarnival/mapType={_definition.MapType} | last={BuildClientOwnerActionSummary()} | map={FormatMapIdentity(_definition)}",
-                FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => $"{_definition.ClientOwnerLabel} packets=346/353 | result StringPool=0x1020/0x1021/0x1022/0x1023 | last={BuildClientOwnerActionSummary()} | map={FormatMapIdentity(_definition)}",
+                FieldType.FIELDTYPE_MONSTERCARNIVALREVIVE => $"{_definition.ClientOwnerLabel} packets=346-353 | failure StringPool=0x101B/0x101C/0x101D/0x101E/0x101F | result StringPool=0x1020/0x1021/0x1022/0x1023 | last={BuildClientOwnerActionSummary()} | map={FormatMapIdentity(_definition)}",
                 _ => $"{_definition.ClientOwnerLabel} packets=346-353 | map={FormatMapIdentity(_definition)}"
             };
         }
@@ -1877,6 +1896,16 @@ namespace HaCreator.MapSimulator.Fields
                 .ToArray() ?? Array.Empty<int>();
         }
 
+        private void RecordRecoveredClientOwnerAction(string action, IReadOnlyList<int> stringPoolIds)
+        {
+            if (_definition?.IsReviveMode != true)
+            {
+                return;
+            }
+
+            RecordClientOwnerAction(action, stringPoolIds);
+        }
+
         private string BuildClientOwnerActionSummary()
         {
             if (string.IsNullOrWhiteSpace(_lastClientOwnerAction))
@@ -1989,6 +2018,26 @@ namespace HaCreator.MapSimulator.Fields
         {
             MonsterCarnivalStringPoolMessage teamLabel = GetTeamLabelMessage(team);
             return MapleStoryStringPool.GetOrFallback(teamLabel.StringPoolId, teamLabel.FallbackFormat);
+        }
+
+        private static bool IsRecoveredClientOwnedPacket(MonsterCarnivalPacketType packetType)
+        {
+            return packetType switch
+            {
+                MonsterCarnivalPacketType.Enter => true,
+                MonsterCarnivalPacketType.RequestResult => true,
+                MonsterCarnivalPacketType.RequestFailure => true,
+                MonsterCarnivalPacketType.GameResult => true,
+                MonsterCarnivalPacketType.ProcessForDeath => true,
+                MonsterCarnivalPacketType.CpUpdate => true,
+                _ => false
+            };
+        }
+
+        private static bool IsRecoveredClientOwnedRawPacket(int packetType)
+        {
+            return packetType >= (int)MonsterCarnivalRawPacketType.Enter
+                && packetType <= (int)MonsterCarnivalRawPacketType.GameResult;
         }
 
         private static string FormatStringPoolMessage(MonsterCarnivalStringPoolMessage definition, string fallbackText = null, params object[] args)

@@ -23,7 +23,22 @@ namespace HaCreator.MapSimulator
         private const byte PacketOwnedFuncKeyMacroType = 8;
         private const int PacketOwnedPetConsumeMpAttemptThrottleMs = 200;
         private static readonly int[] PacketOwnedFuncKeyLegacyLookupScanCodes = { 112, 115, 121, 123, 125 };
-        private static readonly IReadOnlyDictionary<Keys, PacketOwnedKeyActionSlot> PacketOwnedSupportedSkillBarSlotsByKey = BuildPacketOwnedSupportedSkillBarSlotsByKey();
+        private static readonly InputAction[] PacketOwnedProtectedBindings =
+        {
+            InputAction.MoveLeft,
+            InputAction.MoveRight,
+            InputAction.MoveUp,
+            InputAction.MoveDown,
+            InputAction.Jump,
+            InputAction.Attack,
+            InputAction.Pickup,
+            InputAction.Interact,
+            InputAction.ToggleChat,
+            InputAction.ToggleQuickSlot,
+            InputAction.Escape
+        };
+        private static readonly PacketOwnedKeyActionSlot[] PacketOwnedBindableHotkeySlots = BuildPacketOwnedBindableHotkeySlots();
+        private static readonly IReadOnlyDictionary<Keys, int> PacketOwnedPreferredBindableHotkeySlotIndicesByKey = BuildPacketOwnedPreferredBindableHotkeySlotIndicesByKey();
 
         // Client menu ids follow the v95 MENU_* enum used by CDraggableMenu/CFuncKeyMappedMan.
         private static readonly (int ClientFunctionId, InputAction Action)[] PacketOwnedKnownFunctionBindings =
@@ -41,6 +56,7 @@ namespace HaCreator.MapSimulator
         private readonly PacketOwnedFuncKeyConfigStore _packetOwnedFuncKeyConfigStore = new();
         private PacketOwnedFuncKeyMappedEntry[] _packetOwnedFuncKeyMapped = CreateEmptyPacketOwnedFuncKeyMap();
         private PacketOwnedFuncKeyMappedEntry[] _packetOwnedFuncKeyMappedOld = CreateEmptyPacketOwnedFuncKeyMap();
+        private int[] _packetOwnedBindableHotkeyAssignedScanCodes = CreatePacketOwnedBindableHotkeyAssignmentMap();
         private int _packetOwnedPetConsumeItemId;
         private InventoryType _packetOwnedPetConsumeItemInventoryType = InventoryType.NONE;
         private int _packetOwnedPetConsumeMpItemId;
@@ -78,6 +94,13 @@ namespace HaCreator.MapSimulator
         private static PacketOwnedFuncKeyMappedEntry[] CreateEmptyPacketOwnedFuncKeyMap()
         {
             return new PacketOwnedFuncKeyMappedEntry[PacketOwnedFuncKeyEntryCount];
+        }
+
+        private static int[] CreatePacketOwnedBindableHotkeyAssignmentMap()
+        {
+            int[] assignments = new int[PacketOwnedBindableHotkeySlots.Length];
+            Array.Fill(assignments, -1);
+            return assignments;
         }
 
         private void ApplyPersistedPacketOwnedFuncKeyConfig()
@@ -146,11 +169,12 @@ namespace HaCreator.MapSimulator
         {
             ApplyPersistedPacketOwnedFuncKeyConfig();
             SyncPacketOwnedUtilityWindowBindings(input);
-            PersistPacketOwnedFuncKeyConfig(input);
+            PersistPacketOwnedFuncKeyConfig(input, persistSimulatorBindings: true);
         }
 
-        private void PersistPacketOwnedFuncKeyConfig(PlayerInput input = null)
+        private void PersistPacketOwnedFuncKeyConfig(PlayerInput input = null, bool persistSimulatorBindings = false)
         {
+            PacketOwnedFuncKeyConfigStore.Snapshot existingSnapshot = _packetOwnedFuncKeyConfigStore.Load();
             var snapshot = new PacketOwnedFuncKeyConfigStore.Snapshot
             {
                 PetConsumeItemId = Math.Max(0, _packetOwnedPetConsumeItemId),
@@ -158,7 +182,11 @@ namespace HaCreator.MapSimulator
                     ? string.Empty
                     : _packetOwnedPetConsumeItemInventoryType.ToString(),
                 PetConsumeMpItemId = Math.Max(0, _packetOwnedPetConsumeMpItemId),
-                SimulatorBindings = PacketOwnedFuncKeyConfigStore.CreateBindingRecords(input ?? _playerManager?.Input)
+                SimulatorBindings = persistSimulatorBindings
+                    ? PacketOwnedFuncKeyConfigStore.CreateBindingRecords(input ?? _playerManager?.Input)
+                    : existingSnapshot?.SimulatorBindings != null
+                        ? new Dictionary<string, PacketOwnedFuncKeyConfigStore.BindingRecord>(existingSnapshot.SimulatorBindings, StringComparer.Ordinal)
+                        : new Dictionary<string, PacketOwnedFuncKeyConfigStore.BindingRecord>(StringComparer.Ordinal)
             };
 
             for (int i = 0; i < _packetOwnedFuncKeyMapped.Length; i++)
@@ -470,22 +498,13 @@ namespace HaCreator.MapSimulator
                 return 0;
             }
 
-            ClearPacketOwnedSupportedSkillBarMappings();
+            ClearPacketOwnedBindableHotkeyMappings(input);
 
             int translated = 0;
+            int nextUnclaimedBindableSlotIndex = 0;
             foreach ((int scanCode, PacketOwnedFuncKeyMappedEntry entry) in EnumeratePacketOwnedCurrentMappedEntries())
             {
                 if (!IsPacketOwnedCastEntryType(entry.Type) || entry.Id <= 0)
-                {
-                    continue;
-                }
-
-                if (!TryResolvePacketOwnedSupportedSkillBarSlot(scanCode, out PacketOwnedKeyActionSlot slot))
-                {
-                    continue;
-                }
-
-                if (!TryApplyPacketOwnedCastMappingToSkillSlot(slot.SlotIndex, entry))
                 {
                     continue;
                 }
@@ -496,16 +515,18 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                KeyBinding existingBinding = input.GetBinding(slot.Action);
-                if (existingBinding == null || existingBinding.PrimaryKey != key)
+                if (!TryResolvePacketOwnedBindableHotkeySlot(input, key, ref nextUnclaimedBindableSlotIndex, out PacketOwnedKeyActionSlot slot))
                 {
-                    input.SetBinding(
-                        slot.Action,
-                        key,
-                        existingBinding?.SecondaryKey ?? Keys.None,
-                        existingBinding?.GamepadButton ?? (Buttons)0);
+                    continue;
                 }
 
+                if (!TryApplyPacketOwnedCastMappingToSkillSlot(slot.SlotIndex, entry))
+                {
+                    continue;
+                }
+
+                BindPacketOwnedHotkeyAction(input, slot.Action, key);
+                RecordPacketOwnedBindableHotkeyAssignment(slot, scanCode);
                 translated++;
             }
 
@@ -557,32 +578,6 @@ namespace HaCreator.MapSimulator
                 || type == PacketOwnedFuncKeyItemTypeAlt
                 || type == PacketOwnedFuncKeyItemTypeCash
                 || type == PacketOwnedFuncKeyMacroType;
-        }
-
-        private bool TryResolvePacketOwnedSupportedSkillBarSlot(int scanCode, out PacketOwnedKeyActionSlot slot)
-        {
-            slot = default;
-
-            Keys key = ResolvePacketOwnedScanCodeKey(scanCode);
-            if (key == Keys.None)
-            {
-                return false;
-            }
-
-            return PacketOwnedSupportedSkillBarSlotsByKey.TryGetValue(key, out slot);
-        }
-
-        private void ClearPacketOwnedSupportedSkillBarMappings()
-        {
-            if (_playerManager?.Skills == null)
-            {
-                return;
-            }
-
-            foreach (PacketOwnedKeyActionSlot slot in PacketOwnedSupportedSkillBarSlotsByKey.Values)
-            {
-                _playerManager.Skills.ClearHotkey(slot.SlotIndex);
-            }
         }
 
         private bool TryApplyPacketOwnedCastMappingToSkillSlot(int slotIndex, PacketOwnedFuncKeyMappedEntry entry)
@@ -668,7 +663,7 @@ namespace HaCreator.MapSimulator
             {
                 if (!IsPacketOwnedCastEntryType(entry.Type)
                     || entry.Id <= 0
-                    || TryResolvePacketOwnedSupportedSkillBarSlot(scanCode, out _))
+                    || IsPacketOwnedCastEntryHandledByLiveHotkeyBinding(scanCode))
                 {
                     continue;
                 }
@@ -726,24 +721,156 @@ namespace HaCreator.MapSimulator
             return 0x50000000 | (scanCode & 0xFFFF);
         }
 
-        private static IReadOnlyDictionary<Keys, PacketOwnedKeyActionSlot> BuildPacketOwnedSupportedSkillBarSlotsByKey()
+        private bool TryResolvePacketOwnedBindableHotkeySlot(
+            PlayerInput input,
+            Keys key,
+            ref int nextUnclaimedBindableSlotIndex,
+            out PacketOwnedKeyActionSlot slot)
         {
-            var slots = new Dictionary<Keys, PacketOwnedKeyActionSlot>();
+            slot = default;
+            if (input == null
+                || key == Keys.None
+                || IsPacketOwnedHotkeyKeyProtected(input, key))
+            {
+                return false;
+            }
+
+            if (PacketOwnedPreferredBindableHotkeySlotIndicesByKey.TryGetValue(key, out int preferredSlotIndex)
+                && preferredSlotIndex >= 0
+                && preferredSlotIndex < _packetOwnedBindableHotkeyAssignedScanCodes.Length
+                && _packetOwnedBindableHotkeyAssignedScanCodes[preferredSlotIndex] < 0)
+            {
+                slot = PacketOwnedBindableHotkeySlots[preferredSlotIndex];
+                return true;
+            }
+
+            while (nextUnclaimedBindableSlotIndex < _packetOwnedBindableHotkeyAssignedScanCodes.Length
+                && _packetOwnedBindableHotkeyAssignedScanCodes[nextUnclaimedBindableSlotIndex] >= 0)
+            {
+                nextUnclaimedBindableSlotIndex++;
+            }
+
+            if (nextUnclaimedBindableSlotIndex < 0
+                || nextUnclaimedBindableSlotIndex >= _packetOwnedBindableHotkeyAssignedScanCodes.Length)
+            {
+                return false;
+            }
+
+            slot = PacketOwnedBindableHotkeySlots[nextUnclaimedBindableSlotIndex];
+            return true;
+        }
+
+        private void ClearPacketOwnedBindableHotkeyMappings(PlayerInput input)
+        {
+            if (_playerManager?.Skills == null)
+            {
+                return;
+            }
+
+            Array.Fill(_packetOwnedBindableHotkeyAssignedScanCodes, -1);
+            for (int i = 0; i < PacketOwnedBindableHotkeySlots.Length; i++)
+            {
+                PacketOwnedKeyActionSlot slot = PacketOwnedBindableHotkeySlots[i];
+                _playerManager.Skills.ClearHotkey(slot.SlotIndex);
+
+                if (input != null)
+                {
+                    KeyBinding existingBinding = input.GetBinding(slot.Action);
+                    input.SetBinding(
+                        slot.Action,
+                        Keys.None,
+                        Keys.None,
+                        existingBinding?.GamepadButton ?? (Buttons)0);
+                }
+            }
+        }
+
+        private void BindPacketOwnedHotkeyAction(PlayerInput input, InputAction action, Keys key)
+        {
+            if (input == null)
+            {
+                return;
+            }
+
+            KeyBinding existingBinding = input.GetBinding(action);
+            if (existingBinding != null
+                && existingBinding.PrimaryKey == key
+                && existingBinding.SecondaryKey == Keys.None)
+            {
+                return;
+            }
+
+            input.SetBinding(
+                action,
+                key,
+                Keys.None,
+                existingBinding?.GamepadButton ?? (Buttons)0);
+        }
+
+        private void RecordPacketOwnedBindableHotkeyAssignment(PacketOwnedKeyActionSlot slot, int scanCode)
+        {
+            for (int i = 0; i < PacketOwnedBindableHotkeySlots.Length; i++)
+            {
+                if (PacketOwnedBindableHotkeySlots[i].Action == slot.Action
+                    && PacketOwnedBindableHotkeySlots[i].SlotIndex == slot.SlotIndex)
+                {
+                    _packetOwnedBindableHotkeyAssignedScanCodes[i] = scanCode;
+                    return;
+                }
+            }
+        }
+
+        private bool IsPacketOwnedCastEntryHandledByLiveHotkeyBinding(int scanCode)
+        {
+            for (int i = 0; i < _packetOwnedBindableHotkeyAssignedScanCodes.Length; i++)
+            {
+                if (_packetOwnedBindableHotkeyAssignedScanCodes[i] == scanCode)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static PacketOwnedKeyActionSlot[] BuildPacketOwnedBindableHotkeySlots()
+        {
+            var slots = new List<PacketOwnedKeyActionSlot>(SkillManager.PRIMARY_SLOT_COUNT + SkillManager.FUNCTION_SLOT_COUNT);
+            for (int i = 0; i < SkillManager.PRIMARY_SLOT_COUNT; i++)
+            {
+                slots.Add(new PacketOwnedKeyActionSlot(InputAction.Skill1 + i, i));
+            }
+
+            for (int i = 0; i < SkillManager.FUNCTION_SLOT_COUNT; i++)
+            {
+                slots.Add(new PacketOwnedKeyActionSlot(
+                    InputAction.FunctionSlot1 + i,
+                    SkillManager.FUNCTION_SLOT_OFFSET + i));
+            }
+
+            return slots.ToArray();
+        }
+
+        private static IReadOnlyDictionary<Keys, int> BuildPacketOwnedPreferredBindableHotkeySlotIndicesByKey()
+        {
+            var slots = new Dictionary<Keys, int>();
+            int nextSlotIndex = 0;
             foreach ((InputAction action, Keys primary, _, _) in PlayerInput.GetDefaultBindings())
             {
                 if (primary == Keys.None
-                    || !TryResolvePacketOwnedSupportedSkillBarSlotIndex(action, out int slotIndex))
+                    || !TryResolvePacketOwnedBindableHotkeySlotIndex(action, out _)
+                    || nextSlotIndex >= PacketOwnedBindableHotkeySlots.Length)
                 {
                     continue;
                 }
 
-                slots[primary] = new PacketOwnedKeyActionSlot(action, slotIndex);
+                slots[primary] = nextSlotIndex++;
             }
 
             return slots;
         }
 
-        private static bool TryResolvePacketOwnedSupportedSkillBarSlotIndex(InputAction action, out int slotIndex)
+        private static bool TryResolvePacketOwnedBindableHotkeySlotIndex(InputAction action, out int slotIndex)
         {
             if (action >= InputAction.Skill1 && action <= InputAction.Skill8)
             {
@@ -758,6 +885,44 @@ namespace HaCreator.MapSimulator
             }
 
             slotIndex = -1;
+            return false;
+        }
+
+        private static bool IsPacketOwnedProtectedBindingAction(InputAction action)
+        {
+            for (int i = 0; i < PacketOwnedProtectedBindings.Length; i++)
+            {
+                if (PacketOwnedProtectedBindings[i] == action)
+                {
+                    return true;
+                }
+            }
+
+            return false;
+        }
+
+        private static bool IsPacketOwnedHotkeyKeyProtected(PlayerInput input, Keys key)
+        {
+            if (input == null || key == Keys.None)
+            {
+                return false;
+            }
+
+            foreach ((InputAction action, _, _, _) in PlayerInput.GetDefaultBindings())
+            {
+                if (!IsPacketOwnedProtectedBindingAction(action))
+                {
+                    continue;
+                }
+
+                KeyBinding binding = input.GetBinding(action);
+                if (binding != null
+                    && (binding.PrimaryKey == key || binding.SecondaryKey == key))
+                {
+                    return true;
+                }
+            }
+
             return false;
         }
 

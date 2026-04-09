@@ -60,6 +60,8 @@ namespace HaCreator.MapSimulator.Character.Skills
             "skill6"
         };
 
+        private const int ClientSummonedFrameDelayFallbackMs = 120;
+
         private static readonly string[] PersistentAvatarEffectBranches =
         {
             "special",
@@ -104,6 +106,8 @@ namespace HaCreator.MapSimulator.Character.Skills
         private readonly Dictionary<string, MeleeAfterImageCatalog> _characterChargeAfterImageCache = new(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> _missingCharacterAfterImageKeys = new(StringComparer.OrdinalIgnoreCase);
         private readonly HashSet<string> _missingCharacterChargeAfterImageKeys = new(StringComparer.OrdinalIgnoreCase);
+        private readonly Dictionary<int, SkillAnimation> _itemBulletAnimationCache = new();
+        private readonly HashSet<int> _itemsWithoutBulletAnimation = new();
         private WzImage _skillSoundImage;
         private WzImage _skillStringImage;
 
@@ -130,6 +134,34 @@ namespace HaCreator.MapSimulator.Character.Skills
                 _skillCache[skillId] = skill;
             }
             return skill;
+        }
+
+        public SkillAnimation LoadItemBulletAnimation(int itemId)
+        {
+            if (itemId <= 0)
+            {
+                return null;
+            }
+
+            if (_itemBulletAnimationCache.TryGetValue(itemId, out SkillAnimation cached))
+            {
+                return cached;
+            }
+
+            if (_itemsWithoutBulletAnimation.Contains(itemId))
+            {
+                return null;
+            }
+
+            SkillAnimation animation = LoadItemBulletAnimationInternal(itemId);
+            if (animation?.Frames?.Count > 0)
+            {
+                _itemBulletAnimationCache[itemId] = animation;
+                return animation;
+            }
+
+            _itemsWithoutBulletAnimation.Add(itemId);
+            return null;
         }
 
         public string EnsureCastSoundRegistered(SkillData skill, SoundManager soundManager)
@@ -329,11 +361,13 @@ namespace HaCreator.MapSimulator.Character.Skills
                 skill.DotType = GetString(infoNode, "dotType");
                 skill.IsMagicDamageSkill = GetInt(infoNode, "magicDamage") == 1;
                 skill.RequireHighestJump = GetInt(infoNode, "requireHighestJump") == 1;
+                skill.RequiredSkillIds = ResolveRequiredSkillIds(skillNode, infoNode);
                 skill.FixedState = GetInt(infoNode, "fixedState") == 1;
                 skill.CanNotMoveInState = GetInt(infoNode, "canNotMoveInState") == 1;
                 skill.OnlyNormalAttackInState = GetInt(infoNode, "onlyNormalAttack") == 1;
                 skill.SpecialNormalAttackInState = GetInt(infoNode, "specialNormalAttack") == 1;
                 skill.RedirectsDamageToMp = GetInt(infoNode, "switchDamtoMP") == 1;
+                skill.HasMagicStealMetadata = GetInt(infoNode, "magicSteal") == 1;
                 skill.HasInvincibleMetadata = GetInt(infoNode, "invincible") == 1;
                 skill.HasDispelMetadata = GetInt(infoNode, "dispell") == 1;
                 skill.UsesEnergyChargeRuntime = GetInt(infoNode, "energyCharge") == 1;
@@ -794,7 +828,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             LoadShadowPartnerActionAnimations(skill, skillNode);
             LoadAfterImages(skill, skillNode);
 
-            var summonNode = skillNode["summon"];
+            var summonNode = ResolveLinkedProperty(skillNode["summon"]);
             if (summonNode != null)
             {
                 LoadSummonAnimations(skill, summonNode);
@@ -1898,7 +1932,19 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private SkillAnimation LoadSkillAnimation(WzImageProperty node, string name)
         {
+            return LoadSkillAnimation(node, name, LoadSkillFrame);
+        }
+
+        private SkillAnimation LoadSkillAnimation(
+            WzImageProperty node,
+            string name,
+            Func<WzImageProperty, SkillFrame> frameLoader)
+        {
             var animation = new SkillAnimation { Name = name };
+            if (node == null)
+                return animation;
+
+            frameLoader ??= LoadSkillFrame;
 
             // Try numbered frames (0, 1, 2, ...)
             int frameIndex = 0;
@@ -1908,7 +1954,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 if (frameNode == null)
                     break;
 
-                var frame = LoadSkillFrame(frameNode);
+                var frame = frameLoader(frameNode);
                 if (frame != null)
                 {
                     animation.Frames.Add(frame);
@@ -1919,7 +1965,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             // If no numbered frames, check for direct canvas
             if (animation.Frames.Count == 0 && node is WzCanvasProperty canvas)
             {
-                var frame = LoadSkillFrame(node);
+                var frame = frameLoader(node);
                 if (frame != null)
                 {
                     animation.Frames.Add(frame);
@@ -1933,7 +1979,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 {
                     if (child.Name.StartsWith("effect") || child.Name.All(char.IsDigit))
                     {
-                        var subAnim = LoadSkillAnimation(child, child.Name);
+                        var subAnim = LoadSkillAnimation(child, child.Name, frameLoader);
                         animation.Frames.AddRange(subAnim.Frames);
                     }
                 }
@@ -1951,6 +1997,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             // Get z-order
             animation.ZOrder = GetInt(node, "z");
+            animation.PositionCode = node["pos"] != null ? GetInt(node, "pos") : null;
 
             return animation;
         }
@@ -2042,6 +2089,8 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private void LoadSummonAnimations(SkillData skill, WzImageProperty summonNode)
         {
+            skill.ResolvedSummonAssetPath = summonNode.FullPath;
+
             var branchNames = summonNode.WzProperties
                 .Select(child => child.Name)
                 .ToArray();
@@ -2050,7 +2099,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             skill.SummonMovementStyle = movementProfile.Style;
             skill.SummonSpawnDistanceX = movementProfile.SpawnDistanceX;
 
-            var directAnimation = LoadSkillAnimation(summonNode, "summon");
+            SkillAnimation directAnimation = GetOrLoadSummonActionAnimation(skill, summonNode, "summon");
 
             string spawnBranchName = SelectPreferredSummonSpawnBranch(branchNames);
             if (spawnBranchName != null)
@@ -2058,7 +2107,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 var spawnBranch = summonNode[spawnBranchName];
                 if (spawnBranch != null)
                 {
-                    var spawnAnimation = LoadSkillAnimation(spawnBranch, spawnBranchName);
+                    SkillAnimation spawnAnimation = GetOrLoadSummonActionAnimation(skill, spawnBranch, spawnBranchName);
                     if (spawnAnimation.Frames.Count > 0)
                     {
                         skill.SummonSpawnAnimation = spawnAnimation;
@@ -2092,7 +2141,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return;
             }
 
-            var summonAnimation = LoadSkillAnimation(preferredBranch, "summon");
+            SkillAnimation summonAnimation = GetOrLoadSummonActionAnimation(skill, preferredBranch, preferredBranchName, "summon");
             if (summonAnimation.Frames.Count == 0)
             {
                 if (directAnimation.Frames.Count > 0)
@@ -2127,7 +2176,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             WzImageProperty prepareBranch = summonNode["prepare"];
             if (prepareBranch != null)
             {
-                SkillAnimation prepareAnimation = LoadSkillAnimation(prepareBranch, "prepare");
+                SkillAnimation prepareAnimation = GetOrLoadSummonActionAnimation(skill, prepareBranch, "prepare");
                 if (prepareAnimation.Frames.Count > 0)
                 {
                     skill.SummonAttackPrepareAnimation = prepareAnimation;
@@ -2166,7 +2215,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
             skill.SummonAttackBranchName = attackBranchName;
 
-            var attackAnimation = LoadSkillAnimation(attackBranch, attackBranchName);
+            SkillAnimation attackAnimation = GetOrLoadSummonActionAnimation(skill, attackBranch, attackBranchName);
             if (attackAnimation.Frames.Count > 0)
             {
                 skill.SummonAttackAnimation = attackAnimation;
@@ -2174,7 +2223,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
               if (removalBranch != null)
               {
-                  SkillAnimation removalAnimation = LoadSkillAnimation(removalBranch, removalBranchName);
+                  SkillAnimation removalAnimation = GetOrLoadSummonActionAnimation(skill, removalBranch, removalBranchName);
                   if (removalAnimation.Frames.Count > 0)
                   {
                       skill.SummonRemovalAnimation = removalAnimation;
@@ -2204,7 +2253,7 @@ namespace HaCreator.MapSimulator.Character.Skills
               AppendSummonImpactPresentations(
                   skill.SummonTargetHitPresentations,
                   LoadSummonHitTargetAnimations(hitNode, "hit"));
-              SkillAnimation hitAnimation = LoadSummonHitAnimation(hitNode);
+              SkillAnimation hitAnimation = LoadSummonHitAnimation(skill, hitNode);
               if (hitAnimation?.Frames.Count > 0)
               {
                   skill.SummonHitAnimation = hitAnimation;
@@ -2235,12 +2284,46 @@ namespace HaCreator.MapSimulator.Character.Skills
                     continue;
                 }
 
-                SkillAnimation animation = LoadSkillAnimation(summonNode[branchName], branchName);
+                SkillAnimation animation = GetOrLoadSummonActionAnimation(skill, summonNode[branchName], branchName);
                 if (animation.Frames.Count > 0)
                 {
                     skill.SummonNamedAnimations[branchName] = animation;
                 }
             }
+        }
+
+        private SkillAnimation GetOrLoadSummonActionAnimation(
+            SkillData skill,
+            WzImageProperty node,
+            string actionKey,
+            string animationName = null)
+        {
+            string normalizedKey = string.IsNullOrWhiteSpace(actionKey) ? animationName : actionKey;
+            if (skill?.SummonActionAnimations != null
+                && !string.IsNullOrWhiteSpace(normalizedKey)
+                && skill.SummonActionAnimations.TryGetValue(normalizedKey, out SkillAnimation cachedAnimation))
+            {
+                return cachedAnimation;
+            }
+
+            SkillAnimation animation = LoadSummonActionAnimation(node, animationName ?? normalizedKey ?? "summon");
+            if (skill?.SummonActionAnimations != null && !string.IsNullOrWhiteSpace(normalizedKey))
+            {
+                skill.SummonActionAnimations[normalizedKey] = animation;
+            }
+
+            return animation;
+        }
+
+        private SkillAnimation LoadSummonActionAnimation(WzImageProperty node, string name)
+        {
+            SkillAnimation animation = LoadSkillAnimation(node, name, LoadSummonActionFrame);
+            if (animation.Frames.Count > 0 && ShouldAppendReversedSummonFrames(node))
+            {
+                AppendReversedSummonFrames(animation);
+            }
+
+            return animation;
         }
 
         private static void PopulateSummonAttackMetadata(SkillData skill, WzImageProperty attackBranch)
@@ -2338,7 +2421,7 @@ namespace HaCreator.MapSimulator.Character.Skills
             }
         }
 
-        private SkillAnimation LoadSummonHitAnimation(WzImageProperty hitNode)
+        private SkillAnimation LoadSummonHitAnimation(SkillData skill, WzImageProperty hitNode)
         {
             if (hitNode == null)
             {
@@ -2347,7 +2430,7 @@ namespace HaCreator.MapSimulator.Character.Skills
 
             if (hitNode.WzProperties.OfType<WzCanvasProperty>().Any())
             {
-                SkillAnimation directAnimation = LoadSkillAnimation(hitNode, "hit");
+                SkillAnimation directAnimation = GetOrLoadSummonActionAnimation(skill, hitNode, "hit");
                 return directAnimation.Frames.Count > 0 ? directAnimation : null;
             }
 
@@ -2362,7 +2445,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 {
                     if (child.WzProperties.OfType<WzCanvasProperty>().Any())
                     {
-                        SkillAnimation indexedAnimation = LoadSkillAnimation(child, $"hit/{child.Name}");
+                        SkillAnimation indexedAnimation = GetOrLoadSummonActionAnimation(
+                            skill,
+                            child,
+                            $"hit/{child.Name}",
+                            $"hit/{child.Name}");
                         if (indexedAnimation.Frames.Count > 0)
                         {
                             return indexedAnimation;
@@ -2377,7 +2464,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                                 continue;
                             }
 
-                            SkillAnimation nestedAnimation = LoadSkillAnimation(nestedChild, $"hit/{child.Name}/{nestedChild.Name}");
+                            SkillAnimation nestedAnimation = GetOrLoadSummonActionAnimation(
+                                skill,
+                                nestedChild,
+                                $"hit/{child.Name}/{nestedChild.Name}",
+                                $"hit/{child.Name}/{nestedChild.Name}");
                             if (nestedAnimation.Frames.Count > 0)
                             {
                                 return nestedAnimation;
@@ -2777,6 +2868,69 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         private SkillFrame LoadSkillFrame(WzImageProperty frameNode)
         {
+            return LoadSkillFrame(frameNode, 100, false);
+        }
+
+        private SkillAnimation LoadItemBulletAnimationInternal(int itemId)
+        {
+            if (!UI.InventoryItemMetadataResolver.TryResolveImageSource(itemId, out string category, out string imagePath))
+            {
+                return null;
+            }
+
+            WzImage itemImage = global::HaCreator.Program.FindImage(category, imagePath);
+            if (itemImage == null)
+            {
+                return null;
+            }
+
+            itemImage.ParseImage();
+            string itemText = category == "Character"
+                ? itemId.ToString("D8", CultureInfo.InvariantCulture)
+                : itemId.ToString("D7", CultureInfo.InvariantCulture);
+            if (itemImage[itemText] is not WzSubProperty itemProperty
+                || itemProperty["bullet"] is not WzImageProperty bulletProperty)
+            {
+                return null;
+            }
+
+            var animation = new SkillAnimation();
+            if (bulletProperty is WzCanvasProperty bulletCanvas)
+            {
+                SkillFrame frame = LoadSkillFrame(bulletCanvas, 60, false);
+                if (frame != null)
+                {
+                    animation.Frames.Add(frame);
+                }
+
+                return animation.Frames.Count > 0 ? animation : null;
+            }
+
+            IEnumerable<WzImageProperty> orderedFrames = bulletProperty.WzProperties
+                .OrderBy(static property =>
+                    int.TryParse(property?.Name, NumberStyles.Integer, CultureInfo.InvariantCulture, out int index)
+                        ? index
+                        : int.MaxValue)
+                .ThenBy(static property => property?.Name, StringComparer.OrdinalIgnoreCase);
+            foreach (WzImageProperty frameNode in orderedFrames)
+            {
+                SkillFrame frame = LoadSkillFrame(frameNode, 60, false);
+                if (frame != null)
+                {
+                    animation.Frames.Add(frame);
+                }
+            }
+
+            return animation.Frames.Count > 0 ? animation : null;
+        }
+
+        private SkillFrame LoadSummonActionFrame(WzImageProperty frameNode)
+        {
+            return LoadSkillFrame(frameNode, ClientSummonedFrameDelayFallbackMs, true);
+        }
+
+        private SkillFrame LoadSkillFrame(WzImageProperty frameNode, int defaultDelay, bool useMetadataBounds)
+        {
             // Handle canvas directly
             WzCanvasProperty canvas = null;
 
@@ -2795,6 +2949,8 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return null;
 
             var frame = new SkillFrame();
+            WzImageProperty metadataNode = ResolveFrameMetadataProperty(frameNode, canvas);
+            Point origin = ResolveFrameOrigin(metadataNode, canvas);
 
             // Get bitmap and create texture
             var bitmap = canvas.GetLinkedWzCanvasBitmap();
@@ -2803,27 +2959,120 @@ namespace HaCreator.MapSimulator.Character.Skills
                 var texture = bitmap.ToTexture2DAndDispose(_device);
                 if (texture != null)
                 {
-                    var origin = canvas.GetCanvasOriginPosition();
                     frame.Texture = new DXObject(0, 0, texture)
                     {
                         Tag = canvas.FullPath
                     };
-                    frame.Origin = new Point((int)origin.X, (int)origin.Y);
-                    frame.Bounds = new Rectangle(0, 0, texture.Width, texture.Height);
+                    frame.Origin = origin;
+                    frame.Bounds = useMetadataBounds
+                        ? ResolveFrameBounds(metadataNode, canvas, frame.Texture, origin)
+                        : new Rectangle(0, 0, texture.Width, texture.Height);
                 }
             }
 
             // Get delay
-            frame.Delay = GetInt(frameNode, "delay", 100);
+            frame.Delay = ResolveFrameInt(metadataNode, canvas, "delay", defaultDelay);
 
             // Get flip
-            frame.Flip = GetInt(frameNode, "flip") == 1;
+            frame.Flip = ResolveFrameInt(metadataNode, canvas, "flip") == 1;
+            frame.Z = ResolveFrameInt(metadataNode, canvas, "z");
 
             // Shadow-partner and companion layers can carry authored alpha ramps per frame.
-            frame.AlphaStart = Math.Clamp(GetInt(frameNode, "a0", 255), 0, 255);
-            frame.AlphaEnd = Math.Clamp(GetInt(frameNode, "a1", 255), 0, 255);
+            frame.AlphaStart = Math.Clamp(ResolveFrameInt(metadataNode, canvas, "a0", 255), 0, 255);
+            frame.AlphaEnd = Math.Clamp(ResolveFrameInt(metadataNode, canvas, "a1", 255), 0, 255);
 
             return frame;
+        }
+
+        private static WzImageProperty ResolveLinkedProperty(WzImageProperty property)
+        {
+            return property?.GetLinkedWzImageProperty() ?? property;
+        }
+
+        private static WzImageProperty ResolveFrameMetadataProperty(WzImageProperty frameNode, WzCanvasProperty canvas)
+        {
+            if (frameNode != null
+                && (frameNode is WzCanvasProperty
+                    || frameNode["origin"] != null
+                    || frameNode["delay"] != null
+                    || frameNode["lt"] != null
+                    || frameNode["rb"] != null
+                    || frameNode["z"] != null))
+            {
+                return frameNode;
+            }
+
+            return canvas;
+        }
+
+        private static int ResolveFrameInt(WzImageProperty metadataNode, WzCanvasProperty canvas, string propertyName, int defaultValue = 0)
+        {
+            if (metadataNode != null && metadataNode[propertyName] != null)
+            {
+                return GetInt(metadataNode, propertyName, defaultValue);
+            }
+
+            return canvas != null ? GetInt(canvas, propertyName, defaultValue) : defaultValue;
+        }
+
+        private static Point ResolveFrameOrigin(WzImageProperty metadataNode, WzCanvasProperty canvas)
+        {
+            Point? metadataOrigin = GetVector(metadataNode, "origin");
+            if (metadataOrigin.HasValue)
+            {
+                return metadataOrigin.Value;
+            }
+
+            if (canvas?.GetCanvasOriginPosition() is System.Drawing.PointF canvasOrigin)
+            {
+                return new Point((int)canvasOrigin.X, (int)canvasOrigin.Y);
+            }
+
+            return Point.Zero;
+        }
+
+        private static Rectangle ResolveFrameBounds(WzImageProperty metadataNode, WzCanvasProperty canvas, IDXObject texture, Point origin)
+        {
+            Point? lt = GetVector(metadataNode, "lt") ?? GetVector(canvas, "lt");
+            Point? rb = GetVector(metadataNode, "rb") ?? GetVector(canvas, "rb");
+            if (lt.HasValue && rb.HasValue)
+            {
+                int left = lt.Value.X;
+                int top = lt.Value.Y;
+                int width = Math.Max(1, rb.Value.X - left);
+                int height = Math.Max(1, rb.Value.Y - top);
+                return new Rectangle(left, top, width, height);
+            }
+
+            return new Rectangle(-origin.X, -origin.Y, texture?.Width ?? 0, texture?.Height ?? 0);
+        }
+
+        private static bool ShouldAppendReversedSummonFrames(WzImageProperty actionNode)
+        {
+            if (actionNode == null)
+            {
+                return false;
+            }
+
+            return GetInt(actionNode, "reverse") != 0
+                || GetInt(actionNode, "repeat") != 0
+                || GetInt(actionNode, "r") != 0;
+        }
+
+        private static void AppendReversedSummonFrames(SkillAnimation animation)
+        {
+            if (animation?.Frames == null || animation.Frames.Count == 0)
+            {
+                return;
+            }
+
+            SkillFrame[] reversedFrames = animation.Frames.ToArray();
+            for (int i = reversedFrames.Length - 1; i >= 0; i--)
+            {
+                animation.Frames.Add(reversedFrames[i]);
+            }
+
+            animation.CalculateDuration();
         }
 
         private ProjectileData LoadProjectile(int skillId, WzImageProperty ballNode, WzImageProperty skillNode)
@@ -3876,6 +4125,37 @@ namespace HaCreator.MapSimulator.Character.Skills
                     _index++;
                 }
             }
+        }
+
+        private static int[] ResolveRequiredSkillIds(WzImageProperty skillNode, WzImageProperty infoNode)
+        {
+            var requiredSkillIds = new HashSet<int>();
+
+            if (TryParseRequiredSkillId(GetString(infoNode, "requireSkill"), out int infoRequiredSkillId))
+            {
+                requiredSkillIds.Add(infoRequiredSkillId);
+            }
+
+            WzImageProperty reqNode = skillNode?["req"];
+            if (reqNode != null)
+            {
+                foreach (WzImageProperty child in reqNode.WzProperties)
+                {
+                    if (child != null && TryParseRequiredSkillId(child.Name, out int reqRequiredSkillId))
+                    {
+                        requiredSkillIds.Add(reqRequiredSkillId);
+                    }
+                }
+            }
+
+            return requiredSkillIds.Count > 0
+                ? requiredSkillIds.OrderBy(id => id).ToArray()
+                : Array.Empty<int>();
+        }
+
+        private static bool TryParseRequiredSkillId(string value, out int skillId)
+        {
+            return int.TryParse(value, out skillId) && skillId > 0;
         }
 
         #endregion

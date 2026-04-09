@@ -303,6 +303,16 @@ namespace HaCreator.MapSimulator.UI
             Show();
         }
 
+        public bool TryGetCommittedClientOptionValue(int configId, out bool value)
+        {
+            return _committedClientOptionValues.TryGetValue(configId, out value);
+        }
+
+        public void SetCommittedClientOptionValue(int configId, bool value)
+        {
+            _committedClientOptionValues[configId] = value;
+        }
+
         public override void Show()
         {
             BeginSession();

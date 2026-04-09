@@ -390,7 +390,9 @@ namespace HaCreator.MapSimulator.UI {
 
             if (_clientTextRasterizer == null && graphicsDevice != null)
             {
-                _clientTextRasterizer = new ClientTextRasterizer(graphicsDevice);
+                _clientTextRasterizer = new ClientTextRasterizer(
+                    graphicsDevice,
+                    preferEmbeddedPrivateFontSources: true);
             }
         }
 
@@ -1522,7 +1524,9 @@ namespace HaCreator.MapSimulator.UI {
                 return;
             }
 
-            ClientTextDrawing.DrawShadowed(sprite, text, position, color, _font);
+            Vector2 snappedPosition = SnapToPixel(position);
+            DrawStatusBarText(sprite, text, snappedPosition + Vector2.One, Color.Black, 1.0f);
+            DrawStatusBarText(sprite, text, snappedPosition, color, 1.0f);
         }
 
         private float MeasureLongestLine(string[] lines)
@@ -1815,7 +1819,12 @@ namespace HaCreator.MapSimulator.UI {
                 return;
             }
 
-            ClientTextDrawing.DrawOutlined(sprite, text, position, textColor, shadowColor, _font, scale);
+            Vector2 snappedPosition = SnapToPixel(position);
+            DrawStatusBarText(sprite, text, snappedPosition + new Vector2(-1, 0), shadowColor, scale);
+            DrawStatusBarText(sprite, text, snappedPosition + new Vector2(1, 0), shadowColor, scale);
+            DrawStatusBarText(sprite, text, snappedPosition + new Vector2(0, -1), shadowColor, scale);
+            DrawStatusBarText(sprite, text, snappedPosition + new Vector2(0, 1), shadowColor, scale);
+            DrawStatusBarText(sprite, text, snappedPosition, textColor, scale);
             return;
 
 /*
@@ -1844,7 +1853,7 @@ namespace HaCreator.MapSimulator.UI {
                 return;
             }
 
-            ClientTextDrawing.Draw(sprite, textToDraw, snappedPosition, textColor, scale, _font, maxWidth);
+            DrawStatusBarText(sprite, textToDraw, snappedPosition, textColor, scale, maxWidth);
         }
 
         private void DrawDiagonalShadowText(SpriteBatch sprite, string text, Vector2 position, Color textColor, Color shadowColor, float scale = 1.0f, float? maxWidth = null)
@@ -1865,7 +1874,7 @@ namespace HaCreator.MapSimulator.UI {
             DrawDiagonalShadowPass(sprite, textToDraw, snappedPosition, new Vector2(1, -1), shadowColor, scale, maxWidth);
             DrawDiagonalShadowPass(sprite, textToDraw, snappedPosition, new Vector2(-1, 1), shadowColor, scale, maxWidth);
             DrawDiagonalShadowPass(sprite, textToDraw, snappedPosition, new Vector2(1, 1), shadowColor, scale, maxWidth);
-            ClientTextDrawing.Draw(sprite, textToDraw, snappedPosition, textColor, scale, _font, maxWidth);
+            DrawStatusBarText(sprite, textToDraw, snappedPosition, textColor, scale, maxWidth);
         }
 
         private void DrawDiagonalShadowPass(
@@ -1884,7 +1893,7 @@ namespace HaCreator.MapSimulator.UI {
                 clipWidth = Math.Max(0f, maxWidth.Value + (basePosition.X - shadowPosition.X));
             }
 
-            ClientTextDrawing.Draw(sprite, text, shadowPosition, shadowColor, scale, _font, clipWidth);
+            DrawStatusBarText(sprite, text, shadowPosition, shadowColor, scale, clipWidth);
         }
 
         private Vector2 MeasureStatusBarText(string text, float scale)
@@ -1900,6 +1909,28 @@ namespace HaCreator.MapSimulator.UI {
             }
 
             return ClientTextDrawing.Measure((GraphicsDevice)null, text, scale, _font);
+        }
+
+        private void DrawStatusBarText(
+            SpriteBatch sprite,
+            string text,
+            Vector2 position,
+            Color color,
+            float scale,
+            float? maxWidth = null)
+        {
+            if (sprite == null || string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            if (_clientTextRasterizer != null)
+            {
+                _clientTextRasterizer.DrawString(sprite, text, position, color, scale, maxWidth);
+                return;
+            }
+
+            ClientTextDrawing.Draw(sprite, text, position, color, scale, _font, maxWidth);
         }
 
         /// <summary>

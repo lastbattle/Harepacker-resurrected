@@ -2,12 +2,15 @@ using HaCreator.MapSimulator.Character;
 using HaCreator.MapSimulator.UI;
 using Microsoft.Xna.Framework.Graphics;
 using System;
+using System.Collections.Generic;
 
 namespace HaCreator.MapSimulator.Interaction
 {
     internal sealed class EngagementProposalController
     {
         private readonly EngagementProposalRuntime _runtime = new();
+
+        internal Action<IReadOnlyList<string>, int> SocialMessagesObserved { get; set; }
 
         internal void UpdateLocalContext(CharacterBuild build)
         {
@@ -17,6 +20,11 @@ namespace HaCreator.MapSimulator.Interaction
         internal string DescribeStatus()
         {
             return _runtime.DescribeStatus();
+        }
+
+        internal IReadOnlyList<string> GetObservedSocialMessages()
+        {
+            return _runtime.GetObservedSocialMessages();
         }
 
         internal void WireWindow(
@@ -54,6 +62,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             string message = _runtime.OpenProposal(proposerName, partnerName, ringItemId, sealItemId, requestMessage, customMessage);
             ShowWindow(windowManager, build, font, feedbackHandler, showWindow);
+            PublishObservedSocialMessages();
             return message;
         }
 
@@ -80,6 +89,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             ShowWindow(windowManager, build, font, feedbackHandler, showWindow);
+            PublishObservedSocialMessages();
             return true;
         }
 
@@ -108,6 +118,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             ShowWindow(windowManager, build, font, feedbackHandler, showWindow);
+            PublishObservedSocialMessages();
             return true;
         }
 
@@ -134,6 +145,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             string message = _runtime.OpenOutgoingRequest(proposerName, partnerName, ringItemId, requestMessage);
             ShowWindow(windowManager, build, font, feedbackHandler, showWindow);
+            PublishObservedSocialMessages();
             opened = true;
             return message;
         }
@@ -145,6 +157,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return message;
             }
 
+            PublishObservedSocialMessages();
             windowManager?.HideWindow(MapSimulatorWindowNames.EngagementProposal);
             return message;
         }
@@ -156,6 +169,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return message;
             }
 
+            PublishObservedSocialMessages();
             windowManager?.HideWindow(MapSimulatorWindowNames.EngagementProposal);
             return message;
         }
@@ -167,6 +181,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return message;
             }
 
+            PublishObservedSocialMessages();
             windowManager?.HideWindow(MapSimulatorWindowNames.EngagementProposal);
             return message;
         }
@@ -174,6 +189,11 @@ namespace HaCreator.MapSimulator.Interaction
         internal string Dismiss(UIWindowManager windowManager)
         {
             string message = _runtime.Dismiss();
+            if (!string.Equals(message, "No engagement proposal is active.", StringComparison.Ordinal))
+            {
+                PublishObservedSocialMessages();
+            }
+
             windowManager?.HideWindow(MapSimulatorWindowNames.EngagementProposal);
             return message;
         }
@@ -183,6 +203,15 @@ namespace HaCreator.MapSimulator.Interaction
             string message = _runtime.Clear();
             windowManager?.HideWindow(MapSimulatorWindowNames.EngagementProposal);
             return message;
+        }
+
+        internal bool TryBuildInboxDispatch(
+            int sealItemId,
+            string customMessage,
+            out EngagementProposalInboxDispatch dispatch,
+            out string message)
+        {
+            return _runtime.TryBuildInboxDispatch(sealItemId, customMessage, out dispatch, out message);
         }
 
         internal bool TryBuildWeddingInvitationHandoff(
@@ -273,6 +302,17 @@ namespace HaCreator.MapSimulator.Interaction
         {
             WireWindow(windowManager, build, font, feedbackHandler);
             showWindow?.Invoke();
+        }
+
+        private void PublishObservedSocialMessages()
+        {
+            IReadOnlyList<string> messages = _runtime.GetObservedSocialMessages();
+            if (messages == null || messages.Count == 0)
+            {
+                return;
+            }
+
+            SocialMessagesObserved?.Invoke(messages, Environment.TickCount);
         }
     }
 }

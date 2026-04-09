@@ -33,6 +33,8 @@ namespace HaCreator.MapSimulator.Interaction
 
         // Recovered from MapleStory.exe v95 StringPool::ms_aString together with the
         // `StringPool::GetString` decode path (`ms_aString` at 0xC5A878, `ms_aKey` at 0xB98830).
+        // The simulator now resolves the live text for these ids from MapleStoryStringPool's
+        // generated table; this evidence dictionary remains for raw-byte provenance.
         private static readonly IReadOnlyDictionary<int, StringPoolEntryEvidence> RecoveredEntries = new Dictionary<int, StringPoolEntryEvidence>
         {
             [NoticeUserNotFoundStringPoolId] = new(NoticeUserNotFoundStringPoolId, 0xBB, "BB DB 2F 56 FE EC EA E2 4B 56 D5 92 C2 5C 5C 51 3B ED 22 13 B8 F6 EC E9 5D 58", "The user cannot be found.", "CWvsContext::ShowAntiMacroNotice / MapleStory.exe v95 StringPool::GetString"),
@@ -153,11 +155,18 @@ namespace HaCreator.MapSimulator.Interaction
             return false;
         }
 
-        public static string GetResolvedOrFallback(int stringPoolId, string fallbackText, bool appendFallbackSuffix = false)
+        public static string GetResolvedOrFallback(int stringPoolId, string fallbackText = null, bool appendFallbackSuffix = false)
         {
+            if (string.IsNullOrWhiteSpace(fallbackText))
+            {
+                fallbackText = GetRecoveredDecodedFallback(
+                    stringPoolId,
+                    $"Anti-macro text missing ({MapleStoryStringPool.FormatFallbackLabel(stringPoolId, minimumHexWidth: 3)}).");
+            }
+
             return MapleStoryStringPool.GetOrFallback(
                 stringPoolId,
-                GetRecoveredDecodedFallback(stringPoolId, fallbackText),
+                fallbackText,
                 appendFallbackSuffix);
         }
 

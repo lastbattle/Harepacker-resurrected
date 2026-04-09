@@ -16,6 +16,7 @@ namespace HaCreator.MapSimulator.Interaction
         public string Sender { get; init; } = string.Empty;
         public string MemoText { get; init; } = string.Empty;
         public bool IsQuickDelivery { get; init; }
+        public DateTimeOffset? ClientTimestampUtc { get; init; }
         public bool IsRead { get; init; }
         public bool IsKept { get; init; }
         public bool IsAttachmentClaimed { get; init; }
@@ -42,6 +43,7 @@ namespace HaCreator.MapSimulator.Interaction
         private const int ParcelSenderOffset = 4;
         private const int ParcelSenderLength = 13;
         private const int ParcelMesoOffset = 0x11;
+        private const int ParcelClientTimestampOffset = 0x15;
         private const int MinimumMemoCandidateLength = 4;
         private const int MinimumAttachmentBodyLength = sizeof(byte) + sizeof(int) + sizeof(byte) + sizeof(long) + sizeof(long);
 
@@ -147,12 +149,14 @@ namespace HaCreator.MapSimulator.Interaction
             int attachmentMeso = hasMesoAttachment && parcelBytes.Length >= ParcelMesoOffset + sizeof(int)
                 ? Math.Max(0, BinaryPrimitives.ReadInt32LittleEndian(parcelBytes.AsSpan(ParcelMesoOffset, sizeof(int))))
                 : 0;
+            DateTimeOffset? clientTimestampUtc = TryDecodeClientTimestamp(parcelBytes);
 
             entry = new PacketOwnedParcelDecodedEntry
             {
                 ParcelSerial = Math.Max(0, serial),
                 Sender = string.IsNullOrWhiteSpace(sender) ? "Maple Delivery Service" : sender,
                 MemoText = memoText,
+                ClientTimestampUtc = clientTimestampUtc,
                 IsRead = (flags & ParcelFlagRead) != 0,
                 IsKept = (flags & ParcelFlagKeep) != 0,
                 IsAttachmentClaimed = (flags & ParcelFlagClaimed) != 0,
@@ -346,6 +350,35 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             return Encoding.ASCII.GetString(slice).TrimEnd('\0', ' ');
+        }
+
+        private static DateTimeOffset? TryDecodeClientTimestamp(ReadOnlySpan<byte> bytes)
+        {
+            if (bytes.Length < ParcelClientTimestampOffset + sizeof(long))
+            {
+                return null;
+            }
+
+            long rawFileTime = BinaryPrimitives.ReadInt64LittleEndian(bytes.Slice(ParcelClientTimestampOffset, sizeof(long)));
+            if (rawFileTime <= 0)
+            {
+                return null;
+            }
+
+            try
+            {
+                DateTime timestampUtc = DateTime.FromFileTimeUtc(rawFileTime);
+                if (timestampUtc.Year < 2000 || timestampUtc.Year > 2100)
+                {
+                    return null;
+                }
+
+                return new DateTimeOffset(timestampUtc, TimeSpan.Zero);
+            }
+            catch (ArgumentOutOfRangeException)
+            {
+                return null;
+            }
         }
 
         private static string ExtractMemoText(ReadOnlySpan<byte> bytes, string sender)

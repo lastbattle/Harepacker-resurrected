@@ -19,10 +19,10 @@ namespace HaCreator.MapSimulator.Interaction
         internal const string PrimaryInvitationAssetPath = "UIWindow2.img/Wedding/Invitation";
         internal const string FallbackInvitationAssetPath = "UIWindow.img/Wedding/Invitation";
         internal const string AcceptButtonAssetName = "BtOK";
-        internal const int AcceptButtonUolStringPoolId = 0x19CE;
+        internal const int AcceptButtonUolStringPoolId = WeddingInvitationDialogText.AcceptButtonUolStringPoolId;
         internal const int AcceptStringPoolId = AcceptButtonUolStringPoolId;
-        internal const int DefaultDialogUolStringPoolId = 0xEAF;
-        internal const int AlternateDialogUolStringPoolId = 0xEB0;
+        internal const int DefaultDialogUolStringPoolId = WeddingInvitationDialogText.DefaultDialogUolStringPoolId;
+        internal const int AlternateDialogUolStringPoolId = WeddingInvitationDialogText.AlternateDialogUolStringPoolId;
         internal const string NameFontToken = "FONT_BASIC_BLACK";
         internal const int GroomNameX = 50;
         internal const int BrideNameX = 131;
@@ -40,8 +40,8 @@ namespace HaCreator.MapSimulator.Interaction
         private string _brideName = DefaultBrideName;
         private string _statusMessage = "No wedding invitation is active.";
         private string _sourceDescription = DefaultSourceDescription;
-        private string _acceptButtonUolText = ResolveStringPoolText(AcceptButtonUolStringPoolId, $"{PrimaryInvitationAssetPath}/{AcceptButtonAssetName}");
-        private string _dialogUolText = ResolveStringPoolText(DefaultDialogUolStringPoolId, $"{FallbackInvitationAssetPath}/Vegas");
+        private string _acceptButtonUolText = WeddingInvitationDialogText.GetAcceptButtonUolText();
+        private string _dialogUolText = WeddingInvitationDialogText.ResolveDialogUolText(DefaultClientDialogType);
         private WeddingInvitationStyle _style = WeddingInvitationStyle.Neat;
         private int? _clientDialogType;
         private byte[] _lastMarriageResultPacketPayload = Array.Empty<byte>();
@@ -68,8 +68,8 @@ namespace HaCreator.MapSimulator.Interaction
             _brideName = NormalizeName(brideName, DefaultBrideName);
             _style = style;
             _clientDialogType = NormalizeClientDialogType(clientDialogType);
-            _acceptButtonUolText = ResolveStringPoolText(AcceptButtonUolStringPoolId, $"{PrimaryInvitationAssetPath}/{AcceptButtonAssetName}");
-            _dialogUolText = ResolveDialogUolText(_clientDialogType);
+            _acceptButtonUolText = WeddingInvitationDialogText.GetAcceptButtonUolText();
+            _dialogUolText = WeddingInvitationDialogText.ResolveDialogUolText(NormalizeClientDialogType(_clientDialogType));
             _isOpen = true;
             _lastAccepted = false;
             _lastOpenUsedMarriageResultPacket = false;
@@ -140,8 +140,8 @@ namespace HaCreator.MapSimulator.Interaction
             _brideName = DefaultBrideName;
             _style = WeddingInvitationStyle.Neat;
             _clientDialogType = null;
-            _acceptButtonUolText = ResolveStringPoolText(AcceptButtonUolStringPoolId, $"{PrimaryInvitationAssetPath}/{AcceptButtonAssetName}");
-            _dialogUolText = ResolveDialogUolText(DefaultClientDialogType);
+            _acceptButtonUolText = WeddingInvitationDialogText.GetAcceptButtonUolText();
+            _dialogUolText = WeddingInvitationDialogText.ResolveDialogUolText(DefaultClientDialogType);
             _lastMarriageResultPacketPayload = Array.Empty<byte>();
             _lastOpenUsedMarriageResultPacket = false;
             _sourceDescription = DefaultSourceDescription;
@@ -235,18 +235,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static int ResolveDialogTitleStringPoolId(int? clientDialogType)
         {
-            return NormalizeClientDialogType(clientDialogType) == AlternateClientDialogType
-                ? AlternateDialogUolStringPoolId
-                : DefaultDialogUolStringPoolId;
-        }
-
-        private static string ResolveDialogUolText(int? clientDialogType)
-        {
-            int stringPoolId = ResolveDialogTitleStringPoolId(clientDialogType);
-            string fallbackPath = NormalizeClientDialogType(clientDialogType) == AlternateClientDialogType
-                ? $"{FallbackInvitationAssetPath}/Cathedral"
-                : $"{FallbackInvitationAssetPath}/Vegas";
-            return ResolveStringPoolText(stringPoolId, fallbackPath);
+            return WeddingInvitationDialogText.ResolveDialogUolStringPoolId(NormalizeClientDialogType(clientDialogType));
         }
 
         private static int NormalizeClientDialogType(int? clientDialogType)
@@ -254,15 +243,6 @@ namespace HaCreator.MapSimulator.Interaction
             return clientDialogType == AlternateClientDialogType
                 ? AlternateClientDialogType
                 : DefaultClientDialogType;
-        }
-
-        private static string ResolveStringPoolText(int stringPoolId, string fallbackText)
-        {
-            return MapleStoryStringPool.GetOrFallback(
-                stringPoolId,
-                fallbackText,
-                appendFallbackSuffix: false,
-                minimumHexWidth: 0);
         }
 
         internal static bool TryDecodeMarriageResultOpenPayload(

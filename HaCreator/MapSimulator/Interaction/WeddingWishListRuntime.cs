@@ -35,8 +35,10 @@ namespace HaCreator.MapSimulator.Interaction
     {
         private const int MaxWishListEntryCount = 10;
         private const int ConfirmWishListInputStringPoolId = 0x1097;
-        private const int WishListAlreadyRequestedStringPoolId = 0x1098;
-        private const int WishListFullStringPoolId = 0x10BE;
+        private const int WishListGiftAlreadySentStringPoolId = 0x1098;
+        private const int ConfirmWishListGiftClaimStringPoolId = 0x1099;
+        private const int PutQuantityPromptStringPoolId = 0x0F63;
+        private const int WishListFullStringPoolId = 0x18E1;
 
         private static readonly InventoryType[] TabInventoryTypes =
         {
@@ -57,6 +59,7 @@ namespace HaCreator.MapSimulator.Interaction
         };
 
         private readonly Dictionary<int, List<InventorySlotData>> _giftListByTab = new();
+        private readonly Dictionary<int, InventorySlotData> _giftByWishItemId = new();
         private readonly Dictionary<(WeddingWishListSelectionPane Pane, int TabIndex), int> _paneStartIndices = new();
         private readonly List<InventorySlotData> _wishListEntries = new();
         private readonly List<InventorySlotData> _candidateEntries = new();
@@ -73,6 +76,11 @@ namespace HaCreator.MapSimulator.Interaction
         private int _selectedWishIndex;
         private int _selectedCandidateIndex;
         private bool _hasPendingTransferRequest;
+        private bool _isGetConfirmationArmed;
+        private bool _isPutQuantityPromptOpen;
+        private int _putQuantityPromptWishItemId;
+        private InventorySlotData _putQuantityPromptSourceItem;
+        private int _putQuantityPromptQuantity = 1;
         private bool _inputConfirmationArmed;
         private bool _isOpen;
         private string _statusMessage = "Wedding wish-list dialog is idle.";
@@ -117,11 +125,11 @@ namespace HaCreator.MapSimulator.Interaction
 
             EnsureSeedData();
             RefreshCandidateEntries();
+            ClearTransientActionState();
 
             _mode = mode;
             _isOpen = true;
             _hasPendingTransferRequest = false;
-            _inputConfirmationArmed = false;
             _activePane = mode switch
             {
                 WeddingWishListDialogMode.Receive => WeddingWishListSelectionPane.GiftList,
@@ -144,7 +152,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             _mode = mode == WeddingWishListDialogMode.None ? WeddingWishListDialogMode.Receive : mode;
             _hasPendingTransferRequest = false;
-            _inputConfirmationArmed = false;
+            ClearTransientActionState();
             _activePane = _mode switch
             {
                 WeddingWishListDialogMode.Receive => WeddingWishListSelectionPane.GiftList,
@@ -171,6 +179,7 @@ namespace HaCreator.MapSimulator.Interaction
             _paneStartIndices[(WeddingWishListSelectionPane.GiftList, _selectedTabIndex)] = 0;
             _paneStartIndices[(WeddingWishListSelectionPane.Inventory, _selectedTabIndex)] = 0;
             _hasPendingTransferRequest = false;
+            ClearTransientActionState();
             ClampSelections();
             NormalizeViewportState();
             _statusMessage = $"Selected {ResolveTabLabel(_selectedTabIndex)} tab for the wedding wish-list dialog.";
@@ -180,7 +189,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal string SetActivePane(WeddingWishListSelectionPane pane)
         {
             _activePane = pane;
-            _inputConfirmationArmed = false;
+            ClearTransientActionState();
             ClampSelections();
             EnsureSelectionVisible(pane);
             _statusMessage = $"Focused {ResolvePaneLabel(pane)} in the wedding wish-list dialog.";
@@ -206,7 +215,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _activePane = pane;
-            _inputConfirmationArmed = false;
+            ClearTransientActionState();
             ClampSelections();
             EnsureSelectionVisible(pane);
             _statusMessage = $"Selected {ResolvePaneLabel(pane)} entry {Math.Max(0, index) + 1}.";
@@ -231,7 +240,7 @@ namespace HaCreator.MapSimulator.Interaction
                     break;
             }
 
-            _inputConfirmationArmed = false;
+            ClearTransientActionState();
             ClampSelections();
             EnsureSelectionVisible(_activePane);
             _statusMessage = $"Moved selection in {ResolvePaneLabel(_activePane)}.";
@@ -277,25 +286,41 @@ namespace HaCreator.MapSimulator.Interaction
                 return GetTransferPendingText();
             }
 
+            if (_isPutQuantityPromptOpen)
+            {
+                return CommitPendingPutItem();
+            }
+
+            InventorySlotData selectedWish = GetSelectedWishEntry();
+            if (selectedWish == null)
+            {
+                return "Select a wedding wish-list row before pressing Put.";
+            }
+
+            if (_giftByWishItemId.ContainsKey(selectedWish.ItemId))
+            {
+                return GetWishListGiftAlreadySentText();
+            }
+
             InventorySlotData source = GetSelectedInventoryEntry();
             if (source == null)
             {
                 return "Select a My Items row before pressing Put.";
             }
 
-            InventoryType type = ResolveInventoryTypeForSlot(source, ResolveSelectedInventoryType());
-            if (_inventory == null || !_inventory.TryConsumeItem(type, source.ItemId, 1))
+            if (source.Quantity > 1)
             {
-                return $"Unable to move {ResolveItemLabel(source)} out of the local inventory.";
+                _putQuantityPromptSourceItem = CloneForDialog(source, ResolveInventoryTypeForSlot(source, ResolveSelectedInventoryType()), source.Quantity);
+                _putQuantityPromptWishItemId = selectedWish.ItemId;
+                _putQuantityPromptQuantity = 1;
+                _isPutQuantityPromptOpen = true;
+                _isGetConfirmationArmed = false;
+                _inputConfirmationArmed = false;
+                UpdatePutQuantityPromptStatus();
+                return _statusMessage;
             }
 
-            InventorySlotData gifted = CloneForDialog(source, type, 1);
-            _giftListByTab[_selectedTabIndex].Add(gifted);
-            _hasPendingTransferRequest = true;
-            RefreshCandidateEntries();
-            ClampSelections();
-            _statusMessage = $"Moved {ResolveItemLabel(gifted)} into the wedding gift list and marked the request pending until the dialog refreshes.";
-            return _statusMessage;
+            return TryCommitGiftPut(selectedWish, source, 1);
         }
 
         internal string TryGetSelectedItem()
@@ -319,6 +344,15 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Select a wedding gift list row before pressing Get.";
             }
 
+            if (!_isGetConfirmationArmed)
+            {
+                _isGetConfirmationArmed = true;
+                _isPutQuantityPromptOpen = false;
+                _inputConfirmationArmed = false;
+                _statusMessage = GetWishListGiftClaimConfirmText();
+                return _statusMessage;
+            }
+
             InventoryType type = ResolveInventoryTypeForSlot(selected, ResolveSelectedInventoryType());
             if (_inventory == null || !_inventory.CanAcceptItem(type, selected.ItemId, 1, selected.MaxStackSize))
             {
@@ -327,6 +361,7 @@ namespace HaCreator.MapSimulator.Interaction
 
             _inventory.AddItem(type, CloneForDialog(selected, type, 1));
             giftList.RemoveAt(_selectedGiftIndex);
+            _isGetConfirmationArmed = false;
             _hasPendingTransferRequest = true;
             RefreshCandidateEntries();
             ClampSelections();
@@ -360,7 +395,7 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             _wishListEntries.Add(CloneForDialog(selected, ResolveInventoryTypeForSlot(selected), 1));
-            _inputConfirmationArmed = false;
+            ClearTransientActionState();
             ClampSelections();
             _statusMessage = $"Inserted {ResolveItemLabel(selected)} into the wedding wish list.";
             return _statusMessage;
@@ -382,7 +417,7 @@ namespace HaCreator.MapSimulator.Interaction
             _candidateQuery += value;
             RefreshCandidateEntries();
             _selectedCandidateIndex = 0;
-            _inputConfirmationArmed = false;
+            ClearTransientActionState();
             ClampSelections();
             EnsureSelectionVisible(WeddingWishListSelectionPane.Candidate);
             _statusMessage = $"Filtered candidate items by \"{_candidateQuery}\".";
@@ -399,13 +434,77 @@ namespace HaCreator.MapSimulator.Interaction
             _candidateQuery = _candidateQuery[..^1];
             RefreshCandidateEntries();
             _selectedCandidateIndex = 0;
-            _inputConfirmationArmed = false;
+            ClearTransientActionState();
             ClampSelections();
             EnsureSelectionVisible(WeddingWishListSelectionPane.Candidate);
             _statusMessage = string.IsNullOrEmpty(_candidateQuery)
                 ? "Cleared candidate item-name filter."
                 : $"Filtered candidate items by \"{_candidateQuery}\".";
             return _statusMessage;
+        }
+
+        internal string AppendPutQuantityDigit(char value)
+        {
+            if (!_isPutQuantityPromptOpen || !char.IsDigit(value))
+            {
+                return string.Empty;
+            }
+
+            int maxQuantity = GetPendingPutQuantityMax();
+            if (maxQuantity <= 0)
+            {
+                return string.Empty;
+            }
+
+            string existingDigits = _putQuantityPromptQuantity.ToString();
+            string candidateDigits = existingDigits == "1"
+                ? value.ToString()
+                : existingDigits + value;
+            if (!int.TryParse(candidateDigits, out int parsedQuantity))
+            {
+                return string.Empty;
+            }
+
+            _putQuantityPromptQuantity = Math.Clamp(parsedQuantity, 1, maxQuantity);
+            UpdatePutQuantityPromptStatus();
+            return _statusMessage;
+        }
+
+        internal string BackspacePutQuantityDigit()
+        {
+            if (!_isPutQuantityPromptOpen)
+            {
+                return string.Empty;
+            }
+
+            string digits = _putQuantityPromptQuantity.ToString();
+            _putQuantityPromptQuantity = digits.Length <= 1
+                ? 1
+                : Math.Max(1, int.Parse(digits[..^1]));
+            UpdatePutQuantityPromptStatus();
+            return _statusMessage;
+        }
+
+        internal string CancelTransientPrompt()
+        {
+            if (_isPutQuantityPromptOpen)
+            {
+                _isPutQuantityPromptOpen = false;
+                _putQuantityPromptSourceItem = null;
+                _putQuantityPromptWishItemId = 0;
+                _putQuantityPromptQuantity = 1;
+                _statusMessage = "Cancelled the wedding gift quantity prompt.";
+                return _statusMessage;
+            }
+
+            if (_isGetConfirmationArmed)
+            {
+                _isGetConfirmationArmed = false;
+                _statusMessage = "Cancelled the pending wedding gift claim confirmation.";
+                return _statusMessage;
+            }
+
+            return string.Empty;
         }
 
         internal string TryDeleteWish()
@@ -422,7 +521,8 @@ namespace HaCreator.MapSimulator.Interaction
 
             InventorySlotData removed = _wishListEntries[_selectedWishIndex];
             _wishListEntries.RemoveAt(_selectedWishIndex);
-            _inputConfirmationArmed = false;
+            _giftByWishItemId.Remove(removed.ItemId);
+            ClearTransientActionState();
             ClampSelections();
             _statusMessage = $"Removed {ResolveItemLabel(removed)} from the wedding wish list.";
             return _statusMessage;
@@ -463,6 +563,7 @@ namespace HaCreator.MapSimulator.Interaction
         internal string Clear()
         {
             _giftListByTab.Clear();
+            _giftByWishItemId.Clear();
             _wishListEntries.Clear();
             _candidateEntries.Clear();
             _seeded = false;
@@ -474,7 +575,7 @@ namespace HaCreator.MapSimulator.Interaction
             _selectedCandidateIndex = 0;
             _candidateQuery = string.Empty;
             _hasPendingTransferRequest = false;
-            _inputConfirmationArmed = false;
+            ClearTransientActionState();
             _paneStartIndices.Clear();
             _statusMessage = "Cleared wedding wish-list dialog state.";
             return _statusMessage;
@@ -501,7 +602,7 @@ namespace HaCreator.MapSimulator.Interaction
                     "Etc",
                     "Cash"
                 }),
-                GiftEntries = new ReadOnlyCollection<InventorySlotData>(GetGiftListForSelectedTab().Select(CloneForDialog).ToList()),
+                GiftEntries = new ReadOnlyCollection<InventorySlotData>(GetGiftEntriesForCurrentMode().Select(CloneForDialog).ToList()),
                 InventoryEntries = new ReadOnlyCollection<InventorySlotData>(GetInventoryEntriesForSelectedTab().Select(CloneForDialog).ToList()),
                 WishEntries = new ReadOnlyCollection<InventorySlotData>(_wishListEntries.Select(CloneForDialog).ToList()),
                 CandidateEntries = new ReadOnlyCollection<InventorySlotData>(_candidateEntries.Select(CloneForDialog).ToList()),
@@ -514,6 +615,12 @@ namespace HaCreator.MapSimulator.Interaction
                 FirstVisibleWishIndex = GetFirstVisibleIndex(WeddingWishListSelectionPane.WishList),
                 FirstVisibleCandidateIndex = GetFirstVisibleIndex(WeddingWishListSelectionPane.Candidate),
                 CandidateQuery = _candidateQuery,
+                IsGetConfirmationArmed = _isGetConfirmationArmed,
+                IsPutQuantityPromptOpen = _isPutQuantityPromptOpen,
+                PutQuantityPromptText = _isPutQuantityPromptOpen ? GetPutQuantityPromptText() : string.Empty,
+                PutQuantityPromptItemLabel = _isPutQuantityPromptOpen ? ResolveItemLabel(_putQuantityPromptSourceItem) : string.Empty,
+                PutQuantityPromptQuantity = _isPutQuantityPromptOpen ? _putQuantityPromptQuantity : 0,
+                PutQuantityPromptMaxQuantity = _isPutQuantityPromptOpen ? GetPendingPutQuantityMax() : 0,
                 StatusMessage = _statusMessage,
                 LocalCharacterName = _localCharacterName
             };
@@ -605,10 +712,36 @@ namespace HaCreator.MapSimulator.Interaction
             return list;
         }
 
+        private List<InventorySlotData> GetGiftEntriesForCurrentMode()
+        {
+            if (_mode == WeddingWishListDialogMode.Give)
+            {
+                List<InventorySlotData> entries = new();
+                foreach (InventorySlotData wishEntry in _wishListEntries)
+                {
+                    if (wishEntry != null && _giftByWishItemId.TryGetValue(wishEntry.ItemId, out InventorySlotData giftedEntry))
+                    {
+                        entries.Add(giftedEntry);
+                    }
+                }
+
+                return entries;
+            }
+
+            return GetGiftListForSelectedTab();
+        }
+
         private List<InventorySlotData> GetInventoryEntriesForSelectedTab()
         {
             InventoryType type = ResolveSelectedInventoryType();
             return EnumerateInventorySlots(type);
+        }
+
+        private InventorySlotData GetSelectedWishEntry()
+        {
+            return _selectedWishIndex >= 0 && _selectedWishIndex < _wishListEntries.Count
+                ? _wishListEntries[_selectedWishIndex]
+                : null;
         }
 
         private InventorySlotData GetSelectedInventoryEntry()
@@ -656,7 +789,7 @@ namespace HaCreator.MapSimulator.Interaction
         private void ClampSelections()
         {
             _selectedTabIndex = Math.Clamp(_selectedTabIndex, 0, TabInventoryTypes.Length - 1);
-            _selectedGiftIndex = ClampIndex(_selectedGiftIndex, GetGiftListForSelectedTab().Count);
+            _selectedGiftIndex = ClampIndex(_selectedGiftIndex, GetGiftEntriesForCurrentMode().Count);
             _selectedInventoryIndex = ClampIndex(_selectedInventoryIndex, GetInventoryEntriesForSelectedTab().Count);
             _selectedWishIndex = ClampIndex(_selectedWishIndex, _wishListEntries.Count);
             _selectedCandidateIndex = ClampIndex(_selectedCandidateIndex, _candidateEntries.Count);
@@ -731,7 +864,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             return pane switch
             {
-                WeddingWishListSelectionPane.GiftList => GetGiftListForSelectedTab().Count,
+                WeddingWishListSelectionPane.GiftList => GetGiftEntriesForCurrentMode().Count,
                 WeddingWishListSelectionPane.Inventory => GetInventoryEntriesForSelectedTab().Count,
                 WeddingWishListSelectionPane.WishList => _wishListEntries.Count,
                 WeddingWishListSelectionPane.Candidate => _candidateEntries.Count,
@@ -918,9 +1051,30 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static string GetTransferPendingText()
         {
+            return "A wedding wish-list transfer request is already pending until the owner refreshes.";
+        }
+
+        private static string GetWishListGiftAlreadySentText()
+        {
             return MapleStoryStringPool.GetOrFallback(
-                WishListAlreadyRequestedStringPoolId,
-                "A wedding wish-list transfer request is already pending.",
+                WishListGiftAlreadySentStringPoolId,
+                "You cannot give more than one present for each wishlist.",
+                appendFallbackSuffix: true);
+        }
+
+        private static string GetWishListGiftClaimConfirmText()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                ConfirmWishListGiftClaimStringPoolId,
+                "Are you sure you want to take it out?",
+                appendFallbackSuffix: true);
+        }
+
+        private static string GetPutQuantityPromptText()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                PutQuantityPromptStringPoolId,
+                "How many do you wish to send?",
                 appendFallbackSuffix: true);
         }
 
@@ -930,6 +1084,71 @@ namespace HaCreator.MapSimulator.Interaction
                 WishListFullStringPoolId,
                 "Your wish list is full.",
                 appendFallbackSuffix: true);
+        }
+
+        private string TryCommitGiftPut(InventorySlotData selectedWish, InventorySlotData source, int quantity)
+        {
+            InventoryType type = ResolveInventoryTypeForSlot(source, ResolveSelectedInventoryType());
+            if (_inventory == null || !_inventory.TryConsumeItem(type, source.ItemId, quantity))
+            {
+                return $"Unable to move {ResolveItemLabel(source)} out of the local inventory.";
+            }
+
+            InventorySlotData gifted = CloneForDialog(source, type, quantity);
+            _giftByWishItemId[selectedWish.ItemId] = gifted;
+            _hasPendingTransferRequest = true;
+            ClearTransientActionState();
+            RefreshCandidateEntries();
+            ClampSelections();
+            _statusMessage = $"Queued {ResolveItemLabel(gifted)} x{gifted.Quantity} for {ResolveItemLabel(selectedWish)} and marked the request pending until the dialog refreshes.";
+            return _statusMessage;
+        }
+
+        private string CommitPendingPutItem()
+        {
+            if (!_isPutQuantityPromptOpen || _putQuantityPromptSourceItem == null)
+            {
+                return string.Empty;
+            }
+
+            InventorySlotData selectedWish = _wishListEntries.FirstOrDefault(entry => entry.ItemId == _putQuantityPromptWishItemId);
+            if (selectedWish == null)
+            {
+                ClearTransientActionState();
+                _statusMessage = "The selected wedding wish-list row is no longer available.";
+                return _statusMessage;
+            }
+
+            InventoryType type = ResolveInventoryTypeForSlot(_putQuantityPromptSourceItem, ResolveSelectedInventoryType());
+            if (_inventory == null || _inventory.GetItemCount(type, _putQuantityPromptSourceItem.ItemId) < _putQuantityPromptQuantity)
+            {
+                ClearTransientActionState();
+                _statusMessage = $"Unable to move {_putQuantityPromptQuantity} of {ResolveItemLabel(_putQuantityPromptSourceItem)} out of the local inventory.";
+                return _statusMessage;
+            }
+
+            return TryCommitGiftPut(selectedWish, _putQuantityPromptSourceItem, _putQuantityPromptQuantity);
+        }
+
+        private int GetPendingPutQuantityMax()
+        {
+            return Math.Max(1, _putQuantityPromptSourceItem?.Quantity ?? 1);
+        }
+
+        private void UpdatePutQuantityPromptStatus()
+        {
+            int maxQuantity = GetPendingPutQuantityMax();
+            _statusMessage = $"{GetPutQuantityPromptText()} {ResolveItemLabel(_putQuantityPromptSourceItem)} [{_putQuantityPromptQuantity}/{maxQuantity}]";
+        }
+
+        private void ClearTransientActionState()
+        {
+            _isGetConfirmationArmed = false;
+            _isPutQuantityPromptOpen = false;
+            _putQuantityPromptWishItemId = 0;
+            _putQuantityPromptSourceItem = null;
+            _putQuantityPromptQuantity = 1;
+            _inputConfirmationArmed = false;
         }
     }
 
@@ -954,6 +1173,12 @@ namespace HaCreator.MapSimulator.Interaction
         public int FirstVisibleWishIndex { get; init; }
         public int FirstVisibleCandidateIndex { get; init; }
         public string CandidateQuery { get; init; } = string.Empty;
+        public bool IsGetConfirmationArmed { get; init; }
+        public bool IsPutQuantityPromptOpen { get; init; }
+        public string PutQuantityPromptText { get; init; } = string.Empty;
+        public string PutQuantityPromptItemLabel { get; init; } = string.Empty;
+        public int PutQuantityPromptQuantity { get; init; }
+        public int PutQuantityPromptMaxQuantity { get; init; }
         public string StatusMessage { get; init; } = string.Empty;
         public string LocalCharacterName { get; init; } = string.Empty;
     }

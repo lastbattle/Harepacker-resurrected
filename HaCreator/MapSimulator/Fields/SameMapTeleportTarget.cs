@@ -8,6 +8,7 @@ namespace HaCreator.MapSimulator
             int portalIndex = -1,
             string sourcePortalName = null,
             string targetPortalName = null,
+            string[] targetPortalNameCandidates = null,
             bool usesPacketOwnedApply = false)
         {
             X = x;
@@ -15,6 +16,7 @@ namespace HaCreator.MapSimulator
             PortalIndex = portalIndex;
             SourcePortalName = sourcePortalName;
             TargetPortalName = targetPortalName;
+            TargetPortalNameCandidates = targetPortalNameCandidates ?? System.Array.Empty<string>();
             UsesPacketOwnedApply = usesPacketOwnedApply;
         }
 
@@ -27,6 +29,8 @@ namespace HaCreator.MapSimulator
         public string SourcePortalName { get; }
 
         public string TargetPortalName { get; }
+
+        public string[] TargetPortalNameCandidates { get; }
 
         public bool UsesPacketOwnedApply { get; }
 

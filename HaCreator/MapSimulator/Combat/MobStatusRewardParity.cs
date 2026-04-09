@@ -1,6 +1,8 @@
 using System;
 using HaCreator.MapSimulator.AI;
 using HaCreator.MapSimulator.Entities;
+using HaCreator.MapSimulator.UI;
+using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 
 namespace HaCreator.MapSimulator.Combat
 {
@@ -34,6 +36,11 @@ namespace HaCreator.MapSimulator.Combat
         public static int ResolveItemQuantity(MobItem mob, int baseQuantity)
         {
             return ResolveItemQuantity(mob?.AI, baseQuantity);
+        }
+
+        public static int ResolveDropItemQuantity(MobItem mob, int itemId, int baseQuantity)
+        {
+            return ResolveDropItemQuantity(mob?.AI, itemId, baseQuantity);
         }
 
         internal static int ApplyRewardBonus(int baseAmount, int percentBonus)
@@ -77,6 +84,51 @@ namespace HaCreator.MapSimulator.Combat
             }
 
             return quantity + guaranteedExtra;
+        }
+
+        internal static int ResolveDropItemQuantity(MobAI mobAI, int itemId, int baseQuantity, int bonusRollPercent = -1)
+        {
+            int quantity = Math.Max(0, baseQuantity);
+            if (quantity <= 0)
+            {
+                return 0;
+            }
+
+            InventoryType inventoryType = InventoryItemMetadataResolver.ResolveInventoryType(itemId);
+            if (InventoryItemMetadataResolver.ResolveMaxStack(inventoryType) <= 1)
+            {
+                return quantity;
+            }
+
+            return ResolveItemQuantity(mobAI, quantity, bonusRollPercent);
+        }
+
+        internal static int ResolveAuthoredRewardItemId(System.Collections.Generic.IReadOnlyList<int> rewardItemIds, int selectionRoll = -1)
+        {
+            if (rewardItemIds == null || rewardItemIds.Count == 0)
+            {
+                return 0;
+            }
+
+            int index = selectionRoll >= 0
+                ? Math.Abs(selectionRoll) % rewardItemIds.Count
+                : Random.Shared.Next(rewardItemIds.Count);
+            return Math.Max(0, rewardItemIds[index]);
+        }
+
+        internal static int ResolveStableAuthoredRewardItemId(
+            int mobId,
+            int poolId,
+            System.Collections.Generic.IReadOnlyList<int> rewardItemIds)
+        {
+            if (rewardItemIds == null || rewardItemIds.Count == 0)
+            {
+                return 0;
+            }
+
+            int stableSeed = HashCode.Combine(Math.Max(0, mobId), Math.Max(0, poolId));
+            int index = (stableSeed & int.MaxValue) % rewardItemIds.Count;
+            return Math.Max(0, rewardItemIds[index]);
         }
 
         private static int ResolveShowdownBonusPercent(MobAI mobAI)

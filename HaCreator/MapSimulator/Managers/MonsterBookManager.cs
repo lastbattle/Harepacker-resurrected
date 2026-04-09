@@ -37,6 +37,7 @@ namespace HaCreator.MapSimulator.Managers
             public int Exp { get; init; }
             public bool IsBoss { get; init; }
             public string EpisodeText { get; init; } = string.Empty;
+            public IReadOnlyList<int> RewardItemIds { get; init; } = Array.Empty<int>();
             public IReadOnlyList<string> RewardLines { get; init; } = Array.Empty<string>();
             public IReadOnlyList<string> HabitatLines { get; init; } = Array.Empty<string>();
             public string SearchText { get; init; } = string.Empty;
@@ -244,6 +245,25 @@ namespace HaCreator.MapSimulator.Managers
             return cardItemId > 0;
         }
 
+        public bool TryResolveRewardItemIds(int mobId, out IReadOnlyList<int> rewardItemIds)
+        {
+            rewardItemIds = Array.Empty<int>();
+            if (mobId <= 0)
+            {
+                return false;
+            }
+
+            if (!EnsureCatalogByMobId().TryGetValue(mobId, out MonsterBookCardDefinition definition)
+                || definition?.RewardItemIds == null
+                || definition.RewardItemIds.Count == 0)
+            {
+                return false;
+            }
+
+            rewardItemIds = definition.RewardItemIds;
+            return true;
+        }
+
         public bool IsConsumeOnPickupCardItem(int itemId)
         {
             if (itemId <= 0)
@@ -390,6 +410,7 @@ namespace HaCreator.MapSimulator.Managers
                         out int exp,
                         out bool isBoss,
                         out string episodeText,
+                        out IReadOnlyList<int> rewardItemIds,
                         out IReadOnlyList<string> rewardLines,
                         out IReadOnlyList<string> habitatLines);
                     string cardItemName = ResolveItemName(cardItemId);
@@ -405,6 +426,7 @@ namespace HaCreator.MapSimulator.Managers
                         Exp = Math.Max(0, exp),
                         IsBoss = isBoss,
                         EpisodeText = episodeText,
+                        RewardItemIds = rewardItemIds,
                         RewardLines = rewardLines,
                         HabitatLines = habitatLines,
                         SearchText = BuildSearchText(cardItemId, cardItemName, mobName, mobId, rewardLines, habitatLines, episodeText)
@@ -429,6 +451,7 @@ namespace HaCreator.MapSimulator.Managers
             out int exp,
             out bool isBoss,
             out string episodeText,
+            out IReadOnlyList<int> rewardItemIds,
             out IReadOnlyList<string> rewardLines,
             out IReadOnlyList<string> habitatLines)
         {
@@ -442,6 +465,7 @@ namespace HaCreator.MapSimulator.Managers
             int category = 0;
             bool firstAttack = false;
             MonsterBookStringEntry stringEntry = ResolveMonsterBookStringEntry(mobId);
+            rewardItemIds = stringEntry?.RewardItemIds ?? Array.Empty<int>();
             episodeText = BuildEpisodeText(mobName, mobId, level, isBoss, stringEntry);
             rewardLines = BuildRewardLines(isBoss, mobId, stringEntry);
             habitatLines = BuildHabitatLines(category, mobType, firstAttack, elementAttribute, stringEntry);

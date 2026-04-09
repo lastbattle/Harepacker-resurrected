@@ -25,9 +25,11 @@ namespace HaCreator.MapSimulator.Managers
 
     /// <summary>
     /// Optional loopback inbox for live MiniRoom Match Cards payloads.
-    /// Each line accepts a raw payload, a full opcode-wrapped packet, or the
+    /// Each line accepts a raw payload, a full opcode-wrapped packet, a
+    /// client opcode-wrapped request packet, or the
     /// command-shaped "/memorygame packetraw <hex payload>" and
-    /// "/memorygame packetrecv <opcode> <hex payload>" forms.
+    /// "/memorygame packetrecv <opcode> <hex payload>" and
+    /// "/memorygame packetclientraw <hex packet>" forms.
     /// </summary>
     public sealed class MemoryGamePacketInboxManager : IDisposable
     {
@@ -126,13 +128,22 @@ namespace HaCreator.MapSimulator.Managers
                 string[] tokens = trimmed.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);
                 if (tokens.Length < 3)
                 {
-                    error = "Only /memorygame packetraw <hex> and /memorygame packetrecv <opcode> <hex> are accepted by the inbox.";
+                    error = "Only /memorygame packetraw <hex>, /memorygame packetrecv <opcode> <hex>, and /memorygame packetclientraw <hex> are accepted by the inbox.";
                     return false;
                 }
 
                 if (tokens[1].Equals("packetraw", StringComparison.OrdinalIgnoreCase))
                 {
                     trimmed = string.Join(string.Empty, tokens, 2, tokens.Length - 2);
+                }
+                else if (tokens[1].Equals("packetclientraw", StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!TryParseHexPayload(string.Join(string.Empty, tokens, 2, tokens.Length - 2), out byte[] rawClientPacket, out error))
+                    {
+                        return false;
+                    }
+
+                    return MemoryGameOfficialSessionBridgeManager.TryDecodeClientOpcodePacket(rawClientPacket, out payload, out error);
                 }
                 else if (tokens[1].Equals("packetrecv", StringComparison.OrdinalIgnoreCase)
                     || tokens[1].Equals("recv", StringComparison.OrdinalIgnoreCase))
@@ -153,9 +164,20 @@ namespace HaCreator.MapSimulator.Managers
                 }
                 else
                 {
-                    error = "Only /memorygame packetraw <hex> and /memorygame packetrecv <opcode> <hex> are accepted by the inbox.";
+                    error = "Only /memorygame packetraw <hex>, /memorygame packetrecv <opcode> <hex>, and /memorygame packetclientraw <hex> are accepted by the inbox.";
                     return false;
                 }
+            }
+
+            if (trimmed.StartsWith("packetclientraw", StringComparison.OrdinalIgnoreCase))
+            {
+                string rawHex = trimmed["packetclientraw".Length..].Trim();
+                if (!TryParseHexPayload(rawHex, out byte[] rawClientPacket, out error))
+                {
+                    return false;
+                }
+
+                return MemoryGameOfficialSessionBridgeManager.TryDecodeClientOpcodePacket(rawClientPacket, out payload, out error);
             }
 
             string[] recvTokens = trimmed.Split((char[])null, StringSplitOptions.RemoveEmptyEntries);

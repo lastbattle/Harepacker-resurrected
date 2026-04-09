@@ -5,6 +5,7 @@ namespace HaCreator.MapSimulator.Character.Skills
         Stun,
         Freeze,
         Seal,
+        StopMotion,
         Attract,
         Polymorph
     }
@@ -23,6 +24,9 @@ namespace HaCreator.MapSimulator.Character.Skills
                     return true;
                 case 123:
                     status = PlayerSkillBlockingStatus.Stun;
+                    return true;
+                case 136:
+                    status = PlayerSkillBlockingStatus.StopMotion;
                     return true;
                 case 128:
                     status = PlayerSkillBlockingStatus.Attract;
@@ -44,6 +48,7 @@ namespace HaCreator.MapSimulator.Character.Skills
                 PlayerSkillBlockingStatus.Stun => "Skills cannot be used while stunned.",
                 PlayerSkillBlockingStatus.Freeze => "Skills cannot be used while frozen.",
                 PlayerSkillBlockingStatus.Seal => "Skills cannot be used while sealed.",
+                PlayerSkillBlockingStatus.StopMotion => "Skills cannot be used while motion is locked.",
                 PlayerSkillBlockingStatus.Attract => "Skills cannot be used while seduced.",
                 PlayerSkillBlockingStatus.Polymorph => "Skills cannot be used while polymorphed.",
                 _ => null

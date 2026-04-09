@@ -46,6 +46,30 @@ namespace HaCreator.MapSimulator.Interaction
             // resolves these ids through StringPool before loading the layer from Effect/BasicEff.
             [0x0B6B] = "Effect/BasicEff.img/dragonBlink",
             [0x15DA] = "Effect/BasicEff.img/dragonFury",
+            // Recovered from MapleStory.exe v95 `CSetGuildMarkDlg::OnCreate`. The guild-mark
+            // combo uses these client string ids rather than the raw WZ family node names.
+            [0x0D14] = "Animal",
+            [0x0D15] = "Plant",
+            [0x0D16] = "Pattern",
+            [0x0D17] = "Letter",
+            [0x0D18] = "Etc",
+            // Recovered from MapleStory.exe v95 `CUIFamily::Draw` and
+            // `CUIFamilyChart::Draw` / `_DrawChartItem`. Keep these family ids
+            // explicit here so the simulator follows the client wording even if
+            // regenerated string-pool data drifts.
+            [0x11FD] = "(You do not have family members.)",
+            [0x1200] = "(You do not have a family yet.)",
+            [0x1201] = "[Please add a Junior.]",
+            [0x1202] = "%s Family",
+            [0x1203] = "Senior(%d ppl.)",
+            [0x1204] = "Junior(%d ppl.)",
+            // Recovered from MapleStory.exe v95 `CUIQuestAlarm::Draw` and
+            // `CUIQuestAlarm::OnButtonClicked`. Keep these quest-alarm ids explicit so the
+            // owner retains the exact client title and notice strings even if regenerated
+            // string-pool order drifts again.
+            [0x0E4C] = "Quest Helper (%d/5)",
+            [0x106F] = "[%s] It has been excluded from the auto alarm and it will not be automatically reigstered until you re log-on",
+            [0x18EC] = "There are no quests in the quest helper.",
         };
 
         public static int Count => Entries.Length;

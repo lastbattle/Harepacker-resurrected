@@ -15,31 +15,35 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal readonly struct ReviveOwnerResolution
     {
-        public ReviveOwnerResolution(bool handled, bool premium, bool timedOut, string summary)
+        public ReviveOwnerResolution(bool handled, bool premium, bool timedOut, ReviveOwnerVariant variant, string summary)
         {
             Handled = handled;
             Premium = premium;
             TimedOut = timedOut;
+            Variant = variant;
             Summary = summary ?? string.Empty;
         }
 
         public bool Handled { get; }
         public bool Premium { get; }
         public bool TimedOut { get; }
+        public ReviveOwnerVariant Variant { get; }
         public string Summary { get; }
     }
 
     internal readonly struct ReviveOwnerTransferRequest
     {
-        public ReviveOwnerTransferRequest(bool premium, bool timedOut, string summary)
+        public ReviveOwnerTransferRequest(bool premium, bool timedOut, ReviveOwnerVariant variant, string summary)
         {
             Premium = premium;
             TimedOut = timedOut;
+            Variant = variant;
             Summary = summary ?? string.Empty;
         }
 
         public bool Premium { get; }
         public bool TimedOut { get; }
+        public ReviveOwnerVariant Variant { get; }
         public string Summary { get; }
     }
 
@@ -130,6 +134,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return default;
             }
 
+            ReviveOwnerVariant variant = Variant;
             bool resolvedPremium = premium && HasPremiumChoice;
             string ownerLabel = string.IsNullOrWhiteSpace(_ownerLabel) ? "revive owner" : _ownerLabel;
             string summary = resolvedPremium
@@ -139,7 +144,7 @@ namespace HaCreator.MapSimulator.Interaction
                     : $"CUIRevive default recovery branch confirmed through {ownerLabel}.";
 
             Close();
-            return new ReviveOwnerResolution(true, resolvedPremium, timedOut, summary);
+            return new ReviveOwnerResolution(true, resolvedPremium, timedOut, variant, summary);
         }
 
         public static ReviveOwnerTransferRequest CreateTransferRequest(ReviveOwnerResolution resolution)
@@ -147,12 +152,67 @@ namespace HaCreator.MapSimulator.Interaction
             return new ReviveOwnerTransferRequest(
                 resolution.Premium,
                 resolution.TimedOut,
+                resolution.Variant,
                 resolution.Summary);
+        }
+
+        public static ReviveOwnerVariant ResolveClientVariant(
+            bool hasSoulStone,
+            bool hasUpgradeTombChoice,
+            bool hasPremiumSafetyCharm,
+            bool hasSafetyCharm)
+        {
+            if (hasSoulStone)
+            {
+                return ReviveOwnerVariant.SoulStoneChoice;
+            }
+
+            if (hasUpgradeTombChoice)
+            {
+                return ReviveOwnerVariant.UpgradeTombChoice;
+            }
+
+            if (hasPremiumSafetyCharm)
+            {
+                return ReviveOwnerVariant.PremiumSafetyCharmChoice;
+            }
+
+            if (hasSafetyCharm)
+            {
+                return ReviveOwnerVariant.SafetyCharmChoice;
+            }
+
+            return ReviveOwnerVariant.DefaultOnly;
         }
 
         public static bool ShouldOfferPremiumChoice(Vector2 deathPoint, Vector2 spawnPoint)
         {
             return Vector2.DistanceSquared(deathPoint, spawnPoint) > PremiumChoiceMinDistanceSquared;
+        }
+
+        public static bool HasPremiumChoiceForVariant(ReviveOwnerVariant variant)
+        {
+            return variant != ReviveOwnerVariant.DefaultOnly;
+        }
+
+        public static bool UsesCurrentFieldRespawn(ReviveOwnerVariant variant)
+        {
+            return variant != ReviveOwnerVariant.DefaultOnly;
+        }
+
+        public static int GetConsumableCashItemId(ReviveOwnerVariant variant)
+        {
+            return variant switch
+            {
+                // WZ evidence:
+                // - String/Cash.img/5130000/name -> "Safety Charm"
+                // - String/Cash.img/5131000/name -> "Premium Safety Charm"
+                // - String/Cash.img/5510000/name -> "Wheel of Fortune"
+                ReviveOwnerVariant.SafetyCharmChoice => 5130000,
+                ReviveOwnerVariant.PremiumSafetyCharmChoice => 5131000,
+                ReviveOwnerVariant.UpgradeTombChoice => 5510000,
+                _ => 0,
+            };
         }
 
         public ReviveOwnerSnapshot BuildSnapshot(int currentTick)

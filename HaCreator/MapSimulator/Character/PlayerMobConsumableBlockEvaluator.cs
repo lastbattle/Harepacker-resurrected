@@ -5,9 +5,17 @@ namespace HaCreator.MapSimulator.Character
         public static bool IsStopPotionBlocked(
             bool hasStopPotionStatus,
             bool hasSupportedRecovery,
-            bool hasSupportedCure)
+            bool hasSupportedCure,
+            bool hasSupportedMovement,
+            bool hasSupportedMorph,
+            bool hasSupportedTemporaryBuff)
         {
-            return hasStopPotionStatus && (hasSupportedRecovery || hasSupportedCure);
+            return hasStopPotionStatus &&
+                   (hasSupportedRecovery ||
+                    hasSupportedCure ||
+                    hasSupportedMovement ||
+                    hasSupportedMorph ||
+                    hasSupportedTemporaryBuff);
         }
     }
 }

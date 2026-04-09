@@ -337,31 +337,68 @@ namespace HaCreator.MapSimulator.Fields
 
         private static IEnumerable<int> EnumerateSkillRestrictionJobCandidates(int currentJobId, SkillData skill)
         {
-            int resolvedJobId = Math.Abs(currentJobId);
-            if (resolvedJobId <= 0)
+            HashSet<int> yielded = new HashSet<int>();
+
+            foreach (int candidate in EnumerateJobRestrictionBranchCandidates(Math.Abs(currentJobId)))
             {
-                resolvedJobId = Math.Abs(skill?.Job ?? 0);
+                if (yielded.Add(candidate))
+                {
+                    yield return candidate;
+                }
             }
 
-            if (resolvedJobId <= 0 && skill?.SkillId > 0)
+            foreach (int candidate in EnumerateSkillOwnedJobRestrictionCandidates(skill))
             {
-                resolvedJobId = Math.Abs(skill.SkillId / 10000);
+                if (yielded.Add(candidate))
+                {
+                    yield return candidate;
+                }
+            }
+        }
+
+        private static IEnumerable<int> EnumerateSkillOwnedJobRestrictionCandidates(SkillData skill)
+        {
+            if (skill == null)
+            {
+                yield break;
             }
 
-            if (resolvedJobId > 0)
+            int skillJobId = Math.Abs(skill.Job);
+            if (skillJobId == 0)
             {
-                yield return resolvedJobId;
+                yield return 0;
             }
 
-            int jobClass = resolvedJobId % 1000 / 100;
-            if (jobClass == 0 && resolvedJobId < 1000)
+            foreach (int candidate in EnumerateJobRestrictionBranchCandidates(skillJobId))
             {
-                jobClass = resolvedJobId / 100;
+                yield return candidate;
             }
 
-            if (jobClass > 0)
+            int skillBookId = Math.Abs(skill.SkillId / 10000);
+            if (skillBookId == 0)
             {
-                yield return jobClass;
+                yield return 0;
+            }
+
+            foreach (int candidate in EnumerateJobRestrictionBranchCandidates(skillBookId))
+            {
+                yield return candidate;
+            }
+        }
+
+        private static IEnumerable<int> EnumerateJobRestrictionBranchCandidates(int jobId)
+        {
+            if (jobId == 0)
+            {
+                yield return 0;
+                yield break;
+            }
+
+            int candidate = jobId;
+            while (candidate > 0)
+            {
+                yield return candidate;
+                candidate /= 10;
             }
         }
 

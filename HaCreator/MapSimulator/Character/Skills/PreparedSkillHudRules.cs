@@ -149,6 +149,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                 return profile.GaugeDurationMs;
             }
 
+            if (skillId == MonkeyWaveSkillId)
+            {
+                return ResolveMonkeyWaveGaugeDuration();
+            }
+
             if (UsesReleaseTriggeredExecution(skillId) && preparedDurationMs > 0)
             {
                 return preparedDurationMs;

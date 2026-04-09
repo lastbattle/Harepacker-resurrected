@@ -39,17 +39,19 @@ namespace HaCreator.MapSimulator.Interaction
 
         private readonly Dictionary<string, NpcItem> _actorCache = new(StringComparer.Ordinal);
         private readonly Dictionary<string, EmployeeTemplateProfile> _cashProfileCache = new(StringComparer.Ordinal);
+        private readonly Dictionary<(int TemplateId, string ActionName), List<IDXObject>> _cashActionCache = new();
+        private readonly Dictionary<string, int> _actionCursorByActorKey = new(StringComparer.Ordinal);
         private readonly ConcurrentBag<WzObject> _usedProps = new();
         private readonly Random _random = new();
         private MiniRoomBalloonAssets _miniRoomBalloonAssets;
 
         private NpcItem _activeActor;
         private SocialRoomFieldActorSnapshot _activeSnapshot;
+        private string _activeActorKey = string.Empty;
         private string _lastStateKey = string.Empty;
         private string _currentIdleAction = AnimationKeys.Stand;
         private int _idleActionRemainingMs;
         private int _temporaryActionRemainingMs;
-        private bool _currentFlip;
 
         public bool IsVisible => _activeActor != null && _activeSnapshot != null;
 
@@ -57,11 +59,11 @@ namespace HaCreator.MapSimulator.Interaction
         {
             _activeActor = null;
             _activeSnapshot = null;
+            _activeActorKey = string.Empty;
             _lastStateKey = string.Empty;
             _currentIdleAction = AnimationKeys.Stand;
             _idleActionRemainingMs = 0;
             _temporaryActionRemainingMs = 0;
-            _currentFlip = false;
         }
 
         public void Update(
@@ -88,12 +90,13 @@ namespace HaCreator.MapSimulator.Interaction
 
             _activeActor = actor;
             _activeSnapshot = snapshot;
+            _activeActorKey = BuildActorCacheKey(snapshot);
 
             EmployeeTemplateProfile profile = ResolveProfile(snapshot);
             int elapsedMs = (int)Math.Max(0d, gameTime.ElapsedGameTime.TotalMilliseconds);
 
             EnsureMiniRoomBalloonAssets(device);
-            AdvanceActionState(actor, snapshot, profile, elapsedMs);
+            AdvanceActionState(_activeActorKey, actor, snapshot, profile, elapsedMs);
             SyncActorPosition(player, actor, snapshot);
 
             actor.MovementEnabled = false;
@@ -255,7 +258,7 @@ namespace HaCreator.MapSimulator.Interaction
                     continue;
                 }
 
-                List<IDXObject> actionFrames = MapSimulatorLoader.LoadFrames(texturePool, childProperty, 0, 0, device, _usedProps);
+                List<IDXObject> actionFrames = LoadEmployeeActionFrames(templateId, childProperty.Name, childProperty, texturePool, device);
                 if (actionFrames.Count > 0)
                 {
                     animationSet.AddAnimation(childProperty.Name, actionFrames);
@@ -291,10 +294,11 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             actor.SetRenderPositionOverride(actorX, actorY);
-            actor.NpcInstance.Flip = snapshot.Flip ?? _currentFlip;
+            actor.NpcInstance.Flip = snapshot.Flip ?? ResolveDefaultFlip(player, actorX);
         }
 
         private void AdvanceActionState(
+            string actorKey,
             NpcItem actor,
             SocialRoomFieldActorSnapshot snapshot,
             EmployeeTemplateProfile profile,
@@ -309,8 +313,8 @@ namespace HaCreator.MapSimulator.Interaction
             if (stateChanged)
             {
                 _lastStateKey = snapshot.StateKey ?? string.Empty;
-                TriggerStateAction(actor, profile, snapshot);
-                ResetIdleSelection(actor, snapshot, profile, preferContextualAction: true);
+                TriggerStateAction(actorKey, actor, profile);
+                ResetIdleSelection(actorKey, actor, snapshot, profile, preferContextualAction: true);
             }
 
             _temporaryActionRemainingMs = Math.Max(0, _temporaryActionRemainingMs - Math.Max(0, elapsedMs));
@@ -326,12 +330,12 @@ namespace HaCreator.MapSimulator.Interaction
                 return;
             }
 
-            ResetIdleSelection(actor, snapshot, profile, preferContextualAction: false);
+            ResetIdleSelection(actorKey, actor, snapshot, profile, preferContextualAction: false);
         }
 
-        private void TriggerStateAction(NpcItem actor, EmployeeTemplateProfile profile, SocialRoomFieldActorSnapshot snapshot)
+        private void TriggerStateAction(string actorKey, NpcItem actor, EmployeeTemplateProfile profile)
         {
-            string speakAction = ResolveFirstAvailableAction(actor, profile.SpeakActions);
+            string speakAction = ResolveNextAvailableAction(actorKey, actor, profile.SpeakActions);
             if (string.IsNullOrWhiteSpace(speakAction))
             {
                 return;
@@ -339,40 +343,31 @@ namespace HaCreator.MapSimulator.Interaction
 
             actor.SetTemporaryAction(speakAction, profile.SpeakDurationMs);
             _temporaryActionRemainingMs = ResolveActionDurationMs(actor, speakAction, profile.SpeakDurationMs);
-            if (!snapshot.Flip.HasValue)
-            {
-                _currentFlip = _random.Next(2) == 0;
-            }
         }
 
         private void ResetIdleSelection(
+            string actorKey,
             NpcItem actor,
             SocialRoomFieldActorSnapshot snapshot,
             EmployeeTemplateProfile profile,
             bool preferContextualAction)
         {
             string nextIdleAction = preferContextualAction
-                ? ResolveContextualIdleAction(actor, snapshot, profile) ?? ResolveRandomIdleAction(actor, profile)
-                : ResolveRandomIdleAction(actor, profile);
+                ? ResolveContextualIdleAction(actorKey, actor, snapshot, profile) ?? ResolveNextAvailableAction(actorKey, actor, profile.IdleActions)
+                : ResolveNextAvailableAction(actorKey, actor, profile.IdleActions);
             if (string.IsNullOrWhiteSpace(nextIdleAction))
             {
                 nextIdleAction = AnimationKeys.Stand;
             }
 
             _currentIdleAction = nextIdleAction;
-            _idleActionRemainingMs = ResolveActionDurationMs(
-                actor,
-                _currentIdleAction,
-                _random.Next(profile.MinIdleDurationMs, profile.MaxIdleDurationMs + 1));
-            if (!snapshot.Flip.HasValue)
-            {
-                _currentFlip = _random.Next(2) == 0;
-            }
+            _idleActionRemainingMs = ResolveActionDurationMs(actor, _currentIdleAction, profile.MinIdleDurationMs);
 
             actor.SetAction(_currentIdleAction);
         }
 
-        private static string ResolveContextualIdleAction(
+        private string ResolveContextualIdleAction(
+            string actorKey,
             NpcItem actor,
             SocialRoomFieldActorSnapshot snapshot,
             EmployeeTemplateProfile profile)
@@ -385,7 +380,7 @@ namespace HaCreator.MapSimulator.Interaction
             string stateKey = snapshot.StateKey ?? string.Empty;
             if (stateKey.IndexOf("expired", StringComparison.OrdinalIgnoreCase) >= 0)
             {
-                return ResolveFirstAvailableAction(actor, profile.ExpiredActions);
+                return ResolveNextAvailableAction(actorKey, actor, profile.ExpiredActions);
             }
 
             if (stateKey.IndexOf("updating sale list", StringComparison.OrdinalIgnoreCase) >= 0
@@ -393,7 +388,7 @@ namespace HaCreator.MapSimulator.Interaction
                 || stateKey.IndexOf("sale bundles", StringComparison.OrdinalIgnoreCase) >= 0
                 || stateKey.IndexOf("restock", StringComparison.OrdinalIgnoreCase) >= 0)
             {
-                return ResolveFirstAvailableAction(actor, profile.RestockActions);
+                return ResolveNextAvailableAction(actorKey, actor, profile.RestockActions);
             }
 
             if (stateKey.IndexOf("ledger", StringComparison.OrdinalIgnoreCase) >= 0
@@ -401,7 +396,7 @@ namespace HaCreator.MapSimulator.Interaction
                 || stateKey.IndexOf("sold", StringComparison.OrdinalIgnoreCase) >= 0
                 || stateKey.IndexOf("tax", StringComparison.OrdinalIgnoreCase) >= 0)
             {
-                return ResolveFirstAvailableAction(actor, profile.LedgerActions);
+                return ResolveNextAvailableAction(actorKey, actor, profile.LedgerActions);
             }
 
             if (stateKey.IndexOf("permit active", StringComparison.OrdinalIgnoreCase) >= 0
@@ -409,7 +404,7 @@ namespace HaCreator.MapSimulator.Interaction
                 || stateKey.IndexOf("open shop", StringComparison.OrdinalIgnoreCase) >= 0
                 || stateKey.IndexOf("open for visitors", StringComparison.OrdinalIgnoreCase) >= 0)
             {
-                return ResolveFirstAvailableAction(actor, profile.ActiveActions);
+                return ResolveNextAvailableAction(actorKey, actor, profile.ActiveActions);
             }
 
             return null;
@@ -426,17 +421,17 @@ namespace HaCreator.MapSimulator.Interaction
             return Math.Max(250, actionDurationMs > 0 ? actionDurationMs : fallbackMs);
         }
 
-        private string ResolveRandomIdleAction(NpcItem actor, EmployeeTemplateProfile profile)
+        private string ResolveNextAvailableAction(string actorKey, NpcItem actor, IReadOnlyList<string> candidates)
         {
-            if (actor == null || profile == null)
+            if (actor == null || candidates == null || candidates.Count == 0)
             {
                 return null;
             }
 
             List<string> availableActions = new();
-            for (int i = 0; i < profile.IdleActions.Length; i++)
+            for (int i = 0; i < candidates.Count; i++)
             {
-                string action = profile.IdleActions[i];
+                string action = candidates[i];
                 if (!string.IsNullOrWhiteSpace(action) && actor.HasAction(action))
                 {
                     availableActions.Add(action);
@@ -448,26 +443,20 @@ namespace HaCreator.MapSimulator.Interaction
                 return actor.HasAction(AnimationKeys.Stand) ? AnimationKeys.Stand : null;
             }
 
-            return availableActions[_random.Next(availableActions.Count)];
-        }
-
-        private static string ResolveFirstAvailableAction(NpcItem actor, IReadOnlyList<string> candidates)
-        {
-            if (actor == null || candidates == null)
+            int startIndex = 0;
+            if (!string.IsNullOrWhiteSpace(actorKey)
+                && _actionCursorByActorKey.TryGetValue(actorKey, out int cursor))
             {
-                return null;
+                startIndex = Math.Clamp(cursor, 0, availableActions.Count - 1);
             }
 
-            for (int i = 0; i < candidates.Count; i++)
+            string selectedAction = availableActions[startIndex];
+            if (!string.IsNullOrWhiteSpace(actorKey))
             {
-                string action = candidates[i];
-                if (!string.IsNullOrWhiteSpace(action) && actor.HasAction(action))
-                {
-                    return action;
-                }
+                _actionCursorByActorKey[actorKey] = (startIndex + 1) % availableActions.Count;
             }
 
-            return null;
+            return selectedAction;
         }
 
         private EmployeeTemplateProfile ResolveProfile(SocialRoomFieldActorSnapshot snapshot)
@@ -502,6 +491,144 @@ namespace HaCreator.MapSimulator.Interaction
 
             WzImage itemImage = global::HaCreator.Program.FindImage("Item", $"Cash/{templateId / 10000:D4}.img");
             return itemImage?[templateId.ToString("D8")]?["employee"];
+        }
+
+        private List<IDXObject> LoadEmployeeActionFrames(
+            int templateId,
+            string actionName,
+            WzImageProperty actionProperty,
+            TexturePool texturePool,
+            GraphicsDevice device)
+        {
+            if (templateId <= 0 || string.IsNullOrWhiteSpace(actionName) || actionProperty == null)
+            {
+                return new List<IDXObject>();
+            }
+
+            (int TemplateId, string ActionName) cacheKey = (templateId, actionName.ToLowerInvariant());
+            if (_cashActionCache.TryGetValue(cacheKey, out List<IDXObject> cachedFrames))
+            {
+                return cachedFrames;
+            }
+
+            var frames = new List<IDXObject>();
+            foreach (WzImageProperty childProperty in actionProperty.WzProperties.OrderBy(GetFrameOrder))
+            {
+                WzCanvasProperty canvas = ResolveCanvasProperty(childProperty);
+                if (canvas == null)
+                {
+                    continue;
+                }
+
+                IDXObject frame = CreateEmployeeFrame(texturePool, canvas, device, defaultDelay: 180);
+                if (frame != null)
+                {
+                    frames.Add(frame);
+                }
+            }
+
+            _cashActionCache[cacheKey] = frames;
+            return frames;
+        }
+
+        private static WzCanvasProperty ResolveCanvasProperty(WzImageProperty property)
+        {
+            if (property is WzCanvasProperty canvasProperty)
+            {
+                return canvasProperty;
+            }
+
+            if (property is WzUOLProperty uol)
+            {
+                return ResolveCanvasProperty(uol.LinkValue as WzImageProperty);
+            }
+
+            return null;
+        }
+
+        private IDXObject CreateEmployeeFrame(TexturePool texturePool, WzCanvasProperty canvasProperty, GraphicsDevice device, int defaultDelay)
+        {
+            if (canvasProperty?.PngProperty == null || device == null)
+            {
+                return null;
+            }
+
+            EnsureEmployeeCanvasTextureLoaded(texturePool, canvasProperty, device);
+            Texture2D texture = canvasProperty.MSTag as Texture2D;
+            if (texture == null)
+            {
+                return null;
+            }
+
+            System.Drawing.PointF origin = canvasProperty.GetCanvasOriginPosition();
+            int delay = GetIntValue(canvasProperty["delay"]) ?? defaultDelay;
+            var frame = new DXObject(origin, texture, Math.Max(1, delay))
+            {
+                Tag = canvasProperty
+            };
+            _usedProps.Add(canvasProperty);
+            return frame;
+        }
+
+        private static void EnsureEmployeeCanvasTextureLoaded(TexturePool texturePool, WzCanvasProperty canvasProperty, GraphicsDevice device)
+        {
+            if (canvasProperty?.MSTag != null)
+            {
+                return;
+            }
+
+            string canvasBitmapPath = canvasProperty.FullPath;
+            Texture2D textureFromCache = texturePool?.GetTexture(canvasBitmapPath);
+            if (textureFromCache != null)
+            {
+                canvasProperty.MSTag = textureFromCache;
+                return;
+            }
+
+            using var bitmap = canvasProperty.GetLinkedWzCanvasBitmap();
+            if (bitmap == null)
+            {
+                return;
+            }
+
+            canvasProperty.MSTag = bitmap.ToTexture2D(device);
+            if (canvasProperty.MSTag is Texture2D loadedTexture)
+            {
+                texturePool?.AddTextureToPool(canvasBitmapPath, loadedTexture);
+            }
+        }
+
+        private static int? GetIntValue(WzImageProperty prop)
+        {
+            return prop switch
+            {
+                WzIntProperty intProp => intProp.Value,
+                WzShortProperty shortProp => shortProp.Value,
+                WzLongProperty longProp => (int)longProp.Value,
+                WzStringProperty strProp => int.TryParse(strProp.Value, out int value) ? value : null,
+                _ => null
+            };
+        }
+
+        private static int GetFrameOrder(WzImageProperty property)
+        {
+            return int.TryParse(property?.Name, out int index) ? index : int.MaxValue;
+        }
+
+        private static bool ResolveDefaultFlip(PlayerCharacter player, int actorX)
+        {
+            if (player == null)
+            {
+                return false;
+            }
+
+            int ownerX = (int)Math.Round(player.Position.X);
+            if (actorX == ownerX)
+            {
+                return !player.FacingRight;
+            }
+
+            return actorX > ownerX;
         }
 
         private void EnsureMiniRoomBalloonAssets(GraphicsDevice device)
@@ -935,10 +1062,7 @@ namespace HaCreator.MapSimulator.Interaction
                 params string[] candidates)
             {
                 List<string> resolved = new();
-                HashSet<string> availableActions = new(
-                    orderedActions ?? Array.Empty<string>(),
-                    StringComparer.Ordinal);
-
+                HashSet<string> preferredActions = new(StringComparer.Ordinal);
                 for (int i = 0; i < candidates.Length; i++)
                 {
                     string candidate = candidates[i];
@@ -947,11 +1071,42 @@ namespace HaCreator.MapSimulator.Interaction
                         continue;
                     }
 
-                    string normalized = candidate.Trim().ToLowerInvariant();
-                    if ((availableActions.Count == 0 || availableActions.Contains(normalized))
-                        && !resolved.Contains(normalized, StringComparer.Ordinal))
+                    preferredActions.Add(candidate.Trim().ToLowerInvariant());
+                }
+
+                if (orderedActions != null)
+                {
+                    for (int i = 0; i < orderedActions.Count; i++)
                     {
-                        resolved.Add(normalized);
+                        string action = orderedActions[i];
+                        if (string.IsNullOrWhiteSpace(action))
+                        {
+                            continue;
+                        }
+
+                        if (preferredActions.Contains(action)
+                            && !resolved.Contains(action, StringComparer.Ordinal))
+                        {
+                            resolved.Add(action);
+                        }
+                    }
+                }
+
+                if (resolved.Count == 0)
+                {
+                    for (int i = 0; i < candidates.Length; i++)
+                    {
+                        string candidate = candidates[i];
+                        if (string.IsNullOrWhiteSpace(candidate))
+                        {
+                            continue;
+                        }
+
+                        string normalized = candidate.Trim().ToLowerInvariant();
+                        if (!resolved.Contains(normalized, StringComparer.Ordinal))
+                        {
+                            resolved.Add(normalized);
+                        }
                     }
                 }
 

@@ -1,3 +1,4 @@
+using HaCreator.MapSimulator.Interaction;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
 using Microsoft.Xna.Framework.Input;
@@ -31,6 +32,15 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Color InputCompositionUnderlineColor = new(74, 74, 74);
         private static readonly Color InputBackgroundColor = Color.White;
         private static readonly Color InputBorderColor = new(114, 114, 114);
+        private static readonly string[] ClientFontFamilyCandidates =
+        {
+            "Arial",
+            "DotumChe",
+            "Dotum",
+            "GulimChe",
+            "Gulim",
+            "Tahoma",
+        };
         private static readonly VisualStyle DefaultVisualStyle = new(
             DrawChrome: true,
             TextColor: InputTextColor,
@@ -113,6 +123,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly int _height;
         private readonly int _maxLength;
 
+        private readonly ClientTextRasterizer _clientTextRasterizer;
         private SpriteFont _font;
         private Point _inputOrigin;
         private string _inputText = string.Empty;
@@ -135,6 +146,22 @@ namespace HaCreator.MapSimulator.UI
             _maxLength = maxLength;
             HasFocus = true;
             _caretBlinkTick = Environment.TickCount;
+
+            try
+            {
+                string requestedFontFamily = MapleStoryStringPool.GetOrFallback(ClientFontStringPoolId, "Arial");
+                string resolvedFontFamily = ClientTextRasterizer.ResolvePreferredFontFamily(
+                    requestedFontFamily,
+                    preferredPrivateFontFamilyCandidates: ClientFontFamilyCandidates);
+                _clientTextRasterizer = new ClientTextRasterizer(
+                    _pixelTexture.GraphicsDevice,
+                    resolvedFontFamily,
+                    basePointSize: 12f);
+            }
+            catch
+            {
+                _clientTextRasterizer = null;
+            }
         }
 
         public int ControlId => ClientControlId;
@@ -469,7 +496,7 @@ namespace HaCreator.MapSimulator.UI
 
         public void Draw(SpriteBatch sprite, Rectangle ownerBounds, bool drawChrome)
         {
-            if (_font == null)
+            if (_font == null && _clientTextRasterizer == null)
             {
                 return;
             }
@@ -498,20 +525,20 @@ namespace HaCreator.MapSimulator.UI
                 }
                 else if (visualState.VisibleCommittedPrefix.Length > 0)
                 {
-                    sprite.DrawString(_font, visualState.VisibleCommittedPrefix, textPosition, _visualStyle.TextColor);
+                    DrawTextRun(sprite, visualState.VisibleCommittedPrefix, textPosition, _visualStyle.TextColor);
                 }
 
                 if (visualState.VisibleComposition.Length > 0)
                 {
                     float committedPrefixWidth = MeasureTextWidth(visualState.VisibleCommittedPrefix);
                     Vector2 compositionPosition = textPosition + new Vector2(committedPrefixWidth, 0f);
-                    sprite.DrawString(_font, visualState.VisibleComposition, compositionPosition, _visualStyle.CompositionColor);
+                    DrawTextRun(sprite, visualState.VisibleComposition, compositionPosition, _visualStyle.CompositionColor);
                     DrawCompositionUnderline(sprite, compositionPosition, visualState.VisibleComposition, inputBounds);
 
                     if (visualState.VisibleCommittedSuffix.Length > 0)
                     {
                         Vector2 suffixPosition = compositionPosition + new Vector2(MeasureTextWidth(visualState.VisibleComposition), 0f);
-                        sprite.DrawString(_font, visualState.VisibleCommittedSuffix, suffixPosition, _visualStyle.TextColor);
+                        DrawTextRun(sprite, visualState.VisibleCommittedSuffix, suffixPosition, _visualStyle.TextColor);
                     }
                 }
             }
@@ -592,9 +619,17 @@ namespace HaCreator.MapSimulator.UI
 
         private float MeasureTextWidth(string text)
         {
-            return string.IsNullOrEmpty(text) || _font == null
-                ? 0f
-                : _font.MeasureString(text).X;
+            if (string.IsNullOrEmpty(text))
+            {
+                return 0f;
+            }
+
+            if (_clientTextRasterizer != null)
+            {
+                return _clientTextRasterizer.MeasureString(text).X;
+            }
+
+            return _font?.MeasureString(text).X ?? 0f;
         }
 
         private bool ShouldDrawCaret()
@@ -659,7 +694,18 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawTextRun(SpriteBatch sprite, string text, Vector2 position, Color color)
         {
-            if (!string.IsNullOrEmpty(text))
+            if (string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            if (_clientTextRasterizer != null)
+            {
+                _clientTextRasterizer.DrawString(sprite, text, position, color);
+                return;
+            }
+
+            if (_font != null)
             {
                 sprite.DrawString(_font, text, position, color);
             }
@@ -690,9 +736,24 @@ namespace HaCreator.MapSimulator.UI
             }
 
             int underlineX = (int)Math.Floor(compositionPosition.X);
-            int underlineY = Math.Min(inputBounds.Bottom - 2, inputBounds.Y + _font.LineSpacing + 1);
+            int underlineY = Math.Min(inputBounds.Bottom - 2, inputBounds.Y + GetLineHeight() + 1);
             Rectangle underlineBounds = new(underlineX, underlineY, Math.Max(1, (int)Math.Ceiling(underlineWidth)), 1);
             sprite.Draw(_pixelTexture, underlineBounds, _visualStyle.CompositionUnderlineColor);
+        }
+
+        private int GetLineHeight()
+        {
+            if (_font != null)
+            {
+                return _font.LineSpacing;
+            }
+
+            if (_clientTextRasterizer != null)
+            {
+                return Math.Max(1, (int)Math.Ceiling(_clientTextRasterizer.MeasureString("Ag").Y));
+            }
+
+            return _height;
         }
 
         private void DrawBox(SpriteBatch sprite, Rectangle bounds, Color fillColor, Color borderColor)

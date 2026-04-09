@@ -2,6 +2,7 @@ using MapleLib.WzLib;
 using MapleLib.WzLib.WzProperties;
 using System;
 using System.Collections.Generic;
+using System.Globalization;
 using HaCreator.MapSimulator.Interaction;
 
 namespace HaCreator.MapSimulator.Fields
@@ -174,8 +175,31 @@ namespace HaCreator.MapSimulator.Fields
                 WzIntProperty intProperty => intProperty.Value,
                 WzShortProperty shortProperty => shortProperty.Value,
                 WzLongProperty longProperty => checked((int)longProperty.Value),
+                WzFloatProperty floatProperty => checked((int)Math.Round(floatProperty.Value, MidpointRounding.AwayFromZero)),
+                WzDoubleProperty doubleProperty => checked((int)Math.Round(doubleProperty.Value, MidpointRounding.AwayFromZero)),
+                WzStringProperty stringProperty => ParseStringInt(stringProperty.Value),
                 _ => null
             };
+        }
+
+        private static int? ParseStringInt(string value)
+        {
+            if (string.IsNullOrWhiteSpace(value))
+            {
+                return null;
+            }
+
+            if (int.TryParse(value, NumberStyles.Integer, CultureInfo.InvariantCulture, out int parsedInt))
+            {
+                return parsedInt;
+            }
+
+            if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out double parsedDouble))
+            {
+                return checked((int)Math.Round(parsedDouble, MidpointRounding.AwayFromZero));
+            }
+
+            return null;
         }
     }
 }

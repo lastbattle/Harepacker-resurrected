@@ -122,6 +122,7 @@ namespace HaCreator.MapSimulator.Pools
         bool HasShadowPartner,
         bool HasDarkSight,
         bool HasSoulArrow,
+        bool HasSpiritJavelin,
         int? ChargeSkillId,
         int? MorphId,
         int? GhostId,
@@ -144,6 +145,7 @@ namespace HaCreator.MapSimulator.Pools
             || HasShadowPartner
             || HasDarkSight
             || HasSoulArrow
+            || HasSpiritJavelin
             || ChargeSkillId.HasValue
             || MorphId.HasValue
             || GhostId.HasValue
@@ -237,6 +239,20 @@ namespace HaCreator.MapSimulator.Pools
         int? ItemId,
         int? PairCharacterId,
         RemoteRelationshipOverlayType RelationshipType);
+    public enum RemoteRelationshipRecordDispatchKeyKind
+    {
+        None = 0,
+        LargeIntegerSerial = 1,
+        CharacterId = 2,
+        NewYearCardSerial = 3
+    }
+    public readonly record struct RemoteRelationshipRecordDispatchKey(
+        RemoteRelationshipRecordDispatchKeyKind Kind,
+        long? Serial,
+        int? CharacterId)
+    {
+        public bool HasValue => Kind != RemoteRelationshipRecordDispatchKeyKind.None;
+    }
     public readonly record struct RemoteUserRelationshipRecord(
         bool IsActive,
         int ItemId,
@@ -246,9 +262,11 @@ namespace HaCreator.MapSimulator.Pools
         int? PairCharacterId);
     public readonly record struct RemoteUserRelationshipRecordPacket(
         RemoteRelationshipOverlayType RelationshipType,
-        RemoteUserRelationshipRecord RelationshipRecord);
+        RemoteUserRelationshipRecord RelationshipRecord,
+        RemoteRelationshipRecordDispatchKey DispatchKey);
     public readonly record struct RemoteUserRelationshipRecordRemovePacket(
         RemoteRelationshipOverlayType RelationshipType,
+        RemoteRelationshipRecordDispatchKey DispatchKey,
         long? ItemSerial,
         int? CharacterId);
     public readonly record struct RemoteUserAvatarModifiedPacket(
@@ -930,8 +948,6 @@ namespace HaCreator.MapSimulator.Pools
                         int itemId = reader.ReadInt32();
                         long itemSerial = reader.ReadInt64();
                         long pairItemSerial = reader.ReadInt64();
-                        EnsureRelationshipRecordAddConsumed(ref reader, packetType);
-
                         packet = new RemoteUserRelationshipRecordPacket(
                             packetType == (int)RemoteUserPacketType.UserCoupleRecordAdd
                                 ? RemoteRelationshipOverlayType.Couple
@@ -942,7 +958,12 @@ namespace HaCreator.MapSimulator.Pools
                                 ItemSerial: itemSerial,
                                 PairItemSerial: pairItemSerial,
                                 CharacterId: ownerCharacterId,
-                                PairCharacterId: pairCharacterId));
+                                PairCharacterId: pairCharacterId),
+                            new RemoteRelationshipRecordDispatchKey(
+                                RemoteRelationshipRecordDispatchKeyKind.LargeIntegerSerial,
+                                reader.RemainingLength >= sizeof(long) ? reader.ReadInt64() : pairItemSerial,
+                                CharacterId: null));
+                        EnsureRelationshipRecordAddConsumed(ref reader, packetType);
                         return true;
                     }
 
@@ -951,7 +972,6 @@ namespace HaCreator.MapSimulator.Pools
                         int ownerCharacterId = reader.ReadInt32();
                         int pairCharacterId = reader.ReadInt32();
                         int itemId = reader.ReadInt32();
-                        EnsureRelationshipRecordAddConsumed(ref reader, packetType);
 
                         packet = new RemoteUserRelationshipRecordPacket(
                             RemoteRelationshipOverlayType.Marriage,
@@ -961,7 +981,12 @@ namespace HaCreator.MapSimulator.Pools
                                 ItemSerial: null,
                                 PairItemSerial: null,
                                 CharacterId: ownerCharacterId,
-                                PairCharacterId: pairCharacterId));
+                                PairCharacterId: pairCharacterId),
+                            new RemoteRelationshipRecordDispatchKey(
+                                RemoteRelationshipRecordDispatchKeyKind.CharacterId,
+                                Serial: null,
+                                reader.RemainingLength >= sizeof(int) ? reader.ReadInt32() : pairCharacterId));
+                        EnsureRelationshipRecordAddConsumed(ref reader, packetType);
                         return true;
                     }
 
@@ -978,8 +1003,6 @@ namespace HaCreator.MapSimulator.Pools
                             itemId = 4300000;
                         }
 
-                        EnsureRelationshipRecordAddConsumed(ref reader, packetType);
-
                         packet = new RemoteUserRelationshipRecordPacket(
                             RemoteRelationshipOverlayType.NewYearCard,
                             new RemoteUserRelationshipRecord(
@@ -988,7 +1011,12 @@ namespace HaCreator.MapSimulator.Pools
                                 ItemSerial: itemSerial,
                                 PairItemSerial: null,
                                 CharacterId: ownerCharacterId,
-                                PairCharacterId: pairCharacterId));
+                                PairCharacterId: pairCharacterId),
+                            new RemoteRelationshipRecordDispatchKey(
+                                RemoteRelationshipRecordDispatchKeyKind.NewYearCardSerial,
+                                itemSerial,
+                                CharacterId: null));
+                        EnsureRelationshipRecordAddConsumed(ref reader, packetType);
                         return true;
                     }
 
@@ -1028,6 +1056,10 @@ namespace HaCreator.MapSimulator.Pools
                             packetType == (int)RemoteUserPacketType.UserCoupleRecordRemove
                                 ? RemoteRelationshipOverlayType.Couple
                                 : RemoteRelationshipOverlayType.Friendship,
+                            new RemoteRelationshipRecordDispatchKey(
+                                RemoteRelationshipRecordDispatchKeyKind.LargeIntegerSerial,
+                                itemSerial,
+                                CharacterId: null),
                             ItemSerial: itemSerial,
                             CharacterId: null);
                         return true;
@@ -1040,6 +1072,10 @@ namespace HaCreator.MapSimulator.Pools
 
                         packet = new RemoteUserRelationshipRecordRemovePacket(
                             RemoteRelationshipOverlayType.Marriage,
+                            new RemoteRelationshipRecordDispatchKey(
+                                RemoteRelationshipRecordDispatchKeyKind.CharacterId,
+                                Serial: null,
+                                characterId),
                             ItemSerial: null,
                             CharacterId: characterId);
                         return true;
@@ -1052,6 +1088,10 @@ namespace HaCreator.MapSimulator.Pools
 
                         packet = new RemoteUserRelationshipRecordRemovePacket(
                             RemoteRelationshipOverlayType.NewYearCard,
+                            new RemoteRelationshipRecordDispatchKey(
+                                RemoteRelationshipRecordDispatchKeyKind.NewYearCardSerial,
+                                itemSerial,
+                                CharacterId: null),
                             ItemSerial: itemSerial,
                             CharacterId: null);
                         return true;
@@ -1568,6 +1608,7 @@ namespace HaCreator.MapSimulator.Pools
             bool hasShadowPartner = false;
             bool hasDarkSight = false;
             bool hasSoulArrow = false;
+            bool hasSpiritJavelin = false;
             int? chargeSkillId = null;
             int? morphId = null;
             int? ghostId = null;
@@ -1667,6 +1708,7 @@ namespace HaCreator.MapSimulator.Pools
 
                 if (IsTemporaryStatActive(maskWords, RemoteTemporaryStatMaskBit.SpiritJavelin))
                 {
+                    hasSpiritJavelin = true;
                     hasSoulArrow = true;
                     reader.ReadInt32();
                 }
@@ -1822,6 +1864,7 @@ namespace HaCreator.MapSimulator.Pools
                 hasShadowPartner,
                 hasDarkSight,
                 hasSoulArrow,
+                hasSpiritJavelin,
                 chargeSkillId,
                 morphId,
                 ghostId,
@@ -1871,6 +1914,7 @@ namespace HaCreator.MapSimulator.Pools
                 knownState.HasShadowPartner && IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.ShadowPartner),
                 knownState.HasDarkSight && IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.DarkSight),
                 knownState.HasSoulArrow && IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.SoulArrow),
+                knownState.HasSpiritJavelin && IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.SpiritJavelin),
                 IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.WeaponCharge) ? knownState.ChargeSkillId : null,
                 IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.Morph) ? knownState.MorphId : null,
                 IsTemporaryStatActive(remainingMaskWords, RemoteTemporaryStatMaskBit.Ghost) ? knownState.GhostId : null,

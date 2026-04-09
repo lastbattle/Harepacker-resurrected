@@ -1244,6 +1244,11 @@ namespace HaCreator.MapSimulator.Character
             return _mobStatusController.TryGetFearVisualState(currentTime, out intensity, out remainingDurationMs);
         }
 
+        internal int AdjustMobAffectedExperienceReward(int baseAmount, int currentTime)
+        {
+            return _mobStatusController?.AdjustExperienceReward(baseAmount, currentTime) ?? Math.Max(0, baseAmount);
+        }
+
         private void HandleRepeatSkillModeEndRequested(int skillId, int returnSkillId, int requestedAt)
         {
             _pendingRepeatSkillModeEndSkillId = skillId;

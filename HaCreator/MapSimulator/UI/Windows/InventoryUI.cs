@@ -146,6 +146,8 @@ namespace HaCreator.MapSimulator.UI
         public Action CashShopRequested { get; set; }
         public Action<string> ItemConsumptionBlocked { get; set; }
         public Func<int, InventoryType, bool> ItemUseRequested { get; set; }
+        public Func<int, InventoryType, int, bool> ItemUseRequestedAtSlot { get; set; }
+        public Func<bool> EquipmentDragStartBlocked { get; set; }
 
         public int CurrentTab
         {
@@ -1050,6 +1052,10 @@ namespace HaCreator.MapSimulator.UI
         public void OnInventoryMouseDown(int mouseX, int mouseY)
         {
             _lastMousePosition = new Point(mouseX, mouseY);
+            if (EquipmentDragStartBlocked?.Invoke() == true)
+            {
+                return;
+            }
 
             if (!TryGetSlotAtPosition(mouseX, mouseY, out InventoryType inventoryType, out int slotIndex)
                 || !TryGetSlotsForType(inventoryType, out List<InventorySlotData> slots)
@@ -1295,27 +1301,37 @@ namespace HaCreator.MapSimulator.UI
         {
             bool rightJustPressed = mouseState.RightButton == ButtonState.Pressed &&
                                     _previousInteractionMouseState.RightButton == ButtonState.Released;
+            TryRequestItemUse(inventoryType, slotIndex, rightJustPressed);
+        }
+
+        internal bool TryRequestItemUse(InventoryType inventoryType, int slotIndex, bool rightJustPressed)
+        {
             if (!rightJustPressed
                 || !TryGetSlotsForType(inventoryType, out List<InventorySlotData> slots)
                 || slotIndex < 0
                 || slotIndex >= slots.Count)
             {
-                return;
+                return false;
             }
 
             InventorySlotData slot = slots[slotIndex];
             if (slot == null)
             {
-                return;
+                return false;
             }
 
             if (ItemUpgradeUI.IsSupportedConsumable(slot.ItemId))
             {
                 ItemUpgradeRequested?.Invoke(slot.ItemId);
-                return;
+                return true;
             }
 
-            ItemUseRequested?.Invoke(slot.ItemId, inventoryType);
+            if (ItemUseRequestedAtSlot != null)
+            {
+                return ItemUseRequestedAtSlot(slot.ItemId, inventoryType, slotIndex);
+            }
+
+            return ItemUseRequested?.Invoke(slot.ItemId, inventoryType) == true;
         }
 
         protected override void DrawOverlay(SpriteBatch sprite, SkeletonMeshRenderer skeletonMeshRenderer, GameTime gameTime,

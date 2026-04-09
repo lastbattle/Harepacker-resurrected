@@ -53,6 +53,7 @@ namespace HaCreator.MapSimulator.Interaction
 
     internal enum SocialListClientGuildResultKind : byte
     {
+        Ranking = 76,
         RankTitles = 68,
         Notice = 71
     }
@@ -60,6 +61,7 @@ namespace HaCreator.MapSimulator.Interaction
     internal readonly record struct SocialListClientGuildResultPacket(
         SocialListClientGuildResultKind Kind,
         int GuildId,
+        IReadOnlyList<GuildRankingSeedEntry> RankingEntries,
         IReadOnlyList<string> RankTitles,
         string Notice);
 
@@ -243,6 +245,37 @@ namespace HaCreator.MapSimulator.Interaction
                 SocialListClientGuildResultKind kind = (SocialListClientGuildResultKind)reader.ReadByte();
                 switch (kind)
                 {
+                    case SocialListClientGuildResultKind.Ranking:
+                    {
+                        int guildId = reader.ReadInt32();
+                        int count = reader.ReadInt32();
+                        List<GuildRankingSeedEntry> rankingEntries = new(Math.Max(0, count));
+                        for (int i = 0; i < count; i++)
+                        {
+                            string guildName = NormalizeRoleLabel(reader.ReadString16(), $"Guild {i + 1}");
+                            int points = reader.ReadInt32();
+                            int markBackground = reader.ReadUInt16();
+                            int markBackgroundColor = reader.ReadByte();
+                            int mark = reader.ReadUInt16();
+                            int markColor = reader.ReadByte();
+                            rankingEntries.Add(new GuildRankingSeedEntry(
+                                guildName,
+                                "Guild Master",
+                                points,
+                                string.Empty,
+                                string.Empty,
+                                string.Empty,
+                                markBackground,
+                                markBackgroundColor,
+                                mark,
+                                markColor,
+                                IsPacketOwned: true));
+                        }
+
+                        packet = new SocialListClientGuildResultPacket(kind, guildId, rankingEntries, Array.Empty<string>(), null);
+                        return true;
+                    }
+
                     case SocialListClientGuildResultKind.RankTitles:
                     {
                         int guildId = reader.ReadInt32();
@@ -252,14 +285,19 @@ namespace HaCreator.MapSimulator.Interaction
                             titles[i] = NormalizeRoleLabel(reader.ReadString16(), $"Rank {i + 1}");
                         }
 
-                        packet = new SocialListClientGuildResultPacket(kind, guildId, titles, null);
+                        packet = new SocialListClientGuildResultPacket(kind, guildId, Array.Empty<GuildRankingSeedEntry>(), titles, null);
                         return true;
                     }
 
                     case SocialListClientGuildResultKind.Notice:
                     {
                         int guildId = reader.ReadInt32();
-                        packet = new SocialListClientGuildResultPacket(kind, guildId, Array.Empty<string>(), reader.ReadString16().Trim());
+                        packet = new SocialListClientGuildResultPacket(
+                            kind,
+                            guildId,
+                            Array.Empty<GuildRankingSeedEntry>(),
+                            Array.Empty<string>(),
+                            reader.ReadString16().Trim());
                         return true;
                     }
 

@@ -17,6 +17,7 @@ namespace HaCreator.MapSimulator.Managers
         public int Rank { get; init; }
         public string BackgroundKey { get; init; } = "Back1";
         public string DialogResourcePath { get; init; } = string.Empty;
+        public string OkButtonResourcePath { get; init; } = string.Empty;
         public string DescriptionText { get; init; } = string.Empty;
         public string AmountText { get; init; } = string.Empty;
         public string ChatLineText { get; init; } = string.Empty;
@@ -37,6 +38,11 @@ namespace HaCreator.MapSimulator.Managers
         private const int RandomMesoBagMessageRank4StringPoolId = 0x17B2;
         private const int RandomMesoBagChatTemplateStringPoolId = 0x17B4;
         private const int RandomMesoBagFailedStringPoolId = 0x17B3;
+        private const int RandomMesoBagOkButtonStringPoolId = 0x17AD;
+        private const int RandomMesoBagSoundRank1StringPoolId = 0x17B6;
+        private const int RandomMesoBagSoundRank2StringPoolId = 0x17B7;
+        private const int RandomMesoBagSoundRank3StringPoolId = 0x17B8;
+        private const int RandomMesoBagSoundRank4StringPoolId = 0x17B9;
 
         public static bool TryDecodeRandomMesoBagSucceeded(byte[] payload, out PacketOwnedRandomMesoBagResult result, out string error)
         {
@@ -108,6 +114,7 @@ namespace HaCreator.MapSimulator.Managers
                 Rank = normalizedRank,
                 BackgroundKey = ResolveRandomMesoBagBackgroundKey(normalizedRank, dialogResourcePath),
                 DialogResourcePath = dialogResourcePath,
+                OkButtonResourcePath = GetRandomMesoBagOkButtonResourcePath(),
                 DescriptionText = ResolveRandomMesoBagDescription(normalizedRank),
                 AmountText = mesoAmount.ToString("N0", CultureInfo.InvariantCulture),
                 ChatLineText = FormatInvariant(
@@ -118,6 +125,18 @@ namespace HaCreator.MapSimulator.Managers
                     mesoAmount),
                 SoundDescriptor = ResolveRandomMesoBagSound(normalizedRank)
             };
+        }
+
+        public static string GetRandomMesoBagDialogResourcePath(int rank)
+        {
+            return ResolveRandomMesoBagDialogResourcePath(Math.Clamp(rank, 1, 4));
+        }
+
+        public static string GetRandomMesoBagOkButtonResourcePath()
+        {
+            return ResolvePlainText(
+                RandomMesoBagOkButtonStringPoolId,
+                "UI/UIWindow.img/RandomMesoBag/BtOk");
         }
 
         private static string ResolveRandomMesoBagDialogResourcePath(int rank)
@@ -177,13 +196,23 @@ namespace HaCreator.MapSimulator.Managers
 
         private static string ResolveRandomMesoBagSound(int rank)
         {
-            return rank switch
+            int stringPoolId = rank switch
             {
-                1 => "Sound/Item.img/02000010/Use",
+                2 => RandomMesoBagSoundRank2StringPoolId,
+                3 => RandomMesoBagSoundRank3StringPoolId,
+                4 => RandomMesoBagSoundRank4StringPoolId,
+                _ => RandomMesoBagSoundRank1StringPoolId
+            };
+
+            string fallback = rank switch
+            {
                 2 => "Sound/Item.img/02000011/Use",
                 3 => "Sound/Item.img/02022108/Use",
-                _ => "Sound/Item.img/02022109/Use"
+                4 => "Sound/Item.img/02022109/Use",
+                _ => "Sound/Item.img/02000010/Use"
             };
+
+            return ResolvePlainText(stringPoolId, fallback);
         }
 
         private static string ResolveTextFormat(int stringPoolId, string fallbackFormat, int maxPlaceholderCount)

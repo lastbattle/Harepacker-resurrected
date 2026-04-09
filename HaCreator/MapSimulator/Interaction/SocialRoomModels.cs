@@ -388,7 +388,8 @@ namespace HaCreator.MapSimulator.Interaction
             InventoryType InventoryType,
             bool HasCashSerialNumber,
             long CashSerialNumber,
-            string Title);
+            string Title,
+            string MetadataSummary);
         private readonly record struct MiniRoomBaseEnterResultPayload(int RoomType, int ResultCode, int MaxUsers, int MyPosition, int OccupantCount);
         private readonly record struct OmokMoveHistoryEntry(int X, int Y, int StoneValue, int SeatIndex);
         private readonly record struct TradeVerificationEntry(int ItemId, uint Checksum);
@@ -421,6 +422,8 @@ namespace HaCreator.MapSimulator.Interaction
         private int _miniRoomOmokLastMoveY;
         private int _miniRoomOmokTimeLeftMs;
         private int _miniRoomOmokTimeFloor;
+        private int _miniRoomOmokStoneAnimationTimeLeftMs;
+        private int _miniRoomOmokDialogEffectTimeLeftMs;
         private int _miniRoomOmokOwnerStoneValue;
         private int _miniRoomOmokGuestStoneValue;
         private int _tradeLocalOfferMeso;
@@ -433,6 +436,7 @@ namespace HaCreator.MapSimulator.Interaction
         private bool _miniRoomOmokRetreatRequested;
         private bool _miniRoomOmokRetreatRequestSent;
         private bool _miniRoomOmokRetreatRequestSentTurn;
+        private DateTime? _miniRoomOmokLastTimedStateUtc;
         private bool _tradeLocalLocked;
         private bool _tradeRemoteLocked;
         private bool _tradeLocalAccepted;
@@ -444,6 +448,7 @@ namespace HaCreator.MapSimulator.Interaction
         private EntrustedShopChildDialogKind? _entrustedChildDialogKind;
         private int _entrustedVisitListSelectedIndex = -1;
         private int _entrustedBlacklistSelectedIndex = -1;
+        private string _miniRoomOmokDialogStatus = string.Empty;
         private string _entrustedChildDialogStatus = string.Empty;
         private int _employeeTemplateId;
         private bool _employeeUseOwnerAnchor = true;
@@ -576,6 +581,15 @@ namespace HaCreator.MapSimulator.Interaction
         public int MiniRoomOmokWinnerIndex => _miniRoomOmokWinnerIndex;
         public int MiniRoomOmokLastMoveX => _miniRoomOmokLastMoveX;
         public int MiniRoomOmokLastMoveY => _miniRoomOmokLastMoveY;
+        public int MiniRoomOmokTimeLeftMs => _miniRoomOmokTimeLeftMs;
+        public int MiniRoomOmokTimeFloor => _miniRoomOmokTimeFloor;
+        public bool MiniRoomOmokTieRequested => _miniRoomOmokTieRequested;
+        public bool MiniRoomOmokDrawRequestSent => _miniRoomOmokDrawRequestSent;
+        public bool MiniRoomOmokRetreatRequested => _miniRoomOmokRetreatRequested;
+        public bool MiniRoomOmokRetreatRequestSent => _miniRoomOmokRetreatRequestSent;
+        public int MiniRoomOmokStoneAnimationTimeLeftMs => _miniRoomOmokStoneAnimationTimeLeftMs;
+        public int MiniRoomOmokDialogEffectTimeLeftMs => _miniRoomOmokDialogEffectTimeLeftMs;
+        public string MiniRoomOmokDialogStatus => _miniRoomOmokDialogStatus;
         public EntrustedShopChildDialogSnapshot EntrustedChildDialog => BuildEntrustedChildDialogSnapshot();
 
         public void BindInventory(IInventoryRuntime inventoryRuntime)
@@ -628,6 +642,16 @@ namespace HaCreator.MapSimulator.Interaction
                 MiniRoomOmokOwnerStoneValue = _miniRoomOmokOwnerStoneValue,
                 MiniRoomOmokGuestStoneValue = _miniRoomOmokGuestStoneValue,
                 MiniRoomOmokTieRequested = _miniRoomOmokTieRequested,
+                MiniRoomOmokDrawRequestSent = _miniRoomOmokDrawRequestSent,
+                MiniRoomOmokDrawRequestSentTurn = _miniRoomOmokDrawRequestSentTurn,
+                MiniRoomOmokRetreatRequested = _miniRoomOmokRetreatRequested,
+                MiniRoomOmokRetreatRequestSent = _miniRoomOmokRetreatRequestSent,
+                MiniRoomOmokRetreatRequestSentTurn = _miniRoomOmokRetreatRequestSentTurn,
+                MiniRoomOmokTimeLeftMs = _miniRoomOmokTimeLeftMs,
+                MiniRoomOmokTimeFloor = _miniRoomOmokTimeFloor,
+                MiniRoomOmokStoneAnimationTimeLeftMs = _miniRoomOmokStoneAnimationTimeLeftMs,
+                MiniRoomOmokDialogEffectTimeLeftMs = _miniRoomOmokDialogEffectTimeLeftMs,
+                MiniRoomOmokDialogStatus = _miniRoomOmokDialogStatus,
                 MiniRoomOmokBoard = _miniRoomOmokBoard.ToList(),
                 MiniRoomOmokMoveHistory = _miniRoomOmokMoveHistory
                     .Select(move => new SocialRoomOmokMoveSnapshot
@@ -789,6 +813,17 @@ namespace HaCreator.MapSimulator.Interaction
                     _miniRoomOmokGuestStoneValue = _miniRoomOmokOwnerStoneValue == 1 ? 2 : 1;
                 }
                 _miniRoomOmokTieRequested = source?.MiniRoomOmokTieRequested ?? _defaultSnapshot.MiniRoomOmokTieRequested;
+                _miniRoomOmokDrawRequestSent = source?.MiniRoomOmokDrawRequestSent ?? _defaultSnapshot.MiniRoomOmokDrawRequestSent;
+                _miniRoomOmokDrawRequestSentTurn = source?.MiniRoomOmokDrawRequestSentTurn ?? _defaultSnapshot.MiniRoomOmokDrawRequestSentTurn;
+                _miniRoomOmokRetreatRequested = source?.MiniRoomOmokRetreatRequested ?? _defaultSnapshot.MiniRoomOmokRetreatRequested;
+                _miniRoomOmokRetreatRequestSent = source?.MiniRoomOmokRetreatRequestSent ?? _defaultSnapshot.MiniRoomOmokRetreatRequestSent;
+                _miniRoomOmokRetreatRequestSentTurn = source?.MiniRoomOmokRetreatRequestSentTurn ?? _defaultSnapshot.MiniRoomOmokRetreatRequestSentTurn;
+                _miniRoomOmokTimeLeftMs = Math.Max(0, source?.MiniRoomOmokTimeLeftMs ?? _defaultSnapshot.MiniRoomOmokTimeLeftMs);
+                _miniRoomOmokTimeFloor = Math.Max(0, source?.MiniRoomOmokTimeFloor ?? _defaultSnapshot.MiniRoomOmokTimeFloor);
+                _miniRoomOmokStoneAnimationTimeLeftMs = Math.Max(0, source?.MiniRoomOmokStoneAnimationTimeLeftMs ?? _defaultSnapshot.MiniRoomOmokStoneAnimationTimeLeftMs);
+                _miniRoomOmokDialogEffectTimeLeftMs = Math.Max(0, source?.MiniRoomOmokDialogEffectTimeLeftMs ?? _defaultSnapshot.MiniRoomOmokDialogEffectTimeLeftMs);
+                _miniRoomOmokDialogStatus = source?.MiniRoomOmokDialogStatus ?? _defaultSnapshot.MiniRoomOmokDialogStatus ?? string.Empty;
+                _miniRoomOmokLastTimedStateUtc = null;
                 _tradeLocalOfferMeso = Math.Max(0, source?.TradeLocalOfferMeso ?? _defaultSnapshot.TradeLocalOfferMeso);
                 _tradeRemoteOfferMeso = Math.Max(0, source?.TradeRemoteOfferMeso ?? _defaultSnapshot.TradeRemoteOfferMeso);
                 _tradeLocalLocked = source?.TradeLocalLocked ?? _defaultSnapshot.TradeLocalLocked;
@@ -996,7 +1031,7 @@ namespace HaCreator.MapSimulator.Interaction
                 SocialRoomKind.MiniRoom => $"{RoomTitle}: state={RoomState}, mode={ModeName}, wager={_miniRoomWagerAmount:N0}, occupants={_occupants.Count}/{Capacity}, omokTurn={ResolveOmokTurnName()}, winner={ResolveOmokWinnerName()}",
                 SocialRoomKind.PersonalShop => $"{RoomTitle}: state={RoomState}, listed={_items.Count}, savedVisitors={_savedVisitors.Count}, blacklist={_blockedVisitors.Count}, ledger={MesoAmount:N0}, employee={DescribeEmployeeState()}, packet={_lastPacketOwnerSummary}, dispatcher={_shopDialogPacketOwner?.OwnerName ?? "none"}",
                 SocialRoomKind.EntrustedShop => $"{RoomTitle}: state={RoomState}, listed={_items.Count}, ledger={MesoAmount:N0}, permit={FormatPermitStatus(DateTime.UtcNow)}, employee={DescribeEmployeeState()}, packet={_lastPacketOwnerSummary}, dispatcher={_shopDialogPacketOwner?.OwnerName ?? "none"}",
-                SocialRoomKind.TradingRoom => $"{RoomTitle}: state={RoomState}, localMeso={MesoAmount:N0}, remoteMeso={_tradeRemoteOfferMeso:N0}, remoteWallet={_remoteInventoryMeso:N0}, remoteItems={_remoteInventoryEntries.Sum(entry => entry.Quantity)}, lock={FormatTradePartyState(_tradeLocalLocked, _tradeRemoteLocked)}, accept={FormatTradePartyState(_tradeLocalAccepted, _tradeRemoteAccepted)}, crc={DescribeTradeVerificationStatus()}, escrowRows={_inventoryEscrow.Count}",
+                SocialRoomKind.TradingRoom => $"{RoomTitle}: state={RoomState}, localMeso={MesoAmount:N0}, remoteMeso={_tradeRemoteOfferMeso:N0}, remoteWallet={_remoteInventoryMeso:N0}, remoteItems={_remoteInventoryEntries.Sum(entry => entry.Quantity)}, lock={FormatTradePartyState(_tradeLocalLocked, _tradeRemoteLocked)}, accept={FormatTradePartyState(_tradeLocalAccepted, _tradeRemoteAccepted)}, crc={DescribeTradeVerificationStatus()}, escrowRows={_inventoryEscrow.Count}, packet={_lastPacketOwnerSummary}, dispatcher={_shopDialogPacketOwner?.OwnerName ?? "none"}",
                 _ => RoomState
             };
         }
@@ -1089,6 +1124,11 @@ namespace HaCreator.MapSimulator.Interaction
 
         public void RefreshTimedState(DateTime utcNow)
         {
+            if (IsMiniRoomOmokActive)
+            {
+                RefreshOmokTimedState(utcNow);
+            }
+
             if (Kind == SocialRoomKind.EntrustedShop)
             {
                 string previousState = RoomState;
@@ -1100,6 +1140,37 @@ namespace HaCreator.MapSimulator.Interaction
                     PersistState();
                 }
             }
+        }
+
+        private void RefreshOmokTimedState(DateTime utcNow)
+        {
+            if (_miniRoomOmokLastTimedStateUtc == null)
+            {
+                _miniRoomOmokLastTimedStateUtc = utcNow;
+                return;
+            }
+
+            int elapsedMilliseconds = (int)Math.Clamp((utcNow - _miniRoomOmokLastTimedStateUtc.Value).TotalMilliseconds, 0d, 1000d);
+            _miniRoomOmokLastTimedStateUtc = utcNow;
+            if (elapsedMilliseconds <= 0)
+            {
+                return;
+            }
+
+            _miniRoomOmokStoneAnimationTimeLeftMs = Math.Max(0, _miniRoomOmokStoneAnimationTimeLeftMs - elapsedMilliseconds);
+            _miniRoomOmokDialogEffectTimeLeftMs = Math.Max(0, _miniRoomOmokDialogEffectTimeLeftMs - elapsedMilliseconds);
+            if (_miniRoomOmokDialogEffectTimeLeftMs == 0 && !_miniRoomOmokInProgress && _miniRoomOmokWinnerIndex < 0)
+            {
+                _miniRoomOmokDialogStatus = string.Empty;
+            }
+
+            if (!_miniRoomOmokInProgress || _miniRoomOmokWinnerIndex >= 0)
+            {
+                return;
+            }
+
+            _miniRoomOmokTimeLeftMs = Math.Max(0, _miniRoomOmokTimeLeftMs - elapsedMilliseconds);
+            _miniRoomOmokTimeFloor = (_miniRoomOmokTimeLeftMs + 999) / 1000;
         }
 
         public SocialRoomFieldActorSnapshot GetFieldActorSnapshot(DateTime utcNow)
@@ -1372,8 +1443,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return Kind switch
                 {
                     SocialRoomKind.MiniRoom => TryDispatchMiniRoomPacket(reader, packetType, tickCount, out message),
-                    SocialRoomKind.PersonalShop or SocialRoomKind.EntrustedShop => _shopDialogPacketOwner?.TryDispatch(payload, reader, packetType, tickCount, out message) == true,
-                    SocialRoomKind.TradingRoom => TryDispatchTradingRoomPacket(payload, reader, packetType, out message),
+                    SocialRoomKind.PersonalShop or SocialRoomKind.EntrustedShop or SocialRoomKind.TradingRoom => _shopDialogPacketOwner?.TryDispatch(payload, reader, packetType, tickCount, out message) == true,
                     _ => FailPacket(packetType, out message)
                 };
             }
@@ -1556,10 +1626,11 @@ namespace HaCreator.MapSimulator.Interaction
                 case OmokPutStoneErrorPacketType:
                 {
                     int errorCode = reader.ReadByte();
-                    _miniRoomOmokTieRequested = false;
+                    ClearOmokDialogRequests();
                     StatusMessage = errorCode == 67
                         ? "The Omok stone packet was rejected because that point is already occupied."
                         : $"The Omok stone packet was rejected (code {errorCode}).";
+                    SetOmokDialogStatus(StatusMessage, 1500);
                     AddMiniRoomSystemMessage($"System : {StatusMessage}", isWarning: true);
                     SyncMiniRoomOmokPresentation();
                     PersistState();
@@ -1568,16 +1639,21 @@ namespace HaCreator.MapSimulator.Interaction
                 }
                 case OmokTimeOverPacketType:
                     _miniRoomOmokCurrentTurnIndex = Math.Clamp((int)reader.ReadByte(), 0, 1);
-                    _miniRoomOmokTieRequested = false;
+                    ClearOmokDialogRequests();
+                    ResetOmokTurnClock();
                     RoomState = _miniRoomOmokInProgress ? "Omok in progress" : RoomState;
                     StatusMessage = $"{ResolveMiniRoomSeatName(_miniRoomOmokCurrentTurnIndex)}'s Omok turn.";
+                    SetOmokDialogStatus($"Time over. {StatusMessage}", 1200);
                     SyncMiniRoomOmokPresentation();
                     PersistState();
                     message = StatusMessage;
                     return true;
                 case OmokTieRequestPacketType:
                     _miniRoomOmokTieRequested = true;
+                    _miniRoomOmokDrawRequestSent = false;
+                    _miniRoomOmokDrawRequestSentTurn = false;
                     StatusMessage = $"{ResolveRemoteTraderName()} requested an Omok draw.";
+                    SetOmokDialogStatus(StatusMessage, 1800);
                     AddMiniRoomSystemMessage($"System : {StatusMessage}");
                     SyncMiniRoomOmokPresentation();
                     PersistState();
@@ -1585,15 +1661,23 @@ namespace HaCreator.MapSimulator.Interaction
                     return true;
                 case OmokTieResultPacketType:
                     _miniRoomOmokTieRequested = false;
+                    _miniRoomOmokDrawRequestSent = false;
+                    _miniRoomOmokDrawRequestSentTurn = false;
                     StatusMessage = "The Omok draw request was answered. Waiting for the next result packet.";
+                    SetOmokDialogStatus(StatusMessage, 1500);
                     AddMiniRoomSystemMessage($"System : {StatusMessage}");
                     SyncMiniRoomOmokPresentation();
                     PersistState();
                     message = StatusMessage;
                     return true;
                 case OmokRetreatRequestPacketType:
+                    _miniRoomOmokRetreatRequested = true;
+                    _miniRoomOmokRetreatRequestSent = false;
+                    _miniRoomOmokRetreatRequestSentTurn = false;
                     StatusMessage = $"{ResolveRemoteTraderName()} requested an Omok retreat.";
+                    SetOmokDialogStatus(StatusMessage, 1800);
                     AddMiniRoomSystemMessage($"System : {StatusMessage}", isWarning: true);
+                    SyncMiniRoomOmokPresentation();
                     PersistState();
                     message = StatusMessage;
                     return true;
@@ -1602,8 +1686,13 @@ namespace HaCreator.MapSimulator.Interaction
                     bool accepted = reader.ReadByte() != 0;
                     if (!accepted)
                     {
+                        _miniRoomOmokRetreatRequested = false;
+                        _miniRoomOmokRetreatRequestSent = false;
+                        _miniRoomOmokRetreatRequestSentTurn = false;
                         StatusMessage = "The Omok retreat request was declined.";
+                        SetOmokDialogStatus(StatusMessage, 1500);
                         AddMiniRoomSystemMessage($"System : {StatusMessage}", isWarning: true);
+                        SyncMiniRoomOmokPresentation();
                         PersistState();
                         message = StatusMessage;
                         return true;
@@ -1696,7 +1785,9 @@ namespace HaCreator.MapSimulator.Interaction
                     return true;
                 }
                 case TradingRoomPutItemPacketType:
-                    return TryApplyTradingRoomItemPacket(payload, out message);
+                    return payload != null && payload.Length >= 5
+                        ? TryApplyTradingRoomItemPacket(payload, out message)
+                        : TryApplyTradingRoomItemPacket(reader, out message);
                 case TradingRoomTradePacketType:
                     ApplyTradingRoomTradePacket();
                     message = StatusMessage;
@@ -1724,6 +1815,29 @@ namespace HaCreator.MapSimulator.Interaction
             int traderIndex = payload[1];
             int slotIndex = Math.Max(1, (int)payload[2]);
             if (!TryDecodePacketOwnedTradeItem(payload.AsSpan(3), out PacketOwnedTradeItem item, out string error))
+            {
+                message = error;
+                return false;
+            }
+
+            ApplyTradingRoomItemPacket(traderIndex, slotIndex, item);
+            message = StatusMessage;
+            return true;
+        }
+
+        private bool TryApplyTradingRoomItemPacket(PacketReader reader, out string message)
+        {
+            message = null;
+            if (reader == null || reader.Remaining < 3)
+            {
+                message = "Trading-room put-item packet is too short to decode.";
+                return false;
+            }
+
+            int traderIndex = reader.ReadByte();
+            int slotIndex = Math.Max(1, (int)reader.ReadByte());
+            byte[] itemPayload = reader.ReadBytes(reader.Remaining);
+            if (!TryDecodePacketOwnedTradeItem(itemPayload, out PacketOwnedTradeItem item, out string error))
             {
                 message = error;
                 return false;
@@ -1926,7 +2040,8 @@ namespace HaCreator.MapSimulator.Interaction
                 out int quantity,
                 out bool hasCashSerialNumber,
                 out long cashSerialNumber,
-                out string title))
+                out string title,
+                out string metadataSummary))
             {
                 error = "Trading-room item payload did not contain a recognizable MapleStory item row.";
                 return false;
@@ -1947,7 +2062,8 @@ namespace HaCreator.MapSimulator.Interaction
                 inventoryType,
                 hasCashSerialNumber,
                 cashSerialNumber,
-                title);
+                title,
+                metadataSummary);
             return true;
         }
 
@@ -1959,7 +2075,8 @@ namespace HaCreator.MapSimulator.Interaction
             out int quantity,
             out bool hasCashSerialNumber,
             out long cashSerialNumber,
-            out string title)
+            out string title,
+            out string metadataSummary)
         {
             serialNumber = 0;
             itemId = 0;
@@ -1967,6 +2084,7 @@ namespace HaCreator.MapSimulator.Interaction
             hasCashSerialNumber = false;
             cashSerialNumber = 0;
             title = string.Empty;
+            metadataSummary = string.Empty;
 
             using MemoryStream stream = new MemoryStream(payload.ToArray(), writable: false);
             using BinaryReader reader = new BinaryReader(stream, Encoding.ASCII, leaveOpen: false);
@@ -2000,9 +2118,9 @@ namespace HaCreator.MapSimulator.Interaction
             serialNumber = reader.ReadInt64();
             return slotType switch
             {
-                1 => TryDecodePacketOwnedEquipBody(reader, hasCashSerialNumber, out title),
-                2 => TryDecodePacketOwnedBundleBody(reader, itemId, out quantity, out title),
-                3 => TryDecodePacketOwnedPetBody(reader, out title),
+                1 => TryDecodePacketOwnedEquipBody(reader, hasCashSerialNumber, out title, out metadataSummary),
+                2 => TryDecodePacketOwnedBundleBody(reader, itemId, out quantity, out title, out metadataSummary),
+                3 => TryDecodePacketOwnedPetBody(reader, out title, out metadataSummary),
                 _ => false
             };
         }
@@ -2016,12 +2134,16 @@ namespace HaCreator.MapSimulator.Interaction
             string titleText = string.IsNullOrWhiteSpace(item.Title)
                 ? string.Empty
                 : $" | Title {item.Title}";
-            return $"{ownerLabel} offer | Packet slot {slotIndex} | {item.InventoryType}{serialText}{cashText}{titleText}";
+            string metadataText = string.IsNullOrWhiteSpace(item.MetadataSummary)
+                ? string.Empty
+                : $" | {item.MetadataSummary}";
+            return $"{ownerLabel} offer | Packet slot {slotIndex} | {item.InventoryType}{serialText}{cashText}{titleText}{metadataText}";
         }
 
-        private static bool TryDecodePacketOwnedEquipBody(BinaryReader reader, bool hasCashSerialNumber, out string title)
+        private static bool TryDecodePacketOwnedEquipBody(BinaryReader reader, bool hasCashSerialNumber, out string title, out string metadataSummary)
         {
             title = string.Empty;
+            metadataSummary = string.Empty;
             Stream stream = reader.BaseStream;
             const int equipStatsByteLength = (sizeof(byte) * 2) + (sizeof(short) * 15);
             if (stream.Length - stream.Position < equipStatsByteLength)
@@ -2029,7 +2151,23 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            stream.Position += equipStatsByteLength;
+            short remainingUpgradeCount = reader.ReadInt16();
+            byte upgradeCount = reader.ReadByte();
+            short strength = reader.ReadInt16();
+            short dexterity = reader.ReadInt16();
+            short intelligence = reader.ReadInt16();
+            short luck = reader.ReadInt16();
+            short hp = reader.ReadInt16();
+            short mp = reader.ReadInt16();
+            short weaponAttack = reader.ReadInt16();
+            short magicAttack = reader.ReadInt16();
+            short weaponDefense = reader.ReadInt16();
+            short magicDefense = reader.ReadInt16();
+            short accuracy = reader.ReadInt16();
+            short avoidability = reader.ReadInt16();
+            short hands = reader.ReadInt16();
+            short speed = reader.ReadInt16();
+            short jump = reader.ReadInt16();
             if (!TryReadTradePacketMapleString(reader, out title))
             {
                 return false;
@@ -2041,7 +2179,19 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            stream.Position += tailLength;
+            short attribute = reader.ReadInt16();
+            byte levelUpType = reader.ReadByte();
+            byte level = reader.ReadByte();
+            int experience = reader.ReadInt32();
+            int durability = reader.ReadInt32();
+            int itemUpgradeCount = reader.ReadInt32();
+            byte grade = reader.ReadByte();
+            byte bonusUpgradeCount = reader.ReadByte();
+            short option1 = reader.ReadInt16();
+            short option2 = reader.ReadInt16();
+            short option3 = reader.ReadInt16();
+            short socket1 = reader.ReadInt16();
+            short socket2 = reader.ReadInt16();
             if (!hasCashSerialNumber)
             {
                 if (stream.Length - stream.Position < sizeof(long))
@@ -2053,13 +2203,45 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             stream.Position += sizeof(long) + sizeof(int);
+            metadataSummary = BuildEquipTradeMetadataSummary(
+                remainingUpgradeCount,
+                upgradeCount,
+                strength,
+                dexterity,
+                intelligence,
+                luck,
+                hp,
+                mp,
+                weaponAttack,
+                magicAttack,
+                weaponDefense,
+                magicDefense,
+                accuracy,
+                avoidability,
+                hands,
+                speed,
+                jump,
+                attribute,
+                levelUpType,
+                level,
+                experience,
+                durability,
+                itemUpgradeCount,
+                grade,
+                bonusUpgradeCount,
+                option1,
+                option2,
+                option3,
+                socket1,
+                socket2);
             return true;
         }
 
-        private static bool TryDecodePacketOwnedBundleBody(BinaryReader reader, int itemId, out int quantity, out string title)
+        private static bool TryDecodePacketOwnedBundleBody(BinaryReader reader, int itemId, out int quantity, out string title, out string metadataSummary)
         {
             quantity = 1;
             title = string.Empty;
+            metadataSummary = string.Empty;
             Stream stream = reader.BaseStream;
             if (stream.Length - stream.Position < sizeof(ushort))
             {
@@ -2077,7 +2259,8 @@ namespace HaCreator.MapSimulator.Interaction
                 return false;
             }
 
-            _ = reader.ReadInt16();
+            short attribute = reader.ReadInt16();
+            long rechargeableSerialNumber = 0;
             if (itemId / 10000 is 207 or 233)
             {
                 if (stream.Length - stream.Position < sizeof(long))
@@ -2085,15 +2268,17 @@ namespace HaCreator.MapSimulator.Interaction
                     return false;
                 }
 
-                _ = reader.ReadInt64();
+                rechargeableSerialNumber = reader.ReadInt64();
             }
 
+            metadataSummary = BuildBundleTradeMetadataSummary(attribute, rechargeableSerialNumber);
             return true;
         }
 
-        private static bool TryDecodePacketOwnedPetBody(BinaryReader reader, out string title)
+        private static bool TryDecodePacketOwnedPetBody(BinaryReader reader, out string title, out string metadataSummary)
         {
             title = string.Empty;
+            metadataSummary = string.Empty;
             Stream stream = reader.BaseStream;
             const int petNameLength = 13;
             const int petTailLength = sizeof(byte) + sizeof(short) + sizeof(byte) + sizeof(long) + sizeof(short) + sizeof(ushort) + sizeof(int) + sizeof(short);
@@ -2103,8 +2288,184 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             title = Encoding.ASCII.GetString(reader.ReadBytes(petNameLength)).TrimEnd('\0', ' ');
-            stream.Position += petTailLength;
+            byte level = reader.ReadByte();
+            short closeness = reader.ReadInt16();
+            byte fullness = reader.ReadByte();
+            _ = reader.ReadInt64();
+            short attribute = reader.ReadInt16();
+            ushort skill = reader.ReadUInt16();
+            int remainingLife = reader.ReadInt32();
+            short fatigue = reader.ReadInt16();
+            metadataSummary = BuildPetTradeMetadataSummary(level, closeness, fullness, attribute, skill, remainingLife, fatigue);
             return true;
+        }
+
+        private static string BuildEquipTradeMetadataSummary(
+            short remainingUpgradeCount,
+            byte upgradeCount,
+            short strength,
+            short dexterity,
+            short intelligence,
+            short luck,
+            short hp,
+            short mp,
+            short weaponAttack,
+            short magicAttack,
+            short weaponDefense,
+            short magicDefense,
+            short accuracy,
+            short avoidability,
+            short hands,
+            short speed,
+            short jump,
+            short attribute,
+            byte levelUpType,
+            byte level,
+            int experience,
+            int durability,
+            int itemUpgradeCount,
+            byte grade,
+            byte bonusUpgradeCount,
+            short option1,
+            short option2,
+            short option3,
+            short socket1,
+            short socket2)
+        {
+            List<string> parts = new List<string>();
+            parts.Add($"RUC {remainingUpgradeCount}");
+            if (upgradeCount > 0)
+            {
+                parts.Add($"CUC {upgradeCount}");
+            }
+
+            AppendStatPart(parts, "STR", strength);
+            AppendStatPart(parts, "DEX", dexterity);
+            AppendStatPart(parts, "INT", intelligence);
+            AppendStatPart(parts, "LUK", luck);
+            AppendStatPart(parts, "HP", hp);
+            AppendStatPart(parts, "MP", mp);
+            AppendStatPart(parts, "PAD", weaponAttack);
+            AppendStatPart(parts, "MAD", magicAttack);
+            AppendStatPart(parts, "PDD", weaponDefense);
+            AppendStatPart(parts, "MDD", magicDefense);
+            AppendStatPart(parts, "ACC", accuracy);
+            AppendStatPart(parts, "EVA", avoidability);
+            AppendStatPart(parts, "Hands", hands);
+            AppendStatPart(parts, "Speed", speed);
+            AppendStatPart(parts, "Jump", jump);
+
+            if (attribute != 0)
+            {
+                parts.Add($"Attr 0x{(ushort)attribute:X4}");
+            }
+
+            if (levelUpType > 0)
+            {
+                parts.Add($"LvType {levelUpType}");
+            }
+
+            if (level > 0)
+            {
+                parts.Add($"Lv {level}");
+            }
+
+            if (experience > 0)
+            {
+                parts.Add($"EXP {experience}");
+            }
+
+            if (durability > 0)
+            {
+                parts.Add($"Dur {durability}");
+            }
+
+            if (itemUpgradeCount > 0)
+            {
+                parts.Add($"IUC {itemUpgradeCount}");
+            }
+
+            if (grade > 0)
+            {
+                parts.Add($"Grade {grade}");
+            }
+
+            if (bonusUpgradeCount > 0)
+            {
+                parts.Add($"CHUC {bonusUpgradeCount}");
+            }
+
+            if (option1 != 0 || option2 != 0 || option3 != 0)
+            {
+                parts.Add($"Opt {option1}/{option2}/{option3}");
+            }
+
+            if (socket1 != 0 || socket2 != 0)
+            {
+                parts.Add($"Socket {socket1}/{socket2}");
+            }
+
+            return string.Join(", ", parts);
+        }
+
+        private static string BuildBundleTradeMetadataSummary(short attribute, long rechargeableSerialNumber)
+        {
+            List<string> parts = new List<string>();
+            if (attribute != 0)
+            {
+                parts.Add($"Attr 0x{(ushort)attribute:X4}");
+            }
+
+            if (rechargeableSerialNumber > 0)
+            {
+                parts.Add($"RechargeSN {rechargeableSerialNumber}");
+            }
+
+            return string.Join(", ", parts);
+        }
+
+        private static string BuildPetTradeMetadataSummary(
+            byte level,
+            short closeness,
+            byte fullness,
+            short attribute,
+            ushort skill,
+            int remainingLife,
+            short fatigue)
+        {
+            List<string> parts = new List<string>();
+            parts.Add($"PetLv {level}");
+            parts.Add($"Closeness {closeness}");
+            parts.Add($"Fullness {fullness}");
+            if (attribute != 0)
+            {
+                parts.Add($"Attr 0x{(ushort)attribute:X4}");
+            }
+
+            if (skill > 0)
+            {
+                parts.Add($"Skill 0x{skill:X4}");
+            }
+
+            if (remainingLife > 0)
+            {
+                parts.Add($"Life {remainingLife}");
+            }
+
+            if (fatigue > 0)
+            {
+                parts.Add($"Fatigue {fatigue}");
+            }
+
+            return string.Join(", ", parts);
+        }
+
+        private static void AppendStatPart(List<string> parts, string label, short value)
+        {
+            if (value != 0)
+            {
+                parts.Add($"{label} {value:+#;-#;0}");
+            }
         }
 
         private static bool TryReadTradePacketMapleString(BinaryReader reader, out string value)
@@ -2253,21 +2614,29 @@ namespace HaCreator.MapSimulator.Interaction
 
             string employerName = NormalizeName(reader.ReadMapleString());
             int branchStart = reader.Position;
-            MiniRoomBaseEnterResultPayload ownerPayload = default;
+            MiniRoomBaseEnterResultPayload payload = default;
+            string title = null;
+            int itemMaxCount = 0;
             string ownerPayloadError = null;
             string ownerDecodeError = null;
-            bool decodedOwnerLedger = TryDecodeEntrustedShopOwnerEnterLedger(reader, out int permitData, out bool soldDialogVisible, out List<SocialRoomSoldItemEntry> soldItems, out long totalReceived, out ownerDecodeError)
-                && TryDecodeMiniRoomBaseEnterResultPayload(reader, out ownerPayload, out ownerPayloadError);
+            bool decodedOwnerLedger = TryDecodeEntrustedShopOwnerEnterLedger(
+                    reader,
+                    out int permitData,
+                    out bool soldDialogVisible,
+                    out List<SocialRoomSoldItemEntry> soldItems,
+                    out long totalReceived,
+                    out ownerDecodeError)
+                && TryDecodeEntrustedShopTitleAndBasePayload(
+                    reader,
+                    out title,
+                    out itemMaxCount,
+                    out payload,
+                    out ownerPayloadError);
 
-            MiniRoomBaseEnterResultPayload payload;
-            if (decodedOwnerLedger)
-            {
-                payload = ownerPayload;
-            }
-            else
+            if (!decodedOwnerLedger)
             {
                 reader.Reset(branchStart);
-                if (!TryDecodeMiniRoomBaseEnterResultPayload(reader, out payload, out message))
+                if (!TryDecodeEntrustedShopTitleAndBasePayload(reader, out title, out itemMaxCount, out payload, out message))
                 {
                     message = ownerDecodeError ?? ownerPayloadError ?? message;
                     return false;
@@ -2296,8 +2665,6 @@ namespace HaCreator.MapSimulator.Interaction
                 _soldItems.AddRange(soldItems);
             }
 
-            string title = reader.ReadMapleString();
-            int itemMaxCount = reader.ReadByte();
             RoomTitle = string.IsNullOrWhiteSpace(title) ? RoomTitle : title.Trim();
 
             EnsureMerchantPacketNotes();
@@ -2339,6 +2706,18 @@ namespace HaCreator.MapSimulator.Interaction
             PersistState();
             message = StatusMessage;
             return true;
+        }
+
+        private bool TryDecodeEntrustedShopTitleAndBasePayload(
+            PacketReader reader,
+            out string title,
+            out int itemMaxCount,
+            out MiniRoomBaseEnterResultPayload payload,
+            out string message)
+        {
+            title = reader.ReadMapleString();
+            itemMaxCount = reader.ReadByte();
+            return TryDecodeMiniRoomBaseEnterResultPayload(reader, out payload, out message);
         }
 
         private bool TryDecodeMiniRoomBaseEnterResultPayload(PacketReader reader, out MiniRoomBaseEnterResultPayload payload, out string message)
@@ -3000,9 +3379,11 @@ namespace HaCreator.MapSimulator.Interaction
             _miniRoomOmokInProgress = true;
             _miniRoomOmokCurrentTurnIndex = Math.Clamp(firstTurnSeat, 0, 1);
             _miniRoomOmokWinnerIndex = -1;
-            _miniRoomOmokTieRequested = false;
+            ClearOmokDialogRequests();
+            ResetOmokTurnClock();
             RoomState = "Omok in progress";
             StatusMessage = $"{ResolveMiniRoomSeatName(_miniRoomOmokCurrentTurnIndex)} opened the Omok round from a packet-backed start.";
+            SetOmokDialogStatus("COmokDlg::OnUserStart rebuilt the Omok board from packet state.", 1500);
             SyncMiniRoomOmokPresentation();
             AddMiniRoomSystemMessage("System : Omok round started from packet state.");
             PersistState();
@@ -3033,7 +3414,9 @@ namespace HaCreator.MapSimulator.Interaction
             _miniRoomOmokBoard[boardIndex] = stoneValue;
             _miniRoomOmokLastMoveX = x;
             _miniRoomOmokLastMoveY = y;
-            _miniRoomOmokTieRequested = false;
+            ClearOmokDialogRequests();
+            StartOmokStoneAnimation();
+            ResetOmokTurnClock();
             _miniRoomOmokMoveHistory.Add(new OmokMoveHistoryEntry(x, y, stoneValue, seatIndex));
             AddMiniRoomSpeakerMessage(ResolveMiniRoomSeatName(seatIndex), $"placed a {ResolveOmokStoneName(stoneValue)} stone at {x},{y}.", seatIndex == 0);
 
@@ -3043,12 +3426,16 @@ namespace HaCreator.MapSimulator.Interaction
                 _miniRoomOmokWinnerIndex = seatIndex;
                 RoomState = "Omok result";
                 StatusMessage = $"{ResolveMiniRoomSeatName(seatIndex)} completed five in a row and won the Omok round.";
+                SetOmokDialogStatus(StatusMessage, 2200);
             }
             else
             {
                 _miniRoomOmokCurrentTurnIndex = seatIndex == 0 ? 1 : 0;
                 RoomState = "Omok in progress";
                 StatusMessage = $"{ResolveMiniRoomSeatName(_miniRoomOmokCurrentTurnIndex)}'s Omok turn.";
+                SetOmokDialogStatus(
+                    $"{ResolveMiniRoomSeatName(seatIndex)} placed a {ResolveOmokStoneName(stoneValue)} stone. {_miniRoomOmokTimeFloor}s remain on the dialog timer.",
+                    900);
             }
 
             SyncMiniRoomOmokPresentation();
@@ -3076,12 +3463,15 @@ namespace HaCreator.MapSimulator.Interaction
 
             _miniRoomOmokCurrentTurnIndex = Math.Clamp(nextTurnSeat, 0, 1);
             _miniRoomOmokWinnerIndex = -1;
-            _miniRoomOmokTieRequested = false;
+            ClearOmokDialogRequests();
+            ResetOmokTurnClock();
+            StartOmokStoneAnimation();
             UpdateLastOmokMoveFromHistory();
             RoomState = "Omok in progress";
             StatusMessage = removedStoneCount > 0
                 ? $"Omok retreat packet removed {removedStoneCount} recent stone(s){(removedByHistory > 0 ? " from preserved stone history" : string.Empty)}."
                 : "Omok retreat packet resolved without removing stones.";
+            SetOmokDialogStatus($"COmokDlg retreat flow restored {ResolveMiniRoomSeatName(_miniRoomOmokCurrentTurnIndex)}'s turn.", 1500);
             SyncMiniRoomOmokPresentation();
             PersistState();
         }
@@ -3089,18 +3479,20 @@ namespace HaCreator.MapSimulator.Interaction
         private void ApplyOmokGameResultPacket(int resultType, int winnerSeat)
         {
             _miniRoomOmokInProgress = false;
-            _miniRoomOmokTieRequested = false;
+            ClearOmokDialogRequests();
             if (resultType == 1)
             {
                 _miniRoomOmokWinnerIndex = -1;
                 RoomState = "Omok draw";
                 StatusMessage = "The Omok round ended in a draw.";
+                SetOmokDialogStatus("COmokDlg::OnGameResult closed the round as a draw.", 2200);
             }
             else
             {
                 _miniRoomOmokWinnerIndex = Math.Clamp(winnerSeat, 0, 1);
                 RoomState = "Omok result";
                 StatusMessage = $"{ResolveMiniRoomSeatName(_miniRoomOmokWinnerIndex)} won the Omok round from packet state.";
+                SetOmokDialogStatus(StatusMessage, 2200);
             }
 
             SyncMiniRoomOmokPresentation();
@@ -3956,9 +4348,11 @@ namespace HaCreator.MapSimulator.Interaction
                 _miniRoomOmokInProgress = true;
                 _miniRoomOmokCurrentTurnIndex = 0;
                 _miniRoomOmokWinnerIndex = -1;
-                _miniRoomOmokTieRequested = false;
+                ClearOmokDialogRequests();
+                ResetOmokTurnClock();
                 RoomState = "Omok in progress";
                 StatusMessage = $"{OwnerName} has the first Omok turn with black stones.";
+                SetOmokDialogStatus("COmokDlg::OnUserStart opened the round and assigned black stones to the host.", 1500);
                 SyncMiniRoomOmokPresentation();
                 AddMiniRoomSystemMessage("System : Omok round started.");
                 PersistState();
@@ -4014,7 +4408,9 @@ namespace HaCreator.MapSimulator.Interaction
             _miniRoomOmokBoard[boardIndex] = stoneValue;
             _miniRoomOmokLastMoveX = x;
             _miniRoomOmokLastMoveY = y;
-            _miniRoomOmokTieRequested = false;
+            ClearOmokDialogRequests();
+            StartOmokStoneAnimation();
+            ResetOmokTurnClock();
             _miniRoomOmokMoveHistory.Add(new OmokMoveHistoryEntry(x, y, stoneValue, playerIndex));
 
             string playerName = ResolveMiniRoomSeatName(playerIndex);
@@ -4027,6 +4423,7 @@ namespace HaCreator.MapSimulator.Interaction
                 _miniRoomOmokWinnerIndex = playerIndex;
                 RoomState = "Omok result";
                 StatusMessage = $"{playerName} completed five in a row and won the Omok round.";
+                SetOmokDialogStatus($"{playerName} locked the Omok result layer with five in a row.", 2200);
                 if (_miniRoomWagerAmount > 0)
                 {
                     string outcome = playerIndex == 0 ? "owner" : "guest";
@@ -4042,6 +4439,7 @@ namespace HaCreator.MapSimulator.Interaction
             _miniRoomOmokCurrentTurnIndex = playerIndex == 0 ? 1 : 0;
             RoomState = "Omok in progress";
             StatusMessage = $"{ResolveMiniRoomSeatName(_miniRoomOmokCurrentTurnIndex)}'s Omok turn.";
+            SetOmokDialogStatus($"{playerName} placed a {stoneName} stone. {_miniRoomOmokTimeFloor}s remain on the dialog timer.", 900);
             SyncMiniRoomOmokPresentation();
             PersistState();
             message = StatusMessage;
@@ -4067,8 +4465,10 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 _miniRoomOmokInProgress = false;
                 _miniRoomOmokWinnerIndex = -1;
+                ClearOmokDialogRequests();
                 RoomState = "Omok draw";
                 StatusMessage = "The Omok round ended in a draw.";
+                SetOmokDialogStatus("COmokDlg draw flow accepted the tie request and closed the round as a draw.", 2200);
                 AddMiniRoomSystemMessage("System : Omok draw request accepted.");
                 if (_miniRoomWagerAmount > 0)
                 {
@@ -4078,7 +4478,10 @@ namespace HaCreator.MapSimulator.Interaction
             else
             {
                 _miniRoomOmokTieRequested = true;
+                _miniRoomOmokDrawRequestSent = true;
+                _miniRoomOmokDrawRequestSentTurn = true;
                 StatusMessage = $"{ResolveMiniRoomSeatName(_miniRoomOmokCurrentTurnIndex)} requested an Omok draw.";
+                SetOmokDialogStatus(StatusMessage, 1800);
                 AddMiniRoomSystemMessage($"System : {StatusMessage}");
             }
 
@@ -4107,9 +4510,10 @@ namespace HaCreator.MapSimulator.Interaction
             int winnerIndex = loserIndex == 0 ? 1 : 0;
             _miniRoomOmokInProgress = false;
             _miniRoomOmokWinnerIndex = winnerIndex;
-            _miniRoomOmokTieRequested = false;
+            ClearOmokDialogRequests();
             RoomState = "Omok forfeit";
             StatusMessage = $"{ResolveMiniRoomSeatName(loserIndex)} forfeited. {ResolveMiniRoomSeatName(winnerIndex)} won the Omok round.";
+            SetOmokDialogStatus(StatusMessage, 2200);
             AddMiniRoomSystemMessage($"System : {StatusMessage}", isWarning: true);
             if (_miniRoomWagerAmount > 0)
             {
@@ -5841,7 +6245,7 @@ namespace HaCreator.MapSimulator.Interaction
             if (_items.Count > 1)
             {
                 string detail = _miniRoomOmokInProgress
-                    ? $"Last move: {FormatOmokLastMove()} | Turn {ResolveOmokTurnName()}"
+                    ? $"Last move: {FormatOmokLastMove()} | Turn {ResolveOmokTurnName()} | Clock {_miniRoomOmokTimeFloor}s"
                     : "Match Cards preview hidden";
                 _items[1].Update(detail, 1, 0, false, false);
             }
@@ -5865,8 +6269,8 @@ namespace HaCreator.MapSimulator.Interaction
                 _notes.Add(string.Empty);
             }
 
-            _notes[0] = "WZ-backed Omok shell uses UIWindow(.2).img/Minigame/Omok art and stone frames.";
-            _notes[1] = $"Visitor seats active: {Math.Max(0, _occupants.Count - 2)} / {Math.Max(0, Capacity - 2)}.";
+            _notes[0] = "WZ-backed Omok shell uses UIWindow(.2).img/Minigame/Omok art and the 12-frame stone families.";
+            _notes[1] = BuildOmokDialogOwnerNote();
         }
 
         private void ResetOmokBoard()
@@ -5876,7 +6280,11 @@ namespace HaCreator.MapSimulator.Interaction
             _miniRoomOmokLastMoveX = -1;
             _miniRoomOmokLastMoveY = -1;
             _miniRoomOmokWinnerIndex = -1;
-            _miniRoomOmokTieRequested = false;
+            _miniRoomOmokStoneAnimationTimeLeftMs = 0;
+            _miniRoomOmokDialogEffectTimeLeftMs = 0;
+            _miniRoomOmokDialogStatus = string.Empty;
+            ClearOmokDialogRequests();
+            ResetOmokTurnClock();
         }
 
         private static bool IsValidOmokCoordinate(int x, int y)
@@ -6138,6 +6546,64 @@ namespace HaCreator.MapSimulator.Interaction
         private static int GetOmokBoardIndex(int x, int y)
         {
             return (y * MiniRoomOmokBoardSize) + x;
+        }
+
+        private void ResetOmokTurnClock(int timeLeftMs = 30000)
+        {
+            _miniRoomOmokTimeLeftMs = Math.Max(0, timeLeftMs);
+            _miniRoomOmokTimeFloor = (_miniRoomOmokTimeLeftMs + 999) / 1000;
+            _miniRoomOmokLastTimedStateUtc = null;
+        }
+
+        private void StartOmokStoneAnimation()
+        {
+            _miniRoomOmokStoneAnimationTimeLeftMs = 450;
+        }
+
+        private void SetOmokDialogStatus(string status, int effectTimeLeftMs = 1800)
+        {
+            _miniRoomOmokDialogStatus = status ?? string.Empty;
+            _miniRoomOmokDialogEffectTimeLeftMs = Math.Max(0, effectTimeLeftMs);
+        }
+
+        private void ClearOmokDialogRequests()
+        {
+            _miniRoomOmokTieRequested = false;
+            _miniRoomOmokDrawRequestSent = false;
+            _miniRoomOmokDrawRequestSentTurn = false;
+            _miniRoomOmokRetreatRequested = false;
+            _miniRoomOmokRetreatRequestSent = false;
+            _miniRoomOmokRetreatRequestSentTurn = false;
+        }
+
+        private string BuildOmokDialogOwnerNote()
+        {
+            if (!IsMiniRoomOmokActive)
+            {
+                return string.Empty;
+            }
+
+            if (_miniRoomOmokTieRequested)
+            {
+                return "COmokDlg owner status: draw request waiting on reply.";
+            }
+
+            if (_miniRoomOmokRetreatRequested)
+            {
+                return "COmokDlg owner status: retreat request waiting on reply.";
+            }
+
+            if (!string.IsNullOrWhiteSpace(_miniRoomOmokDialogStatus))
+            {
+                return $"COmokDlg owner status: {_miniRoomOmokDialogStatus}";
+            }
+
+            if (_miniRoomOmokInProgress)
+            {
+                return $"COmokDlg owner status: live round, {ResolveMiniRoomSeatName(_miniRoomOmokCurrentTurnIndex)} on move, {_miniRoomOmokTimeFloor}s on the client timer.";
+            }
+
+            return "COmokDlg owner status: waiting for ready/start flow.";
         }
 
         private string BuildOmokSeatDetail(int playerIndex, string seatLabel)

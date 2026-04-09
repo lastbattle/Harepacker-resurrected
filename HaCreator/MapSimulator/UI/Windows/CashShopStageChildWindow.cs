@@ -109,6 +109,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Dictionary<string, Func<string>> _externalButtonActions = new(StringComparer.Ordinal);
         private readonly List<string> _fallbackLines = new();
         private SpriteFont _font;
+        private KeyboardState _previousKeyboardState;
         private Func<IReadOnlyList<string>> _contentProvider;
         private Func<LockerOwnerState> _lockerStateProvider;
         private Func<InventoryOwnerState> _inventoryStateProvider;
@@ -126,6 +127,7 @@ namespace HaCreator.MapSimulator.UI
         private string _lockerActionState = "Locker selector idle.";
         private string _inventoryTabName = "Equip";
         private int _inventoryScrollOffset;
+        private int _inventoryRowFocusIndex;
         private string _inventoryActionState = "Inventory selector idle.";
         private int _listButtonFocusIndex = -1;
         private string _listActionState = "List selector idle.";
@@ -143,6 +145,7 @@ namespace HaCreator.MapSimulator.UI
         }
 
         public override string WindowName => _windowName;
+        public override bool CapturesKeyboardInput => IsVisible && IsKeyboardOwnerWindow();
 
         public override void SetFont(SpriteFont font)
         {
@@ -264,6 +267,24 @@ namespace HaCreator.MapSimulator.UI
         public override void Show()
         {
             base.Show();
+            _previousKeyboardState = Keyboard.GetState();
+            _previousMouseState = Mouse.GetState();
+        }
+
+        public override void Update(GameTime gameTime)
+        {
+            base.Update(gameTime);
+
+            KeyboardState keyboardState = Keyboard.GetState();
+            if (!IsVisible)
+            {
+                _previousKeyboardState = keyboardState;
+                _previousMouseState = Mouse.GetState();
+                return;
+            }
+
+            HandleOwnerKeyboard(keyboardState);
+            _previousKeyboardState = keyboardState;
             _previousMouseState = Mouse.GetState();
         }
 
@@ -404,6 +425,8 @@ namespace HaCreator.MapSimulator.UI
                 $"Scroll {Math.Max(state.ScrollOffset, _inventoryScrollOffset).ToString(CultureInfo.InvariantCulture)}  Wheel {state.WheelRange.ToString(CultureInfo.InvariantCulture)}  Number {(state.HasNumberFont ? "on" : "off")}",
                 new Vector2(Position.X + contentBounds.X + 12, lineY),
                 detailColor);
+            lineY += _font.LineSpacing;
+            sprite.DrawString(_font, $"Focus row {_inventoryRowFocusIndex.ToString(CultureInfo.InvariantCulture)}", new Vector2(Position.X + contentBounds.X + 12, lineY), accentColor);
             lineY += _font.LineSpacing;
             string selectedEntry = string.IsNullOrWhiteSpace(state.SelectedEntryTitle) ? "none" : state.SelectedEntryTitle;
             sprite.DrawString(_font, $"Selected row: {selectedEntry}", new Vector2(Position.X + contentBounds.X + 12, lineY), detailColor);
@@ -624,11 +647,6 @@ namespace HaCreator.MapSimulator.UI
 
         private bool HandleOwnerSurfaceMouse(MouseState mouseState, MouseCursorItem mouseCursor)
         {
-            if (_windowName != MapSimulatorWindowNames.CashShopList && _windowName != MapSimulatorWindowNames.ItcList)
-            {
-                return false;
-            }
-
             Rectangle contentBounds = ResolveContentBounds();
             Rectangle absoluteBounds = new(Position.X + contentBounds.X, Position.Y + contentBounds.Y, contentBounds.Width, contentBounds.Height);
             if (!absoluteBounds.Contains(mouseState.Position))
@@ -637,20 +655,104 @@ namespace HaCreator.MapSimulator.UI
             }
 
             int wheelDelta = mouseState.ScrollWheelValue - _previousMouseState.ScrollWheelValue;
-            if (wheelDelta != 0 && _listScrollAction != null)
-            {
-                string message = _listScrollAction.Invoke(wheelDelta > 0 ? -1 : 1);
-                if (!string.IsNullOrWhiteSpace(message))
-                {
-                    _statusMessage = message.Trim();
-                }
+            bool leftJustPressed = mouseState.LeftButton == ButtonState.Pressed
+                && _previousMouseState.LeftButton == ButtonState.Released;
 
+            bool handled = _windowName switch
+            {
+                MapSimulatorWindowNames.CashShopLocker => HandleLockerOwnerSurfaceMouse(mouseState, mouseCursor, absoluteBounds, wheelDelta, leftJustPressed),
+                MapSimulatorWindowNames.CashShopInventory or MapSimulatorWindowNames.ItcInventory => HandleInventoryOwnerSurfaceMouse(mouseState, mouseCursor, absoluteBounds, wheelDelta, leftJustPressed),
+                MapSimulatorWindowNames.CashShopList or MapSimulatorWindowNames.ItcList => HandleListOwnerSurfaceMouse(mouseState, mouseCursor, absoluteBounds, wheelDelta, leftJustPressed),
+                MapSimulatorWindowNames.CashShopOneADay => HandleOneADayOwnerSurfaceMouse(mouseState, mouseCursor, absoluteBounds, wheelDelta, leftJustPressed),
+                _ => false
+            };
+
+            return handled;
+        }
+
+        private bool HandleLockerOwnerSurfaceMouse(MouseState mouseState, MouseCursorItem mouseCursor, Rectangle absoluteBounds, int wheelDelta, bool leftJustPressed)
+        {
+            LockerOwnerState state = _lockerStateProvider?.Invoke();
+            if (state == null)
+            {
+                return false;
+            }
+
+            if (wheelDelta != 0)
+            {
+                StepLockerSelector(wheelDelta > 0 ? -1 : 1);
                 mouseCursor?.SetMouseCursorMovedToClickableItem();
                 return true;
             }
 
-            bool leftJustPressed = mouseState.LeftButton == ButtonState.Pressed
-                && _previousMouseState.LeftButton == ButtonState.Released;
+            if (!leftJustPressed)
+            {
+                return false;
+            }
+
+            Rectangle rowsBounds = new(absoluteBounds.X + 12, absoluteBounds.Y + 54, Math.Max(80, absoluteBounds.Width - 132), 72);
+            if (!rowsBounds.Contains(mouseState.Position))
+            {
+                return false;
+            }
+
+            int relativeY = mouseState.Y - rowsBounds.Y;
+            int rowHeight = _font?.LineSpacing ?? 16;
+            int visibleRowIndex = Math.Clamp(relativeY / Math.Max(1, rowHeight), 0, 2);
+            int targetIndex = Math.Clamp(_lockerScrollOffset + visibleRowIndex, 0, Math.Max(0, state.SharedCharacterNames.Count - 1));
+            _lockerCharacterIndex = targetIndex;
+            _lockerActionState = "CCSWnd_Locker moved the shared-account selector directly from the owner list.";
+            _statusMessage = _lockerActionState;
+            ClampLockerState(state.SharedCharacterNames.Count);
+
+            mouseCursor?.SetMouseCursorMovedToClickableItem();
+            return true;
+        }
+
+        private bool HandleInventoryOwnerSurfaceMouse(MouseState mouseState, MouseCursorItem mouseCursor, Rectangle absoluteBounds, int wheelDelta, bool leftJustPressed)
+        {
+            InventoryOwnerState state = _inventoryStateProvider?.Invoke();
+            if (state == null)
+            {
+                return false;
+            }
+
+            if (wheelDelta != 0)
+            {
+                StepInventoryScroll(state, wheelDelta > 0 ? -1 : 1);
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+                return true;
+            }
+
+            if (!leftJustPressed)
+            {
+                return false;
+            }
+
+            Rectangle rowsBounds = new(absoluteBounds.X + 12, absoluteBounds.Y + 112, Math.Max(80, absoluteBounds.Width - 24), 72);
+            if (!rowsBounds.Contains(mouseState.Position))
+            {
+                return false;
+            }
+
+            int relativeY = mouseState.Y - rowsBounds.Y;
+            int rowHeight = _font?.LineSpacing ?? 16;
+            _inventoryRowFocusIndex = Math.Clamp(relativeY / Math.Max(1, rowHeight), 0, 3);
+            _inventoryActionState = $"CCSWnd_Inventory moved focus to visible row {_inventoryRowFocusIndex.ToString(CultureInfo.InvariantCulture)} on the {_inventoryTabName} owner.";
+            _statusMessage = _inventoryActionState;
+            mouseCursor?.SetMouseCursorMovedToClickableItem();
+            return true;
+        }
+
+        private bool HandleListOwnerSurfaceMouse(MouseState mouseState, MouseCursorItem mouseCursor, Rectangle absoluteBounds, int wheelDelta, bool leftJustPressed)
+        {
+            if (wheelDelta != 0 && _listScrollAction != null)
+            {
+                ApplyStatusMessage(_listScrollAction.Invoke(wheelDelta > 0 ? -1 : 1));
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+                return true;
+            }
+
             if (!leftJustPressed || _listRowSelectionAction == null)
             {
                 return false;
@@ -665,12 +767,32 @@ namespace HaCreator.MapSimulator.UI
             int relativeY = mouseState.Y - rowsBounds.Y;
             int rowHeight = _font?.LineSpacing * 2 + 2 ?? 26;
             int visibleRowIndex = Math.Clamp(relativeY / Math.Max(1, rowHeight), 0, 4);
-            string selectionMessage = _listRowSelectionAction.Invoke(visibleRowIndex);
-            if (!string.IsNullOrWhiteSpace(selectionMessage))
+            ApplyStatusMessage(_listRowSelectionAction.Invoke(visibleRowIndex));
+            mouseCursor?.SetMouseCursorMovedToClickableItem();
+            return true;
+        }
+
+        private bool HandleOneADayOwnerSurfaceMouse(MouseState mouseState, MouseCursorItem mouseCursor, Rectangle absoluteBounds, int wheelDelta, bool leftJustPressed)
+        {
+            if (wheelDelta != 0)
             {
-                _statusMessage = selectionMessage.Trim();
+                CycleOneADayPlate(wheelDelta > 0 ? -1 : 1);
+                mouseCursor?.SetMouseCursorMovedToClickableItem();
+                return true;
             }
 
+            if (!leftJustPressed)
+            {
+                return false;
+            }
+
+            Rectangle rowsBounds = new(absoluteBounds.X + 12, absoluteBounds.Y + 38, Math.Max(80, absoluteBounds.Width - 24), 56);
+            if (!rowsBounds.Contains(mouseState.Position))
+            {
+                return false;
+            }
+
+            CycleOneADayPlate(1);
             mouseCursor?.SetMouseCursorMovedToClickableItem();
             return true;
         }
@@ -798,6 +920,285 @@ namespace HaCreator.MapSimulator.UI
                     _oneADaySessionState = "CCSWnd_OneADay dismissed the current reward plate focus.";
                     break;
             }
+        }
+
+        private void HandleOwnerKeyboard(KeyboardState keyboardState)
+        {
+            if (!CapturesKeyboardInput)
+            {
+                return;
+            }
+
+            switch (_windowName)
+            {
+                case MapSimulatorWindowNames.CashShopLocker:
+                    HandleLockerKeyboard(keyboardState);
+                    break;
+                case MapSimulatorWindowNames.CashShopInventory:
+                case MapSimulatorWindowNames.ItcInventory:
+                    HandleInventoryKeyboard(keyboardState);
+                    break;
+                case MapSimulatorWindowNames.CashShopList:
+                case MapSimulatorWindowNames.ItcList:
+                    HandleListKeyboard(keyboardState);
+                    break;
+                case MapSimulatorWindowNames.CashShopOneADay:
+                    HandleOneADayKeyboard(keyboardState);
+                    break;
+            }
+        }
+
+        private void HandleLockerKeyboard(KeyboardState keyboardState)
+        {
+            LockerOwnerState state = _lockerStateProvider?.Invoke();
+            int sharedCount = Math.Max(0, state?.SharedCharacterNames.Count ?? 0);
+            if (sharedCount == 0)
+            {
+                return;
+            }
+
+            if (WasPressed(keyboardState, Keys.Down))
+            {
+                StepLockerSelector(1);
+            }
+            else if (WasPressed(keyboardState, Keys.Up))
+            {
+                StepLockerSelector(-1);
+            }
+            else if (WasPressed(keyboardState, Keys.PageDown))
+            {
+                StepLockerSelector(3);
+            }
+            else if (WasPressed(keyboardState, Keys.PageUp))
+            {
+                StepLockerSelector(-3);
+            }
+            else if (WasPressed(keyboardState, Keys.Home))
+            {
+                _lockerCharacterIndex = 0;
+                _lockerScrollOffset = 0;
+                _lockerActionState = "CCSWnd_Locker snapped the selector back to the first shared owner.";
+                _statusMessage = _lockerActionState;
+            }
+            else if (WasPressed(keyboardState, Keys.End))
+            {
+                _lockerCharacterIndex = sharedCount - 1;
+                _lockerScrollOffset = Math.Max(0, sharedCount - 3);
+                _lockerActionState = "CCSWnd_Locker advanced the selector to the last shared owner.";
+                _statusMessage = _lockerActionState;
+            }
+        }
+
+        private void HandleInventoryKeyboard(KeyboardState keyboardState)
+        {
+            InventoryOwnerState state = _inventoryStateProvider?.Invoke();
+            if (state == null)
+            {
+                return;
+            }
+
+            if (WasPressed(keyboardState, Keys.Down))
+            {
+                StepInventoryScroll(state, 1);
+            }
+            else if (WasPressed(keyboardState, Keys.Up))
+            {
+                StepInventoryScroll(state, -1);
+            }
+            else if (WasPressed(keyboardState, Keys.PageDown))
+            {
+                StepInventoryScroll(state, 4);
+            }
+            else if (WasPressed(keyboardState, Keys.PageUp))
+            {
+                StepInventoryScroll(state, -4);
+            }
+            else if (WasPressed(keyboardState, Keys.Home))
+            {
+                _inventoryScrollOffset = 0;
+                _inventoryRowFocusIndex = 0;
+                _inventoryActionState = $"CCSWnd_Inventory reset the {_inventoryTabName} scrollbar to the first row.";
+                _statusMessage = _inventoryActionState;
+            }
+            else if (WasPressed(keyboardState, Keys.End))
+            {
+                int maxScroll = Math.Max(0, ResolveInventoryActiveCount(state) - 4);
+                _inventoryScrollOffset = maxScroll;
+                _inventoryRowFocusIndex = Math.Min(3, ResolveInventoryActiveCount(state));
+                _inventoryActionState = $"CCSWnd_Inventory pushed the {_inventoryTabName} scrollbar to the last visible row.";
+                _statusMessage = _inventoryActionState;
+            }
+            else if (WasPressed(keyboardState, Keys.Left))
+            {
+                CycleInventoryTab(-1);
+            }
+            else if (WasPressed(keyboardState, Keys.Right))
+            {
+                CycleInventoryTab(1);
+            }
+        }
+
+        private void HandleListKeyboard(KeyboardState keyboardState)
+        {
+            if (WasPressed(keyboardState, Keys.Down))
+            {
+                ApplyStatusMessage(_listScrollAction?.Invoke(1));
+            }
+            else if (WasPressed(keyboardState, Keys.Up))
+            {
+                ApplyStatusMessage(_listScrollAction?.Invoke(-1));
+            }
+            else if (WasPressed(keyboardState, Keys.PageDown))
+            {
+                ApplyStatusMessage(InvokeExternalAction("PageDown"));
+            }
+            else if (WasPressed(keyboardState, Keys.PageUp))
+            {
+                ApplyStatusMessage(InvokeExternalAction("PageUp"));
+            }
+            else if (WasPressed(keyboardState, Keys.Home))
+            {
+                ApplyStatusMessage(InvokeExternalAction("Home"));
+            }
+            else if (WasPressed(keyboardState, Keys.End))
+            {
+                ApplyStatusMessage(InvokeExternalAction("End"));
+            }
+            else if (WasPressed(keyboardState, Keys.Tab) || WasPressed(keyboardState, Keys.Left) || WasPressed(keyboardState, Keys.Right))
+            {
+                ApplyStatusMessage(InvokeExternalAction("TogglePane"));
+            }
+            else if (WasPressed(keyboardState, Keys.Enter))
+            {
+                ApplyStatusMessage(InvokeExternalAction("BtBuy"));
+            }
+            else if (WasPressed(keyboardState, Keys.Space))
+            {
+                ApplyStatusMessage(InvokeExternalAction("BtReserve"));
+            }
+        }
+
+        private void HandleOneADayKeyboard(KeyboardState keyboardState)
+        {
+            if (WasPressed(keyboardState, Keys.Left))
+            {
+                CycleOneADayPlate(-1);
+            }
+            else if (WasPressed(keyboardState, Keys.Right))
+            {
+                CycleOneADayPlate(1);
+            }
+            else if (WasPressed(keyboardState, Keys.Enter))
+            {
+                ApplyOneADayButtonState("BtJoin");
+                ApplyStatusMessage(InvokeExternalAction("BtJoin"));
+            }
+            else if (WasPressed(keyboardState, Keys.Escape))
+            {
+                ApplyOneADayButtonState("BtClose");
+                ApplyStatusMessage(InvokeExternalAction("BtClose"));
+            }
+        }
+
+        private void StepLockerSelector(int delta)
+        {
+            LockerOwnerState state = _lockerStateProvider?.Invoke();
+            int sharedCount = Math.Max(0, state?.SharedCharacterNames.Count ?? 0);
+            if (sharedCount == 0)
+            {
+                return;
+            }
+
+            _lockerCharacterIndex = Math.Clamp(_lockerCharacterIndex + delta, 0, sharedCount - 1);
+            ClampLockerState(sharedCount);
+            _lockerActionState = delta >= 0
+                ? "CCSWnd_Locker advanced the shared-owner selector through the dedicated owner."
+                : "CCSWnd_Locker moved the selector backward through the dedicated owner.";
+            _statusMessage = _lockerActionState;
+        }
+
+        private void ClampLockerState(int sharedCount)
+        {
+            _lockerCharacterIndex = Math.Clamp(_lockerCharacterIndex, 0, Math.Max(0, sharedCount - 1));
+            _lockerScrollOffset = Math.Clamp(_lockerScrollOffset, Math.Max(0, _lockerCharacterIndex - 2), _lockerCharacterIndex);
+            _lockerScrollOffset = Math.Clamp(_lockerScrollOffset, 0, Math.Max(0, sharedCount - 3));
+        }
+
+        private void StepInventoryScroll(InventoryOwnerState state, int delta)
+        {
+            int maxScroll = Math.Max(0, ResolveInventoryActiveCount(state) - 4);
+            _inventoryScrollOffset = Math.Clamp(_inventoryScrollOffset + delta, 0, maxScroll);
+            _inventoryRowFocusIndex = Math.Clamp(_inventoryRowFocusIndex + Math.Sign(delta), 0, 3);
+            _inventoryActionState = $"CCSWnd_Inventory scrolled the {_inventoryTabName} owner to offset {_inventoryScrollOffset.ToString(CultureInfo.InvariantCulture)}.";
+            _statusMessage = _inventoryActionState;
+        }
+
+        private int ResolveInventoryActiveCount(InventoryOwnerState state)
+        {
+            return _inventoryTabName switch
+            {
+                "Equip" => state.EquipCount,
+                "Use" => state.UseCount,
+                "Setup" => state.SetupCount,
+                "Etc" => state.EtcCount,
+                "Cash" => state.CashCount,
+                _ => state.EquipCount
+            };
+        }
+
+        private void CycleInventoryTab(int delta)
+        {
+            string[] tabs = { "Equip", "Use", "Setup", "Etc", "Cash" };
+            int currentIndex = Array.IndexOf(tabs, _inventoryTabName);
+            if (currentIndex < 0)
+            {
+                currentIndex = 0;
+            }
+
+            int nextIndex = (currentIndex + tabs.Length + delta) % tabs.Length;
+            _inventoryTabName = tabs[nextIndex];
+            _inventoryScrollOffset = 0;
+            _inventoryRowFocusIndex = 0;
+            _inventoryActionState = $"CCSWnd_Inventory switched keyboard focus to the {_inventoryTabName} owner tab.";
+            _statusMessage = _inventoryActionState;
+        }
+
+        private void CycleOneADayPlate(int delta)
+        {
+            _oneADaySelectorIndex = Math.Clamp(_oneADaySelectorIndex + Math.Sign(delta), 0, 1);
+            _oneADayPlateFocusIndex = (_oneADayPlateFocusIndex + 3 + Math.Sign(delta)) % 3;
+            _oneADaySessionState = "CCSWnd_OneADay rotated the NoItem plate focus through the dedicated reward owner.";
+            _statusMessage = _oneADaySessionState;
+        }
+
+        private bool IsKeyboardOwnerWindow()
+        {
+            return _windowName == MapSimulatorWindowNames.CashShopLocker
+                || _windowName == MapSimulatorWindowNames.CashShopInventory
+                || _windowName == MapSimulatorWindowNames.ItcInventory
+                || _windowName == MapSimulatorWindowNames.CashShopList
+                || _windowName == MapSimulatorWindowNames.ItcList
+                || _windowName == MapSimulatorWindowNames.CashShopOneADay;
+        }
+
+        private bool WasPressed(KeyboardState keyboardState, Keys key)
+        {
+            return keyboardState.IsKeyDown(key) && !_previousKeyboardState.IsKeyDown(key);
+        }
+
+        private void ApplyStatusMessage(string message)
+        {
+            if (!string.IsNullOrWhiteSpace(message))
+            {
+                _statusMessage = message.Trim();
+            }
+        }
+
+        private string InvokeExternalAction(string actionKey)
+        {
+            return _externalButtonActions.TryGetValue(actionKey, out Func<string> externalAction)
+                ? externalAction?.Invoke()
+                : null;
         }
 
         private void DrawWrapped(SpriteBatch sprite, string text, float x, ref float y, float maxWidth, Color color)

@@ -31,6 +31,12 @@ namespace HaCreator.MapSimulator
             InventoryFallback = 4
         }
 
+        private enum FieldHazardPetConsumeResolutionMode
+        {
+            SimulatorOwned = 0,
+            ExternalObserved = 1
+        }
+
         private readonly record struct FieldHazardHpPotionCandidate(int ItemId, InventoryType InventoryType, string ItemName);
         private readonly record struct FieldHazardPetAutoConsumeTarget(
             int PetSlotIndex,
@@ -49,10 +55,13 @@ namespace HaCreator.MapSimulator
             int RequestIndex,
             int InventoryRuntimeSlotIndex,
             int InventoryClientSlotIndex,
+            int InitialSlotQuantity,
             int RequestedAt,
             int AckAt,
             int ResultAt,
+            int RemoteResultDeadlineAt,
             bool Acknowledged,
+            FieldHazardPetConsumeResolutionMode ResolutionMode,
             string PayloadHex,
             string TransportDisposition);
 
@@ -67,7 +76,11 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedBalloonLongArrowThreshold = 18;
         private const int PacketOwnedBalloonMaxOverlapPasses = 8;
         private const int PacketOwnedBalloonBodyExtraWidth = PacketOwnedBalloonHorizontalPadding * 2;
+        private const int PacketOwnedBalloonInlineIconSize = 16;
+        private const int PacketOwnedBalloonInlineIconSpacing = 2;
         private const float PacketOwnedBalloonEmphasisOffsetX = 1f;
+        private const string PacketOwnedBalloonItemIconMarkerPrefix = "{{ITEMICON:";
+        private const string PacketOwnedBalloonItemIconMarkerSuffix = "}}";
         private static readonly Color PacketOwnedBalloonMarkupRed = new(255, 0, 0);
         private static readonly Color PacketOwnedBalloonMarkupGreen = new(0, 255, 0);
         private static readonly Color PacketOwnedBalloonMarkupBlue = new(0, 0, 255);
@@ -89,6 +102,7 @@ namespace HaCreator.MapSimulator
         private const int FieldHazardPetAutoConsumeRequestThrottleMs = 200;
         private const int FieldHazardPetAutoConsumeSyntheticAckDelayMs = 120;
         private const int FieldHazardPetAutoConsumeSyntheticResultDelayMs = 90;
+        private const int FieldHazardPetAutoConsumeRemoteObservationWindowMs = 1500;
         private const int FieldHazardPetAutoConsumeRequestIndex = 0;
 
         private void LoadPacketOwnedLocalOverlayAssets()
@@ -603,12 +617,19 @@ namespace HaCreator.MapSimulator
                 });
             for (int i = 0; i < sanitized.Length; i++)
             {
+                if (TryParsePacketOwnedBalloonItemIconMarker(sanitized, i, out int itemIconId, out int iconMarkerLength))
+                {
+                    glyphs.Add(new PacketOwnedBalloonGlyph('\0', style, itemIconId));
+                    i += iconMarkerLength - 1;
+                    continue;
+                }
+
                 char current = sanitized[i];
                 if (current == '#'
                     && i + 1 < sanitized.Length
                     && sanitized[i + 1] == '#')
                 {
-                    glyphs.Add(new PacketOwnedBalloonGlyph('#', style));
+                    glyphs.Add(new PacketOwnedBalloonGlyph('#', style, null));
                     i++;
                     continue;
                 }
@@ -621,12 +642,41 @@ namespace HaCreator.MapSimulator
                     continue;
                 }
 
-                glyphs.Add(new PacketOwnedBalloonGlyph(current, style));
+                glyphs.Add(new PacketOwnedBalloonGlyph(current, style, null));
             }
 
             return glyphs.Count == 0
                 ? Array.Empty<PacketOwnedBalloonGlyph>()
                 : glyphs.ToArray();
+        }
+
+        private static bool TryParsePacketOwnedBalloonItemIconMarker(string text, int startIndex, out int itemId, out int markerLength)
+        {
+            itemId = 0;
+            markerLength = 0;
+            if (string.IsNullOrEmpty(text)
+                || startIndex < 0
+                || startIndex >= text.Length
+                || !text.AsSpan(startIndex).StartsWith(PacketOwnedBalloonItemIconMarkerPrefix, StringComparison.Ordinal))
+            {
+                return false;
+            }
+
+            int digitsStart = startIndex + PacketOwnedBalloonItemIconMarkerPrefix.Length;
+            int suffixIndex = text.IndexOf(PacketOwnedBalloonItemIconMarkerSuffix, digitsStart, StringComparison.Ordinal);
+            if (suffixIndex <= digitsStart)
+            {
+                return false;
+            }
+
+            string itemIdText = text.Substring(digitsStart, suffixIndex - digitsStart);
+            if (!int.TryParse(itemIdText, NumberStyles.Integer, CultureInfo.InvariantCulture, out itemId) || itemId <= 0)
+            {
+                return false;
+            }
+
+            markerLength = (suffixIndex - startIndex) + PacketOwnedBalloonItemIconMarkerSuffix.Length;
+            return true;
         }
 
         private static bool TryApplyPacketOwnedBalloonInlineCode(
@@ -789,9 +839,23 @@ namespace HaCreator.MapSimulator
             for (int i = start; i < endExclusive; i++)
             {
                 PacketOwnedBalloonGlyph glyph = glyphs[i];
+                if (glyph.ItemIconId.HasValue)
+                {
+                    if (builder.Length > 0)
+                    {
+                        runs.Add(new PacketOwnedBalloonTextRun(builder.ToString(), currentStyle, null));
+                        builder.Clear();
+                    }
+
+                    runs.Add(new PacketOwnedBalloonTextRun(string.Empty, glyph.Style, glyph.ItemIconId.Value));
+                    currentStyle = glyph.Style;
+                    lineWidth += MeasurePacketOwnedBalloonGlyph(glyph);
+                    continue;
+                }
+
                 if (glyph.Style != currentStyle && builder.Length > 0)
                 {
-                    runs.Add(new PacketOwnedBalloonTextRun(builder.ToString(), currentStyle));
+                    runs.Add(new PacketOwnedBalloonTextRun(builder.ToString(), currentStyle, null));
                     builder.Clear();
                     currentStyle = glyph.Style;
                 }
@@ -806,12 +870,22 @@ namespace HaCreator.MapSimulator
 
             if (builder.Length > 0)
             {
-                runs.Add(new PacketOwnedBalloonTextRun(builder.ToString(), currentStyle));
+                runs.Add(new PacketOwnedBalloonTextRun(builder.ToString(), currentStyle, null));
             }
 
             return runs.Count == 0
                 ? PacketOwnedBalloonWrappedLine.Empty
                 : new PacketOwnedBalloonWrappedLine(runs.ToArray(), lineWidth, false);
+        }
+
+        private int MeasurePacketOwnedBalloonGlyph(PacketOwnedBalloonGlyph glyph)
+        {
+            if (glyph.ItemIconId.HasValue)
+            {
+                return PacketOwnedBalloonInlineIconSize + PacketOwnedBalloonInlineIconSpacing;
+            }
+
+            return MeasurePacketOwnedBalloonGlyph(glyph.Character);
         }
 
         private int MeasurePacketOwnedBalloonGlyph(char character)
@@ -826,6 +900,11 @@ namespace HaCreator.MapSimulator
 
         private float MeasurePacketOwnedBalloonRun(in PacketOwnedBalloonTextRun run)
         {
+            if (run.ItemIconId.HasValue)
+            {
+                return PacketOwnedBalloonInlineIconSize + PacketOwnedBalloonInlineIconSpacing;
+            }
+
             return MeasureChatTextWithFallback(run.Text).X;
         }
 
@@ -836,12 +915,37 @@ namespace HaCreator.MapSimulator
 
         private void DrawPacketOwnedBalloonRun(SpriteBatch spriteBatch, in PacketOwnedBalloonTextRun run, Vector2 position, float alpha)
         {
+            if (run.ItemIconId.HasValue)
+            {
+                Texture2D itemIcon = LoadInventoryItemIcon(run.ItemIconId.Value);
+                if (itemIcon != null && !itemIcon.IsDisposed)
+                {
+                    int iconSize = PacketOwnedBalloonInlineIconSize;
+                    spriteBatch.Draw(
+                        itemIcon,
+                        new Rectangle(
+                            (int)Math.Round(position.X),
+                            (int)Math.Round(position.Y),
+                            iconSize,
+                            iconSize),
+                        Color.White * alpha);
+                }
+
+                return;
+            }
+
             Color drawColor = run.Style.Color * alpha;
             DrawChatTextWithFallback(spriteBatch, run.Text, position, drawColor);
             if (run.Style.Emphasis)
             {
                 DrawChatTextWithFallback(spriteBatch, run.Text, new Vector2(position.X + PacketOwnedBalloonEmphasisOffsetX, position.Y), drawColor);
             }
+        }
+
+        private int ResolvePacketOwnedBalloonLineHeight()
+        {
+            Vector2 lineMeasure = MeasureChatTextWithFallback("Ay");
+            return Math.Max(PacketOwnedBalloonInlineIconSize, (int)Math.Ceiling(lineMeasure.Y));
         }
 
         private void PreparePacketOwnedBalloonVisual(LocalOverlayBalloonMessage message)
@@ -857,8 +961,7 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            Vector2 lineMeasure = MeasureChatTextWithFallback("Ay");
-            int lineHeight = Math.Max(14, (int)Math.Ceiling(lineMeasure.Y));
+            int lineHeight = ResolvePacketOwnedBalloonLineHeight();
             int contentWidth = ResolvePacketOwnedBalloonWrapWidth(message.RequestedWidth);
             int bodyWidth = contentWidth + PacketOwnedBalloonBodyExtraWidth;
             int bodyHeight = Math.Max(26, (lines.Length * lineHeight) + (PacketOwnedBalloonVerticalPadding * 2));
@@ -1162,8 +1265,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            Vector2 lineMeasure = MeasureChatTextWithFallback("Ay");
-            int lineHeight = Math.Max(14, (int)Math.Ceiling(lineMeasure.Y));
+            int lineHeight = ResolvePacketOwnedBalloonLineHeight();
             int contentWidth = Math.Clamp(message.RequestedWidth, PacketOwnedBalloonMinWidth, PacketOwnedBalloonMaxWidth);
             int bodyWidth = contentWidth + PacketOwnedBalloonBodyExtraWidth;
             int contentAreaWidth = Math.Max(0, bodyWidth - PacketOwnedBalloonBodyExtraWidth);
@@ -1486,6 +1588,13 @@ namespace HaCreator.MapSimulator
                 : "The field is draining HP.";
         }
 
+        private static string GetFieldHazardNoHpPotionChatNoticeText()
+        {
+            return MapleStoryStringPool.GetOrFallback(
+                0x0D89,
+                "You are lacking the HP Potion that your pet is supposed to use.");
+        }
+
         private string TryApplyFieldHazardPetAutoConsume(int damage, int currentTickCount)
         {
             PlayerCharacter player = _playerManager?.Player;
@@ -1518,7 +1627,7 @@ namespace HaCreator.MapSimulator
                 }
 
                 TryTriggerLimitedPetSpeechEvent(PetAutoSpeechEvent.NoHpPotion, ref _petHpPotionFailureSpeechCount, currentTickCount);
-                _chat?.AddSystemMessage(FieldHazardNoHpPotionNoticeText, currentTickCount);
+                _chat?.AddSystemMessage(GetFieldHazardNoHpPotionChatNoticeText(), currentTickCount);
                 string failureDetail = $"{DescribeFieldHazardAutoConsumePet(target.PetSlotIndex, target.PetName)} could not find an HP potion to use.";
                 _localOverlayRuntime.SetFieldHazardFollowUp(failureDetail, FieldHazardFollowUpKind.Failure, currentTickCount);
                 return failureDetail;
@@ -1536,10 +1645,21 @@ namespace HaCreator.MapSimulator
                     out int inventoryClientSlotIndex))
             {
                 TryTriggerLimitedPetSpeechEvent(PetAutoSpeechEvent.NoHpPotion, ref _petHpPotionFailureSpeechCount, currentTickCount);
-                _chat?.AddSystemMessage(FieldHazardNoHpPotionNoticeText, currentTickCount);
+                _chat?.AddSystemMessage(GetFieldHazardNoHpPotionChatNoticeText(), currentTickCount);
                 string missingSlotDetail = $"{petLabel} {requestMode} could not queue {target.Candidate.ItemName} because the shared inventory slot could not be resolved.";
                 _localOverlayRuntime.SetFieldHazardFollowUp(missingSlotDetail, FieldHazardFollowUpKind.Failure, currentTickCount);
                 return missingSlotDetail;
+            }
+
+            int initialSlotQuantity = 0;
+            TryGetFieldHazardInventorySlot(
+                uiWindowManager?.InventoryWindow as IInventoryRuntime,
+                target.Candidate.InventoryType,
+                inventoryRuntimeSlotIndex,
+                out InventorySlotData initialRequestSlot);
+            if (initialRequestSlot != null)
+            {
+                initialSlotQuantity = Math.Max(0, initialRequestSlot.Quantity);
             }
 
             if (_pendingFieldHazardPetAutoConsumeRequest.HasValue)
@@ -1566,6 +1686,7 @@ namespace HaCreator.MapSimulator
                     out int requestIndex,
                     out string payloadHex,
                     out string transportDisposition,
+                    out FieldHazardPetConsumeResolutionMode resolutionMode,
                     out bool outboundExclusivePending))
             {
                 FieldHazardFollowUpKind followUpKind = outboundExclusivePending
@@ -1601,10 +1722,13 @@ namespace HaCreator.MapSimulator
                 RequestIndex: requestIndex,
                 InventoryRuntimeSlotIndex: inventoryRuntimeSlotIndex,
                 InventoryClientSlotIndex: inventoryClientSlotIndex,
+                InitialSlotQuantity: initialSlotQuantity,
                 RequestedAt: currentTickCount,
                 AckAt: currentTickCount + FieldHazardPetAutoConsumeSyntheticAckDelayMs,
                 ResultAt: currentTickCount + FieldHazardPetAutoConsumeSyntheticAckDelayMs + FieldHazardPetAutoConsumeSyntheticResultDelayMs,
+                RemoteResultDeadlineAt: currentTickCount + FieldHazardPetAutoConsumeRemoteObservationWindowMs,
                 Acknowledged: false,
+                ResolutionMode: resolutionMode,
                 PayloadHex: payloadHex,
                 TransportDisposition: transportDisposition);
             _lastFieldHazardPetAutoConsumeRequestTick = currentTickCount;
@@ -1646,18 +1770,39 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            if (!TryGetFieldHazardInventorySlot(
+            bool hasRequestSlot = TryGetFieldHazardInventorySlot(
                     uiWindowManager?.InventoryWindow as IInventoryRuntime,
                     request.Candidate.InventoryType,
                     request.InventoryRuntimeSlotIndex,
-                    out InventorySlotData requestSlot)
-                || requestSlot.ItemId != request.Candidate.ItemId)
+                    out InventorySlotData requestSlot);
+            bool requestSlotMatches =
+                hasRequestSlot
+                && requestSlot != null
+                && requestSlot.ItemId == request.Candidate.ItemId;
+            bool requestSlotQuantityDropped =
+                requestSlotMatches
+                && request.InitialSlotQuantity > 0
+                && requestSlot.Quantity < request.InitialSlotQuantity;
+
+            if (request.ResolutionMode == FieldHazardPetConsumeResolutionMode.ExternalObserved
+                && (!requestSlotMatches || requestSlotQuantityDropped))
+            {
+                CompleteFieldHazardRemoteObservedRequest(
+                    request,
+                    currentTickCount,
+                    petLabel,
+                    requestMode,
+                    requestSlotQuantityDropped);
+                return;
+            }
+
+            if (!requestSlotMatches)
             {
                 ClearFieldHazardPendingInventoryRequest();
                 _packetOwnedLocalUtilityContext.AcknowledgePetItemUseRequest();
                 _pendingFieldHazardPetAutoConsumeRequest = null;
                 TryTriggerLimitedPetSpeechEvent(PetAutoSpeechEvent.NoHpPotion, ref _petHpPotionFailureSpeechCount, currentTickCount);
-                _chat?.AddSystemMessage(FieldHazardNoHpPotionNoticeText, currentTickCount);
+                _chat?.AddSystemMessage(GetFieldHazardNoHpPotionChatNoticeText(), currentTickCount);
                 string slotExpiredDetail = $"{petLabel} {requestMode} request #{request.RequestId} for {request.Candidate.ItemName} lost {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex} before the synthetic ack arrived.";
                 _localOverlayRuntime.SetFieldHazardFollowUp(slotExpiredDetail, FieldHazardFollowUpKind.Failure, currentTickCount);
                 return;
@@ -1665,7 +1810,9 @@ namespace HaCreator.MapSimulator
 
             if (!request.Acknowledged)
             {
-                string ackDetail = $"{petLabel} {requestMode} request #{request.RequestId} was acknowledged on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex}.";
+                string ackDetail = request.ResolutionMode == FieldHazardPetConsumeResolutionMode.ExternalObserved
+                    ? $"{petLabel} {requestMode} request #{request.RequestId} was acknowledged on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex} and is awaiting remote packet/result ownership."
+                    : $"{petLabel} {requestMode} request #{request.RequestId} was acknowledged on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex}.";
                 _localOverlayRuntime.SetFieldHazardFollowUp(ackDetail, FieldHazardFollowUpKind.Acknowledged, currentTickCount);
                 request = request with { Acknowledged = true };
                 _pendingFieldHazardPetAutoConsumeRequest = request;
@@ -1673,6 +1820,23 @@ namespace HaCreator.MapSimulator
                 {
                     return;
                 }
+            }
+
+            if (request.ResolutionMode == FieldHazardPetConsumeResolutionMode.ExternalObserved)
+            {
+                if (unchecked(currentTickCount - request.RemoteResultDeadlineAt) < 0)
+                {
+                    string pendingRemoteDetail = $"{petLabel} {requestMode} request #{request.RequestId} is still awaiting remote packet/result ownership for {request.Candidate.ItemName} on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex}.";
+                    _localOverlayRuntime.SetFieldHazardFollowUp(pendingRemoteDetail, FieldHazardFollowUpKind.Acknowledged, currentTickCount);
+                    return;
+                }
+
+                ClearFieldHazardPendingInventoryRequest();
+                _packetOwnedLocalUtilityContext.AcknowledgePetItemUseRequest();
+                _pendingFieldHazardPetAutoConsumeRequest = null;
+                string remoteUnresolvedDetail = $"{petLabel} {requestMode} request #{request.RequestId} remained externally owned after the simulator observation window; waiting for a real server/inventory result for {request.Candidate.ItemName} on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex}.";
+                _localOverlayRuntime.SetFieldHazardFollowUp(remoteUnresolvedDetail, FieldHazardFollowUpKind.Acknowledged, currentTickCount);
+                return;
             }
 
             ClearFieldHazardPendingInventoryRequest();
@@ -1698,7 +1862,7 @@ namespace HaCreator.MapSimulator
             }
 
             TryTriggerLimitedPetSpeechEvent(PetAutoSpeechEvent.NoHpPotion, ref _petHpPotionFailureSpeechCount, currentTickCount);
-            _chat?.AddSystemMessage(FieldHazardNoHpPotionNoticeText, currentTickCount);
+            _chat?.AddSystemMessage(GetFieldHazardNoHpPotionChatNoticeText(), currentTickCount);
             string failureDetail = $"{petLabel} {requestMode} request #{request.RequestId} for {request.Candidate.ItemName} failed after the synthetic ack arrived but before the client could consume locked slot {request.InventoryClientSlotIndex}.";
             _localOverlayRuntime.SetFieldHazardFollowUp(failureDetail, FieldHazardFollowUpKind.Failure, currentTickCount);
         }
@@ -1897,12 +2061,14 @@ namespace HaCreator.MapSimulator
             out int requestIndex,
             out string payloadHex,
             out string transportDisposition,
+            out FieldHazardPetConsumeResolutionMode resolutionMode,
             out bool exclusivePending)
         {
             petSerial = ResolveFieldHazardPetAutoConsumeSerial(requestPet);
             requestIndex = FieldHazardPetAutoConsumeRequestIndex;
             payloadHex = string.Empty;
             transportDisposition = string.Empty;
+            resolutionMode = FieldHazardPetConsumeResolutionMode.SimulatorOwned;
             exclusivePending = false;
 
             if (!_packetOwnedLocalUtilityContext.TryEmitPetItemUseRequest(
@@ -1922,24 +2088,28 @@ namespace HaCreator.MapSimulator
             }
 
             payloadHex = Convert.ToHexString(request.Payload.ToArray());
-            transportDisposition = DescribeFieldHazardPetConsumeOutboundDispatch(request, payloadHex, currentTickCount);
+            transportDisposition = DescribeFieldHazardPetConsumeOutboundDispatch(request, payloadHex, currentTickCount, out resolutionMode);
             return true;
         }
 
         private string DescribeFieldHazardPetConsumeOutboundDispatch(
             PacketOwnedLocalUtilityOutboundRequest request,
             string payloadHex,
-            int currentTickCount)
+            int currentTickCount,
+            out FieldHazardPetConsumeResolutionMode resolutionMode)
         {
+            resolutionMode = FieldHazardPetConsumeResolutionMode.SimulatorOwned;
             string dispatchStatus;
             if (_localUtilityOfficialSessionBridge.TrySendOutboundPacket(request.Opcode, request.Payload, out dispatchStatus))
             {
+                resolutionMode = FieldHazardPetConsumeResolutionMode.ExternalObserved;
                 return $"Outpacket {request.Opcode} [{payloadHex}] dispatched through the live local-utility bridge. {dispatchStatus}";
             }
 
             string outboxStatus;
             if (_localUtilityPacketOutbox.TrySendOutboundPacket(request.Opcode, request.Payload, out outboxStatus))
             {
+                resolutionMode = FieldHazardPetConsumeResolutionMode.ExternalObserved;
                 return $"Outpacket {request.Opcode} [{payloadHex}] dispatched through the generic local-utility outbox after the live bridge path was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus}";
             }
 
@@ -1947,17 +2117,36 @@ namespace HaCreator.MapSimulator
             if (_localUtilityOfficialSessionBridgeEnabled
                 && _localUtilityOfficialSessionBridge.TryQueueOutboundPacket(request.Opcode, request.Payload, out bridgeDeferredStatus))
             {
+                resolutionMode = FieldHazardPetConsumeResolutionMode.ExternalObserved;
                 return $"Outpacket {request.Opcode} [{payloadHex}] queued for deferred live official-session injection after the live bridge path was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred official bridge: {bridgeDeferredStatus}";
             }
 
             string queuedStatus;
             if (_localUtilityPacketOutbox.TryQueueOutboundPacket(request.Opcode, request.Payload, out queuedStatus))
             {
+                resolutionMode = FieldHazardPetConsumeResolutionMode.ExternalObserved;
                 return $"Outpacket {request.Opcode} [{payloadHex}] queued for deferred generic local-utility outbox delivery after the live bridge path was unavailable. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred official bridge: {bridgeDeferredStatus} Deferred outbox: {queuedStatus}";
             }
 
             string contextStatus = _packetOwnedLocalUtilityContext.DescribePetConsumeContext(currentTickCount);
             return $"Outpacket {request.Opcode} [{payloadHex}] remained simulator-owned because neither the live local-utility bridge nor the deferred official-session bridge queue nor the generic outbox transport or deferred outbox queue accepted it. Bridge: {dispatchStatus} Outbox: {outboxStatus} Deferred official bridge: {bridgeDeferredStatus} Deferred outbox: {queuedStatus} {contextStatus}";
+        }
+
+        private void CompleteFieldHazardRemoteObservedRequest(
+            FieldHazardPetAutoConsumeRequest request,
+            int currentTickCount,
+            string petLabel,
+            string requestMode,
+            bool quantityDropped)
+        {
+            ClearFieldHazardPendingInventoryRequest();
+            _packetOwnedLocalUtilityContext.AcknowledgePetItemUseRequest();
+            _pendingFieldHazardPetAutoConsumeRequest = null;
+
+            string detail = quantityDropped
+                ? $"{petLabel} {requestMode} request #{request.RequestId} observed a remote quantity change for {request.Candidate.ItemName} on {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex} after the packet-owned request left the simulator."
+                : $"{petLabel} {requestMode} request #{request.RequestId} observed remote consumption for {request.Candidate.ItemName} after {request.Candidate.InventoryType} slot {request.InventoryClientSlotIndex} changed ownership.";
+            _localOverlayRuntime.SetFieldHazardFollowUp(detail, FieldHazardFollowUpKind.Consumed, currentTickCount);
         }
 
         private static ulong ResolveFieldHazardPetAutoConsumeSerial(PetRuntime requestPet)
@@ -2146,9 +2335,10 @@ namespace HaCreator.MapSimulator
             FieldHazardPetAutoConsumeRequest request = _pendingFieldHazardPetAutoConsumeRequest.Value;
             int remainingMs = Math.Max(0, request.AckAt - currentTickCount);
             int resultRemainingMs = Math.Max(0, request.ResultAt - currentTickCount);
+            int remoteRemainingMs = Math.Max(0, request.RemoteResultDeadlineAt - currentTickCount);
             return string.Format(
                 CultureInfo.InvariantCulture,
-                "Field hazard pet transport: {0}, requester={1}, requestId={2}, pending={3} [{4}] slot={5} runtimeSlot={6} state={7} ackIn={8}ms resultIn={9}ms force={10} buffSkill={11} requestIndex={12} petSerial={13} payload={14} dispatch=\"{15}\". {16}",
+                "Field hazard pet transport: {0}, requester={1}, requestId={2}, pending={3} [{4}] slot={5} runtimeSlot={6} state={7} ownership={8} ackIn={9}ms resultIn={10}ms observeIn={11}ms qty0={12} force={13} buffSkill={14} requestIndex={15} petSerial={16} payload={17} dispatch=\"{18}\". {19}",
                 sharedItemStatus,
                 DescribeFieldHazardAutoConsumePet(request.PetSlotIndex, request.PetName),
                 request.RequestId,
@@ -2157,8 +2347,11 @@ namespace HaCreator.MapSimulator
                 request.InventoryClientSlotIndex,
                 request.InventoryRuntimeSlotIndex,
                 request.Acknowledged ? "acknowledged" : "queued",
+                DescribeFieldHazardPetConsumeResolutionMode(request.ResolutionMode),
                 remainingMs,
                 resultRemainingMs,
+                remoteRemainingMs,
+                request.InitialSlotQuantity,
                 request.ForceRequest ? 1 : 0,
                 request.BuffSkillRequest ? 1 : 0,
                 request.RequestIndex,
@@ -2257,6 +2450,15 @@ namespace HaCreator.MapSimulator
                 FieldHazardSharedPetConsumeSource.Hotkey => "hotkey",
                 FieldHazardSharedPetConsumeSource.InventoryFallback => "inventory",
                 _ => "none"
+            };
+        }
+
+        private static string DescribeFieldHazardPetConsumeResolutionMode(FieldHazardPetConsumeResolutionMode mode)
+        {
+            return mode switch
+            {
+                FieldHazardPetConsumeResolutionMode.ExternalObserved => "remote",
+                _ => "simulator"
             };
         }
 
@@ -2955,8 +3157,8 @@ namespace HaCreator.MapSimulator
             Rectangle ArrowBounds,
             Texture2D VisualTexture);
         private readonly record struct PacketOwnedBalloonTextStyle(Color Color, bool Emphasis);
-        private readonly record struct PacketOwnedBalloonGlyph(char Character, PacketOwnedBalloonTextStyle Style);
-        private readonly record struct PacketOwnedBalloonTextRun(string Text, PacketOwnedBalloonTextStyle Style);
+        private readonly record struct PacketOwnedBalloonGlyph(char Character, PacketOwnedBalloonTextStyle Style, int? ItemIconId = null);
+        private readonly record struct PacketOwnedBalloonTextRun(string Text, PacketOwnedBalloonTextStyle Style, int? ItemIconId = null);
         private readonly record struct PacketOwnedBalloonWrappedLine(PacketOwnedBalloonTextRun[] Runs, int Width, bool PreservesLineHeight)
         {
             public static readonly PacketOwnedBalloonWrappedLine Empty = new(Array.Empty<PacketOwnedBalloonTextRun>(), 0, false);

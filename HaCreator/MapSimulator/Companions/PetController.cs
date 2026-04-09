@@ -130,7 +130,8 @@ namespace HaCreator.MapSimulator.Companions
             2700
         };
 
-        private readonly AnimationController _animation;
+        private readonly PetLoader _loader;
+        private AnimationController _animation;
         private readonly IReadOnlyDictionary<PetAutoSpeechEvent, string[]> _eventSpeechLines;
         private readonly Dictionary<PetAutoSpeechEvent, int> _nextEventSpeechIndices = new();
 
@@ -147,11 +148,12 @@ namespace HaCreator.MapSimulator.Companions
         private bool _hangOnBack;
         private bool _useClientMultiPetHangAction;
 
-        internal PetRuntime(int runtimeId, int slotIndex, PetDefinition definition, int initialFullness = DefaultFullness)
+        internal PetRuntime(int runtimeId, int slotIndex, PetDefinition definition, PetLoader loader, int initialFullness = DefaultFullness)
         {
             RuntimeId = runtimeId;
             SlotIndex = slotIndex;
             Definition = definition ?? throw new ArgumentNullException(nameof(definition));
+            _loader = loader ?? throw new ArgumentNullException(nameof(loader));
             _animation = new AnimationController(definition.Animations, "stand1");
             _eventSpeechLines = definition.EventSpeechLines ?? new Dictionary<PetAutoSpeechEvent, string[]>();
             Fullness = Math.Clamp(initialFullness, MinFullness, MaxFullness);
@@ -166,6 +168,7 @@ namespace HaCreator.MapSimulator.Companions
         public bool FacingRight { get; private set; } = true;
         public string CurrentAction => _animation.CurrentAction;
         public int ItemId => Definition.ItemId;
+        public int PetWearItemId { get; private set; }
         public string Name => Definition.Name;
         public int ChatBalloonStyle => Definition.ChatBalloonStyle;
         public int CommandLevel => _commandLevel;
@@ -224,6 +227,22 @@ namespace HaCreator.MapSimulator.Companions
             return _animation.GetCurrentFrame();
         }
 
+        internal void ApplyWearItem(int petWearItemId)
+        {
+            int normalizedWearId = Math.Max(0, petWearItemId);
+            if (PetWearItemId == normalizedWearId)
+            {
+                return;
+            }
+
+            PetWearItemId = normalizedWearId;
+            string requestedAction = string.IsNullOrWhiteSpace(_animation?.CurrentAction)
+                ? "stand1"
+                : _animation.CurrentAction;
+            PetAnimationSet animations = _loader.LoadAnimationSet(Definition.ItemId, PetWearItemId);
+            _animation = new AnimationController(animations, animations.HasAnimation(requestedAction) ? requestedAction : "stand1");
+        }
+
         public bool TryTriggerAutoSpeechEvent(PetAutoSpeechEvent eventType, int currentTime)
         {
             if (!CanAutoSpeak)
@@ -238,7 +257,7 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             SetSpeech(line, currentTime + SpeechDurationMs);
-            if (Definition.Animations.GetAvailableActions().Any(action =>
+            if (_animation.AnimationSet.GetAvailableActions().Any(action =>
                     string.Equals(action, "chat", StringComparison.OrdinalIgnoreCase)))
             {
                 SetTemporaryAction("chat", currentTime + TemporaryActionDurationMs);
@@ -674,7 +693,7 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             SetSpeech(line, currentTime + SpeechDurationMs);
-            if (Definition.Animations.GetAvailableActions().Any(action =>
+            if (_animation.AnimationSet.GetAvailableActions().Any(action =>
                     string.Equals(action, "chat", StringComparison.OrdinalIgnoreCase)))
             {
                 SetTemporaryAction("chat", currentTime + TemporaryActionDurationMs);
@@ -689,7 +708,7 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             if (!string.IsNullOrWhiteSpace(reaction.ActionName) &&
-                Definition.Animations.GetAvailableActions().Any(action =>
+                _animation.AnimationSet.GetAvailableActions().Any(action =>
                     string.Equals(action, reaction.ActionName, StringComparison.OrdinalIgnoreCase)))
             {
                 SetTemporaryAction(reaction.ActionName, currentTime + TemporaryActionDurationMs);
@@ -734,7 +753,7 @@ namespace HaCreator.MapSimulator.Companions
         {
             return _useClientMultiPetHangAction
                    && activePetCount > 1
-                   && Definition.Animations.HasAnimation(PetDefinition.ClientMultiPetHangActionName);
+                   && _animation.AnimationSet.HasAnimation(PetDefinition.ClientMultiPetHangActionName);
         }
 
         private void SetTemporaryAction(string actionName, int expiresAt)
@@ -958,7 +977,7 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             int insertIndex = Math.Min(slotIndex, _activePets.Count);
-            var pet = new PetRuntime(_nextRuntimeId++, insertIndex, definition);
+            var pet = new PetRuntime(_nextRuntimeId++, insertIndex, definition, _loader);
             if (TryRestorePersistedState(petItemId, out PetPersistentState persistedState))
             {
                 pet.RestorePersistentState(persistedState);

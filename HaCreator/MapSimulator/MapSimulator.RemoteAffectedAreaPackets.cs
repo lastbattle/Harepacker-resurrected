@@ -233,7 +233,8 @@ namespace HaCreator.MapSimulator
                     supportSkills,
                     localPlayerId,
                     area.OwnerId,
-                    IsAffectedAreaOwnerPartyMember(area.OwnerId)))
+                    IsAffectedAreaOwnerPartyMember(area.OwnerId),
+                    levelData))
             {
                 return true;
             }
@@ -457,13 +458,18 @@ namespace HaCreator.MapSimulator
                 }
 
                 SkillData skill = _playerManager?.SkillLoader?.LoadSkill(area.SkillId);
+                SkillData[] supportSkills = ResolveRemoteAffectedAreaSupportSkills(skill);
+                SkillLevelData levelData = ResolveRemoteAffectedAreaSkillLevel(skill, area.SkillLevel);
+                SkillLevelData supportLevelData = ResolveRemoteAffectedAreaSupportLevelData(levelData, supportSkills);
+                SkillLevelData effectiveLevelData = supportLevelData ?? levelData;
                 if (!RemoteAffectedAreaSupportResolver.IsInvincibleZone(skill)
                     || !RemoteAffectedAreaSupportResolver.CanAffectLocalPlayer(
                         skill,
-                        ResolveRemoteAffectedAreaSupportSkills(skill),
+                        supportSkills,
                         localPlayerId,
                         area.OwnerId,
-                        IsAffectedAreaOwnerPartyMember(area.OwnerId)))
+                        IsAffectedAreaOwnerPartyMember(area.OwnerId),
+                        effectiveLevelData))
                 {
                     continue;
                 }

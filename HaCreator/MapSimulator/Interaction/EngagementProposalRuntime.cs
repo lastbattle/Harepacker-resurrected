@@ -496,7 +496,22 @@ namespace HaCreator.MapSimulator.Interaction
                 return EngagementProposalDialogText.GetWaitForResponseText();
             }
 
-            return EngagementProposalDialogText.FormatIncomingRequestPrompt(_proposerName);
+            StringBuilder builder = new();
+            builder.Append(EngagementProposalDialogText.FormatIncomingRequestPrompt(_proposerName));
+
+            if (!string.IsNullOrWhiteSpace(_outgoingRequestMessage))
+            {
+                builder.Append("\r\n\r\n");
+                builder.Append(_outgoingRequestMessage.Trim());
+            }
+
+            if (!string.IsNullOrWhiteSpace(_customMessage))
+            {
+                builder.Append("\r\n\r\n");
+                builder.Append(_customMessage.Trim());
+            }
+
+            return builder.ToString();
         }
 
         private static string NormalizeRequestMessage(string requestMessage)

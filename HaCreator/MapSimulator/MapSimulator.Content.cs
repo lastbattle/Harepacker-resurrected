@@ -509,6 +509,7 @@ namespace HaCreator.MapSimulator
             WireGuildSearchWindowData();
             WireGuildSkillWindowData();
             WireGuildBbsWindowData();
+            _engagementProposalController.SocialMessagesObserved = TryTriggerSpecialistPetSocialFeedback;
             _engagementProposalController.WireWindow(uiWindowManager, _playerManager?.Player?.Build, _fontChat, ShowUtilityFeedbackMessage);
             _weddingInvitationController.WireWindow(uiWindowManager, _playerManager?.Player?.Build, _fontChat, ShowUtilityFeedbackMessage);
             _weddingWishListController.WireWindow(uiWindowManager, _playerManager?.Player?.Build, uiWindowManager?.InventoryWindow as IInventoryRuntime, _fontChat, ShowUtilityFeedbackMessage);
@@ -891,12 +892,14 @@ namespace HaCreator.MapSimulator
                     equipWindow.SetDragonEquipmentController(_playerManager.CompanionEquipment?.Dragon);
                     equipWindow.EquipmentChangeSubmitted = SubmitEquipmentChangeRequest;
                     equipWindow.EquipmentChangeResultRequested = TryResolveEquipmentChangeRequest;
+                    equipWindow.EquipmentDragStartBlocked = ShouldBlockEquipmentDragStart;
                 }
                 if (uiWindowManager.EquipWindow is EquipUIBigBang equipBigBang)
                 {
                     equipBigBang.SetCharacterLoader(_playerManager.Loader);
                     equipBigBang.EquipmentChangeSubmitted = SubmitEquipmentChangeRequest;
                     equipBigBang.EquipmentChangeResultRequested = TryResolveEquipmentChangeRequest;
+                    equipBigBang.EquipmentDragStartBlocked = ShouldBlockEquipmentDragStart;
                     equipBigBang.SetPetController(_playerManager.Pets);
 
                     equipBigBang.SetPetEquipmentController(_playerManager.CompanionEquipment?.Pet);
@@ -915,6 +918,7 @@ namespace HaCreator.MapSimulator
                 inventoryWindow.CharacterBuild = _playerManager.Player.Build;
                 inventoryWindow.SetFont(_fontChat);
                 inventoryWindow.SetCharacterLoader(_playerManager.Loader);
+                inventoryWindow.EquipmentDragStartBlocked = ShouldBlockEquipmentDragStart;
             }
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.Trunk) is TrunkUI trunkWindow
                 && _playerManager?.Player?.Build != null)
@@ -1255,11 +1259,12 @@ namespace HaCreator.MapSimulator
         /// <param name="newBoard">The new map board to load</param>
         /// <param name="newTitle">The new window title</param>
         /// <param name="spawnPortalName">Optional portal name to spawn at</param>
-        private void LoadMapContent(Board newBoard, string newTitle, string spawnPortalName, int spawnPortalIndex = -1)
+        private void LoadMapContent(Board newBoard, string newTitle, string spawnPortalName, int spawnPortalIndex = -1, string[] spawnPortalNameCandidates = null)
         {
             Stopwatch loadMapContentStopwatch = Stopwatch.StartNew();
             this._mapBoard = newBoard;
             this._spawnPortalName = spawnPortalName;
+            this._spawnPortalNameCandidates = spawnPortalNameCandidates ?? Array.Empty<string>();
             this._spawnPortalIndex = spawnPortalIndex;
 
 
@@ -1628,6 +1633,7 @@ namespace HaCreator.MapSimulator
             WireGuildSearchWindowData();
             WireGuildSkillWindowData();
             WireGuildBbsWindowData();
+            _engagementProposalController.SocialMessagesObserved = TryTriggerSpecialistPetSocialFeedback;
             _engagementProposalController.WireWindow(uiWindowManager, _playerManager?.Player?.Build, _fontChat, ShowUtilityFeedbackMessage);
             _weddingInvitationController.WireWindow(uiWindowManager, _playerManager?.Player?.Build, _fontChat, ShowUtilityFeedbackMessage);
             _weddingWishListController.WireWindow(uiWindowManager, _playerManager?.Player?.Build, uiWindowManager?.InventoryWindow as IInventoryRuntime, _fontChat, ShowUtilityFeedbackMessage);
@@ -1700,12 +1706,14 @@ namespace HaCreator.MapSimulator
                     equipWindow.SetDragonEquipmentController(_playerManager.CompanionEquipment?.Dragon);
                     equipWindow.EquipmentChangeSubmitted = SubmitEquipmentChangeRequest;
                     equipWindow.EquipmentChangeResultRequested = TryResolveEquipmentChangeRequest;
+                    equipWindow.EquipmentDragStartBlocked = ShouldBlockEquipmentDragStart;
                 }
                 if (uiWindowManager.EquipWindow is EquipUIBigBang equipBigBang)
                 {
                     equipBigBang.SetCharacterLoader(_playerManager.Loader);
                     equipBigBang.EquipmentChangeSubmitted = SubmitEquipmentChangeRequest;
                     equipBigBang.EquipmentChangeResultRequested = TryResolveEquipmentChangeRequest;
+                    equipBigBang.EquipmentDragStartBlocked = ShouldBlockEquipmentDragStart;
                     equipBigBang.SetPetController(_playerManager.Pets);
 
                     equipBigBang.SetPetEquipmentController(_playerManager.CompanionEquipment?.Pet);

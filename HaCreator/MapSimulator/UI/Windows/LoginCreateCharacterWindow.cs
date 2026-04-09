@@ -909,13 +909,14 @@ namespace HaCreator.MapSimulator.UI
         {
             if (_confirmButton != null)
             {
-                bool showConfirmButton = !(_fixedStage == LoginCreateCharacterStage.RaceSelect && _isRaceConfirmationOpen);
+                bool showConfirmButton =
+                    _fixedStage != LoginCreateCharacterStage.NameSelect &&
+                    !(_fixedStage == LoginCreateCharacterStage.RaceSelect && _isRaceConfirmationOpen);
                 _confirmButton.SetVisible(showConfirmButton);
                 _confirmButton.SetEnabled(
                     _fixedStage switch
                     {
                         LoginCreateCharacterStage.AvatarSelect => !string.IsNullOrWhiteSpace(_checkedName),
-                        LoginCreateCharacterStage.NameSelect => !string.IsNullOrWhiteSpace(_displayName),
                         _ => true
                     });
                 Point stageOrigin = GetStageOrigin();
@@ -944,8 +945,14 @@ namespace HaCreator.MapSimulator.UI
 
             if (_checkButton != null)
             {
-                _checkButton.SetVisible(false);
-                _checkButton.SetEnabled(false);
+                bool showCheckButton = _fixedStage == LoginCreateCharacterStage.NameSelect;
+                _checkButton.SetVisible(showCheckButton);
+                _checkButton.SetEnabled(showCheckButton && !string.IsNullOrWhiteSpace(_displayName));
+                if (showCheckButton)
+                {
+                    Point stageOrigin = GetStageOrigin();
+                    (_checkButton.X, _checkButton.Y) = (stageOrigin.X + 27, stageOrigin.Y + 178);
+                }
             }
         }
 

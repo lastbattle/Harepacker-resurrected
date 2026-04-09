@@ -143,6 +143,7 @@ namespace HaCreator.MapSimulator.Companions
         private const float QuestInfoVerticalGap = 15f;
         private const int DragonBlinkEffectStringPoolId = 0x0B6B;
         private const int DragonFuryEffectStringPoolId = 0x15DA;
+        private const int DragonQuestInfoEffectStringPoolId = 0x19BC;
 
         public DragonCompanionRuntime(GraphicsDevice device)
         {
@@ -397,15 +398,16 @@ namespace HaCreator.MapSimulator.Companions
                     continue;
                 }
 
-                WzVectorProperty origin = canvas["origin"] as WzVectorProperty;
+                WzCanvasProperty metadataCanvas = ResolveMetadataCanvas(canvas);
+                WzVectorProperty origin = metadataCanvas["origin"] as WzVectorProperty;
                 animation.Frames.Add(new SkillFrame
                 {
                     Texture = texture,
                     Origin = new Point(origin?.X.Value ?? 0, origin?.Y.Value ?? 0),
-                    Delay = Math.Max(1, GetIntValue(canvas["delay"]) ?? 100),
-                    Bounds = ResolveFrameBounds(canvas, texture),
-                    AlphaStart = Math.Clamp(GetIntValue(canvas["a0"]) ?? 255, 0, 255),
-                    AlphaEnd = Math.Clamp(GetIntValue(canvas["a1"]) ?? 255, 0, 255)
+                    Delay = Math.Max(1, GetIntValue(metadataCanvas["delay"]) ?? 100),
+                    Bounds = ResolveFrameBounds(metadataCanvas, texture),
+                    AlphaStart = Math.Clamp(GetIntValue(metadataCanvas["a0"]) ?? 255, 0, 255),
+                    AlphaEnd = Math.Clamp(GetIntValue(metadataCanvas["a1"]) ?? 255, 0, 255)
                 });
             }
 
@@ -712,6 +714,23 @@ namespace HaCreator.MapSimulator.Companions
             {
                 _activeFollowReleaseStableFrames = 0;
                 _isFollowActive = shouldEngageActiveFollow;
+            }
+        }
+
+        private static WzCanvasProperty ResolveMetadataCanvas(WzCanvasProperty canvas)
+        {
+            if (canvas == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                return canvas.GetLinkedWzImageProperty() as WzCanvasProperty ?? canvas;
+            }
+            catch
+            {
+                return canvas;
             }
         }
 
@@ -1406,6 +1425,11 @@ namespace HaCreator.MapSimulator.Companions
 
         private static string ResolveQuestInfoEffectUol(DragonQuestInfoState questState)
         {
+            if (TryResolveQuestInfoEffectUolFromStringPool((int)questState, out string effectUol))
+            {
+                return effectUol;
+            }
+
             return questState switch
             {
                 DragonQuestInfoState.PreStart => "Effect/BasicEff.img/QuestAlert",
@@ -1413,6 +1437,76 @@ namespace HaCreator.MapSimulator.Companions
                 DragonQuestInfoState.Active => "Effect/BasicEff.img/QuestAlert3",
                 _ => null
             };
+        }
+
+        internal static bool TryResolveQuestInfoEffectUolFromStringPool(int questState, out string effectUol)
+        {
+            effectUol = null;
+
+            if (!MapleStoryStringPool.TryGet(DragonQuestInfoEffectStringPoolId, out string rawFormat)
+                || string.IsNullOrWhiteSpace(rawFormat))
+            {
+                return false;
+            }
+
+            return TryFormatQuestInfoEffectUol(rawFormat, questState, out effectUol);
+        }
+
+        internal static bool TryFormatQuestInfoEffectUol(string rawFormat, int questState, out string effectUol)
+        {
+            effectUol = null;
+
+            string suffix = questState switch
+            {
+                0 => string.Empty,
+                1 => "2",
+                2 => "3",
+                _ => null
+            };
+            if (suffix == null || string.IsNullOrWhiteSpace(rawFormat))
+            {
+                return false;
+            }
+
+            string normalized = rawFormat.Trim().Replace('\\', '/');
+            string formatted = null;
+            if (normalized.Contains("{0}", StringComparison.Ordinal))
+            {
+                formatted = normalized.Replace("{0}", suffix, StringComparison.Ordinal);
+            }
+            else if (normalized.Contains("%s", StringComparison.Ordinal))
+            {
+                formatted = normalized.Replace("%s", suffix, StringComparison.Ordinal);
+            }
+            else if (normalized.Contains("%d", StringComparison.Ordinal))
+            {
+                formatted = normalized.Replace("%d", suffix, StringComparison.Ordinal);
+            }
+            else if (questState == 0 && LooksLikeQuestInfoEffectUol(normalized))
+            {
+                formatted = normalized;
+            }
+
+            if (!LooksLikeQuestInfoEffectUol(formatted))
+            {
+                return false;
+            }
+
+            effectUol = formatted;
+            return true;
+        }
+
+        private static bool LooksLikeQuestInfoEffectUol(string effectUol)
+        {
+            if (string.IsNullOrWhiteSpace(effectUol))
+            {
+                return false;
+            }
+
+            string normalized = effectUol.Trim().Replace('\\', '/');
+            return normalized.StartsWith("Effect/", StringComparison.OrdinalIgnoreCase)
+                   && normalized.Contains(".img/", StringComparison.OrdinalIgnoreCase)
+                   && normalized.Contains("QuestAlert", StringComparison.OrdinalIgnoreCase);
         }
 
         private LayerAnimationSequence LoadLayerAnimationSequence(string effectUol)

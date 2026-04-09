@@ -41,5 +41,15 @@ namespace HaCreator.MapSimulator.Interaction
 
             return true;
         }
+
+        internal static string DescribeSupportedClientOpcodes()
+        {
+            return "149, 162, 166, 167, 169, 174, 178, reactor-pool";
+        }
+
+        internal static string DescribeFieldScopedPacketType(int packetType)
+        {
+            return packetType.ToString();
+        }
     }
 }

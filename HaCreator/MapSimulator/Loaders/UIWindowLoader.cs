@@ -599,7 +599,7 @@ namespace HaCreator.MapSimulator.Loaders
                 LoadCharacterSelectAnimationFrames(charSelectProperty?["BtDelete"]?["keyFocused"] as WzSubProperty, device),
                 LoadLoginProcessBalloonStyle(loginImage?["WorldNotice"]?["BalloonForLoginProcess"] as WzSubProperty, device),
                 LoadOwnerCanvasFrame(ResolveNewestIndexedCanvas(charSelectProperty?["event"] as WzSubProperty), device),
-                LoadOwnerCanvasFrame(ResolveNewestIndexedCanvas(charSelectProperty?["character"] as WzSubProperty), device))
+                LoadCharacterSelectAnimationFrames(charSelectProperty?["character"]?["0"] as WzSubProperty, device))
             {
                 Position = new Point(Math.Max(24, (screenWidth / 2) - 309), Math.Max(24, (screenHeight / 2) - 160))
             };
@@ -1260,12 +1260,15 @@ namespace HaCreator.MapSimulator.Loaders
                 loginNoticeProperty?["text"] as WzSubProperty,
                 device);
 
-
             Texture2D frameTexture = LoadCanvasTexture(utilDlgProperty, "notice", device)
-
                                      ?? LoadCanvasTexture(loginNoticeProperty?["backgrnd"] as WzSubProperty, "0", device)
-
                                      ?? CreatePlaceholderWindowTexture(device, 312, 132, "Login Utility");
+            Texture2D loginNoticeTexture = LoadCanvasTexture(loginNoticeProperty?["backgrnd"] as WzSubProperty, "0", device)
+                                           ?? frameTexture;
+            Texture2D loginNoticeCogTexture = LoadCanvasTexture(loginNoticeProperty?["backgrnd"] as WzSubProperty, "1", device)
+                                              ?? loginNoticeTexture;
+            Texture2D loginNoticeBarTexture = LoadCanvasTexture(loginNoticeProperty?["backgrnd"] as WzSubProperty, "2", device)
+                                              ?? loginNoticeTexture;
 
 
 
@@ -1287,8 +1290,16 @@ namespace HaCreator.MapSimulator.Loaders
             UIObject nexonButton = LoadButton(loginNoticeProperty, "BtNexon", btClickSound, btOverSound, device);
 
 
+            Dictionary<LoginUtilityDialogFrameVariant, IDXObject> framesByVariant = new()
+            {
+                [LoginUtilityDialogFrameVariant.Default] = new DXObject(0, 0, frameTexture, 0),
+                [LoginUtilityDialogFrameVariant.LoginNotice] = new DXObject(0, 0, loginNoticeTexture, 0),
+                [LoginUtilityDialogFrameVariant.LoginNoticeCog] = new DXObject(0, 0, loginNoticeCogTexture, 0),
+                [LoginUtilityDialogFrameVariant.LoginNoticeBar] = new DXObject(0, 0, loginNoticeBarTexture, 0),
+            };
+
             LoginUtilityDialogWindow window = new LoginUtilityDialogWindow(
-                new DXObject(0, 0, frameTexture, 0),
+                framesByVariant,
                 okButton,
                 yesButton,
                 noButton,
@@ -1753,7 +1764,7 @@ namespace HaCreator.MapSimulator.Loaders
             RegisterQuestTimerWindows(manager, device);
             RegisterPacketOwnedRewardResultNoticeWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
                 new Point(x + (cascade * 6), y + (cascade * 2)));
-            RegisterRandomMesoBagWindow(manager, uiWindow1Image, basicImage, soundUIImage, device,
+            RegisterRandomMesoBagWindow(manager, uiWindow1Image, uiWindow2Image, basicImage, soundUIImage, device,
                 new Point(x + (cascade * 7), y + (cascade * 2)));
             RegisterQuestDeliveryWindow(manager, uiWindow2Image, basicImage, soundUIImage, device,
                 new Point(x + (cascade * 6), y + (cascade * 3)));
@@ -2870,6 +2881,7 @@ namespace HaCreator.MapSimulator.Loaders
         private static void RegisterRandomMesoBagWindow(
             UIWindowManager manager,
             WzImage uiWindowImage,
+            WzImage uiWindow2Image,
             WzImage basicImage,
             WzImage soundUIImage,
             GraphicsDevice device,
@@ -2880,7 +2892,7 @@ namespace HaCreator.MapSimulator.Loaders
                 return;
             }
 
-            UIWindowBase window = CreateRandomMesoBagWindow(uiWindowImage, basicImage, soundUIImage, device, position);
+            UIWindowBase window = CreateRandomMesoBagWindow(uiWindowImage, uiWindow2Image, basicImage, soundUIImage, device, position);
             if (window != null)
             {
                 manager.RegisterCustomWindow(window);
@@ -3290,11 +3302,19 @@ namespace HaCreator.MapSimulator.Loaders
 
 
             WzSubProperty stoneRoot = omokProperty["stone"] as WzSubProperty;
-            Texture2D blackStone = LoadCanvasTexture(stoneRoot?["0"]?["black"] as WzSubProperty, "0", device);
-            Texture2D whiteStone = LoadCanvasTexture(stoneRoot?["0"]?["white"] as WzSubProperty, "0", device);
+            Texture2D[] blackStoneFrames = Enumerable.Range(0, 12)
+                .Select(index => LoadCanvasTexture(stoneRoot?[index.ToString()]?["black"] as WzSubProperty, "0", device))
+                .Where(texture => texture != null)
+                .ToArray();
+            Texture2D[] whiteStoneFrames = Enumerable.Range(0, 12)
+                .Select(index => LoadCanvasTexture(stoneRoot?[index.ToString()]?["white"] as WzSubProperty, "0", device))
+                .Where(texture => texture != null)
+                .ToArray();
+            Texture2D blackStone = blackStoneFrames.FirstOrDefault();
+            Texture2D whiteStone = whiteStoneFrames.FirstOrDefault();
             Texture2D lastBlackStone = LoadCanvasTexture(stoneRoot?["10"]?["black"] as WzSubProperty, "0", device) ?? blackStone;
             Texture2D lastWhiteStone = LoadCanvasTexture(stoneRoot?["10"]?["white"] as WzSubProperty, "0", device) ?? whiteStone;
-            window.SetMiniRoomOmokStoneTextures(blackStone, whiteStone, lastBlackStone, lastWhiteStone);
+            window.SetMiniRoomOmokStoneTextures(blackStoneFrames, whiteStoneFrames, lastBlackStone, lastWhiteStone);
         }
 
 
@@ -4353,10 +4373,24 @@ namespace HaCreator.MapSimulator.Loaders
                 LoadButton(sourceProperty, "BtMax", btClickSound, btOverSound, device),
                 LoadButton(sourceProperty, "BtMin", btClickSound, btOverSound, device),
                 LoadButton(sourceProperty, "BtDelete", btClickSound, btOverSound, device));
+            window.SetTooltipDescription(ResolveQuestAlarmTooltipDescription());
 
 
             return window;
 
+        }
+
+        private static string ResolveQuestAlarmTooltipDescription()
+        {
+            try
+            {
+                WzImage tooltipHelpImage = global::HaCreator.Program.FindImage("String", "ToolTipHelp.img");
+                return tooltipHelpImage?["Game"]?["Button"]?["QuestAlarm"]?["Desc"]?.GetString();
+            }
+            catch
+            {
+                return null;
+            }
         }
 
 
@@ -7258,8 +7292,9 @@ namespace HaCreator.MapSimulator.Loaders
             Texture2D slotTexture = LoadCanvasTexture(eventListProperty, "slot", device);
             Texture2D[] statusIcons = LoadIndexedCanvasTextureList(eventListProperty?["icon"] as WzSubProperty, device).ToArray();
             WzSubProperty calendarProperty = eventRoot?["calendar"] as WzSubProperty;
-            WzSubProperty calendarBackgroundProperty = calendarProperty?["bg"]?["1"] as WzSubProperty
-                ?? calendarProperty?["bg"]?["0"] as WzSubProperty;
+            WzSubProperty calendarBackgroundRoot = calendarProperty?["bg"] as WzSubProperty;
+            WzSubProperty calendarBackgroundProperty0 = calendarBackgroundRoot?["0"] as WzSubProperty;
+            WzSubProperty calendarBackgroundProperty1 = calendarBackgroundRoot?["1"] as WzSubProperty;
             EventWindow window = new EventWindow(
                 new DXObject(0, 0, frameTexture, 0),
                 MapSimulatorWindowNames.Event,
@@ -7270,12 +7305,19 @@ namespace HaCreator.MapSimulator.Loaders
                 LoadCanvasTexture(calendarProperty, "today", device),
                 new[]
                 {
-                    LoadCanvasTexture(calendarBackgroundProperty, "backgrnd", device),
-                    LoadCanvasTexture(calendarBackgroundProperty, "backgrnd2", device),
-                    LoadCanvasTexture(calendarBackgroundProperty, "backgrnd3", device)
+                    LoadCanvasTexture(calendarBackgroundProperty0, "backgrnd", device),
+                    LoadCanvasTexture(calendarBackgroundProperty1, "backgrnd", device)
                 },
-                null,
-                null,
+                new[]
+                {
+                    LoadCanvasTexture(calendarBackgroundProperty0, "backgrnd2", device),
+                    LoadCanvasTexture(calendarBackgroundProperty1, "backgrnd2", device)
+                },
+                new[]
+                {
+                    LoadCanvasTexture(calendarBackgroundProperty0, "backgrnd3", device),
+                    LoadCanvasTexture(calendarBackgroundProperty1, "backgrnd3", device)
+                },
                 LoadIndexedCanvasTextureList(calendarProperty?["number"] as WzSubProperty, "normal", device).ToArray(),
                 LoadIndexedCanvasTextureList(calendarProperty?["number"] as WzSubProperty, "select", device).ToArray())
             {
@@ -7769,6 +7811,7 @@ namespace HaCreator.MapSimulator.Loaders
 
         private static UIWindowBase CreateRandomMesoBagWindow(
             WzImage uiWindowImage,
+            WzImage uiWindow2Image,
             WzImage basicImage,
             WzImage soundUIImage,
             GraphicsDevice device,
@@ -7778,10 +7821,25 @@ namespace HaCreator.MapSimulator.Loaders
             Dictionary<int, IDXObject> backgrounds = new();
             for (int rank = 1; rank <= 4; rank++)
             {
-                Texture2D backgroundTexture = LoadCanvasTexture(sourceProperty, $"Back{rank}", device);
+                string dialogResourcePath = PacketOwnedRewardResultRuntime.GetRandomMesoBagDialogResourcePath(rank);
+                Texture2D backgroundTexture = LoadCanvasTexture(sourceProperty, $"Back{rank}", device)
+                    ?? LoadTextureFromUiPath(uiWindowImage, dialogResourcePath, device);
                 if (backgroundTexture != null)
                 {
                     backgrounds[rank] = new DXObject(0, 0, backgroundTexture, 0);
+                }
+            }
+
+            if (backgrounds.Count == 0)
+            {
+                Texture2D fallbackTexture = LoadCanvasTexture(uiWindow2Image?["UtilDlgEx"] as WzSubProperty, "notice", device);
+                if (fallbackTexture != null)
+                {
+                    IDXObject fallbackFrame = new DXObject(0, 0, fallbackTexture, 0);
+                    for (int rank = 1; rank <= 4; rank++)
+                    {
+                        backgrounds[rank] = fallbackFrame;
+                    }
                 }
             }
 
@@ -7805,9 +7863,62 @@ namespace HaCreator.MapSimulator.Loaders
             WzBinaryProperty btClickSound = soundUIImage?["BtMouseClick"] as WzBinaryProperty;
             WzBinaryProperty btOverSound = soundUIImage?["BtMouseOver"] as WzBinaryProperty;
             UIObject okButton = LoadButton(sourceProperty, "BtOk", btClickSound, btOverSound, device)
+                ?? LoadButtonFromUiPath(uiWindowImage, PacketOwnedRewardResultRuntime.GetRandomMesoBagOkButtonResourcePath(), btClickSound, btOverSound, device)
+                ?? LoadButton(uiWindow2Image?["UtilDlgEx"] as WzSubProperty, "BtOK", btClickSound, btOverSound, device)
                 ?? LoadButton(sourceProperty, "BtOK", btClickSound, btOverSound, device);
             window.InitializeButtons(okButton);
             return window;
+        }
+
+        private static Texture2D LoadTextureFromUiPath(WzImage uiWindowImage, string fullPath, GraphicsDevice device)
+        {
+            WzCanvasProperty canvas = ResolveUiCanvasProperty(uiWindowImage, fullPath);
+            return canvas?.GetLinkedWzCanvasBitmap()?.ToTexture2DAndDispose(device);
+        }
+
+        private static UIObject LoadButtonFromUiPath(
+            WzImage uiWindowImage,
+            string fullPath,
+            WzBinaryProperty clickSound,
+            WzBinaryProperty overSound,
+            GraphicsDevice device)
+        {
+            WzSubProperty buttonProperty = ResolveUiProperty(uiWindowImage, fullPath) as WzSubProperty;
+            if (buttonProperty == null)
+            {
+                return null;
+            }
+
+            try
+            {
+                return new UIObject(buttonProperty, clickSound, overSound, false, Point.Zero, device);
+            }
+            catch
+            {
+                return null;
+            }
+        }
+
+        private static WzCanvasProperty ResolveUiCanvasProperty(WzImage uiWindowImage, string fullPath)
+        {
+            return ResolveUiProperty(uiWindowImage, fullPath) as WzCanvasProperty;
+        }
+
+        private static WzImageProperty ResolveUiProperty(WzImage uiWindowImage, string fullPath)
+        {
+            if (uiWindowImage == null || string.IsNullOrWhiteSpace(fullPath))
+            {
+                return null;
+            }
+
+            string normalizedPath = fullPath.Replace('\\', '/');
+            string imagePrefix = $"UI/{uiWindowImage.Name}/";
+            if (normalizedPath.StartsWith(imagePrefix, StringComparison.OrdinalIgnoreCase))
+            {
+                normalizedPath = normalizedPath[imagePrefix.Length..];
+            }
+
+            return ResolveProperty(uiWindowImage, normalizedPath);
         }
 
         private static UIWindowBase CreateQuestRewardRaiseWindow(

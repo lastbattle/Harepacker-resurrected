@@ -37,18 +37,15 @@ namespace HaCreator.MapSimulator.Interaction
         private const string UiTopPropertyName = "t";
         private const string UiCenterPropertyName = "c";
         private const string UiBottomPropertyName = "s";
-        private static readonly string[] DefaultClientVisualCandidatePaths =
-        {
-            ClientMessageBoxPropertyName,
-            $"{InfoPropertyName}/{ClientMessageBoxPropertyName}"
-        };
-        private static readonly string[] GenericFallbackVisualCandidatePaths =
-        {
-            $"{InfoPropertyName}/{ChalkboardSamplePropertyName}",
-            ChalkboardSamplePropertyName
-        };
         private const int ClientLeaveStartAlpha = 255;
         private const int ClientLeaveEndAlpha = 0;
+        private static readonly IReadOnlyDictionary<int, IReadOnlyList<string>> ExactChalkboardVisualFallbackPaths = new Dictionary<int, IReadOnlyList<string>>
+        {
+            [5077000] = new[] { ChalkboardSamplePropertyName },
+            [5370000] = new[] { $"{InfoPropertyName}/{ChalkboardSamplePropertyName}" },
+            [5370001] = new[] { $"{InfoPropertyName}/{ChalkboardSamplePropertyName}" },
+            [5370002] = new[] { $"{InfoPropertyName}/{ChalkboardSamplePropertyName}" }
+        };
 
         private readonly Dictionary<int, FieldMessageBoxEntry> _entries = new();
         private readonly List<LeavingMessageBoxEntry> _leavingEntries = new();
@@ -506,17 +503,6 @@ namespace HaCreator.MapSimulator.Interaction
                 return true;
             }
 
-            foreach (string candidatePath in GetPreferredVisualPropertyPaths(itemId))
-            {
-                if (!TryLoadVisualAtPath(itemProperty as WzSubProperty, candidatePath, out visual))
-                {
-                    continue;
-                }
-
-                visual = visual with { IconTexture = iconTexture ?? visual.IconTexture };
-                return true;
-            }
-
             if (!allowChalkboardSampleFallback)
             {
                 return false;
@@ -538,7 +524,7 @@ namespace HaCreator.MapSimulator.Interaction
 
         internal static IReadOnlyList<string> GetPreferredVisualPropertyPaths(int itemId)
         {
-            return DefaultClientVisualCandidatePaths;
+            return Array.Empty<string>();
         }
 
         internal static IReadOnlyList<string> GetFallbackVisualPropertyPathsForTest(int itemId)
@@ -548,8 +534,8 @@ namespace HaCreator.MapSimulator.Interaction
 
         private static IReadOnlyList<string> GetFallbackVisualPropertyPaths(int itemId)
         {
-            return IsKnownChalkboardItem(itemId)
-                ? GenericFallbackVisualCandidatePaths
+            return ExactChalkboardVisualFallbackPaths.TryGetValue(itemId, out IReadOnlyList<string> candidatePaths)
+                ? candidatePaths
                 : Array.Empty<string>();
         }
 

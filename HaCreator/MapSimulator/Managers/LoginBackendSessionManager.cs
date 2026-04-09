@@ -261,6 +261,69 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
+        public void ImportPersistedRosters(
+            IReadOnlyDictionary<int, LoginSelectWorldResultProfile> rostersByWorld,
+            int activeWorldId)
+        {
+            ActiveWorldId = Math.Max(0, activeWorldId);
+            SelectWorldRosterProfile = null;
+            ViewAllCharRosterProfile = null;
+            ViewAllExpectedCharacterCount = 0;
+            ViewAllRemainingServerCount = 0;
+            _viewAllEntries.Clear();
+            _selectWorldProfilesByWorld.Clear();
+            _viewAllProfilesByWorld.Clear();
+
+            int importedSlotCount = 0;
+            int importedBuyCharacterCount = 0;
+            bool importedLoginOpt = false;
+
+            foreach ((int worldId, LoginSelectWorldResultProfile sourceProfile) in
+                     rostersByWorld?.OrderBy(entry => entry.Key) ??
+                     Enumerable.Empty<KeyValuePair<int, LoginSelectWorldResultProfile>>())
+            {
+                if (sourceProfile == null)
+                {
+                    continue;
+                }
+
+                int normalizedWorldId = Math.Max(0, worldId);
+                LoginSelectWorldResultProfile importedProfile = NormalizeImportedWorldProfile(sourceProfile, normalizedWorldId);
+                importedSlotCount = Math.Max(importedSlotCount, Math.Max(0, importedProfile.SlotCount));
+                importedBuyCharacterCount = Math.Max(importedBuyCharacterCount, Math.Max(0, importedProfile.BuyCharacterCount));
+                importedLoginOpt |= importedProfile.LoginOpt;
+
+                _selectWorldProfilesByWorld[normalizedWorldId] = CloneProfile(importedProfile);
+                _viewAllProfilesByWorld[normalizedWorldId] = CloneProfile(importedProfile);
+
+                if (importedProfile.Entries == null)
+                {
+                    continue;
+                }
+
+                foreach (LoginSelectWorldCharacterEntry entry in importedProfile.Entries.Where(entry => entry != null))
+                {
+                    _viewAllEntries.Add(CloneEntry(entry));
+                }
+            }
+
+            if (!_viewAllProfilesByWorld.ContainsKey(ActiveWorldId) &&
+                (_viewAllProfilesByWorld.Count > 0 || importedSlotCount > 0 || importedBuyCharacterCount > 0))
+            {
+                LoginSelectWorldResultProfile emptyActiveWorldProfile = CreateRosterProfile(
+                    Array.Empty<LoginSelectWorldCharacterEntry>(),
+                    importedSlotCount,
+                    importedBuyCharacterCount,
+                    importedLoginOpt);
+                _selectWorldProfilesByWorld[ActiveWorldId] = CloneProfile(emptyActiveWorldProfile);
+                _viewAllProfilesByWorld[ActiveWorldId] = CloneProfile(emptyActiveWorldProfile);
+            }
+
+            ViewAllExpectedCharacterCount = Math.Max(0, _viewAllEntries.Count);
+            ViewAllRemainingServerCount = 0;
+            SetActiveWorld(ActiveWorldId);
+        }
+
         public bool TryGetActiveRoster(
             int worldId,
             bool preferViewAllRoster,
@@ -889,6 +952,26 @@ namespace HaCreator.MapSimulator.Managers
             };
         }
 
+        private LoginSelectWorldResultProfile NormalizeImportedWorldProfile(
+            LoginSelectWorldResultProfile profile,
+            int worldId)
+        {
+            LoginSelectWorldCharacterEntry[] normalizedEntries = profile?.Entries?
+                .Where(entry => entry != null)
+                .Select(entry => CloneEntryForWorld(entry, worldId))
+                .ToArray()
+                ?? Array.Empty<LoginSelectWorldCharacterEntry>();
+
+            return NormalizeRosterEntitlement(new LoginSelectWorldResultProfile
+            {
+                ResultCode = profile?.ResultCode ?? 0,
+                Entries = normalizedEntries,
+                LoginOpt = profile?.LoginOpt ?? false,
+                SlotCount = Math.Max(0, profile?.SlotCount ?? 0),
+                BuyCharacterCount = Math.Max(0, profile?.BuyCharacterCount ?? 0)
+            });
+        }
+
         private static bool UpsertCharacterInEntries(
             ICollection<LoginSelectWorldCharacterEntry> entries,
             LoginSelectWorldCharacterEntry upsertEntry,
@@ -1099,6 +1182,47 @@ namespace HaCreator.MapSimulator.Managers
                 AvatarLook = entry.AvatarLook,
                 AvatarLookPacket = entry.AvatarLookPacket != null
                     ? (byte[])entry.AvatarLookPacket.Clone()
+                    : Array.Empty<byte>()
+            };
+        }
+
+        private static LoginSelectWorldCharacterEntry CloneEntryForWorld(LoginSelectWorldCharacterEntry entry, int worldId)
+        {
+            LoginSelectWorldCharacterEntry clonedEntry = CloneEntry(entry);
+            return new LoginSelectWorldCharacterEntry
+            {
+                CharacterId = clonedEntry.CharacterId,
+                WorldId = Math.Max(0, worldId),
+                Name = clonedEntry.Name,
+                Gender = clonedEntry.Gender,
+                Skin = clonedEntry.Skin,
+                FaceId = clonedEntry.FaceId,
+                HairId = clonedEntry.HairId,
+                Level = clonedEntry.Level,
+                JobId = clonedEntry.JobId,
+                SubJob = clonedEntry.SubJob,
+                Strength = clonedEntry.Strength,
+                Dexterity = clonedEntry.Dexterity,
+                Intelligence = clonedEntry.Intelligence,
+                Luck = clonedEntry.Luck,
+                AbilityPoints = clonedEntry.AbilityPoints,
+                HitPoints = clonedEntry.HitPoints,
+                MaxHitPoints = clonedEntry.MaxHitPoints,
+                ManaPoints = clonedEntry.ManaPoints,
+                MaxManaPoints = clonedEntry.MaxManaPoints,
+                Experience = clonedEntry.Experience,
+                Fame = clonedEntry.Fame,
+                FieldMapId = clonedEntry.FieldMapId,
+                Portal = clonedEntry.Portal,
+                PlayTime = clonedEntry.PlayTime,
+                OnFamily = clonedEntry.OnFamily,
+                WorldRank = clonedEntry.WorldRank,
+                WorldRankMove = clonedEntry.WorldRankMove,
+                JobRank = clonedEntry.JobRank,
+                JobRankMove = clonedEntry.JobRankMove,
+                AvatarLook = clonedEntry.AvatarLook,
+                AvatarLookPacket = clonedEntry.AvatarLookPacket != null
+                    ? (byte[])clonedEntry.AvatarLookPacket.Clone()
                     : Array.Empty<byte>()
             };
         }

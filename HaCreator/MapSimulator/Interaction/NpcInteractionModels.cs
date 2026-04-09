@@ -143,6 +143,7 @@ namespace HaCreator.MapSimulator.Interaction
     {
         public bool StateChanged { get; init; }
         public int? PreferredQuestId { get; init; }
+        public string NpcActionName { get; init; } = string.Empty;
         public IReadOnlyList<string> Messages { get; init; } = Array.Empty<string>();
         public IReadOnlyList<string> PublishedScriptNames { get; init; } = Array.Empty<string>();
         public QuestRewardChoicePrompt PendingRewardChoicePrompt { get; init; }

@@ -17,9 +17,9 @@ namespace HaCreator.MapSimulator.UI
         private const int EntriesPerPage = 3;
         private const int CardWidth = 183;
         private const int CardHeight = 151;
-        private const int SlotAnchorStartX = 170;
-        private const int SlotAnchorStepX = 125;
-        private const int SlotAnchorY = 80;
+        private const int CardTopLeftX = 18;
+        private const int CardTopLeftY = 46;
+        private const int CardGapX = 14;
         private const int NameTagOffsetY = 63;
         private const int NameTagBaselineOffsetY = 120;
         private const int DoubleClickThresholdMs = 400;
@@ -360,20 +360,30 @@ namespace HaCreator.MapSimulator.UI
 
         private Rectangle GetCardBounds(int visibleSlotIndex)
         {
-            Point slotAnchor = GetSlotAnchor(visibleSlotIndex);
-            PreviewCanvasFrame frame = _selectedCardFrame.Texture != null
-                ? _selectedCardFrame
-                : _normalCardFrame;
-            int x = Position.X + slotAnchor.X - frame.Origin.X;
-            int y = Position.Y + slotAnchor.Y - frame.Origin.Y;
-            return new Rectangle(x, y, CardWidth, CardHeight);
+            Point topLeft = GetCardTopLeft(visibleSlotIndex);
+            return new Rectangle(
+                Position.X + topLeft.X,
+                Position.Y + topLeft.Y,
+                CardWidth,
+                CardHeight);
         }
 
         private Point GetSlotAnchor(int visibleSlotIndex)
         {
+            PreviewCanvasFrame frame = _selectedCardFrame.Texture != null
+                ? _selectedCardFrame
+                : _normalCardFrame;
+            Point topLeft = GetCardTopLeft(visibleSlotIndex);
             return new Point(
-                SlotAnchorStartX + (visibleSlotIndex * SlotAnchorStepX),
-                SlotAnchorY);
+                topLeft.X + frame.Origin.X,
+                topLeft.Y + frame.Origin.Y);
+        }
+
+        private static Point GetCardTopLeft(int visibleSlotIndex)
+        {
+            return new Point(
+                CardTopLeftX + (visibleSlotIndex * (CardWidth + CardGapX)),
+                CardTopLeftY);
         }
 
         private void DrawCard(SpriteBatch sprite, Point slotAnchor, bool isSelected)

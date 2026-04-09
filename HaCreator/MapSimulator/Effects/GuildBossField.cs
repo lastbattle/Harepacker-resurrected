@@ -46,6 +46,27 @@ namespace HaCreator.MapSimulator.Effects
     /// </summary>
     public class GuildBossField
     {
+        internal readonly record struct GuildBossHealerContract(
+            int X,
+            int YMin,
+            int YMax,
+            int Rise,
+            int Fall,
+            int HealMin,
+            int HealMax,
+            string AnimationPath);
+
+        internal readonly record struct GuildBossPulleyContract(
+            int X,
+            int Y,
+            string AnimationPath);
+
+        internal readonly record struct GuildBossMapContract(
+            int MapId,
+            GuildBossHealerContract Healer,
+            GuildBossPulleyContract Pulley,
+            string SourceDescription);
+
         private enum GuildBossPacketType
         {
             HealerMove = 344,
@@ -94,6 +115,7 @@ namespace HaCreator.MapSimulator.Effects
         private int _healerHealMax;
         private string _healerPath;
         private string _pulleyPath;
+        private string _contractSourceDescription;
         private int _lastPulleyStateChangeTime;
         #endregion
 
@@ -173,55 +195,31 @@ namespace HaCreator.MapSimulator.Effects
         }
 
 
-        public void ConfigureFromBoard(Board board)
+        internal void ApplyMapContract(GuildBossMapContract contract)
         {
-            WzImage mapImage = board?.MapInfo?.Image;
-            if (!_isActive || mapImage == null || _device == null)
+            if (_device == null)
             {
                 return;
             }
 
+            Enable();
 
-            if (!mapImage.Parsed)
-            {
-                mapImage.ParseImage();
-            }
+            _mapId = contract.MapId;
+            _contractSourceDescription = contract.SourceDescription;
+            _healerYMin = contract.Healer.YMin;
+            _healerYMax = contract.Healer.YMax;
+            _healerRise = Math.Max(0, contract.Healer.Rise);
+            _healerFall = Math.Max(0, contract.Healer.Fall);
+            _healerHealMin = Math.Max(0, contract.Healer.HealMin);
+            _healerHealMax = Math.Max(_healerHealMin, contract.Healer.HealMax);
+            _healerPath = contract.Healer.AnimationPath;
+            _pulleyPath = contract.Pulley.AnimationPath;
 
+            InitHealer(contract.Healer.X, contract.Healer.YMin, _healerPath);
+            SetHealerFrames(LoadObjectAnimation(_healerPath));
 
-            _mapId = board.MapInfo.id;
-
-
-
-            if (mapImage["healer"] is WzSubProperty healerProp)
-            {
-                int x = healerProp["x"]?.GetInt() ?? 0;
-                _healerYMin = healerProp["yMin"]?.GetInt() ?? 0;
-                _healerYMax = healerProp["yMax"]?.GetInt() ?? _healerYMin;
-                _healerRise = Math.Max(0, healerProp["rise"]?.GetInt() ?? 0);
-                _healerFall = Math.Max(0, healerProp["fall"]?.GetInt() ?? 0);
-                _healerHealMin = Math.Max(0, healerProp["healMin"]?.GetInt() ?? 0);
-                _healerHealMax = Math.Max(_healerHealMin, healerProp["healMax"]?.GetInt() ?? _healerHealMin);
-                _healerPath = healerProp["healer"]?.GetString();
-
-
-                InitHealer(x, _healerYMin, _healerPath);
-
-                SetHealerFrames(LoadObjectAnimation(_healerPath));
-
-            }
-
-
-
-            if (mapImage["pulley"] is WzSubProperty pulleyProp)
-            {
-                int x = pulleyProp["x"]?.GetInt() ?? 0;
-                int y = pulleyProp["y"]?.GetInt() ?? 0;
-                _pulleyPath = pulleyProp["pulley"]?.GetString();
-
-
-                InitPulley(x, y, _pulleyPath);
-                SetPulleyFrames(LoadObjectAnimation(_pulleyPath));
-            }
+            InitPulley(contract.Pulley.X, contract.Pulley.Y, _pulleyPath);
+            SetPulleyFrames(LoadObjectAnimation(_pulleyPath));
         }
 
 
@@ -741,6 +739,60 @@ namespace HaCreator.MapSimulator.Effects
 
         }
 
+        internal static bool TryBuildMapContract(MapInfo mapInfo, out GuildBossMapContract contract)
+        {
+            contract = default;
+            WzImage mapImage = mapInfo?.Image;
+            if (mapInfo == null || mapImage == null)
+            {
+                return false;
+            }
+
+            if (!mapImage.Parsed)
+            {
+                mapImage.ParseImage();
+            }
+
+            if (mapImage["healer"] is not WzSubProperty healerProp
+                || mapImage["pulley"] is not WzSubProperty pulleyProp)
+            {
+                return false;
+            }
+
+            string healerPath = healerProp["healer"]?.GetString();
+            string pulleyPath = pulleyProp["pulley"]?.GetString();
+            if (string.IsNullOrWhiteSpace(healerPath) || string.IsNullOrWhiteSpace(pulleyPath))
+            {
+                return false;
+            }
+
+            contract = new GuildBossMapContract(
+                mapInfo.id,
+                new GuildBossHealerContract(
+                    healerProp["x"]?.GetInt() ?? 0,
+                    healerProp["yMin"]?.GetInt() ?? 0,
+                    healerProp["yMax"]?.GetInt() ?? healerProp["yMin"]?.GetInt() ?? 0,
+                    healerProp["rise"]?.GetInt() ?? 0,
+                    healerProp["fall"]?.GetInt() ?? 0,
+                    healerProp["healMin"]?.GetInt() ?? 0,
+                    healerProp["healMax"]?.GetInt() ?? healerProp["healMin"]?.GetInt() ?? 0,
+                    healerPath),
+                new GuildBossPulleyContract(
+                    pulleyProp["x"]?.GetInt() ?? 0,
+                    pulleyProp["y"]?.GetInt() ?? 0,
+                    pulleyPath),
+                BuildContractSourceDescription(mapImage, healerPath, pulleyPath));
+            return true;
+        }
+
+        internal void ConfigureFromBoard(Board board)
+        {
+            if (TryBuildMapContract(board?.MapInfo, out GuildBossMapContract contract))
+            {
+                ApplyMapContract(contract);
+            }
+        }
+
 
 
         #region Reset
@@ -755,6 +807,7 @@ namespace HaCreator.MapSimulator.Effects
             _healParticles.Clear();
             _healerPath = null;
             _pulleyPath = null;
+            _contractSourceDescription = null;
             _healerFrames = null;
             _pulleyFrames = null;
             _healerFrameIndex = 0;
@@ -1031,6 +1084,17 @@ namespace HaCreator.MapSimulator.Effects
         private static int ParseFrameOrder(WzImageProperty property)
         {
             return int.TryParse(property?.Name, out int order) ? order : int.MaxValue;
+        }
+
+        private static string BuildContractSourceDescription(WzImage mapImage, string healerPath, string pulleyPath)
+        {
+            string mapImageName = mapImage?.Name ?? "<unknown>";
+            if (!mapImageName.EndsWith(".img", StringComparison.OrdinalIgnoreCase))
+            {
+                mapImageName += ".img";
+            }
+
+            return $"WZ contract {mapImageName}: healer={healerPath}, pulley={pulleyPath}";
         }
 
 

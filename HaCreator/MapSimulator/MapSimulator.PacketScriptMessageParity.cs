@@ -2,6 +2,7 @@ using HaCreator.MapSimulator.Entities;
 using HaCreator.MapSimulator.Fields;
 using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Managers;
+using HaCreator.MapSimulator.Companions;
 using Microsoft.Xna.Framework;
 using System.Collections.Generic;
 using System.Net;
@@ -26,7 +27,7 @@ namespace HaCreator.MapSimulator
                 payload,
                 FindNpcById,
                 _activeNpcInteractionNpc,
-                _ => true,
+                ResolvePacketScriptSelectablePet,
                 out PacketScriptMessageRuntime.PacketScriptMessageOpenRequest request,
                 out message))
             {
@@ -42,6 +43,49 @@ namespace HaCreator.MapSimulator
             }
 
             return true;
+        }
+
+        private PacketScriptMessageRuntime.PacketScriptPetSelectionCandidate ResolvePacketScriptSelectablePet(long petSerialNumber)
+        {
+            IReadOnlyList<PetRuntime> activePets = _playerManager?.Pets?.ActivePets;
+            if (petSerialNumber <= 0 || activePets == null)
+            {
+                return null;
+            }
+
+            for (int i = 0; i < activePets.Count; i++)
+            {
+                PetRuntime pet = activePets[i];
+                if (pet == null)
+                {
+                    continue;
+                }
+
+                if (ResolvePacketScriptPetSerial(pet) != petSerialNumber)
+                {
+                    continue;
+                }
+
+                return new PacketScriptMessageRuntime.PacketScriptPetSelectionCandidate(
+                    petSerialNumber,
+                    pet.SlotIndex,
+                    pet.ItemId,
+                    string.IsNullOrWhiteSpace(pet.Name) ? $"Pet {pet.SlotIndex + 1}" : pet.Name);
+            }
+
+            return null;
+        }
+
+        private static long ResolvePacketScriptPetSerial(PetRuntime pet)
+        {
+            if (pet == null)
+            {
+                return 0;
+            }
+
+            uint runtimeId = (uint)System.Math.Max(1, pet.RuntimeId);
+            uint itemId = (uint)System.Math.Max(0, pet.ItemId);
+            return (long)(((ulong)itemId << 32) | runtimeId);
         }
 
         private string OpenPacketOwnedScriptInteraction(PacketScriptMessageRuntime.PacketScriptMessageOpenRequest request)

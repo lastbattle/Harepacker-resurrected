@@ -38,8 +38,10 @@ namespace HaCreator.MapSimulator.Interaction
             public string Subject { get; init; } = string.Empty;
             public string Body { get; init; } = string.Empty;
             public DateTimeOffset DeliveredAt { get; init; }
+            public bool HasClientTimestamp { get; init; }
             public bool IsRead { get; set; }
             public bool IsKept { get; set; }
+            public bool IsQuickDelivery { get; init; }
             public MemoAttachmentState Attachment { get; init; }
         }
 
@@ -74,9 +76,11 @@ namespace HaCreator.MapSimulator.Interaction
                     Subject = memo.Subject,
                     Body = memo.Body,
                     Preview = BuildPreview(memo.Body),
-                    DeliveredAtText = memo.DeliveredAt.ToLocalTime().ToString("yyyy.MM.dd HH:mm"),
+                    DeliveredAtText = FormatTimestamp(memo.DeliveredAt),
+                    StatusText = BuildStatusText(memo),
                     IsRead = memo.IsRead,
                     IsKept = memo.IsKept,
+                    IsQuickDelivery = memo.IsQuickDelivery,
                     HasAttachment = memo.Attachment != null,
                     CanClaimAttachment = memo.Attachment != null && !memo.Attachment.IsClaimed,
                     IsAttachmentClaimed = memo.Attachment?.IsClaimed == true,
@@ -135,7 +139,8 @@ namespace HaCreator.MapSimulator.Interaction
                 MemoId = memo.MemoId,
                 Sender = memo.Sender,
                 Subject = memo.Subject,
-                DeliveredAtText = memo.DeliveredAt.ToLocalTime().ToString("yyyy.MM.dd HH:mm"),
+                DeliveredAtText = FormatTimestamp(memo.DeliveredAt),
+                StatusText = BuildStatusText(memo),
                 AttachmentSummary = BuildAttachmentSummary(memo.Attachment),
                 AttachmentDescription = BuildAttachmentDescription(memo.Attachment),
                 CanClaim = memo.Attachment != null && !memo.Attachment.IsClaimed,
@@ -192,10 +197,11 @@ namespace HaCreator.MapSimulator.Interaction
                 deliveredAt,
                 isRead,
                 isKept,
-                attachmentItemId,
-                attachmentQuantity,
-                attachmentMeso,
-                isAttachmentClaimed);
+                attachmentItemId: attachmentItemId,
+                attachmentQuantity: attachmentQuantity,
+                attachmentMeso: attachmentMeso,
+                isQuickDelivery: false,
+                isAttachmentClaimed: isAttachmentClaimed);
         }
 
         internal void ReplacePacketOwnedParcelSession(
@@ -221,9 +227,10 @@ namespace HaCreator.MapSimulator.Interaction
                         entry.Sender,
                         ResolvePacketOwnedParcelSubject(entry),
                         ResolvePacketOwnedParcelBody(entry),
-                        displayTime,
+                        ResolvePacketOwnedDeliveredAt(entry, displayTime),
                         isRead: entry.IsRead,
                         isKept: entry.IsKept,
+                        isQuickDelivery: entry.IsQuickDelivery,
                         attachmentItemId: entry.AttachmentItemId,
                         attachmentQuantity: entry.AttachmentQuantity,
                         attachmentMeso: ResolvePacketOwnedAttachmentMeso(entry),
@@ -256,12 +263,13 @@ namespace HaCreator.MapSimulator.Interaction
                 ResolvePacketOwnedParcelBody(entry),
                 isRead: entry.IsRead,
                 isKept: entry.IsKept,
+                isQuickDelivery: entry.IsQuickDelivery,
                 isClaimed: entry.IsAttachmentClaimed,
                 attachmentItemId: entry.AttachmentItemId,
                 attachmentQuantity: entry.AttachmentQuantity,
                 attachmentMeso: ResolvePacketOwnedAttachmentMeso(entry),
                 memoId: entry.ParcelSerial > 0 ? entry.ParcelSerial : null,
-                deliveredAt: DateTimeOffset.Now,
+                deliveredAt: ResolvePacketOwnedDeliveredAt(entry, DateTimeOffset.Now),
                 out message);
             if (delivered && entry.IsQuickDelivery)
             {
@@ -283,6 +291,7 @@ namespace HaCreator.MapSimulator.Interaction
             int attachmentItemId,
             int attachmentQuantity,
             int attachmentMeso,
+            bool isQuickDelivery,
             bool isAttachmentClaimed)
         {
             if (string.IsNullOrWhiteSpace(subject) || string.IsNullOrWhiteSpace(body))
@@ -303,8 +312,10 @@ namespace HaCreator.MapSimulator.Interaction
                 Subject = subject.Trim(),
                 Body = body.Trim(),
                 DeliveredAt = deliveredAt ?? DateTimeOffset.Now,
+                HasClientTimestamp = deliveredAt.HasValue,
                 IsRead = isRead,
                 IsKept = isKept,
+                IsQuickDelivery = isQuickDelivery,
                 Attachment = attachment
             });
 
@@ -407,6 +418,34 @@ namespace HaCreator.MapSimulator.Interaction
                 body,
                 isRead,
                 isKept,
+                isQuickDelivery: false,
+                isClaimed: isClaimed,
+                attachmentItemId: attachmentItemId,
+                attachmentQuantity: attachmentQuantity,
+                attachmentMeso: attachmentMeso,
+                out message);
+        }
+
+        internal bool TryDeliverPacketOwnedParcel(
+            string sender,
+            string subject,
+            string body,
+            bool isRead,
+            bool isKept,
+            bool isQuickDelivery,
+            bool isClaimed,
+            int attachmentItemId,
+            int attachmentQuantity,
+            int attachmentMeso,
+            out string message)
+        {
+            return TryDeliverPacketOwnedParcel(
+                sender,
+                subject,
+                body,
+                isRead,
+                isKept,
+                isQuickDelivery,
                 isClaimed,
                 attachmentItemId,
                 attachmentQuantity,
@@ -422,6 +461,7 @@ namespace HaCreator.MapSimulator.Interaction
             string body,
             bool isRead,
             bool isKept,
+            bool isQuickDelivery,
             bool isClaimed,
             int attachmentItemId,
             int attachmentQuantity,
@@ -441,17 +481,18 @@ namespace HaCreator.MapSimulator.Interaction
                 : subject.Trim();
 
             DeliverMemo(
-                memoId,
-                sender.Trim(),
-                resolvedSubject,
-                body.Trim(),
-                deliveredAt,
-                isRead,
-                isKept,
-                attachmentItemId,
-                attachmentQuantity,
-                attachmentMeso,
-                isClaimed);
+                memoId: memoId,
+                sender: sender.Trim(),
+                subject: resolvedSubject,
+                body: body.Trim(),
+                deliveredAt: deliveredAt,
+                isRead: isRead,
+                isKept: isKept,
+                attachmentItemId: attachmentItemId,
+                attachmentQuantity: attachmentQuantity,
+                attachmentMeso: attachmentMeso,
+                isQuickDelivery: isQuickDelivery,
+                isAttachmentClaimed: isClaimed);
             message = $"Queued packet-owned parcel '{resolvedSubject}' from {sender.Trim()}.";
             _lastActionSummary = message;
             return true;
@@ -856,6 +897,11 @@ namespace HaCreator.MapSimulator.Interaction
                 : Math.Max(0, entry.AttachmentMeso);
         }
 
+        private static DateTimeOffset ResolvePacketOwnedDeliveredAt(PacketOwnedParcelDecodedEntry entry, DateTimeOffset fallback)
+        {
+            return entry?.ClientTimestampUtc?.ToLocalTime() ?? fallback;
+        }
+
         private int ResolveMemoId(int? requestedMemoId)
         {
             if (!requestedMemoId.HasValue || requestedMemoId.Value <= 0 || _memos.Any(memo => memo.MemoId == requestedMemoId.Value))
@@ -880,6 +926,41 @@ namespace HaCreator.MapSimulator.Interaction
                 MemoAttachmentKind.Meso => $"Meso package: {attachment.Meso:N0} meso.",
                 _ => "No package is attached to this memo."
             };
+        }
+
+        private static string FormatTimestamp(DateTimeOffset deliveredAt)
+        {
+            return deliveredAt.ToLocalTime().ToString("yyyy.MM.dd HH:mm");
+        }
+
+        private static string BuildStatusText(MemoState memo)
+        {
+            if (memo == null)
+            {
+                return string.Empty;
+            }
+
+            if (memo.Attachment?.IsClaimed == true)
+            {
+                return memo.IsQuickDelivery ? "Quick claimed" : "Claimed";
+            }
+
+            if (memo.Attachment != null)
+            {
+                return memo.IsQuickDelivery ? "Quick package" : "Package attached";
+            }
+
+            if (memo.IsQuickDelivery)
+            {
+                return "Quick delivery";
+            }
+
+            if (memo.IsKept)
+            {
+                return "Kept";
+            }
+
+            return memo.IsRead ? "Read" : "Unread";
         }
 
         private string BuildModeSummary()

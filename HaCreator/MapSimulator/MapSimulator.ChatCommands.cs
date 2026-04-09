@@ -1138,6 +1138,7 @@ namespace HaCreator.MapSimulator
 
 
             LoginPacketDialogOwner owner = LoginPacketDialogOwner.LoginUtilityDialog;
+            bool hasExplicitOwner = false;
             string title = null;
             string body = null;
             int? noticeTextIndex = null;
@@ -1159,7 +1160,7 @@ namespace HaCreator.MapSimulator
             {
                 if (!TrySplitLoginPacketPromptArgument(args[i], out string key, out string initialValue))
                 {
-                    error = "Usage: /loginpacket <packet> [payloadhex=<hex>|payloadb64=<base64>|clearpayload] [mode=utility|notice] [title=<text>] [body=<text>] [notice=<index>] [variant=notice|noticecog|loading|loadingsinglegauge] [buttons=ok|yesno|accept|nowlater|restartexit|nexon] [visualstyle=default|securityyesno|secondarypasswordchoice] [primary=<label>] [secondary=<label>] [inputlabel=<text>] [placeholder=<text>] [masked=true|false] [maxlength=<count>] [keyboardtype=alphanumeric|alphaedges|numeric|numericalt] [inputbounds=<x,y,w,h>] [duration=<ms>]";
+                    error = "Usage: /loginpacket <packet> [payloadhex=<hex>|payloadb64=<base64>|clearpayload] [mode=utility|notice] [title=<text>] [body=<text>] [notice=<index>] [variant=notice|noticecog|loading|loadingsinglegauge] [buttons=ok|yesno|accept|nowlater|restartexit|nexon|enabledisablespw] [visualstyle=default|securityyesno|secondarypasswordchoice] [primary=<label>] [secondary=<label>] [inputlabel=<text>] [placeholder=<text>] [masked=true|false] [maxlength=<count>] [keyboardtype=alphanumeric|alphaedges|numeric|numericalt] [inputbounds=<x,y,w,h>] [duration=<ms>]";
                     return false;
 
                 }
@@ -1173,11 +1174,13 @@ namespace HaCreator.MapSimulator
                         if (value.Equals("notice", StringComparison.OrdinalIgnoreCase))
                         {
                             owner = LoginPacketDialogOwner.ConnectionNotice;
+                            hasExplicitOwner = true;
                         }
                         else if (value.Equals("utility", StringComparison.OrdinalIgnoreCase) ||
                                  value.Equals("dialog", StringComparison.OrdinalIgnoreCase))
                         {
                             owner = LoginPacketDialogOwner.LoginUtilityDialog;
+                            hasExplicitOwner = true;
                         }
                         else
                         {
@@ -1237,7 +1240,7 @@ namespace HaCreator.MapSimulator
 
                         {
 
-                            error = "buttons must be ok, yesno, accept, nowlater, restartexit, or nexon.";
+                            error = "buttons must be ok, yesno, accept, nowlater, restartexit, nexon, or enabledisablespw.";
                             return false;
 
                         }
@@ -1347,6 +1350,7 @@ namespace HaCreator.MapSimulator
             prompt = new LoginPacketDialogPromptConfiguration
             {
                 Owner = owner,
+                HasExplicitOwner = hasExplicitOwner,
                 Title = title,
                 Body = body,
                 NoticeTextIndex = noticeTextIndex,
@@ -2214,20 +2218,26 @@ namespace HaCreator.MapSimulator
                             int ringItemArgumentIndex = hasExplicitProposer ? 3 : 2;
                             int messageArgumentIndex = hasExplicitProposer ? 4 : 3;
 
+                            string openMessage = _engagementProposalController.OpenOutgoingProposal(
+                                outgoingProposerName,
+                                outgoingPartnerName,
+                                TryParseOptionalPositiveInt(args, ringItemArgumentIndex, out int openRingItemId) ? openRingItemId : EngagementProposalRuntime.DefaultRingItemId,
+                                args.Length > messageArgumentIndex ? string.Join(" ", args, messageArgumentIndex, args.Length - messageArgumentIndex) : null,
+                                !string.Equals(outgoingProposerName, localProposalOwner, StringComparison.OrdinalIgnoreCase),
+                                uiWindowManager?.InventoryWindow as IInventoryRuntime,
+                                uiWindowManager,
+                                _playerManager?.Player?.Build,
+                                _fontChat,
+                                ShowUtilityFeedbackMessage,
+                                () => ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.EngagementProposal),
+                                out bool outgoingOpened);
+                            if (!outgoingOpened)
+                            {
+                                return ChatCommandHandler.CommandResult.Error(openMessage);
+                            }
+
                             return ChatCommandHandler.CommandResult.Ok(
-                                _engagementProposalController.OpenOutgoingProposal(
-                                    outgoingProposerName,
-                                    outgoingPartnerName,
-                                    TryParseOptionalPositiveInt(args, ringItemArgumentIndex, out int openRingItemId) ? openRingItemId : EngagementProposalRuntime.DefaultRingItemId,
-                                    args.Length > messageArgumentIndex ? string.Join(" ", args, messageArgumentIndex, args.Length - messageArgumentIndex) : null,
-                                    !string.Equals(outgoingProposerName, localProposalOwner, StringComparison.OrdinalIgnoreCase),
-                                    uiWindowManager?.InventoryWindow as IInventoryRuntime,
-                                    uiWindowManager,
-                                    _playerManager?.Player?.Build,
-                                    _fontChat,
-                                    ShowUtilityFeedbackMessage,
-                                    () => ShowDirectionModeOwnedWindow(MapSimulatorWindowNames.EngagementProposal),
-                                    out _));
+                                openMessage + TryAutoDispatchOutgoingEngagementProposalRequest());
 
                         case "incoming":
                             if (args.Length < 2)
@@ -6228,12 +6238,12 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "memorygame",
                 "Drive the MiniRoom Match Cards runtime",
-                "/memorygame <open|ready|start|flip|tie|giveup|end|status|packet|packetraw|packetrecv|remote|inbox|session> [...]",
+                "/memorygame <open|ready|start|flip|tie|giveup|end|status|packet|packetraw|packetclientraw|packetrecv|remote|inbox|session> [...]",
                 args =>
                 {
                     if (args.Length == 0)
                     {
-                        return ChatCommandHandler.CommandResult.Error("Usage: /memorygame <open|ready|start|flip|tie|giveup|end|status|packet|packetraw|packetrecv|remote|inbox|session> [...]");
+                        return ChatCommandHandler.CommandResult.Error("Usage: /memorygame <open|ready|start|flip|tie|giveup|end|status|packet|packetraw|packetclientraw|packetrecv|remote|inbox|session> [...]");
                     }
 
 
@@ -6412,6 +6422,33 @@ namespace HaCreator.MapSimulator
                             ShowMiniRoomWindow();
                             return ChatCommandHandler.CommandResult.Ok(packetMessage);
                         }
+                        case "packetclientraw":
+                        {
+                            if (args.Length < 2)
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /memorygame packetclientraw <hex bytes>");
+                            }
+
+
+                            if (!TryDecodeHexBytes(string.Join(string.Empty, args.Skip(1)), out byte[] rawClientPacket))
+                            {
+                                return ChatCommandHandler.CommandResult.Error("Usage: /memorygame packetclientraw <hex bytes>");
+                            }
+
+                            if (!MemoryGameOfficialSessionBridgeManager.TryDecodeClientOpcodePacket(rawClientPacket, out byte[] clientPayload, out string clientPacketError))
+                            {
+                                return ChatCommandHandler.CommandResult.Error(clientPacketError ?? "Usage: /memorygame packetclientraw <hex bytes>");
+                            }
+
+                            if (!field.TryDispatchOfficialClientPacket(clientPayload, currTickCount, out string clientPacketMessage))
+                            {
+                                return ChatCommandHandler.CommandResult.Error(clientPacketMessage);
+                            }
+
+
+                            ShowMiniRoomWindow();
+                            return ChatCommandHandler.CommandResult.Ok(clientPacketMessage);
+                        }
                         case "packetrecv":
                         {
                             if (args.Length < 3)
@@ -6578,7 +6615,7 @@ namespace HaCreator.MapSimulator
                             return ChatCommandHandler.CommandResult.Ok(remoteMessage);
                         }
                         default:
-                            return ChatCommandHandler.CommandResult.Error("Usage: /memorygame <open|ready|start|flip|tie|giveup|end|status|packet|packetraw|packetrecv|remote|inbox|session> [...]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /memorygame <open|ready|start|flip|tie|giveup|end|status|packet|packetraw|packetclientraw|packetrecv|remote|inbox|session> [...]");
                     }
                 });
 
@@ -6913,6 +6950,8 @@ namespace HaCreator.MapSimulator
                                     return ChatCommandHandler.CommandResult.Ok("Trading-room window opened.");
                                 case "status":
                                     return ChatCommandHandler.CommandResult.Info(runtime.DescribeStatus());
+                                case "packetowner":
+                                    return ChatCommandHandler.CommandResult.Info(runtime.DescribePacketOwnerStatus());
                                 case "offeritem":
                                     if (args.Length <= actionIndex + 1 || !int.TryParse(args[actionIndex + 1], out int tradeItemId))
                                     {
@@ -7019,7 +7058,7 @@ namespace HaCreator.MapSimulator
                                         ? ChatCommandHandler.CommandResult.Ok(resetMessage)
                                         : ChatCommandHandler.CommandResult.Error(resetMessage);
                                 default:
-                                    return ChatCommandHandler.CommandResult.Error("Usage: /socialroom tradingroom [packet] <open|status|offeritem <itemId> [qty]|offermeso <amount>|lock|accept|remoteofferitem <itemId> [qty]|remoteoffermeso <amount>|remotelock|remoteaccept|remoteinventory <status|additem <itemId> [qty]|addmeso <amount>|clear>|complete|reset|packetraw <hex>|packetrecv <opcode> <hex>>");
+                                    return ChatCommandHandler.CommandResult.Error("Usage: /socialroom tradingroom [packet] <open|status|packetowner|offeritem <itemId> [qty]|offermeso <amount>|lock|accept|remoteofferitem <itemId> [qty]|remoteoffermeso <amount>|remotelock|remoteaccept|remoteinventory <status|additem <itemId> [qty]|addmeso <amount>|clear>|complete|reset|packetraw <hex>|packetrecv <opcode> <hex>>");
                             }
 
                     }
@@ -8967,14 +9006,15 @@ namespace HaCreator.MapSimulator
             _chat.CommandHandler.RegisterCommand(
                 "fieldstate",
                 "Inspect or drive packet-authored field help, quest timers, field-specific data, and object-state flips",
-                "/fieldstate [status|wrapperstatus|desc <index>|questtime <questId> <seconds>|questclear|objectstate <tag> <on|off|0|1>|fieldspecific <payloadhex=..|payloadb64=..>|wrappervalue <huntingadballoon|escortresult> <key> <value>|packet <149|162|166|167|169|174|178|334|335|336|337> [payloadhex=..|payloadb64=..]|packetraw <149|162|166|167|169|174|178|334|335|336|337> [hex]|packetclientraw <hex>]",
+                "/fieldstate [status|wrapperstatus|desc <index>|questtime <questId> <seconds>|questclear|objectstate <tag> <on|off|0|1>|fieldspecific <payloadhex=..|payloadb64=..>|wrappervalue <huntingadballoon|escortresult> <key> <value>|packet <149|162|166|167|169|174|178|334|335|336|337> [payloadhex=..|payloadb64=..]|packetraw <149|162|166|167|169|174|178|334|335|336|337> [hex]|packetclientraw <hex>|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]]",
                 args =>
                 {
                     _packetFieldStateRuntime.Initialize(GraphicsDevice, _mapBoard?.MapInfo);
                     if (args.Length == 0 || string.Equals(args[0], "status", StringComparison.OrdinalIgnoreCase))
                     {
                         string wrapperStatus = DescribeClientOwnedFieldWrapperStatus();
-                        return ChatCommandHandler.CommandResult.Info($"{_packetFieldStateRuntime.DescribeStatus(currTickCount)}{Environment.NewLine}{wrapperStatus}");
+                        return ChatCommandHandler.CommandResult.Info(
+                            $"{_packetFieldStateRuntime.DescribeStatus(currTickCount)}{Environment.NewLine}{wrapperStatus}{Environment.NewLine}{DescribePacketFieldOfficialSessionBridgeStatus()}");
 
                     }
 
@@ -9178,10 +9218,13 @@ namespace HaCreator.MapSimulator
 
                                 : ChatCommandHandler.CommandResult.Error(framedFieldMessage);
 
+                        case "session":
+                            return HandlePacketOwnedFieldStateSessionCommand(args.Skip(1).ToArray());
+
 
 
                         default:
-                            return ChatCommandHandler.CommandResult.Error("Usage: /fieldstate [status|wrapperstatus|desc <index>|questtime <questId> <seconds>|questclear|objectstate <tag> <on|off|0|1>|fieldspecific <payloadhex=..|payloadb64=..>|wrappervalue <huntingadballoon|escortresult> <key> <value>|packet <149|162|166|167|169|174|178|334|335|336|337> [payloadhex=..|payloadb64=..]|packetraw <149|162|166|167|169|174|178|334|335|336|337> [hex]|packetclientraw <hex>]");
+                            return ChatCommandHandler.CommandResult.Error("Usage: /fieldstate [status|wrapperstatus|desc <index>|questtime <questId> <seconds>|questclear|objectstate <tag> <on|off|0|1>|fieldspecific <payloadhex=..|payloadb64=..>|wrappervalue <huntingadballoon|escortresult> <key> <value>|packet <149|162|166|167|169|174|178|334|335|336|337> [payloadhex=..|payloadb64=..]|packetraw <149|162|166|167|169|174|178|334|335|336|337> [hex]|packetclientraw <hex>|session [status|discover <remotePort> [processName|pid] [localPort]|start <listenPort> <serverHost> <serverPort>|startauto <listenPort> <remotePort> [processName|pid] [localPort]|stop]]");
                     }
                 });
 

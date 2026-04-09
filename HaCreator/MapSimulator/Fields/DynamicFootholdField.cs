@@ -422,12 +422,42 @@ namespace HaCreator.MapSimulator.Fields
 
             if (TryResolveObjectKeyName(mapObject, out string objectKeyName))
             {
-                return objectKeyName;
+                int? piece = TryReadIntProperty(mapObject, "piece", out int pieceValue)
+                    ? pieceValue
+                    : null;
+                int? x = TryReadIntProperty(mapObject, "x", out int xValue)
+                    ? xValue
+                    : null;
+                int? y = TryReadIntProperty(mapObject, "y", out int yValue)
+                    ? yValue
+                    : null;
+                return BuildCanonicalObjectKeyName(objectKeyName, piece, x, y);
             }
 
             string layerName = layer?.Name ?? "layer";
             string objectName = mapObject?.Name ?? fallbackIndex.ToString(CultureInfo.InvariantCulture);
             return $"dynamic-{layerName}-{objectName}";
+        }
+
+        private static string BuildCanonicalObjectKeyName(string objectKeyName, int? piece, int? x, int? y)
+        {
+            string canonicalName = NormalizeDynamicObjectKey(objectKeyName);
+            if (canonicalName.Length == 0)
+            {
+                return canonicalName;
+            }
+
+            if (piece is int pieceValue && pieceValue >= 0)
+            {
+                canonicalName = $"{canonicalName}/piece/{pieceValue.ToString(CultureInfo.InvariantCulture)}";
+            }
+
+            if (x is int xValue && y is int yValue)
+            {
+                canonicalName = $"{canonicalName}/{xValue.ToString(CultureInfo.InvariantCulture)},{yValue.ToString(CultureInfo.InvariantCulture)}";
+            }
+
+            return canonicalName;
         }
 
         private static bool TryResolveObjectKeyName(WzImageProperty mapObject, out string name)

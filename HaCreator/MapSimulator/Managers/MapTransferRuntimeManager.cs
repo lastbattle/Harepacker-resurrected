@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Interaction;
 using System;
 using System.Collections.Generic;
 using System.IO;
@@ -11,8 +12,12 @@ namespace HaCreator.MapSimulator.Managers
         RegisterApplied = 2,
         DeleteApplied = 3,
         NoEmptySlot = 5,
+        OfficialFailure6 = 6,
+        OfficialFailure7 = 7,
+        OfficialFailure8 = 8,
         AlreadyRegistered = 9,
-        CannotSaveDestination = 10
+        CannotSaveDestination = 10,
+        OfficialFailure11 = 11
     }
 
     public enum MapTransferRuntimeRequestType
@@ -425,13 +430,7 @@ namespace HaCreator.MapSimulator.Managers
 
         private static string ResolveFailureMessage(MapTransferRuntimePacketResultCode packetResultCode)
         {
-            return packetResultCode switch
-            {
-                MapTransferRuntimePacketResultCode.NoEmptySlot => "All saved teleport slots are already filled.",
-                MapTransferRuntimePacketResultCode.AlreadyRegistered => "That map is already registered in this destination book.",
-                MapTransferRuntimePacketResultCode.CannotSaveDestination => "This destination cannot be saved in a teleport slot.",
-                _ => null
-            };
+            return MapTransferClientParityText.ResolveFailureMessage(packetResultCode);
         }
 
         private CharacterRuntimeBooks GetOrCreateBooks(CharacterBuild build)

@@ -200,12 +200,16 @@ namespace HaCreator.MapSimulator
         private bool TryRegisterAnimationDisplayerFireCrackerAnimation(Rectangle area)
         {
             bool anyRegistered = false;
+            string[] effectUols = BuildAnimationDisplayerFireCrackerEffectUols(weatherPath: null);
             for (int i = 0; i < AnimationDisplayerFireCrackerBurstSchedule.Length; i++)
             {
                 (int updateIntervalMs, int updateCount) = AnimationDisplayerFireCrackerBurstSchedule[i];
+                string effectUol = i < effectUols.Length
+                    ? effectUols[i]
+                    : BuildAnimationDisplayerFireCrackerEffectUol(i, weatherPath: null);
                 anyRegistered |= TryRegisterAnimationDisplayerAreaAnimation(
                     cacheKey: $"firecracker:{i}",
-                    effectUol: AnimationDisplayerFireCrackerEffectUol,
+                    effectUol,
                     area,
                     updateIntervalMs,
                     updateCount,
@@ -640,12 +644,16 @@ namespace HaCreator.MapSimulator
                     break;
 
                 case AnimationDisplayerTransientEffectKind.FireCracker:
+                    string[] effectUols = BuildAnimationDisplayerFireCrackerEffectUols(weatherPath);
                     for (int i = 0; i < AnimationDisplayerFireCrackerBurstSchedule.Length; i++)
                     {
                         (int updateIntervalMs, int updateCount) = AnimationDisplayerFireCrackerBurstSchedule[i];
+                        string effectUol = i < effectUols.Length
+                            ? effectUols[i]
+                            : BuildAnimationDisplayerFireCrackerEffectUol(i, weatherPath);
                         int areaAnimationId = TryRegisterAnimationDisplayerAreaAnimation(
                             cacheKey: $"firecracker:{i}",
-                            effectUol: AnimationDisplayerFireCrackerEffectUol,
+                            effectUol,
                             area,
                             updateIntervalMs,
                             updateCount,
@@ -713,6 +721,68 @@ namespace HaCreator.MapSimulator
         internal static IReadOnlyList<(int UpdateIntervalMs, int UpdateCount)> GetAnimationDisplayerFireCrackerBurstSchedule()
         {
             return AnimationDisplayerFireCrackerBurstSchedule;
+        }
+
+        internal static string BuildAnimationDisplayerFireCrackerEffectUol(int burstIndex, string weatherPath)
+        {
+            if (burstIndex < 0)
+            {
+                return null;
+            }
+
+            string baseUol = NormalizeAnimationDisplayerFireCrackerEffectBaseUol(weatherPath);
+            return string.IsNullOrWhiteSpace(baseUol)
+                ? null
+                : $"{baseUol}/{burstIndex.ToString(CultureInfo.InvariantCulture)}";
+        }
+
+        internal static string[] BuildAnimationDisplayerFireCrackerEffectUols(string weatherPath)
+        {
+            string[] effectUols = new string[AnimationDisplayerFireCrackerBurstSchedule.Length];
+            for (int i = 0; i < effectUols.Length; i++)
+            {
+                effectUols[i] = BuildAnimationDisplayerFireCrackerEffectUol(i, weatherPath);
+            }
+
+            return effectUols;
+        }
+
+        private static string NormalizeAnimationDisplayerFireCrackerEffectBaseUol(string weatherPath)
+        {
+            string normalizedPath = weatherPath?.Replace('\\', '/').Trim().Trim('/');
+            if (string.IsNullOrWhiteSpace(normalizedPath))
+            {
+                return AnimationDisplayerFireCrackerEffectUol;
+            }
+
+            if (normalizedPath.StartsWith("Effect/", StringComparison.OrdinalIgnoreCase))
+            {
+                normalizedPath = normalizedPath["Effect/".Length..];
+            }
+
+            if (normalizedPath.StartsWith("OnUserEff.img/", StringComparison.OrdinalIgnoreCase))
+            {
+                normalizedPath = normalizedPath["OnUserEff.img/".Length..];
+            }
+
+            if (normalizedPath.EndsWith("/0", StringComparison.OrdinalIgnoreCase)
+                || normalizedPath.EndsWith("/1", StringComparison.OrdinalIgnoreCase)
+                || normalizedPath.EndsWith("/2", StringComparison.OrdinalIgnoreCase)
+                || normalizedPath.EndsWith("/3", StringComparison.OrdinalIgnoreCase)
+                || normalizedPath.EndsWith("/4", StringComparison.OrdinalIgnoreCase))
+            {
+                int separatorIndex = normalizedPath.LastIndexOf('/');
+                normalizedPath = separatorIndex >= 0
+                    ? normalizedPath[..separatorIndex]
+                    : normalizedPath;
+            }
+
+            if (normalizedPath.Contains("itemEffect/firework/", StringComparison.OrdinalIgnoreCase))
+            {
+                return $"Effect/OnUserEff.img/{normalizedPath}";
+            }
+
+            return AnimationDisplayerFireCrackerEffectUol;
         }
 
         private void TryPlayAnimationDisplayerNewYearTransientSound(string weatherPath)

@@ -98,6 +98,7 @@ namespace HaCreator.MapSimulator.Interaction
                     LastDispatchSummary = BuildDispatchSummary(
                         normalizedSource,
                         addPacket.RelationshipType,
+                        addPacket.DispatchKey,
                         operation: "add",
                         addApplied,
                         addDetail);
@@ -129,6 +130,7 @@ namespace HaCreator.MapSimulator.Interaction
                     LastDispatchSummary = BuildDispatchSummary(
                         normalizedSource,
                         removePacket.RelationshipType,
+                        removePacket.DispatchKey,
                         operation: "remove",
                         removeApplied,
                         removeDetail);
@@ -184,14 +186,30 @@ namespace HaCreator.MapSimulator.Interaction
         private static string BuildDispatchSummary(
             string source,
             RemoteRelationshipOverlayType relationshipType,
+            RemoteRelationshipRecordDispatchKey dispatchKey,
             string operation,
             bool applied,
             string detail)
         {
             string outcome = applied ? "Applied" : "Ignored";
+            string keySummary = DescribeDispatchKey(dispatchKey);
             return string.IsNullOrWhiteSpace(detail)
-                ? $"{outcome} {relationshipType} relationship-record {operation} from {source}."
-                : $"{outcome} {relationshipType} relationship-record {operation} from {source}: {detail}";
+                ? $"{outcome} {relationshipType} relationship-record {operation} from {source}{keySummary}."
+                : $"{outcome} {relationshipType} relationship-record {operation} from {source}{keySummary}: {detail}";
+        }
+
+        private static string DescribeDispatchKey(RemoteRelationshipRecordDispatchKey dispatchKey)
+        {
+            return dispatchKey.Kind switch
+            {
+                RemoteRelationshipRecordDispatchKeyKind.LargeIntegerSerial when dispatchKey.Serial.HasValue
+                    => $" using _LARGE_INTEGER key {dispatchKey.Serial.Value.ToString(CultureInfo.InvariantCulture)}",
+                RemoteRelationshipRecordDispatchKeyKind.CharacterId when dispatchKey.CharacterId.HasValue
+                    => $" using character key {dispatchKey.CharacterId.Value.ToString(CultureInfo.InvariantCulture)}",
+                RemoteRelationshipRecordDispatchKeyKind.NewYearCardSerial when dispatchKey.Serial.HasValue
+                    => $" using New Year card serial {dispatchKey.Serial.Value.ToString(CultureInfo.InvariantCulture)}",
+                _ => string.Empty
+            };
         }
     }
 }

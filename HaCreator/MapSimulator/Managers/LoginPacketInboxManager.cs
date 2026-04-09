@@ -78,10 +78,16 @@ namespace HaCreator.MapSimulator.Managers
             }
         }
 
-        public void EnqueueLocal(LoginPacketType packetType, string source)
+        public void EnqueueLocal(LoginPacketType packetType, string source, params string[] arguments)
         {
             string packetSource = string.IsNullOrWhiteSpace(source) ? "login-ui" : source;
-            _pendingMessages.Enqueue(new LoginPacketInboxMessage(packetType, packetSource, packetType.ToString(), Array.Empty<string>()));
+            string[] normalizedArguments = arguments?
+                .Where(argument => !string.IsNullOrWhiteSpace(argument))
+                .ToArray() ?? Array.Empty<string>();
+            string rawText = normalizedArguments.Length == 0
+                ? packetType.ToString()
+                : $"{packetType} {string.Join(" ", normalizedArguments)}";
+            _pendingMessages.Enqueue(new LoginPacketInboxMessage(packetType, packetSource, rawText, normalizedArguments));
             ReceivedCount++;
             LastStatus = $"Queued {packetType} from {packetSource}.";
         }

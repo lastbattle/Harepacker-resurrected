@@ -172,6 +172,13 @@ namespace HaCreator.MapSimulator
             Modal = 1
         }
 
+        private enum WhisperTargetPickerNavigationMode
+        {
+            Step = 0,
+            Page = 1,
+            Absolute = 2
+        }
+
         private enum ClientChatLogType
         {
             All = 0,
@@ -323,7 +330,8 @@ namespace HaCreator.MapSimulator
                 if (_isWhisperTargetPickerActive)
                 {
                     MoveWhisperTargetPickerSelection(
-                        (newKeyboardState.IsKeyDown(Keys.LeftShift) || newKeyboardState.IsKeyDown(Keys.RightShift)) ? -1 : 1);
+                        (newKeyboardState.IsKeyDown(Keys.LeftShift) || newKeyboardState.IsKeyDown(Keys.RightShift)) ? -1 : 1,
+                        WhisperTargetPickerNavigationMode.Step);
                     return true;
                 }
 
@@ -353,7 +361,7 @@ namespace HaCreator.MapSimulator
             {
                 if (_isWhisperTargetPickerActive)
                 {
-                    MoveWhisperTargetPickerSelection(-1);
+                    MoveWhisperTargetPickerSelection(-1, WhisperTargetPickerNavigationMode.Step);
                     return true;
                 }
 
@@ -382,7 +390,7 @@ namespace HaCreator.MapSimulator
             {
                 if (_isWhisperTargetPickerActive)
                 {
-                    MoveWhisperTargetPickerSelection(1);
+                    MoveWhisperTargetPickerSelection(1, WhisperTargetPickerNavigationMode.Step);
                     return true;
                 }
 
@@ -522,6 +530,12 @@ namespace HaCreator.MapSimulator
             // Handle Home key - move cursor to start
             if (newKeyboardState.IsKeyDown(Keys.Home) && oldKeyboardState.IsKeyUp(Keys.Home))
             {
+                if (_isWhisperTargetPickerActive)
+                {
+                    MoveWhisperTargetPickerSelectionToBoundary(moveToLast: false);
+                    return true;
+                }
+
                 _cursorPosition = 0;
                 return true;
             }
@@ -529,8 +543,32 @@ namespace HaCreator.MapSimulator
             // Handle End key - move cursor to end
             if (newKeyboardState.IsKeyDown(Keys.End) && oldKeyboardState.IsKeyUp(Keys.End))
             {
+                if (_isWhisperTargetPickerActive)
+                {
+                    MoveWhisperTargetPickerSelectionToBoundary(moveToLast: true);
+                    return true;
+                }
+
                 _cursorPosition = _inputText.Length;
                 return true;
+            }
+
+            if (newKeyboardState.IsKeyDown(Keys.PageUp) && oldKeyboardState.IsKeyUp(Keys.PageUp))
+            {
+                if (_isWhisperTargetPickerActive)
+                {
+                    PageWhisperTargetPickerSelection(-1);
+                    return true;
+                }
+            }
+
+            if (newKeyboardState.IsKeyDown(Keys.PageDown) && oldKeyboardState.IsKeyUp(Keys.PageDown))
+            {
+                if (_isWhisperTargetPickerActive)
+                {
+                    PageWhisperTargetPickerSelection(1);
+                    return true;
+                }
             }
 
             // Handle character input
@@ -990,10 +1028,29 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            for (int i = 0; i < Math.Abs(delta); i++)
+            MoveWhisperTargetPickerSelection(delta, WhisperTargetPickerNavigationMode.Step);
+        }
+
+        internal void PageWhisperTargetPickerSelection(int deltaPages)
+        {
+            if (!_isWhisperTargetPickerActive || deltaPages == 0)
             {
-                MoveWhisperTargetPickerSelection(Math.Sign(delta));
+                return;
             }
+
+            MoveWhisperTargetPickerSelection(deltaPages, WhisperTargetPickerNavigationMode.Page);
+        }
+
+        internal void MoveWhisperTargetPickerSelectionToBoundary(bool moveToLast)
+        {
+            if (!_isWhisperTargetPickerActive || _whisperCandidates.Count == 0)
+            {
+                return;
+            }
+
+            MoveWhisperTargetPickerSelection(
+                moveToLast ? _whisperCandidates.Count - 1 : 0,
+                WhisperTargetPickerNavigationMode.Absolute);
         }
         #endregion
 
@@ -1768,7 +1825,7 @@ namespace HaCreator.MapSimulator
             _savedChatCursorBeforeWhisperPicker = 0;
         }
 
-        private void MoveWhisperTargetPickerSelection(int delta)
+        private void MoveWhisperTargetPickerSelection(int delta, WhisperTargetPickerNavigationMode navigationMode)
         {
             if (_whisperCandidates.Count == 0)
             {
@@ -1776,16 +1833,27 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
-            if (_whisperTargetPickerSelectionIndex < 0 || _whisperTargetPickerSelectionIndex >= _whisperCandidates.Count)
+            int targetIndex;
+            if (navigationMode == WhisperTargetPickerNavigationMode.Absolute)
             {
-                _whisperTargetPickerSelectionIndex = delta >= 0 ? 0 : _whisperCandidates.Count - 1;
+                targetIndex = Math.Clamp(delta, 0, _whisperCandidates.Count - 1);
+            }
+            else if (_whisperTargetPickerSelectionIndex < 0 || _whisperTargetPickerSelectionIndex >= _whisperCandidates.Count)
+            {
+                targetIndex = delta >= 0 ? 0 : _whisperCandidates.Count - 1;
             }
             else
             {
-                _whisperTargetPickerSelectionIndex =
-                    (_whisperTargetPickerSelectionIndex + delta + _whisperCandidates.Count) % _whisperCandidates.Count;
+                int resolvedDelta = navigationMode == WhisperTargetPickerNavigationMode.Page
+                    ? delta * WhisperTargetPickerVisibleRowCount
+                    : delta;
+                targetIndex = Math.Clamp(
+                    _whisperTargetPickerSelectionIndex + resolvedDelta,
+                    0,
+                    _whisperCandidates.Count - 1);
             }
 
+            _whisperTargetPickerSelectionIndex = targetIndex;
             SetInputText(_whisperCandidates[_whisperTargetPickerSelectionIndex]);
         }
 

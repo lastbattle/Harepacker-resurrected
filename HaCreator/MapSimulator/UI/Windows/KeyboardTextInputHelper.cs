@@ -6,6 +6,8 @@ namespace HaCreator.MapSimulator.UI
 {
     internal static class KeyboardTextInputHelper
     {
+        internal const int ClientRepeatInitialDelayMs = 360;
+        internal const int ClientRepeatDelayMs = 42;
         private const int FallbackInitialDelayMs = 380;
         private const int FallbackRepeatDelayMs = 45;
 
@@ -33,6 +35,28 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return tickCount - lastRepeatTime >= repeatDelay;
+        }
+
+        internal static bool ShouldRepeatKeyUsingFixedCadence(
+            Keys key,
+            KeyboardState currentState,
+            int holdStartTime,
+            int lastRepeatTime,
+            int tickCount,
+            int initialDelayMs = ClientRepeatInitialDelayMs,
+            int repeatDelayMs = ClientRepeatDelayMs)
+        {
+            if (key == Keys.None || !currentState.IsKeyDown(key))
+            {
+                return false;
+            }
+
+            if (tickCount - holdStartTime < Math.Max(0, initialDelayMs))
+            {
+                return false;
+            }
+
+            return tickCount - lastRepeatTime >= Math.Max(1, repeatDelayMs);
         }
 
         private static int GetInitialRepeatDelayMilliseconds()

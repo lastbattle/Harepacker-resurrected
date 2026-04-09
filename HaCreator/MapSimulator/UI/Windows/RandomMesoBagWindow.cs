@@ -11,6 +11,13 @@ namespace HaCreator.MapSimulator.UI
 {
     internal sealed class RandomMesoBagWindow : UIWindowBase
     {
+        private const int MessageOffsetX = 78;
+        private const int MessageOffsetY = 16;
+        private const int AmountRightEdgeX = 195;
+        private const int AmountOffsetY = 34;
+        private const int OkButtonOffsetX = 204;
+        private const int OkButtonOffsetY = 77;
+
         private readonly IReadOnlyDictionary<int, IDXObject> _backgrounds;
         private readonly IDXObject _defaultBackground;
         private UIObject _okButton;
@@ -46,8 +53,8 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            _okButton.X = 76;
-            _okButton.Y = 138;
+            _okButton.X = OkButtonOffsetX;
+            _okButton.Y = OkButtonOffsetY;
             _okButton.ButtonClickReleased += _ => Hide();
             AddButton(_okButton);
         }
@@ -69,12 +76,35 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
-            Vector2 center = new(Position.X + 95f, Position.Y + 104f);
-            DrawCenteredText(sprite, _descriptionText, new Vector2(center.X, center.Y - 16f), Color.White);
-            DrawCenteredText(sprite, _amountText, new Vector2(center.X, center.Y + 10f), new Color(255, 236, 140));
+            DrawText(
+                sprite,
+                _descriptionText,
+                new Vector2(Position.X + MessageOffsetX, Position.Y + MessageOffsetY),
+                Color.White);
+            DrawRightAlignedText(
+                sprite,
+                _amountText,
+                Position.X + AmountRightEdgeX,
+                Position.Y + AmountOffsetY,
+                new Color(255, 236, 140));
         }
 
-        private void DrawCenteredText(SpriteBatch sprite, string text, Vector2 position, Color color)
+        private void DrawText(SpriteBatch sprite, string text, Vector2 position, Color color)
+        {
+            if (string.IsNullOrWhiteSpace(text))
+            {
+                return;
+            }
+
+            SelectorWindowDrawing.DrawShadowedText(
+                sprite,
+                WindowFont,
+                text,
+                position,
+                color);
+        }
+
+        private void DrawRightAlignedText(SpriteBatch sprite, string text, int rightEdgeX, int y, Color color)
         {
             if (string.IsNullOrWhiteSpace(text))
             {
@@ -86,7 +116,7 @@ namespace HaCreator.MapSimulator.UI
                 sprite,
                 WindowFont,
                 text,
-                new Vector2(position.X - (size.X / 2f), position.Y),
+                new Vector2(rightEdgeX - size.X, y),
                 color);
         }
     }

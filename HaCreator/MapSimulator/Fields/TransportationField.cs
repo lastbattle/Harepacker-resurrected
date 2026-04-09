@@ -500,6 +500,12 @@ namespace HaCreator.MapSimulator.Fields
         {
             if (value == 2)
             {
+                if (_shipKind != 0)
+                {
+                    message = "Ignored OnStartShipMoveField value 2; client LeaveShipMove branch only applies to regular ships.";
+                    return false;
+                }
+
                 LeaveShipMove();
                 message = "Applied OnStartShipMoveField value 2 -> LeaveShipMove.";
                 return true;
@@ -513,6 +519,12 @@ namespace HaCreator.MapSimulator.Fields
         {
             if (value == 6)
             {
+                if (_shipKind != 0)
+                {
+                    message = "Ignored OnEndShipMoveField value 6; client EnterShipMove branch only applies to regular ships.";
+                    return false;
+                }
+
                 EnterShipMove();
                 message = "Applied OnEndShipMoveField value 6 -> EnterShipMove.";
                 return true;
@@ -527,10 +539,22 @@ namespace HaCreator.MapSimulator.Fields
             switch (value)
             {
                 case 4:
+                    if (_shipKind != 1)
+                    {
+                        message = "Ignored OnMoveField value 4; client AppearShip branch only applies to Balrog-type ships.";
+                        return false;
+                    }
+
                     AppearShip();
                     message = "Applied OnMoveField value 4 -> AppearShip.";
                     return true;
                 case 5:
+                    if (_shipKind != 1)
+                    {
+                        message = "Ignored OnMoveField value 5; client DisappearShip branch only applies to Balrog-type ships.";
+                        return false;
+                    }
+
                     DisappearShip();
                     message = "Applied OnMoveField value 5 -> DisappearShip.";
                     return true;

@@ -110,6 +110,12 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Regex SpeedBonusRegex = new Regex(@"Speed\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex JumpBonusRegex = new Regex(@"Jump\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly Regex HandsBonusRegex = new Regex(@"(?:Diligence|Hands|Craft)\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex AllStatsBonusRegex = new Regex(@"All\s+stats?\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex WeaponMagicAttackBonusRegex = new Regex(@"(?:Weapon|Physical)\s*(?:\/|&|and)\s*(?:Magic|M\.?\s*)\s*(?:ATT|Attack)\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex WeaponMagicDefenseBonusRegex = new Regex(@"(?:Weapon|Physical)\s*(?:\/|&|and)\s*(?:Magic|M\.?\s*)\s*(?:DEF|Defense)\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex AccuracyAvoidabilityBonusRegex = new Regex(@"Accuracy\s*(?:\/|&|and)\s*(?:Avoidability|Aviodability|Avoid)\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex HpMpBonusRegex = new Regex(@"(?:Max\s*)?HP\s*(?:\/|&|and)\s*(?:Max\s*)?MP\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
+        private static readonly Regex SpeedJumpBonusRegex = new Regex(@"(?:Movement\s+)?Speed\s*(?:\/|&|and)\s*Jump\s*\+(\d+)", RegexOptions.IgnoreCase | RegexOptions.Compiled);
         private static readonly IReadOnlyDictionary<int, EnhancementConsumableDefinition> ConsumableDefinitions =
             new Dictionary<int, EnhancementConsumableDefinition>
             {
@@ -3111,7 +3117,7 @@ namespace HaCreator.MapSimulator.UI
             public CubeBehavior CubeBehavior => Definition.CubeBehavior;
         }
 
-        private readonly struct AuthoredStatDeltaProfile
+        internal readonly struct AuthoredStatDeltaProfile
         {
             public AuthoredStatDeltaProfile(
                 int weaponAttack,
@@ -3201,22 +3207,49 @@ namespace HaCreator.MapSimulator.UI
 
         private static AuthoredStatDeltaProfile ResolveAuthoredStatDeltaProfile(WzSubProperty info, string description)
         {
+            AuthoredStatDeltaProfile sharedDescriptionProfile = ResolveSharedDescriptionStatDeltas(description);
             return new AuthoredStatDeltaProfile(
-                ResolveStatBonus(info, "incPAD", description, WeaponAttackBonusRegex),
-                ResolveStatBonus(info, "incMAD", description, MagicAttackBonusRegex),
-                ResolveStatBonus(info, "incPDD", description, WeaponDefenseBonusRegex),
-                ResolveStatBonus(info, "incMDD", description, MagicDefenseBonusRegex),
-                ResolveStatBonus(info, "incSTR", description, StrengthBonusRegex),
-                ResolveStatBonus(info, "incDEX", description, DexterityBonusRegex),
-                ResolveStatBonus(info, "incINT", description, IntelligenceBonusRegex),
-                ResolveStatBonus(info, "incLUK", description, LuckBonusRegex),
-                ResolveStatBonus(info, "incMHP", description, MaxHpBonusRegex),
-                ResolveStatBonus(info, "incMMP", description, MaxMpBonusRegex),
-                ResolveStatBonus(info, "incACC", description, AccuracyBonusRegex),
-                ResolveStatBonus(info, "incEVA", description, AvoidabilityBonusRegex),
-                ResolveStatBonus(info, "incSpeed", description, SpeedBonusRegex),
-                ResolveStatBonus(info, "incJump", description, JumpBonusRegex),
-                ResolveStatBonus(info, "incCraft", description, HandsBonusRegex));
+                ResolveStatBonus(info, "incPAD", description, WeaponAttackBonusRegex, sharedDescriptionProfile.WeaponAttack),
+                ResolveStatBonus(info, "incMAD", description, MagicAttackBonusRegex, sharedDescriptionProfile.MagicAttack),
+                ResolveStatBonus(info, "incPDD", description, WeaponDefenseBonusRegex, sharedDescriptionProfile.WeaponDefense),
+                ResolveStatBonus(info, "incMDD", description, MagicDefenseBonusRegex, sharedDescriptionProfile.MagicDefense),
+                ResolveStatBonus(info, "incSTR", description, StrengthBonusRegex, sharedDescriptionProfile.Strength),
+                ResolveStatBonus(info, "incDEX", description, DexterityBonusRegex, sharedDescriptionProfile.Dexterity),
+                ResolveStatBonus(info, "incINT", description, IntelligenceBonusRegex, sharedDescriptionProfile.Intelligence),
+                ResolveStatBonus(info, "incLUK", description, LuckBonusRegex, sharedDescriptionProfile.Luck),
+                ResolveStatBonus(info, "incMHP", description, MaxHpBonusRegex, sharedDescriptionProfile.MaxHp),
+                ResolveStatBonus(info, "incMMP", description, MaxMpBonusRegex, sharedDescriptionProfile.MaxMp),
+                ResolveStatBonus(info, "incACC", description, AccuracyBonusRegex, sharedDescriptionProfile.Accuracy),
+                ResolveStatBonus(info, "incEVA", description, AvoidabilityBonusRegex, sharedDescriptionProfile.Avoidability),
+                ResolveStatBonus(info, "incSpeed", description, SpeedBonusRegex, sharedDescriptionProfile.Speed),
+                ResolveStatBonus(info, "incJump", description, JumpBonusRegex, sharedDescriptionProfile.Jump),
+                ResolveStatBonus(info, "incCraft", description, HandsBonusRegex, sharedDescriptionProfile.Hands));
+        }
+
+        private static AuthoredStatDeltaProfile ResolveSharedDescriptionStatDeltas(string description)
+        {
+            int allStats = ResolveDescriptionBonus(description, AllStatsBonusRegex);
+            int weaponAndMagicAttack = ResolveDescriptionBonus(description, WeaponMagicAttackBonusRegex);
+            int weaponAndMagicDefense = ResolveDescriptionBonus(description, WeaponMagicDefenseBonusRegex);
+            int accuracyAndAvoidability = ResolveDescriptionBonus(description, AccuracyAvoidabilityBonusRegex);
+            int hpAndMp = ResolveDescriptionBonus(description, HpMpBonusRegex);
+            int speedAndJump = ResolveDescriptionBonus(description, SpeedJumpBonusRegex);
+            return new AuthoredStatDeltaProfile(
+                weaponAndMagicAttack,
+                weaponAndMagicAttack,
+                weaponAndMagicDefense,
+                weaponAndMagicDefense,
+                allStats,
+                allStats,
+                allStats,
+                allStats,
+                hpAndMp,
+                hpAndMp,
+                accuracyAndAvoidability,
+                accuracyAndAvoidability,
+                speedAndJump,
+                speedAndJump,
+                0);
         }
 
         private static int ResolveStatBonus(WzSubProperty info, string infoKey, string description, Regex descriptionRegex)
@@ -3228,6 +3261,20 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return ResolveDescriptionBonus(description, descriptionRegex);
+        }
+
+        private static int ResolveStatBonus(WzSubProperty info, string infoKey, string description, Regex descriptionRegex, int sharedFallback)
+        {
+            int wzValue = ResolveWzInfoIntValue(info, infoKey);
+            if (wzValue != 0)
+            {
+                return Math.Max(0, wzValue);
+            }
+
+            int descriptionValue = ResolveDescriptionBonus(description, descriptionRegex);
+            return descriptionValue > 0
+                ? descriptionValue
+                : Math.Max(0, sharedFallback);
         }
 
         private static int ResolveDescriptionBonus(string description, Regex regex)
@@ -3496,6 +3543,16 @@ namespace HaCreator.MapSimulator.UI
             return ResolveTargetSlotsFromText(description);
         }
 
+        internal static IReadOnlyCollection<EquipSlot> ResolveTargetSlotsForTesting(string itemName, string description)
+        {
+            return ResolveTargetSlotsFromItemMetadata(itemName, description).ToArray();
+        }
+
+        internal static AuthoredStatDeltaProfile ResolveAuthoredStatDeltaProfileForTesting(string description)
+        {
+            return ResolveAuthoredStatDeltaProfile(description);
+        }
+
         // For Vega-marked scrolls, the authored item name is the stronger target-family signal when it disagrees with the description text.
         private static HashSet<EquipSlot> ResolveTargetSlotsFromText(string text)
         {
@@ -3578,6 +3635,26 @@ namespace HaCreator.MapSimulator.UI
             if (normalized.IndexOf("belt", StringComparison.OrdinalIgnoreCase) >= 0)
             {
                 targetSlots.Add(EquipSlot.Belt);
+            }
+
+            if (normalized.IndexOf("shoulder", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                targetSlots.Add(EquipSlot.Shoulder);
+            }
+
+            if (normalized.IndexOf("pocket", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                targetSlots.Add(EquipSlot.Pocket);
+            }
+
+            if (normalized.IndexOf("badge", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                targetSlots.Add(EquipSlot.Badge);
+            }
+
+            if (normalized.IndexOf("medal", StringComparison.OrdinalIgnoreCase) >= 0)
+            {
+                targetSlots.Add(EquipSlot.Medal);
             }
 
             if (normalized.IndexOf("overall", StringComparison.OrdinalIgnoreCase) >= 0)

@@ -189,7 +189,9 @@ namespace HaCreator.MapSimulator.UI
 
             if (_clientTextRasterizer == null && graphicsDevice != null)
             {
-                _clientTextRasterizer = new ClientTextRasterizer(graphicsDevice);
+                _clientTextRasterizer = new ClientTextRasterizer(
+                    graphicsDevice,
+                    preferEmbeddedPrivateFontSources: true);
             }
         }
 

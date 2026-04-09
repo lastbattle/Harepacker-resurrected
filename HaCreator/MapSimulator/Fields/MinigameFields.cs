@@ -37,6 +37,7 @@ namespace HaCreator.MapSimulator.Fields
         private readonly SnowBallField _snowBall = new();
         private readonly CoconutField _coconut = new();
         private readonly MemoryGameField _memoryGame = new();
+        private readonly RockPaperScissorsField _rockPaperScissors = new();
         private readonly AriantArenaField _ariantArena = new();
         private readonly MonsterCarnivalField _monsterCarnival = new();
         private readonly TournamentField _tournament = new();
@@ -45,6 +46,7 @@ namespace HaCreator.MapSimulator.Fields
         public SnowBallField SnowBall => _snowBall;
         public CoconutField Coconut => _coconut;
         public MemoryGameField MemoryGame => _memoryGame;
+        public RockPaperScissorsField RockPaperScissors => _rockPaperScissors;
         public AriantArenaField AriantArena => _ariantArena;
         public MonsterCarnivalField MonsterCarnival => _monsterCarnival;
         public TournamentField Tournament => _tournament;
@@ -65,6 +67,7 @@ namespace HaCreator.MapSimulator.Fields
 
             _coconut.Initialize(graphicsDevice);
             _memoryGame.Initialize(graphicsDevice);
+            _rockPaperScissors.Initialize(graphicsDevice);
 
             _ariantArena.Initialize(graphicsDevice, soundManager, ariantArenaRemoteBuildFactory);
         }
@@ -104,6 +107,11 @@ namespace HaCreator.MapSimulator.Fields
             if (_memoryGame.IsVisible)
             {
                 _memoryGame.Update(tickCount);
+            }
+
+            if (_rockPaperScissors.IsVisible)
+            {
+                _rockPaperScissors.Update(tickCount);
             }
 
 
@@ -184,6 +192,11 @@ namespace HaCreator.MapSimulator.Fields
                     font);
             }
 
+            if (_rockPaperScissors.IsVisible)
+            {
+                _rockPaperScissors.Draw(spriteBatch, pixelTexture, font);
+            }
+
 
             if (_ariantArena.IsActive)
             {
@@ -218,6 +231,7 @@ namespace HaCreator.MapSimulator.Fields
             _snowBall.Reset();
             _coconut.Reset();
             _memoryGame.Reset();
+            _rockPaperScissors.Reset();
             _ariantArena.Reset();
             _monsterCarnival.Reset();
             _tournament.Reset();

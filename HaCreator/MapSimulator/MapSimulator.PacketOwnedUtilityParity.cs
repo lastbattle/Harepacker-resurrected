@@ -29,6 +29,7 @@ namespace HaCreator.MapSimulator
 {
     public partial class MapSimulator
     {
+        private const int FollowRequestClientOptionId = 1014;
         private const int PacketOwnedBattleshipCooldownSentinel = 0x004FAE6F;
         private const int PacketOwnedBattleshipSkillId = 5221006;
         private const int PacketOwnedBattleshipMountItemId = 1932000;
@@ -47,6 +48,9 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedClassCompetitionAuthRefreshIntervalMs = 180000;
         private const int PacketOwnedClassCompetitionAuthLifetimeMs = 300000;
         private const int PacketOwnedClassCompetitionSyntheticAuthResponseDelayMs = 250;
+        private const int PacketOwnedClassCompetitionAuthRequestOpcode = 291;
+        private const int PacketOwnedClassCompetitionUrlTemplateStringPoolId = 0x11DC;
+        private const string PacketOwnedClassCompetitionServerHost = "gamerank.maplestory";
         private const int PacketOwnedApspFollowUpOpcode = 195;
         private const int PacketOwnedApspFollowUpResponseCode = 6;
         private const int PacketOwnedApspMinEventType = 11;
@@ -54,6 +58,9 @@ namespace HaCreator.MapSimulator
         private const int PacketOwnedLegacyVengeanceSkillId = 3120010;
         private const int PacketOwnedCurrentVengeanceSkillId = 31101003;
         private const string PacketOwnedVengeanceSkillName = "Vengeance";
+        private const int PacketOwnedCurrentTimeBombSkillId = 4341003;
+        private const string PacketOwnedTimeBombSkillName = "Monster Bomb";
+        private const string PacketOwnedTimeBombSkillDescriptionMarker = "explosion occurs 3 seconds after the charm is activated";
         private const int PacketOwnedCurrentExJablinSkillId = 4120010;
         private const string PacketOwnedExJablinSkillDescriptionMarker = "the next attack will always be a Critical Attack";
         private const int PacketOwnedBaseTimeBombHitPeriodMs = 1500;
@@ -106,6 +113,7 @@ namespace HaCreator.MapSimulator
         private readonly LocalUtilityPacketInboxManager _localUtilityPacketInbox = new();
         private readonly LocalUtilityOfficialSessionBridgeManager _localUtilityOfficialSessionBridge = new();
         private readonly LocalUtilityPacketTransportManager _localUtilityPacketOutbox = new();
+        private static readonly Lazy<HashSet<int>> PacketOwnedTimeBombSkillIdCatalog = new(CreatePacketOwnedTimeBombSkillIdCatalog);
         private static readonly Lazy<HashSet<int>> PacketOwnedVengeanceSkillIdCatalog = new(CreatePacketOwnedVengeanceSkillIdCatalog);
         private static readonly Lazy<HashSet<int>> PacketOwnedExJablinSkillIdCatalog = new(CreatePacketOwnedExJablinSkillIdCatalog);
         private static readonly Lazy<IReadOnlyDictionary<int, int[]>> PacketOwnedSkillIdAliasCandidates = new(CreatePacketOwnedSkillIdAliasCandidates);
@@ -132,8 +140,9 @@ namespace HaCreator.MapSimulator
         private int _lastClassCompetitionAuthRequestTick = int.MinValue;
         private int _lastClassCompetitionAuthIssuedTick = int.MinValue;
         private int _lastClassCompetitionNavigateTick = int.MinValue;
-        private bool _lastClassCompetitionAuthPending = true;
+        private bool _lastClassCompetitionAuthPending;
         private bool _lastClassCompetitionLoggedIn;
+        private bool _lastClassCompetitionNavigatePending = true;
         private string _lastClassCompetitionAuthKey = string.Empty;
         private string _lastClassCompetitionUrl = string.Empty;
         private int _lastClassCompetitionAuthResponseTick = int.MinValue;
@@ -569,6 +578,7 @@ namespace HaCreator.MapSimulator
         {
             StampPacketOwnedUtilityRequestState();
             _lastClassCompetitionOpenTick = Environment.TickCount;
+            bool hadNavigatedPage = _lastClassCompetitionLoggedIn && !string.IsNullOrWhiteSpace(_lastClassCompetitionUrl);
             RefreshClassCompetitionRuntimeState(forceAuthRequest: true);
 
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ClassCompetition) is not UIWindowBase window)
@@ -579,8 +589,15 @@ namespace HaCreator.MapSimulator
             }
 
             ShowWindow(MapSimulatorWindowNames.ClassCompetition, window, trackDirectionModeOwner: true);
-            return _lastClassCompetitionAuthPending
-                ? "Opened packet-authored Class Competition page and seeded a local auth request."
+            if (_lastClassCompetitionAuthPending)
+            {
+                return hadNavigatedPage && _lastClassCompetitionLoggedIn
+                    ? "Opened packet-authored Class Competition page, kept the cached NavigateUrl page live, and queued opcode 291 auth refresh in the background."
+                    : "Opened packet-authored Class Competition page and seeded the initial opcode 291 auth request.";
+            }
+
+            return hadNavigatedPage && _lastClassCompetitionLoggedIn
+                ? "Opened packet-authored Class Competition page using the cached NavigateUrl page."
                 : "Opened packet-authored Class Competition page.";
         }
 
@@ -957,23 +974,41 @@ namespace HaCreator.MapSimulator
             RefreshClassCompetitionRuntimeState();
             var lines = new List<string>();
             var build = _playerManager?.Player?.Build;
-            string serverSeed = ResolveClassCompetitionServerSeed();
+            string urlTemplate = ResolveClassCompetitionUrlTemplate(out bool usedResolvedTemplate);
             lines.Add("Packet-authored web owner mirroring CUserLocal::OnOpenClassCompetitionPage and CClassCompetition.");
-            lines.Add("Constructor shape: CWebWnd, 312x389 owner bounds, close/OK dismissal only, and a loading layer while auth is pending.");
+            lines.Add("Constructor shape: CWebWnd, 312x389 owner bounds, close/OK dismissal only, opcode 291 auth requests, and a loading layer while initial auth is pending.");
 
-            string authState = _lastClassCompetitionAuthIssuedTick == int.MinValue
-                ? "No class-competition auth response has populated the local cache yet."
-                : _lastClassCompetitionAuthPending
-                    ? $"Auth response landed at {_lastClassCompetitionAuthIssuedTick}, but the owner is still waiting to navigate."
-                    : _lastClassCompetitionLoggedIn
-                        ? $"Auth response landed at {_lastClassCompetitionAuthIssuedTick} and navigation completed at {_lastClassCompetitionNavigateTick}."
-                        : $"Auth response landed at {_lastClassCompetitionAuthIssuedTick}, but navigation has not completed yet.";
+            string authState;
+            if (_lastClassCompetitionAuthPending)
+            {
+                authState = _lastClassCompetitionNavigatePending || !_lastClassCompetitionLoggedIn
+                    ? $"Auth request {PacketOwnedClassCompetitionAuthRequestOpcode} was issued at {_lastClassCompetitionAuthRequestTick}, and the owner is waiting for its first navigable auth cache."
+                    : $"Background auth refresh {PacketOwnedClassCompetitionAuthRequestOpcode} was issued at {_lastClassCompetitionAuthRequestTick} while the cached NavigateUrl page remains navigated.";
+            }
+            else if (_lastClassCompetitionAuthIssuedTick == int.MinValue)
+            {
+                authState = "No class-competition auth response has populated the local cache yet.";
+            }
+            else if (_lastClassCompetitionLoggedIn)
+            {
+                authState = $"Auth cache landed at {_lastClassCompetitionAuthIssuedTick} and the seeded page last navigated at {_lastClassCompetitionNavigateTick}.";
+            }
+            else
+            {
+                authState = $"Auth cache landed at {_lastClassCompetitionAuthIssuedTick}, but navigation has not completed yet.";
+            }
+
             lines.Add(authState);
-            lines.Add($"Synthetic server seed: {serverSeed}");
+            lines.Add($"NavigateUrl template: {(usedResolvedTemplate ? MapleStoryStringPool.FormatFallbackLabel(PacketOwnedClassCompetitionUrlTemplateStringPoolId, 4) : "local fallback")} -> {urlTemplate}");
+            lines.Add($"Recovered server host: {PacketOwnedClassCompetitionServerHost}");
+            if (_lastClassCompetitionAuthIssuedTick != int.MinValue)
+            {
+                lines.Add($"Cached auth token: {SummarizeClassCompetitionAuthKey(_lastClassCompetitionAuthKey)}");
+            }
 
             if (!string.IsNullOrWhiteSpace(_lastClassCompetitionUrl))
             {
-                lines.Add($"Local web seed: {_lastClassCompetitionUrl}");
+                lines.Add($"NavigateUrl target: {_lastClassCompetitionUrl}");
             }
 
             if (build != null)
@@ -989,7 +1024,7 @@ namespace HaCreator.MapSimulator
                 lines.Add("No active player build is bound to the simulator.");
             }
 
-            lines.Add("This owner still has no live server-fed auth or ladder payload, so navigation stays synthetic and standings remain seeded from the active local build instead of a remote page response.");
+            lines.Add("This owner still has no live server-fed auth or ladder payload, so the first NavigateUrl and later auth refresh cadence match the client more closely while standings remain seeded from the active local build instead of a remote page response.");
 
             if (_lastClassCompetitionOpenTick != int.MinValue)
             {
@@ -1009,9 +1044,40 @@ namespace HaCreator.MapSimulator
             return new[]
             {
                 "Synthetic ladder preview:",
-                $"World ladder  {FormatClassCompetitionRank(build.WorldRank)}  {build.Name}  Lv.{Math.Max(1, build.Level)} {build.JobName}",
-                $"Job ladder  {FormatClassCompetitionRank(build.JobRank)}  {build.Name}  Fame {build.Fame}  PAD {build.TotalAttack}"
+                BuildClassCompetitionStandingLine("World", Math.Max(1, ResolveSeededWorldCompetitionRank(build.WorldRank) - 1), "Aldebaran", Math.Max(1, build.Level + 2), ResolveNeighborJobName(build.JobName, -1), Math.Max(0, build.Fame + 6), Math.Max(1, build.TotalAttack + 9)),
+                BuildClassCompetitionStandingLine("World", ResolveSeededWorldCompetitionRank(build.WorldRank), build.Name, Math.Max(1, build.Level), build.JobName, build.Fame, Math.Max(1, build.TotalAttack)),
+                BuildClassCompetitionStandingLine("World", ResolveSeededWorldCompetitionRank(build.WorldRank) + 1, "Bellflower", Math.Max(1, build.Level - 1), ResolveNeighborJobName(build.JobName, 1), Math.Max(0, build.Fame - 3), Math.Max(1, build.TotalAttack - 5)),
+                BuildClassCompetitionStandingLine("Job", Math.Max(1, ResolveSeededJobCompetitionRank(build.JobRank) - 1), "Juniper", Math.Max(1, build.Level + 1), build.JobName, Math.Max(0, build.Fame + 4), Math.Max(1, build.TotalAttack + 6)),
+                BuildClassCompetitionStandingLine("Job", ResolveSeededJobCompetitionRank(build.JobRank), build.Name, Math.Max(1, build.Level), build.JobName, build.Fame, Math.Max(1, build.TotalAttack)),
+                BuildClassCompetitionStandingLine("Job", ResolveSeededJobCompetitionRank(build.JobRank) + 1, "Rowan", Math.Max(1, build.Level - 2), build.JobName, Math.Max(0, build.Fame - 2), Math.Max(1, build.TotalAttack - 4))
             };
+        }
+
+        private static int ResolveSeededWorldCompetitionRank(int rank)
+        {
+            return rank > 0 ? rank : 57;
+        }
+
+        private static int ResolveSeededJobCompetitionRank(int rank)
+        {
+            return rank > 0 ? rank : 12;
+        }
+
+        private static string ResolveNeighborJobName(string jobName, int direction)
+        {
+            if (string.IsNullOrWhiteSpace(jobName))
+            {
+                return "Adventurer";
+            }
+
+            return direction < 0
+                ? $"{jobName} Veteran"
+                : $"{jobName} Scout";
+        }
+
+        private static string BuildClassCompetitionStandingLine(string ladderName, int rank, string name, int level, string jobName, int fame, int attack)
+        {
+            return $"{ladderName} {FormatClassCompetitionRank(rank)}  {name}  Lv.{Math.Max(1, level)} {jobName}  Fame {Math.Max(0, fame)}  PAD {Math.Max(1, attack)}";
         }
 
         private static string FormatClassCompetitionRank(int rank)
@@ -1019,6 +1085,18 @@ namespace HaCreator.MapSimulator
             return rank > 0
                 ? $"#{rank}"
                 : "local only";
+        }
+
+        private static string SummarizeClassCompetitionAuthKey(string authKey)
+        {
+            if (string.IsNullOrWhiteSpace(authKey))
+            {
+                return "empty";
+            }
+
+            return authKey.Length <= 20
+                ? authKey
+                : $"{authKey[..12]}...{authKey[^6..]}";
         }
 
         private string BuildClassCompetitionFooter()
@@ -1056,16 +1134,22 @@ namespace HaCreator.MapSimulator
                 || Math.Max(0, unchecked(now - _lastClassCompetitionAuthRequestTick)) >= PacketOwnedClassCompetitionAuthRefreshIntervalMs
                 || authExpired;
 
-            if (shouldRequestAuth)
+            if (shouldRequestAuth && !_lastClassCompetitionAuthPending)
             {
+                bool requiresFreshNavigation = !_lastClassCompetitionLoggedIn
+                    || string.IsNullOrWhiteSpace(_lastClassCompetitionUrl);
                 _lastClassCompetitionAuthRequestTick = now;
-                _lastClassCompetitionAuthIssuedTick = int.MinValue;
                 _lastClassCompetitionAuthResponseTick = Math.Max(0, unchecked(now + PacketOwnedClassCompetitionSyntheticAuthResponseDelayMs));
                 _lastClassCompetitionAuthPending = true;
-                _lastClassCompetitionLoggedIn = false;
-                _lastClassCompetitionAuthKey = string.Empty;
-                _lastClassCompetitionUrl = string.Empty;
-                _lastClassCompetitionNavigateTick = int.MinValue;
+                _lastClassCompetitionNavigatePending = requiresFreshNavigation;
+                if (requiresFreshNavigation)
+                {
+                    _lastClassCompetitionLoggedIn = false;
+                    _lastClassCompetitionNavigateTick = int.MinValue;
+                    _lastClassCompetitionAuthKey = string.Empty;
+                    _lastClassCompetitionUrl = string.Empty;
+                    _lastClassCompetitionAuthIssuedTick = int.MinValue;
+                }
             }
 
             if (_lastClassCompetitionAuthPending
@@ -1074,16 +1158,19 @@ namespace HaCreator.MapSimulator
             {
                 _lastClassCompetitionAuthIssuedTick = now;
                 _lastClassCompetitionAuthKey = BuildClassCompetitionAuthKey(now);
-                _lastClassCompetitionUrl = BuildClassCompetitionUrl(_lastClassCompetitionAuthKey);
+                string resolvedUrl = BuildClassCompetitionUrl(_lastClassCompetitionAuthKey);
                 _lastClassCompetitionAuthPending = false;
-            }
+                _lastClassCompetitionAuthResponseTick = int.MinValue;
+                if (_lastClassCompetitionNavigatePending
+                    || !_lastClassCompetitionLoggedIn
+                    || string.IsNullOrWhiteSpace(_lastClassCompetitionUrl))
+                {
+                    _lastClassCompetitionUrl = resolvedUrl;
+                    _lastClassCompetitionLoggedIn = true;
+                    _lastClassCompetitionNavigateTick = now;
+                }
 
-            if (!_lastClassCompetitionAuthPending
-                && !_lastClassCompetitionLoggedIn
-                && !string.IsNullOrWhiteSpace(_lastClassCompetitionUrl))
-            {
-                _lastClassCompetitionLoggedIn = true;
-                _lastClassCompetitionNavigateTick = now;
+                _lastClassCompetitionNavigatePending = false;
             }
         }
 
@@ -1097,91 +1184,21 @@ namespace HaCreator.MapSimulator
 
         private string BuildClassCompetitionUrl(string authKey)
         {
-            string serverSeed = ResolveClassCompetitionServerSeed();
-            CharacterBuild build = _playerManager?.Player?.Build;
-            var builder = new StringBuilder();
-            builder.AppendFormat(
+            string urlTemplate = ResolveClassCompetitionUrlTemplate(out _);
+            return string.Format(
                 CultureInfo.InvariantCulture,
-                "classcompetition://{0}/ranking?auth={1}",
-                serverSeed,
-                Uri.EscapeDataString(authKey ?? string.Empty));
-
-            if (build != null)
-            {
-                AppendClassCompetitionUrlParameter(builder, "characterId", build.Id.ToString(CultureInfo.InvariantCulture));
-                AppendClassCompetitionUrlParameter(builder, "name", build.Name);
-                AppendClassCompetitionUrlParameter(builder, "jobId", build.Job.ToString(CultureInfo.InvariantCulture));
-                AppendClassCompetitionUrlParameter(builder, "job", build.JobName);
-                AppendClassCompetitionUrlParameter(builder, "level", Math.Max(1, build.Level).ToString(CultureInfo.InvariantCulture));
-                AppendClassCompetitionUrlParameter(builder, "fame", build.Fame.ToString(CultureInfo.InvariantCulture));
-                AppendClassCompetitionUrlParameter(builder, "worldRank", build.WorldRank.ToString(CultureInfo.InvariantCulture));
-                AppendClassCompetitionUrlParameter(builder, "jobRank", build.JobRank.ToString(CultureInfo.InvariantCulture));
-                AppendClassCompetitionUrlParameter(builder, "mapId", (_mapBoard?.MapInfo?.id ?? 0).ToString(CultureInfo.InvariantCulture));
-            }
-
-            return builder.ToString();
+                urlTemplate,
+                PacketOwnedClassCompetitionServerHost,
+                authKey ?? string.Empty);
         }
 
-        private static void AppendClassCompetitionUrlParameter(StringBuilder builder, string key, string value)
+        private static string ResolveClassCompetitionUrlTemplate(out bool usedResolvedTemplate)
         {
-            if (builder == null || string.IsNullOrWhiteSpace(key) || string.IsNullOrWhiteSpace(value))
-            {
-                return;
-            }
-
-            builder.Append('&');
-            builder.Append(Uri.EscapeDataString(key));
-            builder.Append('=');
-            builder.Append(Uri.EscapeDataString(value));
-        }
-
-        private string ResolveClassCompetitionServerSeed()
-        {
-            string worldLabel = $"world{Math.Max(0, _simulatorWorldId) + 1}";
-            string channelLabel = $"ch{Math.Max(0, _simulatorChannelIndex) + 1}";
-            if (_loginWorldInfoPacketProfiles.TryGetValue(Math.Max(0, _simulatorWorldId), out LoginWorldInfoPacketProfile worldProfile))
-            {
-                if (!string.IsNullOrWhiteSpace(worldProfile.WorldName))
-                {
-                    worldLabel = SanitizeClassCompetitionSeedToken(worldProfile.WorldName);
-                }
-
-                int channelIndex = Math.Max(0, _simulatorChannelIndex);
-                LoginWorldInfoChannelPacketProfile channelProfile = worldProfile.Channels?
-                    .FirstOrDefault(candidate => candidate != null && candidate.ChannelId == channelIndex);
-                if (!string.IsNullOrWhiteSpace(channelProfile?.Name))
-                {
-                    channelLabel = SanitizeClassCompetitionSeedToken(channelProfile.Name);
-                }
-            }
-
-            return $"{worldLabel}/{channelLabel}";
-        }
-
-        private static string SanitizeClassCompetitionSeedToken(string text)
-        {
-            if (string.IsNullOrWhiteSpace(text))
-            {
-                return "local";
-            }
-
-            var builder = new StringBuilder(text.Length);
-            for (int i = 0; i < text.Length; i++)
-            {
-                char current = text[i];
-                if (char.IsLetterOrDigit(current))
-                {
-                    builder.Append(char.ToLowerInvariant(current));
-                }
-                else if (builder.Length > 0 && builder[^1] != '-')
-                {
-                    builder.Append('-');
-                }
-            }
-
-            return builder.Length == 0
-                ? "local"
-                : builder.ToString().Trim('-');
+            return MapleStoryStringPool.GetCompositeFormatOrFallback(
+                PacketOwnedClassCompetitionUrlTemplateStringPoolId,
+                "http://{0}.nexon.com/maplestory/page/Gnxgame.aspx?URL=Event/classbattle/gameview&key={1}",
+                2,
+                out usedResolvedTemplate);
         }
 
         private void EnsureLocalUtilityPacketInboxState(bool shouldRun)
@@ -1518,6 +1535,9 @@ namespace HaCreator.MapSimulator
                 case LocalUtilityPacketInboxManager.FollowCharacterClientPacketType:
                     return TryApplyPacketOwnedFollowCharacterPayload(payload, out message);
 
+                case LocalUtilityPacketInboxManager.FollowCharacterPromptPacketType:
+                    return TryApplyPacketOwnedFollowCharacterPromptPayload(payload, out message);
+
                 case LocalUtilityPacketInboxManager.SitResultPacketType:
                     return TryApplyPacketOwnedChairSitResultPayload(payload, out message);
 
@@ -1711,7 +1731,7 @@ namespace HaCreator.MapSimulator
 
             StampPacketOwnedUtilityRequestState();
             string noticeText = PacketOwnedRewardResultRuntime.FormatMesoGiveSucceededText(mesoAmount);
-            ShowPacketOwnedRewardResultNotice("Meso Bag", noticeText);
+            ShowPacketOwnedRewardResultNotice(noticeText);
             message = $"Applied packet-owned meso-give success for {mesoAmount.ToString("N0", CultureInfo.InvariantCulture)} mesos through the dedicated reward-result notice owner.";
             return true;
         }
@@ -1727,7 +1747,7 @@ namespace HaCreator.MapSimulator
 
             StampPacketOwnedUtilityRequestState();
             string noticeText = PacketOwnedRewardResultRuntime.GetMesoGiveFailedText();
-            ShowPacketOwnedRewardResultNotice("Meso Bag", noticeText);
+            ShowPacketOwnedRewardResultNotice(noticeText);
             message = "Applied packet-owned meso-give failure through the dedicated reward-result notice owner.";
             return true;
         }
@@ -1766,16 +1786,16 @@ namespace HaCreator.MapSimulator
 
             StampPacketOwnedUtilityRequestState();
             string noticeText = PacketOwnedRewardResultRuntime.GetRandomMesoBagFailedText();
-            ShowPacketOwnedRewardResultNotice("Random Meso Sack", noticeText);
+            ShowPacketOwnedRewardResultNotice(noticeText);
             message = "Applied packet-owned random meso sack failure through the dedicated reward-result notice owner.";
             return true;
         }
 
-        private void ShowPacketOwnedRewardResultNotice(string title, string body)
+        private void ShowPacketOwnedRewardResultNotice(string body)
         {
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.PacketOwnedRewardResultNotice) is PacketOwnedRewardNoticeWindow noticeWindow)
             {
-                noticeWindow.Configure(title, body);
+                noticeWindow.Configure(string.Empty, body);
                 ShowWindow(MapSimulatorWindowNames.PacketOwnedRewardResultNotice, noticeWindow, trackDirectionModeOwner: true);
                 return;
             }
@@ -1881,14 +1901,34 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
+            StampPacketOwnedUtilityRequestState();
+            EmitPacketOwnedMakerResultFeedback(packetResult);
+
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.ItemMaker) is not ItemMakerUI itemMakerWindow)
             {
-                message = "Maker-result packet arrived, but the Item Maker window is unavailable.";
+                message = "Maker-result packet arrived and emitted its client-like feedback lines, but the Item Maker window is unavailable.";
                 return false;
             }
 
-            StampPacketOwnedUtilityRequestState();
             return itemMakerWindow.TryApplyPacketOwnedResult(packetResult, out message);
+        }
+
+        private void EmitPacketOwnedMakerResultFeedback(PacketOwnedItemMakerResult packetResult)
+        {
+            IReadOnlyList<string> feedbackLines = PacketOwnedItemMakerResultRuntime.BuildFeedbackLines(packetResult);
+            if (feedbackLines == null || feedbackLines.Count == 0)
+            {
+                return;
+            }
+
+            for (int i = 0; i < feedbackLines.Count; i++)
+            {
+                string line = feedbackLines[i];
+                if (!string.IsNullOrWhiteSpace(line))
+                {
+                    _chat?.AddClientChatMessage(line, currTickCount, 7);
+                }
+            }
         }
 
         private bool TryApplyPacketOwnedMakerHiddenUnlockPayload(byte[] payload, out string message)
@@ -3483,9 +3523,11 @@ namespace HaCreator.MapSimulator
             }
 
             int normalizedSkillId = ResolvePacketOwnedLocalSkillId(skillId);
-            bool appliedPacketOwnedAttack = _playerManager.Skills.TryApplyPacketOwnedMeleeAttack(
+            Vector2 timeBombPosition = new(timeBombX, timeBombY);
+            bool appliedPacketOwnedAttack = _playerManager.Skills.TryApplyPacketOwnedTimeBombAttack(
                 normalizedSkillId,
                 currTickCount,
+                timeBombPosition,
                 out SkillData skill,
                 out int level,
                 out string errorMessage);
@@ -4768,6 +4810,28 @@ namespace HaCreator.MapSimulator
             ShowUtilityFeedbackMessage(message);
         }
 
+        private bool TryOpenPacketOwnedFollowCharacterPrompt(LocalFollowUserSnapshot requester, out string message)
+        {
+            if (!IsFollowRequestOptionEnabled())
+            {
+                message = "Incoming follow request could not be opened because follow requests are disabled in the client option owner.";
+                return false;
+            }
+
+            StampPacketOwnedUtilityRequestState();
+            if (!_localFollowRuntime.TryQueueIncomingRequest(requester, out message))
+            {
+                return false;
+            }
+
+            ShowLoginUtilityDialog(
+                "Follow Request",
+                BuildPacketOwnedFollowPromptBody(requester.Name, requester.CharacterId),
+                LoginUtilityDialogButtonLayout.YesNo,
+                LoginUtilityDialogAction.ConfirmFollowCharacterRequest);
+            return true;
+        }
+
         private void TryHandlePacketOwnedLocalFollowReleaseInput(
             KeyboardState newKeyboardState,
             KeyboardState oldKeyboardState,
@@ -4775,11 +4839,21 @@ namespace HaCreator.MapSimulator
             bool keyboardCaptured,
             int currentTime)
         {
+            bool releaseKeyPressed = LocalFollowCharacterRuntime.IsAttachedReleaseKeyPressed(newKeyboardState, oldKeyboardState);
             if (!isWindowActive
                 || keyboardCaptured
                 || _gameState?.IsPlayerInputEnabled != true
-                || _localFollowRuntime.AttachedDriverId <= 0
-                || !LocalFollowCharacterRuntime.IsAttachedReleaseKeyPressed(newKeyboardState, oldKeyboardState))
+                || !releaseKeyPressed)
+            {
+                return;
+            }
+
+            if (_passiveTransferRequestPending)
+            {
+                ClearPassiveTransferRequest();
+            }
+
+            if (_localFollowRuntime.AttachedDriverId <= 0)
             {
                 return;
             }
@@ -4934,6 +5008,40 @@ namespace HaCreator.MapSimulator
 
             message = ApplyPacketOwnedLocalFollowCharacter(packet);
             return true;
+        }
+
+        private bool TryApplyPacketOwnedFollowCharacterPromptPayload(byte[] payload, out string message)
+        {
+            message = "Follow-request prompt payload is missing.";
+            if (payload == null || payload.Length == 0)
+            {
+                return false;
+            }
+
+            int requesterId;
+            if (payload.Length == sizeof(int))
+            {
+                requesterId = BitConverter.ToInt32(payload, 0);
+            }
+            else if (TryDecodePacketOwnedStringPayload(payload, out string requesterToken)
+                && TryResolvePacketOwnedRemoteCharacterToken(requesterToken, out int decodedRequesterId, out _))
+            {
+                requesterId = decodedRequesterId;
+            }
+            else
+            {
+                message = "Follow-request prompt payload must contain a requester Int32 or resolvable character token.";
+                return false;
+            }
+
+            if (requesterId <= 0
+                || !TryResolvePacketOwnedRemoteCharacterSnapshot(requesterId, out LocalFollowUserSnapshot requester))
+            {
+                message = "Follow-request prompt could not be opened because the requester is not available in the remote-user pool.";
+                return false;
+            }
+
+            return TryOpenPacketOwnedFollowCharacterPrompt(requester, out message);
         }
 
         private readonly record struct PacketOwnedChatRoute(
@@ -5650,6 +5758,17 @@ namespace HaCreator.MapSimulator
                 PacketOwnedVengeanceSkillName);
         }
 
+        internal static HashSet<int> CreatePacketOwnedTimeBombSkillIdCatalog()
+        {
+            return PacketOwnedSkillAliasCatalog.BuildSkillIdCatalog(
+                skillNames: EnumeratePacketOwnedSkillNamesFromStringCatalog(),
+                skillDescriptions: EnumeratePacketOwnedSkillDescriptionsFromStringCatalog(),
+                preferredCurrentSkillId: PacketOwnedCurrentTimeBombSkillId,
+                preferredLegacySkillId: 0,
+                canonicalSkillName: PacketOwnedTimeBombSkillName,
+                canonicalDescriptionFragment: PacketOwnedTimeBombSkillDescriptionMarker);
+        }
+
         private static HashSet<int> CreatePacketOwnedExJablinSkillIdCatalog()
         {
             return PacketOwnedSkillAliasCatalog.BuildSkillIdCatalog(
@@ -5662,6 +5781,10 @@ namespace HaCreator.MapSimulator
 
         private static IReadOnlyDictionary<int, int[]> CreatePacketOwnedSkillIdAliasCandidates()
         {
+            int[] timeBombCandidates = PacketOwnedSkillAliasCatalog.BuildPreferredAliasCandidates(
+                PacketOwnedTimeBombSkillIdCatalog.Value,
+                PacketOwnedCurrentTimeBombSkillId,
+                0);
             int[] vengeanceCandidates = PacketOwnedSkillAliasCatalog.BuildPreferredAliasCandidates(
                 PacketOwnedVengeanceSkillIdCatalog.Value,
                 PacketOwnedCurrentVengeanceSkillId,
@@ -5670,7 +5793,8 @@ namespace HaCreator.MapSimulator
                 PacketOwnedExJablinSkillIdCatalog.Value,
                 PacketOwnedCurrentExJablinSkillId,
                 0);
-            var aliases = new Dictionary<int, int[]>(vengeanceCandidates.Length + exJablinCandidates.Length);
+            var aliases = new Dictionary<int, int[]>(timeBombCandidates.Length + vengeanceCandidates.Length + exJablinCandidates.Length);
+            AddFamilyAliases(timeBombCandidates);
             AddFamilyAliases(vengeanceCandidates);
             AddFamilyAliases(exJablinCandidates);
 
@@ -6963,6 +7087,11 @@ namespace HaCreator.MapSimulator
                 case "followcharacter":
                     applied = TryApplyPacketOwnedFollowCharacterPayload(payload, out message);
                     break;
+                case "followask":
+                case "followprompt":
+                case "followrequestprompt":
+                    applied = TryApplyPacketOwnedFollowCharacterPromptPayload(payload, out message);
+                    break;
                 case "followfail":
                     applied = TryApplyPacketOwnedFollowCharacterFailedPayload(payload, out message);
                     break;
@@ -6973,8 +7102,8 @@ namespace HaCreator.MapSimulator
                 default:
                     return ChatCommandHandler.CommandResult.Error(
                         rawHex
-                        ? "Usage: /localutility packetraw <sitresult|questresult|resignquestreturn|passmatename|openui|openuiwithoption|commodity|fade|balloon|damagemeter|timebomb|vengeance|exjablin|hpdec|notice|chat|buffzone|eventsound|minigamesound|radio|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|directionmode|standalone|follow|followfail|skillcooltime|marriageresult|193|231|242|243|246|247|250|251|252|255|256|259|260|261|262|263|264|265|266|267|268|270|271|272|273|274|275|276|1011|1012|1013|1014|1018> <hex>"
-                        : "Usage: /localutility packet <sitresult|questresult|resignquestreturn|passmatename|openui|openuiwithoption|commodity|fade|balloon|damagemeter|timebomb|vengeance|exjablin|hpdec|notice|chat|buffzone|eventsound|minigamesound|radio|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|directionmode|standalone|follow|followfail|skillcooltime|marriageresult|193|231|242|243|246|247|250|251|252|255|256|259|260|261|262|263|264|265|266|267|268|270|271|272|273|274|275|276|1011|1012|1013|1014|1018> [payloadhex=..|payloadb64=..]");
+                        ? "Usage: /localutility packetraw <sitresult|questresult|resignquestreturn|passmatename|openui|openuiwithoption|commodity|fade|balloon|damagemeter|timebomb|vengeance|exjablin|hpdec|notice|chat|buffzone|eventsound|minigamesound|radio|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|directionmode|standalone|follow|followask|followfail|skillcooltime|marriageresult|193|231|242|243|246|247|250|251|252|255|256|259|260|261|262|263|264|265|266|267|268|270|271|272|273|274|275|276|1011|1012|1013|1014|1018|1022> <hex>"
+                        : "Usage: /localutility packet <sitresult|questresult|resignquestreturn|passmatename|openui|openuiwithoption|commodity|fade|balloon|damagemeter|timebomb|vengeance|exjablin|hpdec|notice|chat|buffzone|eventsound|minigamesound|radio|questguide|delivery|classcompetition|skillguide|hiretutor|tutormsg|antimacro|apspevent|directionmode|standalone|follow|followask|followfail|skillcooltime|marriageresult|193|231|242|243|246|247|250|251|252|255|256|259|260|261|262|263|264|265|266|267|268|270|271|272|273|274|275|276|1011|1012|1013|1014|1018|1022> [payloadhex=..|payloadb64=..]");
             }
 
             return applied
@@ -7187,17 +7316,10 @@ namespace HaCreator.MapSimulator
                         return ChatCommandHandler.CommandResult.Error("Usage: /localutility follow ask <requesterId|name>");
                     }
 
-                    StampPacketOwnedUtilityRequestState();
-                    if (!_localFollowRuntime.TryQueueIncomingRequest(requester, out string askMessage))
+                    if (!TryOpenPacketOwnedFollowCharacterPrompt(requester, out string askMessage))
                     {
                         return ChatCommandHandler.CommandResult.Error(askMessage);
                     }
-
-                    ShowLoginUtilityDialog(
-                        "Follow Request",
-                        BuildPacketOwnedFollowPromptBody(requester.Name, requester.CharacterId),
-                        LoginUtilityDialogButtonLayout.YesNo,
-                        LoginUtilityDialogAction.ConfirmFollowCharacterRequest);
                     return ChatCommandHandler.CommandResult.Ok(askMessage);
 
                 case "accept":
@@ -7480,6 +7602,17 @@ namespace HaCreator.MapSimulator
             return _remoteUserPool != null && _remoteUserPool.TryGetActor(characterId, out var actor)
                 ? actor?.Name
                 : null;
+        }
+
+        private bool IsFollowRequestOptionEnabled()
+        {
+            if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.OptionMenu) is OptionMenuWindow optionMenuWindow
+                && optionMenuWindow.TryGetCommittedClientOptionValue(FollowRequestClientOptionId, out bool enabled))
+            {
+                return enabled;
+            }
+
+            return true;
         }
 
         private static string ResolvePacketGuideMobName(int mobId)

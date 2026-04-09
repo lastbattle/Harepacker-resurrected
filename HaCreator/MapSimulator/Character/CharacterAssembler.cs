@@ -608,6 +608,12 @@ namespace HaCreator.MapSimulator.Character
                     baseOffset.Y + bodyNeck.Y - headNeck.Y);
 
                 AddPart(parts, headFrame, headOffset.Value, CharacterPartType.Head, _build.Head);
+                foreach (KeyValuePair<string, Point> mapPoint in headFrame.Map)
+                {
+                    assembled.MapPoints[mapPoint.Key] = new Point(
+                        headOffset.Value.X + mapPoint.Value.X,
+                        headOffset.Value.Y + mapPoint.Value.Y);
+                }
 
                 // Add face - relative to head
                 var faceFrame = GetFaceFrame(_build.Face, _faceExpressionName, frameIndex);

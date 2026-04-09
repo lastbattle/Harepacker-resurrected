@@ -33,6 +33,16 @@ namespace HaCreator.MapSimulator.Character.Skills
             35121013
         };
 
+        private static readonly int[] MechanicVehicleTransformSkillIds =
+        {
+            35001001,
+            35101004,
+            35101009,
+            35111004,
+            35121005,
+            35121013
+        };
+
         private static readonly string[] RideDescriptionMarkers =
         {
             "mount/unmount",
@@ -149,6 +159,11 @@ namespace HaCreator.MapSimulator.Character.Skills
                    || string.Equals(skill.ActionName, "siege_pre", StringComparison.OrdinalIgnoreCase)
                    || string.Equals(skill.ActionName, "tank_siegepre", StringComparison.OrdinalIgnoreCase)
                    || HasMechanicVehicleStateText(skill);
+        }
+
+        internal static bool IsMechanicVehicleTransformSkillId(int skillId)
+        {
+            return Array.IndexOf(MechanicVehicleTransformSkillIds, skillId) >= 0;
         }
 
         internal static bool IsClientOwnedVehicleValidSupportSkill(SkillData skill)
@@ -306,20 +321,10 @@ namespace HaCreator.MapSimulator.Character.Skills
 
         internal static bool IsOwnerlessMechanicVehicleInferenceActionName(string actionName, bool includeTransformStates = false)
         {
-            if (string.IsNullOrWhiteSpace(actionName))
-            {
-                return false;
-            }
-
-            if (includeTransformStates
-                && (string.Equals(actionName, "tank", StringComparison.OrdinalIgnoreCase)
-                    || string.Equals(actionName, "siege", StringComparison.OrdinalIgnoreCase)))
-            {
-                return true;
-            }
-
-            return actionName.StartsWith("tank_", StringComparison.OrdinalIgnoreCase)
-                   || actionName.StartsWith("siege_", StringComparison.OrdinalIgnoreCase);
+            // WZ publishes the full tank/siege families on Character/00002000.img as well as on
+            // Character/TamingMob/01932016, so action names alone are no longer a trustworthy
+            // local-owner seam for Mechanic vehicle ownership.
+            return false;
         }
 
         private static bool IsMountedMoveActionName(string actionName)

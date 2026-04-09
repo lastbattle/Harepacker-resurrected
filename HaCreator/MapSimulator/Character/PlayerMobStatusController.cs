@@ -192,6 +192,11 @@ namespace HaCreator.MapSimulator.Character
                 return "Skills cannot be used while frozen.";
             }
 
+            if (HasStatus(PlayerMobStatusEffect.StopMotion))
+            {
+                return "Skills cannot be used while motion is locked.";
+            }
+
             if (HasStatus(PlayerMobStatusEffect.Seal))
             {
                 return "Skills cannot be used while sealed.";
@@ -424,6 +429,24 @@ namespace HaCreator.MapSimulator.Character
             return cleared;
         }
 
+        public int AdjustExperienceReward(int baseAmount, int currentTime)
+        {
+            int amount = Math.Max(0, baseAmount);
+            if (amount <= 0)
+            {
+                return 0;
+            }
+
+            RemoveExpiredEffects(currentTime);
+            if (!_entries.TryGetValue(PlayerMobStatusEffect.Curse, out _))
+            {
+                return amount;
+            }
+
+            int experiencePercent = ResolveCurseVitalCapPercent();
+            return Math.Max(1, (int)Math.Ceiling(amount * (experiencePercent / 100d)));
+        }
+
         private void ApplyStatus(PlayerMobStatusEffect effect, int durationMs, int currentTime, int value, int tickIntervalMs = 0)
         {
             ApplyStatus(effect, durationMs, currentTime, value, tickIntervalMs, 0);
@@ -625,6 +648,9 @@ namespace HaCreator.MapSimulator.Character
                     return true;
                 case PlayerMobStatusEffect.Freeze:
                     status = PlayerSkillBlockingStatus.Freeze;
+                    return true;
+                case PlayerMobStatusEffect.StopMotion:
+                    status = PlayerSkillBlockingStatus.StopMotion;
                     return true;
                 case PlayerMobStatusEffect.Attract:
                     status = PlayerSkillBlockingStatus.Attract;

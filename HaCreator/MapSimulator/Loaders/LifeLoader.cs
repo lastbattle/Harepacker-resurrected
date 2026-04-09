@@ -1078,30 +1078,8 @@ namespace HaCreator.MapSimulator.Loaders
             NpcInfo npcInfo = (NpcInfo)npcInstance.BaseInfo;
             WzImage source = npcInfo.LinkedWzImage;
 
-            // Create animation set to store frames by action (stand, speak, blink, etc.)
-            NpcAnimationSet animationSet = new NpcAnimationSet();
-
-            foreach (WzImageProperty childProperty in source.WzProperties)
-            {
-                WzSubProperty npcStateProperty = (WzSubProperty)childProperty;
-                switch (npcStateProperty.Name)
-                {
-                    case "info": // info/speak/0 WzStringProperty
-                        {
-                            break;
-                        }
-                    default:
-                        {
-                            // Load frames for this action and store by action name
-                            List<IDXObject> actionFrames = MapSimulatorLoader.LoadFrames(texturePool, npcStateProperty, npcInstance.X, npcInstance.Y, device, usedProps);
-                            if (actionFrames.Count > 0)
-                            {
-                                animationSet.AddAnimation(npcStateProperty.Name, actionFrames);
-                            }
-                            break;
-                        }
-                }
-            }
+            // Match the client-owned NPC action seam: resolve a single action set, then materialize only that set's actions.
+            NpcAnimationSet animationSet = NpcClientActionSetLoader.LoadAnimationSet(texturePool, npcInstance, device, usedProps);
             if (animationSet.ActionCount == 0) // fix japan ms v186, (9000021.img「ガガ」) なぜだ？;(
                 return null;
 

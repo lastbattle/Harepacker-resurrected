@@ -26,7 +26,7 @@ namespace HaCreator.MapSimulator.Interaction
                 : "Guild UI local-build";
             string guildRankingContext = _packetGuildRankingEntries.Count > 0
                 ? $"Guild ranking packet-owned rivals={_packetGuildRankingEntries.Count}"
-                : "Guild ranking simulator-seeded rivals";
+                : "Guild ranking awaiting packet-owned rivals";
             string allianceAuthority = _packetAllianceAuthority.HasValue
                 ? $"Alliance authority packet-owned ({_packetAllianceAuthority.Value.RoleLabel}: rank={FormatOnOff(_packetAllianceAuthority.Value.CanEditRanks)}, notice={FormatOnOff(_packetAllianceAuthority.Value.CanEditNotice)})"
                 : $"Alliance authority local-role ({GetLocalAllianceRoleLabel()})";
@@ -274,7 +274,33 @@ namespace HaCreator.MapSimulator.Interaction
         internal string ClearPacketGuildRankingEntries()
         {
             _packetGuildRankingEntries.Clear();
-            return "Guild ranking rivals returned to the simulator seed set.";
+            return "Guild ranking packet-owned rival rows were cleared.";
+        }
+
+        internal string SetPacketGuildRankingEntries(IReadOnlyList<GuildRankingSeedEntry> rankingEntries, int guildId)
+        {
+            _packetGuildRankingEntries.Clear();
+            if (rankingEntries != null)
+            {
+                foreach (GuildRankingSeedEntry entry in rankingEntries)
+                {
+                    if (string.IsNullOrWhiteSpace(entry.GuildName))
+                    {
+                        continue;
+                    }
+
+                    _packetGuildRankingEntries.Add(entry with
+                    {
+                        GuildName = entry.GuildName.Trim(),
+                        MasterName = string.IsNullOrWhiteSpace(entry.MasterName) ? "Guild Master" : entry.MasterName.Trim(),
+                        IsPacketOwned = true
+                    });
+                }
+            }
+
+            return _packetGuildRankingEntries.Count > 0
+                ? $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.Ranking}) refreshed {_packetGuildRankingEntries.Count} rival guild ranking row{(_packetGuildRankingEntries.Count == 1 ? string.Empty : "s")} for guild {guildId}."
+                : $"Client OnGuildResult({(byte)SocialListClientGuildResultKind.Ranking}) cleared rival guild ranking rows for guild {guildId}.";
         }
 
         internal string UpsertPacketGuildRankingEntry(

@@ -255,6 +255,7 @@ namespace HaCreator.MapSimulator.UI
         /// </summary>
         public Action OnMacroWindowClosed;
         internal Func<int, int, bool> OnImeCandidateSelected;
+        internal Func<IntPtr> ResolveImeWindowHandle;
         #endregion
 
         #region Constructor
@@ -1890,6 +1891,7 @@ namespace HaCreator.MapSimulator.UI
             KeyboardState keyboardState = Keyboard.GetState();
             HandleKeyboardInput(keyboardState);
             _previousKeyboardState = keyboardState;
+            UpdateImePresentationPlacement();
         }
         #endregion
 
@@ -1974,6 +1976,7 @@ namespace HaCreator.MapSimulator.UI
             _validationMessage = string.Empty;
             ClearOwnerNotice();
             _caretBlinkTick = Environment.TickCount;
+            UpdateImePresentationPlacement();
         }
 
         public override void HandleCompositionText(string text)
@@ -1995,6 +1998,7 @@ namespace HaCreator.MapSimulator.UI
             _candidateListState = CapturesKeyboardInput && state != null && state.HasCandidates
                 ? state
                 : ImeCandidateListState.Empty;
+            UpdateImePresentationPlacement();
         }
 
         public override void ClearImeCandidateList()
@@ -2669,6 +2673,77 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return clamped;
+        }
+
+        private void UpdateImePresentationPlacement()
+        {
+            if (!CapturesKeyboardInput
+                || _font == null
+                || ResolveImeWindowHandle == null
+                || (_compositionText.Length == 0 && !_candidateListState.HasCandidates))
+            {
+                return;
+            }
+
+            IntPtr windowHandle = ResolveImeWindowHandle();
+            if (windowHandle == IntPtr.Zero)
+            {
+                return;
+            }
+
+            Rectangle nameFieldBounds = GetNameFieldBounds();
+            int compositionCaretWidth = MeasureImePlacementWidth(ResolveCandidateCaretPrefix());
+            bool useClauseAnchor = ShouldUseCompositionClauseAnchor();
+            int clauseAnchorWidth = useClauseAnchor
+                ? MeasureImePlacementWidth(ResolveCompositionAnchorPrefix())
+                : compositionCaretWidth;
+            int clauseWidth = useClauseAnchor
+                ? MeasureImePlacementWidth(ResolveActiveCompositionClauseText())
+                : 1;
+
+            SkillMacroImeWindowPlacement placement = SkillMacroImeWindowPlacementLayout.Resolve(
+                nameFieldBounds,
+                NAME_FIELD_TEXT_INSET_X,
+                _font.LineSpacing,
+                compositionCaretWidth,
+                useClauseAnchor,
+                clauseAnchorWidth,
+                clauseWidth);
+            WindowsImePresentationBridge.TryUpdatePlacement(windowHandle, placement);
+        }
+
+        private int MeasureImePlacementWidth(string text)
+        {
+            if (_font == null || string.IsNullOrEmpty(text))
+            {
+                return 0;
+            }
+
+            return (int)Math.Round(_font.MeasureString(text).X);
+        }
+
+        private string ResolveActiveCompositionClauseText()
+        {
+            if (string.IsNullOrEmpty(_compositionText))
+            {
+                return string.Empty;
+            }
+
+            if (_compositionClauseOffsets.Count >= 2)
+            {
+                int cursor = Math.Clamp(_compositionCursorPosition, 0, _compositionText.Length);
+                for (int i = 0; i < _compositionClauseOffsets.Count - 1; i++)
+                {
+                    int start = Math.Clamp(_compositionClauseOffsets[i], 0, _compositionText.Length);
+                    int end = Math.Clamp(_compositionClauseOffsets[i + 1], start, _compositionText.Length);
+                    if (cursor >= start && cursor <= end)
+                    {
+                        return _compositionText[start..end];
+                    }
+                }
+            }
+
+            return _compositionText;
         }
 
         private static IEnumerable<int> EnumerateCaretStops(string text)

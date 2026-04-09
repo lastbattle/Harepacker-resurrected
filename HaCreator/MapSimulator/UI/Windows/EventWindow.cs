@@ -31,8 +31,8 @@ namespace HaCreator.MapSimulator.UI
         private readonly Texture2D[] _statusIcons;
         private readonly Texture2D _todayTexture;
         private readonly Texture2D[] _calendarBackgroundTextures;
-        private readonly Texture2D _calendarOverlayTexture;
-        private readonly Texture2D _calendarGridTexture;
+        private readonly Texture2D[] _calendarOverlayTextures;
+        private readonly Texture2D[] _calendarGridTextures;
         private readonly Texture2D[] _calendarNumberTextures;
         private readonly Texture2D[] _calendarSelectedNumberTextures;
         private UIObject _allButton;
@@ -63,7 +63,7 @@ namespace HaCreator.MapSimulator.UI
             string windowName,
             Texture2D normalRowTexture,
             Texture2D selectedRowTexture)
-            : this(frame, windowName, normalRowTexture, selectedRowTexture, null, Array.Empty<Texture2D>(), null, null, null, null, Array.Empty<Texture2D>(), Array.Empty<Texture2D>())
+            : this(frame, windowName, normalRowTexture, selectedRowTexture, null, Array.Empty<Texture2D>(), null, Array.Empty<Texture2D>(), Array.Empty<Texture2D>(), Array.Empty<Texture2D>(), Array.Empty<Texture2D>(), Array.Empty<Texture2D>())
         {
         }
 
@@ -76,8 +76,8 @@ namespace HaCreator.MapSimulator.UI
             Texture2D[] statusIcons,
             Texture2D todayTexture,
             Texture2D[] calendarBackgroundTextures,
-            Texture2D calendarOverlayTexture,
-            Texture2D calendarGridTexture,
+            Texture2D[] calendarOverlayTextures,
+            Texture2D[] calendarGridTextures,
             Texture2D[] calendarNumberTextures,
             Texture2D[] calendarSelectedNumberTextures)
             : base(frame)
@@ -89,8 +89,8 @@ namespace HaCreator.MapSimulator.UI
             _statusIcons = statusIcons ?? Array.Empty<Texture2D>();
             _todayTexture = todayTexture;
             _calendarBackgroundTextures = calendarBackgroundTextures ?? Array.Empty<Texture2D>();
-            _calendarOverlayTexture = calendarOverlayTexture;
-            _calendarGridTexture = calendarGridTexture;
+            _calendarOverlayTextures = calendarOverlayTextures ?? Array.Empty<Texture2D>();
+            _calendarGridTextures = calendarGridTextures ?? Array.Empty<Texture2D>();
             _calendarNumberTextures = calendarNumberTextures ?? Array.Empty<Texture2D>();
             _calendarSelectedNumberTextures = calendarSelectedNumberTextures ?? Array.Empty<Texture2D>();
         }
@@ -345,14 +345,20 @@ namespace HaCreator.MapSimulator.UI
                 sprite.Draw(baseTexture, new Vector2(calendarBounds.X, calendarBounds.Y), Color.White);
             }
 
-            if (_calendarOverlayTexture != null)
+            Texture2D overlayTexture = ResolveCalendarOverlayTexture();
+            if (overlayTexture != null)
             {
-                sprite.Draw(_calendarOverlayTexture, new Vector2(calendarBounds.X + 6, calendarBounds.Y + 23), Color.White);
+                // WZ evidence: EventList/calendar/bg/*/backgrnd2 uses origin (-6, -23),
+                // so the authored overlay anchor sits at base + (6, 23).
+                sprite.Draw(overlayTexture, new Vector2(calendarBounds.X + 6, calendarBounds.Y + 23), Color.White);
             }
 
-            if (_calendarGridTexture != null)
+            Texture2D gridTexture = ResolveCalendarGridTexture();
+            if (gridTexture != null)
             {
-                sprite.Draw(_calendarGridTexture, new Vector2(calendarBounds.X + 12, calendarBounds.Y + 68), Color.White);
+                // WZ evidence: EventList/calendar/bg/*/backgrnd3 uses origin (-12, -68),
+                // so the authored content anchor sits at base + (12, 68).
+                sprite.Draw(gridTexture, new Vector2(calendarBounds.X + 12, calendarBounds.Y + 68), Color.White);
             }
 
             sprite.DrawString(_font, month.ToString("MMMM yyyy"), new Vector2(calendarBounds.X + 12, calendarBounds.Y + 10), new Color(255, 228, 151));
@@ -588,18 +594,33 @@ namespace HaCreator.MapSimulator.UI
 
         private Texture2D ResolveCalendarBackgroundTexture()
         {
-            if (_calendarBackgroundTextures.Length == 0)
+            return ResolveCalendarVariantTexture(_calendarBackgroundTextures);
+        }
+
+        private Texture2D ResolveCalendarOverlayTexture()
+        {
+            return ResolveCalendarVariantTexture(_calendarOverlayTextures);
+        }
+
+        private Texture2D ResolveCalendarGridTexture()
+        {
+            return ResolveCalendarVariantTexture(_calendarGridTextures);
+        }
+
+        private Texture2D ResolveCalendarVariantTexture(Texture2D[] textures)
+        {
+            if (textures == null || textures.Length == 0)
             {
                 return null;
             }
 
             int variant = ProgressionUtilityParityRules.ResolveCalendarBackgroundVariant(_calendarMonth);
-            if ((uint)variant < (uint)_calendarBackgroundTextures.Length && _calendarBackgroundTextures[variant] != null)
+            if ((uint)variant < (uint)textures.Length && textures[variant] != null)
             {
-                return _calendarBackgroundTextures[variant];
+                return textures[variant];
             }
 
-            return _calendarBackgroundTextures[0];
+            return textures[0];
         }
 
         private static DateTime ResolveMinimumCalendarMonth(EventWindowSnapshot snapshot)

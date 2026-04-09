@@ -31,6 +31,7 @@ namespace HaCreator.MapSimulator.UI
         private const int InputPaddingX = 4;
         private const int InputPaddingY = 1;
 
+        private readonly IReadOnlyDictionary<LoginUtilityDialogFrameVariant, IDXObject> _framesByVariant;
         private readonly UIObject _okButton;
         private readonly UIObject _yesButton;
         private readonly UIObject _noButton;
@@ -74,7 +75,7 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Keys[] NumPadKeys = Enumerable.Range((int)Keys.NumPad0, 10).Select(value => (Keys)value).ToArray();
 
         public LoginUtilityDialogWindow(
-            IDXObject frame,
+            IReadOnlyDictionary<LoginUtilityDialogFrameVariant, IDXObject> framesByVariant,
             UIObject okButton,
             UIObject yesButton,
             UIObject noButton,
@@ -87,8 +88,13 @@ namespace HaCreator.MapSimulator.UI
             UIObject exitButton,
             UIObject nexonButton,
             IReadOnlyDictionary<int, Texture2D> noticeTextTextures)
-            : base(frame)
+            : base(framesByVariant != null &&
+                   framesByVariant.TryGetValue(LoginUtilityDialogFrameVariant.Default, out IDXObject defaultFrame) &&
+                   defaultFrame != null
+                ? defaultFrame
+                : throw new ArgumentNullException(nameof(framesByVariant)))
         {
+            _framesByVariant = framesByVariant;
             _okButton = RegisterButton(okButton, true);
             _yesButton = RegisterButton(yesButton, true);
             _noButton = RegisterButton(noButton, false);
@@ -101,9 +107,9 @@ namespace HaCreator.MapSimulator.UI
             _exitButton = RegisterButton(exitButton, false);
             _nexonButton = RegisterButton(nexonButton, true);
             _noticeTextTextures = noticeTextTextures ?? new Dictionary<int, Texture2D>();
-            if (frame?.Texture?.GraphicsDevice != null)
+            if (defaultFrame?.Texture?.GraphicsDevice != null)
             {
-                _pixelTexture = new Texture2D(frame.Texture.GraphicsDevice, 1, 1);
+                _pixelTexture = new Texture2D(defaultFrame.Texture.GraphicsDevice, 1, 1);
                 _pixelTexture.SetData(new[] { Color.White });
             }
         }
@@ -148,6 +154,7 @@ namespace HaCreator.MapSimulator.UI
             string inputValue = null,
             SoftKeyboardKeyboardType softKeyboardType = SoftKeyboardKeyboardType.AlphaNumeric,
             LoginUtilityDialogVisualStyle visualStyle = LoginUtilityDialogVisualStyle.Default,
+            LoginUtilityDialogFrameVariant frameVariant = LoginUtilityDialogFrameVariant.Default,
             Rectangle? inputBoundsOverride = null)
         {
             _title = string.IsNullOrWhiteSpace(title) ? "Login Utility" : title;
@@ -165,6 +172,7 @@ namespace HaCreator.MapSimulator.UI
             _inputValue = inputValue ?? string.Empty;
             _softKeyboardType = softKeyboardType;
             _visualStyle = visualStyle;
+            Frame = ResolveFrame(frameVariant);
             _inputBoundsOverride = inputBoundsOverride;
             _inputFocused = HasInputField;
             if (!HasInputField)
@@ -438,6 +446,25 @@ namespace HaCreator.MapSimulator.UI
                 LoginUtilityDialogButtonLayout.YesNo when _visualStyle == LoginUtilityDialogVisualStyle.SecurityYesNo => (SecurityQuestionYesButtonX, NoButtonX),
                 _ => (YesButtonX, NoButtonX),
             };
+        }
+
+        private IDXObject ResolveFrame(LoginUtilityDialogFrameVariant frameVariant)
+        {
+            if (_framesByVariant != null &&
+                _framesByVariant.TryGetValue(frameVariant, out IDXObject frame) &&
+                frame != null)
+            {
+                return frame;
+            }
+
+            if (_framesByVariant != null &&
+                _framesByVariant.TryGetValue(LoginUtilityDialogFrameVariant.Default, out IDXObject defaultFrame) &&
+                defaultFrame != null)
+            {
+                return defaultFrame;
+            }
+
+            return Frame;
         }
 
         private static void HideButton(UIObject button)

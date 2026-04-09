@@ -163,6 +163,7 @@ namespace HaCreator.MapSimulator.UI
 
     public static class EquipmentChangeClientParity
     {
+        public const int ExclusiveRequestCooldownMs = 500;
         public const string StaleCompletionMessage = "The equipped item state changed before the equipment request completed.";
 
         public static bool IsExclusiveRequestThrottled(int currentTick, int lastRequestTick, int cooldownMs)
@@ -173,6 +174,11 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return unchecked(currentTick - lastRequestTick) < cooldownMs;
+        }
+
+        public static bool ShouldBlockDragStart(int currentTick, int lastRequestTick, bool hasPendingRequest, int cooldownMs = ExclusiveRequestCooldownMs)
+        {
+            return hasPendingRequest || IsExclusiveRequestThrottled(currentTick, lastRequestTick, cooldownMs);
         }
 
         public static bool IsResolvedResultStale(CharacterBuild build, EquipmentChangeResult result)

@@ -166,6 +166,25 @@ public static class ClientShootAmmoResolver
         };
     }
 
+    public static bool TryRefreshQueuedSelectionForExecution(
+        ShootAmmoSelection queuedSelection,
+        IReadOnlyList<InventorySlotData> useSlots,
+        IReadOnlyList<InventorySlotData> cashSlots,
+        int weaponCode,
+        int weaponItemId,
+        bool requiresUseAmmo,
+        out ShootAmmoSelection refreshedSelection)
+    {
+        refreshedSelection = RefreshQueuedSelectionSlotMetadata(
+            queuedSelection,
+            useSlots,
+            cashSlots,
+            weaponCode,
+            weaponItemId);
+
+        return !requiresUseAmmo || refreshedSelection?.HasUseAmmo == true;
+    }
+
     private static int ResolveActiveBulletItemId(IReadOnlyList<InventorySlotData> useSlots)
     {
         if (useSlots == null)

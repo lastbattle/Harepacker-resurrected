@@ -26,6 +26,7 @@ namespace HaCreator.MapSimulator.Combat
             public Vector2 Target { get; set; }
             public Vector2 ImpactPoint { get; set; }
             public int SpawnTime { get; set; }
+            public int LaunchTime { get; set; }
             public int ExpireTime { get; set; }
             public bool CreatesGroundHazard { get; set; }
             public bool Flip { get; set; }
@@ -34,8 +35,13 @@ namespace HaCreator.MapSimulator.Combat
 
             public Rectangle GetHitbox(int currentTime)
             {
+                if (currentTime < LaunchTime)
+                {
+                    return Rectangle.Empty;
+                }
+
                 IDXObject frame = Frames != null && Frames.Count > 0
-                    ? Frames[ResolveFrameIndex(Frames, currentTime, SpawnTime)]
+                    ? Frames[ResolveFrameIndex(Frames, currentTime, LaunchTime)]
                     : null;
                 return CreateFrameAnchoredHitbox(frame, Position, Flip, 16);
             }
@@ -401,8 +407,12 @@ namespace HaCreator.MapSimulator.Combat
                 }
 
                 float speed = Math.Max(220f, attack.BulletSpeed > 0 ? attack.BulletSpeed : 320f);
-                float travelDistance = Vector2.Distance(spawn, projectileDestination);
-                int travelTime = Math.Max(250, (int)(travelDistance / speed * 1000f));
+                int launchTime = currentTime + Math.Max(0, attack?.AttackAfter ?? 0);
+                int travelTime = ResolveProjectileTravelTimeMs(
+                    spawn,
+                    projectileDestination,
+                    attack?.RangeRadius ?? 0,
+                    attack?.BulletSpeed ?? 0);
 
                 _activeMobProjectiles.Add(new ActiveMobProjectile
                 {
@@ -415,7 +425,8 @@ namespace HaCreator.MapSimulator.Combat
                     Target = projectileDestination,
                     ImpactPoint = laneAssignment.LanePoint,
                     SpawnTime = currentTime,
-                    ExpireTime = currentTime + travelTime,
+                    LaunchTime = launchTime,
+                    ExpireTime = launchTime + travelTime,
                     CreatesGroundHazard = mobItem.AI.IsBoss && (attack.IsAreaOfEffect || attack.Range >= 180),
                     Flip = direction.X < 0f,
                     LaneIndex = i,
@@ -571,6 +582,11 @@ namespace HaCreator.MapSimulator.Combat
                 if (projectile.SourceMob?.AI == null)
                 {
                     _activeMobProjectiles.RemoveAt(i);
+                    continue;
+                }
+
+                if (currentTime < projectile.LaunchTime)
+                {
                     continue;
                 }
 
@@ -2256,6 +2272,24 @@ namespace HaCreator.MapSimulator.Combat
             return spawn + (direction * rangeRadius);
         }
 
+        internal static int ResolveProjectileTravelTimeMs(
+            Vector2 spawn,
+            Vector2 target,
+            int rangeRadius,
+            int bulletSpeed)
+        {
+            if (rangeRadius > 0 && bulletSpeed > 0)
+            {
+                // CMob::DoAttack seeds MobBullet end time from range/r * 600 / nBulletSpeed
+                // instead of the raw clamped destination distance.
+                return Math.Max(1, (int)MathF.Round(rangeRadius * 600f / bulletSpeed));
+            }
+
+            float resolvedSpeed = Math.Max(220f, bulletSpeed > 0 ? bulletSpeed : 320f);
+            float travelDistance = Vector2.Distance(spawn, target);
+            return Math.Max(250, (int)MathF.Round(travelDistance / resolvedSpeed * 1000f));
+        }
+
         internal static List<int> BuildAreaAttackRandomDelaySequence(
             IReadOnlyList<int> groupTargetCounts,
             int randomDelayWindow,
@@ -3378,12 +3412,17 @@ namespace HaCreator.MapSimulator.Combat
                 return null;
             }
 
+            if (currentTime < projectile.LaunchTime)
+            {
+                return null;
+            }
+
             if (projectile.Frames.Count == 1)
             {
                 return projectile.Frames[0];
             }
 
-            int relativeTime = Math.Max(0, currentTime - projectile.SpawnTime);
+            int relativeTime = Math.Max(0, currentTime - projectile.LaunchTime);
             return GetFrameAtTime(projectile.Frames, relativeTime, loop: true);
         }
 

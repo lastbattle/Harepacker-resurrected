@@ -532,32 +532,32 @@ namespace HaCreator.MapSimulator.Character
                 return 100;
             }
 
-            if (ContainsIgnoreCase(normalizedRequestedAction, "eruption")
-                && ContainsIgnoreCase(normalizedAuthoredAlias, "rain"))
+            if (string.Equals(normalizedRequestedAction, "arrowEruption", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(normalizedAuthoredAlias, "arrowRain", StringComparison.OrdinalIgnoreCase))
             {
                 return 90;
             }
 
-            if (ContainsIgnoreCase(normalizedRequestedAction, "break")
-                && ContainsIgnoreCase(normalizedAuthoredAlias, "break"))
+            if (string.Equals(normalizedRequestedAction, "stormbreak", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(normalizedAuthoredAlias, "stormbreak", StringComparison.OrdinalIgnoreCase))
             {
                 return 90;
             }
 
-            if (ContainsIgnoreCase(normalizedRequestedAction, "spear")
-                && ContainsIgnoreCase(normalizedAuthoredAlias, "spear"))
+            if (string.Equals(normalizedRequestedAction, "windspear", StringComparison.OrdinalIgnoreCase)
+                && string.Equals(normalizedAuthoredAlias, "windspear", StringComparison.OrdinalIgnoreCase))
             {
                 return 90;
             }
 
             if (ContainsIgnoreCase(normalizedRequestedAction, "shot")
-                && ContainsIgnoreCase(normalizedAuthoredAlias, "shot"))
+                && string.Equals(normalizedAuthoredAlias, "windshot", StringComparison.OrdinalIgnoreCase))
             {
                 return 90;
             }
 
             if (ContainsIgnoreCase(normalizedRequestedAction, "rain")
-                && ContainsIgnoreCase(normalizedAuthoredAlias, "rain"))
+                && string.Equals(normalizedAuthoredAlias, "arrowRain", StringComparison.OrdinalIgnoreCase))
             {
                 return 90;
             }

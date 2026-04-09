@@ -352,6 +352,7 @@ namespace HaCreator.MapSimulator
         private Texture2D _npcQuestCompletableIcon;
         private bool _npcQuestAlertIconsLoaded;
         private readonly NpcFeedbackBalloonQueue _npcQuestFeedback = new();
+        private string _activeNpcQuestFeedbackActionName;
         private const int NpcQuestAlertVerticalGap = 4;
         private readonly Random _npcIdleSpeechRandom = new();
         private int _nextNpcIdleSpeechTick;
@@ -362,7 +363,6 @@ namespace HaCreator.MapSimulator
         private bool _petHpAlertArmed = true;
         private int _petHpPotionFailureSpeechCount;
         private int _petMpPotionFailureSpeechCount;
-        private const string FieldHazardNoHpPotionNoticeText = "Your pet could not find an HP potion to use.";
         private int _lastReactorCollisionCheckTick = -ReactorCollisionCheckIntervalMs;
         private readonly Dictionary<(int skillId, int level), MobSummonSkillInfo> _mobSummonSkillCache = new();
         private readonly Dictionary<(int skillId, int level), MobSkillRuntimeData> _mobSkillRuntimeCache = new();
@@ -584,6 +584,7 @@ namespace HaCreator.MapSimulator
 
         // Portal teleportation - seamless map transitions
         private string _spawnPortalName = null; // The portal name to spawn at (set when loading map)
+        private string[] _spawnPortalNameCandidates = Array.Empty<string>(); // Alternate portal names to spawn at when packet-owned teleport fallback resolves multiple WZ-backed candidates.
         private int _spawnPortalIndex = -1; // The portal index to spawn at when a packet-owned field entry references the destination by slot.
         private int _lastClickTime = 0; // For double-click detection
         private const int DOUBLE_CLICK_TIME_MS = 500; // Time window for double-click
@@ -619,6 +620,9 @@ namespace HaCreator.MapSimulator
         private const string SkillCooldownNoticeSoundKey = "SkillCooldownNotice";
         private const string LoginEntryGameInSoundKey = "LoginEntryGameIn";
         private const string LoginEntryGameInSoundWzPath = "Sound/Game.img/GameIn";
+        private const int ViewAllCharWorldSelectFallbackStringPoolId = 0xFBD;
+        private const int ViewAllCharFailureStringPoolId = 0xFBE;
+        private const int ViewAllCharWarningStringPoolId = 0xFBF;
         private const string BookDialogLifecycleSoundKey = "BookDialogLifecycle";
         private const int DefaultSimulatorWorldId = 0;
         private const int DefaultSimulatorChannelIndex = 0;
@@ -723,6 +727,13 @@ namespace HaCreator.MapSimulator
         private MapTransferUI.DestinationEntry _mapTransferManualDestination;
         private MapTransferUI.DestinationEntry _mapTransferEditDestination;
         private readonly LoginCharacterRosterManager _loginCharacterRoster = new();
+        private enum LoginBootstrapDismissContinuation
+        {
+            None = 0,
+            ContinueAfterPicSetupNotice = 1,
+            CompleteAfterEnableSpwNotice = 2,
+        }
+
         private string _loginTitleAccountName = "explorergm";
         private string _loginTitlePassword = "maplesim";
         private bool _loginTitleRememberId = true;
@@ -742,6 +753,7 @@ namespace HaCreator.MapSimulator
         private SoftKeyboardKeyboardType _loginUtilityDialogSoftKeyboardType = SoftKeyboardKeyboardType.AlphaNumeric;
         private LoginUtilityDialogVisualStyle _loginUtilityDialogVisualStyle = LoginUtilityDialogVisualStyle.Default;
         private LoginUtilityDialogButtonLayout _loginUtilityDialogButtonLayout = LoginUtilityDialogButtonLayout.Ok;
+        private LoginUtilityDialogFrameVariant _loginUtilityDialogFrameVariant = LoginUtilityDialogFrameVariant.Default;
         private int _loginUtilityDialogTargetIndex = -1;
         private int? _loginUtilityDialogNoticeTextIndex;
         private bool _loginUtilityDialogInputMasked;
@@ -760,6 +772,7 @@ namespace HaCreator.MapSimulator
         private LoginPacketType? _loginPendingLicenseAgreementPacketType;
         private readonly List<LoginCharacterAccountStore.CashShopStorageExpansionRecordState> _loginAccountStorageExpansionHistory = new();
         private bool _loginAccountMigrationAccepted;
+        private LoginBootstrapDismissContinuation _loginBootstrapDismissContinuation;
         private string _activeConnectionNoticeTitle = "Connection Notice";
         private string _activeConnectionNoticeBody = string.Empty;
         private const int ClientPicEditMaxLength = 8;
@@ -1568,6 +1581,15 @@ namespace HaCreator.MapSimulator
 
         private PortalInstance ResolvePortalByNameOrIndex(IEnumerable<PortalInstance> portals, string portalName, int portalIndex)
         {
+            return ResolvePortalByNameCandidatesOrIndex(portals, portalName, null, portalIndex);
+        }
+
+        private PortalInstance ResolvePortalByNameCandidatesOrIndex(
+            IEnumerable<PortalInstance> portals,
+            string portalName,
+            IEnumerable<string> portalNameCandidates,
+            int portalIndex)
+        {
             if (portals == null)
             {
                 return null;
@@ -1579,6 +1601,23 @@ namespace HaCreator.MapSimulator
                 if (namedPortal != null)
                 {
                     return namedPortal;
+                }
+            }
+
+            if (portalNameCandidates != null)
+            {
+                foreach (string candidatePortalName in portalNameCandidates)
+                {
+                    if (string.IsNullOrWhiteSpace(candidatePortalName))
+                    {
+                        continue;
+                    }
+
+                    PortalInstance candidatePortal = portals.FirstOrDefault(portal => string.Equals(portal?.pn, candidatePortalName, StringComparison.Ordinal));
+                    if (candidatePortal != null)
+                    {
+                        return candidatePortal;
+                    }
                 }
             }
 
@@ -3122,7 +3161,7 @@ namespace HaCreator.MapSimulator
 
         private void ShowUtilityWindow(string windowName)
         {
-            ShowWindowWithInheritedDirectionModeOwner(windowName);
+            ShowRecordedUtilityWindow(windowName, "status-bar popup");
         }
 
         private void SetUtilityBgmMuted(bool muted)
@@ -3469,7 +3508,10 @@ namespace HaCreator.MapSimulator
                     || _remoteUserPool.TryGetActorByName(context.CharacterName, out actor);
                 if (foundActor && actor?.RelationshipOverlays != null)
                 {
-                    return actor.RelationshipOverlays.ContainsKey(RemoteRelationshipOverlayType.Marriage);
+                    if (actor.RelationshipOverlays.ContainsKey(RemoteRelationshipOverlayType.Marriage))
+                    {
+                        return true;
+                    }
                 }
             }
 
@@ -3908,6 +3950,7 @@ namespace HaCreator.MapSimulator
                 inventoryWindow.ItemUpgradeRequested = OpenItemUpgradeWindowForConsumable;
                 inventoryWindow.ItemUseRequested = TryUseInventoryItem;
                 inventoryWindow.CashShopRequested = ShowCashShopWindow;
+                inventoryWindow.EquipmentDragStartBlocked = ShouldBlockEquipmentDragStart;
             }
 
 
@@ -3919,6 +3962,7 @@ namespace HaCreator.MapSimulator
                     equipWindow.EquipmentChangeResultRequested = TryResolveEquipmentChangeRequest;
                     equipWindow.EquipmentEquipGuard = GetBattlefieldEquipRestrictionMessage;
                     equipWindow.EquipmentEquipBlocked = ShowFieldRestrictionMessage;
+                    equipWindow.EquipmentDragStartBlocked = ShouldBlockEquipmentDragStart;
                     break;
                 case EquipUIBigBang equipWindowBigBang:
                     equipWindowBigBang.ItemUpgradeRequested = OpenItemUpgradeWindowForEquipment;
@@ -3926,6 +3970,7 @@ namespace HaCreator.MapSimulator
                     equipWindowBigBang.EquipmentChangeResultRequested = TryResolveEquipmentChangeRequest;
                     equipWindowBigBang.EquipmentEquipGuard = GetBattlefieldEquipRestrictionMessage;
                     equipWindowBigBang.EquipmentEquipBlocked = ShowFieldRestrictionMessage;
+                    equipWindowBigBang.EquipmentDragStartBlocked = ShouldBlockEquipmentDragStart;
                     break;
             }
         }
@@ -5181,7 +5226,7 @@ namespace HaCreator.MapSimulator
                 systemWindow.BindEntryAction("BtKeySetting", () => ShowUtilityWindow(MapSimulatorWindowNames.KeyConfig));
                 systemWindow.BindEntryAction("BtGameOption", () => ShowUtilityOptionWindow(OptionMenuMode.Game));
                 systemWindow.BindEntryAction("BtSystemOption", () => ShowUtilityOptionWindow(OptionMenuMode.System));
-                systemWindow.BindEntryAction("BtGameQuit", () => ShowUtilityFeedbackMessage("Close the MapSimulator window to end the current session."));
+                systemWindow.BindEntryAction("BtGameQuit", ShowUtilityQuitDialog);
                 systemWindow.BindEntryAction("BtJoyPad", () => ShowUtilityOptionWindow(OptionMenuMode.Joypad));
                 systemWindow.BindEntryAction("BtOption", () => ShowUtilityOptionWindow(OptionMenuMode.Extra));
                 systemWindow.BindEntryCursorHint("BtChannel", GetUtilityChannelPopupCursorHint);
@@ -7747,9 +7792,10 @@ namespace HaCreator.MapSimulator
                         _loginCharacterStatusMessage = summary;
                         ShowLoginUtilityDialog(
                             "Login Utility",
-                            summary,
+                            ResolveViewAllCharNoticeDialogBody(packetProfile, isWorldSelectFallback: true),
                             LoginUtilityDialogButtonLayout.Ok,
-                            LoginUtilityDialogAction.DismissOnly);
+                            LoginUtilityDialogAction.DismissOnly,
+                            frameVariant: LoginUtilityDialogFrameVariant.LoginNotice);
                         return true;
                     }
 
@@ -7793,9 +7839,10 @@ namespace HaCreator.MapSimulator
                     _loginCharacterStatusMessage = summary;
                     ShowLoginUtilityDialog(
                         "Login Utility",
-                        summary,
+                        ResolveViewAllCharNoticeDialogBody(packetProfile, isWorldSelectFallback: true),
                         LoginUtilityDialogButtonLayout.Ok,
-                        LoginUtilityDialogAction.DismissOnly);
+                        LoginUtilityDialogAction.DismissOnly,
+                        frameVariant: LoginUtilityDialogFrameVariant.LoginNotice);
                     return true;
 
                 case LoginViewAllCharResultKind.Error:
@@ -7810,9 +7857,10 @@ namespace HaCreator.MapSimulator
                     _loginCharacterStatusMessage = summary;
                     ShowLoginUtilityDialog(
                         "Login Utility",
-                        summary,
+                        ResolveViewAllCharNoticeDialogBody(packetProfile, isWorldSelectFallback: false),
                         LoginUtilityDialogButtonLayout.Ok,
-                        LoginUtilityDialogAction.DismissOnly);
+                        LoginUtilityDialogAction.DismissOnly,
+                        frameVariant: LoginUtilityDialogFrameVariant.LoginNotice);
                     return true;
             }
 
@@ -8026,6 +8074,71 @@ namespace HaCreator.MapSimulator
                 RequestedName = packetProfile.RequestedName,
                 TextValue = packetProfile.TextValue,
             };
+        }
+
+        private void SyncPacketOwnedAccountCharacterCountFromRoster()
+        {
+            if (!_loginPacketAccountDialogProfiles.TryGetValue(LoginPacketType.AccountInfoResult, out LoginAccountDialogPacketProfile packetProfile) ||
+                packetProfile == null ||
+                !TryResolvePacketOwnedAccountCharacterCount(out int characterCount) ||
+                packetProfile.CharacterCount == characterCount)
+            {
+                return;
+            }
+
+            _loginPacketAccountDialogProfiles[LoginPacketType.AccountInfoResult] = new LoginAccountDialogPacketProfile
+            {
+                PacketType = packetProfile.PacketType,
+                Source = packetProfile.Source,
+                Payload = packetProfile.Payload,
+                ResultCode = packetProfile.ResultCode,
+                SecondaryCode = packetProfile.SecondaryCode,
+                AccountId = packetProfile.AccountId,
+                CharacterId = packetProfile.CharacterId,
+                Gender = packetProfile.Gender,
+                GradeCode = packetProfile.GradeCode,
+                AccountFlags = packetProfile.AccountFlags,
+                CountryId = packetProfile.CountryId,
+                ClubId = packetProfile.ClubId,
+                PurchaseExperience = packetProfile.PurchaseExperience,
+                ChatBlockReason = packetProfile.ChatBlockReason,
+                ChatUnblockFileTime = packetProfile.ChatUnblockFileTime,
+                RegisterDateFileTime = packetProfile.RegisterDateFileTime,
+                CharacterCount = characterCount,
+                ClientKey = packetProfile.ClientKey,
+                RequestedName = packetProfile.RequestedName,
+                TextValue = packetProfile.TextValue,
+            };
+        }
+
+        private bool TryResolvePacketOwnedAccountCharacterCount(out int characterCount)
+        {
+            characterCount = 0;
+            string accountName = ResolveLoginRosterAccountName();
+            int? accountId = ResolveLoginRosterAccountId();
+            IReadOnlyList<LoginCharacterAccountStore.LoginCharacterAccountState> storedStates =
+                _loginCharacterAccountStore.SnapshotStatesForAccount(accountName, accountId);
+            if (storedStates.Count > 0)
+            {
+                characterCount = storedStates.Sum(state => state?.Entries?.Count ?? 0);
+                return true;
+            }
+
+            IReadOnlyList<LoginSelectWorldCharacterEntry> aggregatedEntries =
+                _loginBackendSessionManager.SnapshotAggregatedViewAllEntries();
+            if (aggregatedEntries.Count > 0)
+            {
+                characterCount = aggregatedEntries.Count;
+                return true;
+            }
+
+            if (_loginCharacterRoster.Entries.Count > 0)
+            {
+                characterCount = _loginCharacterRoster.Entries.Count;
+                return true;
+            }
+
+            return false;
         }
 
         private void ApplyPacketOwnedAccountInfo(LoginCheckPasswordResultProfile packetProfile)
@@ -8495,7 +8608,19 @@ namespace HaCreator.MapSimulator
 
             if (packetProfile.ResultCode == 12)
             {
-                return $"SelectCharacterByVACResult rejected alternate authenticated entry for result 12 with secondary code {packetProfile.SecondaryCode}.{(packetProfile.ReturnsToTitle ? " The login flow returned to title." : string.Empty)}";
+                return packetProfile.SecondaryCode switch
+                {
+                    1 => "SelectCharacterByVACResult rejected alternate authenticated entry and returned the login flow to title.",
+                    2 => "SelectCharacterByVACResult reported a blocked VAC character and returned the login flow to title.",
+                    3 => "SelectCharacterByVACResult reported that the VAC character could not enter the field and returned the login flow to title.",
+                    19 => "SelectCharacterByVACResult reported a blocked VAC login and returned the login flow to title.",
+                    25 => "SelectCharacterByVACResult reported a migration-required VAC account and returned the login flow to title.",
+                    27 => "SelectCharacterByVACResult reported an unsupported VAC region response and returned the login flow to title.",
+                    28 => "SelectCharacterByVACResult reported a newer client requirement and returned the login flow to title.",
+                    11 => "SelectCharacterByVACResult accepted alternate authenticated entry through secondary code 11.",
+                    13 => "SelectCharacterByVACResult accepted alternate authenticated entry through secondary code 13.",
+                    _ => $"SelectCharacterByVACResult rejected alternate authenticated entry for result 12 with secondary code {packetProfile.SecondaryCode}.{(packetProfile.ReturnsToTitle ? " The login flow returned to title." : string.Empty)}",
+                };
             }
 
             if (packetProfile.NoticeTextIndex.HasValue)
@@ -8527,7 +8652,8 @@ namespace HaCreator.MapSimulator
                     LoginUtilityDialogButtonLayout.YesNo,
                     LoginUtilityDialogAction.WebsiteHandoffDecision,
                     noticeTextIndex: noticeTextIndex,
-                    visualStyle: LoginUtilityDialogVisualStyle.SecurityYesNo);
+                    visualStyle: LoginUtilityDialogVisualStyle.SecurityYesNo,
+                    frameVariant: LoginUtilityDialogFrameVariant.LoginNotice);
                 return;
             }
 
@@ -8536,7 +8662,8 @@ namespace HaCreator.MapSimulator
                 message,
                 LoginUtilityDialogButtonLayout.Ok,
                 LoginUtilityDialogAction.DismissOnly,
-                noticeTextIndex: noticeTextIndex);
+                noticeTextIndex: noticeTextIndex,
+                frameVariant: LoginUtilityDialogFrameVariant.LoginNotice);
         }
         private void ShowSelectCharacterByVacFailureDialog(LoginSelectCharacterByVacResultProfile packetProfile, string message)
         {
@@ -8634,6 +8761,7 @@ namespace HaCreator.MapSimulator
                 (_loginPacketViewAllCharResultProfile.Kind == LoginViewAllCharResultKind.Characters &&
                  _loginBackendSessionManager.ViewAllRemainingServerCount <= 0);
             PersistLoginBackendSessionRostersToAccountStore(pruneMissingWorlds);
+            SyncPacketOwnedAccountCharacterCountFromRoster();
         }
 
         private void ShowLoginLicenseAgreementDialog(LoginPacketType packetType, string statusMessage)
@@ -8868,6 +8996,34 @@ namespace HaCreator.MapSimulator
         private static string BuildViewAllCharWorldSelectFallbackMessage()
         {
             return "Packet-authored ViewAllCharResult completed without any aggregated VAC characters and returned the login flow to world selection.";
+        }
+
+        private static string ResolveViewAllCharNoticeDialogBody(
+            LoginViewAllCharResultPacketProfile packetProfile,
+            bool isWorldSelectFallback)
+        {
+            if (isWorldSelectFallback)
+            {
+                return MapleStoryStringPool.GetOrFallback(
+                    ViewAllCharWorldSelectFallbackStringPoolId,
+                    "There are no characters on the selected worlds.");
+            }
+
+            if (!string.IsNullOrWhiteSpace(packetProfile?.NoticeText))
+            {
+                return packetProfile.NoticeText.Trim();
+            }
+
+            return packetProfile?.ResultCode switch
+            {
+                2 => MapleStoryStringPool.GetOrFallback(
+                    ViewAllCharFailureStringPoolId,
+                    "Unable to load the expanded character roster."),
+                3 or 6 or 7 => MapleStoryStringPool.GetOrFallback(
+                    ViewAllCharWarningStringPoolId,
+                    "The expanded character roster could not be loaded."),
+                _ => BuildViewAllCharErrorMessage(packetProfile),
+            };
         }
 
         private static string BuildViewAllCharErrorMessage(LoginViewAllCharResultPacketProfile packetProfile)
@@ -9506,7 +9662,18 @@ namespace HaCreator.MapSimulator
                 message,
                 LoginUtilityDialogButtonLayout.Ok,
                 LoginUtilityDialogAction.DismissOnly,
-                noticeTextIndex: ResolveDeleteCharacterFailureNoticeTextIndex(packetProfile));
+                noticeTextIndex: ResolveDeleteCharacterFailureNoticeTextIndex(packetProfile),
+                frameVariant: ResolveDeleteCharacterFailureFrameVariant(packetProfile));
+        }
+
+        private static LoginUtilityDialogFrameVariant ResolveDeleteCharacterFailureFrameVariant(LoginAccountDialogPacketProfile packetProfile)
+        {
+            return packetProfile?.ResultCode switch
+            {
+                6 or 9 or 20 or 22 or 24 or 29 or 35 or 36 => LoginUtilityDialogFrameVariant.LoginNoticeCog,
+                26 => LoginUtilityDialogFrameVariant.LoginNotice,
+                _ => LoginUtilityDialogFrameVariant.Default,
+            };
         }
 
         private static int? ResolveDeleteCharacterFailureNoticeTextIndex(LoginAccountDialogPacketProfile packetProfile)
@@ -10070,7 +10237,9 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            status = "Built a packet-shaped create-character request from the active race, job, and avatar selections.";
+            status = requestProfile.IsCharSale
+                ? "Built a packet-shaped extra-character create request from the active race, job, and avatar selections."
+                : "Built a packet-shaped create-character request from the active race, job, and avatar selections.";
             return true;
         }
 
@@ -10382,6 +10551,7 @@ namespace HaCreator.MapSimulator
                 null,
 
                 _loginAccountStorageExpansionHistory);
+            SyncPacketOwnedAccountCharacterCountFromRoster();
 
 
 
@@ -10411,6 +10581,8 @@ namespace HaCreator.MapSimulator
             {
                 PersistLoginCharacterRosterProfileToAccountStore(rosterProfile, worldId);
             }
+
+            SyncPacketOwnedAccountCharacterCountFromRoster();
         }
 
         private void PersistLoginCharacterRosterProfileToAccountStore(
@@ -11414,6 +11586,7 @@ namespace HaCreator.MapSimulator
                 _loginUtilityDialogInputValue,
                 _loginUtilityDialogSoftKeyboardType,
                 _loginUtilityDialogVisualStyle,
+                _loginUtilityDialogFrameVariant,
                 _loginUtilityDialogInputBoundsOverride);
             utilityDialogWindow.Show();
             uiWindowManager.BringToFront(utilityDialogWindow);
@@ -11436,6 +11609,7 @@ namespace HaCreator.MapSimulator
             string inputValue = null,
             SoftKeyboardKeyboardType softKeyboardType = SoftKeyboardKeyboardType.AlphaNumeric,
             LoginUtilityDialogVisualStyle visualStyle = LoginUtilityDialogVisualStyle.Default,
+            LoginUtilityDialogFrameVariant frameVariant = LoginUtilityDialogFrameVariant.Default,
             Rectangle? inputBoundsOverride = null)
         {
             if (_loginUtilityDialogAction == LoginUtilityDialogAction.None ||
@@ -11459,6 +11633,7 @@ namespace HaCreator.MapSimulator
             _loginUtilityDialogInputValue = inputValue ?? string.Empty;
             _loginUtilityDialogSoftKeyboardType = softKeyboardType;
             _loginUtilityDialogVisualStyle = visualStyle;
+            _loginUtilityDialogFrameVariant = frameVariant;
             _loginUtilityDialogInputBoundsOverride = inputBoundsOverride;
             ClearActiveConnectionNotice();
             SyncLoginEntryDialogs();
@@ -11478,6 +11653,7 @@ namespace HaCreator.MapSimulator
             _loginUtilityDialogInputMaxLength = 0;
             _loginUtilityDialogSoftKeyboardType = SoftKeyboardKeyboardType.AlphaNumeric;
             _loginUtilityDialogVisualStyle = LoginUtilityDialogVisualStyle.Default;
+            _loginUtilityDialogFrameVariant = LoginUtilityDialogFrameVariant.Default;
             _loginUtilityDialogInputValue = string.Empty;
             _loginUtilityDialogInputBoundsOverride = null;
             if (uiWindowManager?.GetWindow(MapSimulatorWindowNames.LoginUtilityDialog) is LoginUtilityDialogWindow utilityDialogWindow)
@@ -11801,8 +11977,8 @@ namespace HaCreator.MapSimulator
 
             if (string.IsNullOrWhiteSpace(_loginAccountPicCode))
             {
-                _loginTitleStatusMessage = "Queued UpdatePinCodeResult through the login packet inbox.";
-                _loginPacketInbox.EnqueueLocal(LoginPacketType.UpdatePinCodeResult, source);
+                _loginTitleStatusMessage = "Queued packet-authored CheckPinCodeResult code 1 for PIC creation.";
+                EnqueuePacketOwnedCheckPinCodeResult(source, 1);
                 return;
             }
 
@@ -11831,6 +12007,33 @@ namespace HaCreator.MapSimulator
 
         }
 
+        private void EnqueuePacketOwnedCheckPinCodeResult(string source, byte resultCode)
+        {
+            byte[] payload = LoginBootstrapPacketPayloadBuilder.BuildCheckPinCodeResult(resultCode);
+            _loginPacketInbox.EnqueueLocal(
+                LoginPacketType.CheckPinCodeResult,
+                source,
+                $"payloadhex={Convert.ToHexString(payload)}");
+        }
+
+        private void EnqueuePacketOwnedUpdatePinCodeResult(string source, byte resultCode)
+        {
+            byte[] payload = LoginBootstrapPacketPayloadBuilder.BuildUpdatePinCodeResult(resultCode);
+            _loginPacketInbox.EnqueueLocal(
+                LoginPacketType.UpdatePinCodeResult,
+                source,
+                $"payloadhex={Convert.ToHexString(payload)}");
+        }
+
+        private void EnqueuePacketOwnedEnableSpwResult(string source, bool enabled)
+        {
+            byte[] payload = LoginBootstrapPacketPayloadBuilder.BuildEnableSpwResult(enabled);
+            _loginPacketInbox.EnqueueLocal(
+                LoginPacketType.EnableSpwResult,
+                source,
+                $"payloadhex={Convert.ToHexString(payload)}");
+        }
+
 
 
         private void CompleteLoginAccountBootstrap(string source, string summary)
@@ -11840,6 +12043,23 @@ namespace HaCreator.MapSimulator
             _loginTitleStatusMessage = summary;
             _loginPacketInbox.EnqueueLocal(LoginPacketType.CheckPasswordResult, source);
             SyncLoginTitleWindow();
+        }
+
+        private void CompletePendingLoginBootstrapDismissContinuation(LoginBootstrapDismissContinuation continuation)
+        {
+            switch (continuation)
+            {
+                case LoginBootstrapDismissContinuation.ContinueAfterPicSetupNotice:
+                    ContinueLoginAccountBootstrapAfterPic("LoginPacket.UpdatePin.Dismiss");
+                    break;
+                case LoginBootstrapDismissContinuation.CompleteAfterEnableSpwNotice:
+                    CompleteLoginAccountBootstrap(
+                        "LoginPacket.EnableSpw.Dismiss",
+                        _loginAccountSpwEnabled
+                            ? "Dismissed the packet-authored secondary-password notice and queued CheckPasswordResult."
+                            : "Dismissed the packet-authored skip-secondary-password notice and queued CheckPasswordResult.");
+                    break;
+            }
         }
 
 
@@ -11951,8 +12171,12 @@ namespace HaCreator.MapSimulator
             }
 
 
+            bool useCharSaleRequest =
+                occupiedCount >= slotCount &&
+                _loginCharacterRoster.BuyCharacterCount > 0;
+
             _loginCreateCharacterFlow = new LoginCreateCharacterFlowState();
-            _loginCreateCharacterFlow.Start();
+            _loginCreateCharacterFlow.Start(useCharSaleRequest);
             _loginCreateCharacterFlow.SetEnteredName(BuildSuggestedLoginCharacterName());
             _loginCreateCharacterFlow.RollRandom(_playerManager?.Loader);
             _loginRuntime.ForceStep(LoginStep.NewCharacter, "Opened the dedicated login create-character flow.");
@@ -12251,6 +12475,12 @@ namespace HaCreator.MapSimulator
         {
             switch (_loginUtilityDialogAction)
             {
+                case LoginUtilityDialogAction.DismissOnly:
+                    LoginBootstrapDismissContinuation dismissContinuation = _loginBootstrapDismissContinuation;
+                    _loginBootstrapDismissContinuation = LoginBootstrapDismissContinuation.None;
+                    HideLoginUtilityDialog();
+                    CompletePendingLoginBootstrapDismissContinuation(dismissContinuation);
+                    break;
                 case LoginUtilityDialogAction.ConfirmDeleteCharacter:
                     ExecuteLoginCharacterDeleteConfirmation();
                     break;
@@ -12268,6 +12498,10 @@ namespace HaCreator.MapSimulator
                 case LoginUtilityDialogAction.ConfirmFollowCharacterRequest:
                     AcceptPacketOwnedFollowCharacterPrompt();
                     break;
+                case LoginUtilityDialogAction.ConfirmUtilityQuit:
+                    HideLoginUtilityDialog();
+                    Exit();
+                    return;
 
 
                 case LoginUtilityDialogAction.AccountMigrationDecision:
@@ -12295,7 +12529,7 @@ namespace HaCreator.MapSimulator
                     HideLoginUtilityDialog();
                     if (string.IsNullOrWhiteSpace(_loginAccountPicCode))
                     {
-                        _loginPacketInbox.EnqueueLocal(LoginPacketType.UpdatePinCodeResult, "LoginUtility.Eula.Accept");
+                        EnqueuePacketOwnedCheckPinCodeResult("LoginUtility.Eula.Accept", 1);
                     }
                     else
                     {
@@ -12368,8 +12602,9 @@ namespace HaCreator.MapSimulator
                     _loginAccountPicCode = newPic;
                     PersistLoginAccountSecurityState();
                     HideLoginUtilityDialog();
-                    _loginCharacterStatusMessage = "Saved the simulator PIC.";
-                    ContinueLoginAccountBootstrapAfterPic("LoginUtility.Pic.Setup");
+                    _loginCharacterStatusMessage = "Saved the simulator PIC and queued a packet-authored UpdatePinCodeResult.";
+                    _loginTitleStatusMessage = _loginCharacterStatusMessage;
+                    EnqueuePacketOwnedUpdatePinCodeResult("LoginUtility.Pic.Setup", 0);
                     break;
                 case LoginUtilityDialogAction.SecondaryPasswordDecision:
                     ShowLoginUtilityDialog(
@@ -12479,9 +12714,10 @@ namespace HaCreator.MapSimulator
                     _loginAccountSpwEnabled = true;
                     _loginAccountSecondaryPassword = newSpw;
                     PersistLoginAccountSecurityState();
-                    CompleteLoginAccountBootstrap(
-                        "LoginUtility.Spw.Setup",
-                        "Saved the simulator secondary password and queued CheckPasswordResult.");
+                    HideLoginUtilityDialog();
+                    _loginCharacterStatusMessage = "Saved the simulator secondary password and queued a packet-authored EnableSpwResult.";
+                    _loginTitleStatusMessage = _loginCharacterStatusMessage;
+                    EnqueuePacketOwnedEnableSpwResult("LoginUtility.Spw.Setup", enabled: true);
                     break;
                 case LoginUtilityDialogAction.VerifySpw:
                     if (!TryGetLoginUtilityDialogInput(out string spwInput))
@@ -12545,9 +12781,9 @@ namespace HaCreator.MapSimulator
                     _loginAccountSpwEnabled = false;
                     _loginAccountSecondaryPassword = string.Empty;
                     PersistLoginAccountSecurityState();
-                    CompleteLoginAccountBootstrap(
-                        "LoginUtility.Spw.Later",
-                        "Skipped secondary-password setup and queued CheckPasswordResult.");
+                    HideLoginUtilityDialog();
+                    _loginTitleStatusMessage = "Declined secondary-password setup and queued a packet-authored EnableSpwResult.";
+                    EnqueuePacketOwnedEnableSpwResult("LoginUtility.Spw.Later", enabled: false);
                     return;
                 case LoginUtilityDialogAction.VerifyPic:
                     _loginTitleStatusMessage = "Cancelled the simulator PIC verification step.";
@@ -12570,6 +12806,10 @@ namespace HaCreator.MapSimulator
                 case LoginUtilityDialogAction.ConfirmFollowCharacterRequest:
                     DeclinePacketOwnedFollowCharacterPrompt();
                     break;
+                case LoginUtilityDialogAction.ConfirmUtilityQuit:
+                    ShowUtilityFeedbackMessage("Quit cancelled.");
+                    HideLoginUtilityDialog();
+                    return;
             }
 
 
@@ -12825,6 +13065,7 @@ namespace HaCreator.MapSimulator
                     InputPlaceholder = "Enter secondary password",
                     InputMasked = true,
                     InputMaxLength = 16,
+                    InputBoundsOverride = CreateLoginUtilityInputBoundsOverride(),
                 },
                 LoginPacketType.CreateNewCharacterResult => new LoginPacketDialogPromptConfiguration
                 {
@@ -12861,7 +13102,8 @@ namespace HaCreator.MapSimulator
 
             return new LoginPacketDialogPromptConfiguration
             {
-                Owner = overridePrompt.Owner,
+                Owner = overridePrompt.HasExplicitOwner ? overridePrompt.Owner : basePrompt.Owner,
+                HasExplicitOwner = overridePrompt.HasExplicitOwner || basePrompt.HasExplicitOwner,
                 Title = string.IsNullOrWhiteSpace(overridePrompt.Title) ? basePrompt.Title : overridePrompt.Title,
                 Body = string.IsNullOrWhiteSpace(overridePrompt.Body) ? basePrompt.Body : overridePrompt.Body,
                 NoticeTextIndex = overridePrompt.NoticeTextIndex ?? basePrompt.NoticeTextIndex,
@@ -13263,8 +13505,8 @@ namespace HaCreator.MapSimulator
                     HideLoginUtilityDialog();
                     if (string.IsNullOrWhiteSpace(_loginAccountPicCode))
                     {
-                        _loginTitleStatusMessage = "Packet-authored EULA acceptance queued UpdatePinCodeResult.";
-                        _loginPacketInbox.EnqueueLocal(LoginPacketType.UpdatePinCodeResult, "LoginPacket.ConfirmEula.Success");
+                        _loginTitleStatusMessage = "Packet-authored EULA acceptance queued CheckPinCodeResult code 1 for PIC creation.";
+                        EnqueuePacketOwnedCheckPinCodeResult("LoginPacket.ConfirmEula.Success", 1);
                     }
                     else
                     {
@@ -13289,10 +13531,22 @@ namespace HaCreator.MapSimulator
                     _loginCharacterStatusMessage = "Packet-authored PIC verification succeeded.";
                     ContinueLoginAccountBootstrapAfterPic("LoginPacket.CheckPin.Success");
                     break;
+                case LoginPacketType.UpdatePinCodeResult:
+                    _loginUtilityDialogInputValue = string.Empty;
+                    if (!IsSuccessfulCheckPinCodeResult(packetProfile))
+                    {
+                        _loginBootstrapDismissContinuation = LoginBootstrapDismissContinuation.None;
+                        return;
+                    }
+
+                    _loginBootstrapDismissContinuation = LoginBootstrapDismissContinuation.ContinueAfterPicSetupNotice;
+                    _loginTitleStatusMessage = "Packet-authored UpdatePinCodeResult kept the client notice path active; dismiss it to continue into the secondary-password bootstrap.";
+                    break;
                 case LoginPacketType.EnableSpwResult:
                     _loginUtilityDialogInputValue = string.Empty;
                     if (!IsSuccessfulEnableSpwResult(packetProfile))
                     {
+                        _loginBootstrapDismissContinuation = LoginBootstrapDismissContinuation.None;
                         return;
                     }
 
@@ -13302,9 +13556,10 @@ namespace HaCreator.MapSimulator
                         _loginAccountSecondaryPassword = string.Empty;
                     }
 
+                    _loginBootstrapDismissContinuation = LoginBootstrapDismissContinuation.CompleteAfterEnableSpwNotice;
                     _loginTitleStatusMessage = _loginAccountSpwEnabled
-                        ? "Packet-authored EnableSpwResult enabled the secondary-password login option and surfaced the client notice path."
-                        : "Packet-authored EnableSpwResult disabled the secondary-password login option and surfaced the client notice path.";
+                        ? "Packet-authored EnableSpwResult enabled the secondary-password login option and kept the client notice path visible until dismissal."
+                        : "Packet-authored EnableSpwResult disabled the secondary-password login option and kept the client notice path visible until dismissal.";
                     break;
                 case LoginPacketType.CheckSpwResult:
                     _loginUtilityDialogInputValue = string.Empty;
@@ -16132,7 +16387,7 @@ namespace HaCreator.MapSimulator
                          _playerManager?.Player,
                          mobItem.MovementInfo,
                          _playerManager?.IsMovementLockedByMobStatus == true,
-                         _mapBoard?.MapInfo?.nofollowCharacter != true,
+                         _mapBoard?.MapInfo?.nofollowCharacter != true && IsFollowRequestOptionEnabled(),
                          tickCount);
                 mobItem.SetEscortFollowActive(escortFollowActive);
 
@@ -17336,6 +17591,7 @@ namespace HaCreator.MapSimulator
             }
 
 
+            _activeNpcQuestFeedbackActionName = result.NpcActionName;
             if (!_npcQuestFeedback.Enqueue(_activeNpcInteractionNpcId, result.Messages, currentTickCount))
             {
                 return;
@@ -17356,6 +17612,10 @@ namespace HaCreator.MapSimulator
             }
 
 
+            if (!_npcQuestFeedback.HasActiveBalloon)
+            {
+                _activeNpcQuestFeedbackActionName = null;
+            }
             ApplyNpcQuestFeedbackAnimation(currentTickCount);
 
         }
@@ -17405,6 +17665,7 @@ namespace HaCreator.MapSimulator
 
             if (_npcQuestFeedback.Enqueue(npcId, new[] { speechLine }, currentTickCount))
             {
+                _activeNpcQuestFeedbackActionName = null;
                 ApplyNpcQuestFeedbackAnimation(currentTickCount);
             }
         }
@@ -17468,8 +17729,10 @@ namespace HaCreator.MapSimulator
 
 
             int remainingDurationMs = Math.Max(0, _npcQuestFeedback.ActiveExpiresAt - currentTickCount);
-
-            npc.SetTemporaryAction(AnimationKeys.Speak, remainingDurationMs);
+            string actionName = QuestNpcActionResolver.ResolveFeedbackAction(
+                _activeNpcQuestFeedbackActionName,
+                npc.GetAvailableActions());
+            npc.SetTemporaryAction(actionName, remainingDurationMs);
 
         }
 
@@ -18870,9 +19133,14 @@ namespace HaCreator.MapSimulator
             public int IndieMaxMp { get; init; }
             public int MaxHpPercent { get; init; }
             public int MaxMpPercent { get; init; }
+            public int DefensePercent { get; init; }
+            public int MagicDefensePercent { get; init; }
+            public int AccuracyPercent { get; init; }
+            public int AvoidabilityPercent { get; init; }
             public int AbnormalStatusResistance { get; init; }
             public int ExperienceRate { get; init; }
             public int DropRate { get; init; }
+            public int MesoRate { get; init; }
             public int DurationMs { get; init; }
 
 
@@ -18941,9 +19209,14 @@ namespace HaCreator.MapSimulator
                  IndieMaxMp != 0 ||
                  MaxHpPercent != 0 ||
                  MaxMpPercent != 0 ||
+                 DefensePercent != 0 ||
+                 MagicDefensePercent != 0 ||
+                 AccuracyPercent != 0 ||
+                 AvoidabilityPercent != 0 ||
                  AbnormalStatusResistance != 0 ||
                  ExperienceRate != 0 ||
-                 DropRate != 0);
+                 DropRate != 0 ||
+                 MesoRate != 0);
 
 
             public bool HasSupportedCure =>
@@ -19078,9 +19351,9 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (IsConsumableRecoveryBlockedByMobStatus(effect))
+            if (IsConsumableUseBlockedByMobStatus(effect))
             {
-                ShowFieldRestrictionMessage("Recovery and cure consumables cannot be used while Potion Lock is active.");
+                ShowFieldRestrictionMessage("Consumables cannot be used while Potion Lock is active.");
                 return false;
             }
 
@@ -19219,12 +19492,15 @@ namespace HaCreator.MapSimulator
                 : inventoryWindow.TryConsumeItem(inventoryType, itemId, 1);
         }
 
-        private bool IsConsumableRecoveryBlockedByMobStatus(ConsumableItemEffect effect)
+        private bool IsConsumableUseBlockedByMobStatus(ConsumableItemEffect effect)
         {
             return PlayerMobConsumableBlockEvaluator.IsStopPotionBlocked(
                 _playerManager?.HasMobStatus(PlayerMobStatusEffect.StopPotion) == true,
                 effect.HasSupportedRecovery,
-                effect.HasSupportedCure);
+                effect.HasSupportedCure,
+                effect.HasSupportedMovement,
+                effect.HasSupportedMorph,
+                effect.HasSupportedTemporaryBuff);
         }
 
         private static void ApplyConsumableRecovery(PlayerCharacter player, int hpGain, int mpGain)
@@ -19385,9 +19661,14 @@ namespace HaCreator.MapSimulator
                 IndieMaxMp = ResolveConsumableIntValue(specProperty, "indieMmp"),
                 MaxHpPercent = ResolveConsumablePercentValue(specProperty, "mhpR", "mhpRRate"),
                 MaxMpPercent = ResolveConsumablePercentValue(specProperty, "mmpR", "mmpRRate"),
+                DefensePercent = ResolveConsumablePercentValue(specProperty, "pddRate", "pddR"),
+                MagicDefensePercent = ResolveConsumablePercentValue(specProperty, "mddRate", "mddR"),
+                AccuracyPercent = ResolveConsumablePercentValue(specProperty, "accRate", "accR"),
+                AvoidabilityPercent = ResolveConsumablePercentValue(specProperty, "evaRate", "evaR"),
                 AbnormalStatusResistance = ResolveConsumablePercentValue(specProperty, "asrR", "indieAsrR"),
                 ExperienceRate = ResolveConsumablePercentValue(specProperty, "expBuff", "expR"),
                 DropRate = ResolveConsumablePercentValue(specProperty, "dropRate", "dropR"),
+                MesoRate = ResolveConsumablePercentValue(specProperty, "mesoR"),
                 DurationMs = Math.Max(0, GetWzIntValue(specProperty["time"])),
 
 
@@ -19548,9 +19829,14 @@ namespace HaCreator.MapSimulator
                 IndieMaxMP = effect.IndieMaxMp,
                 MaxHPPercent = effect.MaxHpPercent,
                 MaxMPPercent = effect.MaxMpPercent,
+                DefensePercent = effect.DefensePercent,
+                MagicDefensePercent = effect.MagicDefensePercent,
+                AccuracyPercent = effect.AccuracyPercent,
+                AvoidabilityPercent = effect.AvoidabilityPercent,
                 AbnormalStatusResistance = effect.AbnormalStatusResistance,
                 ExperienceRate = effect.ExperienceRate,
-                DropRate = effect.DropRate
+                DropRate = effect.DropRate,
+                MesoRate = effect.MesoRate
             };
         }
 
@@ -21364,7 +21650,12 @@ namespace HaCreator.MapSimulator
         /// </summary>
         private void PlayDropItemSE()
         {
-            _soundManager?.PlaySound("DropItem");
+            PlayDropItemSE(1f);
+        }
+
+        private void PlayDropItemSE(float volumeScale)
+        {
+            _soundManager?.PlaySound("DropItem", volumeScale);
         }
 
         private void HandlePacketOwnedDropEnterSoundRequested(DropItem drop, int currentTime)
@@ -21389,7 +21680,7 @@ namespace HaCreator.MapSimulator
                 _effectManager.FireExplosion(drop.X, drop.Y, 72f, 220, currentTime);
             }
 
-            PlayPacketOwnedDropExplodeSound();
+            PlayPacketOwnedDropExplodeSound(drop);
         }
 
 
@@ -22084,10 +22375,35 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            int killedMobId = 0;
+            if (mob?.MobInstance?.MobInfo != null)
+            {
+                int.TryParse(mob.MobInstance.MobInfo.ID, out killedMobId);
+            }
 
-            if (mob?.MobInstance?.MobInfo != null
-                && int.TryParse(mob.MobInstance.MobInfo.ID, out int killedMobId)
-                && _monsterBookManager.TryResolveCardItemId(killedMobId, out int monsterCardItemId))
+            int monsterCardItemId = 0;
+            if (killedMobId > 0
+                && _monsterBookManager.TryResolveRewardItemIds(killedMobId, out IReadOnlyList<int> rewardItemIds))
+            {
+                int rewardItemId = MobStatusRewardParity.ResolveStableAuthoredRewardItemId(
+                    killedMobId,
+                    mob?.PoolId ?? 0,
+                    rewardItemIds);
+                if (rewardItemId > 0)
+                {
+                    int rewardQuantity = MobStatusRewardParity.ResolveDropItemQuantity(mob, rewardItemId, 1);
+                    _dropPool.SpawnItemDrop(
+                        mobX - 18f,
+                        mobY,
+                        rewardItemId.ToString(CultureInfo.InvariantCulture),
+                        rewardQuantity,
+                        currentTick,
+                        isRare: true);
+                }
+            }
+
+            if (killedMobId > 0
+                && _monsterBookManager.TryResolveCardItemId(killedMobId, out monsterCardItemId))
             {
                 int cardQuantity = MobStatusRewardParity.ResolveItemQuantity(mob, 1);
                 _dropPool.SpawnItemDrop(
@@ -22109,7 +22425,9 @@ namespace HaCreator.MapSimulator
                 return;
             }
 
+            int currentTime = Environment.TickCount;
             int expReward = MobStatusRewardParity.ResolveKillExperience(mob);
+            expReward = _playerManager.AdjustMobAffectedExperienceReward(expReward, currentTime);
             if (expReward <= 0)
             {
                 return;
@@ -22327,6 +22645,7 @@ namespace HaCreator.MapSimulator
                 && _temporaryPortalField.TryUseLinkedPortal(_mapBoard.MapInfo.id, playerX, playerY, out var temporaryPortalDestination))
             {
                 PortalInstance temporarySourcePortal = null;
+                string temporarySourcePortalName = null;
                 if (TryResolvePacketOwnedTeleportPortalByPosition(
                     temporaryPortalDestination.SourceX,
                     temporaryPortalDestination.SourceY,
@@ -22334,6 +22653,7 @@ namespace HaCreator.MapSimulator
                     out PortalInstance resolvedTemporarySourcePortal))
                 {
                     temporarySourcePortal = resolvedTemporarySourcePortal;
+                    temporarySourcePortalName = resolvedTemporarySourcePortal.pn;
                 }
 
                 string temporaryTargetPortalName = null;
@@ -22366,8 +22686,53 @@ namespace HaCreator.MapSimulator
                     temporaryTargetPortalNameCandidates = resolvedTemporaryCrossMapTargetCandidates;
                 }
 
+                if (string.IsNullOrWhiteSpace(temporarySourcePortalName)
+                    && !string.IsNullOrWhiteSpace(temporaryTargetPortalName)
+                    && TryResolvePacketOwnedSourcePortalNameByTargetPortalName(
+                        _mapBoard?.BoardItems?.Portals,
+                        temporaryPortalDestination.MapId,
+                        temporaryTargetPortalName,
+                        out string inferredTemporarySourcePortalName))
+                {
+                    temporarySourcePortalName = inferredTemporarySourcePortalName;
+                }
+
+                if (string.IsNullOrWhiteSpace(temporarySourcePortalName)
+                    && TryResolvePacketOwnedSourcePortalNameByTargetPortalCandidates(
+                        _mapBoard?.BoardItems?.Portals,
+                        temporaryPortalDestination.MapId,
+                        temporaryTargetPortalNameCandidates,
+                        out string inferredTemporarySourcePortalCandidateName))
+                {
+                    temporarySourcePortalName = inferredTemporarySourcePortalCandidateName;
+                }
+
+                if (temporarySourcePortal == null
+                    && !string.IsNullOrWhiteSpace(temporarySourcePortalName))
+                {
+                    temporarySourcePortal = _mapBoard?.BoardItems?.Portals
+                        ?.FirstOrDefault(portal => string.Equals(portal?.pn, temporarySourcePortalName, StringComparison.OrdinalIgnoreCase));
+                }
+
+                if (temporaryPortalDestination.MapId != _mapBoard.MapInfo.id
+                    && !string.IsNullOrWhiteSpace(temporarySourcePortalName)
+                    && TryResolvePacketOwnedTargetPortalMetadata(
+                        temporaryPortalDestination.MapId,
+                        temporaryPortalDestination.X,
+                        temporaryPortalDestination.Y,
+                        _mapBoard.MapInfo.id,
+                        temporarySourcePortalName,
+                        out string refreshedTemporaryTargetPortalName,
+                        out string refreshedTemporaryTargetSummary,
+                        out string[] refreshedTemporaryTargetCandidates))
+                {
+                    temporaryTargetPortalName = refreshedTemporaryTargetPortalName;
+                    temporaryTargetResolutionSummary = refreshedTemporaryTargetSummary;
+                    temporaryTargetPortalNameCandidates = refreshedTemporaryTargetCandidates;
+                }
+
                 RecordPacketOwnedTeleportPortalRequest(
-                    temporarySourcePortal?.pn,
+                    temporarySourcePortalName,
                     temporaryPortalDestination.SourceX,
                     temporaryPortalDestination.SourceY,
                     temporaryPortalDestination.X,
@@ -22409,14 +22774,16 @@ namespace HaCreator.MapSimulator
                         temporaryPortalDestination.DelayMs,
                         currentTime,
                         temporaryTargetPortalIndex,
-                        temporarySourcePortal?.pn,
+                        temporarySourcePortalName,
                         temporaryTargetPortalName,
+                        temporaryTargetPortalNameCandidates,
                         usePacketOwnedApply: true);
                 }
                 else
                 {
                     StagePendingCrossMapTeleport(
                         temporaryPortalDestination.MapId,
+                        sourcePortalName: temporarySourcePortalName,
                         targetPortalName: temporaryTargetPortalName,
                         fallbackX: temporaryPortalDestination.X,
                         fallbackY: temporaryPortalDestination.Y,
@@ -22425,6 +22792,7 @@ namespace HaCreator.MapSimulator
                             _gameState.PendingMapChange = true;
                             _gameState.PendingMapId = temporaryPortalDestination.MapId;
                             _gameState.PendingPortalName = temporaryTargetPortalName;
+                            _gameState.PendingPortalNameCandidates = temporaryTargetPortalNameCandidates ?? Array.Empty<string>();
                             _gameState.PendingPortalIndex = -1;
                 }
 
@@ -22512,11 +22880,13 @@ namespace HaCreator.MapSimulator
                     out string[] visibleTargetPortalNameCandidates);
                 StagePendingCrossMapTeleport(
                     nearestPortal.PortalInstance.tm,
+                    nearestPortal.PortalInstance.pn,
                     visibleTargetPortalName,
                     targetPortalNameCandidates: visibleTargetPortalNameCandidates);
                         _gameState.PendingMapChange = true;
                         _gameState.PendingMapId = nearestPortal.PortalInstance.tm;
                         _gameState.PendingPortalName = visibleTargetPortalName;
+                        _gameState.PendingPortalNameCandidates = visibleTargetPortalNameCandidates ?? Array.Empty<string>();
                         _gameState.PendingPortalIndex = -1;
                 return true;
             }
@@ -22590,11 +22960,13 @@ namespace HaCreator.MapSimulator
                     out string[] hiddenTargetPortalNameCandidates);
                 StagePendingCrossMapTeleport(
                     nearestHiddenPortal.tm,
+                    nearestHiddenPortal.pn,
                     hiddenTargetPortalName,
                     targetPortalNameCandidates: hiddenTargetPortalNameCandidates);
                         _gameState.PendingMapChange = true;
                         _gameState.PendingMapId = nearestHiddenPortal.tm;
                         _gameState.PendingPortalName = hiddenTargetPortalName;
+                        _gameState.PendingPortalNameCandidates = hiddenTargetPortalNameCandidates ?? Array.Empty<string>();
                         _gameState.PendingPortalIndex = -1;
                 return true;
             }
@@ -22696,13 +23068,14 @@ namespace HaCreator.MapSimulator
 
         private void StagePendingCrossMapTeleport(
             int targetMapId,
+            string sourcePortalName = null,
             string targetPortalName = null,
             float? fallbackX = null,
             float? fallbackY = null,
             string[] targetPortalNameCandidates = null)
         {
             _pendingCrossMapTeleportTarget = targetMapId > 0
-                ? new PendingCrossMapTeleportTarget(targetMapId, targetPortalName, fallbackX, fallbackY, targetPortalNameCandidates)
+                ? new PendingCrossMapTeleportTarget(targetMapId, sourcePortalName, targetPortalName, fallbackX, fallbackY, targetPortalNameCandidates)
                 : null;
             _packetOwnedTeleportRequestActive = _pendingCrossMapTeleportTarget != null;
         }
@@ -22716,6 +23089,7 @@ namespace HaCreator.MapSimulator
             int portalIndex = -1,
             string sourcePortalName = null,
             string targetPortalName = null,
+            string[] targetPortalNameCandidates = null,
             bool usePacketOwnedApply = false)
         {
             _sameMapTeleportPending = true;
@@ -22727,6 +23101,7 @@ namespace HaCreator.MapSimulator
                 portalIndex,
                 sourcePortalName,
                 targetPortalName,
+                targetPortalNameCandidates,
                 usePacketOwnedApply);
             _pendingCrossMapTeleportTarget = null;
             _packetOwnedTeleportRequestActive = usePacketOwnedApply;
@@ -22769,19 +23144,13 @@ namespace HaCreator.MapSimulator
             spawnY = _vrFieldBoundary.Center.Y;
 
 
-            if (TryConsumePendingMapSpawnTarget(out float pendingSpawnX, out float pendingSpawnY))
+            if (!spawnPositionSet && (!string.IsNullOrEmpty(_spawnPortalName) || (_spawnPortalNameCandidates?.Length ?? 0) > 0))
             {
-                mapShiftX = (int)MathF.Round(pendingSpawnX);
-                mapShiftY = (int)MathF.Round(pendingSpawnY);
-                spawnX = pendingSpawnX;
-                spawnY = pendingSpawnY;
-                spawnPositionSet = true;
-            }
-
-
-            if (!spawnPositionSet && !string.IsNullOrEmpty(_spawnPortalName))
-            {
-                PortalInstance targetPortal = _mapBoard.BoardItems.Portals.FirstOrDefault(portal => portal.pn == _spawnPortalName);
+                PortalInstance targetPortal = ResolvePortalByNameCandidatesOrIndex(
+                    _mapBoard.BoardItems.Portals,
+                    _spawnPortalName,
+                    _spawnPortalNameCandidates,
+                    portalIndex: -1);
                 if (targetPortal != null)
                 {
                     mapShiftX = targetPortal.X;
@@ -22790,6 +23159,15 @@ namespace HaCreator.MapSimulator
                     spawnY = targetPortal.Y;
                     spawnPositionSet = true;
                 }
+            }
+
+            if (!spawnPositionSet && TryConsumePendingMapSpawnTarget(out float pendingSpawnX, out float pendingSpawnY))
+            {
+                mapShiftX = (int)MathF.Round(pendingSpawnX);
+                mapShiftY = (int)MathF.Round(pendingSpawnY);
+                spawnX = pendingSpawnX;
+                spawnY = pendingSpawnY;
+                spawnPositionSet = true;
             }
 
             if (!spawnPositionSet && _spawnPortalIndex >= 0)
@@ -22904,7 +23282,13 @@ namespace HaCreator.MapSimulator
                             succeeded: true,
                             target.PortalIndex,
                             out _)
-                        : TryApplyPacketOwnedTeleportResult(target.X, target.Y, out _)))
+                        : TryApplyPacketOwnedTeleportResult(
+                            target.X,
+                            target.Y,
+                            target.SourcePortalName,
+                            target.TargetPortalName,
+                            target.TargetPortalNameCandidates,
+                            out _)))
                 {
                 }
                 else
@@ -23866,7 +24250,8 @@ namespace HaCreator.MapSimulator
                 skillId => _playerManager?.Skills?.GetSkillLevel(skillId) ?? 0,
                 (skillId, currentTime) => _playerManager?.Skills?.ResolveClientCancelFamilyRemainingDurationMs(skillId, currentTime) ?? 0,
                 _soundManager,
-                _combatEffects);
+                _combatEffects,
+                _animationEffects);
             if (_playerManager?.Skills != null)
             {
                 _playerManager.Skills.OnClientSkillCancelRequested = (cancelSkillId, _, currentTime) =>
@@ -24385,6 +24770,7 @@ namespace HaCreator.MapSimulator
                 uiWindowManager.SkillMacroWindow.OnMacroSaved = (_, _) => PersistSkillMacros();
                 uiWindowManager.SkillMacroWindow.OnMacroDeleted = _ => PersistSkillMacros();
                 uiWindowManager.SkillMacroWindow.OnImeCandidateSelected = TrySelectSkillMacroImeCandidate;
+                uiWindowManager.SkillMacroWindow.ResolveImeWindowHandle = () => Window?.Handle ?? IntPtr.Zero;
                 _playerManager.Skills.SetMacroResolver(index => uiWindowManager.SkillMacroWindow.GetMacro(index));
                 LoadPersistedSkillMacros();
                 _playerManager.Skills.OnMacroPartyNotifyRequested = macroName =>
@@ -27552,8 +27938,7 @@ namespace HaCreator.MapSimulator
                 "accept" => Assign(LoginUtilityDialogButtonLayout.Accept, out layout),
                 "nowlater" => Assign(LoginUtilityDialogButtonLayout.NowLater, out layout),
                 "restartexit" => Assign(LoginUtilityDialogButtonLayout.RestartExit, out layout),
-
-
+                "enabledisablespw" or "spwchoice" or "spw" => Assign(LoginUtilityDialogButtonLayout.EnableDisableSpw, out layout),
                 "nexon" or "website" => Assign(LoginUtilityDialogButtonLayout.Nexon, out layout),
                 _ => Enum.TryParse(value, true, out layout),
             };
@@ -28991,7 +29376,11 @@ namespace HaCreator.MapSimulator
                 }
 
 
-                bool applied = field.TryDispatchMiniRoomPacket(message.Payload, currentTickCount, out string resultMessage);
+                bool applyClientMirror = !string.IsNullOrWhiteSpace(message.RawText)
+                    && message.RawText.StartsWith("packetclientraw", StringComparison.OrdinalIgnoreCase);
+                bool applied = applyClientMirror
+                    ? field.TryDispatchOfficialClientPacket(message.Payload, currentTickCount, out string resultMessage)
+                    : field.TryDispatchMiniRoomPacket(message.Payload, currentTickCount, out resultMessage);
                 _memoryGamePacketInbox.RecordDispatchResult(
                     message.Source,
                     applied,
@@ -30374,6 +30763,27 @@ namespace HaCreator.MapSimulator
         private void TryTriggerSpecialistPetSocialFeedback(string message, int tickCount)
         {
             _playerManager?.TryTriggerSpecialistPetChatFeedback(message, tickCount);
+        }
+
+        private void TryTriggerSpecialistPetSocialFeedback(IEnumerable<string> messages, int tickCount)
+        {
+            if (messages == null)
+            {
+                return;
+            }
+
+            foreach (string message in messages)
+            {
+                if (string.IsNullOrWhiteSpace(message))
+                {
+                    continue;
+                }
+
+                if (_playerManager?.TryTriggerSpecialistPetChatFeedback(message, tickCount) == true)
+                {
+                    break;
+                }
+            }
         }
 
         internal static bool ShouldTriggerPetSpecialistFeedbackForClientChatLogType(int chatLogType)

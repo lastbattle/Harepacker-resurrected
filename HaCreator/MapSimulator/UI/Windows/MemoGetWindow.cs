@@ -113,10 +113,14 @@ namespace HaCreator.MapSimulator.UI
             MemoMailboxAttachmentSnapshot snapshot = _currentSnapshot ?? RefreshSnapshot();
             Rectangle bounds = GetContentBounds();
 
-            DrawWindowText(sprite, "MEMO PACKAGE", new Vector2(Position.X + 26, Position.Y + 8), Color.White, 0.48f);
+            DrawWindowText(sprite, "PARCEL PACKAGE", new Vector2(Position.X + 26, Position.Y + 8), Color.White, 0.48f);
             DrawWindowText(sprite, Truncate(snapshot.Subject, 28), new Vector2(bounds.X, bounds.Y), new Color(62, 70, 82), 0.49f);
             DrawWindowText(sprite, $"From {snapshot.Sender}", new Vector2(bounds.X, bounds.Y + 18), new Color(99, 107, 119), 0.4f);
             DrawWindowText(sprite, snapshot.DeliveredAtText, new Vector2(bounds.X, bounds.Y + 32), new Color(120, 126, 137), 0.36f);
+            if (!string.IsNullOrWhiteSpace(snapshot.StatusText))
+            {
+                DrawWindowText(sprite, Truncate(snapshot.StatusText, 24), new Vector2(bounds.X, bounds.Y + 44), new Color(103, 111, 123), 0.37f);
+            }
             DrawWindowText(sprite, "Attachment", new Vector2(bounds.X, bounds.Y + 56), new Color(99, 107, 119), 0.39f);
             DrawWindowText(sprite, Truncate(snapshot.AttachmentSummary, 28), new Vector2(bounds.X, bounds.Y + 72), new Color(58, 68, 81), 0.46f);
 

@@ -50,6 +50,8 @@ namespace HaCreator.MapSimulator.UI
         private const int MaxSearchLength = 32;
         private const int CollectionEntriesPerPage = 6;
         private const int CandidateWindowPadding = 4;
+        private const int SearchKeyRepeatInitialDelayMs = KeyboardTextInputHelper.ClientRepeatInitialDelayMs;
+        private const int SearchKeyRepeatIntervalMs = KeyboardTextInputHelper.ClientRepeatDelayMs;
 
         private static readonly Point CardSlotOrigin = new(24, 22);
         private static readonly Point InfoPageOrigin = new(278, 36);
@@ -71,6 +73,8 @@ namespace HaCreator.MapSimulator.UI
         private static readonly Rectangle StatusBounds = new(16, 286, 184, 18);
         private static readonly Rectangle LeftCollectionPageBounds = new(20, 34, 196, 248);
         private static readonly Rectangle RightCollectionPageBounds = new(240, 34, 196, 248);
+        private static readonly Rectangle ClientLeftCollectionPageIndexBounds = new(23, 293, 190, 16);
+        private static readonly Rectangle ClientRightCollectionPageIndexBounds = new(243, 293, 190, 16);
         private static readonly Color TitleColor = new(82, 59, 29);
         private static readonly Color ValueColor = new(56, 45, 33);
         private static readonly Color AccentColor = new(173, 120, 48);
@@ -89,6 +93,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly Dictionary<int, Texture2D> _cardIconCache = new();
         private readonly List<SearchMatch> _searchMatches = new();
         private ClientTextRasterizer _clientTextRasterizer;
+        private ClientTextRasterizer _clientBoldTextRasterizer;
         private ClientTextRasterizer _candidateTextRasterizer;
         private ClientTextRasterizer _candidateSelectedTextRasterizer;
 
@@ -160,6 +165,7 @@ namespace HaCreator.MapSimulator.UI
         {
             _font = font;
             _clientTextRasterizer ??= _graphicsDevice != null ? new ClientTextRasterizer(_graphicsDevice) : null;
+            _clientBoldTextRasterizer ??= _graphicsDevice != null ? new ClientTextRasterizer(_graphicsDevice, fontStyle: System.Drawing.FontStyle.Bold) : null;
         }
         public override void HandleCompositionState(ImeCompositionState state)
         {
@@ -996,6 +1002,28 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawPageIndex(SpriteBatch sprite)
         {
+            if (UsesCollectionLayout)
+            {
+                int collectionTotalPages = GetTotalPageCount();
+                int collectionSpreadStart = GetSpreadStartAbsolutePageIndex(GetAbsolutePageIndex());
+                DrawCenteredBookText(
+                    sprite,
+                    BuildPageIndexText(collectionSpreadStart, collectionTotalPages),
+                    OffsetBounds(ClientLeftCollectionPageIndexBounds, Point.Zero),
+                    GetBookStyle(0));
+
+                if (collectionSpreadStart + 1 < collectionTotalPages)
+                {
+                    DrawCenteredBookText(
+                        sprite,
+                        BuildPageIndexText(collectionSpreadStart + 1, collectionTotalPages),
+                        OffsetBounds(ClientRightCollectionPageIndexBounds, Point.Zero),
+                        GetBookStyle(0));
+                }
+
+                return;
+            }
+
             if (!UsesCollectionLayout && IsOverviewTabSelected)
             {
                 DrawCenteredString(
@@ -1184,18 +1212,20 @@ namespace HaCreator.MapSimulator.UI
 
         private readonly struct BookTextStyle
         {
-            public BookTextStyle(Color color, Color shadowColor, float scale, bool shadow)
+            public BookTextStyle(Color color, Color shadowColor, float scale, bool shadow, bool bold)
             {
                 Color = color;
                 ShadowColor = shadowColor;
                 Scale = scale;
                 Shadow = shadow;
+                Bold = bold;
             }
 
             public Color Color { get; }
             public Color ShadowColor { get; }
             public float Scale { get; }
             public bool Shadow { get; }
+            public bool Bold { get; }
         }
 
         private enum HorizontalAlignment
@@ -1207,21 +1237,22 @@ namespace HaCreator.MapSimulator.UI
 
         private BookTextStyle GetBookStyle(int index)
         {
+            bool defaultBold = (index & 1) == 1;
             BookTextStyle style = index switch
             {
-                0 => new BookTextStyle(TitleColor, Color.White, 0.60f, true),
-                1 => new BookTextStyle(TitleColor, PageShadowColor, 0.56f, true),
-                2 => new BookTextStyle(ValueColor, PageShadowColor, 0.46f, true),
-                3 => new BookTextStyle(ValueColor, PageShadowColor, 0.44f, true),
-                4 => new BookTextStyle(WarningColor, PageShadowColor, 0.46f, true),
-                5 => new BookTextStyle(WarningColor, PageShadowColor, 0.44f, true),
-                6 => new BookTextStyle(SuccessColor, PageShadowColor, 0.46f, true),
-                7 => new BookTextStyle(SuccessColor, PageShadowColor, 0.44f, true),
-                8 => new BookTextStyle(AccentColor, PageShadowColor, 0.46f, true),
-                9 => new BookTextStyle(AccentColor, PageShadowColor, 0.44f, true),
-                10 => new BookTextStyle(MutedColor, PageShadowColor, 0.40f, false),
-                11 => new BookTextStyle(new Color(81, 76, 66), PageShadowColor, 0.40f, false),
-                _ => new BookTextStyle(ValueColor, PageShadowColor, 0.42f, false)
+                0 => new BookTextStyle(TitleColor, Color.White, 0.60f, true, defaultBold),
+                1 => new BookTextStyle(TitleColor, PageShadowColor, 0.56f, true, defaultBold),
+                2 => new BookTextStyle(ValueColor, PageShadowColor, 0.46f, true, defaultBold),
+                3 => new BookTextStyle(ValueColor, PageShadowColor, 0.44f, true, defaultBold),
+                4 => new BookTextStyle(WarningColor, PageShadowColor, 0.46f, true, defaultBold),
+                5 => new BookTextStyle(WarningColor, PageShadowColor, 0.44f, true, defaultBold),
+                6 => new BookTextStyle(SuccessColor, PageShadowColor, 0.46f, true, defaultBold),
+                7 => new BookTextStyle(SuccessColor, PageShadowColor, 0.44f, true, defaultBold),
+                8 => new BookTextStyle(AccentColor, PageShadowColor, 0.46f, true, defaultBold),
+                9 => new BookTextStyle(AccentColor, PageShadowColor, 0.44f, true, defaultBold),
+                10 => new BookTextStyle(MutedColor, PageShadowColor, 0.40f, false, defaultBold),
+                11 => new BookTextStyle(new Color(81, 76, 66), PageShadowColor, 0.40f, false, defaultBold),
+                _ => new BookTextStyle(ValueColor, PageShadowColor, 0.42f, false, defaultBold)
             };
 
             CollectionBookClientTextStyleSnapshot snapshotStyle = ResolveCollectionTextStyle(index);
@@ -1234,7 +1265,8 @@ namespace HaCreator.MapSimulator.UI
                 ConvertArgbToColor(snapshotStyle.ArgbColor),
                 style.ShadowColor,
                 style.Scale,
-                style.Shadow);
+                style.Shadow,
+                snapshotStyle.UsesStyleVariant);
         }
 
         private BookTextStyle GetEntryStyle(CollectionBookEntryTone tone)
@@ -1251,13 +1283,13 @@ namespace HaCreator.MapSimulator.UI
 
         private void DrawTextLine(SpriteBatch sprite, string text, Vector2 anchor, BookTextStyle style, int maxWidth, HorizontalAlignment alignment)
         {
-            string trimmed = TrimToWidth(text, maxWidth, style.Scale);
+            string trimmed = TrimToWidth(text, maxWidth, style);
             if (string.IsNullOrEmpty(trimmed))
             {
                 return;
             }
 
-            Vector2 size = MeasureRenderedText(trimmed, style.Scale, preferClientText: true);
+            Vector2 size = MeasureRenderedText(trimmed, style);
             Vector2 position = alignment switch
             {
                 HorizontalAlignment.Center => new Vector2(anchor.X + ((maxWidth - size.X) / 2f), anchor.Y),
@@ -1267,10 +1299,10 @@ namespace HaCreator.MapSimulator.UI
 
             if (style.Shadow)
             {
-                DrawRenderedString(sprite, trimmed, position + Vector2.One, style.ShadowColor, style.Scale, preferClientText: true);
+                DrawRenderedString(sprite, trimmed, position + Vector2.One, style.ShadowColor, style);
             }
 
-            DrawRenderedString(sprite, trimmed, position, style.Color, style.Scale, preferClientText: true);
+            DrawRenderedString(sprite, trimmed, position, style.Color, style);
         }
 
         private CollectionBookClientTextStyleSnapshot ResolveCollectionTextStyle(int index)
@@ -1403,7 +1435,14 @@ namespace HaCreator.MapSimulator.UI
             }
 
             if (_lastHeldSearchKey == key
-                && KeyboardTextInputHelper.ShouldRepeatKey(key, keyboard, _searchKeyHoldStartTime, _lastSearchKeyRepeatTime, tickCount))
+                && KeyboardTextInputHelper.ShouldRepeatKeyUsingFixedCadence(
+                    key,
+                    keyboard,
+                    _searchKeyHoldStartTime,
+                    _lastSearchKeyRepeatTime,
+                    tickCount,
+                    SearchKeyRepeatInitialDelayMs,
+                    SearchKeyRepeatIntervalMs))
             {
                 _lastSearchKeyRepeatTime = tickCount;
                 return true;
@@ -1586,6 +1625,18 @@ namespace HaCreator.MapSimulator.UI
             return candidate.Length < text.Length && candidate.Length > 3 ? candidate[..^3] + "..." : candidate;
         }
 
+        private string TrimToWidth(string text, int maxWidth, BookTextStyle style)
+        {
+            if (string.IsNullOrEmpty(text))
+                return text ?? string.Empty;
+
+            string candidate = text;
+            while (candidate.Length > 1 && MeasureRenderedText(candidate, style).X > maxWidth)
+                candidate = candidate[..^1];
+
+            return candidate.Length < text.Length && candidate.Length > 3 ? candidate[..^3] + "..." : candidate;
+        }
+
         private void DrawTrimmedString(SpriteBatch sprite, string text, Vector2 position, Color color, float scale, int maxWidth, bool preferClientText = false)
         {
             string trimmed = TrimToWidth(text, maxWidth, scale);
@@ -1614,6 +1665,25 @@ namespace HaCreator.MapSimulator.UI
             DrawRenderedString(sprite, text, position, color, scale, preferClientText);
         }
 
+        private void DrawCenteredBookText(SpriteBatch sprite, string text, Rectangle bounds, BookTextStyle style)
+        {
+            if (string.IsNullOrEmpty(text))
+                return;
+
+            string trimmed = TrimToWidth(text, bounds.Width, style);
+            if (string.IsNullOrEmpty(trimmed))
+                return;
+
+            Vector2 size = MeasureRenderedText(trimmed, style);
+            Vector2 position = new(bounds.X + ((bounds.Width - size.X) / 2f), bounds.Y + ((bounds.Height - size.Y) / 2f));
+            if (style.Shadow)
+            {
+                DrawRenderedString(sprite, trimmed, position + Vector2.One, style.ShadowColor, style);
+            }
+
+            DrawRenderedString(sprite, trimmed, position, style.Color, style);
+        }
+
         private Vector2 MeasureRenderedText(string text, float scale, bool preferClientText = false)
         {
             if (string.IsNullOrEmpty(text))
@@ -1627,6 +1697,22 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return _font?.MeasureString(text) * scale ?? Vector2.Zero;
+        }
+
+        private Vector2 MeasureRenderedText(string text, BookTextStyle style)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return Vector2.Zero;
+            }
+
+            ClientTextRasterizer rasterizer = ResolveBookTextRasterizer(style);
+            if (rasterizer != null)
+            {
+                return rasterizer.MeasureString(text, style.Scale);
+            }
+
+            return MeasureRenderedText(text, style.Scale, preferClientText: true);
         }
 
         private void DrawRenderedString(SpriteBatch sprite, string text, Vector2 position, Color color, float scale, bool preferClientText = false)
@@ -1646,6 +1732,39 @@ namespace HaCreator.MapSimulator.UI
             {
                 sprite.DrawString(_font, text, position, color, 0f, Vector2.Zero, scale, SpriteEffects.None, 0f);
             }
+        }
+
+        private void DrawRenderedString(SpriteBatch sprite, string text, Vector2 position, Color color, BookTextStyle style)
+        {
+            if (string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            ClientTextRasterizer rasterizer = ResolveBookTextRasterizer(style);
+            if (rasterizer != null)
+            {
+                rasterizer.DrawString(sprite, text, position, color, style.Scale);
+                return;
+            }
+
+            DrawRenderedString(sprite, text, position, color, style.Scale, preferClientText: true);
+        }
+
+        private ClientTextRasterizer ResolveBookTextRasterizer(BookTextStyle style)
+        {
+            if (_graphicsDevice == null)
+            {
+                return null;
+            }
+
+            if (!style.Bold)
+            {
+                return _clientTextRasterizer;
+            }
+
+            _clientBoldTextRasterizer ??= new ClientTextRasterizer(_graphicsDevice, fontStyle: System.Drawing.FontStyle.Bold);
+            return _clientBoldTextRasterizer;
         }
 
         private Vector2 MeasureCandidateWindowText(string text)

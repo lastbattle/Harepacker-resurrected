@@ -175,7 +175,7 @@ namespace HaCreator.MapSimulator {
         /// <param name="usedProps"></param>
         /// <param name="spineAni">Spine animation path</param>
         /// <returns></returns>
-        internal static List<IDXObject> LoadFrames(TexturePool texturePool, WzImageProperty source, int x, int y, GraphicsDevice device, ConcurrentBag<WzObject> usedProps, string spineAni = null) {
+        internal static List<IDXObject> LoadFrames(TexturePool texturePool, WzImageProperty source, int x, int y, GraphicsDevice device, ConcurrentBag<WzObject> usedProps, string spineAni = null, int fallbackDelay = 100) {
             List<IDXObject> frames = new List<IDXObject>();
 
             source = WzInfoTools.GetRealProperty(source);
@@ -191,7 +191,8 @@ namespace HaCreator.MapSimulator {
                     EnsureCanvasTextureLoaded(texturePool, property, device);
                 }
                 usedProps.Add(source);
-                frames.Add(CreateFrameDrawable(property, x, y, device));
+                int delay = (int)InfoTool.GetOptionalInt(property["delay"], fallbackDelay);
+                frames.Add(CreateFrameDrawable(property, x, y, device, delay));
             }
             else if (source is WzSubProperty) // animated
             {
@@ -201,7 +202,7 @@ namespace HaCreator.MapSimulator {
                 while ((_frameProp = WzInfoTools.GetRealProperty(source[(i++).ToString()])) != null) {
                     if (_frameProp is WzSubProperty) // issue with 867119250
                     {
-                        frames.AddRange(LoadFrames(texturePool, _frameProp, x, y, device, usedProps, null));
+                        frames.AddRange(LoadFrames(texturePool, _frameProp, x, y, device, usedProps, null, fallbackDelay));
                     }
                     else {
                         WzCanvasProperty frameProp;
@@ -219,7 +220,7 @@ namespace HaCreator.MapSimulator {
                             frameProp = (WzCanvasProperty)_frameProp;
                         }
 
-                        int delay = (int)InfoTool.GetOptionalInt(frameProp["delay"], 100);
+                        int delay = (int)InfoTool.GetOptionalInt(frameProp["delay"], fallbackDelay);
 
                         bool bLoadedSpine = LoadSpineMapObjectItem((WzImageProperty)frameProp.Parent, frameProp, device, spineAni);
                         if (!bLoadedSpine) {

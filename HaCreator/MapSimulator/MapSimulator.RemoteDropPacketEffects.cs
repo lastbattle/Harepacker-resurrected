@@ -1,5 +1,6 @@
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System;
 using System.Globalization;
 using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib;
@@ -7,6 +8,7 @@ using MapleLib.WzLib.WzProperties;
 using MapleLib.WzLib.Util;
 using HaCreator.MapSimulator.Pools;
 using HaSharedLibrary.Wz;
+using Microsoft.Xna.Framework;
 
 namespace HaCreator.MapSimulator
 {
@@ -39,6 +41,59 @@ namespace HaCreator.MapSimulator
         {
             return $"Skill:{SkillId}:{SoundName}";
         }
+
+        internal static int ResolveHitVariantIndex(DropItem drop, int variantCount)
+        {
+            if (variantCount <= 1)
+            {
+                return 0;
+            }
+
+            int fallbackIndex = ResolveVariantIndex(drop?.PoolId ?? 0, variantCount);
+            if (drop?.Type != DropType.Meso)
+            {
+                return fallbackIndex;
+            }
+
+            int bandedVariantCount = Math.Min(3, variantCount);
+            int bandOffset = DropPool.GetMoneyIconTypeForAmount(Math.Max(0, drop.MesoAmount)) switch
+            {
+                <= 1 => 0,
+                2 => 3,
+                _ => 6
+            };
+
+            int candidateIndex = bandOffset + ResolveVariantIndex(drop.PoolId, bandedVariantCount);
+            return candidateIndex < variantCount
+                ? candidateIndex
+                : fallbackIndex;
+        }
+
+        internal static float ResolveSoundVolumeScale(Vector2 listenerPosition, DropItem drop)
+        {
+            if (drop == null)
+            {
+                return 1f;
+            }
+
+            const float minDistance = 64f;
+            const float maxDistance = 900f;
+            const float minVolume = 0.2f;
+
+            float distance = Vector2.Distance(listenerPosition, new Vector2(drop.X, drop.Y));
+            if (distance <= minDistance)
+            {
+                return 1f;
+            }
+
+            if (distance >= maxDistance)
+            {
+                return minVolume;
+            }
+
+            float normalized = 1f - ((distance - minDistance) / (maxDistance - minDistance));
+            return MathHelper.Lerp(minVolume, 1f, MathHelper.Clamp(normalized, 0f, 1f));
+        }
     }
 
     public partial class MapSimulator
@@ -55,7 +110,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            if (!TryResolvePacketOwnedDropExplodeFrames(drop.PoolId, out List<IDXObject> frames))
+            if (!TryResolvePacketOwnedDropExplodeFrames(drop, out List<IDXObject> frames))
             {
                 return false;
             }
@@ -64,21 +119,23 @@ namespace HaCreator.MapSimulator
             return true;
         }
 
-        private void PlayPacketOwnedDropExplodeSound()
+        private void PlayPacketOwnedDropExplodeSound(DropItem drop)
         {
             if (_soundManager == null)
             {
                 return;
             }
 
+            float volumeScale = ResolvePacketOwnedDropExplodeVolumeScale(drop);
+
             string soundKey = EnsurePacketOwnedDropExplodeSoundKey();
             if (!string.IsNullOrWhiteSpace(soundKey))
             {
-                _soundManager.PlaySound(soundKey);
+                _soundManager.PlaySound(soundKey, volumeScale);
                 return;
             }
 
-            PlayDropItemSE();
+            PlayDropItemSE(volumeScale);
         }
 
         private string EnsurePacketOwnedDropExplodeSoundKey()
@@ -105,7 +162,7 @@ namespace HaCreator.MapSimulator
             return _packetOwnedDropExplodeSoundKey;
         }
 
-        private bool TryResolvePacketOwnedDropExplodeFrames(int dropId, out List<IDXObject> frames)
+        private bool TryResolvePacketOwnedDropExplodeFrames(DropItem drop, out List<IDXObject> frames)
         {
             frames = null;
 
@@ -115,7 +172,7 @@ namespace HaCreator.MapSimulator
                 return false;
             }
 
-            int preferredVariantIndex = PacketOwnedDropExplosionPresentation.ResolveVariantIndex(dropId, variantCount);
+            int preferredVariantIndex = PacketOwnedDropExplosionPresentation.ResolveHitVariantIndex(drop, variantCount);
             if (TryGetPacketOwnedDropExplodeFrames(preferredVariantIndex, out frames))
             {
                 return true;
@@ -194,6 +251,16 @@ namespace HaCreator.MapSimulator
             WzImage skillImage = Program.FindImage("Skill", PacketOwnedDropExplosionPresentation.SkillImageName);
             skillImage?.ParseImage();
             return skillImage?["skill"]?["4211006"]?["hit"] as WzImageProperty;
+        }
+
+        private float ResolvePacketOwnedDropExplodeVolumeScale(DropItem drop)
+        {
+            if (_playerManager?.Player == null)
+            {
+                return 1f;
+            }
+
+            return PacketOwnedDropExplosionPresentation.ResolveSoundVolumeScale(_playerManager.Player.Position, drop);
         }
     }
 }

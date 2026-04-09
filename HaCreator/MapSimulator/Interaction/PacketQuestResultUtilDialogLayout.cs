@@ -1,5 +1,14 @@
 namespace HaCreator.MapSimulator.Interaction
 {
+    internal enum PacketQuestResultUtilDialogButtonVisualState
+    {
+        Normal = 0,
+        MouseOver = 1,
+        Pressed = 2,
+        Disabled = 3,
+        KeyFocused = 4
+    }
+
     internal static class PacketQuestResultUtilDialogLayout
     {
         // UIWindow2.img/UtilDlgEx exposes the v95-era quest-result util dialog shell
@@ -15,6 +24,32 @@ namespace HaCreator.MapSimulator.Interaction
         internal static string ResolveNextButtonText(bool hasNextPage)
         {
             return hasNextPage ? "Next" : "OK";
+        }
+
+        internal static PacketQuestResultUtilDialogButtonVisualState ResolveButtonVisualState(
+            bool enabled,
+            bool isPressed,
+            bool isHovered,
+            bool isKeyFocused)
+        {
+            if (!enabled)
+            {
+                return PacketQuestResultUtilDialogButtonVisualState.Disabled;
+            }
+
+            if (isPressed)
+            {
+                return PacketQuestResultUtilDialogButtonVisualState.Pressed;
+            }
+
+            if (isHovered)
+            {
+                return PacketQuestResultUtilDialogButtonVisualState.MouseOver;
+            }
+
+            return isKeyFocused
+                ? PacketQuestResultUtilDialogButtonVisualState.KeyFocused
+                : PacketQuestResultUtilDialogButtonVisualState.Normal;
         }
     }
 }

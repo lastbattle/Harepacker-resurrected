@@ -1280,6 +1280,7 @@ namespace HaCreator.MapSimulator.Pools
             if (TryGetReactorIndexByPacketObjectId(packetObjectId, out int existingIndex))
             {
                 ApplyPacketReactorState(existingIndex, initialState, x, y, flip, currentTick);
+                SyncPacketScriptPublication(GetReactor(existingIndex), GetReactorData(existingIndex), currentTick);
                 reactorIndex = existingIndex;
                 message = $"Updated packet-owned reactor {packetObjectId} as template {reactorId} at ({x}, {y}).";
                 return true;
@@ -1333,6 +1334,7 @@ namespace HaCreator.MapSimulator.Pools
             }
 
             ApplyPacketReactorState(spawnPoint.SpawnId, initialState, x, y, flip, currentTick);
+            SyncPacketScriptPublication(reactor, GetReactorData(spawnPoint.SpawnId), currentTick);
             TrackPacketObjectId(spawnPoint.SpawnId, packetObjectId);
             reactorIndex = spawnPoint.SpawnId;
             message = $"Spawned packet-owned reactor {packetObjectId} as template {reactorId} at ({x}, {y}).";
@@ -1370,6 +1372,7 @@ namespace HaCreator.MapSimulator.Pools
             data.PacketStateEndTime = stateEndDelayTicks > 0 ? currentTick + (stateEndDelayTicks * 100) : 0;
             data.State = hitStartDelayMs > 0 ? ReactorState.Activated : ReactorState.Active;
             data.StateStartTime = currentTick;
+            SyncPacketScriptPublication(reactor, data, currentTick);
             message = $"Applied packet-owned reactor state {state} to object {packetObjectId} at ({x}, {y}).";
             return true;
         }
@@ -1762,6 +1765,17 @@ namespace HaCreator.MapSimulator.Pools
                 spawnPoint.IsActive = true;
                 spawnPoint.CurrentReactor = reactor;
             }
+        }
+
+        private void SyncPacketScriptPublication(ReactorItem reactor, ReactorRuntimeData data, int currentTick)
+        {
+            if (reactor == null || data == null)
+            {
+                return;
+            }
+
+            bool shouldPublish = data.VisualState != reactor.GetInitialState();
+            PublishScriptState(reactor, data, shouldPublish, currentTick);
         }
 
         private void TrackPacketObjectId(int index, int? packetObjectId)

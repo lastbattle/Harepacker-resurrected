@@ -7,11 +7,26 @@ using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
 using System.Collections.Generic;
+using SD = System.Drawing;
 
 namespace HaCreator.MapSimulator.UI
 {
     internal sealed class WeddingInvitationWindow : UIWindowBase
     {
+        private const string BasicBlackFontPathEnvironmentVariable = "MAPSIM_FONT_BASIC_BLACK_PATH";
+        private const string BasicBlackFontFaceEnvironmentVariable = "MAPSIM_FONT_BASIC_BLACK_FACE";
+        private static readonly string[] BasicBlackFontFamilyCandidates =
+        {
+            "DotumChe",
+            "Dotum",
+            "DOTOOMCHE",
+            "DOTOOM",
+            "DODUMCHE",
+            "DODUM",
+            "GulimChe",
+            "Gulim"
+        };
+
         private readonly GraphicsDevice _device;
         private readonly Texture2D _pixel;
         private readonly IReadOnlyDictionary<WeddingInvitationStyle, Texture2D> _backgrounds;
@@ -181,7 +196,13 @@ namespace HaCreator.MapSimulator.UI
                 return _basicBlackTextRasterizer;
             }
 
-            _basicBlackTextRasterizer = new ClientTextRasterizer(_device);
+            string resolvedFamily = ClientTextRasterizer.ResolvePreferredFontFamily(
+                requestedFamily: null,
+                fontPathEnvironmentVariable: BasicBlackFontPathEnvironmentVariable,
+                fontFaceEnvironmentVariable: BasicBlackFontFaceEnvironmentVariable,
+                preferredPrivateFontFamilyCandidates: BasicBlackFontFamilyCandidates,
+                preferEmbeddedPrivateFontSources: true);
+            _basicBlackTextRasterizer = new ClientTextRasterizer(_device, resolvedFamily, 12f, SD.FontStyle.Regular);
             return _basicBlackTextRasterizer;
         }
 

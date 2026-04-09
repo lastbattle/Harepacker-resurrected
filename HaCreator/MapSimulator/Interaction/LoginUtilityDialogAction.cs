@@ -20,5 +20,6 @@ namespace HaCreator.MapSimulator
         WebsiteHandoff = 13,
         ConfirmApspEvent = 14,
         ConfirmFollowCharacterRequest = 15,
+        ConfirmUtilityQuit = 18,
     }
 }

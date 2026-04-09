@@ -179,6 +179,7 @@ namespace HaCreator.MapSimulator.UI
         {
             None,
             WishlistOwnerConfirm,
+            RequestConfirm,
             RequestQuantity
         }
 
@@ -808,6 +809,40 @@ namespace HaCreator.MapSimulator.UI
 
             SelectAbsoluteIndex(absoluteIndex);
             return _footerMessage;
+        }
+
+        public string MoveListOwnerSelectionByPage(int direction)
+        {
+            if (direction == 0)
+            {
+                return _footerMessage;
+            }
+
+            MoveSelection(direction * MaxVisibleRows);
+            return _footerMessage;
+        }
+
+        public string SelectListOwnerBoundary(bool toEnd)
+        {
+            AdminShopPaneState paneState = _paneStates[_activePane];
+            if (paneState.Entries.Count == 0)
+            {
+                _footerMessage = "CCSWnd_List has no entries to select on the active pane.";
+                UpdateActionButtonStates();
+                return _footerMessage;
+            }
+
+            SelectAbsoluteIndex(toEnd ? paneState.Entries.Count - 1 : 0);
+            return _footerMessage;
+        }
+
+        public string ToggleListOwnerPane()
+        {
+            AdminShopPane previousPane = _activePane;
+            SwitchActivePane();
+            return previousPane == _activePane
+                ? "CCSWnd_List could not switch panes because the alternate owner is empty."
+                : _footerMessage;
         }
 
         public void SetStorageRuntime(IStorageRuntime storageRuntime)
@@ -1696,6 +1731,11 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            if (TryOpenRequestConfirmationModal(entry))
+            {
+                return;
+            }
+
             BeginPendingRequest(entry, 1);
         }
 
@@ -2545,6 +2585,14 @@ namespace HaCreator.MapSimulator.UI
                 return;
             }
 
+            if (_modalMode == AdminShopModalMode.RequestConfirm)
+            {
+                AdminShopEntry entry = _pendingModalEntry;
+                CloseModal(string.Empty);
+                BeginPendingRequest(entry, 1);
+                return;
+            }
+
             if (_modalMode == AdminShopModalMode.WishlistOwnerConfirm && WishlistWindowRequested != null)
             {
                 WishlistWindowRequested.Invoke(this);
@@ -2558,13 +2606,18 @@ namespace HaCreator.MapSimulator.UI
         private void OnModalCancelClicked(UIObject sender)
         {
             string title = _pendingModalEntry?.Title;
-            string footerMessage = _modalMode == AdminShopModalMode.RequestQuantity
-                ? (string.IsNullOrWhiteSpace(title)
+            string footerMessage = _modalMode switch
+            {
+                AdminShopModalMode.RequestQuantity => string.IsNullOrWhiteSpace(title)
                     ? "Item-count prompt cancelled."
-                    : $"Item-count prompt cancelled for {title}.")
-                : (string.IsNullOrWhiteSpace(title)
+                    : $"Item-count prompt cancelled for {title}.",
+                AdminShopModalMode.RequestConfirm => string.IsNullOrWhiteSpace(title)
+                    ? "Request confirmation cancelled."
+                    : $"Request confirmation cancelled for {title}.",
+                _ => string.IsNullOrWhiteSpace(title)
                     ? "Wish-list confirmation cancelled."
-                    : $"Wish-list confirmation cancelled for {title}.");
+                    : $"Wish-list confirmation cancelled for {title}."
+            };
             CloseModal(footerMessage);
         }
 
@@ -2670,6 +2723,27 @@ namespace HaCreator.MapSimulator.UI
             _modalQuantity = 1;
             _modalMessage = $"Select a request count for {entry.Title}.";
             _footerMessage = $"Opened the item-count prompt for {entry.Title}.";
+            PositionModalButtons();
+            UpdateModalButtons();
+            UpdateActionButtonStates();
+            return true;
+        }
+
+        private bool TryOpenRequestConfirmationModal(AdminShopEntry entry)
+        {
+            if (!RequiresSingleItemRequestConfirmation(entry))
+            {
+                return false;
+            }
+
+            _pendingModalEntry = entry;
+            _modalMode = AdminShopModalMode.RequestConfirm;
+            _modalVisible = true;
+            _modalQuantityMin = 1;
+            _modalQuantityMax = 1;
+            _modalQuantity = 1;
+            _modalMessage = BuildRequestConfirmationMessage(entry);
+            _footerMessage = $"Opened the request confirmation for {entry.Title}.";
             PositionModalButtons();
             UpdateModalButtons();
             UpdateActionButtonStates();
@@ -5430,6 +5504,26 @@ namespace HaCreator.MapSimulator.UI
                    && ResolveRewardMaxStack(entry) > 1;
         }
 
+        private bool RequiresSingleItemRequestConfirmation(AdminShopEntry entry)
+        {
+            if (entry == null
+                || entry.IsStorageExpansion
+                || entry.InventoryExpansionType != InventoryType.NONE
+                || SupportsQuantityPrompt(entry))
+            {
+                return false;
+            }
+
+            if (RequiresInventorySource(entry))
+            {
+                return true;
+            }
+
+            return entry.RewardItemId > 0
+                   && entry.RewardInventoryType != InventoryType.NONE
+                   && ResolveRewardMaxStack(entry) <= 1;
+        }
+
         private int ResolveOwnedSourceRequestCount(AdminShopEntry entry, int ownedQuantity)
         {
             if (!RequiresInventorySource(entry))
@@ -5461,6 +5555,24 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return $"Deliver: x{ComputeDeliveredQuantity(entry, requestQuantity)}";
+        }
+
+        private string BuildRequestConfirmationMessage(AdminShopEntry entry)
+        {
+            if (entry == null)
+            {
+                return "Send this shop request?";
+            }
+
+            if (RequiresInventorySource(entry))
+            {
+                return $"Trade {ResolveSourceItemLabel(entry)} for {entry.Title}?";
+            }
+
+            long totalPrice = ComputeRequestPrice(entry, 1);
+            return totalPrice > 0
+                ? $"Request {entry.Title} for {FormatPriceLabel(totalPrice)}?"
+                : $"Request {entry.Title}?";
         }
 
         private AdminShopEntry CreateSyntheticCommodityEntry(AdminShopCommodityData commodity)

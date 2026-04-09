@@ -574,7 +574,6 @@ namespace HaCreator.MapSimulator.Managers
             }
 
             int layerCount = Math.Min(drop.MesoAnimationLayerCount, drop.AnimFrames.Count);
-            float pulse = MathF.Sin((context.TickCount - drop.SpawnTime) / 120f);
 
             for (int layerIndex = 0; layerIndex < layerCount; layerIndex++)
             {
@@ -584,21 +583,25 @@ namespace HaCreator.MapSimulator.Managers
                     continue;
                 }
 
-                float layerProgress = layerCount == 1 ? 0f : layerIndex / (float)(layerCount - 1);
-                float alpha = MathHelper.Clamp((0.38f + 0.18f * layerIndex + 0.12f * pulse) * drop.Alpha, 0f, 1f);
-                float scale = 0.9f + 0.08f * layerIndex + 0.03f * pulse;
+                PacketOwnedMesoLayerDrawState layerState = PacketOwnedMesoAnimationPresentation.ResolveLayerDrawState(
+                    drop.MesoAnimationIconType,
+                    layerIndex,
+                    layerCount,
+                    context.TickCount,
+                    drop.SpawnTime,
+                    drop.Alpha);
                 int drawX = screenX;
-                int drawY = screenY - (int)MathF.Round(layerProgress * 4f);
+                int drawY = screenY + layerState.YOffset;
 
                 if (frame.Texture != null)
                 {
-                    int width = Math.Max(1, (int)MathF.Round(frame.Width * scale));
-                    int height = Math.Max(1, (int)MathF.Round(frame.Height * scale));
+                    int width = Math.Max(1, (int)MathF.Round(frame.Width * layerState.Scale));
+                    int height = Math.Max(1, (int)MathF.Round(frame.Height * layerState.Scale));
                     context.SpriteBatch.Draw(
                         frame.Texture,
                         new Rectangle(drawX, drawY, width, height),
                         null,
-                        Color.White * alpha,
+                        Color.White * layerState.Alpha,
                         0f,
                         Vector2.Zero,
                         SpriteEffects.None,
@@ -612,7 +615,7 @@ namespace HaCreator.MapSimulator.Managers
                         null,
                         drawX,
                         drawY,
-                        Color.White * alpha,
+                        Color.White * layerState.Alpha,
                         false,
                         null);
                 }

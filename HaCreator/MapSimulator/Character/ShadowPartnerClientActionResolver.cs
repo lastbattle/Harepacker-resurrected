@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using HaCreator.MapSimulator.Character.Skills;
+using Microsoft.Xna.Framework;
 
 namespace HaCreator.MapSimulator.Character
 {
@@ -434,6 +435,97 @@ namespace HaCreator.MapSimulator.Character
             };
             remappedAnimation.CalculateDuration();
             return remappedAnimation;
+        }
+
+        public static Point ResolveClientTargetOffset(
+            string observedPlayerActionName,
+            PlayerState state,
+            bool facingRight,
+            int sideOffsetPx,
+            int backActionOffsetYPx)
+        {
+            if (IsClientBackAction(observedPlayerActionName, state))
+            {
+                return new Point(0, backActionOffsetYPx);
+            }
+
+            return new Point(facingRight ? -sideOffsetPx : sideOffsetPx, 0);
+        }
+
+        public static Point InterpolateClientOffset(
+            Point startOffset,
+            Point targetOffset,
+            int transitionStartTime,
+            int currentTime,
+            int transitionDurationMs)
+        {
+            if (transitionDurationMs <= 0)
+            {
+                return targetOffset;
+            }
+
+            int elapsedTime = Math.Max(0, currentTime - transitionStartTime);
+            float progress = MathHelper.Clamp(elapsedTime / (float)transitionDurationMs, 0f, 1f);
+            return new Point(
+                (int)Math.Round(MathHelper.Lerp(startOffset.X, targetOffset.X, progress)),
+                (int)Math.Round(MathHelper.Lerp(startOffset.Y, targetOffset.Y, progress)));
+        }
+
+        public static int ResolveAttackDelayMs(
+            IReadOnlyDictionary<string, SkillAnimation> actionAnimations,
+            string actionName,
+            int defaultDelayMs)
+        {
+            if (actionAnimations != null
+                && !string.IsNullOrWhiteSpace(actionName)
+                && actionAnimations.TryGetValue(actionName, out SkillAnimation animation)
+                && animation?.Frames != null
+                && animation.Frames.Count > 0)
+            {
+                int frameDelay = animation.Frames[0]?.Delay ?? 0;
+                if (frameDelay > 0)
+                {
+                    return frameDelay;
+                }
+            }
+
+            return defaultDelayMs;
+        }
+
+        public static bool IsBlockingAction(string actionName)
+        {
+            return !string.IsNullOrWhiteSpace(actionName)
+                   && (IsAttackAction(actionName)
+                       || actionName.StartsWith("create", StringComparison.OrdinalIgnoreCase));
+        }
+
+        public static bool IsAttackAction(string actionName)
+        {
+            if (string.IsNullOrWhiteSpace(actionName))
+            {
+                return false;
+            }
+
+            return actionName.StartsWith("swing", StringComparison.OrdinalIgnoreCase)
+                   || actionName.StartsWith("stab", StringComparison.OrdinalIgnoreCase)
+                   || actionName.StartsWith("shoot", StringComparison.OrdinalIgnoreCase)
+                   || actionName.StartsWith("attack", StringComparison.OrdinalIgnoreCase)
+                   || string.Equals(actionName, "proneStab", StringComparison.OrdinalIgnoreCase);
+        }
+
+        public static bool IsClientBackAction(string observedPlayerActionName, PlayerState state)
+        {
+            if (state is PlayerState.Ladder or PlayerState.Rope)
+            {
+                return true;
+            }
+
+            return observedPlayerActionName?.ToLowerInvariant() switch
+            {
+                "ladder" or "ladder2" or "ghostladder" => true,
+                "rope" or "rope2" or "ghostrope" => true,
+                _ => false
+            };
         }
 
         private static bool ShouldPreferActionSpecificAliasCandidates(string playerActionName)

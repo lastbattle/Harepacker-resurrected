@@ -79,6 +79,8 @@ namespace HaCreator.MapSimulator.UI
         private MouseState _previousMouseState;
         private bool _editTargetFocused;
         private bool _softKeyboardActive;
+        private string _compositionText = string.Empty;
+        private ImeCandidateListState _candidateListState = ImeCandidateListState.Empty;
         private bool _confirmationVisible;
         private string _confirmationMessage = string.Empty;
         private Action _pendingConfirmationAction;
@@ -211,8 +213,7 @@ namespace HaCreator.MapSimulator.UI
         public override void Hide()
         {
             base.Hide();
-            _softKeyboardActive = false;
-            _editTargetFocused = false;
+            ClearEditTargetFocus();
         }
 
         public override void SetFont(SpriteFont font)
@@ -372,6 +373,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             DrawEditTarget(sprite, TickCount);
+            DrawImeCandidateWindow(sprite);
             DrawScrollBar(sprite);
 
             if (_selectedIndex >= 0 && _selectedIndex < _destinations.Count)
@@ -499,7 +501,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _selectedIndex = actualIndex;
-            _editTargetFocused = false;
+            ClearEditTargetFocus();
             UpdateButtonStates();
         }
 
@@ -629,7 +631,7 @@ namespace HaCreator.MapSimulator.UI
 
             string displayText = string.IsNullOrEmpty(_manualTargetText) && !_editTargetFocused
                 ? "Target map ID"
-                : _manualTargetText;
+                : BuildVisibleTargetText();
             Color textColor = string.IsNullOrEmpty(_manualTargetText) && !_editTargetFocused
                 ? new Color(136, 136, 136)
                 : Color.White;
@@ -641,7 +643,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (_editTargetFocused && (tickCount / 450) % 2 == 0)
             {
-                float textWidth = _font.MeasureString(_manualTargetText).X;
+                float textWidth = _font.MeasureString(BuildVisibleTargetText()).X;
                 int caretX = bounds.X + EditTargetTextInsetX + Math.Min((int)textWidth, EditTargetWidth - 6);
                 sprite.Draw(_selectionTexture, new Rectangle(caretX, bounds.Y + 2, 1, bounds.Height - 4), Color.White);
             }
@@ -672,8 +674,7 @@ namespace HaCreator.MapSimulator.UI
 
             if (ContainsPoint(mousePoint.X, mousePoint.Y))
             {
-                _editTargetFocused = false;
-                _softKeyboardActive = false;
+                ClearEditTargetFocus();
                 UpdateButtonStates();
             }
         }
@@ -682,6 +683,7 @@ namespace HaCreator.MapSimulator.UI
         {
             if (!_editTargetFocused)
             {
+                ClearCompositionText();
                 _previousKeyboardState = Keyboard.GetState();
                 return;
             }
@@ -691,43 +693,26 @@ namespace HaCreator.MapSimulator.UI
 
             if (ctrl && WasPressed(keyboardState, Keys.V))
             {
+                ClearCompositionText();
                 HandleClipboardPaste();
             }
             else if (WasPressed(keyboardState, Keys.Back) && _manualTargetText.Length > 0)
             {
+                ClearCompositionText();
                 _manualTargetText = _manualTargetText[..^1];
             }
             else if (WasPressed(keyboardState, Keys.Enter))
             {
                 if (TryParseManualTargetMapId(out int targetMapId))
                 {
+                    ClearCompositionText();
                     _softKeyboardActive = false;
                     RequestMoveConfirmation(null, targetMapId);
                 }
             }
             else if (WasPressed(keyboardState, Keys.Escape))
             {
-                _editTargetFocused = false;
-                _softKeyboardActive = false;
-            }
-            else
-            {
-                foreach (Keys key in keyboardState.GetPressedKeys())
-                {
-                    if (!_previousKeyboardState.IsKeyUp(key))
-                    {
-                        continue;
-                    }
-
-                    char? digit = TranslateDigitKey(key);
-                    if (digit == null || _manualTargetText.Length >= EditTargetMaxLength)
-                    {
-                        continue;
-                    }
-
-                    _manualTargetText += digit.Value;
-                    break;
-                }
+                ClearEditTargetFocus();
             }
 
             _previousKeyboardState = keyboardState;
@@ -935,7 +920,7 @@ namespace HaCreator.MapSimulator.UI
             _confirmationMessage = message ?? string.Empty;
             _pendingConfirmationAction = confirmationAction;
             _confirmationVisible = true;
-            _editTargetFocused = false;
+            ClearEditTargetFocus();
             UpdateConfirmationLayout();
             UpdateButtonStates();
         }
@@ -1178,6 +1163,90 @@ namespace HaCreator.MapSimulator.UI
             sprite.Draw(texture, bounds, Color.White);
         }
 
+        private void DrawImeCandidateWindow(SpriteBatch sprite)
+        {
+            if (_font == null || _selectionTexture == null || !_candidateListState.HasCandidates)
+            {
+                return;
+            }
+
+            Rectangle bounds = GetImeCandidateWindowBounds(sprite.GraphicsDevice.Viewport);
+            if (bounds.Width <= 0 || bounds.Height <= 0)
+            {
+                return;
+            }
+
+            sprite.Draw(_selectionTexture, bounds, new Color(33, 33, 41, 235));
+            sprite.Draw(_selectionTexture, new Rectangle(bounds.X, bounds.Y, bounds.Width, 1), new Color(214, 214, 214, 220));
+            sprite.Draw(_selectionTexture, new Rectangle(bounds.X, bounds.Bottom - 1, bounds.Width, 1), new Color(214, 214, 214, 220));
+            sprite.Draw(_selectionTexture, new Rectangle(bounds.X, bounds.Y, 1, bounds.Height), new Color(214, 214, 214, 220));
+            sprite.Draw(_selectionTexture, new Rectangle(bounds.Right - 1, bounds.Y, 1, bounds.Height), new Color(214, 214, 214, 220));
+
+            int start = Math.Clamp(_candidateListState.PageStart, 0, _candidateListState.Candidates.Count);
+            int count = Math.Min(GetVisibleCandidateCount(), _candidateListState.Candidates.Count - start);
+            int rowHeight = Math.Max(_font.LineSpacing + 1, 16);
+            int numberWidth = (int)Math.Ceiling(_font.MeasureString($"{Math.Max(1, count)}.").X);
+            for (int i = 0; i < count; i++)
+            {
+                int candidateIndex = start + i;
+                Rectangle rowBounds = new(bounds.X + 2, bounds.Y + 2 + (i * rowHeight), bounds.Width - 4, rowHeight);
+                bool selected = candidateIndex == _candidateListState.Selection;
+                if (selected)
+                {
+                    sprite.Draw(_selectionTexture, rowBounds, new Color(89, 108, 147, 220));
+                }
+
+                sprite.DrawString(_font, $"{i + 1}.", new Vector2(rowBounds.X + 4, rowBounds.Y), selected ? Color.White : new Color(222, 222, 222));
+                sprite.DrawString(
+                    _font,
+                    _candidateListState.Candidates[candidateIndex] ?? string.Empty,
+                    new Vector2(rowBounds.X + 8 + numberWidth, rowBounds.Y),
+                    selected ? Color.White : new Color(240, 235, 200));
+            }
+        }
+
+        private Rectangle GetImeCandidateWindowBounds(Viewport viewport)
+        {
+            int visibleCount = GetVisibleCandidateCount();
+            if (visibleCount <= 0 || _font == null)
+            {
+                return Rectangle.Empty;
+            }
+
+            int widestEntryWidth = 0;
+            for (int i = 0; i < visibleCount; i++)
+            {
+                int candidateIndex = Math.Clamp(_candidateListState.PageStart + i, 0, _candidateListState.Candidates.Count - 1);
+                string candidateText = _candidateListState.Candidates[candidateIndex] ?? string.Empty;
+                int entryWidth = (int)Math.Ceiling(_font.MeasureString($"{i + 1}.").X + _font.MeasureString(candidateText).X) + 16;
+                widestEntryWidth = Math.Max(widestEntryWidth, entryWidth);
+            }
+
+            int width = Math.Max(96, widestEntryWidth + 14);
+            int height = (visibleCount * Math.Max(_font.LineSpacing + 1, 16)) + 4;
+            Rectangle ownerBounds = GetEditTargetBounds();
+            int x = Math.Clamp(ownerBounds.X, 0, Math.Max(0, viewport.Width - width));
+            int y = ownerBounds.Bottom + 2;
+            if (y + height > viewport.Height)
+            {
+                y = Math.Max(0, ownerBounds.Y - height - 2);
+            }
+
+            return new Rectangle(x, y, width, height);
+        }
+
+        private int GetVisibleCandidateCount()
+        {
+            if (!_candidateListState.HasCandidates)
+            {
+                return 0;
+            }
+
+            int start = Math.Clamp(_candidateListState.PageStart, 0, _candidateListState.Candidates.Count);
+            int pageSize = _candidateListState.PageSize > 0 ? _candidateListState.PageSize : _candidateListState.Candidates.Count;
+            return Math.Max(0, Math.Min(pageSize, _candidateListState.Candidates.Count - start));
+        }
+
         private int GetMaxScrollOffset()
         {
             return Math.Max(0, _destinations.Count - MaxVisibleRows);
@@ -1190,6 +1259,65 @@ namespace HaCreator.MapSimulator.UI
                 && _scrollDownNormal != null
                 && _scrollTrackEnabled != null
                 && _scrollThumbNormal != null;
+        }
+
+        public override void HandleCommittedText(string text)
+        {
+            if (!_editTargetFocused || string.IsNullOrEmpty(text))
+            {
+                return;
+            }
+
+            ClearCompositionText();
+            foreach (char character in text)
+            {
+                if (!char.IsDigit(character) || _manualTargetText.Length >= EditTargetMaxLength)
+                {
+                    continue;
+                }
+
+                _manualTargetText += character;
+            }
+
+            UpdateButtonStates();
+        }
+
+        public override void HandleCompositionText(string text)
+        {
+            HandleCompositionState(new ImeCompositionState(text ?? string.Empty, Array.Empty<int>(), -1));
+        }
+
+        public override void HandleCompositionState(ImeCompositionState state)
+        {
+            if (!_editTargetFocused)
+            {
+                ClearCompositionText();
+                return;
+            }
+
+            _compositionText = SanitizeCompositionText(state?.Text);
+            if (_compositionText.Length == 0)
+            {
+                ClearImeCandidateList();
+            }
+        }
+
+        public override void ClearCompositionText()
+        {
+            _compositionText = string.Empty;
+            ClearImeCandidateList();
+        }
+
+        public override void HandleImeCandidateList(ImeCandidateListState state)
+        {
+            _candidateListState = _editTargetFocused && state != null && state.HasCandidates
+                ? state
+                : ImeCandidateListState.Empty;
+        }
+
+        public override void ClearImeCandidateList()
+        {
+            _candidateListState = ImeCandidateListState.Empty;
         }
 
         Rectangle ISoftKeyboardHost.GetSoftKeyboardAnchorBounds() => GetEditTargetBounds();
@@ -1256,7 +1384,7 @@ namespace HaCreator.MapSimulator.UI
         void ISoftKeyboardHost.OnSoftKeyboardClosed()
         {
             _softKeyboardActive = false;
-            _editTargetFocused = false;
+            ClearCompositionText();
             UpdateButtonStates();
         }
 
@@ -1265,19 +1393,41 @@ namespace HaCreator.MapSimulator.UI
             return keyboardState.IsKeyDown(key) && _previousKeyboardState.IsKeyUp(key);
         }
 
-        private static char? TranslateDigitKey(Keys key)
+        private string BuildVisibleTargetText()
         {
-            if (key >= Keys.D0 && key <= Keys.D9)
+            return string.IsNullOrEmpty(_compositionText)
+                ? _manualTargetText
+                : _manualTargetText + _compositionText;
+        }
+
+        private string SanitizeCompositionText(string text)
+        {
+            if (string.IsNullOrEmpty(text))
             {
-                return (char)('0' + (key - Keys.D0));
+                return string.Empty;
             }
 
-            if (key >= Keys.NumPad0 && key <= Keys.NumPad9)
+            List<char> accepted = new(text.Length);
+            foreach (char character in text)
             {
-                return (char)('0' + (key - Keys.NumPad0));
+                if (!char.IsDigit(character) || _manualTargetText.Length + accepted.Count >= EditTargetMaxLength)
+                {
+                    continue;
+                }
+
+                accepted.Add(character);
             }
 
-            return null;
+            return accepted.Count == 0
+                ? string.Empty
+                : new string(accepted.ToArray());
+        }
+
+        private void ClearEditTargetFocus()
+        {
+            _editTargetFocused = false;
+            _softKeyboardActive = false;
+            ClearCompositionText();
         }
 
         private int FrameWidth => CurrentFrame?.Texture?.Width ?? _confirmationTexture?.Width ?? 0;

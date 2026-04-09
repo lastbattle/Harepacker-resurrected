@@ -59,6 +59,13 @@ namespace HaCreator.MapSimulator.UI
         {
             (new[] { "mhpR", "mhpRRate" }, "Max HP"),
             (new[] { "mmpR", "mmpRRate" }, "Max MP"),
+            (new[] { "pddRate", "pddR" }, "Weapon DEF"),
+            (new[] { "mddRate", "mddR" }, "Magic DEF"),
+            (new[] { "accRate", "accR" }, "Accuracy"),
+            (new[] { "evaRate", "evaR" }, "Avoidability"),
+            (new[] { "padRate" }, "Weapon ATT"),
+            (new[] { "madRate" }, "Magic ATT"),
+            (new[] { "speedRate" }, "Speed"),
             (new[] { "asrR", "indieAsrR" }, "Status Resistance")
         };
         private static readonly (string[] Keys, string Label)[] PrimaryFlatEffectKeys =
@@ -82,8 +89,9 @@ namespace HaCreator.MapSimulator.UI
         };
         private static readonly (string[] Keys, string Label)[] IndependentPercentEffectKeys =
         {
-            (new[] { "expBuff", "expR" }, "EXP"),
-            (new[] { "dropRate", "dropR" }, "Item Drop Rate")
+            (new[] { "expBuff", "expR", "plusExpRate" }, "EXP"),
+            (new[] { "dropRate", "dropR" }, "Item Drop Rate"),
+            (new[] { "mesoR" }, "Meso Rate")
         };
         private static readonly (string Key, string Label)[] InfoFlatEffectKeys =
         {
@@ -102,6 +110,15 @@ namespace HaCreator.MapSimulator.UI
             ("incSpeed", "Speed"),
             ("incJump", "Jump"),
             ("incCraft", "Craft")
+        };
+        private static readonly (string Key, string Label)[] PersonalityExperienceKeys =
+        {
+            ("charismaEXP", "Charisma EXP"),
+            ("insightEXP", "Insight EXP"),
+            ("willEXP", "Will EXP"),
+            ("craftEXP", "Craft EXP"),
+            ("senseEXP", "Sense EXP"),
+            ("charmEXP", "Charm EXP")
         };
 
         public static InventoryType ResolveInventoryType(int itemId)
@@ -340,6 +357,7 @@ namespace HaCreator.MapSimulator.UI
             List<string> metadataLines = BuildMetadataLines(
                 itemId,
                 infoProperty,
+                specProperty,
                 isNotForSale,
                 isQuestItem,
                 isTradeBlocked,
@@ -711,6 +729,7 @@ namespace HaCreator.MapSimulator.UI
         private static List<string> BuildMetadataLines(
             int itemId,
             WzSubProperty infoProperty,
+            WzSubProperty specProperty,
             bool isNotForSale,
             bool isQuestItem,
             bool isTradeBlocked,
@@ -742,7 +761,7 @@ namespace HaCreator.MapSimulator.UI
                 metadataLines.Add($"Expires {expirationDateUtc.Value.ToLocalTime().ToString("yyyy-MM-dd HH:mm", CultureInfo.InvariantCulture)}");
             }
 
-            AppendInfoMetadataLines(metadataLines, itemId, infoProperty);
+            AppendInfoMetadataLines(metadataLines, itemId, infoProperty, specProperty);
             AppendMonsterBookMetadataLines(metadataLines, infoProperty);
             AppendQuestRequirementMetadataLines(metadataLines, infoProperty);
             AppendConsumeItemMetadataLines(metadataLines, infoProperty);
@@ -1097,7 +1116,11 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
-        private static void AppendInfoMetadataLines(List<string> metadataLines, int itemId, WzSubProperty infoProperty)
+        private static void AppendInfoMetadataLines(
+            List<string> metadataLines,
+            int itemId,
+            WzSubProperty infoProperty,
+            WzSubProperty specProperty = null)
         {
             if (infoProperty == null)
             {
@@ -1122,6 +1145,7 @@ namespace HaCreator.MapSimulator.UI
             AppendItemPeriodMetadataLines(metadataLines, infoProperty);
             AppendCreateMetadataLines(metadataLines, infoProperty);
             AppendReplaceMetadataLines(metadataLines, infoProperty);
+            AppendAdditionalInfoFlagsMetadataLines(metadataLines, infoProperty, specProperty);
         }
 
         private static void AppendStateChangeItemMetadataLines(List<string> metadataLines, WzSubProperty infoProperty)
@@ -1308,6 +1332,85 @@ namespace HaCreator.MapSimulator.UI
             }
         }
 
+        private static void AppendAdditionalInfoFlagsMetadataLines(
+            List<string> metadataLines,
+            WzSubProperty infoProperty,
+            WzSubProperty specProperty = null)
+        {
+            if (infoProperty == null)
+            {
+                return;
+            }
+
+            int tradeAvailable = GetIntOrStringValue(infoProperty["tradeAvailable"]);
+            if (tradeAvailable > 0)
+            {
+                metadataLines.Add($"Trade available {tradeAvailable} time{(tradeAvailable == 1 ? string.Empty : "s")}");
+            }
+
+            if (GetIntValue(infoProperty["accountSharable"]) == 1
+                || GetIntValue(infoProperty["accountShareable"]) == 1)
+            {
+                metadataLines.Add("Account-sharable");
+            }
+
+            if (GetIntValue(infoProperty["timeLimited"]) == 1)
+            {
+                metadataLines.Add("Time-limited item");
+            }
+
+            if (GetIntValue(infoProperty["dropBlock"]) == 1)
+            {
+                metadataLines.Add("Cannot be dropped");
+            }
+
+            if (GetIntValue(infoProperty["noMoveToLocker"]) == 1)
+            {
+                metadataLines.Add("Cannot be moved to locker");
+            }
+
+            int expRate = GetIntOrStringValue(infoProperty["expRate"]);
+            if (expRate > 0)
+            {
+                metadataLines.Add($"EXP Rate {FormatSignedValue(expRate)}%");
+            }
+
+            int bonusExpRate = GetIntOrStringValue(infoProperty["bonusEXPRate"]);
+            if (bonusExpRate > 0)
+            {
+                metadataLines.Add($"Bonus EXP Rate {FormatSignedValue(bonusExpRate)}%");
+            }
+
+            int nickSkillId = GetIntOrStringValue(infoProperty["nickSkill"]);
+            if (nickSkillId > 0)
+            {
+                metadataLines.Add($"Nickname Effect: {ResolveSkillTooltipLabel(nickSkillId)}");
+            }
+
+            AppendPersonalityExperienceMetadataLines(metadataLines, infoProperty, specProperty);
+        }
+
+        private static void AppendPersonalityExperienceMetadataLines(
+            List<string> metadataLines,
+            WzSubProperty infoProperty,
+            WzSubProperty specProperty)
+        {
+            for (int i = 0; i < PersonalityExperienceKeys.Length; i++)
+            {
+                (string key, string label) = PersonalityExperienceKeys[i];
+                int experienceAmount = GetIntOrStringValue(infoProperty?[key]);
+                if (experienceAmount <= 0)
+                {
+                    experienceAmount = GetIntOrStringValue(specProperty?[key]);
+                }
+
+                if (experienceAmount > 0)
+                {
+                    metadataLines.Add($"{label} {FormatSignedValue(experienceAmount)}");
+                }
+            }
+        }
+
         private static bool HasNumericChildEntries(WzSubProperty property, params string[] ignoredNames)
         {
             if (property?.WzProperties == null)
@@ -1428,6 +1531,14 @@ namespace HaCreator.MapSimulator.UI
             return string.IsNullOrWhiteSpace(skillName)
                 ? $"Skill: #{skillId.ToString(CultureInfo.InvariantCulture)}"
                 : $"Skill: {skillName}";
+        }
+
+        private static string ResolveSkillTooltipLabel(int skillId)
+        {
+            string skillName = ResolveSkillName(skillId);
+            return string.IsNullOrWhiteSpace(skillName)
+                ? $"Skill #{skillId.ToString(CultureInfo.InvariantCulture)}"
+                : skillName;
         }
 
         private static string ResolveQuestTooltipLabel(int questId)
@@ -1607,6 +1718,11 @@ namespace HaCreator.MapSimulator.UI
             return BuildConsumeItemRequirementLines(consumeItemProperty, previewLineLimit);
         }
 
+        public static IReadOnlyList<string> BuildEffectLinesForTests(WzSubProperty specProperty)
+        {
+            return BuildEffectLines(0, null, null, specProperty);
+        }
+
         public static IReadOnlyList<string> BuildQuestRequirementMetadataLinesForTests(WzSubProperty infoProperty)
         {
             List<string> lines = new();
@@ -1619,6 +1735,19 @@ namespace HaCreator.MapSimulator.UI
             List<string> lines = new();
             AppendInfoMetadataLines(lines, itemId, infoProperty);
             return lines;
+        }
+
+        public static IReadOnlyList<string> BuildMetadataLinesForTests(WzSubProperty infoProperty, WzSubProperty specProperty)
+        {
+            return BuildMetadataLines(
+                0,
+                infoProperty,
+                specProperty,
+                isNotForSale: false,
+                isQuestItem: false,
+                isTradeBlocked: false,
+                isOneOfAKind: false,
+                expirationDateUtc: null);
         }
 
         public static IReadOnlyList<string> BuildReturnMapRecordEffectLinesForTests(WzImageProperty property)

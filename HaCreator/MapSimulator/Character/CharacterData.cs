@@ -1587,7 +1587,7 @@ namespace HaCreator.MapSimulator.Character
                         BuffStatType.Luck),
                     AutoAssignStrategy.PirateBrawlerLike => TryAutoAssignTowardsTarget(
                         BuffStatType.Dexterity,
-                        GetWarriorStyleDexTarget(),
+                        GetBrawlerStyleDexTarget(),
                         BuffStatType.Strength),
                     AutoAssignStrategy.PirateGunslingerLike => TryAutoAssignTowardsTarget(
                         BuffStatType.Strength,
@@ -2052,6 +2052,12 @@ namespace HaCreator.MapSimulator.Character
         }
 
         private int GetWarriorStyleDexTarget()
+        {
+            int level = Math.Max(1, Level);
+            return level > 30 ? level + 30 : 2 * level;
+        }
+
+        private int GetBrawlerStyleDexTarget()
         {
             int level = Math.Max(1, Level);
             return level > 20 ? level + 20 : 2 * level;

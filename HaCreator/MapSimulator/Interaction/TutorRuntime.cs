@@ -127,17 +127,24 @@ namespace HaCreator.MapSimulator.Interaction
         internal void ResetForRuntimeCharacter(int runtimeCharacterId, int currentTick)
         {
             BoundCharacterId = Math.Max(0, runtimeCharacterId);
-            _registeredTutorSkillIds.Clear();
-            LastRegistryMutationTick = currentTick;
             IsActive = false;
             ActiveSkillId = 0;
             ActiveSummonObjectId = 0;
             ActiveActorHeight = 0;
             LastHireTick = int.MinValue;
             ClearMessage();
+            if (_registeredTutorSkillIds.Count == 0)
+            {
+                LastRegistryMutationTick = currentTick;
+                StatusMessage = BoundCharacterId > 0
+                    ? $"Tutor runtime reset for runtime character {BoundCharacterId}."
+                    : "Tutor runtime reset.";
+                return;
+            }
+
             StatusMessage = BoundCharacterId > 0
-                ? $"Tutor runtime reset for runtime character {BoundCharacterId}."
-                : "Tutor runtime reset.";
+                ? $"Tutor runtime reset for runtime character {BoundCharacterId}; registered variants preserved: {DescribeActiveTutorVariants()}."
+                : $"Tutor runtime reset; registered variants preserved: {DescribeActiveTutorVariants()}.";
         }
 
         internal void ResetActiveTutorForRuntimeCharacter(int runtimeCharacterId, int currentTick)

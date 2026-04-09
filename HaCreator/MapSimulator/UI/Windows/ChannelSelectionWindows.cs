@@ -2,6 +2,7 @@ using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
 using System.Collections.Generic;
@@ -144,6 +145,8 @@ namespace HaCreator.MapSimulator.UI
         private bool _requestAllowed = true;
         private string _statusMessage;
         private bool _viewAllEnabled;
+        private KeyboardState _previousKeyboardState;
+        private bool _focusViewAllButton;
 
         public WorldSelectWindow(
             IDXObject frame,
@@ -213,6 +216,8 @@ namespace HaCreator.MapSimulator.UI
         }
 
         public override string WindowName => MapSimulatorWindowNames.WorldSelect;
+        public override bool SupportsDragging => false;
+        public override bool CapturesKeyboardInput => IsVisible;
 
         public event Action<int> WorldSelected;
         public event Action ViewAllRequested;
@@ -222,6 +227,17 @@ namespace HaCreator.MapSimulator.UI
         public override void SetFont(SpriteFont font)
         {
             _font = font;
+        }
+
+        public override void Show()
+        {
+            bool wasVisible = IsVisible;
+            base.Show();
+            if (!wasVisible)
+            {
+                _focusViewAllButton = _viewAllEnabled;
+                _previousKeyboardState = Keyboard.GetState();
+            }
         }
 
         public void Configure(
@@ -274,6 +290,52 @@ namespace HaCreator.MapSimulator.UI
 
             UpdateWorldButtonLayout();
             UpdateButtonStates();
+        }
+
+        public override void Update(GameTime gameTime)
+        {
+            base.Update(gameTime);
+
+            KeyboardState keyboardState = Keyboard.GetState();
+            if (!IsVisible)
+            {
+                _previousKeyboardState = keyboardState;
+                return;
+            }
+
+            if (Pressed(keyboardState, Keys.Tab))
+            {
+                _focusViewAllButton = _viewAllEnabled && !_focusViewAllButton;
+            }
+            else if (Pressed(keyboardState, Keys.Left))
+            {
+                HandleWorldNavigation(-1);
+            }
+            else if (Pressed(keyboardState, Keys.Right))
+            {
+                HandleWorldNavigation(1);
+            }
+            else if (Pressed(keyboardState, Keys.Up))
+            {
+                HandleWorldNavigation(-ClientWorldSlotColumnCount);
+            }
+            else if (Pressed(keyboardState, Keys.Down))
+            {
+                HandleWorldNavigation(ClientWorldSlotColumnCount);
+            }
+            else if (Pressed(keyboardState, Keys.Enter))
+            {
+                if (_focusViewAllButton && _viewAllEnabled && _requestAllowed)
+                {
+                    ViewAllRequested?.Invoke();
+                }
+                else
+                {
+                    SelectWorld(_selectedWorldId);
+                }
+            }
+
+            _previousKeyboardState = keyboardState;
         }
 
         protected override void DrawContents(
@@ -378,6 +440,7 @@ namespace HaCreator.MapSimulator.UI
             }
 
             _selectedWorldId = worldId;
+            _focusViewAllButton = false;
             UpdateButtonStates();
             WorldSelected?.Invoke(worldId);
         }
@@ -445,7 +508,9 @@ namespace HaCreator.MapSimulator.UI
             {
                 _viewAllButton.SetVisible(true);
                 _viewAllButton.SetEnabled(_requestAllowed && _viewAllEnabled);
-                _viewAllButton.SetButtonState(UIObjectState.Normal);
+                _viewAllButton.SetButtonState(_focusViewAllButton && _requestAllowed && _viewAllEnabled
+                    ? UIObjectState.MouseOver
+                    : UIObjectState.Normal);
             }
         }
 
@@ -507,6 +572,49 @@ namespace HaCreator.MapSimulator.UI
                 _viewAllButton.Y = ClientViewButtonY;
             }
         }
+
+        private void HandleWorldNavigation(int delta)
+        {
+            if (_focusViewAllButton)
+            {
+                if (delta < 0)
+                {
+                    _focusViewAllButton = false;
+                }
+
+                return;
+            }
+
+            List<int> visibleWorldIds = _orderedWorldIds
+                .Where(worldId => _worldButtons.Any(entry => entry.WorldId == worldId && entry.Button.ButtonVisible))
+                .ToList();
+            if (visibleWorldIds.Count == 0)
+            {
+                return;
+            }
+
+            int currentIndex = visibleWorldIds.IndexOf(_selectedWorldId);
+            if (currentIndex < 0)
+            {
+                currentIndex = 0;
+            }
+
+            int nextIndex = Math.Clamp(currentIndex + delta, 0, visibleWorldIds.Count - 1);
+            _selectedWorldId = visibleWorldIds[nextIndex];
+            if (delta > 0 &&
+                _viewAllEnabled &&
+                (nextIndex / ClientWorldSlotColumnCount) >= ClientWorldSlotRowCount - 1)
+            {
+                _focusViewAllButton = true;
+            }
+
+            UpdateButtonStates();
+        }
+
+        private bool Pressed(KeyboardState keyboardState, Keys key)
+        {
+            return keyboardState.IsKeyDown(key) && _previousKeyboardState.IsKeyUp(key);
+        }
     }
 
     public sealed class ChannelSelectWindow : UIWindowBase
@@ -547,6 +655,7 @@ namespace HaCreator.MapSimulator.UI
         private bool _hasAdultAccess;
         private bool _requestAllowed = true;
         private string _statusMessage;
+        private KeyboardState _previousKeyboardState;
 
         public ChannelSelectWindow(
             IDXObject frame,
@@ -609,12 +718,24 @@ namespace HaCreator.MapSimulator.UI
         }
 
         public override string WindowName => MapSimulatorWindowNames.ChannelSelect;
+        public override bool SupportsDragging => false;
+        public override bool CapturesKeyboardInput => IsVisible;
 
         public event Action<int, int> ChangeRequested;
 
         public override void SetFont(SpriteFont font)
         {
             _font = font;
+        }
+
+        public override void Show()
+        {
+            bool wasVisible = IsVisible;
+            base.Show();
+            if (!wasVisible)
+            {
+                _previousKeyboardState = Keyboard.GetState();
+            }
         }
 
         public void Configure(
@@ -651,6 +772,48 @@ namespace HaCreator.MapSimulator.UI
                 : FindFirstSelectableChannel();
 
             UpdateButtonStates();
+        }
+
+        public override void Update(GameTime gameTime)
+        {
+            base.Update(gameTime);
+
+            KeyboardState keyboardState = Keyboard.GetState();
+            if (!IsVisible)
+            {
+                _previousKeyboardState = keyboardState;
+                return;
+            }
+
+            if (Pressed(keyboardState, Keys.Left))
+            {
+                MoveSelection(-1);
+            }
+            else if (Pressed(keyboardState, Keys.Right))
+            {
+                MoveSelection(1);
+            }
+            else if (Pressed(keyboardState, Keys.Up))
+            {
+                MoveSelection(-5);
+            }
+            else if (Pressed(keyboardState, Keys.Down))
+            {
+                MoveSelection(5);
+            }
+            else if (Pressed(keyboardState, Keys.Enter))
+            {
+                if (CanApplySelection())
+                {
+                    ChangeRequested?.Invoke(_selectedWorldId, _selectedChannelIndex);
+                }
+            }
+            else if (Pressed(keyboardState, Keys.Escape))
+            {
+                Hide();
+            }
+
+            _previousKeyboardState = keyboardState;
         }
 
         protected override void DrawContents(
@@ -864,6 +1027,38 @@ namespace HaCreator.MapSimulator.UI
             UpdateButtonStates();
         }
 
+        private void MoveSelection(int delta)
+        {
+            List<int> visibleChannels = _channelButtons
+                .Where(entry => entry.Button.ButtonVisible)
+                .Select(entry => entry.ChannelIndex)
+                .OrderBy(index => index)
+                .ToList();
+            if (visibleChannels.Count == 0)
+            {
+                return;
+            }
+
+            int currentIndex = visibleChannels.IndexOf(_selectedChannelIndex);
+            if (currentIndex < 0)
+            {
+                currentIndex = 0;
+            }
+
+            int nextIndex = Math.Clamp(currentIndex + Math.Sign(delta == 0 ? 1 : delta), 0, visibleChannels.Count - 1);
+            if (Math.Abs(delta) > 1)
+            {
+                int targetChannel = Math.Clamp(_selectedChannelIndex + delta, visibleChannels.First(), visibleChannels.Last());
+                int matchingIndex = visibleChannels.IndexOf(targetChannel);
+                if (matchingIndex >= 0)
+                {
+                    nextIndex = matchingIndex;
+                }
+            }
+
+            SelectChannel(visibleChannels[nextIndex]);
+        }
+
         private int FindFirstSelectableChannel()
         {
             foreach (ChannelButtonEntry entry in _channelButtons.OrderBy(button => button.ChannelIndex))
@@ -943,6 +1138,11 @@ namespace HaCreator.MapSimulator.UI
                 _highlightTexture,
                 new Rectangle(gaugeBounds.X, gaugeBounds.Y, fallbackWidth, gaugeBounds.Height),
                 SelectorWindowDrawing.GetAvailabilityColor(availability));
+        }
+
+        private bool Pressed(KeyboardState keyboardState, Keys key)
+        {
+            return keyboardState.IsKeyDown(key) && _previousKeyboardState.IsKeyUp(key);
         }
     }
 

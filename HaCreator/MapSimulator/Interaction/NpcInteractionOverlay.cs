@@ -49,6 +49,10 @@ namespace HaCreator.MapSimulator.Interaction
         private IReadOnlyList<NpcInteractionPage> _currentPages = Array.Empty<NpcInteractionPage>();
         private string _inputValue = string.Empty;
         private string _compositionText = string.Empty;
+        private bool _isPrevButtonHovered;
+        private bool _isNextButtonHovered;
+        private bool _isPrevButtonPressed;
+        private bool _isNextButtonPressed;
 
         private readonly struct PageContext
         {
@@ -91,14 +95,25 @@ namespace HaCreator.MapSimulator.Interaction
 
         private readonly struct UtilDialogButtonTextures
         {
-            public UtilDialogButtonTextures(Texture2D normal, Texture2D disabled)
+            public UtilDialogButtonTextures(
+                Texture2D normal,
+                Texture2D disabled,
+                Texture2D mouseOver,
+                Texture2D pressed,
+                Texture2D keyFocused)
             {
                 Normal = normal;
                 Disabled = disabled;
+                MouseOver = mouseOver;
+                Pressed = pressed;
+                KeyFocused = keyFocused;
             }
 
             public Texture2D Normal { get; }
             public Texture2D Disabled { get; }
+            public Texture2D MouseOver { get; }
+            public Texture2D Pressed { get; }
+            public Texture2D KeyFocused { get; }
         }
 
         public NpcInteractionOverlay(GraphicsDevice device)
@@ -126,6 +141,7 @@ namespace HaCreator.MapSimulator.Interaction
         public void Open(NpcInteractionState state)
         {
             ClearTextTextureCache();
+            ResetPacketQuestResultButtonInteractionState();
             _npcName = string.IsNullOrWhiteSpace(state?.NpcName) ? "NPC" : state.NpcName;
             _presentationStyle = state?.PresentationStyle ?? NpcInteractionPresentationStyle.Default;
             EnsurePacketQuestResultVisualAssetsLoaded();
@@ -181,6 +197,7 @@ namespace HaCreator.MapSimulator.Interaction
             IsVisible = false;
             _inputValue = string.Empty;
             _compositionText = string.Empty;
+            ResetPacketQuestResultButtonInteractionState();
         }
 
         public bool ContainsPoint(int x, int y, int renderWidth, int renderHeight)
@@ -195,15 +212,16 @@ namespace HaCreator.MapSimulator.Interaction
                 return default;
             }
 
+            Rectangle windowRect = GetWindowRectangle(renderWidth, renderHeight);
+            Point mousePoint = new Point(mouseState.X, mouseState.Y);
+            UpdatePacketQuestResultButtonInteractionState(mouseState, previousMouseState, windowRect, mousePoint);
+
             bool leftReleased = mouseState.LeftButton == ButtonState.Released &&
                                 previousMouseState.LeftButton == ButtonState.Pressed;
             if (!leftReleased)
             {
                 return default;
             }
-
-            Rectangle windowRect = GetWindowRectangle(renderWidth, renderHeight);
-            Point mousePoint = new Point(mouseState.X, mouseState.Y);
 
             if (!windowRect.Contains(mousePoint))
             {
@@ -477,13 +495,19 @@ namespace HaCreator.MapSimulator.Interaction
                 prevRect,
                 GetPrevButtonText(),
                 _currentPage > 0 || _pageContextStack.Count > 0,
-                ResolvePrevButtonTextures());
+                ResolvePrevButtonTextures(),
+                _isPrevButtonHovered,
+                _isPrevButtonPressed,
+                false);
             DrawNavigationButton(
                 spriteBatch,
                 nextRect,
                 GetNextButtonText(),
                 true,
-                ResolveNextButtonTextures());
+                ResolveNextButtonTextures(),
+                _isNextButtonHovered,
+                _isNextButtonPressed,
+                !ShouldDrawEntryList());
 
             string primaryButtonText = GetPrimaryButtonText();
             if (NpcInteractionPresentationProfile.ShouldDrawPrimaryButton(_presentationStyle, primaryButtonText))
@@ -597,15 +621,20 @@ namespace HaCreator.MapSimulator.Interaction
 
         private UtilDialogButtonTextures LoadButtonTextures(WzImage primaryImage, WzImage fallbackImage, string buttonPath)
         {
-            Texture2D normal = LoadCanvasTexture(ResolveProperty(primaryImage, $"UtilDlgEx/{buttonPath}/normal/0") as WzCanvasProperty)
-                ?? LoadCanvasTexture(ResolveProperty(primaryImage, $"UtilDlgEx/{buttonPath}/normal") as WzCanvasProperty)
-                ?? LoadCanvasTexture(ResolveProperty(fallbackImage, $"UtilDlgEx/{buttonPath}/normal/0") as WzCanvasProperty)
-                ?? LoadCanvasTexture(ResolveProperty(fallbackImage, $"UtilDlgEx/{buttonPath}/normal") as WzCanvasProperty);
-            Texture2D disabled = LoadCanvasTexture(ResolveProperty(primaryImage, $"UtilDlgEx/{buttonPath}/disabled/0") as WzCanvasProperty)
-                ?? LoadCanvasTexture(ResolveProperty(primaryImage, $"UtilDlgEx/{buttonPath}/disabled") as WzCanvasProperty)
-                ?? LoadCanvasTexture(ResolveProperty(fallbackImage, $"UtilDlgEx/{buttonPath}/disabled/0") as WzCanvasProperty)
-                ?? LoadCanvasTexture(ResolveProperty(fallbackImage, $"UtilDlgEx/{buttonPath}/disabled") as WzCanvasProperty);
-            return new UtilDialogButtonTextures(normal, disabled);
+            Texture2D normal = LoadButtonStateTexture(primaryImage, fallbackImage, buttonPath, "normal");
+            Texture2D disabled = LoadButtonStateTexture(primaryImage, fallbackImage, buttonPath, "disabled");
+            Texture2D mouseOver = LoadButtonStateTexture(primaryImage, fallbackImage, buttonPath, "mouseOver");
+            Texture2D pressed = LoadButtonStateTexture(primaryImage, fallbackImage, buttonPath, "pressed");
+            Texture2D keyFocused = LoadButtonStateTexture(primaryImage, fallbackImage, buttonPath, "keyFocused");
+            return new UtilDialogButtonTextures(normal, disabled, mouseOver, pressed, keyFocused);
+        }
+
+        private Texture2D LoadButtonStateTexture(WzImage primaryImage, WzImage fallbackImage, string buttonPath, string statePath)
+        {
+            return LoadCanvasTexture(ResolveProperty(primaryImage, $"UtilDlgEx/{buttonPath}/{statePath}/0") as WzCanvasProperty)
+                ?? LoadCanvasTexture(ResolveProperty(primaryImage, $"UtilDlgEx/{buttonPath}/{statePath}") as WzCanvasProperty)
+                ?? LoadCanvasTexture(ResolveProperty(fallbackImage, $"UtilDlgEx/{buttonPath}/{statePath}/0") as WzCanvasProperty)
+                ?? LoadCanvasTexture(ResolveProperty(fallbackImage, $"UtilDlgEx/{buttonPath}/{statePath}") as WzCanvasProperty);
         }
 
         private Color ResolveWindowFillColor()
@@ -848,9 +877,14 @@ namespace HaCreator.MapSimulator.Interaction
             Rectangle rect,
             string label,
             bool enabled,
-            UtilDialogButtonTextures textures)
+            UtilDialogButtonTextures textures,
+            bool isHovered,
+            bool isPressed,
+            bool isKeyFocused)
         {
-            Texture2D texture = enabled ? textures.Normal : textures.Disabled ?? textures.Normal;
+            Texture2D texture = ResolveNavigationButtonTexture(
+                textures,
+                PacketQuestResultUtilDialogLayout.ResolveButtonVisualState(enabled, isPressed, isHovered, isKeyFocused));
             if (_presentationStyle == NpcInteractionPresentationStyle.PacketQuestResultUtilDialog && texture != null)
             {
                 spriteBatch.Draw(texture, new Vector2(rect.X, rect.Y), Color.White);
@@ -858,6 +892,28 @@ namespace HaCreator.MapSimulator.Interaction
             }
 
             DrawButton(spriteBatch, rect, label, enabled);
+        }
+
+        private static Texture2D ResolveNavigationButtonTexture(
+            UtilDialogButtonTextures textures,
+            PacketQuestResultUtilDialogButtonVisualState visualState)
+        {
+            return visualState switch
+            {
+                PacketQuestResultUtilDialogButtonVisualState.Disabled => textures.Disabled
+                    ?? textures.Normal,
+                PacketQuestResultUtilDialogButtonVisualState.Pressed => textures.Pressed
+                    ?? textures.MouseOver
+                    ?? textures.KeyFocused
+                    ?? textures.Normal,
+                PacketQuestResultUtilDialogButtonVisualState.MouseOver => textures.MouseOver
+                    ?? textures.KeyFocused
+                    ?? textures.Normal,
+                PacketQuestResultUtilDialogButtonVisualState.KeyFocused => textures.KeyFocused
+                    ?? textures.MouseOver
+                    ?? textures.Normal,
+                _ => textures.Normal
+            };
         }
 
         private void DrawEntryList(SpriteBatch spriteBatch, Rectangle entryListRect)
@@ -1271,6 +1327,37 @@ namespace HaCreator.MapSimulator.Interaction
                    && _currentPage >= GetCurrentPages().Count - 1
                 ? _packetQuestResultOkButtonTextures
                 : _packetQuestResultNextButtonTextures;
+        }
+
+        private void ResetPacketQuestResultButtonInteractionState()
+        {
+            _isPrevButtonHovered = false;
+            _isNextButtonHovered = false;
+            _isPrevButtonPressed = false;
+            _isNextButtonPressed = false;
+        }
+
+        private void UpdatePacketQuestResultButtonInteractionState(
+            MouseState mouseState,
+            MouseState previousMouseState,
+            Rectangle windowRect,
+            Point mousePoint)
+        {
+            if (_presentationStyle != NpcInteractionPresentationStyle.PacketQuestResultUtilDialog)
+            {
+                ResetPacketQuestResultButtonInteractionState();
+                return;
+            }
+
+            _isPrevButtonHovered = GetPrevButtonRectangle(windowRect).Contains(mousePoint);
+            _isNextButtonHovered = GetNextButtonRectangle(windowRect).Contains(mousePoint);
+
+            bool leftPressed = mouseState.LeftButton == ButtonState.Pressed;
+            bool leftJustPressed = leftPressed && previousMouseState.LeftButton == ButtonState.Released;
+            _isPrevButtonPressed = leftPressed
+                && (_isPrevButtonPressed || (_isPrevButtonHovered && leftJustPressed));
+            _isNextButtonPressed = leftPressed
+                && (_isNextButtonPressed || (_isNextButtonHovered && leftJustPressed));
         }
 
         private static void EnsureParsed(WzImage image)

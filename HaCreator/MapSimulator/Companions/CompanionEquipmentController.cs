@@ -413,6 +413,7 @@ namespace HaCreator.MapSimulator.Companions
                 _ownerBuild,
                 ownerAccountId,
                 ownerCharacterId);
+            pet.ApplyWearItem(itemId);
             return true;
         }
 
@@ -476,6 +477,7 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             _equippedItems.Remove(pet.RuntimeId);
+            pet.ApplyWearItem(0);
             return true;
         }
 
@@ -516,6 +518,8 @@ namespace HaCreator.MapSimulator.Companions
                 _equippedItems[sourcePet.RuntimeId] = targetItem;
             }
 
+            sourcePet.ApplyWearItem(targetItem?.ItemId ?? 0);
+            targetPet.ApplyWearItem(sourceItem.ItemId);
             return true;
         }
 
@@ -944,6 +948,40 @@ namespace HaCreator.MapSimulator.Companions
             }
 
             return true;
+        }
+
+        internal int ComputeStateToken()
+        {
+            unchecked
+            {
+                int hash = 17;
+                hash = (hash * 31) + (HasOwnerState ? 1 : 0);
+                hash = AppendSlotStateToken(hash, MechanicEquipSlot.Engine);
+                hash = AppendSlotStateToken(hash, MechanicEquipSlot.Frame);
+                hash = AppendSlotStateToken(hash, MechanicEquipSlot.Transistor);
+                hash = AppendSlotStateToken(hash, MechanicEquipSlot.Arm);
+                hash = AppendSlotStateToken(hash, MechanicEquipSlot.Leg);
+                return hash;
+            }
+        }
+
+        private int AppendSlotStateToken(int hash, MechanicEquipSlot slot)
+        {
+            hash = (hash * 31) + (int)slot;
+            if (!_equippedItems.TryGetValue(slot, out CompanionEquipItem item) || item == null)
+            {
+                return hash;
+            }
+
+            unchecked
+            {
+                hash = (hash * 31) + item.ItemId;
+                hash = (hash * 31) + (item.IsCash ? 1 : 0);
+                hash = (hash * 31) + (item.IsCashOwnershipLocked ? 1 : 0);
+                hash = (hash * 31) + (item.OwnerAccountId ?? 0);
+                hash = (hash * 31) + (item.OwnerCharacterId ?? 0);
+                return hash;
+            }
         }
     }
 

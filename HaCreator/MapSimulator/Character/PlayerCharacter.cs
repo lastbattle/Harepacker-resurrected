@@ -210,6 +210,7 @@ namespace HaCreator.MapSimulator.Character
             public Rectangle Bounds { get; set; }
             public Point Origin { get; set; }
             public int PreparedCurrentTime { get; set; } = int.MinValue;
+            public bool PreparedFacingRight { get; set; }
             public AvatarRenderLayer OverlayTargetLayer { get; set; } = AvatarRenderLayer.UnderFace;
             public Texture2D ComposedTexture { get; set; }
             public IReadOnlyList<AssembledPart> Parts { get; set; } = Array.Empty<AssembledPart>();
@@ -217,14 +218,16 @@ namespace HaCreator.MapSimulator.Character
 
         private readonly struct AvatarEffectRenderable
         {
-            public AvatarEffectRenderable(SkillFrame frame, SkillAvatarEffectPlane plane)
+            public AvatarEffectRenderable(SkillFrame frame, SkillAvatarEffectPlane plane, int? positionCode)
             {
                 Frame = frame;
                 Plane = plane;
+                PositionCode = positionCode;
             }
 
             public SkillFrame Frame { get; }
             public SkillAvatarEffectPlane Plane { get; }
+            public int? PositionCode { get; }
         }
 
         #region Constants
@@ -715,6 +718,11 @@ namespace HaCreator.MapSimulator.Character
             if (_activeSkillBlockingStatuses.ContainsKey(PlayerSkillBlockingStatus.Seal))
             {
                 return PlayerSkillBlockingStatusMapper.GetRestrictionMessage(PlayerSkillBlockingStatus.Seal);
+            }
+
+            if (_activeSkillBlockingStatuses.ContainsKey(PlayerSkillBlockingStatus.StopMotion))
+            {
+                return PlayerSkillBlockingStatusMapper.GetRestrictionMessage(PlayerSkillBlockingStatus.StopMotion);
             }
 
             if (_activeSkillBlockingStatuses.ContainsKey(PlayerSkillBlockingStatus.Attract))
@@ -2307,6 +2315,11 @@ namespace HaCreator.MapSimulator.Character
             _clientOwnedVehicleTamingMobActive = isActive && _clientOwnedVehicleTamingMobPart != null;
         }
 
+        internal int GetActiveAvatarTransformSkillId()
+        {
+            return GetActiveAvatarTransform()?.SkillId ?? 0;
+        }
+
         public void ClearAllSkillAvatarEffects(bool playFinish, int currentTime)
         {
             for (int i = _activeSkillAvatarEffects.Count - 1; i >= 0; i--)
@@ -3321,7 +3334,7 @@ namespace HaCreator.MapSimulator.Character
             List<AvatarEffectRenderable> avatarEffects = GetCurrentAvatarEffectRenderables(currentTime);
             int adjustedY = screenY - frame.FeetOffset;
 
-            DrawAvatarEffectPlane(spriteBatch, skeletonRenderer, avatarEffects, SkillAvatarEffectPlane.BehindCharacter, screenX, screenY, tint);
+            DrawAvatarEffectPlane(spriteBatch, skeletonRenderer, avatarEffects, SkillAvatarEffectPlane.BehindCharacter, frame, screenX, screenY, tint);
             DrawMeleeAfterImage(spriteBatch, skeletonRenderer, screenX, screenY, tint, currentTime);
 
             int[] mirrorLayerInsertionIndices = GetAvatarRenderLayerInsertionIndices(frame.Parts);
@@ -3368,7 +3381,7 @@ namespace HaCreator.MapSimulator.Character
                 tint,
                 drawUnderFaceOverlay);
 
-            DrawAvatarEffectPlane(spriteBatch, skeletonRenderer, avatarEffects, SkillAvatarEffectPlane.OverCharacter, screenX, screenY, tint);
+            DrawAvatarEffectPlane(spriteBatch, skeletonRenderer, avatarEffects, SkillAvatarEffectPlane.OverCharacter, frame, screenX, screenY, tint);
         }
 
         private void DrawMirrorImageLayersAtInsertionIndex(
@@ -3405,7 +3418,7 @@ namespace HaCreator.MapSimulator.Character
                 if (overlayTargetLayer == AvatarRenderLayer.UnderFace && !underFaceDrawn)
                 {
                     drawUnderFaceOverlay?.Invoke();
-                    DrawAvatarEffectPlane(spriteBatch, skeletonRenderer, avatarEffects, SkillAvatarEffectPlane.UnderFace, screenX, screenY, tint);
+                    DrawAvatarEffectPlane(spriteBatch, skeletonRenderer, avatarEffects, SkillAvatarEffectPlane.UnderFace, frame, screenX, screenY, tint);
                     underFaceDrawn = true;
                 }
 
@@ -3655,10 +3668,9 @@ namespace HaCreator.MapSimulator.Character
             DrawMirrorImageSourceLayers(
                 spriteBatch,
                 skeletonRenderer,
-                screenX + _activeMirrorImage.CurrentOffsetPx.X,
-                screenY + _activeMirrorImage.CurrentOffsetPx.Y,
-                FacingRight,
-                MirrorImageTint * alpha,
+                screenX,
+                screenY,
+                currentTime,
                 overlayTargetLayer);
         }
 
@@ -3667,8 +3679,7 @@ namespace HaCreator.MapSimulator.Character
             SkeletonMeshRenderer skeletonRenderer,
             int screenX,
             int screenY,
-            bool flip,
-            Color tint,
+            int currentTime,
             AvatarRenderLayer? overlayTargetLayer)
         {
             if (_activeMirrorImage?.PreparedSourceLayers == null)
@@ -3676,7 +3687,6 @@ namespace HaCreator.MapSimulator.Character
                 return;
             }
 
-            int adjustedY = screenY - _activeMirrorImage.PreparedFeetOffset;
             MirrorImagePreparedSourceLayer[] layeredParts = _activeMirrorImage.PreparedSourceLayers;
             if (layeredParts.Length == 0)
             {
@@ -3696,12 +3706,17 @@ namespace HaCreator.MapSimulator.Character
                     continue;
                 }
 
-                if (layer.ComposedTexture != null)
+                int transitionStartTime = ResolveMirrorImageLayerTransitionStartTime(_activeMirrorImage.StartTime, layer.PreparedCurrentTime);
+                float alpha = ResolveMirrorImageAlpha(currentTime, transitionStartTime);
+                if (alpha <= 0f)
                 {
-                    DrawMirrorImagePreparedLayerTexture(spriteBatch, screenX, adjustedY, flip, tint, layer);
                     continue;
                 }
 
+                Point layerOffset = ResolveMirrorImageCurrentOffset(currentTime, transitionStartTime);
+                int adjustedY = screenY + layerOffset.Y - _activeMirrorImage.PreparedFeetOffset;
+                int adjustedX = screenX + layerOffset.X;
+                Color tint = MirrorImageTint * alpha;
                 IReadOnlyList<AssembledPart> parts = layer.Parts;
                 if (parts == null)
                 {
@@ -3710,31 +3725,31 @@ namespace HaCreator.MapSimulator.Character
 
                 for (int i = 0; i < parts.Count; i++)
                 {
-                    DrawAssembledPart(spriteBatch, skeletonRenderer, parts[i], screenX, adjustedY, flip, tint);
+                    DrawMirrorImagePreparedPart(spriteBatch, skeletonRenderer, parts[i], adjustedX, adjustedY, layer.PreparedFacingRight, tint);
                 }
             }
         }
 
-        private void DrawMirrorImagePreparedLayerTexture(
+        private static void DrawMirrorImagePreparedPart(
             SpriteBatch spriteBatch,
+            SkeletonMeshRenderer skeletonRenderer,
+            AssembledPart part,
             int screenX,
             int adjustedY,
             bool flip,
-            Color tint,
-            MirrorImagePreparedSourceLayer layer)
+            Color mirrorTint)
         {
-            Texture2D texture = layer?.ComposedTexture;
-            if (texture == null)
+            if (part?.Texture == null || !part.IsVisible)
             {
                 return;
             }
 
-            Point origin = layer.Origin;
             int drawX = flip
-                ? screenX - (texture.Width - origin.X)
-                : screenX - origin.X;
-            int drawY = adjustedY - origin.Y;
-            spriteBatch.Draw(texture, new Vector2(drawX, drawY), null, tint, 0f, Vector2.Zero, 1f, flip ? SpriteEffects.FlipHorizontally : SpriteEffects.None, 0f);
+                ? screenX - part.OffsetX - part.Texture.Width
+                : screenX + part.OffsetX;
+            int drawY = adjustedY + part.OffsetY;
+            Color drawTint = ResolveMirrorImagePreparedPartTint(part.Tint, mirrorTint);
+            part.Texture.DrawBackground(spriteBatch, skeletonRenderer, null, drawX, drawY, drawTint, flip, null);
         }
 
         private void PrepareMirrorImageSourceLayers(AssembledFrame frame, int currentFrameIndex, int currentTime)
@@ -3757,6 +3772,7 @@ namespace HaCreator.MapSimulator.Character
             _activeMirrorImage.PreparedSourceLayers = BuildPreparedMirrorImageSourceLayers(
                 frame.AvatarRenderLayers,
                 _activeMirrorImage.PreparedSourceLayers,
+                FacingRight,
                 currentTime);
         }
 
@@ -3787,6 +3803,7 @@ namespace HaCreator.MapSimulator.Character
                     Bounds = Rectangle.Empty,
                     Origin = Point.Zero,
                     PreparedCurrentTime = int.MinValue,
+                    PreparedFacingRight = false,
                     OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer),
                     ComposedTexture = null,
                     Parts = Array.Empty<AssembledPart>()
@@ -3799,6 +3816,7 @@ namespace HaCreator.MapSimulator.Character
         private MirrorImagePreparedSourceLayer[] BuildPreparedMirrorImageSourceLayers(
             IReadOnlyList<AssembledPart>[] sourceLayers,
             MirrorImagePreparedSourceLayer[] existingLayers,
+            bool facingRight,
             int currentTime)
         {
             if (sourceLayers == null || sourceLayers.Length == 0)
@@ -3822,6 +3840,7 @@ namespace HaCreator.MapSimulator.Character
                     (AvatarRenderLayer)layerIndex,
                     sourceParts,
                     sourceSignature,
+                    facingRight,
                     currentTime);
             }
 
@@ -3849,6 +3868,7 @@ namespace HaCreator.MapSimulator.Character
             AvatarRenderLayer renderLayer,
             IReadOnlyList<AssembledPart> sourceParts,
             int sourceSignature,
+            bool facingRight,
             int currentTime)
         {
             MirrorImagePreparedSourceLayer preparedLayer = existingLayer ?? new MirrorImagePreparedSourceLayer();
@@ -3857,10 +3877,14 @@ namespace HaCreator.MapSimulator.Character
                 return ResetPreparedMirrorImageSourceLayer(preparedLayer, renderLayer, sourceSignature);
             }
 
-            if (preparedLayer.SourceSignature == sourceSignature && preparedLayer.Parts.Count > 0)
+            if (CanReuseMirrorImagePreparedSourceLayer(
+                preparedLayer.SourceSignature,
+                preparedLayer.Parts?.Count ?? 0,
+                preparedLayer.PreparedFacingRight,
+                sourceSignature,
+                facingRight))
             {
                 preparedLayer.RenderLayer = renderLayer;
-                preparedLayer.PreparedCurrentTime = currentTime;
                 preparedLayer.OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer);
                 return preparedLayer;
             }
@@ -3872,8 +3896,7 @@ namespace HaCreator.MapSimulator.Character
             }
 
             Rectangle bounds = CalculateMirrorImageSourceLayerBounds(clonedParts);
-            Texture2D composedTexture = CreateMirrorImageLayerTexture(clonedParts, bounds);
-            ReplacePreparedMirrorImageSourceLayerTexture(preparedLayer, composedTexture);
+            ReplacePreparedMirrorImageSourceLayerTexture(preparedLayer, null);
             preparedLayer.RenderLayer = renderLayer;
             preparedLayer.SourceSignature = sourceSignature;
             preparedLayer.Bounds = bounds;
@@ -3881,6 +3904,7 @@ namespace HaCreator.MapSimulator.Character
                 ? Point.Zero
                 : new Point(-bounds.X, -bounds.Y);
             preparedLayer.PreparedCurrentTime = currentTime;
+            preparedLayer.PreparedFacingRight = facingRight;
             preparedLayer.OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer);
             preparedLayer.Parts = clonedParts;
             return preparedLayer;
@@ -3898,6 +3922,7 @@ namespace HaCreator.MapSimulator.Character
             preparedLayer.Bounds = Rectangle.Empty;
             preparedLayer.Origin = Point.Zero;
             preparedLayer.PreparedCurrentTime = int.MinValue;
+            preparedLayer.PreparedFacingRight = false;
             preparedLayer.OverlayTargetLayer = ResolveMirrorImageOverlayTargetLayer(renderLayer);
             preparedLayer.Parts = Array.Empty<AssembledPart>();
             return preparedLayer;
@@ -3906,6 +3931,18 @@ namespace HaCreator.MapSimulator.Character
         internal static AvatarRenderLayer ResolveMirrorImageOverlayTargetLayer(AvatarRenderLayer renderLayer)
         {
             return renderLayer;
+        }
+
+        internal static bool CanReuseMirrorImagePreparedSourceLayer(
+            int existingSourceSignature,
+            int existingPartCount,
+            bool existingFacingRight,
+            int incomingSourceSignature,
+            bool facingRight)
+        {
+            return existingSourceSignature == incomingSourceSignature
+                   && existingPartCount > 0
+                   && existingFacingRight == facingRight;
         }
 
         private static AssembledPart CloneMirrorImageSourcePart(AssembledPart part)
@@ -3930,7 +3967,7 @@ namespace HaCreator.MapSimulator.Character
                 };
         }
 
-        private static int ComputeMirrorImageSourceLayerSignature(IReadOnlyList<AssembledPart> sourceParts)
+        internal static int ComputeMirrorImageSourceLayerSignature(IReadOnlyList<AssembledPart> sourceParts)
         {
             if (sourceParts == null || sourceParts.Count == 0)
             {
@@ -3961,6 +3998,20 @@ namespace HaCreator.MapSimulator.Character
             }
 
             return signature.ToHashCode();
+        }
+
+        internal static Color ResolveMirrorImagePreparedPartTint(Color sourceTint, Color mirrorTint)
+        {
+            if (sourceTint == Color.White)
+            {
+                return mirrorTint;
+            }
+
+            return new Color(
+                (byte)((sourceTint.R * mirrorTint.R + 127) / 255),
+                (byte)((sourceTint.G * mirrorTint.G + 127) / 255),
+                (byte)((sourceTint.B * mirrorTint.B + 127) / 255),
+                (byte)((sourceTint.A * mirrorTint.A + 127) / 255));
         }
 
         private static Rectangle CalculateMirrorImageSourceLayerBounds(IReadOnlyList<AssembledPart> sourceParts)
@@ -4181,6 +4232,7 @@ namespace HaCreator.MapSimulator.Character
             SkeletonMeshRenderer skeletonRenderer,
             List<AvatarEffectRenderable> avatarEffects,
             SkillAvatarEffectPlane plane,
+            AssembledFrame assembledFrame,
             int screenX,
             int screenY,
             Color tint)
@@ -4198,11 +4250,12 @@ namespace HaCreator.MapSimulator.Character
                     continue;
                 }
 
+                ResolveAvatarEffectAnchorPosition(assembledFrame, screenX, screenY, effect.PositionCode, out int anchorX, out int anchorY);
                 bool shouldFlip = FacingRight ^ effect.Frame.Flip;
                 int drawX = shouldFlip
-                    ? screenX - (effect.Frame.Texture.Width - effect.Frame.Origin.X)
-                    : screenX - effect.Frame.Origin.X;
-                int drawY = screenY - effect.Frame.Origin.Y;
+                    ? anchorX - (effect.Frame.Texture.Width - effect.Frame.Origin.X)
+                    : anchorX - effect.Frame.Origin.X;
+                int drawY = anchorY - effect.Frame.Origin.Y;
 
                 effect.Frame.Texture.DrawBackground(spriteBatch, skeletonRenderer, null, drawX, drawY, tint, shouldFlip, null);
             }
@@ -4422,20 +4475,10 @@ namespace HaCreator.MapSimulator.Character
 
         private int ResolveShadowPartnerAttackDelayMs(string actionName)
         {
-            if (_activeShadowPartner?.ActionAnimations != null
-                && !string.IsNullOrWhiteSpace(actionName)
-                && _activeShadowPartner.ActionAnimations.TryGetValue(actionName, out SkillAnimation animation)
-                && animation?.Frames != null
-                && animation.Frames.Count > 0)
-            {
-                int frameDelay = animation.Frames[0]?.Delay ?? 0;
-                if (frameDelay > 0)
-                {
-                    return frameDelay;
-                }
-            }
-
-            return ShadowPartnerAttackDelayMs;
+            return ShadowPartnerClientActionResolver.ResolveAttackDelayMs(
+                _activeShadowPartner?.ActionAnimations,
+                actionName,
+                ShadowPartnerAttackDelayMs);
         }
 
         private void SetShadowPartnerAction(string actionName, int currentTime, bool facingRight, SkillAnimation playbackAnimation = null)
@@ -4899,36 +4942,27 @@ namespace HaCreator.MapSimulator.Character
                 _activeShadowPartner.ClientOffsetTransitionStartTime = currentTime;
             }
 
-            int elapsedTime = Math.Max(0, currentTime - _activeShadowPartner.ClientOffsetTransitionStartTime);
-            float progress = MathHelper.Clamp(elapsedTime / (float)ShadowPartnerTransitionDurationMs, 0f, 1f);
-            _activeShadowPartner.CurrentClientOffsetPx = new Point(
-                (int)Math.Round(MathHelper.Lerp(_activeShadowPartner.ClientOffsetStartPx.X, _activeShadowPartner.ClientOffsetTargetPx.X, progress)),
-                (int)Math.Round(MathHelper.Lerp(_activeShadowPartner.ClientOffsetStartPx.Y, _activeShadowPartner.ClientOffsetTargetPx.Y, progress)));
+            _activeShadowPartner.CurrentClientOffsetPx = ShadowPartnerClientActionResolver.InterpolateClientOffset(
+                _activeShadowPartner.ClientOffsetStartPx,
+                _activeShadowPartner.ClientOffsetTargetPx,
+                _activeShadowPartner.ClientOffsetTransitionStartTime,
+                currentTime,
+                ShadowPartnerTransitionDurationMs);
         }
 
         private static Point ResolveShadowPartnerClientOffset(string observedPlayerActionName, PlayerState state, bool facingRight)
         {
-            if (IsShadowPartnerBackAction(observedPlayerActionName, state))
-            {
-                return new Point(0, ShadowPartnerClientBackActionOffsetYPx);
-            }
-
-            return new Point(facingRight ? -ShadowPartnerClientSideOffsetPx : ShadowPartnerClientSideOffsetPx, 0);
+            return ShadowPartnerClientActionResolver.ResolveClientTargetOffset(
+                observedPlayerActionName,
+                state,
+                facingRight,
+                ShadowPartnerClientSideOffsetPx,
+                ShadowPartnerClientBackActionOffsetYPx);
         }
 
         private static bool IsShadowPartnerBackAction(string observedPlayerActionName, PlayerState state)
         {
-            if (state is PlayerState.Ladder or PlayerState.Rope)
-            {
-                return true;
-            }
-
-            return observedPlayerActionName?.ToLowerInvariant() switch
-            {
-                "ladder" or "ladder2" or "ghostladder" => true,
-                "rope" or "rope2" or "ghostrope" => true,
-                _ => false
-            };
+            return ShadowPartnerClientActionResolver.IsClientBackAction(observedPlayerActionName, state);
         }
 
         private bool ShouldRenderMirrorImageForCurrentAction()
@@ -4993,8 +5027,13 @@ namespace HaCreator.MapSimulator.Character
 
         private Point ResolveMirrorImageCurrentOffset(int currentTime)
         {
+            return ResolveMirrorImageCurrentOffset(currentTime, _activeMirrorImage?.StartTime ?? currentTime);
+        }
+
+        private Point ResolveMirrorImageCurrentOffset(int currentTime, int transitionStartTime)
+        {
             Point targetOffset = ResolveMirrorImageTargetOffset(FacingRight, CurrentActionName, State);
-            int elapsedTime = Math.Max(0, currentTime - _activeMirrorImage.StartTime);
+            int elapsedTime = Math.Max(0, currentTime - transitionStartTime);
             float progress = MathHelper.Clamp(elapsedTime / (float)MirrorImageTransitionDurationMs, 0f, 1f);
             return new Point(
                 (int)Math.Round(targetOffset.X * progress),
@@ -5013,14 +5052,24 @@ namespace HaCreator.MapSimulator.Character
 
         private float ResolveMirrorImageAlpha(int currentTime)
         {
-            if (_activeMirrorImage == null)
-            {
-                return 0f;
-            }
+            return ResolveMirrorImageAlpha(currentTime, _activeMirrorImage?.StartTime ?? currentTime);
+        }
 
-            int elapsedTime = Math.Max(0, currentTime - _activeMirrorImage.StartTime);
+        private static float ResolveMirrorImageAlpha(int currentTime, int transitionStartTime)
+        {
+            int elapsedTime = Math.Max(0, currentTime - transitionStartTime);
             float progress = MathHelper.Clamp(elapsedTime / (float)MirrorImageTransitionDurationMs, 0f, 1f);
             return MathHelper.Lerp(0.35f, 1f, progress);
+        }
+
+        internal static int ResolveMirrorImageLayerTransitionStartTime(int mirrorStartTime, int layerPreparedCurrentTime)
+        {
+            if (layerPreparedCurrentTime == int.MinValue)
+            {
+                return mirrorStartTime;
+            }
+
+            return Math.Max(mirrorStartTime, layerPreparedCurrentTime);
         }
 
         private string ResolveShadowPartnerFallbackAction()
@@ -5102,23 +5151,12 @@ namespace HaCreator.MapSimulator.Character
 
         private static bool IsShadowPartnerBlockingAction(string actionName)
         {
-            return !string.IsNullOrWhiteSpace(actionName)
-                   && (IsShadowPartnerAttackAction(actionName)
-                       || actionName.StartsWith("create", StringComparison.OrdinalIgnoreCase));
+            return ShadowPartnerClientActionResolver.IsBlockingAction(actionName);
         }
 
         private static bool IsShadowPartnerAttackAction(string actionName)
         {
-            if (string.IsNullOrWhiteSpace(actionName))
-            {
-                return false;
-            }
-
-            return actionName.StartsWith("swing", StringComparison.OrdinalIgnoreCase)
-                   || actionName.StartsWith("stab", StringComparison.OrdinalIgnoreCase)
-                   || actionName.StartsWith("shoot", StringComparison.OrdinalIgnoreCase)
-                   || actionName.StartsWith("attack", StringComparison.OrdinalIgnoreCase)
-                   || string.Equals(actionName, "proneStab", StringComparison.OrdinalIgnoreCase);
+            return ShadowPartnerClientActionResolver.IsAttackAction(actionName);
         }
 
         private bool ShouldSuppressSkillAvatarEffectRendering()
@@ -5615,7 +5653,31 @@ namespace HaCreator.MapSimulator.Character
                 return;
             }
 
-            renderables.Add(new AvatarEffectRenderable(frame, plane));
+            renderables.Add(new AvatarEffectRenderable(frame, plane, animation.PositionCode));
+        }
+
+        private void ResolveAvatarEffectAnchorPosition(
+            AssembledFrame assembledFrame,
+            int screenX,
+            int screenY,
+            int? positionCode,
+            out int anchorX,
+            out int anchorY)
+        {
+            anchorX = screenX;
+            anchorY = screenY;
+
+            if (positionCode != 1
+                || assembledFrame?.MapPoints == null
+                || !assembledFrame.MapPoints.TryGetValue("brow", out Point anchorPoint))
+            {
+                return;
+            }
+
+            anchorX = FacingRight
+                ? screenX + anchorPoint.X
+                : screenX - anchorPoint.X;
+            anchorY = screenY - assembledFrame.FeetOffset + anchorPoint.Y;
         }
 
         private static int GetUnderFaceInsertionIndex(List<AssembledPart> parts)
@@ -5882,6 +5944,12 @@ namespace HaCreator.MapSimulator.Character
                 return clientOwnedVehicleMount;
             }
 
+            CharacterPart transformOwnedVehicleMount = ResolveClientOwnedVehicleAvatarTransformMountPart();
+            if (transformOwnedVehicleMount?.Slot == EquipSlot.TamingMob)
+            {
+                return transformOwnedVehicleMount;
+            }
+
             return GetEquippedTamingMobPart();
         }
 
@@ -5929,6 +5997,13 @@ namespace HaCreator.MapSimulator.Character
             if (ShouldKeepClientOwnedVehicleRenderOwner(clientOwnedVehicleMount, CurrentActionName))
             {
                 SetStateDrivenTamingMobOverride(clientOwnedVehicleMount);
+                return;
+            }
+
+            CharacterPart transformOwnedVehicleMount = ResolveClientOwnedVehicleAvatarTransformMountPart();
+            if (ShouldKeepClientOwnedVehicleRenderOwner(transformOwnedVehicleMount, CurrentActionName))
+            {
+                SetStateDrivenTamingMobOverride(transformOwnedVehicleMount);
                 return;
             }
 
@@ -5994,6 +6069,15 @@ namespace HaCreator.MapSimulator.Character
             return clientOwnedVehicleMount?.Slot == EquipSlot.TamingMob
                 ? clientOwnedVehicleMount
                 : equippedMount;
+        }
+
+        private CharacterPart ResolveClientOwnedVehicleAvatarTransformMountPart()
+        {
+            int transformMountItemId = SkillManager.ResolveClientOwnedVehicleAvatarTransformMountItemId(
+                GetActiveAvatarTransformSkillId());
+            return transformMountItemId == MechanicTamingMobItemId
+                ? ResolveMechanicVehicleTamingMobPart()
+                : null;
         }
 
         private CharacterPart GetClientOwnedVehicleTamingMobPart()
@@ -6341,7 +6425,7 @@ namespace HaCreator.MapSimulator.Character
                     transform = CreateSingleActionTransform(skillId, "demonTrace", "demonTrace");
                     return true;
                 case 32121003:
-                    transform = CreateSingleActionTransform(skillId, "cyclone", "cyclone_after");
+                    transform = CreatePreparedSingleActionTransform(skillId, normalizedAction, "cyclone_pre", "cyclone", "cyclone_after");
                     return true;
                 case 4211001:
                     transform = CreateSingleActionTransform(skillId, "alert3", "alert");
@@ -6369,7 +6453,7 @@ namespace HaCreator.MapSimulator.Character
                     transform = CreatePreparedSingleActionTransform(skillId, normalizedAction, "darkTornado_pre", "darkTornado", "darkTornado_after", "dash");
                     return true;
                 case 5311002:
-                    transform = CreateSingleActionTransform(skillId, "noiseWave_ing", "noiseWave");
+                    transform = CreatePreparedSingleActionTransform(skillId, normalizedAction, "noiseWave_pre", "noiseWave_ing", "noiseWave");
                     return true;
                 case 5221004:
                 case 5721001:
@@ -6382,22 +6466,24 @@ namespace HaCreator.MapSimulator.Character
                     transform = CreatePreparedMechanicTransform(skillId, normalizedAction, "flamethrower_pre2", "flamethrower2", "flamethrower_after2");
                     return true;
                 case 35121005:
-                    transform = CreateMechanicTransform(skillId, "tank_stand", "tank_walk", "tank", "tank_prone", "tank_after");
+                    transform = CreatePreparedMechanicStateTransform(skillId, normalizedAction, "tank_pre", "tank_stand", "tank_walk", "tank", "tank_prone", "tank_after");
                     return true;
                 case 35111004:
-                    transform = CreateMechanicTransform(skillId, "siege_stand", "siege_stand", "siege", "siege_stand", "siege_after", locksMovement: true);
+                    transform = CreatePreparedMechanicStateTransform(skillId, normalizedAction, "siege_pre", "siege_stand", "siege_stand", "siege", "siege_stand", "siege_after", locksMovement: true);
                     return true;
                 case 35121013:
-                    transform = CreateMechanicTransform(skillId, "tank_siegestand", "tank_siegestand", "tank_siegeattack", "tank_siegestand", "tank_siegeafter", locksMovement: true);
+                    transform = CreatePreparedMechanicStateTransform(skillId, normalizedAction, "tank_siegepre", "tank_siegestand", "tank_siegestand", "tank_siegeattack", "tank_siegestand", "tank_siegeafter", locksMovement: true);
                     return true;
                 case 35101004:
                     transform = CreateRocketBoosterTransform(skillId, normalizedAction);
                     return true;
             }
 
-            if (string.Equals(normalizedAction, "flamethrower", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(normalizedAction, "flamethrower_pre", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "flamethrower", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "flamethrower_after", StringComparison.OrdinalIgnoreCase))
             {
-                transform = CreateMechanicTransform(skillId, "flamethrower", "flamethrower", "flamethrower", "flamethrower", "flamethrower_after");
+                transform = CreatePreparedMechanicTransform(skillId, normalizedAction, "flamethrower_pre", "flamethrower", "flamethrower_after");
                 return true;
             }
 
@@ -6413,15 +6499,19 @@ namespace HaCreator.MapSimulator.Character
                 return true;
             }
 
-            if (string.Equals(normalizedAction, "cyclone_pre", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(normalizedAction, "cyclone_pre", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "cyclone", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "cyclone_after", StringComparison.OrdinalIgnoreCase))
             {
-                transform = CreateSingleActionTransform(skillId, "cyclone", "cyclone_after");
+                transform = CreatePreparedSingleActionTransform(skillId, normalizedAction, "cyclone_pre", "cyclone", "cyclone_after");
                 return true;
             }
 
-            if (string.Equals(normalizedAction, "swallow_loop", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(normalizedAction, "swallow_pre", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "swallow_loop", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "swallow", StringComparison.OrdinalIgnoreCase))
             {
-                transform = CreateSingleActionTransform(skillId, "swallow_loop", "swallow");
+                transform = CreatePreparedSingleActionTransform(skillId, normalizedAction, "swallow_pre", "swallow_loop", "swallow");
                 return true;
             }
 
@@ -6459,14 +6549,16 @@ namespace HaCreator.MapSimulator.Character
             }
 
             if (string.Equals(normalizedAction, "dualVulcanPrep", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(normalizedAction, "dualVulcanLoop", StringComparison.OrdinalIgnoreCase))
+                || string.Equals(normalizedAction, "dualVulcanLoop", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "dualVulcanEnd", StringComparison.OrdinalIgnoreCase))
             {
-                transform = CreateSingleActionTransform(skillId, "dualVulcanLoop", "dualVulcanEnd");
+                transform = CreatePreparedSingleActionTransform(skillId, normalizedAction, "dualVulcanPrep", "dualVulcanLoop", "dualVulcanEnd");
                 return true;
             }
 
             if (string.Equals(normalizedAction, "darkTornado_pre", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(normalizedAction, "darkTornado", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "darkTornado_after", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(normalizedAction, "dash", StringComparison.OrdinalIgnoreCase))
             {
                 transform = CreatePreparedSingleActionTransform(skillId, normalizedAction, "darkTornado_pre", "darkTornado", "darkTornado_after", "dash");
@@ -6474,9 +6566,10 @@ namespace HaCreator.MapSimulator.Character
             }
 
             if (string.Equals(normalizedAction, "noiseWave_pre", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(normalizedAction, "noiseWave_ing", StringComparison.OrdinalIgnoreCase))
+                || string.Equals(normalizedAction, "noiseWave_ing", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "noiseWave", StringComparison.OrdinalIgnoreCase))
             {
-                transform = CreateSingleActionTransform(skillId, "noiseWave_ing", "noiseWave");
+                transform = CreatePreparedSingleActionTransform(skillId, normalizedAction, "noiseWave_pre", "noiseWave_ing", "noiseWave");
                 return true;
             }
 
@@ -6486,33 +6579,43 @@ namespace HaCreator.MapSimulator.Character
                 return true;
             }
 
-            if (string.Equals(normalizedAction, "flamethrower2", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(normalizedAction, "flamethrower_pre2", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "flamethrower2", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "flamethrower_after2", StringComparison.OrdinalIgnoreCase))
             {
-                transform = CreateMechanicTransform(skillId, "flamethrower2", "flamethrower2", "flamethrower2", "flamethrower2", "flamethrower_after2");
+                transform = CreatePreparedMechanicTransform(skillId, normalizedAction, "flamethrower_pre2", "flamethrower2", "flamethrower_after2");
                 return true;
             }
 
-            if (string.Equals(normalizedAction, "tank_pre", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(normalizedAction, "tank_pre", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "tank_stand", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "tank_after", StringComparison.OrdinalIgnoreCase))
             {
-                transform = CreateMechanicTransform(skillId, "tank_stand", "tank_walk", "tank", "tank_prone", "tank_after");
+                transform = CreatePreparedMechanicStateTransform(skillId, normalizedAction, "tank_pre", "tank_stand", "tank_walk", "tank", "tank_prone", "tank_after");
                 return true;
             }
 
-            if (string.Equals(normalizedAction, "siege_pre", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(normalizedAction, "siege_pre", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "siege_stand", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "siege_after", StringComparison.OrdinalIgnoreCase))
             {
-                transform = CreateMechanicTransform(skillId, "siege_stand", "siege_stand", "siege", "siege_stand", "siege_after", locksMovement: true);
+                transform = CreatePreparedMechanicStateTransform(skillId, normalizedAction, "siege_pre", "siege_stand", "siege_stand", "siege", "siege_stand", "siege_after", locksMovement: true);
                 return true;
             }
 
-            if (string.Equals(normalizedAction, "tank_siegepre", StringComparison.OrdinalIgnoreCase))
+            if (string.Equals(normalizedAction, "tank_siegepre", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "tank_siegestand", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "tank_siegeafter", StringComparison.OrdinalIgnoreCase))
             {
-                transform = CreateMechanicTransform(skillId, "tank_siegestand", "tank_siegestand", "tank_siegeattack", "tank_siegestand", "tank_siegeafter", locksMovement: true);
+                transform = CreatePreparedMechanicStateTransform(skillId, normalizedAction, "tank_siegepre", "tank_siegestand", "tank_siegestand", "tank_siegeattack", "tank_siegestand", "tank_siegeafter", locksMovement: true);
                 return true;
             }
 
             if (string.Equals(normalizedAction, "rbooster", StringComparison.OrdinalIgnoreCase)
                 || string.Equals(normalizedAction, "rbooster_pre", StringComparison.OrdinalIgnoreCase)
-                || string.Equals(normalizedAction, "tank_rbooster_pre", StringComparison.OrdinalIgnoreCase))
+                || string.Equals(normalizedAction, "rbooster_after", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "tank_rbooster_pre", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedAction, "tank_rbooster_after", StringComparison.OrdinalIgnoreCase))
             {
                 transform = CreateRocketBoosterTransform(skillId, normalizedAction);
                 return true;
@@ -6612,37 +6715,64 @@ namespace HaCreator.MapSimulator.Character
             string exitActionName,
             params string[] prepareActionAliases)
         {
-            bool usePrepareAction = MatchesPreparedActionStage(currentActionName, prepareActionName, prepareActionAliases);
-            return CreateSingleActionTransform(
-                skillId,
-                usePrepareAction ? prepareActionName : holdActionName,
-                usePrepareAction ? null : exitActionName);
+            PreparedAvatarActionStage stage = ResolvePreparedActionStage(
+                currentActionName,
+                prepareActionName,
+                holdActionName,
+                exitActionName,
+                prepareActionAliases);
+
+            return stage switch
+            {
+                PreparedAvatarActionStage.Prepare => CreateSingleActionTransform(skillId, prepareActionName, exitActionName: null),
+                PreparedAvatarActionStage.Exit => CreateSingleActionTransform(skillId, exitActionName, exitActionName: null),
+                _ => CreateSingleActionTransform(skillId, holdActionName, exitActionName)
+            };
         }
 
-        private static bool MatchesPreparedActionStage(
+        private enum PreparedAvatarActionStage
+        {
+            Hold,
+            Prepare,
+            Exit
+        }
+
+        private static PreparedAvatarActionStage ResolvePreparedActionStage(
             string currentActionName,
             string prepareActionName,
+            string holdActionName,
+            string exitActionName,
             params string[] prepareActionAliases)
         {
             if (string.Equals(currentActionName, prepareActionName, StringComparison.OrdinalIgnoreCase))
             {
-                return true;
+                return PreparedAvatarActionStage.Prepare;
             }
 
-            if (prepareActionAliases == null)
+            if (!string.IsNullOrWhiteSpace(exitActionName)
+                && string.Equals(currentActionName, exitActionName, StringComparison.OrdinalIgnoreCase))
             {
-                return false;
+                return PreparedAvatarActionStage.Exit;
             }
 
-            foreach (string alias in prepareActionAliases)
+            if (!string.IsNullOrWhiteSpace(holdActionName)
+                && string.Equals(currentActionName, holdActionName, StringComparison.OrdinalIgnoreCase))
             {
-                if (string.Equals(currentActionName, alias, StringComparison.OrdinalIgnoreCase))
+                return PreparedAvatarActionStage.Hold;
+            }
+
+            if (prepareActionAliases != null)
+            {
+                foreach (string alias in prepareActionAliases)
                 {
-                    return true;
+                    if (string.Equals(currentActionName, alias, StringComparison.OrdinalIgnoreCase))
+                    {
+                        return PreparedAvatarActionStage.Prepare;
+                    }
                 }
             }
 
-            return false;
+            return PreparedAvatarActionStage.Hold;
         }
 
         private static SkillAvatarTransformState CreatePreparedMechanicTransform(
@@ -6652,20 +6782,71 @@ namespace HaCreator.MapSimulator.Character
             string holdActionName,
             string exitActionName)
         {
-            bool usePrepareAction = string.Equals(currentActionName, prepareActionName, StringComparison.OrdinalIgnoreCase);
-            string activeActionName = usePrepareAction ? prepareActionName : holdActionName;
+            PreparedAvatarActionStage stage = ResolvePreparedActionStage(
+                currentActionName,
+                prepareActionName,
+                holdActionName,
+                exitActionName);
+            if (stage == PreparedAvatarActionStage.Exit)
+            {
+                return CreateSingleActionTransform(skillId, exitActionName, exitActionName: null);
+            }
+
+            string activeActionName = stage == PreparedAvatarActionStage.Prepare ? prepareActionName : holdActionName;
             return CreateMechanicTransform(
                 skillId,
                 activeActionName,
                 activeActionName,
                 activeActionName,
                 activeActionName,
-                usePrepareAction ? null : exitActionName);
+                stage == PreparedAvatarActionStage.Prepare ? null : exitActionName);
+        }
+
+        private static SkillAvatarTransformState CreatePreparedMechanicStateTransform(
+            int skillId,
+            string currentActionName,
+            string prepareActionName,
+            string standActionName,
+            string walkActionName,
+            string attackActionName,
+            string proneActionName,
+            string exitActionName,
+            bool locksMovement = false)
+        {
+            PreparedAvatarActionStage stage = ResolvePreparedActionStage(
+                currentActionName,
+                prepareActionName,
+                standActionName,
+                exitActionName);
+            if (stage == PreparedAvatarActionStage.Prepare)
+            {
+                return CreateSingleActionTransform(skillId, prepareActionName, exitActionName: null);
+            }
+
+            if (stage == PreparedAvatarActionStage.Exit)
+            {
+                return CreateSingleActionTransform(skillId, exitActionName, exitActionName: null);
+            }
+
+            return CreateMechanicTransform(
+                skillId,
+                standActionName,
+                walkActionName,
+                attackActionName,
+                proneActionName,
+                exitActionName,
+                locksMovement);
         }
 
         private static SkillAvatarTransformState CreateRocketBoosterTransform(int skillId, string actionName)
         {
             string normalizedActionName = actionName?.Trim();
+            if (string.Equals(normalizedActionName, "rbooster_after", StringComparison.OrdinalIgnoreCase)
+                || string.Equals(normalizedActionName, "tank_rbooster_after", StringComparison.OrdinalIgnoreCase))
+            {
+                return CreateSingleActionTransform(skillId, normalizedActionName, exitActionName: null);
+            }
+
             string startupActionName = string.Equals(normalizedActionName, "tank_rbooster_pre", StringComparison.OrdinalIgnoreCase)
                 ? "tank_rbooster_pre"
                 : string.Equals(normalizedActionName, "rbooster_pre", StringComparison.OrdinalIgnoreCase)

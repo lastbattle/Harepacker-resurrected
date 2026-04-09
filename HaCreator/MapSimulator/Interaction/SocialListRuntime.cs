@@ -445,8 +445,8 @@ namespace HaCreator.MapSimulator.Interaction
                 "Alliance.Invite" => AddAllianceMember(),
                 "Alliance.Withdraw" => RemoveGuildMember("alliance"),
                 "Alliance.PartyInvite" => "Alliance party invite forwarded from the union tab.",
-                "Alliance.GradeUp" => "Alliance grade promotion still needs the packet-authored union rank model.",
-                "Alliance.GradeDown" => "Alliance grade demotion still needs the packet-authored union rank model.",
+                "Alliance.GradeUp" => AdjustAllianceGrade(1),
+                "Alliance.GradeDown" => AdjustAllianceGrade(-1),
                 "Alliance.Kick" => RemoveGuildMember("alliance"),
                 "Alliance.Change" => "Alliance rank titles now open in the dedicated union editor.",
                 "Alliance.Chat" => SendAllianceChat(),
@@ -1378,21 +1378,7 @@ namespace HaCreator.MapSimulator.Interaction
                 return "Select a guild member before changing its rank.";
             }
 
-            string[] grades =
-            {
-                "Member",
-                "Jr. Master",
-                "Master"
-            };
-
-            int currentIndex = Array.FindIndex(grades, grade => string.Equals(grade, selectedEntry.PrimaryText, StringComparison.OrdinalIgnoreCase));
-            if (currentIndex < 0)
-            {
-                currentIndex = 0;
-            }
-
-            int nextIndex = Math.Clamp(currentIndex + delta, 0, grades.Length - 1);
-            if (nextIndex == currentIndex)
+            if (!TryResolveNextRankTitle(_guildRankTitles, selectedEntry, delta, out int currentIndex, out int nextIndex, out string nextTitle))
             {
                 return delta > 0
                     ? $"{selectedEntry.Name} already has the highest simulated guild grade."
@@ -1404,17 +1390,19 @@ namespace HaCreator.MapSimulator.Interaction
                 selectedEntry.Name,
                 new SocialEntryState(
                     selectedEntry.Name,
-                    grades[nextIndex],
+                    nextTitle,
                     selectedEntry.SecondaryText,
                     selectedEntry.LocationSummary,
                     selectedEntry.Channel,
                     selectedEntry.IsOnline,
-                    selectedEntry.IsLeader,
+                    selectedEntry.IsLeader && nextIndex == 0,
                     selectedEntry.IsBlocked)
                 {
                     IsLocalPlayer = selectedEntry.IsLocalPlayer
                 });
-            return $"{selectedEntry.Name} now has simulated guild grade {grades[nextIndex]}.";
+            return delta > 0
+                ? $"{selectedEntry.Name} advanced from guild rank title {currentIndex + 1} to {nextIndex + 1} ({nextTitle})."
+                : $"{selectedEntry.Name} moved down from guild rank title {currentIndex + 1} to {nextIndex + 1} ({nextTitle}).";
         }
 
         private string AddAllianceMember()
@@ -1445,6 +1433,51 @@ namespace HaCreator.MapSimulator.Interaction
             string message = $"[Alliance] {_playerName}: Union notice check sent across {onlineCount} visible alliance entries.";
             NotifySocialChatObserved(message);
             return message;
+        }
+
+        private string AdjustAllianceGrade(int delta)
+        {
+            if (TryStagePacketOwnedRequest(SocialListTab.Alliance, delta > 0 ? "Alliance grade up" : "Alliance grade down", out string requestMessage))
+            {
+                return requestMessage;
+            }
+
+            if (!CanEditAllianceRanks())
+            {
+                return $"Alliance grade changes are read-only while the active authority role is {GetEffectiveAllianceRoleLabel()}.";
+            }
+
+            SocialEntryState selectedEntry = GetSelectedEntry(SocialListTab.Alliance);
+            if (selectedEntry == null)
+            {
+                return "Select an alliance entry before changing its rank.";
+            }
+
+            if (!TryResolveNextRankTitle(_allianceRankTitles, selectedEntry, delta, out int currentIndex, out int nextIndex, out string nextTitle))
+            {
+                return delta > 0
+                    ? $"{selectedEntry.Name} already has the highest simulated alliance grade."
+                    : $"{selectedEntry.Name} already has the lowest simulated alliance grade.";
+            }
+
+            ReplaceEntry(
+                SocialListTab.Alliance,
+                selectedEntry.Name,
+                new SocialEntryState(
+                    selectedEntry.Name,
+                    nextTitle,
+                    selectedEntry.SecondaryText,
+                    selectedEntry.LocationSummary,
+                    selectedEntry.Channel,
+                    selectedEntry.IsOnline,
+                    selectedEntry.IsLeader && nextIndex == 0,
+                    selectedEntry.IsBlocked)
+                {
+                    IsLocalPlayer = selectedEntry.IsLocalPlayer
+                });
+            return delta > 0
+                ? $"{selectedEntry.Name} advanced from alliance rank title {currentIndex + 1} to {nextIndex + 1} ({nextTitle})."
+                : $"{selectedEntry.Name} moved down from alliance rank title {currentIndex + 1} to {nextIndex + 1} ({nextTitle}).";
         }
 
         private void NotifySocialChatObserved(string message)
@@ -1532,6 +1565,50 @@ namespace HaCreator.MapSimulator.Interaction
             {
                 entries[index] = replacement;
             }
+        }
+
+        private static bool TryResolveNextRankTitle(
+            IReadOnlyList<string> rankTitles,
+            SocialEntryState selectedEntry,
+            int delta,
+            out int currentIndex,
+            out int nextIndex,
+            out string nextTitle)
+        {
+            currentIndex = ResolveCurrentRankIndex(rankTitles, selectedEntry);
+            nextIndex = currentIndex;
+            nextTitle = selectedEntry?.PrimaryText ?? string.Empty;
+            if (selectedEntry == null || rankTitles == null || rankTitles.Count == 0 || delta == 0)
+            {
+                return false;
+            }
+
+            nextIndex = Math.Clamp(currentIndex - delta, 0, rankTitles.Count - 1);
+            nextTitle = rankTitles[nextIndex];
+            return nextIndex != currentIndex;
+        }
+
+        private static int ResolveCurrentRankIndex(IReadOnlyList<string> rankTitles, SocialEntryState selectedEntry)
+        {
+            if (rankTitles == null || rankTitles.Count == 0 || selectedEntry == null)
+            {
+                return 0;
+            }
+
+            for (int i = 0; i < rankTitles.Count; i++)
+            {
+                if (string.Equals(rankTitles[i], selectedEntry.PrimaryText, StringComparison.OrdinalIgnoreCase))
+                {
+                    return i;
+                }
+            }
+
+            if (selectedEntry.IsLeader)
+            {
+                return 0;
+            }
+
+            return Math.Max(0, rankTitles.Count - 1);
         }
 
         private void ResetSelectionAfterMutation(SocialListTab tab)

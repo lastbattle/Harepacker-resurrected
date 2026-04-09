@@ -119,6 +119,7 @@ namespace HaCreator.MapSimulator.Interaction
         {
             return packet.Kind switch
             {
+                SocialListClientGuildResultKind.Ranking => SetPacketGuildRankingEntries(packet.RankingEntries, packet.GuildId),
                 SocialListClientGuildResultKind.RankTitles => SetPacketGuildRankTitles(packet.RankTitles, packet.GuildId),
                 SocialListClientGuildResultKind.Notice => SetPacketGuildNoticeText(packet.Notice, packet.GuildId),
                 _ => $"Unsupported client guild-result subtype {(byte)packet.Kind}."

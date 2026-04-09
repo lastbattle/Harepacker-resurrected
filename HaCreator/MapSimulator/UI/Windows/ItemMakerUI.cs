@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Managers;
+using HaCreator.MapSimulator.Interaction;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib;
@@ -43,6 +44,7 @@ namespace HaCreator.MapSimulator.UI
             public string RecipeKey { get; init; }
             public int BucketKey { get; init; }
             public int CategoryKey { get; init; }
+            public ItemMakerRecipeMode Mode { get; init; } = ItemMakerRecipeMode.Craft;
             public ItemMakerRecipeFamily Family { get; init; }
             public bool IsHidden { get; init; }
             public string CategoryLabel { get; init; }
@@ -59,6 +61,7 @@ namespace HaCreator.MapSimulator.UI
             public int MesoCost { get; init; }
             public int CatalystItemId { get; init; }
             public bool UsesRandomReward { get; init; }
+            public int SourceSlotIndex { get; init; } = -1;
             public ItemMakerMaterial[] Materials { get; init; } = Array.Empty<ItemMakerMaterial>();
             public ItemMakerReward[] RandomRewards { get; init; } = Array.Empty<ItemMakerReward>();
             public ItemMakerQuestRequirement[] RequiredQuestStates { get; init; } = Array.Empty<ItemMakerQuestRequirement>();
@@ -79,6 +82,12 @@ namespace HaCreator.MapSimulator.UI
             GloveMaker,
             ShoeMaker,
             ToyMaker
+        }
+
+        private enum ItemMakerRecipeMode
+        {
+            Craft,
+            Disassemble
         }
 
         private enum ItemMakerDetailSection
@@ -104,7 +113,13 @@ namespace HaCreator.MapSimulator.UI
         private const int CraftDurationMs = 1400;
         private const int VisibleRecipeCount = 6;
         private const int AllCategoryKey = -1;
+        private const int DisassembleCategoryKey = 998;
         private const int HiddenCategoryKey = 999;
+        private const int StrengtheningGemCategoryKey = 425;
+        private const int MonsterCrystalCategoryKey = 426;
+        private const int StrengtheningGemStringPoolId = 0x267;
+        private const int MonsterCrystalStringPoolId = 0x268;
+        private const int DisassembleEquipmentStringPoolId = 0x269;
         private static readonly int[] ClientRecipeBuckets = { 0, 1, 2, 4, 8, 16 };
         private static readonly HashSet<int> HiddenUnlockHintItemIds = new()
         {
@@ -192,21 +207,7 @@ namespace HaCreator.MapSimulator.UI
                 message = "Item Maker result is unavailable.";
                 return false;
             }
-
-            if (packetResult.RepresentsSuccessfulCraft)
-            {
-                string itemName = GetItemName(packetResult.TargetItemId);
-                int quantity = Math.Max(1, packetResult.TargetItemCount);
-                message = $"Packet-owned maker result created {itemName} x{quantity}.";
-            }
-            else if (packetResult.DisassembledItemId > 0)
-            {
-                message = $"Packet-owned maker result disassembled item {packetResult.DisassembledItemId}.";
-            }
-            else
-            {
-                message = $"Packet-owned maker result code {packetResult.ResultCode} subtype {packetResult.ResultType}.";
-            }
+            message = PacketOwnedItemMakerResultRuntime.BuildStatusMessage(packetResult);
 
             if (TryCreatePacketOwnedCraftResult(packetResult, out ItemMakerCraftResult craftResult))
             {
@@ -533,7 +534,11 @@ namespace HaCreator.MapSimulator.UI
             IReadOnlyList<ItemMakerRecipe> recipes = CurrentRecipes;
             if (recipes.Count == 0)
             {
-                sprite.DrawString(_font, "No craftable recipes match this build.", new Vector2(listRect.X + 8, listRect.Y + 8), new Color(230, 230, 230));
+                string emptyText = _pages.Count > 0 && _selectedPageIndex >= 0 && _selectedPageIndex < _pages.Count
+                    && _pages[_selectedPageIndex].CategoryKey == DisassembleCategoryKey
+                    ? "No equipment is available to disassemble."
+                    : "No craftable recipes match this build.";
+                sprite.DrawString(_font, emptyText, new Vector2(listRect.X + 8, listRect.Y + 8), new Color(230, 230, 230));
                 DrawGauge(sprite);
                 sprite.DrawString(_font, _statusMessage, new Vector2(Position.X + 18, Position.Y + 321), new Color(230, 230, 230));
                 return;
@@ -551,14 +556,29 @@ namespace HaCreator.MapSimulator.UI
                     selected ? new Color(55, 88, 126, 210) : new Color(27, 31, 45, 180),
                     selected ? new Color(153, 190, 230, 255) : new Color(66, 74, 95, 255));
 
-                string rowTitle = hiddenUnlocked ? recipe.Title : "Hidden recipe";
-                string requirementPrefix = hiddenUnlocked
-                    ? recipe.RequiredLevel > 0
-                        ? $"Lv {recipe.RequiredLevel}"
-                        : $"{_progression.GetFamilyLabel(recipe.Family)} L{GetEffectiveSkillLevel(recipe)}"
-                    : "???";
-                string outputText = hiddenUnlocked ? $"Output x{recipe.OutputQuantity}" : "Reveal the maker hint to inspect this entry.";
-                Color detailColor = hiddenUnlocked ? new Color(199, 211, 229) : new Color(187, 174, 220);
+                string rowTitle;
+                string requirementPrefix;
+                string outputText;
+                Color detailColor;
+                if (recipe.Mode == ItemMakerRecipeMode.Disassemble)
+                {
+                    rowTitle = recipe.Title;
+                    requirementPrefix = "Equip";
+                    outputText = "Packet-owned disassembly target";
+                    detailColor = new Color(199, 211, 229);
+                }
+                else
+                {
+                    rowTitle = hiddenUnlocked ? recipe.Title : "Hidden recipe";
+                    requirementPrefix = hiddenUnlocked
+                        ? recipe.RequiredLevel > 0
+                            ? $"Lv {recipe.RequiredLevel}"
+                            : $"{_progression.GetFamilyLabel(recipe.Family)} L{GetEffectiveSkillLevel(recipe)}"
+                        : "???";
+                    outputText = hiddenUnlocked ? $"Output x{recipe.OutputQuantity}" : "Reveal the maker hint to inspect this entry.";
+                    detailColor = hiddenUnlocked ? new Color(199, 211, 229) : new Color(187, 174, 220);
+                }
+
                 sprite.DrawString(_font, TruncateToWidth(rowTitle, rowRect.Width - 16), new Vector2(rowRect.X + 8, rowRect.Y + 5), Color.White);
                 sprite.DrawString(_font, TruncateToWidth($"{requirementPrefix}  {outputText}", rowRect.Width - 16), new Vector2(rowRect.X + 8, rowRect.Y + 18), detailColor);
             }
@@ -573,9 +593,17 @@ namespace HaCreator.MapSimulator.UI
             }
 
             ItemMakerRecipe selectedRecipe = recipes[Math.Clamp(_selectedRecipeIndex, 0, recipes.Count - 1)];
+            Vector2 detailOrigin = new(Position.X + 18, Position.Y + 185);
+            if (selectedRecipe.Mode == ItemMakerRecipeMode.Disassemble)
+            {
+                DrawDisassemblyDetails(sprite, selectedRecipe, detailOrigin);
+                DrawGauge(sprite);
+                sprite.DrawString(_font, _statusMessage, new Vector2(Position.X + 18, Position.Y + 321), new Color(230, 230, 230));
+                return;
+            }
+
             bool hiddenRecipeUnlocked = !selectedRecipe.IsHidden || IsHiddenRecipeUnlocked(selectedRecipe);
             Texture2D resultIcon = ResolveItemIcon(selectedRecipe.OutputItemId, selectedRecipe.OutputInventoryType);
-            Vector2 detailOrigin = new(Position.X + 18, Position.Y + 185);
             if (hiddenRecipeUnlocked)
             {
                 DrawItemIcon(sprite, resultIcon, (int)detailOrigin.X, (int)detailOrigin.Y - 2, 34);
@@ -744,6 +772,44 @@ namespace HaCreator.MapSimulator.UI
 
             Vector2 statusOrigin = new(Position.X + 18, Position.Y + 321);
             sprite.DrawString(_font, _statusMessage, statusOrigin, new Color(230, 230, 230));
+        }
+
+        private void DrawDisassemblyDetails(SpriteBatch sprite, ItemMakerRecipe recipe, Vector2 detailOrigin)
+        {
+            bool hasSelection = TryResolveDisassemblySource(recipe, out InventorySlotData sourceSlot);
+            Texture2D sourceIcon = hasSelection
+                ? sourceSlot.ItemTexture ?? ResolveItemIcon(sourceSlot.ItemId, InventoryType.EQUIP)
+                : null;
+            if (sourceIcon != null)
+            {
+                DrawItemIcon(sprite, sourceIcon, (int)detailOrigin.X, (int)detailOrigin.Y - 2, 34);
+            }
+
+            sprite.DrawString(_font, ResolveClientCategoryLabel(DisassembleCategoryKey), detailOrigin, new Color(255, 223, 153));
+            sprite.DrawString(_font, hasSelection ? recipe.Title : "Select equipment", detailOrigin + new Vector2(40, 0), Color.White);
+            sprite.DrawString(
+                _font,
+                hasSelection
+                    ? "Apply the equipment to be disassembled here to acquire the Monster Crystal."
+                    : "Select a piece of equipment from the disassembly list.",
+                detailOrigin + new Vector2(40, 18),
+                new Color(207, 214, 226));
+
+            float y = detailOrigin.Y + 48;
+            sprite.DrawString(_font, "Packet-owned disassembly mode", new Vector2(detailOrigin.X, y), new Color(153, 210, 255));
+            y += 18;
+            sprite.DrawString(
+                _font,
+                "The client resolves disassembly completion through OnMakerResult(248); this owner keeps the selection staged until that payload arrives.",
+                new Vector2(detailOrigin.X, y),
+                new Color(214, 196, 255));
+            y += 18;
+
+            if (hasSelection)
+            {
+                string slotText = $"Target {sourceSlot.ItemName ?? GetItemName(sourceSlot.ItemId)} x1";
+                sprite.DrawString(_font, slotText, new Vector2(detailOrigin.X, y), new Color(255, 223, 153));
+            }
         }
 
         private void DrawGauge(SpriteBatch sprite)
@@ -925,6 +991,11 @@ namespace HaCreator.MapSimulator.UI
 
         private string BuildMasteryDisplayText(ItemMakerRecipe recipe)
         {
+            if (recipe?.Mode == ItemMakerRecipeMode.Disassemble)
+            {
+                return "Packet-owned disassembly mode.";
+            }
+
             int familyLevel = GetEffectiveSkillLevel(recipe);
             int progressTarget = _progression?.GetProgressTarget(recipe.Family) ?? 0;
             if (progressTarget <= 0 || familyLevel >= ItemMakerProgressionStore.MaxMakerSkillLevel)
@@ -966,7 +1037,9 @@ namespace HaCreator.MapSimulator.UI
             _craftingRecipeIndex = _selectedRecipeIndex;
             _craftStartTick = Environment.TickCount;
             _isCrafting = true;
-            _statusMessage = $"Crafting {recipe.Title}...";
+            _statusMessage = recipe.Mode == ItemMakerRecipeMode.Disassemble
+                ? $"Disassembling {recipe.Title}..."
+                : $"Crafting {recipe.Title}...";
         }
 
         private void CancelCraft()
@@ -1000,6 +1073,14 @@ namespace HaCreator.MapSimulator.UI
             {
                 _craftingRecipeIndex = -1;
                 RefreshStatusMessage(failureReason);
+                return;
+            }
+
+            if (recipe.Mode == ItemMakerRecipeMode.Disassemble)
+            {
+                _craftingRecipeIndex = -1;
+                RebuildVisiblePages();
+                RefreshStatusMessage("Disassembly request staged. Apply an OnMakerResult(248) payload to resolve the server-authored result.");
                 return;
             }
 
@@ -1070,18 +1151,23 @@ namespace HaCreator.MapSimulator.UI
         private ItemMakerRecipe ResolvePacketOwnedResultRecipe(PacketOwnedItemMakerResult packetResult)
         {
             ItemMakerRecipe activeCraftRecipe = ResolveIndexedRecipe(_craftingRecipeIndex);
-            if (IsPacketOwnedResultMatch(activeCraftRecipe, packetResult))
+            if (CanResolvePacketOwnedCraftResult(activeCraftRecipe) && IsPacketOwnedResultMatch(activeCraftRecipe, packetResult))
             {
                 return activeCraftRecipe;
             }
 
             ItemMakerRecipe selectedRecipe = ResolveIndexedRecipe(_selectedRecipeIndex);
-            if (IsPacketOwnedResultMatch(selectedRecipe, packetResult))
+            if (CanResolvePacketOwnedCraftResult(selectedRecipe) && IsPacketOwnedResultMatch(selectedRecipe, packetResult))
             {
                 return selectedRecipe;
             }
 
-            return _allRecipes.FirstOrDefault(recipe => IsPacketOwnedResultMatch(recipe, packetResult));
+            return _allRecipes.FirstOrDefault(recipe => CanResolvePacketOwnedCraftResult(recipe) && IsPacketOwnedResultMatch(recipe, packetResult));
+        }
+
+        private static bool CanResolvePacketOwnedCraftResult(ItemMakerRecipe recipe)
+        {
+            return recipe != null && recipe.Mode == ItemMakerRecipeMode.Craft;
         }
 
         private ItemMakerRecipe ResolveIndexedRecipe(int recipeIndex)
@@ -1158,6 +1244,24 @@ namespace HaCreator.MapSimulator.UI
 
         private bool CanCraftRecipe(ItemMakerRecipe recipe, out string failureReason)
         {
+            if (recipe?.Mode == ItemMakerRecipeMode.Disassemble)
+            {
+                if (_inventory == null)
+                {
+                    failureReason = "Inventory runtime is unavailable.";
+                    return false;
+                }
+
+                if (!TryResolveDisassemblySource(recipe, out InventorySlotData slotData))
+                {
+                    failureReason = "Select equipment to disassemble.";
+                    return false;
+                }
+
+                failureReason = $"Ready to disassemble {slotData.ItemName ?? GetItemName(slotData.ItemId)}.";
+                return true;
+            }
+
             if (recipe.IsHidden && !IsHiddenRecipeUnlocked(recipe))
             {
                 failureReason = BuildHiddenRecipeFailureReason(recipe);
@@ -1274,11 +1378,22 @@ namespace HaCreator.MapSimulator.UI
 
             if (CurrentRecipes.Count == 0 || _selectedRecipeIndex < 0 || _selectedRecipeIndex >= CurrentRecipes.Count)
             {
-                _statusMessage = "Select an item to craft.";
+                _statusMessage = _pages.Count > 0 && _selectedPageIndex >= 0 && _selectedPageIndex < _pages.Count
+                    && _pages[_selectedPageIndex].CategoryKey == DisassembleCategoryKey
+                    ? "Select equipment to disassemble."
+                    : "Select an item to craft.";
                 return;
             }
 
             ItemMakerRecipe recipe = CurrentRecipes[_selectedRecipeIndex];
+            if (recipe.Mode == ItemMakerRecipeMode.Disassemble)
+            {
+                _statusMessage = CanCraftRecipe(recipe, out string disassemblyFailureReason)
+                    ? $"Ready to disassemble {recipe.Title}."
+                    : disassemblyFailureReason;
+                return;
+            }
+
             _statusMessage = CanCraftRecipe(recipe, out string failureReason)
                 ? "Ready to craft."
                 : failureReason;
@@ -1567,6 +1682,11 @@ namespace HaCreator.MapSimulator.UI
             return usesRandomReward
                 ? "Client ItemMake random maker branch."
                 : $"Client ItemMake recipe for {GetItemName(itemId)}.";
+        }
+
+        private static string CreateDisassemblyDescription(int itemId)
+        {
+            return $"Packet-owned Item Maker disassembly target for {GetItemName(itemId)}.";
         }
 
         internal static string FormatResultSummary(
@@ -1879,7 +1999,7 @@ namespace HaCreator.MapSimulator.UI
         private static int GetCategoryKey(int itemId)
         {
             int fourDigitCategory = itemId / 10000;
-            if (fourDigitCategory == 425 || fourDigitCategory == 426)
+            if (fourDigitCategory == StrengtheningGemCategoryKey || fourDigitCategory == MonsterCrystalCategoryKey)
             {
                 return fourDigitCategory;
             }
@@ -1931,29 +2051,10 @@ namespace HaCreator.MapSimulator.UI
 
         private static string ResolveCategoryLabel(int categoryKey, int sampleItemId)
         {
-            if (categoryKey == 425)
+            string specialLabel = ResolveClientCategoryLabel(categoryKey);
+            if (!string.IsNullOrWhiteSpace(specialLabel))
             {
-                return "Monster Crystal";
-            }
-
-            if (categoryKey == 426)
-            {
-                return "Gem";
-            }
-
-            if (categoryKey == 200)
-            {
-                return "Use";
-            }
-
-            if (categoryKey == 300)
-            {
-                return "Setup";
-            }
-
-            if (categoryKey == 400)
-            {
-                return "Etc";
+                return specialLabel;
             }
 
             if (HaCreator.Program.InfoManager?.ItemNameCache != null &&
@@ -1964,6 +2065,81 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return $"Category {categoryKey}";
+        }
+
+        internal static string ResolveClientCategoryLabel(int categoryKey)
+        {
+            return categoryKey switch
+            {
+                StrengtheningGemCategoryKey => MapleStoryStringPool.GetOrFallback(StrengtheningGemStringPoolId, "Strengthening Gem"),
+                MonsterCrystalCategoryKey => MapleStoryStringPool.GetOrFallback(MonsterCrystalStringPoolId, "Monster Crystal"),
+                DisassembleCategoryKey => MapleStoryStringPool.GetOrFallback(DisassembleEquipmentStringPoolId, "Disassemble Equipment"),
+                200 => "Use",
+                300 => "Setup",
+                400 => "Etc",
+                HiddenCategoryKey => "???",
+                _ => null
+            };
+        }
+
+        private List<ItemMakerRecipe> BuildDisassemblyRecipes()
+        {
+            if (_inventory == null)
+            {
+                return new List<ItemMakerRecipe>();
+            }
+
+            IReadOnlyList<InventorySlotData> equipSlots = _inventory.GetSlots(InventoryType.EQUIP);
+            List<ItemMakerRecipe> recipes = new(equipSlots.Count);
+            for (int i = 0; i < equipSlots.Count; i++)
+            {
+                InventorySlotData slot = equipSlots[i];
+                if (slot == null || slot.ItemId <= 0 || slot.IsDisabled)
+                {
+                    continue;
+                }
+
+                recipes.Add(new ItemMakerRecipe
+                {
+                    RecipeKey = string.Format(CultureInfo.InvariantCulture, "disassemble/{0}/{1}", i, slot.ItemId),
+                    CategoryKey = DisassembleCategoryKey,
+                    Mode = ItemMakerRecipeMode.Disassemble,
+                    Family = ItemMakerRecipeFamily.Generic,
+                    CategoryLabel = ResolveClientCategoryLabel(DisassembleCategoryKey),
+                    Title = slot.ItemName ?? GetItemName(slot.ItemId),
+                    Description = CreateDisassemblyDescription(slot.ItemId),
+                    OutputInventoryType = InventoryType.EQUIP,
+                    OutputItemId = slot.ItemId,
+                    OutputQuantity = 1,
+                    SourceSlotIndex = i
+                });
+            }
+
+            return recipes;
+        }
+
+        private bool TryResolveDisassemblySource(ItemMakerRecipe recipe, out InventorySlotData slotData)
+        {
+            slotData = null;
+            if (recipe?.Mode != ItemMakerRecipeMode.Disassemble || _inventory == null || recipe.SourceSlotIndex < 0)
+            {
+                return false;
+            }
+
+            IReadOnlyList<InventorySlotData> equipSlots = _inventory.GetSlots(InventoryType.EQUIP);
+            if (recipe.SourceSlotIndex >= equipSlots.Count)
+            {
+                return false;
+            }
+
+            InventorySlotData candidate = equipSlots[recipe.SourceSlotIndex];
+            if (candidate == null || candidate.IsDisabled || candidate.ItemId != recipe.OutputItemId)
+            {
+                return false;
+            }
+
+            slotData = candidate;
+            return true;
         }
 
         internal static bool ShouldTreatRecipeAsHidden(
@@ -2007,6 +2183,7 @@ namespace HaCreator.MapSimulator.UI
                 .ToList();
 
             List<ItemMakerRecipe> launchFilteredRecipes = ApplyLaunchFilter(allowedRecipes);
+            List<ItemMakerRecipe> disassemblyRecipes = BuildDisassemblyRecipes();
             SyncDiscoveredRecipes(launchFilteredRecipes.Where(static recipe => !recipe.IsHidden));
             SyncUnlockedHiddenRecipes(launchFilteredRecipes.Where(static recipe => recipe.IsHidden));
 
@@ -2019,22 +2196,36 @@ namespace HaCreator.MapSimulator.UI
                 .ToList();
 
             _pages.Clear();
-            if (normalRecipes.Count > 0 || hiddenRecipes.Count > 0)
+            if (normalRecipes.Count > 0 || hiddenRecipes.Count > 0 || disassemblyRecipes.Count > 0)
             {
                 if (normalRecipes.Count > 0)
                 {
                     AddPage(AllCategoryKey, -1000, "All", normalRecipes);
                 }
 
+                AddPage(
+                    DisassembleCategoryKey,
+                    -950,
+                    ResolveClientCategoryLabel(DisassembleCategoryKey),
+                    disassemblyRecipes,
+                    allowEmpty: true);
+
                 Dictionary<int, List<ItemMakerRecipe>> groupedRecipes = normalRecipes
                     .GroupBy(recipe => recipe.CategoryKey)
                     .ToDictionary(group => group.Key, group => group.ToList());
 
-                AddCategoryPageIfPresent(groupedRecipes, 426, -900, "Gem");
-                AddCategoryPageIfPresent(groupedRecipes, 425, -890, "Monster Crystal");
+                AddPage(
+                    MonsterCrystalCategoryKey,
+                    -900,
+                    ResolveClientCategoryLabel(MonsterCrystalCategoryKey),
+                    groupedRecipes.TryGetValue(MonsterCrystalCategoryKey, out List<ItemMakerRecipe> monsterCrystalRecipes)
+                        ? monsterCrystalRecipes
+                        : Array.Empty<ItemMakerRecipe>(),
+                    allowEmpty: true);
+                AddCategoryPageIfPresent(groupedRecipes, StrengtheningGemCategoryKey, -890, ResolveClientCategoryLabel(StrengtheningGemCategoryKey));
 
                 foreach (IGrouping<int, ItemMakerRecipe> group in normalRecipes
-                             .Where(recipe => recipe.CategoryKey is not 200 and not 300 and not 400 and not 425 and not 426)
+                             .Where(recipe => recipe.CategoryKey is not 200 and not 300 and not 400 and not StrengtheningGemCategoryKey and not MonsterCrystalCategoryKey)
                              .GroupBy(recipe => recipe.CategoryKey))
                 {
                     AddPage(group.Key, GetCategorySortOrder(group.Key), group.First().CategoryLabel, group);
@@ -2044,10 +2235,7 @@ namespace HaCreator.MapSimulator.UI
                 AddCategoryPageIfPresent(groupedRecipes, 300, 910, "Setup");
                 AddCategoryPageIfPresent(groupedRecipes, 400, 920, "Etc");
 
-                if (hiddenRecipes.Count > 0)
-                {
-                    AddPage(HiddenCategoryKey, GetCategorySortOrder(HiddenCategoryKey), "???", hiddenRecipes);
-                }
+                AddPage(HiddenCategoryKey, GetCategorySortOrder(HiddenCategoryKey), ResolveClientCategoryLabel(HiddenCategoryKey), hiddenRecipes, allowEmpty: true);
             }
 
             if (_pages.Count == 0)
@@ -2113,14 +2301,23 @@ namespace HaCreator.MapSimulator.UI
 
         private void AddPage(int categoryKey, int sortOrder, string label, IEnumerable<ItemMakerRecipe> recipes)
         {
+            AddPage(categoryKey, sortOrder, label, recipes, allowEmpty: false);
+        }
+
+        private void AddPage(int categoryKey, int sortOrder, string label, IEnumerable<ItemMakerRecipe> recipes, bool allowEmpty)
+        {
             ItemMakerPage page = new()
             {
                 CategoryKey = categoryKey,
                 SortOrder = sortOrder,
                 Label = label
             };
-            page.Recipes.AddRange(recipes);
-            if (page.Recipes.Count > 0)
+            if (recipes != null)
+            {
+                page.Recipes.AddRange(recipes);
+            }
+
+            if (allowEmpty || page.Recipes.Count > 0)
             {
                 _pages.Add(page);
             }

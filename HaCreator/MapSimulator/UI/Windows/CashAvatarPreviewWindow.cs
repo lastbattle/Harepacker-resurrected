@@ -5,6 +5,7 @@ using HaSharedLibrary.Render.DX;
 using MapleLib.WzLib.WzStructure.Data.ItemStructure;
 using Microsoft.Xna.Framework;
 using Microsoft.Xna.Framework.Graphics;
+using Microsoft.Xna.Framework.Input;
 using Spine;
 using System;
 using System.Collections.Generic;
@@ -37,6 +38,7 @@ namespace HaCreator.MapSimulator.UI
         private readonly UIObject _takeoffAvatarButton;
 
         private SpriteFont _font;
+        private KeyboardState _previousKeyboardState;
         private Func<AdminShopAvatarPreviewSelection> _selectionProvider;
         private Func<string> _shopRequestHandler;
         private LoginAvatarLook _initialAvatarLook;
@@ -109,6 +111,7 @@ namespace HaCreator.MapSimulator.UI
             }
         }
         public override string WindowName => MapSimulatorWindowNames.CashAvatarPreview;
+        public override bool CapturesKeyboardInput => IsVisible;
         public Func<string> PersonalShopRequested { get; set; }
         public Func<string> EntrustedShopRequested { get; set; }
         public Func<string> TradingRoomRequested { get; set; }
@@ -138,9 +141,37 @@ namespace HaCreator.MapSimulator.UI
         public override void Show()
         {
             base.Show();
+            _previousKeyboardState = Keyboard.GetState();
             _selectionSignature = string.Empty;
             SyncPreviewBuild(forceReset: true);
             RefreshSelectionState(force: true);
+        }
+
+        public override void Update(GameTime gameTime)
+        {
+            base.Update(gameTime);
+
+            KeyboardState keyboardState = Keyboard.GetState();
+            if (!IsVisible)
+            {
+                _previousKeyboardState = keyboardState;
+                return;
+            }
+
+            if (Pressed(keyboardState, Keys.Enter))
+            {
+                HandleBuyAvatar();
+            }
+            else if (Pressed(keyboardState, Keys.Home))
+            {
+                HandleDefaultAvatar();
+            }
+            else if (Pressed(keyboardState, Keys.Delete))
+            {
+                HandleTakeoffAvatar();
+            }
+
+            _previousKeyboardState = keyboardState;
         }
 
         protected override void DrawContents(
@@ -547,6 +578,11 @@ namespace HaCreator.MapSimulator.UI
             }
 
             return 0;
+        }
+
+        private bool Pressed(KeyboardState keyboardState, Keys key)
+        {
+            return keyboardState.IsKeyDown(key) && !_previousKeyboardState.IsKeyDown(key);
         }
 
         private string ResolveSelectionLabel()

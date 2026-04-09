@@ -1,4 +1,5 @@
 using HaCreator.MapSimulator.Character;
+using HaCreator.MapSimulator.Interaction;
 using HaCreator.MapSimulator.Managers;
 using HaSharedLibrary.Render;
 using HaSharedLibrary.Render.DX;
@@ -44,6 +45,7 @@ namespace HaCreator.MapSimulator.UI
         private static readonly XnaColor ValueColor = new XnaColor(64, 64, 64);
         private static readonly XnaColor StatusColor = new XnaColor(64, 64, 64);
         private const int BasicBlackFontHeight = 12;
+        private const int BasicBlackFontFaceStringPoolId = 0x1A25;
         private const int TextRasterPadding = 2;
         private const byte KoreanGdiCharset = 129;
         private const string BasicBlackFontPathEnvironmentVariable = "MAPSIM_FONT_BASIC_BLACK_PATH";
@@ -158,6 +160,8 @@ namespace HaCreator.MapSimulator.UI
         };
         private static readonly string[] BasicBlackFontFamilyCandidates =
         {
+            "돋움체",
+            "돋움",
             "DotumChe",
             "Dotum",
             "DodoomChe",
@@ -460,7 +464,9 @@ namespace HaCreator.MapSimulator.UI
 
         private static SD.Font CreateBasicBlackFont(out string fontFamilyName)
         {
-            string requestedFamily = ResolveInstalledFontFamilyName(BasicBlackFontFamilyCandidates);
+            string requestedFamily = MapleStoryStringPool.GetOrFallback(
+                BasicBlackFontFaceStringPoolId,
+                ResolveInstalledFontFamilyName(BasicBlackFontFamilyCandidates));
             string resolvedFamily = ClientTextRasterizer.ResolvePreferredFontFamily(
                 requestedFamily,
                 BasicBlackFontPathEnvironmentVariable,

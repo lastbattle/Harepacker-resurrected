@@ -118,11 +118,6 @@ namespace HaCreator.MapSimulator.Pools
                 return candidatePriorityTier < currentPriorityTier;
             }
 
-            if (candidateDistanceSq != currentDistanceSq)
-            {
-                return candidateDistanceSq < currentDistanceSq;
-            }
-
             if (currentTargetId > 0)
             {
                 if (candidateId == currentTargetId)
@@ -134,6 +129,11 @@ namespace HaCreator.MapSimulator.Pools
                 {
                     return false;
                 }
+            }
+
+            if (candidateDistanceSq != currentDistanceSq)
+            {
+                return candidateDistanceSq < currentDistanceSq;
             }
 
             return currentBestId <= 0 || candidateId < currentBestId;

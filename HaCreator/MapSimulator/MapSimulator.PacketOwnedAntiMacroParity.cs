@@ -429,47 +429,51 @@ namespace HaCreator.MapSimulator
             {
                 (0, _) => new PacketOwnedAntiMacroNoticeDefinition(
                     AntiMacroOwnerStringPoolText.NoticeUserNotFoundStringPoolId,
-                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.NoticeUserNotFoundStringPoolId, "The user cannot be found."),
+                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.NoticeUserNotFoundStringPoolId),
                     PacketOwnedAntiMacroAdminCanvas0Path),
                 (1, _) => new PacketOwnedAntiMacroNoticeDefinition(
                     AntiMacroOwnerStringPoolText.NoticeTargetNotAttackingStringPoolId,
-                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.NoticeTargetNotAttackingStringPoolId, "You cannot use it on a user that isn't in the middle of attack."),
+                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.NoticeTargetNotAttackingStringPoolId),
                     PacketOwnedAntiMacroAdminCanvas0Path),
                 (2, _) => new PacketOwnedAntiMacroNoticeDefinition(
                     AntiMacroOwnerStringPoolText.NoticeAlreadyTestedStringPoolId,
-                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.NoticeAlreadyTestedStringPoolId, "This user has already been tested before."),
+                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.NoticeAlreadyTestedStringPoolId),
                     PacketOwnedAntiMacroAdminCanvas0Path),
                 (3, _) => new PacketOwnedAntiMacroNoticeDefinition(
                     AntiMacroOwnerStringPoolText.NoticeTargetAlreadyTestingStringPoolId,
-                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.NoticeTargetAlreadyTestingStringPoolId, "This user is currently going through the Lie Detector Test."),
+                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.NoticeTargetAlreadyTestingStringPoolId),
                     PacketOwnedAntiMacroAdminCanvas0Path),
                 (7, 2) => new PacketOwnedAntiMacroNoticeDefinition(
                     AntiMacroOwnerStringPoolText.NoticeMacroSanctionStringPoolId,
-                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.NoticeMacroSanctionStringPoolId, "You will be sanctioned for using a macro-assisted program."),
+                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.NoticeMacroSanctionStringPoolId),
                     PacketOwnedAntiMacroAdminCanvas2Path),
                 (7, _) => new PacketOwnedAntiMacroNoticeDefinition(
                     AntiMacroOwnerStringPoolText.NoticeFailureRestrictionStringPoolId,
-                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.NoticeFailureRestrictionStringPoolId, "The Lie Detector Test confirms that you have been botting. Repeated failure of the test will result in game restrictions."),
+                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.NoticeFailureRestrictionStringPoolId),
                     PacketOwnedAntiMacroAdminCanvas2Path),
                 (9, 1) => new PacketOwnedAntiMacroNoticeDefinition(
                     AntiMacroOwnerStringPoolText.NoticeRewardThanksStringPoolId,
-                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.NoticeRewardThanksStringPoolId, "Thank you for cooperating with the Lie Detector Test. You'll be rewarded 5000 mesos for not botting."),
+                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.NoticeRewardThanksStringPoolId),
                     PacketOwnedAntiMacroAdminCanvas1Path),
                 (9, 2) => new PacketOwnedAntiMacroNoticeDefinition(
                     AntiMacroOwnerStringPoolText.NoticeAdminThanksStringPoolId,
-                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.NoticeAdminThanksStringPoolId, "Thank you for your cooperation."),
+                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.NoticeAdminThanksStringPoolId),
                     PacketOwnedAntiMacroAdminCanvas1Path),
                 (9, 3) => new PacketOwnedAntiMacroNoticeDefinition(
                     AntiMacroOwnerStringPoolText.NoticePassedThanksStringPoolId,
-                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.NoticePassedThanksStringPoolId, "You have succesfully passed the Lie Detector Test. Thank you for participating!"),
+                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.NoticePassedThanksStringPoolId),
                     PacketOwnedAntiMacroAdminCanvas1Path),
                 (9, 4) => new PacketOwnedAntiMacroNoticeDefinition(
                     AntiMacroOwnerStringPoolText.NoticePassedThanksStringPoolId,
-                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.NoticePassedThanksStringPoolId, "You have succesfully passed the Lie Detector Test. Thank you for participating!"),
+                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.NoticePassedThanksStringPoolId),
+                    PacketOwnedAntiMacroAdminCanvas1Path),
+                (9, _) => new PacketOwnedAntiMacroNoticeDefinition(
+                    AntiMacroOwnerStringPoolText.NoticePassedThanksStringPoolId,
+                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.NoticePassedThanksStringPoolId),
                     PacketOwnedAntiMacroAdminCanvas1Path),
                 (11, _) => new PacketOwnedAntiMacroNoticeDefinition(
                     AntiMacroOwnerStringPoolText.NoticeUserFailedRewardStringPoolId,
-                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.NoticeUserFailedRewardStringPoolId, "The user has failed the Lie Detector Test. You'll be rewarded 7000 mesos from the user."),
+                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.NoticeUserFailedRewardStringPoolId),
                     PacketOwnedAntiMacroAdminCanvas1Path),
                 _ => new PacketOwnedAntiMacroNoticeDefinition(
                     -1,
@@ -552,23 +556,23 @@ namespace HaCreator.MapSimulator
             {
                 (PacketOwnedAntiMacroScreenshotReportMode, _) => new PacketOwnedAntiMacroChatDefinition(
                     AntiMacroOwnerStringPoolText.ChatScreenshotReportStringPoolId,
-                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.ChatScreenshotReportStringPoolId, "%s_The screenshot has been saved. You have been notified of macro-assisted program monitoring."),
+                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.ChatScreenshotReportStringPoolId),
                     SaveScreenshot: true),
                 (PacketOwnedAntiMacroUserReportMode, 1) => new PacketOwnedAntiMacroChatDefinition(
                     AntiMacroOwnerStringPoolText.ChatAdminLaunchStringPoolId,
-                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.ChatAdminLaunchStringPoolId, "%s have used the Lie Detector Test."),
+                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.ChatAdminLaunchStringPoolId),
                     SaveScreenshot: false),
                 (PacketOwnedAntiMacroUserReportMode, 2) => new PacketOwnedAntiMacroChatDefinition(
                     AntiMacroOwnerStringPoolText.ChatAdminActivateStringPoolId,
-                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.ChatAdminActivateStringPoolId, "%s_The screenshot has been saved. The Lie Detector has been activated."),
+                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.ChatAdminActivateStringPoolId),
                     SaveScreenshot: true),
                 (PacketOwnedAntiMacroScreenshotMode, 2) => new PacketOwnedAntiMacroChatDefinition(
                     AntiMacroOwnerStringPoolText.ChatAdminScreenshotSavedStringPoolId,
-                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.ChatAdminScreenshotSavedStringPoolId, "%s_The screenshot has been saved. It appears that you may be using a macro-assisted program."),
+                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.ChatAdminScreenshotSavedStringPoolId),
                     SaveScreenshot: true),
                 (PacketOwnedAntiMacroChatReportMode, 2) => new PacketOwnedAntiMacroChatDefinition(
                     AntiMacroOwnerStringPoolText.ChatAdminPassedStringPoolId,
-                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.ChatAdminPassedStringPoolId, "%s_You have passed the Lie Detector Test."),
+                    AntiMacroOwnerStringPoolText.GetResolvedOrFallback(AntiMacroOwnerStringPoolText.ChatAdminPassedStringPoolId),
                     SaveScreenshot: false),
                 _ => null
             };

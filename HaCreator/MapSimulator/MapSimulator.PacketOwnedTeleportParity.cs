@@ -26,6 +26,23 @@ namespace HaCreator.MapSimulator
 
         private bool TryApplyPacketOwnedTeleportResult(float targetX, float targetY, out string message)
         {
+            return TryApplyPacketOwnedTeleportResult(
+                targetX,
+                targetY,
+                sourcePortalName: null,
+                targetPortalName: null,
+                targetPortalNameCandidates: null,
+                out message);
+        }
+
+        private bool TryApplyPacketOwnedTeleportResult(
+            float targetX,
+            float targetY,
+            string sourcePortalName,
+            string targetPortalName,
+            IEnumerable<string> targetPortalNameCandidates,
+            out string message)
+        {
             _packetOwnedTeleportRequestActive = false;
             int currentTime = Environment.TickCount;
             _packetOwnedTeleportRequestCompletedAt = currentTime;
@@ -43,7 +60,9 @@ namespace HaCreator.MapSimulator
             }
 
             _lastPacketOwnedTeleportPortalIndex = -1;
-            RegisterPacketOwnedTeleportHandoff(sourcePortalName: null, targetPortalName: null);
+            RegisterPacketOwnedTeleportHandoff(
+                sourcePortalName,
+                ResolvePacketOwnedTeleportFallbackHandoffTargetPortalName(targetPortalName, targetPortalNameCandidates));
             string registrationMessage = ApplyPacketOwnedTeleportRegistrationSideEffects(targetX, targetY, currentTime);
             ApplySameMapTeleportPosition(targetX, targetY);
             message = string.IsNullOrWhiteSpace(registrationMessage)
@@ -136,7 +155,13 @@ namespace HaCreator.MapSimulator
                 }
 
                 _packetOwnedTeleportRequestActive = true;
-                return TryApplyPacketOwnedTeleportResult(target.FallbackX.Value, target.FallbackY.Value, out message);
+                return TryApplyPacketOwnedTeleportResult(
+                    target.FallbackX.Value,
+                    target.FallbackY.Value,
+                    target.SourcePortalName,
+                    target.TargetPortalName,
+                    target.TargetPortalNameCandidates,
+                    out message);
             }
 
             _packetOwnedTeleportRequestActive = false;
@@ -504,6 +529,89 @@ namespace HaCreator.MapSimulator
                 out _);
         }
 
+        internal static bool TryResolvePacketOwnedSourcePortalNameByTargetPortalName(
+            IEnumerable<PortalInstance> currentFieldPortals,
+            int targetMapId,
+            string targetPortalName,
+            out string sourcePortalName)
+        {
+            sourcePortalName = null;
+            if (currentFieldPortals == null
+                || targetMapId <= 0
+                || string.IsNullOrWhiteSpace(targetPortalName))
+            {
+                return false;
+            }
+
+            PortalInstance firstMatch = null;
+            foreach (PortalInstance portal in currentFieldPortals)
+            {
+                if (portal == null
+                    || portal.tm != targetMapId
+                    || string.IsNullOrWhiteSpace(portal.pn)
+                    || !string.Equals(portal.tn, targetPortalName, StringComparison.OrdinalIgnoreCase))
+                {
+                    continue;
+                }
+
+                if (firstMatch == null)
+                {
+                    firstMatch = portal;
+                    continue;
+                }
+
+                if (!string.Equals(firstMatch.pn, portal.pn, StringComparison.OrdinalIgnoreCase))
+                {
+                    sourcePortalName = null;
+                    return false;
+                }
+            }
+
+            sourcePortalName = firstMatch?.pn;
+            return !string.IsNullOrWhiteSpace(sourcePortalName);
+        }
+
+        internal static bool TryResolvePacketOwnedSourcePortalNameByTargetPortalCandidates(
+            IEnumerable<PortalInstance> currentFieldPortals,
+            int targetMapId,
+            IEnumerable<string> targetPortalNames,
+            out string sourcePortalName)
+        {
+            sourcePortalName = null;
+            if (currentFieldPortals == null || targetMapId <= 0 || targetPortalNames == null)
+            {
+                return false;
+            }
+
+            string resolvedSourcePortalName = null;
+            foreach (string targetPortalName in targetPortalNames)
+            {
+                if (!TryResolvePacketOwnedSourcePortalNameByTargetPortalName(
+                    currentFieldPortals,
+                    targetMapId,
+                    targetPortalName,
+                    out string candidateSourcePortalName))
+                {
+                    continue;
+                }
+
+                if (string.IsNullOrWhiteSpace(resolvedSourcePortalName))
+                {
+                    resolvedSourcePortalName = candidateSourcePortalName;
+                    continue;
+                }
+
+                if (!string.Equals(resolvedSourcePortalName, candidateSourcePortalName, StringComparison.OrdinalIgnoreCase))
+                {
+                    sourcePortalName = null;
+                    return false;
+                }
+            }
+
+            sourcePortalName = resolvedSourcePortalName;
+            return !string.IsNullOrWhiteSpace(sourcePortalName);
+        }
+
         private bool TryResolvePacketOwnedPendingCrossMapPortalNames(
             PortalInstance sourcePortal,
             out string targetPortalName,
@@ -624,6 +732,38 @@ namespace HaCreator.MapSimulator
             }
 
             candidates.Add(portalName);
+        }
+
+        internal static string ResolvePacketOwnedTeleportFallbackHandoffTargetPortalNameForTesting(
+            string targetPortalName,
+            IEnumerable<string> targetPortalNameCandidates)
+        {
+            return ResolvePacketOwnedTeleportFallbackHandoffTargetPortalName(targetPortalName, targetPortalNameCandidates);
+        }
+
+        private static string ResolvePacketOwnedTeleportFallbackHandoffTargetPortalName(
+            string targetPortalName,
+            IEnumerable<string> targetPortalNameCandidates)
+        {
+            if (!string.IsNullOrWhiteSpace(targetPortalName))
+            {
+                return targetPortalName;
+            }
+
+            if (targetPortalNameCandidates == null)
+            {
+                return null;
+            }
+
+            foreach (string candidateName in targetPortalNameCandidates)
+            {
+                if (!string.IsNullOrWhiteSpace(candidateName))
+                {
+                    return candidateName;
+                }
+            }
+
+            return null;
         }
 
         private static bool TryResolvePacketOwnedTeleportPortalByPosition(
